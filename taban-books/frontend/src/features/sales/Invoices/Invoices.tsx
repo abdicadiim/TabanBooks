@@ -499,6 +499,10 @@ export default function Invoices() {
   });
 
   useEffect(() => {
+    setSearchQuery(searchParams.get("search") || "");
+  }, [searchParams]);
+
+  useEffect(() => {
     if (!invoiceListQuery.data) return;
     setInvoices(stripRetainerInvoices(invoiceListQuery.data.data));
   }, [invoiceListQuery.data]);
