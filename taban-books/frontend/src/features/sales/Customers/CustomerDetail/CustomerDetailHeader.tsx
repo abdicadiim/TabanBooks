@@ -40,6 +40,7 @@ export default function CustomerDetailHeader(args: any) {
     openTransactionSection,
     CustomerAttachmentsPopover,
     handleLinkVendor,
+    handleUnlinkVendor,
   } = args;
 
   const customerId = String(customer?.id || customer?._id || "").trim();
@@ -201,6 +202,11 @@ export default function CustomerDetailHeader(args: any) {
                 setIsMoreDropdownOpen(false);
                 handleLinkVendor();
               }}
+              onUnlinkVendor={() => {
+                setIsMoreDropdownOpen(false);
+                handleUnlinkVendor();
+              }}
+              isLinkedVendor={Boolean(customer?.linkedVendorId)}
             />
 
             <button

@@ -109,7 +109,11 @@ const toTaxOption = (tax: any): TaxDropdownOption | null => {
     Boolean(tax?.isComponent || tax?.is_component) ||
     typeValue === "component" ||
     kindValue === "component" ||
-    taxTypeValue === "component";
+    taxTypeValue === "component" ||
+    taxTypeValue === "child" ||
+    taxTypeValue === "subtax" ||
+    kindValue === "child" ||
+    kindValue === "subtax";
 
   return {
     id,

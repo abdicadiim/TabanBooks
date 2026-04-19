@@ -16,6 +16,8 @@ type CustomerDetailMoreMenuProps = {
   onToggleActive: () => void | Promise<void>;
   onDelete: () => void;
   onLinkVendor: () => void;
+  onUnlinkVendor: () => void | Promise<void>;
+  isLinkedVendor: boolean;
 };
 
 export default function CustomerDetailMoreMenu({
@@ -33,6 +35,8 @@ export default function CustomerDetailMoreMenu({
   onToggleActive,
   onDelete,
   onLinkVendor,
+  onUnlinkVendor,
+  isLinkedVendor,
 }: CustomerDetailMoreMenuProps) {
   return (
     <div className="relative" ref={moreDropdownRef}>
@@ -76,9 +80,9 @@ export default function CustomerDetailMoreMenu({
           <button
             type="button"
             className="w-full text-left px-4 py-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 transition-colors"
-            onClick={onLinkVendor}
+            onClick={isLinkedVendor ? onUnlinkVendor : onLinkVendor}
           >
-            Link to Vendor
+            {isLinkedVendor ? "Unlink from Vendor" : "Link to Vendor"}
           </button>
           <div className="h-px bg-gray-100 my-1" />
           <button

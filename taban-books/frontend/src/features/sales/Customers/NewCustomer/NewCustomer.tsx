@@ -2317,7 +2317,7 @@ export default function NewCustomer() {
                             style={isTaxRateDropdownOpen ? { borderColor: "#156372" } : {}}
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <span className={formData.taxRate ? "text-[#1f2937]" : "text-[#6b7280]"}>
+                              <span className={formData.taxRate ? "text-black font-bold" : "text-[#6b7280]"}>
                                 {selectedCustomerTaxLabel}
                               </span>
                               <ChevronDown
@@ -2369,7 +2369,7 @@ export default function NewCustomer() {
                                                   setTaxRateSearch("");
                                                 }}
                                                 className={`flex w-full items-center justify-between rounded-lg px-4 py-2 text-[13px] transition-colors ${
-                                                  selected ? "font-semibold bg-[#156372]/5 text-[#156372]" : "text-slate-600 hover:bg-slate-50"
+                                                  selected ? "font-bold text-black bg-[#156372]/5" : "text-slate-600 hover:bg-slate-50"
                                                 }`}
                                               >
                                                 <span>{label}</span>

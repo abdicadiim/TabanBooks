@@ -1565,6 +1565,7 @@ export default function CustomerDetail() {
 
             <div className="flex-1 min-w-0 flex min-h-0 flex-col overflow-y-auto custom-scrollbar" style={{ marginRight: 0, paddingRight: 0 }}>
                 <CustomerDetailHeader
+                    handleUnlinkVendor={handleUnlinkVendor}
                     customer={customer}
                     id={id}
                     attachments={attachments}
@@ -1670,118 +1671,179 @@ export default function CustomerDetail() {
                         }}
                     />
                 )}
-                {
-                    activeTab === "transactions" && (
-                        <CustomerDetailTransactionsTab
-                            goToTransactionsDropdownRef={goToTransactionsDropdownRef}
-                            isGoToTransactionsDropdownOpen={isGoToTransactionsDropdownOpen}
-                            setIsGoToTransactionsDropdownOpen={setIsGoToTransactionsDropdownOpen}
-                            expandedTransactions={expandedTransactions}
-                            openTransactionSection={openTransactionSection}
-                            toggleTransactionSection={toggleTransactionSection}
-                            navigate={navigate}
-                            customer={customer}
-                            statusDropdownRef={statusDropdownRef}
-                            isStatusDropdownOpen={isStatusDropdownOpen}
-                            setIsStatusDropdownOpen={setIsStatusDropdownOpen}
-                            invoiceStatusFilter={invoiceStatusFilter}
-                            invoiceStatusOptions={invoiceStatusOptions}
-                            setInvoiceStatusFilter={setInvoiceStatusFilter}
-                            setInvoiceCurrentPage={setInvoiceCurrentPage}
-                            formatStatusLabel={formatStatusLabel}
-                            filteredInvoices={filteredInvoices}
-                            startIndex={startIndex}
-                            endIndex={endIndex}
-                            paginatedInvoices={paginatedInvoices}
-                            normalizeInvoiceStatus={normalizeInvoiceStatus}
-                            formatCurrency={formatCurrency}
-                            invoiceCurrentPage={invoiceCurrentPage}
-                            totalPages={totalPages}
-                            payments={payments}
-                            bills={bills}
-                            purchaseOrders={purchaseOrders}
-                            vendorCredits={vendorCredits}
-                            paymentsMade={paymentsMade}
-                            journals={journals}
-                            quoteStatusDropdownRef={quoteStatusDropdownRef}
-                            isQuoteStatusDropdownOpen={isQuoteStatusDropdownOpen}
-                            setIsQuoteStatusDropdownOpen={setIsQuoteStatusDropdownOpen}
-                            quoteStatusFilter={quoteStatusFilter}
-                            setQuoteStatusFilter={setQuoteStatusFilter}
-                            getFilteredQuotes={getFilteredQuotes}
-                            recurringInvoiceStatusDropdownRef={recurringInvoiceStatusDropdownRef}
-                            isRecurringInvoiceStatusDropdownOpen={isRecurringInvoiceStatusDropdownOpen}
-                            setIsRecurringInvoiceStatusDropdownOpen={setIsRecurringInvoiceStatusDropdownOpen}
-                            recurringInvoiceStatusFilter={recurringInvoiceStatusFilter}
-                            setRecurringInvoiceStatusFilter={setRecurringInvoiceStatusFilter}
-                            getFilteredRecurringInvoices={getFilteredRecurringInvoices}
-                            expenseStatusDropdownRef={expenseStatusDropdownRef}
-                            isExpenseStatusDropdownOpen={isExpenseStatusDropdownOpen}
-                            setIsExpenseStatusDropdownOpen={setIsExpenseStatusDropdownOpen}
-                            expenseStatusFilter={expenseStatusFilter}
-                            setExpenseStatusFilter={setExpenseStatusFilter}
-                            getFilteredExpenses={getFilteredExpenses}
-                            recurringExpenseStatusDropdownRef={recurringExpenseStatusDropdownRef}
-                            isRecurringExpenseStatusDropdownOpen={isRecurringExpenseStatusDropdownOpen}
-                            setIsRecurringExpenseStatusDropdownOpen={setIsRecurringExpenseStatusDropdownOpen}
-                            recurringExpenseStatusFilter={recurringExpenseStatusFilter}
-                            setRecurringExpenseStatusFilter={setRecurringExpenseStatusFilter}
-                            getFilteredRecurringExpenses={getFilteredRecurringExpenses}
-                            projectStatusDropdownRef={projectStatusDropdownRef}
-                            isProjectStatusDropdownOpen={isProjectStatusDropdownOpen}
-                            setIsProjectStatusDropdownOpen={setIsProjectStatusDropdownOpen}
-                            projectStatusFilter={projectStatusFilter}
-                            setProjectStatusFilter={setProjectStatusFilter}
-                            getFilteredProjects={getFilteredProjects}
-                            creditNoteStatusDropdownRef={creditNoteStatusDropdownRef}
-                            isCreditNoteStatusDropdownOpen={isCreditNoteStatusDropdownOpen}
-                            setIsCreditNoteStatusDropdownOpen={setIsCreditNoteStatusDropdownOpen}
-                            creditNoteStatusFilter={creditNoteStatusFilter}
-                            setCreditNoteStatusFilter={setCreditNoteStatusFilter}
-                            getFilteredCreditNotes={getFilteredCreditNotes}
-                            salesReceiptStatusDropdownRef={salesReceiptStatusDropdownRef}
-                            isSalesReceiptStatusDropdownOpen={isSalesReceiptStatusDropdownOpen}
-                            setIsSalesReceiptStatusDropdownOpen={setIsSalesReceiptStatusDropdownOpen}
-                            salesReceiptStatusFilter={salesReceiptStatusFilter}
-                            setSalesReceiptStatusFilter={setSalesReceiptStatusFilter}
-                            getFilteredSalesReceipts={getFilteredSalesReceipts}
-                        />
-                    )
-                }
-
-                {activeTab === "purchases" && (
-                    <CustomerDetailPurchasesTab
-                        isLoading={isLinkedVendorPurchasesLoading}
-                        customerCurrency={customer?.currency}
-                        linkedVendorPurchaseSections={linkedVendorPurchaseSections}
-                        sections={[
-                            { key: "bills", label: "Bills", rows: linkedVendorPurchases, navigateTo: "/purchases/bills/" },
-                            { key: "paymentsMade", label: "Bill Payments", rows: linkedVendorPaymentsMade, navigateTo: "/purchases/payments-made/" },
-                            { key: "purchaseOrders", label: "Purchase Orders", rows: linkedVendorPurchaseOrders, navigateTo: "/purchases/purchase-orders/" },
-                            { key: "vendorCredits", label: "Vendor Credits", rows: linkedVendorCredits, navigateTo: "/purchases/vendor-credits/" },
-                        ]}
+                {activeTab === "transactions" && (
+                    <CustomerDetailTransactionsTab
+                        goToTransactionsDropdownRef={goToTransactionsDropdownRef}
+                        isGoToTransactionsDropdownOpen={isGoToTransactionsDropdownOpen}
+                        setIsGoToTransactionsDropdownOpen={setIsGoToTransactionsDropdownOpen}
+                        expandedTransactions={expandedTransactions}
+                        openTransactionSection={openTransactionSection}
+                        toggleTransactionSection={toggleTransactionSection}
+                        navigate={navigate}
+                        customer={customer}
+                        statusDropdownRef={statusDropdownRef}
+                        isStatusDropdownOpen={isStatusDropdownOpen}
+                        setIsStatusDropdownOpen={setIsStatusDropdownOpen}
+                        invoiceStatusFilter={invoiceStatusFilter}
+                        invoiceStatusOptions={invoiceStatusOptions}
+                        setInvoiceStatusFilter={setInvoiceStatusFilter}
+                        setInvoiceCurrentPage={setInvoiceCurrentPage}
+                        formatStatusLabel={formatStatusLabel}
+                        filteredInvoices={filteredInvoices}
+                        startIndex={startIndex}
+                        endIndex={endIndex}
+                        paginatedInvoices={paginatedInvoices}
+                        normalizeInvoiceStatus={normalizeInvoiceStatus}
                         formatCurrency={formatCurrency}
-                        onToggleSection={toggleLinkedVendorPurchaseSection}
-                        onNavigate={navigate}
+                        invoiceCurrentPage={invoiceCurrentPage}
+                        totalPages={totalPages}
+                        payments={payments}
+                        bills={bills}
+                        purchaseOrders={purchaseOrders}
+                        vendorCredits={vendorCredits}
+                        paymentsMade={paymentsMade}
+                        journals={journals}
+                        quoteStatusDropdownRef={quoteStatusDropdownRef}
+                        isQuoteStatusDropdownOpen={isQuoteStatusDropdownOpen}
+                        setIsQuoteStatusDropdownOpen={setIsQuoteStatusDropdownOpen}
+                        quoteStatusFilter={quoteStatusFilter}
+                        setQuoteStatusFilter={setQuoteStatusFilter}
+                        getFilteredQuotes={getFilteredQuotes}
+                        recurringInvoiceStatusDropdownRef={recurringInvoiceStatusDropdownRef}
+                        isRecurringInvoiceStatusDropdownOpen={isRecurringInvoiceStatusDropdownOpen}
+                        setIsRecurringInvoiceStatusDropdownOpen={setIsRecurringInvoiceStatusDropdownOpen}
+                        recurringInvoiceStatusFilter={recurringInvoiceStatusFilter}
+                        setRecurringInvoiceStatusFilter={setRecurringInvoiceStatusFilter}
+                        getFilteredRecurringInvoices={getFilteredRecurringInvoices}
+                        expenseStatusDropdownRef={expenseStatusDropdownRef}
+                        isExpenseStatusDropdownOpen={isExpenseStatusDropdownOpen}
+                        setIsExpenseStatusDropdownOpen={setIsExpenseStatusDropdownOpen}
+                        expenseStatusFilter={expenseStatusFilter}
+                        setExpenseStatusFilter={setExpenseStatusFilter}
+                        getFilteredExpenses={getFilteredExpenses}
+                        recurringExpenseStatusDropdownRef={recurringExpenseStatusDropdownRef}
+                        isRecurringExpenseStatusDropdownOpen={isRecurringExpenseStatusDropdownOpen}
+                        setIsRecurringExpenseStatusDropdownOpen={setIsRecurringExpenseStatusDropdownOpen}
+                        recurringExpenseStatusFilter={recurringExpenseStatusFilter}
+                        setRecurringExpenseStatusFilter={setRecurringExpenseStatusFilter}
+                        getFilteredRecurringExpenses={getFilteredRecurringExpenses}
+                        projectStatusDropdownRef={projectStatusDropdownRef}
+                        isProjectStatusDropdownOpen={isProjectStatusDropdownOpen}
+                        setIsProjectStatusDropdownOpen={setIsProjectStatusDropdownOpen}
+                        projectStatusFilter={projectStatusFilter}
+                        setProjectStatusFilter={setProjectStatusFilter}
+                        getFilteredProjects={getFilteredProjects}
+                        creditNoteStatusDropdownRef={creditNoteStatusDropdownRef}
+                        isCreditNoteStatusDropdownOpen={isCreditNoteStatusDropdownOpen}
+                        setIsCreditNoteStatusDropdownOpen={setIsCreditNoteStatusDropdownOpen}
+                        creditNoteStatusFilter={creditNoteStatusFilter}
+                        setCreditNoteStatusFilter={setCreditNoteStatusFilter}
+                        getFilteredCreditNotes={getFilteredCreditNotes}
+                        salesReceiptStatusDropdownRef={salesReceiptStatusDropdownRef}
+                        isSalesReceiptStatusDropdownOpen={isSalesReceiptStatusDropdownOpen}
+                        setIsSalesReceiptStatusDropdownOpen={setIsSalesReceiptStatusDropdownOpen}
+                        salesReceiptStatusFilter={salesReceiptStatusFilter}
+                        setSalesReceiptStatusFilter={setSalesReceiptStatusFilter}
+                        getFilteredSalesReceipts={getFilteredSalesReceipts}
                     />
                 )}
 
+                {activeTab === "purchases" && (
+                    <CustomerDetailPurchasesTab
+                        customer={customer}
+                        linkedVendor={linkedVendor}
+                        linkedVendorPurchaseSections={linkedVendorPurchaseSections}
+                        toggleLinkedVendorPurchaseSection={toggleLinkedVendorPurchaseSection}
+                        linkedVendorPurchases={linkedVendorPurchases}
+                        linkedVendorPaymentsMade={linkedVendorPaymentsMade}
+                        linkedVendorPurchaseOrders={linkedVendorPurchaseOrders}
+                        linkedVendorCredits={linkedVendorCredits}
+                        isLinkedVendorPurchasesLoading={isLinkedVendorPurchasesLoading}
+                        formatCurrency={formatCurrency}
+                        navigate={navigate}
+                    />
+                )}
+
+                {activeTab === "reporting-tags" && (
+                    <div className="flex-1 overflow-auto p-6">
+                        <div className="max-w-4xl">
+                            <div className="flex items-center justify-between mb-6">
+                                <h2 className="text-xl font-semibold text-gray-900">Reporting Tags</h2>
+                                <button
+                                    onClick={() => openAssociateTagsModal()}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+                                >
+                                    <Plus size={16} />
+                                    Associate Tags
+                                </button>
+                            </div>
+                            
+                            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                                <table className="w-full border-collapse text-[13px]">
+                                    <thead>
+                                        <tr className="bg-gray-50 border-b border-gray-200">
+                                            <th className="py-3 px-4 text-left font-medium text-gray-600 text-xs uppercase tracking-wider">TAG NAME</th>
+                                            <th className="py-3 px-4 text-left font-medium text-gray-600 text-xs uppercase tracking-wider">VALUE</th>
+                                            <th className="py-3 px-4 text-right"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {availableReportingTags.length > 0 ? (
+                                            availableReportingTags.map((tag: any) => {
+                                                const tagId = String(tag._id || tag.id);
+                                                const value = associateTagsValues[tagId] || "--";
+                                                return (
+                                                    <tr key={tagId} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors">
+                                                        <td className="py-4 px-4 text-gray-900 font-medium">
+                                                            {tag.name}
+                                                            {tag.isRequired && <span className="text-red-500 ml-1">*</span>}
+                                                        </td>
+                                                        <td className="py-4 px-4">
+                                                            <span className={`px-2 py-1 rounded text-xs font-medium ${value !== "--" ? "bg-blue-50 text-blue-700" : "text-gray-400"}`}>
+                                                                {value}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-4 px-4 text-right">
+                                                            <button 
+                                                                onClick={() => openAssociateTagsModal()}
+                                                                className="text-blue-600 hover:underline"
+                                                            >
+                                                                Edit
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        ) : (
+                                            <tr>
+                                                <td colSpan={3} className="py-12 px-4 text-center text-sm text-gray-500">
+                                                    No reporting tags available for customers.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {activeTab === "mails" && (
-                        <CustomerDetailMailsTab
-                            mails={mails}
-                            linkEmailDropdownRef={linkEmailDropdownRef}
-                            isLinkEmailDropdownOpen={isLinkEmailDropdownOpen}
-                            onToggleLinkEmailDropdown={() => setIsLinkEmailDropdownOpen(!isLinkEmailDropdownOpen)}
-                            onConnectZohoMail={() => {
-                                setIsLinkEmailDropdownOpen(false);
-                                setIsZohoMailIntegrationModalOpen(true);
-                            }}
-                            onConnectOutlook={() => {
-                                setIsLinkEmailDropdownOpen(false);
-                                setIsOutlookIntegrationModalOpen(true);
-                            }}
-                        />
-                    )}
+                    <CustomerDetailMailsTab
+                        mails={mails}
+                        linkEmailDropdownRef={linkEmailDropdownRef}
+                        isLinkEmailDropdownOpen={isLinkEmailDropdownOpen}
+                        onToggleLinkEmailDropdown={() => setIsLinkEmailDropdownOpen(!isLinkEmailDropdownOpen)}
+                        onConnectZohoMail={() => {
+                            setIsLinkEmailDropdownOpen(false);
+                            setIsZohoMailIntegrationModalOpen(true);
+                        }}
+                        onConnectOutlook={() => {
+                            setIsLinkEmailDropdownOpen(false);
+                            setIsOutlookIntegrationModalOpen(true);
+                        }}
+                    />
+                )}
 
                 {activeTab === "statement" && (
                     <CustomerDetailStatementTab
@@ -1824,6 +1886,7 @@ export default function CustomerDetail() {
                         getStatementDateRange={getStatementDateRange}
                     />
                 )}
+
             </div>
 
             <CustomerDetailModalStack
