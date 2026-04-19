@@ -17,7 +17,6 @@ export default function HomeHeader() {
     { label: "Dashboard", to: "/" },
     { label: "Getting Started", to: "/getting-started" },
     { label: "Recent Updates", to: "/recent-updates" },
-    { label: "Projects Guide", to: "/time-tracking/projects-guide" },
   ];
 
   return (

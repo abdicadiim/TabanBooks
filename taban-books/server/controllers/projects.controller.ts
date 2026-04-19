@@ -7,6 +7,24 @@ import { Request, Response } from "express";
 import Project from "../models/Project.js";
 import TimeEntry from "../models/TimeEntry.js";
 
+const normalizeProjectComments = (comments: any): any[] => {
+  if (!Array.isArray(comments)) return [];
+
+  return comments
+    .filter((comment: any) => comment && typeof comment.text === "string" && String(comment.text).trim() !== "")
+    .map((comment: any, index: number) => ({
+      id: String(comment.id || comment._id || `project-comment-${Date.now()}-${index}`),
+      text: String(comment.text || "").trim(),
+      content: String(comment.content || "").trim(),
+      authorName: String(comment.authorName || "You").trim() || "You",
+      authorInitial: String(comment.authorInitial || "Y").trim() || "Y",
+      createdAt: String(comment.createdAt || new Date().toISOString()),
+      bold: Boolean(comment.bold),
+      italic: Boolean(comment.italic),
+      underline: Boolean(comment.underline),
+    }));
+};
+
 // ============================================================================
 // PROJECTS
 // ============================================================================
@@ -125,6 +143,7 @@ export const createProject = async (req: Request, res: Response): Promise<void> 
       // Budget hours fields
       hoursBudgetType: req.body.hoursBudgetType || '',
       totalBudgetHours: req.body.totalBudgetHours ? String(req.body.totalBudgetHours) : '',
+      comments: normalizeProjectComments(req.body.comments),
     };
 
     // Handle customer if provided
@@ -264,6 +283,10 @@ export const updateProject = async (req: Request, res: Response): Promise<void> 
       } else if (req.body.customerId) {
         updateData.customer = req.body.customerId;
       }
+    }
+
+    if (req.body.comments !== undefined) {
+      updateData.comments = normalizeProjectComments(req.body.comments);
     }
 
     const project = await Project.findOneAndUpdate(

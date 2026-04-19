@@ -1,16 +1,40 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { customersAPI, projectsAPI } from "../../services/api";
+import { customersAPI, currenciesAPI, projectsAPI, usersAPI } from "../../services/api";
 import { getCurrentUser } from "../../services/auth";
 import toast from "react-hot-toast";
-import NewCustomerForm from "./NewCustomerForm";
-import { Search, Download, Plus, X, ChevronDown, Check } from "lucide-react";
+import { Search, Download, Plus, X, Trash2, ChevronDown, Check } from "lucide-react";
 import { useCurrency } from "../../hooks/useCurrency";
+import { useAppBootstrap } from "../../context/AppBootstrapContext";
+
+const normalizeCurrencyCode = (value: unknown): string => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const token = raw.split(" - ")[0].trim().split(/\s+/)[0].trim();
+  return token ? token.toUpperCase() : "";
+};
+
+const sanitizeMoneyInput = (value: string): string => {
+  const cleaned = value.replace(/[^\d.]/g, "");
+  const [whole, ...fractionParts] = cleaned.split(".");
+  return fractionParts.length === 0 ? whole : `${whole}.${fractionParts.join("")}`;
+};
 export default function NewProjectForm() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { code: rawCurrencyCode } = useCurrency();
-  const baseCurrencyCode = rawCurrencyCode ? rawCurrencyCode.split(' ')[0].substring(0, 3).toUpperCase() : "KES";
+  const { code: rawCurrencyCode, baseCurrency } = useCurrency();
+  const { organization } = useAppBootstrap();
+  const [baseCurrencyCode, setBaseCurrencyCode] = useState(() =>
+    normalizeCurrencyCode(
+      rawCurrencyCode ||
+      baseCurrency?.code ||
+      organization?.baseCurrency ||
+      organization?.currency ||
+      localStorage.getItem("base_currency_code") ||
+      "KES",
+    ),
+  );
   const [formData, setFormData] = useState({
     projectName: "",
     projectCode: "",
@@ -28,6 +52,7 @@ export default function NewProjectForm() {
 
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
+  const suppressCustomerDropdownRef = useRef(false);
   const [showBillingDropdown, setShowBillingDropdown] = useState(false);
   const [billingSearch, setBillingSearch] = useState("");
 
@@ -37,7 +62,6 @@ export default function NewProjectForm() {
     { value: "task-hours", label: "Based on Task Hours" },
     { value: "staff-hours", label: "Based on Staff Hours" }
   ];
-  const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
   const [customers, setCustomers] = useState([]);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [showAdvancedSearchModal, setShowAdvancedSearchModal] = useState(false);
@@ -102,6 +126,40 @@ export default function NewProjectForm() {
     };
   }, []);
 
+  useEffect(() => {
+    let isActive = true;
+
+    const applyCurrency = (value: unknown) => {
+      const normalized = normalizeCurrencyCode(value);
+      if (normalized && isActive) {
+        setBaseCurrencyCode(normalized);
+      }
+    };
+
+    applyCurrency(
+      rawCurrencyCode ||
+      baseCurrency?.code ||
+      organization?.baseCurrency ||
+      organization?.currency ||
+      localStorage.getItem("base_currency_code"),
+    );
+
+    const fetchBaseCurrency = async () => {
+      try {
+        const response = await currenciesAPI.getBaseCurrency();
+        applyCurrency(response?.data?.code || response?.code || response?.data?.currency_code);
+      } catch (error) {
+        console.error("Error loading base currency for New Project:", error);
+      }
+    };
+
+    void fetchBaseCurrency();
+
+    return () => {
+      isActive = false;
+    };
+  }, [rawCurrencyCode, baseCurrency?.code, organization?.baseCurrency, organization?.currency]);
+
   // Pre-populate form data from location state (when coming from quote)
   useEffect(() => {
     if (location.state) {
@@ -154,31 +212,23 @@ export default function NewProjectForm() {
     const fetchUsers = async () => {
       setLoadingUsers(true);
       try {
-        // Try to get users from auth/me or create a simple endpoint
-        // For now, we'll use a combination of current user and a mock list
-        const currentUser = getCurrentUser();
-        const usersList = [];
-
-        if (currentUser) {
-          usersList.push({
-            id: currentUser.id,
-            name: currentUser.name || "",
-            email: currentUser.email || "",
-          });
-        }
-
-        // Add some default users (you can replace this with an API call)
-        usersList.push(
-          { id: 2, name: "JIRDE HUSSEIN KHALIF", email: "jirdehusseinkhalif@gmail.com" },
-          { id: 3, name: "tabanaaaa", email: "tabanaaaa@gmail.com" },
-          { id: 4, name: "user2", email: "user2@example.com" },
-          { id: 5, name: "user3", email: "user3@example.com" }
-        );
+        const response = await usersAPI.getAll();
+        const data = Array.isArray(response) ? response : (response?.data || []);
+        const usersList = data
+          .map((user: any) => ({
+            id: String(user?.id || user?._id || "").trim(),
+            name: String(user?.name || "").trim(),
+            email: String(user?.email || "").trim(),
+            role: String(user?.role || user?.roleKey || "").trim(),
+            isActive: user?.isActive !== undefined ? Boolean(user.isActive) : true,
+          }))
+          .filter((user: any) => user.id && (user.name || user.email) && user.isActive);
 
         setAvailableUsers(usersList);
       } catch (error) {
         console.error("Error loading users:", error);
         toast.error("Failed to load users");
+        setAvailableUsers([]);
       } finally {
         setLoadingUsers(false);
       }
@@ -318,12 +368,7 @@ export default function NewProjectForm() {
           </button>
         </div>
 
-        {/* Project Details Section */}
         <div className="mb-8">
-          <h3 className="text-base font-semibold text-gray-800 mb-4 border-b border-gray-200 pb-2">
-            Project Details
-          </h3>
-
           <div className="flex flex-col gap-4">
             {/* Project Name */}
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
@@ -365,24 +410,38 @@ export default function NewProjectForm() {
                     onChange={(e) => {
                       setCustomerSearch(e.target.value);
                       setFormData({ ...formData, customerName: e.target.value });
-                      setShowCustomerDropdown(true);
+                      if (!suppressCustomerDropdownRef.current) {
+                        setShowCustomerDropdown(true);
+                      }
                     }}
-                    onFocus={() => setShowCustomerDropdown(true)}
+                    onFocus={() => {
+                      if (!suppressCustomerDropdownRef.current) {
+                        setShowCustomerDropdown(true);
+                      }
+                    }}
                     placeholder="Select customer"
                     className="w-full px-3 py-2 pr-10 border border-gray-300 rounded text-sm outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372] transition-colors"
                   />
                   <div
-                    onClick={() => setShowCustomerDropdown(!showCustomerDropdown)}
+                    onClick={() => {
+                      if (!suppressCustomerDropdownRef.current) {
+                        setShowCustomerDropdown(!showCustomerDropdown);
+                      }
+                    }}
                     className="absolute right-10 top-1/2 -translate-y-1/2 cursor-pointer p-1"
                   >
                     <ChevronDown className="w-4 h-4 text-gray-500" />
                   </div>
                   <button
-                    onClick={() => {
-                      setShowAdvancedSearchModal(true);
-                      setShowCustomerDropdown(false);
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowCustomerDropdown(true);
+                      const searchInput = document.querySelector('[data-customer-dropdown] input[placeholder="Search..."]') as HTMLInputElement | null;
+                      searchInput?.focus();
                     }}
-                    className="absolute right-0 top-0 bottom-0 bg-[#156372] hover:bg-[#0D4A52] text-white rounded-r px-3 flex items-center justify-center transition-colors"
+                    className="absolute right-0 top-0 bottom-0 bg-[#156372] hover:bg-[#0D4A52] text-white rounded-r px-3 flex items-center justify-center transition-colors z-20"
                   >
                     <Search className="w-4 h-4 text-white" />
                   </button>
@@ -414,7 +473,7 @@ export default function NewProjectForm() {
                           <button
                             onClick={() => {
                               setShowCustomerDropdown(false);
-                              setShowNewCustomerForm(true);
+                              navigate("/sales/customers/new");
                             }}
                             className="text-[#156372] hover:text-[#0D4A52] font-medium text-sm flex items-center justify-center gap-2 w-full"
                           >
@@ -447,7 +506,7 @@ export default function NewProjectForm() {
                       <button
                         onClick={() => {
                           setShowCustomerDropdown(false);
-                          setShowNewCustomerForm(true);
+                          navigate("/sales/customers/new");
                         }}
                         className="p-3 border-t border-gray-100 text-[#156372] hover:bg-[#156372]/10 font-medium text-sm flex items-center justify-center gap-2 w-full transition-colors sticky bottom-0 bg-white"
                       >
@@ -552,21 +611,17 @@ export default function NewProjectForm() {
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
               <label className="text-sm font-medium text-gray-700 min-w-[150px] sm:text-right flex items-center justify-end gap-1">
                 Cost Budget
-                <span className="text-gray-400 group relative inline-block cursor-help hover:text-gray-600">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
-                    <path d="M8 6v2M8 10h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </span>
               </label>
               <div className="flex-1 flex items-stretch border border-gray-300 rounded overflow-hidden focus-within:border-[#156372] focus-within:ring-1 focus-within:ring-[#156372] transition-colors">
                 <div className="bg-gray-50 px-3 flex items-center border-r border-gray-300 text-sm text-gray-500 min-w-[60px] justify-center bg-[#f9fafb]">
                   {baseCurrencyCode}
-                </div>
-                <input
-                  type="text"
-                  value={formData.costBudget}
-                  onChange={(e) => setFormData({ ...formData, costBudget: e.target.value })}
+              </div>
+              <input
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9]*[.]?[0-9]*"
+                value={formData.costBudget}
+                  onChange={(e) => setFormData({ ...formData, costBudget: sanitizeMoneyInput(e.target.value) })}
                   className="w-full px-3 py-2 text-sm outline-none"
                 />
               </div>
@@ -586,11 +641,13 @@ export default function NewProjectForm() {
               <div className="flex-1 flex items-stretch border border-gray-300 rounded overflow-hidden focus-within:border-[#156372] focus-within:ring-1 focus-within:ring-[#156372] transition-colors">
                 <div className="bg-gray-50 px-3 flex items-center border-r border-gray-300 text-sm text-gray-500 min-w-[60px] justify-center bg-[#f9fafb]">
                   {baseCurrencyCode || "KES"}
-                </div>
-                <input
-                  type="text"
-                  value={formData.revenueBudget}
-                  onChange={(e) => setFormData({ ...formData, revenueBudget: e.target.value })}
+              </div>
+              <input
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9]*[.]?[0-9]*"
+                value={formData.revenueBudget}
+                  onChange={(e) => setFormData({ ...formData, revenueBudget: sanitizeMoneyInput(e.target.value) })}
                   className="w-full px-3 py-2 text-sm outline-none"
                 />
               </div>
@@ -694,11 +751,12 @@ export default function NewProjectForm() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       USER
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      EMAIL
-                    </th>
-                  </tr>
-                </thead>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  EMAIL
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-14"></th>
+              </tr>
+            </thead>
                 <tbody>
                   {users.map((user, index) => (
                     <tr key={user.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
@@ -831,6 +889,18 @@ export default function NewProjectForm() {
                           />
                         </td>
                       )}
+                      <td className="px-4 py-3 text-sm text-gray-700 text-right">
+                        {user.isEditable && users.length > 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => removeUser(user.id)}
+                            aria-label={`Remove user ${user.name || index + 1}`}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        ) : null}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -853,13 +923,6 @@ export default function NewProjectForm() {
             <h3 className="text-base font-semibold text-gray-800 m-0">
               Project Tasks
             </h3>
-            <button
-              onClick={() => setShowImportTasksModal(true)}
-              className="text-[#156372] hover:text-[#0D4A52] text-sm flex items-center gap-1.5 hover:underline bg-transparent border-none cursor-pointer"
-            >
-              <Download className="w-4 h-4" />
-              Import project tasks from existing projects.
-            </button>
           </div>
 
           <div className="border border-gray-200 rounded-lg overflow-hidden mb-4">
@@ -919,7 +982,7 @@ export default function NewProjectForm() {
                           type="checkbox"
                           checked={task.billable}
                           onChange={(e) => updateTask(task.id, "billable", e.target.checked)}
-                          className="w-4 h-4 text-[#156372] border-gray-300 rounded focus:ring-[#156372] cursor-pointer"
+                          className="w-4 h-4 accent-[#156372] border-gray-300 rounded focus:ring-[#156372] cursor-pointer"
                         />
                         <button
                           onClick={() => removeTask(task.id)}
@@ -944,21 +1007,6 @@ export default function NewProjectForm() {
             <Plus className="w-4 h-4" />
             Add Project Task
           </button>
-        </div>
-
-        {/* Watchlist Checkbox */}
-        <div className="mb-8">
-          <label className="flex items-center gap-2 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={formData.addToWatchlist}
-              onChange={(e) => setFormData({ ...formData, addToWatchlist: e.target.checked })}
-              className="w-4 h-4 text-[#156372] border-gray-300 rounded focus:ring-[#156372] cursor-pointer"
-            />
-            <span className="text-sm text-gray-700 group-hover:text-gray-900">
-              Add to the watchlist on my dashboard
-            </span>
-          </label>
         </div>
 
         {/* Action Buttons */}
@@ -1071,258 +1119,8 @@ export default function NewProjectForm() {
         </div>
       </div>
 
-      {/* New Customer Form Modal */}
-      {showNewCustomerForm && (
-        <div className="fixed inset-0 z-[2000]">
-          <NewCustomerForm onClose={() => setShowNewCustomerForm(false)} />
+      
+
         </div>
-      )}
-
-      {/* Advanced Customer Search Modal */}
-      {showAdvancedSearchModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-[2000] flex items-start justify-center pt-16"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowAdvancedSearchModal(false);
-          }}
-        >
-          <div className="bg-white rounded-lg w-[90%] max-w-[800px] max-h-[80vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            {/* Modal Header */}
-            <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-800 m-0">
-                Advanced Customer Search
-              </h2>
-              <button
-                onClick={() => {
-                  setShowAdvancedSearchModal(false);
-                  setAdvancedSearchValue("");
-                  setAdvancedSearchResults([]);
-                }}
-                className="w-8 h-8 flex items-center justify-center rounded border border-gray-300 text-gray-500 hover:text-gray-800 hover:bg-gray-50 transition-colors"
-                aria-label="Close"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Search Controls */}
-            <div className="p-6 border-b border-gray-200 flex gap-3">
-              <div className="relative" data-dropdown>
-                <button
-                  onClick={() => setShowAdvancedSearchTypeDropdown(!showAdvancedSearchTypeDropdown)}
-                  className="px-3 py-2.5 border border-gray-300 rounded bg-white text-sm text-gray-700 flex items-center justify-between min-w-[160px] hover:bg-gray-50"
-                >
-                  <span>{advancedSearchType}</span>
-                  <ChevronDown className="w-4 h-4 ml-2" />
-                </button>
-                {showAdvancedSearchTypeDropdown && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg z-10 overflow-hidden">
-                    {["Display Name", "Company Name", "First Name", "Last Name", "Email", "Phone"].map((type) => (
-                      <div
-                        key={type}
-                        onClick={() => {
-                          setAdvancedSearchType(type);
-                          setShowAdvancedSearchTypeDropdown(false);
-                        }}
-                        className={`px-4 py-2 cursor-pointer text-sm hover:bg-gray-50 ${advancedSearchType === type ? 'bg-[#156372]/10 text-[#0D4A52] font-medium' : 'text-gray-700'
-                          }`}
-                      >
-                        {type}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <input
-                type="text"
-                value={advancedSearchValue}
-                onChange={(e) => setAdvancedSearchValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAdvancedSearch();
-                }}
-                placeholder="Enter search value"
-                className="flex-1 px-3 py-2.5 border border-gray-300 rounded text-sm outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372] transition-colors"
-              />
-              <button
-                onClick={handleAdvancedSearch}
-                className="px-6 py-2.5 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 transition-colors shadow-sm"
-              >
-                Search
-              </button>
-            </div>
-
-            {/* Results Table */}
-            <div className="flex-1 overflow-auto p-6">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      CUSTOMER NAME
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      EMAIL
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      COMPANY NAME
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      PHONE
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedResults.length === 0 ? (
-                    <tr>
-                      <td colSpan="4" className="py-12 text-center text-gray-500 text-sm">
-                        {advancedSearchValue ? "No results found" : "Enter a search term and click Search"}
-                      </td>
-                    </tr>
-                  ) : (
-                    paginatedResults.map((customer) => (
-                      <tr
-                        key={customer.id}
-                        onClick={() => handleSelectCustomer(customer)}
-                        className="border-b border-gray-100 cursor-pointer hover:bg-[#156372]/10 transition-colors group"
-                      >
-                        <td className="px-4 py-3 text-sm text-[#156372] group-hover:text-[#0D4A52] font-medium">
-                          {customer.name || "-"}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {customer.email || "-"}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {customer.companyName || customer.name || "-"}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {customer.phone || customer.workPhone || customer.mobile || "-"}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="p-4 border-t border-gray-200 flex justify-end items-center gap-3">
-                <button
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600"
-                >
-                  &lt;
-                </button>
-                <span className="text-sm text-gray-600 font-medium">
-                  {currentPage} - {totalPages}
-                </span>
-                <button
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                  className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600"
-                >
-                  &gt;
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Import Project Tasks Modal */}
-      {showImportTasksModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-[2000] flex items-center justify-center p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowImportTasksModal(false);
-          }}
-        >
-          <div className="bg-white rounded-lg w-full max-w-[500px] shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            {/* Modal Header */}
-            <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-800 m-0">
-                Import Tasks
-              </h2>
-              <button
-                onClick={() => {
-                  setShowImportTasksModal(false);
-                  setSelectedProjectForImport("");
-                }}
-                className="w-8 h-8 flex items-center justify-center rounded border border-gray-300 text-gray-500 hover:text-gray-800 hover:bg-gray-50 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select an existing project
-              </label>
-              <div className="relative">
-                <select
-                  value={selectedProjectForImport}
-                  onChange={(e) => setSelectedProjectForImport(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-white border border-gray-300 rounded text-sm outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372] appearance-none transition-colors"
-                >
-                  <option value="">Select a project</option>
-                  {(() => {
-                    const existingProjects = JSON.parse(localStorage.getItem('projects') || '[]');
-                    return existingProjects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.projectName || project.name}
-                      </option>
-                    ));
-                  })()}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowImportTasksModal(false);
-                  setSelectedProjectForImport("");
-                }}
-                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded text-sm font-medium hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  if (!selectedProjectForImport) {
-                    alert("Please select a project to import tasks from");
-                    return;
-                  }
-
-                  const existingProjects = JSON.parse(localStorage.getItem('projects') || '[]');
-                  const selectedProject = existingProjects.find(p => p.id === selectedProjectForImport);
-
-                  if (selectedProject && selectedProject.tasks && selectedProject.tasks.length > 0) {
-                    // Import tasks from selected project
-                    const importedTasks = selectedProject.tasks.map((task, index) => ({
-                      id: Date.now() + index,
-                      taskName: task.taskName || task.name || "",
-                      description: task.description || "",
-                      billable: task.billable !== undefined ? task.billable : true
-                    }));
-
-                    setTasks([...tasks, ...importedTasks]);
-                    setShowImportTasksModal(false);
-                    setSelectedProjectForImport("");
-                    alert(`Successfully imported ${importedTasks.length} task(s)`);
-                  } else {
-                    alert("Selected project has no tasks to import");
-                  }
-                }}
-                className="px-4 py-2 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 transition-colors"
-              >
-                Import
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
   );
 }

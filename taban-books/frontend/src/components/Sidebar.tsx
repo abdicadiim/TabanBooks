@@ -82,6 +82,8 @@ const menu = [
     children: [
       { label: "Projects", path: "/time-tracking/projects" },
       { label: "Timesheet", path: "/time-tracking/timesheet" },
+      { label: "Approvals", path: "/time-tracking/approvals" },
+      { label: "Customer Approvals", path: "/time-tracking/customer-approvals" },
     ],
   },
   {
@@ -170,6 +172,15 @@ const childPermissionRules: Record<string, Array<{ module: string; subModule?: s
   "/time-tracking/projects": [{ module: "timesheets", subModule: "projects", action: "view" }],
   "/time-tracking/tasks": [{ module: "timesheets", subModule: "projects", action: "view" }],
   "/time-tracking/timesheet": [{ module: "timesheets", subModule: "projects", action: "view" }],
+  "/time-tracking/approvals": [{ module: "timesheets", subModule: "projects", action: "view" }],
+  "/time-tracking/customer-approvals": [{ module: "timesheets", subModule: "projects", action: "view" }],
+  "/time-tracking/customer-approvals/new": [{ module: "timesheets", subModule: "projects", action: "view" }],
+};
+
+const isRouteMatch = (pathname: string, route: string): boolean => {
+  if (pathname === route) return true;
+  if (route === "/") return false;
+  return pathname.startsWith(`${route}/`);
 };
 
 function SidebarSection({ item, isCollapsed, appearance, accentColor, openSection, setOpenSection, onLinkClick }: any) {
@@ -178,7 +189,7 @@ function SidebarSection({ item, isCollapsed, appearance, accentColor, openSectio
   const location = useLocation();
 
   const baseActive =
-    location.pathname === item.path ||
+    isRouteMatch(location.pathname, item.path) ||
     (hasChildren &&
       item.path !== "/" &&
       location.pathname.startsWith(item.path));
@@ -219,7 +230,7 @@ function SidebarSection({ item, isCollapsed, appearance, accentColor, openSectio
           {!isCollapsed && isOpen && (
             <div className="mt-1.5 ml-3 pl-5 border-l-2 border-dashed border-white/20">
               {item.children.map((child: any) => {
-                const isChildActive = location.pathname === child.path;
+                const isChildActive = isRouteMatch(location.pathname, child.path);
                 return (
                   <NavLink
                     key={child.path}

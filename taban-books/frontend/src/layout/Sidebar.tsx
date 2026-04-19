@@ -9,7 +9,6 @@ import {
   ShoppingCart,
   Truck,
   Clock3,
-  BookOpenText,
   Landmark,
   Calculator,
   BarChart3,
@@ -26,7 +25,6 @@ const nav = [
   { label: "Sales", to: "/sales", icon: ShoppingCart },
   { label: "Purchases", to: "/purchases", icon: Truck },
   { label: "Time Tracking", to: "/time-tracking", icon: Clock3 },
-  { label: "Projects Guide", to: "/time-tracking/projects-guide", icon: BookOpenText },
   { label: "Banking", to: "/banking", icon: Landmark },
   { label: "Accountant", to: "/accountant", icon: Calculator },
   { label: "Reports", to: "/reports", icon: BarChart3 },
@@ -81,12 +79,6 @@ export default function Sidebar() {
         const p = permissions.timesheets;
         if (!p) return false;
         return p.projects?.view || p.timesheet?.view;
-      }
-
-      case "Projects Guide": {
-        const p = permissions.timesheets;
-        if (!p) return false;
-        return p.projects?.view;
       }
 
       case "Banking":

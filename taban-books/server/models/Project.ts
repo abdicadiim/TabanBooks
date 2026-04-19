@@ -29,11 +29,65 @@ export interface IProject extends Document {
     billable: boolean;
     budgetHours: string;
   }>;
+  comments?: Array<{
+    id: string;
+    text: string;
+    content?: string;
+    authorName?: string;
+    authorInitial?: string;
+    createdAt: string;
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+  }>;
   userBudgetHours: Array<{
     user: mongoose.Types.ObjectId;
     budgetHours: string;
   }>;
 }
+
+const projectCommentSchema = new Schema(
+  {
+    id: {
+      type: String,
+      required: true,
+    },
+    text: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    content: {
+      type: String,
+      default: "",
+    },
+    authorName: {
+      type: String,
+      default: "You",
+    },
+    authorInitial: {
+      type: String,
+      default: "Y",
+    },
+    createdAt: {
+      type: String,
+      default: () => new Date().toISOString(),
+    },
+    bold: {
+      type: Boolean,
+      default: false,
+    },
+    italic: {
+      type: Boolean,
+      default: false,
+    },
+    underline: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  { _id: false }
+);
 
 const projectSchema = new Schema<IProject>(
   {
@@ -113,6 +167,10 @@ const projectSchema = new Schema<IProject>(
         budgetHours: String, // Stored as "HH:MM" format
       },
     ],
+    comments: {
+      type: [projectCommentSchema],
+      default: [],
+    },
     userBudgetHours: [
       {
         user: {

@@ -1,46 +1,71 @@
-import React, { useState, useEffect, useRef } from "react";
+﻿import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { projectsAPI, timeEntriesAPI } from "../../services/api";
-import toast from "react-hot-toast";
+import { projectsAPI, timeEntriesAPI, invoicesAPI, quotesAPI, creditNotesAPI, refundsAPI, taxesAPI, usersAPI } from "../../services/api";
+import { getCurrentUser } from "../../services/auth";
+import { toast } from "react-hot-toast";
 import { useCurrency } from "../../hooks/useCurrency";
+import { syncRemoteTimer } from "../../lib/timeTracking/timerSync";
+import { calculateElapsedTime } from "../../lib/timeTracking/timerService";
 import NewLogEntryForm from "./NewLogEntryForm";
-import { ChevronDown, ChevronUp, ChevronRight, Search, ArrowUpDown, X, MessageSquare, Briefcase, User, Calendar, Plus, Paperclip, Minus, Check, Trash2, MoreVertical, Edit3 } from "lucide-react";
-import type {
-  TimeTrackingAccount,
-  TimeTrackingAttachment,
-  TimeTrackingBill,
-  TimeTrackingComment,
-  TimeTrackingEntry,
-  TimeTrackingExpense,
-  TimeTrackingId,
-  TimeTrackingProject,
-} from "./timeTrackingModel";
-
-type ConfigureAccountsType = "income" | "expense" | null;
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "Unknown error";
+import { ChevronDown, ChevronUp, ChevronRight, ChevronLeft, Search, ArrowUpDown, X, MessageSquare, Briefcase, User, Plus, Minus, Check, Trash2, MoreVertical, Edit3, Clock, Pause, Bold, Italic, Underline, Paperclip, Upload, FileText, Loader2, ExternalLink, AlertTriangle } from "lucide-react";
 
 export default function ProjectDetailPage() {
+  const AUTH_USER_UPDATED_EVENT = "taban:session-changed";
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { code: rawCurrencyCode } = useCurrency();
   const baseCurrencyCode = rawCurrencyCode ? rawCurrencyCode.split(' ')[0].substring(0, 3).toUpperCase() : "KES";
-  const [project, setProject] = useState<TimeTrackingProject | null>(null);
+  const [project, setProject] = useState(null);
+  const [loadingProject, setLoadingProject] = useState(true);
+  const [salesInvoices, setSalesInvoices] = useState<any[]>([]);
+  const [salesQuotes, setSalesQuotes] = useState<any[]>([]);
+  const [salesRetainerInvoices, setSalesRetainerInvoices] = useState<any[]>([]);
+  const [salesCreditNotes, setSalesCreditNotes] = useState<any[]>([]);
+  const [salesRefunds, setSalesRefunds] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState("Overview");
   const [showLogEntryForm, setShowLogEntryForm] = useState(false);
+  const [logEntryFormTitle, setLogEntryFormTitle] = useState("New Log Entry");
+  const [logEntryFormEntryId, setLogEntryFormEntryId] = useState<string | null>(null);
   const [showTransactionDropdown, setShowTransactionDropdown] = useState(false);
-  const [hoveredTransaction, setHoveredTransaction] = useState<TimeTrackingId | null>(null);
-  const transactionDropdownRef = useRef<HTMLDivElement | null>(null);
+  const transactionDropdownRef = useRef(null);
   const [showMoreDropdown, setShowMoreDropdown] = useState(false);
-  const [hoveredMoreOption, setHoveredMoreOption] = useState<string | null>(null);
-  const moreDropdownRef = useRef<HTMLDivElement | null>(null);
-  const sortDataDropdownRef = useRef<HTMLDivElement | null>(null);
-  const itemNameDropdownRef = useRef<HTMLDivElement | null>(null);
-  const itemDescriptionDropdownRef = useRef<HTMLDivElement | null>(null);
-  const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
-  const [attachedFiles, setAttachedFiles] = useState<TimeTrackingAttachment[]>([]);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDeleteTimesheetModal, setShowDeleteTimesheetModal] = useState(false);
+  const [isDeletingTimesheets, setIsDeletingTimesheets] = useState(false);
+  const [pendingDeleteTimesheetIds, setPendingDeleteTimesheetIds] = useState<string[]>([]);
+  const [selectedEntry, setSelectedEntry] = useState<any>(null);
+  const [showEntryMenu, setShowEntryMenu] = useState(false);
+  const [openRowEntryMenuId, setOpenRowEntryMenuId] = useState<string | null>(null);
+  const [entryDrawerTab, setEntryDrawerTab] = useState<"otherDetails" | "comments">("otherDetails");
+  const [entryComments, setEntryComments] = useState<Array<any>>([]);
+  const entryCommentEditorRef = useRef<HTMLDivElement>(null);
+  const [entryIsEditorEmpty, setEntryIsEditorEmpty] = useState(true);
+  const [entryIsBold, setEntryIsBold] = useState(false);
+  const [entryIsItalic, setEntryIsItalic] = useState(false);
+  const [entryIsUnderline, setEntryIsUnderline] = useState(false);
+  const entryMenuRef = useRef<HTMLDivElement | null>(null);
+  const rowEntryMenuRef = useRef<HTMLDivElement | null>(null);
+  const [showDeleteEntryCommentModal, setShowDeleteEntryCommentModal] = useState(false);
+  const [entryCommentToDelete, setEntryCommentToDelete] = useState<any>(null);
+  const [showDeleteCommentModal, setShowDeleteCommentModal] = useState(false);
+  const [showRemoveUserModal, setShowRemoveUserModal] = useState(false);
+  const [userToRemove, setUserToRemove] = useState<any>(null);
+  const [commentToDelete, setCommentToDelete] = useState<any>(null);
+  const [hoveredUserKey, setHoveredUserKey] = useState<string | null>(null);
+  const [hoveredEntryId, setHoveredEntryId] = useState<string | null>(null);
+  const [runningTimerState, setRunningTimerState] = useState<any>(null);
+  const moreDropdownRef = useRef(null);
+  const sortDataDropdownRef = useRef(null);
+  const itemNameDropdownRef = useRef(null);
+  const itemDescriptionDropdownRef = useRef(null);
+  const taxDropdownRef = useRef(null);
+  const addUsersDropdownRef = useRef(null);
+  const [attachedFiles, setAttachedFiles] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [showAttachmentsPopover, setShowAttachmentsPopover] = useState(false);
+  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
+  const [attachmentMenuIndex, setAttachmentMenuIndex] = useState<number | null>(null);
+  const [attachmentDeleteConfirmIndex, setAttachmentDeleteConfirmIndex] = useState<number | null>(null);
   const [showInvoicePreferences, setShowInvoicePreferences] = useState(false);
   const [showProjectInvoiceInfo, setShowProjectInvoiceInfo] = useState(false);
   const [invoiceInfoData, setInvoiceInfoData] = useState({
@@ -50,6 +75,33 @@ export default function ProjectDetailPage() {
     tax: "",
     includeUnbilledExpenses: false
   });
+  const getProjectInvoiceInfoDefaults = (sourceProject) => {
+    const saved = sourceProject?.invoicePreferences || {};
+    return {
+      sortData: saved.sortData || "Single Line For The Project",
+      itemName: Array.isArray(saved.itemName) && saved.itemName.length ? saved.itemName : ["Project Name"],
+      itemDescription: Array.isArray(saved.itemDescription) && saved.itemDescription.length ? saved.itemDescription : ["Project Description"],
+      tax: saved.tax || "",
+      includeUnbilledExpenses: !!saved.includeUnbilledExpenses,
+    };
+  };
+  const normalizeAttachment = (attachment: any, index: number) => ({
+    id: String(attachment?.id || attachment?.documentId || attachment?._id || `attachment-${index}`),
+    documentId: String(attachment?.documentId || attachment?.id || attachment?._id || ""),
+    name: String(attachment?.name || attachment?.fileName || attachment?.filename || `Attachment ${index + 1}`),
+    size: Number(attachment?.size || attachment?.fileSize || 0),
+    type: String(attachment?.type || attachment?.mimeType || ""),
+    mimeType: String(attachment?.mimeType || attachment?.type || ""),
+    url: String(attachment?.url || ""),
+    uploadedAt: String(attachment?.uploadedAt || attachment?.createdAt || new Date().toISOString()),
+  });
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error || new Error("Failed to read attachment."));
+      reader.readAsDataURL(file);
+    });
   const [itemNameDropdownOpen, setItemNameDropdownOpen] = useState(false);
   const [itemDescriptionDropdownOpen, setItemDescriptionDropdownOpen] = useState(false);
   const [taxDropdownOpen, setTaxDropdownOpen] = useState(false);
@@ -57,11 +109,629 @@ export default function ProjectDetailPage() {
   const [sortDataSearch, setSortDataSearch] = useState('');
   const [itemNameSearch, setItemNameSearch] = useState('');
   const [itemDescriptionSearch, setItemDescriptionSearch] = useState('');
+  const [taxSearch, setTaxSearch] = useState('');
+  const [taxRows, setTaxRows] = useState<any[]>([]);
+  const itemNameOptions = ["Project Name", "Project Code"];
+  const itemDescriptionOptions = ["Project Description", "Date Range", "Project Name", "Project Code", "Billed Hours"];
+  const selectedItemNames = Array.isArray(invoiceInfoData.itemName) ? invoiceInfoData.itemName : [];
+  const selectedItemDescriptions = Array.isArray(invoiceInfoData.itemDescription) ? invoiceInfoData.itemDescription : [];
+  const filteredItemNameOptions = itemNameOptions.filter((option) =>
+    !selectedItemNames.includes(option) &&
+    option.toLowerCase().includes(itemNameSearch.trim().toLowerCase())
+  );
+  const filteredItemDescriptionOptions = itemDescriptionOptions.filter((option) =>
+    !selectedItemDescriptions.includes(option) &&
+    option.toLowerCase().includes(itemDescriptionSearch.trim().toLowerCase())
+  );
+
+  const toggleItemNameOption = (option) => {
+    setInvoiceInfoData((prev) => {
+      const current = Array.isArray(prev.itemName) ? prev.itemName : [];
+      const next = current.includes(option)
+        ? current.filter((item) => item !== option)
+        : [...current, option];
+      return { ...prev, itemName: next };
+    });
+  };
+
+  const removeItemNameOption = (option) => {
+    setInvoiceInfoData((prev) => {
+      const current = Array.isArray(prev.itemName) ? prev.itemName : [];
+      return { ...prev, itemName: current.filter((item) => item !== option) };
+    });
+  };
+  const toggleItemDescriptionOption = (option) => {
+    setInvoiceInfoData((prev) => {
+      const current = Array.isArray(prev.itemDescription) ? prev.itemDescription : [];
+      const next = current.includes(option)
+        ? current.filter((item) => item !== option)
+        : [...current, option];
+      return { ...prev, itemDescription: next };
+    });
+  };
+
+  const removeItemDescriptionOption = (option) => {
+    setInvoiceInfoData((prev) => {
+      const current = Array.isArray(prev.itemDescription) ? prev.itemDescription : [];
+      return { ...prev, itemDescription: current.filter((item) => item !== option) };
+    });
+  };
+  const getTaxId = (tax: any) => String(tax?._id || tax?.id || tax?.tax_id || tax?.taxId || tax?.name || tax?.taxName || "");
+  const getTaxName = (tax: any) => String(tax?.name || tax?.taxName || tax?.tax_name || tax?.displayName || tax?.title || "").trim();
+  const getTaxRate = (tax: any) => Number(tax?.rate ?? tax?.taxPercentage ?? tax?.percentage ?? tax?.tax_rate ?? 0);
+  const taxLabel = (tax: any) => `${getTaxName(tax)} [${getTaxRate(tax)}%]`;
+  const getGroupedTaxes = (rows: any[]) => {
+    const rateById = new Map<string, number>();
+    rows.forEach((tax) => {
+      const id = String(tax?._id || tax?.id || "");
+      if (!id) return;
+      const rate = Number(tax?.rate ?? tax?.taxRate ?? 0);
+      rateById.set(id, Number.isFinite(rate) ? rate : 0);
+    });
+
+    const taxesList: Array<{ value: string; label: string }> = [];
+    const compoundTaxes: Array<{ value: string; label: string }> = [];
+    const taxGroups: Array<{ value: string; label: string }> = [];
+
+    rows.forEach((tax) => {
+      if (!tax || tax.isActive === false) return;
+      const name = getTaxName(tax);
+      if (!name) return;
+      const id = String(tax?._id || tax?.id || "");
+      if (!id) return;
+
+      const groupTaxes = Array.isArray(tax?.groupTaxes) ? tax.groupTaxes.map((x: any) => String(x)) : [];
+      const isGroup =
+        tax?.isGroup === true ||
+        String(tax?.kind || "").toLowerCase() === "group" ||
+        String(tax?.type || "").toLowerCase() === "group" ||
+        tax?.description === "__taban_tax_group__" ||
+        groupTaxes.length > 0;
+      const computedRate = isGroup
+        ? Number(groupTaxes.reduce((sum: number, taxId: string) => sum + (rateById.get(taxId) || 0), 0).toFixed(2))
+        : Number.isFinite(Number(tax?.rate ?? tax?.taxRate ?? 0)) ? Number(tax?.rate ?? tax?.taxRate ?? 0) : 0;
+      const label = `${name} [${computedRate}%]`;
+      const option = { value: id, label };
+
+      if (isGroup) taxGroups.push(option);
+      else if (tax?.isCompound) compoundTaxes.push(option);
+      else taxesList.push(option);
+    });
+
+    const dedupe = (items: Array<{ value: string; label: string }>) =>
+      Array.from(new Map(items.map((item) => [item.value, item])).values());
+
+    return [
+      { label: "Tax", options: dedupe(taxesList) },
+      { label: "Compound tax", options: dedupe(compoundTaxes) },
+      { label: "Tax Group", options: dedupe(taxGroups) },
+    ].filter((group) => group.options.length > 0);
+  };
+  const taxGroups = getGroupedTaxes(taxRows);
+  const selectedTaxSelection = String(invoiceInfoData.tax || "").trim();
+  const selectedTaxRecord =
+    taxRows.find((tax) => getTaxId(tax) === selectedTaxSelection) ||
+    taxRows.find((tax) => taxLabel(tax).toLowerCase() === selectedTaxSelection.toLowerCase()) ||
+    taxRows.find((tax) => getTaxName(tax).toLowerCase() === selectedTaxSelection.toLowerCase());
+  const selectedTaxLabel = selectedTaxRecord ? taxLabel(selectedTaxRecord) : selectedTaxSelection;
+  const filteredTaxGroups = taxGroups.map((group) => ({
+    label: group.label,
+    options: group.options.filter((option) => option.label.toLowerCase().includes(taxSearch.toLowerCase())),
+  })).filter((group) => group.options.length > 0);
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [showDeleteTaskModal, setShowDeleteTaskModal] = useState(false);
+  const [taskToDelete, setTaskToDelete] = useState<any>(null);
+  const [hoveredTaskKey, setHoveredTaskKey] = useState<string | null>(null);
+  const [taskTimerDefaults, setTaskTimerDefaults] = useState<{ defaultProjectName: string; defaultTaskName: string; defaultBillable: boolean; defaultTimeSpent?: string; defaultUser?: string; defaultNotes?: string; defaultDate?: string | Date } | null>(null);
   const [newTaskName, setNewTaskName] = useState('');
-  const [newUserName, setNewUserName] = useState('');
-  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newTaskRatePerHour, setNewTaskRatePerHour] = useState('');
+  const [newTaskDescription, setNewTaskDescription] = useState('');
+  const [newTaskBillable, setNewTaskBillable] = useState(true);
+  const [availableUsers, setAvailableUsers] = useState<any[]>([]);
+  const [selectedUsersToAdd, setSelectedUsersToAdd] = useState<any[]>([]);
+  const [addUsersDropdownOpen, setAddUsersDropdownOpen] = useState(false);
+  const [addUsersSearch, setAddUsersSearch] = useState('');
+  const getUserOptionId = (user: any) => String(user?._id || user?.id || user?.value || user?.email || user?.name || user?.displayName || "").trim();
+  const getUserOptionLabel = (user: any) => String(user?.name || user?.displayName || user?.fullName || user?.email || "User").trim();
+  const getUserOptionEmail = (user: any) => String(user?.email || user?.mail || "").trim();
+  const selectedUserIds = new Set(selectedUsersToAdd.map(getUserOptionId));
+  const existingUserIds = new Set((Array.isArray(project?.users) ? project.users : []).map(getUserOptionId));
+  const filteredAvailableUsers = availableUsers.filter((user) => {
+    const id = getUserOptionId(user);
+    if (!id || selectedUserIds.has(id) || existingUserIds.has(id)) return false;
+    const query = addUsersSearch.trim().toLowerCase();
+    if (!query) return true;
+    return getUserOptionLabel(user).toLowerCase().includes(query) || getUserOptionEmail(user).toLowerCase().includes(query);
+  });
+
+  useEffect(() => {
+    const syncTimerState = () => {
+      const savedTimerState = localStorage.getItem("timerState");
+      if (!savedTimerState) {
+        setRunningTimerState(null);
+        return;
+      }
+
+      try {
+        const timerState = JSON.parse(savedTimerState);
+        setRunningTimerState(timerState);
+      } catch {
+        setRunningTimerState(null);
+      }
+    };
+
+    syncTimerState();
+    const handleTimerUpdate = () => syncTimerState();
+
+    window.addEventListener("timerStateUpdated", handleTimerUpdate);
+    window.addEventListener("storage", handleTimerUpdate);
+
+    const intervalId = window.setInterval(syncTimerState, 1000);
+    return () => {
+      window.removeEventListener("timerStateUpdated", handleTimerUpdate);
+      window.removeEventListener("storage", handleTimerUpdate);
+      window.clearInterval(intervalId);
+    };
+  }, []);
+  const openAddUsersModal = () => {
+    setSelectedUsersToAdd([]);
+    setAddUsersSearch('');
+    setAddUsersDropdownOpen(false);
+    setShowAddUserModal(true);
+  };
+  const closeAddUsersModal = () => {
+    setShowAddUserModal(false);
+    setSelectedUsersToAdd([]);
+    setAddUsersSearch('');
+    setAddUsersDropdownOpen(false);
+  };
+  const toggleSelectedUser = (user: any) => {
+    const option = {
+      value: user.value,
+      label: user.label,
+      email: user.email,
+      rate: user.rate,
+    };
+    setSelectedUsersToAdd((prev) => {
+      const exists = prev.some((item) => getUserOptionId(item) === option.value);
+      return exists ? prev.filter((item) => getUserOptionId(item) !== option.value) : [...prev, option];
+    });
+  };
+  const removeSelectedUser = (userValue: string) => {
+    setSelectedUsersToAdd((prev) => prev.filter((item) => getUserOptionId(item) !== userValue));
+  };
+  const handleSaveUsers = async () => {
+    if (!selectedUsersToAdd.length) {
+      toast.error('Please select at least one user');
+      return;
+    }
+
+    const existingUsers = Array.isArray(project?.users) ? project.users : [];
+    const updatedUsers = [...existingUsers];
+
+    selectedUsersToAdd.forEach((user) => {
+      const normalizedId = String(user.value || "").trim();
+      const normalizedLabel = String(user.label || "").trim();
+      const normalizedEmail = String(user.email || normalizedLabel || "").trim();
+      const alreadyExists = updatedUsers.some((existing: any) => {
+        const existingId = getUserOptionId(existing);
+        const existingLabel = getUserOptionLabel(existing);
+        const existingEmail = getUserOptionEmail(existing);
+        return (
+          (normalizedId && existingId === normalizedId) ||
+          (normalizedEmail && existingEmail && existingEmail.toLowerCase() === normalizedEmail.toLowerCase()) ||
+          (normalizedLabel && existingLabel.toLowerCase() === normalizedLabel.toLowerCase())
+        );
+      });
+
+      if (!alreadyExists) {
+        updatedUsers.push({
+          id: normalizedId,
+          name: normalizedLabel,
+          email: normalizedEmail,
+          rate: user.rate || '',
+        });
+      }
+    });
+
+    try {
+      await projectsAPI.update(projectId, { assignedTo: updatedUsers, users: updatedUsers });
+      setProject({ ...project, users: updatedUsers, assignedTo: updatedUsers });
+      window.dispatchEvent(new Event('projectUpdated'));
+      toast.success('Users added');
+      closeAddUsersModal();
+    } catch (error) {
+      console.error('Error adding users:', error);
+      toast.error('Failed to add users: ' + (error.message || 'Unknown error'));
+    }
+  };
+  const getTaskKey = (task: any, index: number) => String(task?._id || task?.id || task?.taskId || task?.taskName || index);
+  const formatRunningTime = (seconds: number) => {
+    const totalSeconds = Math.max(0, Math.floor(Number(seconds || 0)));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+  const getActiveTimerEntryId = () => String(runningTimerState?.sourceEntryId || runningTimerState?.entryId || "");
+  const isRunningForEntry = (entry: any) => {
+    if (!runningTimerState?.isTimerRunning) return false;
+    const entryId = String(entry?.id || entry?._id || "");
+    const activeEntryId = getActiveTimerEntryId();
+    return Boolean(activeEntryId && entryId && activeEntryId === entryId);
+  };
+  const pauseRunningTimer = () => {
+    const savedTimerState = localStorage.getItem("timerState");
+    if (!savedTimerState) return;
+    try {
+      const timerState = JSON.parse(savedTimerState);
+      const pausedElapsedTime = calculateElapsedTime(timerState);
+      const updatedTimerState = {
+        ...timerState,
+        elapsedTime: pausedElapsedTime,
+        pausedElapsedTime,
+        isTimerRunning: false,
+        lastUpdated: Date.now(),
+      };
+      delete updatedTimerState.startTime;
+      localStorage.setItem("timerState", JSON.stringify(updatedTimerState));
+      syncRemoteTimer(updatedTimerState as any);
+      window.dispatchEvent(new CustomEvent("timerStateUpdated"));
+      toast.success("The timer has been paused.");
+    } catch (error) {
+      console.error("Failed to pause timer:", error);
+    }
+  };
+  const startTaskTimer = (task: any) => {
+    setTaskTimerDefaults({
+      defaultProjectName: project?.projectName || project?.name || "",
+      defaultTaskName: task?.taskName || "",
+      defaultBillable: task?.billable !== false,
+    });
+    setLogEntryFormTitle("New Log Entry");
+    setLogEntryFormEntryId(null);
+    setShowLogEntryForm(true);
+  };
+  const startEntryTimer = (entry: any) => {
+    const projectName = entry?.projectName || project?.projectName || project?.name || "";
+    const taskName = entry?.taskName || entry?.task || "";
+    if (!projectName || !taskName) {
+      toast.error("Please select a project and task");
+      return;
+    }
+
+    const timerState = {
+      isTimerRunning: true,
+      startTime: Date.now(),
+      elapsedTime: 0,
+      pausedElapsedTime: 0,
+      timerNotes: entry?.notes || entry?.description || "",
+      associatedProject: projectName,
+      selectedProjectForTimer: projectName,
+      selectedTaskForTimer: taskName,
+      isBillable: entry?.billable !== false,
+      sourceEntryId: String(entry?.id || entry?._id || ""),
+      lastUpdated: Date.now(),
+    };
+
+    localStorage.setItem("timerState", JSON.stringify(timerState));
+    syncRemoteTimer(timerState as any);
+    window.dispatchEvent(new CustomEvent("timerStateUpdated"));
+    toast.success("The timer has been started.");
+  };
+  const openEditEntryForm = (entry: any) => {
+    if (!entry) return;
+    setTaskTimerDefaults({
+      defaultProjectName: entry?.projectName || project?.projectName || project?.name || "",
+      defaultTaskName: entry?.taskName || entry?.task || "",
+      defaultBillable: entry?.billable !== false,
+      defaultDate: entry?.date || new Date(),
+      defaultTimeSpent: entry?.timeSpent || "",
+      defaultUser: entry?.userName || entry?.user?.name || entry?.user || entry?.userEmail || "",
+      defaultNotes: entry?.notes || entry?.description || "",
+    });
+    setLogEntryFormTitle("Edit Log Entry");
+    setLogEntryFormEntryId(String(entry?.id || entry?._id || ""));
+    setShowLogEntryForm(true);
+  };
+  const openDeleteTimesheetModal = (ids: string[] = [...selectedEntries]) => {
+    if (!ids.length) return;
+    setPendingDeleteTimesheetIds([...ids]);
+    setShowDeleteTimesheetModal(true);
+  };
+  const closeDeleteTimesheetModal = () => {
+    if (isDeletingTimesheets) return;
+    setShowDeleteTimesheetModal(false);
+    setPendingDeleteTimesheetIds([]);
+  };
+  const confirmDeleteTimesheets = async () => {
+    if (!pendingDeleteTimesheetIds.length) {
+      closeDeleteTimesheetModal();
+      return;
+    }
+    setIsDeletingTimesheets(true);
+    try {
+      await Promise.all(pendingDeleteTimesheetIds.map((entryId) => timeEntriesAPI.delete(entryId)));
+      toast.success(
+        pendingDeleteTimesheetIds.length === 1
+          ? "Time entry deleted successfully."
+          : `${pendingDeleteTimesheetIds.length} time entries deleted successfully.`
+      );
+      setSelectedEntries([]);
+      setShowEntryMenu(false);
+      if (selectedEntry && pendingDeleteTimesheetIds.includes(selectedEntry.id)) {
+        setSelectedEntry(null);
+      }
+      const response = await timeEntriesAPI.getByProject(projectId);
+      const data = Array.isArray(response) ? response : (response?.data || []);
+      const transformedEntries = data.map(entry => ({
+        id: entry._id || entry.id,
+        projectId: entry.project?._id || entry.projectId,
+        projectName: entry.project?.name || entry.projectName,
+        userId: entry.user?._id || entry.userId,
+        userName: entry.user?.name || entry.userName,
+        rawDate: entry.date || null,
+        date: entry.date ? new Date(entry.date).toLocaleDateString() : '--',
+        hours: entry.hours || 0,
+        minutes: entry.minutes || 0,
+        timeSpent: entry.timeSpent || (entry.hours !== undefined ? `${entry.hours}h ${entry.minutes || 0}m` : '0h'),
+        description: entry.description || '',
+        task: entry.task || entry.taskName || '',
+        taskName: entry.task || entry.taskName || '',
+        billable: entry.billable !== undefined ? entry.billable : true,
+        notes: entry.description || entry.notes || '',
+        billingStatus: entry.billingStatus || 'Unbilled',
+      }));
+      setTimeEntries(transformedEntries);
+      window.dispatchEvent(new Event('timeEntryUpdated'));
+    } catch (error) {
+      console.error("Error deleting time entries:", error);
+      toast.error("Failed to delete time entries");
+    } finally {
+      setIsDeletingTimesheets(false);
+      setShowDeleteTimesheetModal(false);
+      setPendingDeleteTimesheetIds([]);
+    }
+  };
+  const getEntryDuration = (entry: any) => {
+    if (!entry) return "--";
+    if (entry.timeSpent) return entry.timeSpent;
+    const hours = Number(entry.hours || 0);
+    const minutes = Number(entry.minutes || 0);
+    return `${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m`;
+  };
+  const getEntryProjectName = (entry: any) => entry?.projectName || project?.projectName || project?.name || "--";
+  const getEntryCustomerName = () =>
+    project?.customerName ||
+    project?.customer?.displayName ||
+    project?.customer?.companyName ||
+    project?.customer?.name ||
+    "--";
+  const getEntryUserName = (entry: any) =>
+    entry?.userName ||
+    entry?.user?.name ||
+    entry?.user ||
+    entry?.userEmail ||
+    "--";
+  const getTimeSpentHHMM = (entry: any) => {
+    const raw = String(entry?.timeSpent || "");
+    const match = raw.match(/(\d+)\s*h.*?(\d+)\s*m/i);
+    if (match) {
+      return `${String(Number(match[1] || 0)).padStart(2, "0")}:${String(Number(match[2] || 0)).padStart(2, "0")}`;
+    }
+    if (raw.includes(":")) return raw;
+    const hours = Number(entry?.hours || 0);
+    const minutes = Number(entry?.minutes || 0);
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  };
+  const handleEntryRowClick = (entry: any) => {
+    setSelectedEntry(entry);
+    setShowEntryMenu(false);
+    setEntryDrawerTab("otherDetails");
+  };
+  const handleEntryClone = async (entryToClone = selectedEntry) => {
+    if (!entryToClone) return;
+    try {
+      const [hours, minutes] = getTimeSpentHHMM(entryToClone).split(":").map((v) => Number(v) || 0);
+      await timeEntriesAPI.create({
+        project: projectId,
+        projectId,
+        projectName: project?.projectName || project?.name || entryToClone.projectName || "",
+        customerId: project?.customerId || project?.customer?._id || project?.customer?.id || project?.customer || undefined,
+        customerName: getEntryCustomerName(),
+        user: entryToClone.userId || entryToClone.user?._id || entryToClone.user || undefined,
+        userId: entryToClone.userId || entryToClone.user?._id || entryToClone.user || undefined,
+        userName: getEntryUserName(entryToClone),
+        date: entryToClone.date ? new Date(entryToClone.date).toISOString() : new Date().toISOString(),
+        hours,
+        minutes,
+        timeSpent: `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`,
+        description: entryToClone.notes || entryToClone.description || "",
+        billable: entryToClone.billable !== false,
+        task: entryToClone.taskName || entryToClone.task || "",
+        taskName: entryToClone.taskName || entryToClone.task || "",
+        notes: entryToClone.notes || entryToClone.description || "",
+      });
+      toast.success("Time entry cloned successfully!");
+      window.dispatchEvent(new Event("timeEntryUpdated"));
+      setShowEntryMenu(false);
+      setOpenRowEntryMenuId(null);
+    } catch (error) {
+      console.error("Error cloning time entry:", error);
+      toast.error("Failed to clone time entry");
+    }
+  };
+  const handleDeleteSelectedEntry = (entryToDelete = selectedEntry) => {
+    if (!entryToDelete) return;
+    openDeleteTimesheetModal([entryToDelete.id]);
+    setShowEntryMenu(false);
+    setOpenRowEntryMenuId(null);
+  };
+  const handleAddEntryComment = () => {
+    const editor = entryCommentEditorRef.current;
+    const trimmedComment = editor?.innerText.trim() || "";
+    if (!selectedEntry || !trimmedComment) return;
+    const currentUser = getLoggedInUserDisplay();
+    const newComment = {
+      id: `${Date.now()}`,
+      text: trimmedComment,
+      content: sanitizeCommentHtml(editor?.innerHTML || ""),
+      authorName: currentUser.name,
+      authorInitial: currentUser.initial,
+      createdAt: new Date().toISOString(),
+      bold: false,
+      italic: false,
+      underline: false
+    };
+    void (async () => {
+      const nextComments = [...(Array.isArray(selectedEntry.comments) ? selectedEntry.comments : entryComments), newComment]
+        .map((comment, index) => normalizeComment(comment, index))
+        .filter(Boolean);
+      try {
+        await timeEntriesAPI.update(selectedEntry.id, { comments: nextComments });
+        setEntryComments(nextComments);
+        setSelectedEntry((prev: any) => (prev ? { ...prev, comments: nextComments } : prev));
+        setTimeEntries((prev: any[]) =>
+          prev.map((entry) => (String(entry.id) === String(selectedEntry.id) ? { ...entry, comments: nextComments } : entry))
+        );
+        if (editor) editor.innerHTML = "";
+        setEntryIsEditorEmpty(true);
+        setEntryIsBold(false);
+        setEntryIsItalic(false);
+        setEntryIsUnderline(false);
+        toast.success("Comment added successfully.");
+      } catch (error) {
+        console.error("Failed to save timesheet comment:", error);
+        toast.error("Failed to add comment.");
+      }
+    })();
+  };
+  const handleDeleteEntryComment = async (commentId: string | number) => {
+    if (!selectedEntry) return false;
+    const previousComments = Array.isArray(selectedEntry.comments) ? selectedEntry.comments : entryComments;
+    const updatedComments = previousComments.filter((comment: any) => String(comment.id) !== String(commentId));
+    try {
+      await timeEntriesAPI.update(selectedEntry.id, { comments: updatedComments });
+      setEntryComments(updatedComments);
+      setSelectedEntry((prev: any) => (prev ? { ...prev, comments: updatedComments } : prev));
+      setTimeEntries((prev: any[]) =>
+        prev.map((entry) => (String(entry.id) === String(selectedEntry.id) ? { ...entry, comments: updatedComments } : entry))
+      );
+      toast.success("Comment deleted successfully.");
+      return true;
+    } catch (error) {
+      console.error("Failed to delete timesheet comment:", error);
+      toast.error("Failed to delete comment.");
+      return false;
+    }
+  };
+  const openDeleteEntryCommentModal = (comment: any) => {
+    setEntryCommentToDelete(comment);
+    setShowDeleteEntryCommentModal(true);
+  };
+  const closeDeleteEntryCommentModal = () => {
+    setShowDeleteEntryCommentModal(false);
+    setEntryCommentToDelete(null);
+  };
+  const confirmDeleteEntryComment = async () => {
+    if (!entryCommentToDelete) return;
+    const deleted = await handleDeleteEntryComment(entryCommentToDelete.id);
+    if (deleted) closeDeleteEntryCommentModal();
+  };
+  const syncEntryCommentEditorState = () => {
+    const editor = entryCommentEditorRef.current;
+    const isEmpty = !(editor?.innerText || "").trim();
+    setEntryIsEditorEmpty(isEmpty);
+  };
+  const applyEntryCommentFormat = (command: "bold" | "italic" | "underline") => {
+    if (!entryCommentEditorRef.current) return;
+    entryCommentEditorRef.current.focus();
+    document.execCommand(command, false);
+    syncEntryCommentEditorState();
+  };
+  const openEntryCommentsHistory = (entry: any) => {
+    setSelectedEntry(entry);
+    setEntryDrawerTab("comments");
+    setShowEntryMenu(false);
+    setOpenRowEntryMenuId(null);
+  };
+  const toggleTaskActive = async (task: any, index: number) => {
+    const taskKey = getTaskKey(task, index);
+    const updatedTasks = (project?.tasks || []).map((currentTask: any, currentIndex: number) => {
+      const currentKey = getTaskKey(currentTask, currentIndex);
+      if (currentKey !== taskKey) return currentTask;
+      return { ...currentTask, active: currentTask.active === false ? true : false };
+    });
+    try {
+      await projectsAPI.update(projectId, { tasks: updatedTasks });
+      setProject({ ...project, tasks: updatedTasks });
+      window.dispatchEvent(new Event("projectUpdated"));
+      toast.success(task?.active === false ? "Task marked active" : "Task marked inactive");
+    } catch (error) {
+      console.error("Error updating task status:", error);
+      toast.error("Failed to update task: " + (error.message || "Unknown error"));
+    }
+  };
+  const promptDeleteTask = (task: any, index: number) => {
+    setTaskToDelete({ ...task, index });
+    setShowDeleteTaskModal(true);
+  };
+  const closeDeleteTaskModal = () => {
+    setShowDeleteTaskModal(false);
+    setTaskToDelete(null);
+  };
+  const handleDeleteTask = async () => {
+    if (!taskToDelete || !project) return;
+    const taskKey = getTaskKey(taskToDelete, taskToDelete.index);
+    const updatedTasks = (project.tasks || []).filter((currentTask: any, currentIndex: number) => getTaskKey(currentTask, currentIndex) !== taskKey);
+    try {
+      await projectsAPI.update(projectId, { tasks: updatedTasks });
+      setProject({ ...project, tasks: updatedTasks });
+      window.dispatchEvent(new Event("projectUpdated"));
+      toast.success("Task deleted");
+      closeDeleteTaskModal();
+    } catch (error) {
+      console.error("Error deleting task:", error);
+      toast.error("Failed to delete task: " + (error.message || "Unknown error"));
+    }
+  };
+  const handleRemoveUserClick = (user: any) => {
+    setUserToRemove(user);
+    setShowRemoveUserModal(true);
+  };
+  const closeRemoveUserModal = () => {
+    setShowRemoveUserModal(false);
+    setUserToRemove(null);
+  };
+  const handleConfirmRemoveUser = async () => {
+    if (!userToRemove || !project) return;
+    const removeId = getUserOptionId(userToRemove);
+    const removeName = getUserOptionLabel(userToRemove);
+    const removeEmail = getUserOptionEmail(userToRemove);
+    const currentUsers = Array.isArray(project.users) ? project.users : [];
+    const updatedUsers = currentUsers.filter((user: any) => {
+      const userId = getUserOptionId(user);
+      const userName = getUserOptionLabel(user);
+      const userEmail = getUserOptionEmail(user);
+      return !(
+        (removeId && userId === removeId) ||
+        (removeEmail && userEmail && userEmail.toLowerCase() === removeEmail.toLowerCase()) ||
+        (removeName && userName.toLowerCase() === removeName.toLowerCase())
+      );
+    });
+
+    try {
+      await projectsAPI.update(projectId, { assignedTo: updatedUsers, users: updatedUsers });
+      setProject({ ...project, users: updatedUsers, assignedTo: updatedUsers });
+      window.dispatchEvent(new Event('projectUpdated'));
+      toast.success('User removed');
+      closeRemoveUserModal();
+    } catch (error) {
+      console.error('Error removing user:', error);
+      toast.error('Failed to remove user: ' + (error.message || 'Unknown error'));
+    }
+  };
   const [showNewBudgetForm, setShowNewBudgetForm] = useState(false);
   const [budgetFormData, setBudgetFormData] = useState({
     name: "",
@@ -69,15 +739,14 @@ export default function ProjectDetailPage() {
     budgetPeriod: "Monthly",
     includeAssetLiabilityEquity: false
   });
-  const [incomeAccounts, setIncomeAccounts] = useState<TimeTrackingAccount[]>([]);
-  const [expenseAccounts, setExpenseAccounts] = useState<TimeTrackingAccount[]>([]);
-  const [timeEntries, setTimeEntries] = useState<TimeTrackingEntry[]>([]);
-  const [selectedEntries, setSelectedEntries] = useState<TimeTrackingId[]>([]);
-  const [hoveredEntryId, setHoveredEntryId] = useState<TimeTrackingId | null>(null);
+  const [incomeAccounts, setIncomeAccounts] = useState([]);
+  const [expenseAccounts, setExpenseAccounts] = useState([]);
+  const [timeEntries, setTimeEntries] = useState([]);
+  const [selectedEntries, setSelectedEntries] = useState([]);
   const [statusFilter, setStatusFilter] = useState("All");
   const [periodFilter, setPeriodFilter] = useState("All");
-  const [expenses, setExpenses] = useState<TimeTrackingExpense[]>([]);
-  const [bills, setBills] = useState<TimeTrackingBill[]>([]);
+  const [expenses, setExpenses] = useState([]);
+  const [bills, setBills] = useState([]);
   const [expensesExpanded, setExpensesExpanded] = useState(true);
   const [billsExpanded, setBillsExpanded] = useState(false);
   const [purchaseOrdersExpanded, setPurchaseOrdersExpanded] = useState(false);
@@ -86,24 +755,560 @@ export default function ProjectDetailPage() {
   const [invoicesExpanded, setInvoicesExpanded] = useState(true);
   const [quotesExpanded, setQuotesExpanded] = useState(false);
   const [creditNotesExpanded, setCreditNotesExpanded] = useState(false);
+  const [retainerInvoicesExpanded, setRetainerInvoicesExpanded] = useState(false);
+  const [refundsExpanded, setRefundsExpanded] = useState(false);
   const [activeSalesSection, setActiveSalesSection] = useState("Invoices"); // Track which section is active
   const [invoicesStatusFilter, setInvoicesStatusFilter] = useState("All");
+  const [quotesStatusFilter, setQuotesStatusFilter] = useState("All");
+  const [retainerInvoicesStatusFilter, setRetainerInvoicesStatusFilter] = useState("All");
+  const [creditNotesStatusFilter, setCreditNotesStatusFilter] = useState("All");
+  const [refundsStatusFilter, setRefundsStatusFilter] = useState("All");
   const [expensesStatusFilter, setExpensesStatusFilter] = useState("All");
   const [billsStatusFilter, setBillsStatusFilter] = useState("All");
   const [expensesSearch, setExpensesSearch] = useState("");
+  const [showGoToTransactionsDropdown, setShowGoToTransactionsDropdown] = useState(false);
   const [billsSearch, setBillsSearch] = useState("");
-  const [comments, setComments] = useState<TimeTrackingComment[]>([]);
-  const [commentText, setCommentText] = useState("");
+  const [comments, setComments] = useState<Array<{
+    id: string;
+    text: string;
+    content?: string;
+    authorName?: string;
+    authorInitial?: string;
+    createdAt: string;
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+  }>>([]);
+  const goToTransactionsRef = useRef(null);
+  const commentEditorRef = useRef<HTMLDivElement>(null);
+  const [isEditorEmpty, setIsEditorEmpty] = useState(true);
   const [isBold, setIsBold] = useState(false);
   const [isItalic, setIsItalic] = useState(false);
   const [isUnderline, setIsUnderline] = useState(false);
+  const [showCommentsPanel, setShowCommentsPanel] = useState(false);
   const [hoursView, setHoursView] = useState("Project Hours"); // "Project Hours" or "Profitability Summary"
   const [dateRange, setDateRange] = useState("This Week");
   const [showConfigureAccountsModal, setShowConfigureAccountsModal] = useState(false);
-  const [configureAccountsType, setConfigureAccountsType] = useState<ConfigureAccountsType>(null); // "income" or "expense"
-  const [selectedAccounts, setSelectedAccounts] = useState<TimeTrackingId[]>([]);
+  const [configureAccountsType, setConfigureAccountsType] = useState(null); // "income" or "expense"
+  const [selectedAccounts, setSelectedAccounts] = useState([]);
   const [accountSearchTerm, setAccountSearchTerm] = useState("");
-  const [expandedAccountCategories, setExpandedAccountCategories] = useState<Record<string, boolean>>({});
+  const [expandedAccountCategories, setExpandedAccountCategories] = useState({});
+
+  const persistProjectAttachments = async (attachments: any[]) => {
+    if (!projectId) return attachments;
+    const response = await projectsAPI.update(projectId, { attachments });
+    const persisted = response?.data?.attachments || response?.attachments || attachments;
+    setProject((prev: any) => (prev ? { ...prev, attachments: persisted } : prev));
+    return persisted;
+  };
+
+  const handleAttachmentUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    setIsUploadingAttachments(true);
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+
+    try {
+      const MAX_FILES = 10;
+      const MAX_SIZE = 10 * 1024 * 1024;
+
+      const validFiles = files.filter((file) => file.size <= MAX_SIZE);
+      const rejected = files.length - validFiles.length;
+      if (rejected > 0) {
+        toast.error("Each file must be 10MB or smaller.");
+      }
+
+      const uploadedAttachments: any[] = [];
+      for (const file of validFiles) {
+        const dataUrl = await readFileAsDataUrl(file);
+        uploadedAttachments.push({
+          id: `attachment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          documentId: "",
+          name: file.name,
+          size: file.size,
+          type: file.type || "application/octet-stream",
+          mimeType: file.type || "application/octet-stream",
+          url: dataUrl,
+          uploadedAt: new Date().toISOString(),
+        });
+      }
+
+      if (uploadedAttachments.length) {
+        const nextAttachments = [...attachedFiles, ...uploadedAttachments].slice(0, MAX_FILES);
+        const persisted = await persistProjectAttachments(nextAttachments);
+        setAttachedFiles(Array.isArray(persisted) ? persisted : nextAttachments);
+      }
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } finally {
+      setIsUploadingAttachments(false);
+    }
+
+    if (files.some((file) => file.size <= 10 * 1024 * 1024)) {
+      toast.success("File uploaded successfully.");
+    }
+  };
+
+  const handleRemoveAttachment = (index: number) => {
+    const next = attachedFiles.filter((_, i) => i !== index);
+    setAttachedFiles(next);
+    setAttachmentMenuIndex((current) => (current === index ? null : current));
+    setAttachmentDeleteConfirmIndex((current) => (current === index ? null : current));
+    void persistProjectAttachments(next);
+    toast.success("File removed successfully.");
+  };
+
+  const handleRequestRemoveAttachment = (index: number) => {
+    setAttachmentMenuIndex(index);
+    setAttachmentDeleteConfirmIndex(index);
+  };
+
+  const handleCancelRemoveAttachment = () => {
+    setAttachmentDeleteConfirmIndex(null);
+  };
+
+  const handleDownloadAttachment = (file: any) => {
+    const url = file?.url || (file?.file ? URL.createObjectURL(file.file) : "");
+    if (!url) return;
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = file.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    if (!file?.url && file?.file) URL.revokeObjectURL(url);
+  };
+
+  const handleOpenAttachmentInNewTab = (file: any) => {
+    const url = file?.url || (file?.file ? URL.createObjectURL(file.file) : "");
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+    if (!file?.url && file?.file) window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const formatFileSize = (bytes: number | string) => {
+    const size = Number(bytes) || 0;
+    if (!size) return "0 B";
+    const units = ["B", "KB", "MB", "GB"];
+    const index = Math.min(Math.floor(Math.log(size) / Math.log(1024)), units.length - 1);
+    const value = size / Math.pow(1024, index);
+    return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
+  };
+
+  const isPdfAttachment = (fileName: string) => /\.pdf$/i.test(fileName);
+
+  const resolveProjectContext = () => {
+    if (!project) {
+      toast.error("Project details are not ready yet.");
+      return null;
+    }
+
+    const customerId =
+      project.customerId ||
+      project.customer?._id ||
+      project.customer?.id ||
+      project.customer ||
+      "";
+    const customerName =
+      project.customerName ||
+      project.customer?.displayName ||
+      project.customer?.companyName ||
+      project.customer?.name ||
+      "";
+
+    const payloadProject = {
+      id: project.id || project.projectId || project._id,
+      projectName: project.projectName || project.name || "Project",
+      billingMethod: project.billingMethod,
+      billingRate: project.billingRate,
+      totalProjectCost: project.totalProjectCost || project.budget || project.totalCost || project.billingRate || 0,
+      customerId,
+      customerName,
+      currency: project.currency || baseCurrencyCode,
+      description: project.description || "",
+    };
+
+    return {
+      customerId,
+      customerName,
+      payloadProject,
+    };
+  };
+
+  const sanitizeCommentHtml = (html: string) => {
+    if (!html) return "";
+    if (typeof document === "undefined") return String(html);
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const allowedTags = new Set(["B", "STRONG", "I", "EM", "U", "BR", "DIV", "P", "SPAN"]);
+
+    const sanitizeNode = (node: Node) => {
+      if (node.nodeType === Node.TEXT_NODE) return;
+      if (node.nodeType !== Node.ELEMENT_NODE) {
+        node.parentNode?.removeChild(node);
+        return;
+      }
+
+      const element = node as HTMLElement;
+      if (!allowedTags.has(element.tagName)) {
+        const text = document.createTextNode(element.textContent || "");
+        element.parentNode?.replaceChild(text, element);
+        return;
+      }
+
+      while (element.attributes.length > 0) {
+        element.removeAttribute(element.attributes[0].name);
+      }
+
+      Array.from(element.childNodes).forEach(sanitizeNode);
+    };
+
+    Array.from(container.childNodes).forEach(sanitizeNode);
+    return container.innerHTML;
+  };
+
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const commentMarkupToHtml = (value: string) => {
+    const raw = String(value || "");
+    if (/<[a-z][\s\S]*>/i.test(raw)) return sanitizeCommentHtml(raw);
+
+    let result = "";
+    let i = 0;
+    let boldOpen = false;
+    let italicOpen = false;
+    let underlineOpen = false;
+
+    while (i < raw.length) {
+      const twoCharToken = raw.slice(i, i + 2);
+      if (twoCharToken === "**") {
+        result += boldOpen ? "</strong>" : "<strong>";
+        boldOpen = !boldOpen;
+        i += 2;
+        continue;
+      }
+      if (twoCharToken === "__") {
+        result += underlineOpen ? "</u>" : "<u>";
+        underlineOpen = !underlineOpen;
+        i += 2;
+        continue;
+      }
+      if (raw[i] === "*") {
+        result += italicOpen ? "</em>" : "<em>";
+        italicOpen = !italicOpen;
+        i += 1;
+        continue;
+      }
+
+      const char = raw[i];
+      result += char === "\n" ? "<br />" : escapeHtml(char);
+      i += 1;
+    }
+
+    if (italicOpen) result += "</em>";
+    if (underlineOpen) result += "</u>";
+    if (boldOpen) result += "</strong>";
+    return result;
+  };
+
+  const commentMarkupToText = (value: string) => {
+    const raw = String(value || "");
+    if (/<[a-z][\s\S]*>/i.test(raw)) {
+      if (typeof document === "undefined") return raw.replace(/<[^>]*>/g, "");
+      const container = document.createElement("div");
+      container.innerHTML = sanitizeCommentHtml(raw);
+      return container.textContent || "";
+    }
+
+    let result = "";
+    let i = 0;
+    while (i < raw.length) {
+      const twoCharToken = raw.slice(i, i + 2);
+      if (twoCharToken === "**" || twoCharToken === "__") {
+        i += 2;
+        continue;
+      }
+      if (raw[i] === "*") {
+        i += 1;
+        continue;
+      }
+      result += raw[i];
+      i += 1;
+    }
+    return result;
+  };
+
+  const getLoggedInUserDisplay = () => {
+    const currentUser = getCurrentUser();
+    const name = String(
+      currentUser?.name ||
+      currentUser?.displayName ||
+      currentUser?.fullName ||
+      currentUser?.username ||
+      [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(" ") ||
+      currentUser?.email ||
+      "You"
+    ).trim() || "You";
+    return {
+      name,
+      initial: name.charAt(0).toUpperCase() || "Y",
+    };
+  };
+
+  const [currentUserDisplay, setCurrentUserDisplay] = useState(getLoggedInUserDisplay());
+
+  useEffect(() => {
+    const syncCurrentUser = () => setCurrentUserDisplay(getLoggedInUserDisplay());
+    syncCurrentUser();
+    window.addEventListener("storage", syncCurrentUser);
+    window.addEventListener(AUTH_USER_UPDATED_EVENT, syncCurrentUser as EventListener);
+    return () => {
+      window.removeEventListener("storage", syncCurrentUser);
+      window.removeEventListener(AUTH_USER_UPDATED_EVENT, syncCurrentUser as EventListener);
+    };
+  }, []);
+
+  const getCommentAuthorName = (comment: any) => {
+    const authorName = String(comment?.authorName || "").trim();
+    const authorInitial = String(comment?.authorInitial || "").trim();
+    if (!authorName || authorName === "You" || authorInitial === "Y") return currentUserDisplay.name;
+    return authorName;
+  };
+
+  const getCommentAuthorInitial = (comment: any) => {
+    const authorName = String(comment?.authorName || "").trim();
+    const authorInitial = String(comment?.authorInitial || "").trim();
+    if (!authorName || authorName === "You" || authorInitial === "Y") return currentUserDisplay.initial;
+    return authorInitial || authorName.charAt(0).toUpperCase() || "Y";
+  };
+
+  const syncCommentEditorState = () => {
+    const editor = commentEditorRef.current;
+    if (!editor) return;
+
+    setIsEditorEmpty(!editor.innerText.trim());
+
+    try {
+      setIsBold(document.queryCommandState("bold"));
+      setIsItalic(document.queryCommandState("italic"));
+      setIsUnderline(document.queryCommandState("underline"));
+    } catch {
+      setIsBold(false);
+      setIsItalic(false);
+      setIsUnderline(false);
+    }
+  };
+
+  const normalizeComment = (comment: any, index = 0) => {
+    if (!comment || typeof comment !== "object") return null;
+    const id = String(comment.id || comment._id || `cm-${index}-${Date.now()}`).trim();
+    if (!id) return null;
+    const rawContent = String(comment.content ?? "").trim();
+    const legacyText = String(comment.text ?? "").trim();
+    const content = rawContent || sanitizeCommentHtml(
+      `${comment.bold ? "<b>" : ""}${comment.italic ? "<i>" : ""}${comment.underline ? "<u>" : ""}` +
+      `${legacyText}` +
+      `${comment.underline ? "</u>" : ""}${comment.italic ? "</i>" : ""}${comment.bold ? "</b>" : ""}`
+    );
+    return {
+      id,
+      text: legacyText || content.replace(/<[^>]*>/g, ""),
+      content,
+      authorName: String(comment.authorName || "You").trim() || "You",
+      authorInitial: String(comment.authorInitial || "Y").trim() || "Y",
+      createdAt: String(comment.createdAt || new Date().toISOString()),
+      bold: comment.bold,
+      italic: comment.italic,
+      underline: comment.underline
+    };
+  };
+
+  const handleCreateInvoiceFromProject = () => {
+    const context = resolveProjectContext();
+    if (!context) return;
+    const { customerId, customerName, payloadProject } = context;
+
+    navigate("/sales/invoices/new", {
+      state: {
+        source: "timeTrackingProjects",
+        customerId,
+        customerName,
+        projectId: payloadProject.id,
+        projectName: payloadProject.projectName,
+        currency: payloadProject.currency,
+        projects: [payloadProject],
+      },
+    });
+
+    toast.info("Invoice draft created from the project. Review before saving.");
+  };
+
+  const handleCreateQuoteFromProject = () => {
+    const context = resolveProjectContext();
+    if (!context) return;
+    const { customerId, customerName, payloadProject } = context;
+    navigate("/sales/quotes/new", {
+      state: {
+        source: "timeTrackingProjects",
+        customerId,
+        customerName,
+        projectId: payloadProject.id,
+        projectName: payloadProject.projectName,
+        currency: payloadProject.currency,
+        projects: [payloadProject],
+      },
+    });
+  };
+
+  const handleCreateRetainerInvoiceFromProject = () => {
+    const context = resolveProjectContext();
+    if (!context) return;
+    const { customerId, customerName, payloadProject } = context;
+    navigate("/sales/retainer-invoices/new", {
+      state: {
+        source: "timeTrackingProjects",
+        customerId,
+        customerName,
+        projectId: payloadProject.id,
+        projectName: payloadProject.projectName,
+        currency: payloadProject.currency,
+      },
+    });
+  };
+
+  const handleCreateCreditNoteFromProject = () => {
+    const context = resolveProjectContext();
+    if (!context) return;
+    const { customerId, customerName, payloadProject } = context;
+    navigate("/sales/credit-notes/new", {
+      state: {
+        source: "timeTrackingProjects",
+        customerId,
+        customerName,
+        projectId: payloadProject.id,
+        projectName: payloadProject.projectName,
+        currency: payloadProject.currency,
+      },
+    });
+  };
+
+  const handleCreateExpenseFromProject = (recurring = false) => {
+    const context = resolveProjectContext();
+    if (!context) return;
+    const { customerId, customerName, payloadProject } = context;
+    navigate(recurring ? "/purchases/recurring-expenses/new" : "/purchases/expenses/new", {
+      state: {
+        source: "timeTrackingProjects",
+        customerId,
+        customerName,
+        projectId: payloadProject.id,
+        projectName: payloadProject.projectName,
+        currency: payloadProject.currency,
+      },
+    });
+  };
+
+  const handleCreateInventoryAdjustmentFromProject = () => {
+    const context = resolveProjectContext();
+    if (!context) return;
+    const { customerId, customerName, payloadProject } = context;
+    navigate("/inventory/new", {
+      state: {
+        source: "timeTrackingProjects",
+        customerId,
+        customerName,
+        projectId: payloadProject.id,
+        projectName: payloadProject.projectName,
+        currency: payloadProject.currency,
+      },
+    });
+  };
+
+  const handleCreateSalesOrderFromProject = () => {
+    const context = resolveProjectContext();
+    if (!context) return;
+    const { customerId, customerName, payloadProject } = context;
+    navigate("/sales/sales-orders", {
+      state: {
+        source: "timeTrackingProjects",
+        customerId,
+        customerName,
+        projectId: payloadProject.id,
+        projectName: payloadProject.projectName,
+        currency: payloadProject.currency,
+      },
+    });
+  };
+
+  const handleCreatePurchaseOrderFromProject = () => {
+    const context = resolveProjectContext();
+    if (!context) return;
+    const { customerId, customerName, payloadProject } = context;
+    navigate("/purchases/purchase-orders/new", {
+      state: {
+        source: "timeTrackingProjects",
+        customerId,
+        customerName,
+        projectId: payloadProject.id,
+        projectName: payloadProject.projectName,
+        currency: payloadProject.currency,
+      },
+    });
+  };
+
+  const handleCreateBillFromProject = () => {
+    const context = resolveProjectContext();
+    if (!context) return;
+    const { customerId, customerName, payloadProject } = context;
+    navigate("/purchases/bills/new", {
+      state: {
+        source: "timeTrackingProjects",
+        customerId,
+        customerName,
+        projectId: payloadProject.id,
+        projectName: payloadProject.projectName,
+        currency: payloadProject.currency,
+      },
+    });
+  };
+
+  const handleCreateVendorCreditFromProject = () => {
+    const context = resolveProjectContext();
+    if (!context) return;
+    const { customerId, customerName, payloadProject } = context;
+    navigate("/purchases/vendor-credits/new", {
+      state: {
+        source: "timeTrackingProjects",
+        customerId,
+        customerName,
+        projectId: payloadProject.id,
+        projectName: payloadProject.projectName,
+        currency: payloadProject.currency,
+      },
+    });
+  };
+
+  const handleCreateManualJournalFromProject = () => {
+    const context = resolveProjectContext();
+    if (!context) return;
+    const { customerId, customerName, payloadProject } = context;
+    navigate("/accountant/manual-journals/new", {
+      state: {
+        source: "timeTrackingProjects",
+        customerId,
+        customerName,
+        projectId: payloadProject.id,
+        projectName: payloadProject.projectName,
+        currency: payloadProject.currency,
+      },
+    });
+  };
 
   // Close dropdowns when modal closes
   useEffect(() => {
@@ -115,17 +1320,322 @@ export default function ProjectDetailPage() {
       setSortDataSearch('');
       setItemNameSearch('');
       setItemDescriptionSearch('');
+      setTaxSearch('');
     }
   }, [showProjectInvoiceInfo]);
 
-  // Load comments for this project
   useEffect(() => {
-    if (projectId) {
-      const allComments = JSON.parse(localStorage.getItem('projectComments') || '{}') as Record<string, TimeTrackingComment[]>;
-      const projectComments = allComments[projectId] || [];
-      setComments(projectComments);
+    let alive = true;
+    const getInitialTaxes = () => {
+      if (typeof localStorage === "undefined") return [];
+      for (const key of ["taban_settings_taxes_v1", "taban_books_taxes"]) {
+        try {
+          const raw = localStorage.getItem(key);
+          const parsed = raw ? JSON.parse(raw) : [];
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch {
+          // ignore malformed cache entries
+        }
+      }
+      return [];
+    };
+    const loadTaxes = async () => {
+      const localTaxes = getInitialTaxes();
+      if (localTaxes.length) setTaxRows(localTaxes);
+      try {
+        const response: any = await taxesAPI.getAll({ status: "active" });
+        const rows = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response?.taxes)
+            ? response.taxes
+            : Array.isArray(response)
+              ? response
+              : [];
+        if (alive && rows.length > 0) {
+          setTaxRows(rows);
+          return;
+        }
+      } catch {
+        // fall back to cached taxes below
+      }
+      if (alive) setTaxRows(localTaxes);
+    };
+
+    void loadTaxes();
+    const handleTaxesUpdated = () => {
+      const localTaxes = getInitialTaxes();
+      if (alive) setTaxRows(localTaxes);
+    };
+    window.addEventListener("taban:taxes-storage-updated", handleTaxesUpdated);
+    window.addEventListener("storage", handleTaxesUpdated);
+    return () => {
+      alive = false;
+      window.removeEventListener("taban:taxes-storage-updated", handleTaxesUpdated);
+      window.removeEventListener("storage", handleTaxesUpdated);
+    };
+  }, []);
+
+  const toKey = (value) => String(value ?? "").trim();
+  const toNameKey = (value) => String(value ?? "").trim().toLowerCase();
+
+  const isRetainerInvoice = (invoice) => {
+    const type = toNameKey(invoice?.invoiceType || invoice?.type || invoice?.kind || "");
+    const number = String(invoice?.retainerNumber || invoice?.invoiceNumber || invoice?.number || "")
+      .toUpperCase()
+      .trim();
+    return type.includes("retainer") || number.startsWith("RET-");
+  };
+
+  const matchesProject = (record, projectKey, projectNameKey) => {
+    if (!record) return false;
+    const directProjectId =
+      record?.projectId ||
+      record?.project?._id ||
+      record?.project?.id ||
+      record?.project ||
+      record?.project_code ||
+      record?.projectCode ||
+      record?.project_id ||
+      "";
+    if (projectKey && toKey(directProjectId) === projectKey) return true;
+
+    const directProjectName =
+      record?.projectName ||
+      record?.project?.projectName ||
+      record?.project?.name ||
+      record?.project_name ||
+      record?.projectTitle ||
+      record?.name ||
+      "";
+    if (projectNameKey && toNameKey(directProjectName) === projectNameKey) return true;
+
+    const projectsArray = Array.isArray(record?.projects) ? record.projects : [];
+    if (projectsArray.length > 0) {
+      const anyMatch = projectsArray.some((projectItem) => {
+        const projectItemId = projectItem?._id || projectItem?.id || projectItem?.projectId || projectItem?.project || "";
+        if (projectKey && toKey(projectItemId) === projectKey) return true;
+        const projectItemName = projectItem?.projectName || projectItem?.name || "";
+        return projectNameKey && toNameKey(projectItemName) === projectNameKey;
+      });
+      if (anyMatch) return true;
     }
-  }, [projectId]);
+
+    const items = Array.isArray(record?.items)
+      ? record.items
+      : Array.isArray(record?.lineItems)
+        ? record.lineItems
+        : Array.isArray(record?.rows)
+          ? record.rows
+          : [];
+    if (items.length > 0) {
+      return items.some((item) => {
+        const itemProjectId =
+          item?.projectId ||
+          item?.project?._id ||
+          item?.project?.id ||
+          item?.project ||
+          item?.project_id ||
+          "";
+        if (projectKey && toKey(itemProjectId) === projectKey) return true;
+        const itemProjectName = item?.projectName || item?.project?.projectName || item?.project?.name || "";
+        return projectNameKey && toNameKey(itemProjectName) === projectNameKey;
+      });
+    }
+
+    return false;
+  };
+
+  const uniqByKey = (rows) => {
+    const map = new Map<string, any>();
+    (Array.isArray(rows) ? rows : []).forEach((row) => {
+      const key =
+        toKey(row?._id || row?.id) ||
+        toKey(row?.invoiceNumber || row?.number || row?.quoteNumber || row?.creditNoteNumber || row?.refundNumber) ||
+        `${toKey(row?.date || row?.createdAt)}-${Math.random().toString(36).slice(2)}`;
+      if (!map.has(key)) map.set(key, row);
+    });
+    return Array.from(map.values());
+  };
+
+  const readFallbackArray = (value) => (Array.isArray(value) ? value : []);
+
+  useEffect(() => {
+    if (!project) return;
+    let cancelled = false;
+
+    const loadSalesTransactions = async () => {
+      const projectKey = toKey(project?.id || project?.projectId || project?._id || projectId || "");
+      const projectNameKey = toNameKey(project?.projectName || project?.name || "");
+
+      const [invoiceRes, quoteRes, creditRes, refundRes] = await Promise.all([
+        invoicesAPI.getAll({ limit: 10000 }).catch(() => null),
+        quotesAPI.getAll({ limit: 10000 }).catch(() => null),
+        creditNotesAPI.getAll({ limit: 10000 }).catch(() => null),
+        refundsAPI.getAll({ limit: 10000 }).catch(() => null),
+      ]);
+
+      const directProjectInvoices = uniqByKey([
+        ...readFallbackArray(project?.salesInvoices),
+        ...readFallbackArray(project?.invoices),
+      ]);
+      const directProjectRetainers = uniqByKey([
+        ...readFallbackArray(project?.retainerInvoices),
+        ...readFallbackArray(project?.retainers),
+      ]);
+      const directProjectQuotes = uniqByKey([
+        ...readFallbackArray(project?.quotes),
+        ...readFallbackArray(project?.salesQuotes),
+      ]);
+      const directProjectCreditNotes = uniqByKey([
+        ...readFallbackArray(project?.creditNotes),
+        ...readFallbackArray(project?.salesCreditNotes),
+      ]);
+      const directProjectRefunds = uniqByKey([
+        ...readFallbackArray(project?.refunds),
+        ...readFallbackArray(project?.salesRefunds),
+      ]);
+
+      const apiInvoices = uniqByKey(Array.isArray(invoiceRes?.data) ? invoiceRes.data : []);
+      const apiQuotes = uniqByKey(Array.isArray(quoteRes?.data) ? quoteRes.data : []);
+      const apiCreditNotes = uniqByKey(Array.isArray(creditRes?.data) ? creditRes.data : []);
+      const apiRefunds = uniqByKey(Array.isArray(refundRes?.data) ? refundRes.data : []);
+
+      const matchedInvoices = uniqByKey([
+        ...directProjectInvoices,
+        ...apiInvoices.filter((row) => matchesProject(row, projectKey, projectNameKey)),
+      ]);
+      const matchedQuotes = uniqByKey([
+        ...directProjectQuotes,
+        ...apiQuotes.filter((row) => matchesProject(row, projectKey, projectNameKey)),
+      ]);
+      const matchedCreditNotes = uniqByKey([
+        ...directProjectCreditNotes,
+        ...apiCreditNotes.filter((row) => matchesProject(row, projectKey, projectNameKey)),
+      ]);
+      const matchedRefunds = uniqByKey([
+        ...directProjectRefunds,
+        ...apiRefunds.filter((row) => matchesProject(row, projectKey, projectNameKey)),
+      ]);
+
+      const retainerInvoices = uniqByKey([
+        ...directProjectRetainers,
+        ...matchedInvoices.filter((row) => isRetainerInvoice(row)),
+      ]);
+      const regularInvoices = matchedInvoices.filter((row) => !isRetainerInvoice(row));
+
+      if (cancelled) return;
+      setSalesInvoices(regularInvoices);
+      setSalesRetainerInvoices(retainerInvoices);
+      setSalesQuotes(matchedQuotes);
+      setSalesCreditNotes(matchedCreditNotes);
+      setSalesRefunds(matchedRefunds);
+    };
+
+    loadSalesTransactions();
+
+    const onStorage = (event) => {
+      const key = event?.key || "";
+      const watched = [
+        "taban_books_invoices",
+        "taban_books_quotes",
+        "taban_books_credit_notes",
+        "taban_books_sales_receipts",
+        "taban_books_refunds",
+      ];
+      if (!key || watched.includes(key)) {
+        loadSalesTransactions();
+      }
+    };
+
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", loadSalesTransactions);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", loadSalesTransactions);
+    };
+  }, [project, projectId]);
+
+  // Load comments from the project record
+  useEffect(() => {
+    if (!project) {
+      setComments([]);
+      return;
+    }
+
+    const projectComments = Array.isArray((project as any).comments) ? (project as any).comments : [];
+    setComments(projectComments.map((comment, index) => normalizeComment(comment, index)).filter(Boolean));
+  }, [project]);
+
+  useEffect(() => {
+    if (!selectedEntry) {
+      setEntryComments([]);
+      if (entryCommentEditorRef.current) {
+        entryCommentEditorRef.current.innerHTML = "";
+      }
+      setEntryIsEditorEmpty(true);
+      return;
+    }
+    let cancelled = false;
+    const loadEntryComments = async () => {
+      const dbComments = Array.isArray(selectedEntry.comments) ? selectedEntry.comments : [];
+      const normalizedDbComments = dbComments.map((comment, index) => normalizeComment(comment, index)).filter(Boolean);
+      if (normalizedDbComments.length) {
+        if (!cancelled) setEntryComments(normalizedDbComments);
+        return;
+      }
+
+      const legacyCommentsStore = (() => {
+        if (typeof localStorage === "undefined") return {};
+        try {
+          return JSON.parse(localStorage.getItem("timesheetComments") || "{}");
+        } catch {
+          return {};
+        }
+      })();
+      const legacyComments = Array.isArray(legacyCommentsStore[selectedEntry.id]) ? legacyCommentsStore[selectedEntry.id] : [];
+      const normalizedLegacyComments = legacyComments.map((comment, index) => normalizeComment(comment, index)).filter(Boolean);
+      if (normalizedLegacyComments.length) {
+        if (!cancelled) setEntryComments(normalizedLegacyComments);
+        try {
+          await timeEntriesAPI.update(selectedEntry.id, { comments: normalizedLegacyComments });
+          if (!cancelled) {
+            setSelectedEntry((prev: any) => (prev ? { ...prev, comments: normalizedLegacyComments } : prev));
+            setTimeEntries((prev: any[]) =>
+              prev.map((entry) => (String(entry.id) === String(selectedEntry.id) ? { ...entry, comments: normalizedLegacyComments } : entry))
+            );
+          }
+        } catch (error) {
+          console.error("Failed to migrate legacy timesheet comments:", error);
+        }
+        return;
+      }
+
+      if (!cancelled) setEntryComments([]);
+    };
+
+    void loadEntryComments();
+    if (entryCommentEditorRef.current) {
+      entryCommentEditorRef.current.innerHTML = "";
+    }
+    setEntryIsEditorEmpty(true);
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEntry]);
+
+  useEffect(() => {
+    const handleDocumentMouseDown = (event: MouseEvent) => {
+      if (!openRowEntryMenuId) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-entry-row-menu]")) return;
+      setOpenRowEntryMenuId(null);
+    };
+
+    document.addEventListener("mousedown", handleDocumentMouseDown);
+    return () => document.removeEventListener("mousedown", handleDocumentMouseDown);
+  }, [openRowEntryMenuId]);
 
   // Load time entries for this project
   useEffect(() => {
@@ -135,24 +1645,45 @@ export default function ProjectDetailPage() {
       try {
         const response = await timeEntriesAPI.getByProject(projectId);
         const data = Array.isArray(response) ? response : (response?.data || []);
+        const legacyCommentsStore = (() => {
+          if (typeof localStorage === "undefined") return {};
+          try {
+            return JSON.parse(localStorage.getItem("timesheetComments") || "{}");
+          } catch {
+            return {};
+          }
+        })();
 
         // Transform database entries to match frontend format
-        const transformedEntries: TimeTrackingEntry[] = data.map((entry: any) => ({
+        const transformedEntries = data.map(entry => ({
           id: entry._id || entry.id,
           projectId: entry.project?._id || entry.projectId,
           projectName: entry.project?.name || entry.projectName,
           userId: entry.user?._id || entry.userId,
           userName: entry.user?.name || entry.userName,
+          rawDate: entry.date || null,
           date: entry.date ? new Date(entry.date).toLocaleDateString() : '--',
           hours: entry.hours || 0,
           minutes: entry.minutes || 0,
-          timeSpent: entry.hours ? `${entry.hours}h ${entry.minutes || 0}m` : '0h',
+          timeSpent: entry.timeSpent || (entry.hours !== undefined ? `${entry.hours}h ${entry.minutes || 0}m` : '0h'),
           description: entry.description || '',
           task: entry.task || entry.taskName || '',
           taskName: entry.task || entry.taskName || '',
           billable: entry.billable !== undefined ? entry.billable : true,
           notes: entry.description || entry.notes || '',
           billingStatus: entry.billingStatus || 'Unbilled',
+          comments: (() => {
+            const entryId = String(entry._id || entry.id || "");
+            const dbComments = Array.isArray(entry.comments) ? entry.comments : [];
+            const legacyComments = Array.isArray(legacyCommentsStore[entryId]) ? legacyCommentsStore[entryId] : [];
+            const mergedComments = dbComments.length ? dbComments : legacyComments;
+            if (!dbComments.length && legacyComments.length && entryId) {
+              void timeEntriesAPI.update(entryId, { comments: legacyComments }).catch((error) => {
+                console.error("Failed to migrate legacy timesheet comments:", error);
+              });
+            }
+            return mergedComments.map((comment, index) => normalizeComment(comment, index)).filter(Boolean);
+          })(),
         }));
 
         setTimeEntries(transformedEntries);
@@ -186,8 +1717,8 @@ export default function ProjectDetailPage() {
       const projectName = project.name || project.projectName || '';
 
       // Load expenses
-      const allExpenses = JSON.parse(localStorage.getItem('expenses') || '[]') as TimeTrackingExpense[];
-      const projectExpenses = allExpenses.filter((expense) =>
+      const allExpenses = JSON.parse(localStorage.getItem('expenses') || '[]');
+      const projectExpenses = allExpenses.filter(expense =>
         expense.customerName === projectName ||
         expense.projectName === projectName ||
         expense.projectId === projectId
@@ -195,8 +1726,8 @@ export default function ProjectDetailPage() {
       setExpenses(projectExpenses);
 
       // Load bills
-      const allBills = JSON.parse(localStorage.getItem('bills') || '[]') as TimeTrackingBill[];
-      const projectBills = allBills.filter((bill) =>
+      const allBills = JSON.parse(localStorage.getItem('bills') || '[]');
+      const projectBills = allBills.filter(bill =>
         bill.customerName === projectName ||
         bill.projectName === projectName ||
         bill.projectId === projectId
@@ -229,6 +1760,7 @@ export default function ProjectDetailPage() {
 
   useEffect(() => {
     const loadProject = async () => {
+      setLoadingProject(true);
       try {
         const response = await projectsAPI.getById(projectId);
         // Handle response format: { success: true, data: {...} } or direct object
@@ -241,7 +1773,13 @@ export default function ProjectDetailPage() {
         }
 
         // Transform database project to match frontend format
-        const transformedProject: TimeTrackingProject = {
+        const normalizedComments = Array.isArray(projectData.comments)
+          ? projectData.comments.map((comment, index) => normalizeComment(comment, index)).filter(Boolean)
+          : [];
+        const normalizedAttachments = Array.isArray(projectData.attachments)
+          ? projectData.attachments.map((attachment, index) => normalizeAttachment(attachment, index)).filter(Boolean)
+          : [];
+        const transformedProject = {
           id: projectData._id || projectData.id,
           projectName: projectData.name || projectData.projectName,
           projectNumber: projectData.projectNumber || projectData.id,
@@ -260,15 +1798,38 @@ export default function ProjectDetailPage() {
           tags: projectData.tags || [],
           tasks: projectData.tasks || [],
           users: projectData.assignedTo || [],
+          invoicePreferences: projectData.invoicePreferences || {},
           isActive: projectData.status !== 'cancelled' && projectData.status !== 'completed',
-          ...projectData // Keep all other fields
+          ...projectData, // Keep all other fields
+          comments: normalizedComments,
+          attachments: normalizedAttachments,
         };
 
         setProject(transformedProject);
+        setAttachedFiles(normalizedAttachments);
+
+        if (!normalizedComments.length && projectId) {
+          try {
+            const allComments = JSON.parse(localStorage.getItem("projectComments") || "{}");
+            const legacyComments = Array.isArray(allComments[projectId]) ? allComments[projectId] : [];
+            const migratedComments = legacyComments.map((comment, index) => normalizeComment(comment, index)).filter(Boolean);
+            if (migratedComments.length) {
+              setComments(migratedComments);
+              setProject((prev: any) => (prev ? { ...prev, comments: migratedComments } : prev));
+              await projectsAPI.update(projectId, { comments: migratedComments });
+              delete allComments[projectId];
+              localStorage.setItem("projectComments", JSON.stringify(allComments));
+            }
+          } catch (migrationError) {
+            console.warn("Failed to migrate legacy project comments:", migrationError);
+          }
+        }
       } catch (error) {
         console.error("Error loading project:", error);
-        toast.error("Failed to load project: " + getErrorMessage(error));
+        toast.error("Failed to load project: " + (error.message || "Unknown error"));
         navigate('/time-tracking');
+      } finally {
+        setLoadingProject(false);
       }
     };
 
@@ -295,18 +1856,12 @@ export default function ProjectDetailPage() {
 
   // Handle click outside transaction dropdown
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (!(event.target instanceof Node)) {
-        return;
-      }
-
+    function handleClickOutside(event) {
       if (transactionDropdownRef.current && !transactionDropdownRef.current.contains(event.target)) {
         setShowTransactionDropdown(false);
-        setHoveredTransaction(null);
       }
       if (moreDropdownRef.current && !moreDropdownRef.current.contains(event.target)) {
         setShowMoreDropdown(false);
-        setHoveredMoreOption(null);
       }
       if (sortDataDropdownRef.current && !sortDataDropdownRef.current.contains(event.target)) {
         setSortDataDropdownOpen(false);
@@ -320,20 +1875,74 @@ export default function ProjectDetailPage() {
         setItemDescriptionDropdownOpen(false);
         setItemDescriptionSearch('');
       }
+      if (addUsersDropdownRef.current && !addUsersDropdownRef.current.contains(event.target)) {
+        setAddUsersDropdownOpen(false);
+        setAddUsersSearch('');
+      }
+      if (goToTransactionsRef.current && !goToTransactionsRef.current.contains(event.target)) {
+        setShowGoToTransactionsDropdown(false);
+      }
     }
 
-    if (showTransactionDropdown || showMoreDropdown || sortDataDropdownOpen || itemNameDropdownOpen || itemDescriptionDropdownOpen) {
+    if (showTransactionDropdown || showMoreDropdown || sortDataDropdownOpen || itemNameDropdownOpen || itemDescriptionDropdownOpen || addUsersDropdownOpen || showGoToTransactionsDropdown) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showTransactionDropdown, showMoreDropdown, sortDataDropdownOpen, itemNameDropdownOpen, itemDescriptionDropdownOpen]);
+  }, [showTransactionDropdown, showMoreDropdown, sortDataDropdownOpen, itemNameDropdownOpen, itemDescriptionDropdownOpen, addUsersDropdownOpen, showGoToTransactionsDropdown]);
+
+  useEffect(() => {
+    if (!showAddUserModal) {
+      setAddUsersDropdownOpen(false);
+      setAddUsersSearch('');
+      return;
+    }
+
+    let mounted = true;
+
+    const loadUsers = async () => {
+      try {
+        const response: any = await usersAPI.getAll({ limit: 1000 });
+        const rows = Array.isArray(response) ? response : (response?.data || []);
+        if (!mounted) return;
+
+        const normalizedUsers = rows
+          .filter((user: any) => {
+            const status = String(user?.status || "").trim().toLowerCase();
+            return status === "active" || user?.isActive === true;
+          })
+          .map((user: any) => {
+            const value = String(user?._id || user?.id || user?.email || user?.name || "").trim();
+            const label = String(user?.name || user?.displayName || user?.fullName || user?.email || "User").trim();
+            if (!value || !label) return null;
+            return {
+              value,
+              label,
+              email: String(user?.email || user?.mail || "").trim(),
+              rate: user?.rate ?? user?.hourlyRate ?? user?.costPerHour ?? "",
+            };
+          })
+          .filter(Boolean);
+
+        setAvailableUsers(normalizedUsers);
+      } catch (error) {
+        console.error("Error loading users:", error);
+        if (mounted) setAvailableUsers([]);
+      }
+    };
+
+    loadUsers();
+
+    return () => {
+      mounted = false;
+    };
+  }, [showAddUserModal]);
 
   // Handle Esc key to clear selection
   useEffect(() => {
-    const handleEscKey = (e: KeyboardEvent) => {
+    const handleEscKey = (e) => {
       if (e.key === "Escape" && selectedEntries.length > 0) {
         setSelectedEntries([]);
       }
@@ -462,6 +2071,356 @@ export default function ProjectDetailPage() {
 
   const hoursData = calculateHours();
 
+  const parseProjectDetailDate = (value: any) => {
+    if (!value) return null;
+    if (value instanceof Date) {
+      const date = new Date(value);
+      if (isNaN(date.getTime())) return null;
+      date.setHours(0, 0, 0, 0);
+      return date;
+    }
+
+    if (typeof value === "string") {
+      const slashMatch = value.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+      if (slashMatch) {
+        const date = new Date(Number(slashMatch[3]), Number(slashMatch[2]) - 1, Number(slashMatch[1]));
+        date.setHours(0, 0, 0, 0);
+        return isNaN(date.getTime()) ? null : date;
+      }
+
+      const longMatch = value.match(/(\d{1,2})\s+(\w{3})\s+(\d{4})/);
+      if (longMatch) {
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const monthIndex = months.indexOf(longMatch[2]);
+        if (monthIndex !== -1) {
+          const date = new Date(Number(longMatch[3]), monthIndex, Number(longMatch[1]));
+          date.setHours(0, 0, 0, 0);
+          return isNaN(date.getTime()) ? null : date;
+        }
+      }
+    }
+
+    const fallbackDate = new Date(value);
+    if (isNaN(fallbackDate.getTime())) return null;
+    fallbackDate.setHours(0, 0, 0, 0);
+    return fallbackDate;
+  };
+
+  const addDaysToDate = (date: Date, days: number) => {
+    const next = new Date(date);
+    next.setDate(next.getDate() + days);
+    return next;
+  };
+
+  const addMonthsToDate = (date: Date, months: number) => {
+    const next = new Date(date);
+    next.setMonth(next.getMonth() + months);
+    return next;
+  };
+
+  const startOfMonth = (date: Date) => {
+    const next = new Date(date);
+    next.setDate(1);
+    next.setHours(0, 0, 0, 0);
+    return next;
+  };
+
+  const endOfMonth = (date: Date) => {
+    const next = new Date(date);
+    next.setMonth(next.getMonth() + 1, 0);
+    next.setHours(0, 0, 0, 0);
+    return next;
+  };
+
+  const startOfQuarter = (date: Date) => {
+    const month = date.getMonth();
+    const quarterStartMonth = month - (month % 3);
+    const next = new Date(date.getFullYear(), quarterStartMonth, 1);
+    next.setHours(0, 0, 0, 0);
+    return next;
+  };
+
+  const endOfQuarter = (date: Date) => endOfMonth(addMonthsToDate(startOfQuarter(date), 2));
+
+  const startOfYear = (date: Date) => {
+    const next = new Date(date.getFullYear(), 0, 1);
+    next.setHours(0, 0, 0, 0);
+    return next;
+  };
+
+  const getChartBucketLabel = (date: Date, bucketMode: "day" | "month") => {
+    if (bucketMode === "month") {
+      return date.toLocaleDateString("en-GB", { month: "short" });
+    }
+    return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+  };
+
+  const getChartBucketKey = (date: Date, bucketMode: "day" | "month") =>
+    bucketMode === "month"
+      ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+      : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+  const buildChartData = (range: string, entries: any[]) => {
+    const normalizedEntries = entries
+      .map((entry) => ({ entry, date: parseProjectDetailDate(entry.rawDate || entry.date) }))
+      .filter(({ date }) => date);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let startDate = new Date(today);
+    let endDate = new Date(today);
+    let bucketMode: "day" | "month" = "day";
+
+    if (range === "Today") {
+      startDate = new Date(today);
+      endDate = new Date(today);
+    } else if (range === "Yesterday") {
+      startDate = addDaysToDate(today, -1);
+      endDate = addDaysToDate(today, -1);
+    } else if (range === "This Week") {
+      startDate = new Date(today);
+      startDate.setDate(today.getDate() - today.getDay());
+      endDate = addDaysToDate(startDate, 6);
+    } else if (range === "Previous Week") {
+      startDate = new Date(today);
+      startDate.setDate(today.getDate() - today.getDay() - 7);
+      endDate = addDaysToDate(startDate, 6);
+    } else if (range === "This Month") {
+      startDate = startOfMonth(today);
+      endDate = endOfMonth(today);
+    } else if (range === "Previous Month") {
+      const previousMonth = addMonthsToDate(startOfMonth(today), -1);
+      startDate = startOfMonth(previousMonth);
+      endDate = endOfMonth(previousMonth);
+    } else if (range === "This Quarter") {
+      startDate = startOfQuarter(today);
+      endDate = endOfQuarter(today);
+      bucketMode = "month";
+    } else if (range === "Previous Quarter") {
+      const previousQuarter = addMonthsToDate(startOfQuarter(today), -3);
+      startDate = startOfQuarter(previousQuarter);
+      endDate = endOfQuarter(previousQuarter);
+      bucketMode = "month";
+    } else if (range === "This Year") {
+      startDate = startOfYear(today);
+      endDate = new Date(today.getFullYear(), 11, 31);
+      endDate.setHours(0, 0, 0, 0);
+      bucketMode = "month";
+    } else if (range === "Previous Year") {
+      const previousYear = today.getFullYear() - 1;
+      startDate = new Date(previousYear, 0, 1);
+      endDate = new Date(previousYear, 11, 31);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(0, 0, 0, 0);
+      bucketMode = "month";
+    } else if (range === "All") {
+      if (normalizedEntries.length > 0) {
+        const dates = normalizedEntries.map(({ date }) => date as Date);
+        const minDate = new Date(Math.min(...dates.map((date) => date.getTime())));
+        const maxDate = new Date(Math.max(...dates.map((date) => date.getTime())));
+        const spanDays = Math.max(1, Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000) + 1);
+        bucketMode = spanDays > 90 ? "month" : "day";
+        if (bucketMode === "month") {
+          startDate = startOfMonth(minDate);
+          endDate = endOfMonth(maxDate);
+        } else {
+          startDate = minDate;
+          endDate = maxDate;
+        }
+      } else {
+        startDate = addDaysToDate(today, -6);
+        endDate = today;
+      }
+    }
+
+    const buckets: Array<{
+      key: string;
+      label: string;
+      date: Date;
+      loggedMinutes: number;
+      billableMinutes: number;
+      billedMinutes: number;
+      unbilledMinutes: number;
+    }> = [];
+
+    for (let cursor = new Date(startDate); cursor <= endDate; cursor = bucketMode === "month" ? addMonthsToDate(cursor, 1) : addDaysToDate(cursor, 1)) {
+      buckets.push({
+        key: getChartBucketKey(cursor, bucketMode),
+        label: getChartBucketLabel(cursor, bucketMode),
+        date: new Date(cursor),
+        loggedMinutes: 0,
+        billableMinutes: 0,
+        billedMinutes: 0,
+        unbilledMinutes: 0,
+      });
+    }
+
+    const bucketMap = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+
+    normalizedEntries.forEach(({ entry, date }) => {
+      const entryDate = date as Date;
+      if (entryDate < startDate || entryDate > endDate) return;
+      const bucketKey = getChartBucketKey(entryDate, bucketMode);
+      const bucket = bucketMap.get(bucketKey);
+      if (!bucket) return;
+
+      const minutes = parseTimeToMinutes(entry.timeSpent);
+      bucket.loggedMinutes += minutes;
+      if (entry.billable) {
+        bucket.billableMinutes += minutes;
+        if (entry.billingStatus === "Invoiced" || entry.billingStatus === "Billed") {
+          bucket.billedMinutes += minutes;
+        } else {
+          bucket.unbilledMinutes += minutes;
+        }
+      }
+    });
+
+    return {
+      bucketMode,
+      buckets,
+    };
+  };
+
+  const chartData = buildChartData(dateRange, timeEntries);
+
+  const handleAddComment = async () => {
+    const editor = commentEditorRef.current;
+    const trimmedComment = editor?.innerText.trim() || "";
+    if (!trimmedComment || !projectId) return;
+    const currentUser = getLoggedInUserDisplay();
+
+    const newComment = {
+      id: `${Date.now()}`,
+      text: trimmedComment,
+      content: sanitizeCommentHtml(editor?.innerHTML || ""),
+      authorName: currentUser.name,
+      authorInitial: currentUser.initial,
+      createdAt: new Date().toISOString(),
+      bold: false,
+      italic: false,
+      underline: false
+    };
+
+    const updatedComments = [newComment, ...comments];
+    setComments(updatedComments);
+    setProject((prev: any) => (prev ? { ...prev, comments: updatedComments } : prev));
+
+    try {
+      await projectsAPI.update(projectId, { comments: updatedComments });
+
+      setIsEditorEmpty(true);
+      setIsBold(false);
+      setIsItalic(false);
+      setIsUnderline(false);
+      if (editor) {
+        editor.innerHTML = "";
+      }
+      toast.success("Comment added successfully.");
+    } catch {
+      setComments(comments);
+      setProject((prev: any) => (prev ? { ...prev, comments } : prev));
+      toast.error("Failed to add comment.");
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string | number) => {
+    if (!projectId) return;
+
+    const previousComments = comments;
+    const updatedComments = previousComments.filter((comment) => String(comment.id) !== String(commentId));
+    setComments(updatedComments);
+    setProject((prev: any) => (prev ? { ...prev, comments: updatedComments } : prev));
+
+    try {
+      await projectsAPI.update(projectId, { comments: updatedComments });
+      toast.success("Comment deleted successfully.");
+      return true;
+    } catch {
+      setComments(previousComments);
+      setProject((prev: any) => (prev ? { ...prev, comments: previousComments } : prev));
+      toast.error("Failed to delete comment.");
+      return false;
+    }
+  };
+
+  const openDeleteCommentModal = (comment: any) => {
+    setCommentToDelete(comment);
+    setShowDeleteCommentModal(true);
+  };
+
+  const closeDeleteCommentModal = () => {
+    setShowDeleteCommentModal(false);
+    setCommentToDelete(null);
+  };
+
+  const confirmDeleteComment = async () => {
+    if (!commentToDelete) return;
+    const deleted = await handleDeleteComment(commentToDelete.id);
+    if (deleted) closeDeleteCommentModal();
+  };
+
+  const applyCommentFormat = (command: "bold" | "italic" | "underline") => {
+    if (!commentEditorRef.current) return;
+    commentEditorRef.current.focus();
+    document.execCommand(command, false);
+    syncCommentEditorState();
+  };
+
+  if (loadingProject) {
+    return (
+      <div className="min-h-screen bg-white">
+        <div className="h-[70px] border-b border-slate-200 bg-white" />
+        <div className="p-6">
+          <div className="mb-6 flex items-center justify-between gap-4">
+            <div className="h-8 w-56 rounded bg-gray-200 animate-pulse" />
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-20 rounded bg-gray-200 animate-pulse" />
+              <div className="h-10 w-24 rounded bg-gray-200 animate-pulse" />
+              <div className="h-10 w-32 rounded bg-gray-200 animate-pulse" />
+            </div>
+          </div>
+
+          <div className="h-10 w-80 rounded bg-gray-100 animate-pulse mb-6" />
+
+          <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+            <div className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
+              <div className="h-6 w-44 rounded bg-gray-200 animate-pulse" />
+              <div className="space-y-3">
+                <div className="h-4 w-32 rounded bg-gray-200 animate-pulse" />
+                <div className="h-4 w-28 rounded bg-gray-200 animate-pulse" />
+                <div className="h-4 w-36 rounded bg-gray-200 animate-pulse" />
+                <div className="h-4 w-24 rounded bg-gray-200 animate-pulse" />
+                <div className="h-4 w-32 rounded bg-gray-200 animate-pulse" />
+                <div className="h-4 w-20 rounded bg-gray-200 animate-pulse" />
+              </div>
+            </div>
+
+            <div className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
+              <div className="h-6 w-56 rounded bg-gray-200 animate-pulse" />
+              <div className="h-64 rounded bg-gray-100 animate-pulse" />
+              <div className="h-24 rounded bg-gray-100 animate-pulse" />
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-xl border border-gray-200 bg-white p-4">
+            <div className="h-5 w-28 rounded bg-gray-200 animate-pulse mb-4" />
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="flex items-center gap-3 rounded-lg border border-gray-100 px-4 py-3">
+                  <div className="h-6 w-6 rounded-full bg-gray-200 animate-pulse" />
+                  <div className="h-4 w-48 rounded bg-gray-200 animate-pulse" />
+                  <div className="ml-auto h-4 w-20 rounded bg-gray-200 animate-pulse" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!project) {
     return (
       <div style={{ padding: "40px", textAlign: "center" }}>
@@ -473,26 +2432,378 @@ export default function ProjectDetailPage() {
     );
   }
 
-  const tabs = ["Overview", "Timesheet", "Purchases", "Sales", "Budget Configuration", "Journals"];
+  const tabs = ["Overview", "Timesheet", "Expenses", "Sales"];
+  const isCompletedProject = String(project?.status || "").toLowerCase() === "completed";
+  const statusOptions = ["All", "Draft", "Sent", "Approved", "Accepted", "Paid", "Void", "Overdue"];
+
+  const formatSalesDate = (value) => {
+    if (!value) return "";
+    try {
+      const date = new Date(value);
+      if (isNaN(date.getTime())) return String(value);
+      return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    } catch {
+      return String(value);
+    }
+  };
+
+  const projectCurrencyCode = String(baseCurrencyCode).split(' ')[0].substring(0, 3).toUpperCase();
+  const currencyCode = projectCurrencyCode;
+  const formatMoney = (value: any) =>
+    `${currencyCode} ${Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const rawBillingMethod = String(project?.billingMethod || "").toLowerCase();
+  const showTaskRatePerHour = rawBillingMethod === "task-hours";
+  const billingMethodLabel =
+    rawBillingMethod === "fixed" || rawBillingMethod === "fixed_cost" || rawBillingMethod === "fixed cost for project"
+      ? "Fixed Cost for Project"
+      : rawBillingMethod === "project-hours"
+        ? "Hourly Rate Per Project"
+        : rawBillingMethod === "task-hours"
+          ? "Hourly Rate Per Task"
+          : rawBillingMethod === "staff-hours"
+            ? "Hourly Rate Per Staff"
+            : rawBillingMethod === "hourly"
+              ? "Hourly Rate"
+              : (project?.billingMethod || "Hourly Rate");
+
+  const billingRate = Number(project?.billingRate || 0);
+  const totalProjectCost = Number(
+    project?.totalProjectCost ??
+    project?.budget ??
+    project?.totalCost ??
+    (rawBillingMethod === "fixed" ? billingRate : 0)
+  );
+
+  const billedFromInvoices = salesInvoices.reduce(
+    (sum, invoice) => sum + Number(invoice?.amount || invoice?.total || 0),
+    0
+  );
+
+  const loggedAmount =
+    rawBillingMethod === "fixed"
+      ? totalProjectCost
+      : (hoursData.loggedMinutes / 60) * billingRate;
+  const billableAmount =
+    rawBillingMethod === "fixed"
+      ? totalProjectCost
+      : (hoursData.billableMinutes / 60) * billingRate;
+  const billedAmount =
+    rawBillingMethod === "fixed"
+      ? billedFromInvoices
+      : (hoursData.billedMinutes / 60) * billingRate;
+  const unbilledAmount =
+    rawBillingMethod === "fixed"
+      ? Math.max(totalProjectCost - billedFromInvoices, 0)
+      : (hoursData.unbilledMinutes / 60) * billingRate;
+  const chartTotals = chartData.buckets.reduce(
+    (acc, bucket) => {
+      acc.loggedMinutes += bucket.loggedMinutes;
+      acc.billableMinutes += bucket.billableMinutes;
+      acc.billedMinutes += bucket.billedMinutes;
+      acc.unbilledMinutes += bucket.unbilledMinutes;
+      return acc;
+    },
+    { loggedMinutes: 0, billableMinutes: 0, billedMinutes: 0, unbilledMinutes: 0 }
+  );
+  const chartLoggedAmount =
+    rawBillingMethod === "fixed"
+      ? totalProjectCost
+      : (chartTotals.loggedMinutes / 60) * billingRate;
+  const chartBillableAmount =
+    rawBillingMethod === "fixed"
+      ? totalProjectCost
+      : (chartTotals.billableMinutes / 60) * billingRate;
+  const chartBilledAmount =
+    rawBillingMethod === "fixed"
+      ? billedFromInvoices
+      : (chartTotals.billedMinutes / 60) * billingRate;
+  const chartUnbilledAmount =
+    rawBillingMethod === "fixed"
+      ? Math.max(totalProjectCost - billedFromInvoices, 0)
+      : (chartTotals.unbilledMinutes / 60) * billingRate;
+  const chartWidth = Math.max(625, chartData.buckets.length * 75);
+  const chartSlotWidth = chartWidth / Math.max(chartData.buckets.length, 1);
+  const chartBarWidth = Math.min(24, Math.max(12, chartSlotWidth / 3));
+  const projectHoursValues = chartData.buckets.map((bucket) => bucket.loggedMinutes / 60);
+  const profitabilityBillableValues = chartData.buckets.map((bucket) => bucket.billableMinutes / 60);
+  const profitabilityUnbilledValues = chartData.buckets.map((bucket) => bucket.unbilledMinutes / 60);
+  const projectChartMaxValue = Math.max(6, Math.ceil(Math.max(...projectHoursValues, 0) / 2) * 2);
+  const profitabilityChartMaxValue = Math.max(20, Math.ceil(Math.max(...profitabilityBillableValues, ...profitabilityUnbilledValues, 0) / 5) * 5);
+  const projectChartTicks = Array.from({ length: 4 }, (_, index) => Number(((projectChartMaxValue / 3) * (3 - index)).toFixed(1)));
+  const profitabilityChartTicks = Array.from({ length: 5 }, (_, index) => Number(((profitabilityChartMaxValue / 4) * (4 - index)).toFixed(1)));
+  const projectChartPoints = chartData.buckets
+    .map((bucket, index) => {
+      const x = chartData.buckets.length === 1 ? chartWidth / 2 : (index / Math.max(chartData.buckets.length - 1, 1)) * chartWidth;
+      const y = 220 - ((bucket.loggedMinutes / 60) / projectChartMaxValue) * 180;
+      return `${x},${y}`;
+    })
+    .join(" ");
+  const totalExpensesAmount = expenses.reduce(
+    (sum, expense) => sum + Number(expense?.amount || expense?.total || 0),
+    0
+  );
+
+  const renderProfitabilitySummaryChart = () => (
+    <>
+      <div style={{ height: "300px", position: "relative", marginBottom: "24px" }}>
+        <div style={{ height: "260px", paddingLeft: "40px", paddingRight: "20px", borderBottom: "1px solid #e5e7eb", position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", left: "0", top: "0", bottom: "0", display: "flex", flexDirection: "column", justifyContent: "space-between", fontSize: "11px", color: "#9ca3af", paddingBottom: "10px", width: "35px" }}>
+            {profitabilityChartTicks.map((value, index) => (
+              <span key={index}>{Number.isInteger(value) ? value : value.toFixed(1)}</span>
+            ))}
+          </div>
+
+          <div style={{ height: "100%", paddingTop: "10px", paddingBottom: "30px", position: "relative", marginLeft: "40px", width: "100%" }}>
+            <svg width="100%" height="100%" viewBox={`0 0 ${chartWidth} 230`} preserveAspectRatio="xMidYMid meet" role="img" aria-label="Bar Chart" style={{ position: "absolute", top: "10px", left: 0 }}>
+              {[0, 1, 2, 3, 4, 5].map((i) => {
+                const y = (i / 5) * 230;
+                return <line key={i} x1="0" y1={y} x2={chartWidth} y2={y} stroke="#f3f4f6" strokeWidth="1" />;
+              })}
+              {chartData.buckets.map((bucket, index) => {
+                const centerX = chartData.buckets.length === 1 ? chartWidth / 2 : (index / Math.max(chartData.buckets.length - 1, 1)) * chartWidth;
+                const billableHeight = ((bucket.billableMinutes / 60) / profitabilityChartMaxValue) * 190;
+                const unbilledHeight = ((bucket.unbilledMinutes / 60) / profitabilityChartMaxValue) * 190;
+                return (
+                  <g key={bucket.key}>
+                    <rect x={centerX - chartBarWidth - 2} y={230 - billableHeight} width={chartBarWidth} height={billableHeight} fill="#93c5fd" />
+                    <rect x={centerX + 2} y={230 - unbilledHeight} width={chartBarWidth} height={unbilledHeight} fill="#fbbf24" />
+                  </g>
+                );
+              })}
+            </svg>
+
+            <div style={{ position: "absolute", bottom: "-25px", left: "0", right: "40px", display: "flex", justifyContent: "space-between", width: "100%" }}>
+              {chartData.buckets.map((bucket) => (
+                <span key={bucket.key} style={{ fontSize: "11px", color: "#9ca3af" }}>
+                  {bucket.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: "24px", marginTop: "20px", paddingLeft: "40px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div style={{ width: "16px", height: "4px", backgroundColor: "#93c5fd", borderRadius: "2px" }} />
+            <span style={{ fontSize: "13px", color: "#374151" }}>Billable Hours</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div style={{ width: "16px", height: "4px", backgroundColor: "#fbbf24", borderRadius: "2px" }} />
+            <span style={{ fontSize: "13px", color: "#374151" }}>Unbilled Hours</span>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ height: "1px", backgroundColor: "#f3f4f6", margin: "0 -24px 24px -24px" }} />
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "16px" }}>
+        <div style={{ textAlign: "center", borderRight: "1px solid #e5e7eb", paddingRight: "8px" }}>
+          <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "6px" }}>Logged Hours</div>
+          <div style={{ fontSize: "16px", color: "#2563eb", fontWeight: "600" }}>{formatMinutesToTime(chartTotals.loggedMinutes)}</div>
+          <div style={{ fontSize: "14px", color: "#111827", fontWeight: "500" }}>{formatMoney(chartLoggedAmount)}</div>
+        </div>
+        <div style={{ textAlign: "center", borderRight: "1px solid #e5e7eb", paddingRight: "8px" }}>
+          <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "6px" }}>Billable Hours</div>
+          <div style={{ fontSize: "16px", color: "#2563eb", fontWeight: "600" }}>{formatMinutesToTime(chartTotals.billableMinutes)}</div>
+          <div style={{ fontSize: "14px", color: "#111827", fontWeight: "500" }}>{formatMoney(chartBillableAmount)}</div>
+        </div>
+        <div style={{ textAlign: "center", borderRight: "1px solid #e5e7eb", paddingRight: "8px" }}>
+          <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "6px" }}>Billed Hours</div>
+          <div style={{ fontSize: "16px", color: "#2563eb", fontWeight: "600" }}>{formatMinutesToTime(chartTotals.billedMinutes)}</div>
+          <div style={{ fontSize: "14px", color: "#111827", fontWeight: "500" }}>{formatMoney(chartBilledAmount)}</div>
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "6px" }}>Unbilled Hours</div>
+          <div style={{ fontSize: "16px", color: "#2563eb", fontWeight: "600" }}>{formatMinutesToTime(chartTotals.unbilledMinutes)}</div>
+          <div style={{ fontSize: "14px", color: "#111827", fontWeight: "500" }}>{formatMoney(chartUnbilledAmount)}</div>
+        </div>
+      </div>
+    </>
+  );
+
+  const renderProjectHoursChart = () => (
+    <>
+      <div style={{ height: "300px", position: "relative", marginBottom: "12px" }}>
+        <div style={{ height: "240px", paddingLeft: "40px", paddingRight: "20px", borderBottom: "1px solid #e5e7eb", position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", left: "6px", top: "50%", transform: "translateY(-50%)", fontSize: "11px", color: "#9ca3af" }}>
+            Hours
+          </div>
+          <div style={{ position: "absolute", left: "0", top: "0", bottom: "0", display: "flex", flexDirection: "column", justifyContent: "space-between", fontSize: "11px", color: "#9ca3af", paddingBottom: "10px", width: "35px" }}>
+            {projectChartTicks.map((value, index) => (
+              <span key={index}>{Number.isInteger(value) ? `${value}h` : `${value.toFixed(1)}h`}</span>
+            ))}
+          </div>
+
+          <div style={{ height: "100%", paddingTop: "10px", paddingBottom: "30px", position: "relative", marginLeft: "40px", width: "100%" }}>
+            <svg width="100%" height="100%" viewBox={`0 0 ${chartWidth} 220`} preserveAspectRatio="xMidYMid meet" role="img" aria-label="Bar Chart" style={{ position: "absolute", top: "10px", left: 0 }}>
+              {[0, 1, 2, 3].map((i) => {
+                const y = (i / 3) * 220;
+                return <line key={i} x1="0" y1={y} x2={chartWidth} y2={y} stroke="#f3f4f6" strokeWidth="1" />;
+              })}
+              <polyline points={projectChartPoints} fill="none" stroke="#60a5fa" strokeWidth="2" />
+              {chartData.buckets.map((bucket, index) => {
+                const centerX = chartData.buckets.length === 1 ? chartWidth / 2 : (index / Math.max(chartData.buckets.length - 1, 1)) * chartWidth;
+                const y = 220 - ((bucket.loggedMinutes / 60) / projectChartMaxValue) * 180;
+                return <circle key={bucket.key} cx={centerX} cy={y} r="3" fill="#60a5fa" />;
+              })}
+            </svg>
+
+            <div style={{ position: "absolute", bottom: "-25px", left: "0", right: "40px", display: "flex", justifyContent: "space-between", width: "100%" }}>
+              {chartData.buckets.map((bucket) => (
+                <span key={bucket.key} style={{ fontSize: "11px", color: "#9ca3af" }}>
+                  {bucket.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: "12px", marginTop: "18px", justifyContent: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div style={{ width: "16px", height: "4px", backgroundColor: "#60a5fa", borderRadius: "2px" }} />
+            <span style={{ fontSize: "13px", color: "#374151" }}>Logged Hours</span>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ height: "1px", backgroundColor: "#e5e7eb", margin: "0 -24px 16px -24px" }} />
+
+      <div style={{ textAlign: "center", marginTop: "8px" }}>
+        <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>Logged Hours</div>
+        <div style={{ fontSize: "16px", color: "#2563eb", fontWeight: "600" }}>{formatMinutesToTime(chartTotals.loggedMinutes)}</div>
+        <div style={{ fontSize: "14px", color: "#111827", fontWeight: "500" }}>{formatMoney(chartLoggedAmount)}</div>
+      </div>
+    </>
+  );
+
+  const filterByStatus = (items, status) => {
+    if (!items || status === "All") return items;
+    return items.filter((item) => {
+      const raw = item?.status || item?.statusText || item?.state || "";
+      return String(raw).toLowerCase() === String(status).toLowerCase();
+    });
+  };
+
+  const filteredSalesInvoices = filterByStatus(salesInvoices, invoicesStatusFilter);
+  const filteredSalesQuotes = filterByStatus(salesQuotes, quotesStatusFilter);
+  const filteredSalesRetainerInvoices = filterByStatus(salesRetainerInvoices, retainerInvoicesStatusFilter);
+  const filteredSalesCreditNotes = filterByStatus(salesCreditNotes, creditNotesStatusFilter);
+  const filteredSalesRefunds = filterByStatus(salesRefunds, refundsStatusFilter);
+
+  const handleDeleteProject = async () => {
+    if (!projectId) return;
+    try {
+      await projectsAPI.delete(projectId);
+      toast.success("Project deleted successfully.");
+      window.dispatchEvent(new Event('projectUpdated'));
+      setShowDeleteModal(false);
+      navigate('/time-tracking/projects');
+    } catch (error) {
+      console.error("Error deleting project:", error);
+      toast.error("Failed to delete project");
+    }
+  };
 
   return (
-    <div style={{ width: "100%", backgroundColor: "#f5f5f5", minHeight: "100vh" }}>
+    <div style={{ width: "100%", backgroundColor: "#f8fafc", minHeight: "100vh" }}>
       {/* Top Navigation Bar */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="sticky top-0 z-50 bg-[#f8fafc]/95 border-b border-gray-200 px-6 py-3">
         <div className="mb-4">
           <div className="flex justify-between items-center mb-2">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => navigate("/time-tracking/projects")}
-                className="px-3 py-2 border border-gray-200 rounded bg-white cursor-pointer text-sm text-gray-500 flex items-center gap-2 hover:bg-gray-50"
+                className="px-2.5 py-2 border border-gray-200 rounded bg-white cursor-pointer text-sm text-gray-500 flex items-center gap-2 hover:bg-gray-50"
               >
-                â†
+                <ChevronLeft size={16} />
               </button>
               <span className="text-base font-medium text-gray-800">
-                taban
+                {project.projectName || "Project"}
               </span>
             </div>
             <div className="flex items-center gap-2 ml-auto">
+                            {isCompletedProject ? (
+                <>
+
+              <button
+                onClick={openAddUsersModal}
+                className="px-4 py-2 border border-gray-200 rounded bg-white cursor-pointer text-sm hover:bg-gray-50"
+              >
+                Add User
+              </button>
+              <button
+                onClick={async () => {
+                  if (!project) return;
+                  try {
+                    const clonedProjectData: any = {
+                      name: (project.projectName || project.name || "Project") + " (Clone)",
+                      description: project.description || "",
+                      status: project.status || "planning",
+                      budget: project.budget || 0,
+                      currency: project.currency || "USD",
+                      billable: project.billable !== undefined ? project.billable : true,
+                      billingRate: project.billingRate || 0,
+                      startDate: new Date(),
+                      endDate: project.endDate ? new Date(project.endDate) : null,
+                    };
+                    if (project.customer || project.customerId || project.customerName) {
+                      const customerId =
+                        project.customer?._id ||
+                        project.customer?.id ||
+                        project.customerId ||
+                        project.customer ||
+                        "";
+                      const customerName =
+                        project.customerName ||
+                        project.customer?.displayName ||
+                        project.customer?.companyName ||
+                        project.customer?.name ||
+                        "";
+                      clonedProjectData.customer = project.customer || project.customerId || undefined;
+                      clonedProjectData.customerId = customerId || undefined;
+                      clonedProjectData.customerName = customerName || undefined;
+                    }
+                    await projectsAPI.create(clonedProjectData);
+                    window.dispatchEvent(new Event('projectUpdated'));
+                    toast.success('Project cloned successfully!');
+                  } catch (error) {
+                    console.error('Error cloning project:', error);
+                    toast.error('Failed to clone project: ' + (error.message || 'Unknown error'));
+                  }
+                }}
+                className="px-4 py-2 border border-gray-200 rounded bg-white cursor-pointer text-sm hover:bg-gray-50"
+              >
+                Clone
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await projectsAPI.update(projectId, { status: "Active", isActive: true });
+                    setProject({ ...project, status: "Active", isActive: true });
+                    window.dispatchEvent(new Event('projectUpdated'));
+                    toast.success('Project marked as active');
+                  } catch (error) {
+                    console.error('Error marking project as active:', error);
+                    toast.error('Failed to mark project as active: ' + (error.message || 'Unknown error'));
+                  }
+                }}
+                className="px-4 py-2 border-none rounded bg-[#22c55e] text-white cursor-pointer text-sm font-medium hover:bg-[#16a34a] transition-colors"
+              >
+                Mark as Active
+              </button>
+              <button
+                onClick={() => {
+                  setShowDeleteModal(true);
+                }}
+                className="px-4 py-2 border border-gray-200 rounded bg-white cursor-pointer text-sm hover:bg-gray-50"
+              >
+                Delete
+              </button>
+                </>
+              ) : (
+                <>
+
               <button
                 onClick={() => navigate(`/time-tracking/projects/${projectId}/edit`)}
                 className="px-4 py-2 border border-gray-200 rounded bg-white cursor-pointer text-sm hover:bg-gray-50"
@@ -528,18 +2839,38 @@ export default function ProjectDetailPage() {
                 {showTransactionDropdown && (
                   <div
                     onMouseEnter={() => setShowTransactionDropdown(true)}
-                    onMouseLeave={() => {
-                      setShowTransactionDropdown(false);
-                      setHoveredTransaction(null);
-                    }}
+                    onMouseLeave={() => setShowTransactionDropdown(false)}
                     className="absolute top-full left-0 mt-1 bg-white rounded-md shadow-lg min-w-[220px] max-h-[500px] z-[1000] border border-gray-200 overflow-y-auto"
                   >
+                    {/* INVENTORY Section */}
+                    <div className="py-2">
+                      <div className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                        INVENTORY
+                      </div>
+                      <div
+                        onClick={() => {
+                          setShowTransactionDropdown(false);
+                          handleCreateInventoryAdjustmentFromProject();
+                        }}
+                        className="px-4 py-2.5 text-sm text-gray-800 cursor-pointer my-[1px] transition-colors hover:bg-gray-200"
+                      >
+                        Create Adjustment
+                      </div>
+                    </div>
+
+                    {/* Divider */}
+                    <div style={{
+                      height: "1px",
+                      backgroundColor: "#e5e7eb",
+                      margin: "4px 0"
+                    }}></div>
+
                     {/* SALES Section */}
                     <div className="py-2">
                       <div className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                         SALES
                       </div>
-                      {['Create Quote', 'Create Invoice', 'Create Recurring Invoice', 'Create Credit Note'].map((option) => (
+                      {['Create Quote', 'Create Invoice', 'Create Retainer Invoice', 'Create Sales Order', 'Create Credit Note'].map((option) => (
                         <div
                           key={option}
                           onClick={() => {
@@ -547,22 +2878,41 @@ export default function ProjectDetailPage() {
                             // Navigate to the appropriate form page
                             switch (option) {
                               case 'Create Quote':
-                                navigate('/sales/quotes/new');
+                                handleCreateQuoteFromProject();
                                 break;
                               case 'Create Invoice':
-                                navigate('/sales/invoices/new');
+                                handleCreateInvoiceFromProject();
                                 break;
-                              case 'Create Recurring Invoice':
-                                navigate('/sales/recurring-invoices/new');
+                              case 'Create Retainer Invoice':
+                                handleCreateRetainerInvoiceFromProject();
+                                break;
+                              case 'Create Sales Order':
+                                handleCreateSalesOrderFromProject();
                                 break;
                               case 'Create Credit Note':
-                                navigate('/sales/credit-notes/new');
+                                handleCreateCreditNoteFromProject();
                                 break;
                               default:
                                 break;
                             }
                           }}
-                          className="px-4 py-2.5 text-sm text-gray-800 cursor-pointer hover:bg-[#156372] hover:text-white my-[1px] transition-colors"
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = "#e5e7eb";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "transparent";
+                          }}
+                          style={{
+                            margin: '1px 8px',
+                            padding: '10px 12px',
+                            fontSize: '16px',
+                            borderRadius: '10px',
+                            cursor: 'pointer',
+                            border: '2px solid transparent',
+                            backgroundColor: 'transparent',
+                            color: '#1f2937',
+                            transition: 'all 0.2s'
+                          }}
                         >
                           {option}
                         </div>
@@ -581,7 +2931,7 @@ export default function ProjectDetailPage() {
                       <div className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                         PURCHASES
                       </div>
-                      {['Create Expense', 'Create Recurring Expense', 'Create Bill', 'Create Vendor Credits'].map((option) => (
+                      {['Create Expense', 'Create Recurring Expense', 'Create Purchase Order', 'Create Bill', 'Create Vendor Credits'].map((option) => (
                         <div
                           key={option}
                           onClick={() => {
@@ -589,53 +2939,212 @@ export default function ProjectDetailPage() {
                             // Navigate to the appropriate form page
                             switch (option) {
                               case 'Create Expense':
-                                navigate('/purchases/expenses/new');
+                                handleCreateExpenseFromProject(false);
                                 break;
                               case 'Create Recurring Expense':
-                                navigate('/purchases/recurring-expenses/new');
+                                handleCreateExpenseFromProject(true);
+                                break;
+                              case 'Create Purchase Order':
+                                handleCreatePurchaseOrderFromProject();
                                 break;
                               case 'Create Bill':
-                                navigate('/purchases/bills/new');
+                                handleCreateBillFromProject();
                                 break;
                               case 'Create Vendor Credits':
-                                navigate('/purchases/vendor-credits/new');
+                                handleCreateVendorCreditFromProject();
                                 break;
                               default:
                                 break;
                             }
                           }}
-                          className="px-4 py-2.5 text-sm text-gray-800 cursor-pointer hover:bg-[#156372] hover:text-white my-[1px] transition-colors"
+                          className="px-4 py-2.5 text-sm text-gray-800 cursor-pointer my-[1px] transition-colors hover:bg-gray-200"
                         >
                           {option}
                         </div>
                       ))}
                     </div>
 
-                    {/* Divider */}
-                    <div className="h-px bg-gray-200 my-1"></div>
-
                     {/* Create Manual Journal */}
                     <div
-                      className="group flex items-center justify-between px-4 py-2.5 text-sm text-gray-800 cursor-pointer hover:bg-[#156372] hover:text-white my-[1px] transition-colors"
                       onClick={() => {
                         setShowTransactionDropdown(false);
-                        navigate('/accountant/manual-journals/new');
+                        handleCreateManualJournalFromProject();
                       }}
+                      className="px-4 py-2.5 text-sm text-gray-800 cursor-pointer my-[1px] transition-colors hover:bg-gray-200"
                     >
-                      <span>Create Manual Journal</span>
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M3 4.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
+                      Create Manual Journal
+                    </div>
+
+                    
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <button
+                  onClick={() => setShowAttachmentsPopover((prev) => !prev)}
+                  className="h-8 min-w-8 rounded border border-gray-200 bg-white px-2 cursor-pointer flex items-center justify-center gap-1 text-gray-600 hover:bg-gray-50"
+                  aria-label="Attachments"
+                  title="Attachments"
+                >
+                  <Paperclip size={14} strokeWidth={2} />
+                  <span className="text-[12px] font-medium leading-none">{attachedFiles.length}</span>
+                </button>
+                {showAttachmentsPopover && (
+                  <div className="absolute right-0 top-full mt-2 w-[286px] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg z-[220]">
+                    <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                      <h3 className="text-[15px] font-semibold text-slate-900">Attachments</h3>
+                      <button
+                        type="button"
+                        onClick={() => setShowAttachmentsPopover(false)}
+                        className="h-6 w-6 rounded text-red-500 flex items-center justify-center hover:bg-red-50"
+                        aria-label="Close attachments"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <div className="px-4 py-4">
+                      {attachedFiles.length === 0 ? (
+                        <div className="py-3 text-center text-[14px] text-slate-700">No Files Attached</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {attachedFiles.map((file, index) => (
+                            <div key={`${file.name}-${index}`}>
+                              <div
+                                className={`group relative cursor-pointer rounded-md px-3 py-2 pr-16 text-[13px] transition-colors ${
+                                  attachmentMenuIndex === index
+                                    ? "w-full bg-[#eef2ff] hover:bg-[#e5e7eb]"
+                                    : "w-full bg-white hover:bg-slate-100"
+                                }`}
+                              >
+                                <div className="flex items-start gap-2">
+                                  <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-sm ${isPdfAttachment(file.name) ? "bg-red-50 text-red-500" : "bg-slate-50 text-slate-400"}`}>
+                                    <FileText size={12} />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="truncate text-[13px] text-slate-700">{file.name}</div>
+                                    <div className="text-[12px] text-slate-500">File Size: {formatFileSize(file.size)}</div>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRequestRemoveAttachment(index)}
+                                  className="absolute right-8 top-1/2 -translate-y-1/2 rounded p-1 text-red-500 opacity-0 transition-opacity hover:bg-red-50 group-hover:opacity-100"
+                                  aria-label="Remove attachment"
+                                  title="Remove"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setAttachmentMenuIndex((current) => (current === index ? null : index))}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-600 opacity-0 transition-opacity group-hover:opacity-100"
+                                  aria-label="Attachment actions"
+                                  title="More"
+                                >
+                                  <MoreVertical size={14} />
+                                </button>
+                                {attachmentMenuIndex === index && (
+                                  <div className="mt-2 flex items-center gap-5 px-8 text-[12px] font-medium text-blue-600">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        handleDownloadAttachment(file);
+                                        setAttachmentMenuIndex(null);
+                                      }}
+                                      className="hover:text-blue-700"
+                                    >
+                                      Download
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRequestRemoveAttachment(index)}
+                                      className="hover:text-blue-700"
+                                    >
+                                      Remove
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenAttachmentInNewTab(file)}
+                                      className="rounded p-1 text-blue-600 hover:bg-blue-50"
+                                      aria-label="Open attachment"
+                                      title="Open"
+                                    >
+                                      <ExternalLink size={13} />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="mt-4 text-center">
+                        {isUploadingAttachments ? (
+                          <div className="flex h-[58px] w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 text-[14px] font-medium text-slate-400">
+                            <Loader2 size={16} className="animate-spin text-blue-400" />
+                            <span>Uploading...</span>
+                          </div>
+                        ) : (
+                          <label className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#156372] px-4 py-3 text-[14px] font-semibold text-white shadow-sm hover:opacity-95">
+                            <Upload size={16} />
+                            <span>Upload your Files</span>
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              multiple
+                              className="hidden"
+                              onChange={handleAttachmentUpload}
+                            />
+                          </label>
+                        )}
+                        <p className="mt-2 text-[11px] text-slate-500">You can upload a maximum of 10 files, 10MB each</p>
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
-              <button
-                onClick={() => setShowAttachmentsModal(true)}
-                className="w-9 h-9 border border-gray-200 rounded bg-white cursor-pointer flex items-center justify-center text-gray-500 hover:bg-gray-50"
-              >
-                <Paperclip size={18} />
-              </button>
+              {attachmentDeleteConfirmIndex !== null && (
+                <div
+                  className="fixed inset-0 z-[10000] flex items-start justify-center bg-black/40 px-4 pt-4"
+                  onClick={handleCancelRemoveAttachment}
+                >
+                  <div
+                    className="w-full max-w-[520px] overflow-hidden rounded-lg bg-white shadow-2xl"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-start gap-3 px-5 py-4">
+                      <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                        <AlertTriangle size={18} />
+                      </div>
+                      <p className="text-[14px] leading-6 text-slate-700">
+                        This action will permanently delete the attachment. Are you sure you want to proceed?
+                      </p>
+                    </div>
+                    <div className="border-t border-slate-200 px-5 py-4">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (attachmentDeleteConfirmIndex !== null) {
+                              handleRemoveAttachment(attachmentDeleteConfirmIndex);
+                            }
+                          }}
+                          className="rounded-md bg-blue-500 px-4 py-2 text-[14px] font-medium text-white hover:bg-blue-600"
+                        >
+                          Proceed
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancelRemoveAttachment}
+                          className="rounded-md border border-slate-300 bg-white px-4 py-2 text-[14px] font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="relative" ref={moreDropdownRef}>
                 <button
                   onClick={() => setShowMoreDropdown(!showMoreDropdown)}
@@ -648,13 +3157,14 @@ export default function ProjectDetailPage() {
                 </button>
 
                 {/* More Dropdown Menu */}
-                {showMoreDropdown && (
+                                {showMoreDropdown && (
                   <div className="absolute top-full right-0 mt-1 bg-white rounded-md shadow-lg min-w-[200px] z-[1000] border border-gray-200 overflow-hidden">
                     {/* Invoice Preferences */}
                     <div
-                      className="px-4 py-2.5 text-sm text-gray-800 cursor-pointer hover:bg-[#156372] hover:text-white transition-colors"
+                      className="mx-2 mt-2 mb-1 rounded-lg border border-transparent px-4 py-2.5 text-sm text-gray-800 cursor-pointer transition-colors hover:bg-gray-100"
                       onClick={(e) => {
                         e.stopPropagation();
+                        setInvoiceInfoData(getProjectInvoiceInfoDefaults(project));
                         setShowMoreDropdown(false);
                         setShowProjectInvoiceInfo(true);
                       }}
@@ -664,27 +3174,47 @@ export default function ProjectDetailPage() {
 
                     {/* Mark as Inactive */}
                     <div
-                      className="px-4 py-2.5 text-sm text-gray-800 cursor-pointer hover:bg-[#156372] hover:text-white transition-colors"
+                      className="mx-2 mb-1 rounded-lg border border-transparent px-4 py-2.5 text-sm text-gray-800 cursor-pointer transition-colors hover:bg-gray-100"
                       onClick={async (e) => {
                         e.stopPropagation();
                         setShowMoreDropdown(false);
                         try {
                           await projectsAPI.update(projectId, { status: "Inactive", isActive: false });
-                          setProject((prev) => prev ? { ...prev, status: "Inactive", isActive: false } : prev);
+                          setProject({ ...project, status: "Inactive", isActive: false });
                           window.dispatchEvent(new Event('projectUpdated'));
                           toast.success('Project marked as inactive');
                         } catch (error) {
                           console.error("Error marking project as inactive:", error);
-                          toast.error("Failed to mark project as inactive: " + getErrorMessage(error));
+                          toast.error("Failed to mark project as inactive: " + (error.message || "Unknown error"));
                         }
                       }}
                     >
                       Mark as Inactive
                     </div>
 
+                    {/* Mark as Completed */}
+                    <div
+                      className="mx-2 mb-1 rounded-lg border border-transparent px-4 py-2.5 text-sm text-gray-800 cursor-pointer transition-colors hover:bg-gray-100"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        setShowMoreDropdown(false);
+                        try {
+                          await projectsAPI.update(projectId, { status: "Completed" });
+                          setProject({ ...project, status: "Completed" });
+                          window.dispatchEvent(new Event('projectUpdated'));
+                          toast.success('Project marked as completed');
+                        } catch (error) {
+                          console.error("Error marking project as completed:", error);
+                          toast.error("Failed to mark project as completed: " + (error.message || "Unknown error"));
+                        }
+                      }}
+                    >
+                      Mark as Completed
+                    </div>
+
                     {/* Clone */}
                     <div
-                      className="px-4 py-2.5 text-sm text-gray-800 cursor-pointer hover:bg-[#156372] hover:text-white transition-colors"
+                      className="mx-2 mb-1 rounded-lg border border-transparent px-4 py-2.5 text-sm text-gray-800 cursor-pointer transition-colors hover:bg-gray-100"
                       onClick={async (e) => {
                         e.stopPropagation();
                         setShowMoreDropdown(false);
@@ -692,7 +3222,7 @@ export default function ProjectDetailPage() {
 
                         try {
                           // Create cloned project data
-                          const clonedProjectData = {
+                          const clonedProjectData: any = {
                             name: (project.projectName || project.name || "Project") + " (Clone)",
                             description: project.description || '',
                             status: project.status || 'planning',
@@ -708,8 +3238,22 @@ export default function ProjectDetailPage() {
                           };
 
                           // Copy customer if exists
-                          if (project.customer || project.customerId) {
-                            clonedProjectData.customer = project.customer || project.customerId;
+                          if (project.customer || project.customerId || project.customerName) {
+                            const customerId =
+                              project.customer?._id ||
+                              project.customer?.id ||
+                              project.customerId ||
+                              project.customer ||
+                              "";
+                            const customerName =
+                              project.customerName ||
+                              project.customer?.displayName ||
+                              project.customer?.companyName ||
+                              project.customer?.name ||
+                              "";
+                            clonedProjectData.customer = project.customer || project.customerId || undefined;
+                            clonedProjectData.customerId = customerId || undefined;
+                            clonedProjectData.customerName = customerName || undefined;
                           }
 
                           // Copy assigned users if exists
@@ -724,7 +3268,9 @@ export default function ProjectDetailPage() {
                             clonedProjectData.tasks = project.tasks.map(task => ({
                               taskName: task.taskName || '',
                               description: task.description || '',
+                              ratePerHour: task.ratePerHour || task.rate || task.hourlyRate || '',
                               billable: task.billable !== undefined ? task.billable : true,
+                              active: task.active !== false,
                               budgetHours: task.budgetHours || '',
                             }));
                           }
@@ -741,20 +3287,12 @@ export default function ProjectDetailPage() {
                           }
 
                           // Create the cloned project immediately
-                          const response = await projectsAPI.create(clonedProjectData);
+                          await projectsAPI.create(clonedProjectData);
                           toast.success('Project cloned successfully!');
                           window.dispatchEvent(new Event('projectUpdated'));
-
-                          // Navigate to the new project
-                          const newProjectId = response?.data?._id || response?.data?.id || response?._id || response?.id;
-                          if (newProjectId) {
-                            navigate(`/time-tracking/projects/${newProjectId}`);
-                          } else {
-                            navigate('/time-tracking/projects');
-                          }
                         } catch (error) {
                           console.error('Error cloning project:', error);
-                          toast.error('Failed to clone project: ' + getErrorMessage(error));
+                          toast.error('Failed to clone project: ' + (error.message || 'Unknown error'));
                         }
                       }}
                     >
@@ -763,7 +3301,7 @@ export default function ProjectDetailPage() {
 
                     {/* Add Project Task */}
                     <div
-                      className="px-4 py-2.5 text-sm text-gray-800 cursor-pointer hover:bg-[#156372] hover:text-white transition-colors"
+                      className="mx-2 mb-1 rounded-lg border border-transparent px-4 py-2.5 text-sm text-gray-800 cursor-pointer transition-colors hover:bg-gray-100"
                       onClick={(e) => {
                         e.stopPropagation();
                         setShowMoreDropdown(false);
@@ -775,40 +3313,24 @@ export default function ProjectDetailPage() {
 
                     {/* Add User */}
                     <div
-                      onMouseEnter={() => setHoveredMoreOption('Add User')}
-                      onMouseLeave={() => setHoveredMoreOption(null)}
                       onClick={() => {
                         setShowMoreDropdown(false);
-                        setShowAddUserModal(true);
+                        openAddUsersModal();
                       }}
-                      style={{
-                        padding: "10px 16px",
-                        fontSize: "14px",
-                        color: hoveredMoreOption === 'Add User' ? "white" : "#1f2937",
-                        cursor: "pointer",
-                        backgroundColor: hoveredMoreOption === 'Add User' ? "#156372" : "transparent"
-                      }}
+                      className="mx-2 mb-1 rounded-lg border border-transparent px-4 py-2.5 text-sm text-gray-800 cursor-pointer transition-colors"
                     >
                       Add User
                     </div>
 
+                    <div className="mx-3 my-1 border-t border-gray-200" />
+
                     {/* Delete */}
                     <div
-                      className="px-4 py-2.5 text-sm text-gray-800 cursor-pointer hover:bg-[#ef4444] hover:text-white transition-colors"
-                      onClick={async (e) => {
+                      className="mx-2 mb-2 rounded-lg border border-transparent px-4 py-2.5 text-sm text-red-600 cursor-pointer transition-colors hover:bg-red-50 hover:text-red-700"
+                      onClick={(e) => {
                         e.stopPropagation();
                         setShowMoreDropdown(false);
-                        if (window.confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
-                          try {
-                            await projectsAPI.delete(projectId);
-                            toast.success("Project deleted successfully.");
-                            window.dispatchEvent(new Event('projectUpdated'));
-                            navigate('/time-tracking/projects');
-                          } catch (error) {
-                            console.error("Error deleting project:", error);
-                            toast.error("Failed to delete project");
-                          }
-                        }
+                        setShowDeleteModal(true);
                       }}
                     >
                       Delete
@@ -816,6 +3338,9 @@ export default function ProjectDetailPage() {
                   </div>
                 )}
               </div>
+              
+                </>
+              )}
               <button
                 onClick={() => navigate("/time-tracking/projects")}
                 className="p-2 border-none bg-transparent cursor-pointer text-xl text-gray-500 flex items-center justify-center hover:bg-gray-100 rounded-full"
@@ -823,22 +3348,25 @@ export default function ProjectDetailPage() {
                 <X size={18} />
               </button>
             </div>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+            </div>
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
             <div style={{ display: "flex", gap: "0px" }}>
               {tabs.map((tab) => (
                 <button
                   key={tab}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => {
+                    setActiveTab(tab);
+                    setShowCommentsPanel(false);
+                  }}
                   style={{
-                    padding: "8px 16px",
+                    padding: "10px 14px",
                     border: "none",
-                    borderBottom: activeTab === tab ? "2px solid #156372" : "2px solid transparent",
+                    borderBottom: (!showCommentsPanel && activeTab === tab) ? "2px solid #2563eb" : "2px solid transparent",
                     backgroundColor: "transparent",
                     cursor: "pointer",
-                    fontSize: "14px",
-                    fontWeight: activeTab === tab ? "600" : "400",
-                    color: activeTab === tab ? "#156372" : "#666"
+                    fontSize: "13px",
+                    fontWeight: (!showCommentsPanel && activeTab === tab) ? "600" : "400",
+                    color: (!showCommentsPanel && activeTab === tab) ? "#111827" : "#6b7280"
                   }}
                 >
                   {tab}
@@ -846,122 +3374,261 @@ export default function ProjectDetailPage() {
               ))}
             </div>
             <button
-              onClick={() => setActiveTab("Comments")}
+              type="button"
+              onClick={() => setShowCommentsPanel((prev) => !prev)}
               style={{
-                padding: "8px 16px",
-                border: "none",
-                backgroundColor: "transparent",
-                cursor: "pointer",
-                fontSize: "14px",
                 display: "flex",
                 alignItems: "center",
                 gap: "6px",
-                color: activeTab === "Comments" ? "#156372" : "#666",
-                borderBottom: activeTab === "Comments" ? "2px solid #156372" : "2px solid transparent",
-                fontWeight: activeTab === "Comments" ? "600" : "400"
+                border: "none",
+                background: "transparent",
+                color: "#111827",
+                fontSize: "13px",
+                cursor: "pointer",
+                fontWeight: showCommentsPanel ? "600" : "500",
+                borderBottom: showCommentsPanel ? "2px solid #2563eb" : "2px solid transparent",
+                padding: "10px 14px"
               }}
             >
-              <MessageSquare size={16} />
+              <MessageSquare size={14} />
               Comments
             </button>
           </div>
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: "24px", padding: "24px" }}>
-        {/* Left Sidebar - Project Details */}
-        <div style={{
-          width: "300px",
-          backgroundColor: "#fff",
-          borderRadius: "8px",
-          padding: "24px",
-          height: "fit-content",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
-        }}>
-          {/* Project Header */}
-          <div style={{ marginBottom: "24px" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", marginBottom: "4px" }}>
-              <div style={{ marginTop: "4px" }}>
-                <Briefcase size={20} style={{ color: "#4b5563" }} />
+      <div style={{ padding: "8px 48px 20px 0", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
+        {showCommentsPanel ? (
+          <div className="w-full max-w-[920px]">
+            <div className="mb-10 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+              <div className="flex gap-4 p-3 bg-gray-50/80 border-b border-gray-200">
+                <button
+                  type="button"
+                  className={`p-1.5 rounded-[7px] cursor-pointer transition-all flex items-center justify-center ${isBold ? "text-gray-800 bg-white border border-[#cfd5e3] shadow-sm" : "text-gray-500 border border-transparent hover:bg-gray-100"}`}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => applyCommentFormat("bold")}
+                  title="Bold"
+                >
+                  <Bold size={15} />
+                </button>
+                <button
+                  type="button"
+                  className={`p-1.5 rounded-[7px] cursor-pointer transition-all flex items-center justify-center ${isItalic ? "text-gray-800 bg-white border border-[#cfd5e3] shadow-sm" : "text-gray-500 border border-transparent hover:bg-gray-100"}`}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => applyCommentFormat("italic")}
+                  title="Italic"
+                >
+                  <Italic size={15} />
+                </button>
+                <button
+                  type="button"
+                  className={`p-1.5 rounded-[7px] cursor-pointer transition-all flex items-center justify-center ${isUnderline ? "text-gray-800 bg-white border border-[#cfd5e3] shadow-sm" : "text-gray-500 border border-transparent hover:bg-gray-100"}`}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => applyCommentFormat("underline")}
+                  title="Underline"
+                >
+                  <Underline size={15} />
+                </button>
               </div>
-              <div>
-                <div style={{ fontSize: "20px", fontWeight: "600", color: "#1f2937", lineHeight: "1.2" }}>
-                  {project.projectName || "taban"}
+              <div className="p-0">
+                <div className="relative">
+                  {isEditorEmpty && (
+                    <div className="pointer-events-none absolute left-5 top-4 text-sm text-gray-400">
+                      Add a comment...
+                    </div>
+                  )}
+                  <div
+                  ref={commentEditorRef}
+                  id="comment-textarea"
+                  contentEditable
+                  suppressContentEditableWarning
+                  dir="ltr"
+                  className="min-h-40 w-full px-5 py-4 text-sm text-gray-700 outline-none whitespace-pre-wrap leading-relaxed border-none"
+                  onInput={syncCommentEditorState}
+                  onMouseUp={syncCommentEditorState}
+                  onKeyUp={syncCommentEditorState}
+                  onFocus={syncCommentEditorState}
+                  style={{ textAlign: "left", direction: "ltr" }}
+                />
                 </div>
-                <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>
-                  {project.customerName || "fsdv"}
-                </div>
+              </div>
+              <div className="border-t border-gray-200 px-5 py-4">
+                <button
+                  type="button"
+                  className="px-5 py-2 bg-[#156372] text-white rounded text-[13px] font-bold cursor-pointer hover:opacity-90 active:scale-95 transition-all shadow-sm border-none"
+                  onClick={handleAddComment}
+                >
+                  Add Comment
+                </button>
               </div>
             </div>
+
+            <div className="flex items-center gap-4 mb-8">
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-[11px] font-bold text-gray-600 uppercase tracking-[0.2em] whitespace-nowrap">ALL COMMENTS</h3>
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-500 px-1.5 text-[11px] font-bold leading-none text-white">
+                  {comments.length}
+                </span>
+              </div>
+            </div>
+
+            {comments.length === 0 ? (
+              <div className="text-center py-20 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+                <p className="text-sm text-gray-400 font-medium italic">No comments yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-5 pb-20 pr-6">
+                {comments.map((comment) => (
+                  <div key={comment.id} className="group flex items-start gap-3">
+                    <div className="mt-0.5 h-6 w-6 shrink-0 rounded-full border border-[#cfdaf0] bg-white text-[11px] font-semibold text-[#6b7a90] flex items-center justify-center shadow-sm">
+                      {getCommentAuthorInitial(comment)}
+                    </div>
+                    <div className="flex-1">
+                      <div className="mb-2 flex items-center gap-2 text-[12px]">
+                        <span className="font-semibold text-[#111827]">{getCommentAuthorName(comment)}</span>
+                        <span className="text-[#94a3b8]">•</span>
+                        <span className="text-[#64748b]">
+                          {new Date(comment.createdAt).toLocaleString("en-GB", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit"
+                          })}
+                        </span>
+                      </div>
+                      <div className="rounded-lg bg-[#f8fafc] px-4 py-3 shadow-sm border border-[#eef2f7]">
+                        <div className="flex items-start justify-between gap-4">
+                          <div
+                            className="text-[15px] leading-relaxed text-[#156372] whitespace-pre-wrap font-semibold flex-1"
+                            dangerouslySetInnerHTML={{ __html: commentMarkupToHtml(comment.content || comment.text || "") }}
+                          />
+                          <button
+                            className="mt-0.5 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all cursor-pointer border-none bg-transparent opacity-0 group-hover:opacity-100"
+                            onClick={() => openDeleteCommentModal(comment)}
+                            title="Delete comment"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-
-          {/* User/Client Link */}
-          <div style={{ marginBottom: "24px", display: "flex", alignItems: "center", gap: "12px" }}>
-            <div style={{
-              width: "24px",
-              display: "flex",
-              justifyContent: "center"
-            }}>
-              <User size={20} style={{ color: "#4b5563" }} />
-            </div>
-            <div>
-              <span style={{ color: "#2563eb", fontWeight: "500", fontSize: "15px", cursor: "pointer" }}>
-                {project.customerName || "KOWNI"}
-              </span>
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div style={{ height: "1px", backgroundColor: "#e5e7eb", margin: "0 0 24px 0" }}></div>
-
-          {/* Details List */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            {/* Project Code */}
-            <div>
-              <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "4px" }}>
-                Project Code
-              </div>
-              <div style={{ fontSize: "14px", color: "#374151", fontWeight: "400" }}>
-                {project.projectCode || "afv"}
-              </div>
-            </div>
-
-            {/* Billing Method */}
-            <div>
-              <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "4px" }}>
-                Billing Method
-              </div>
-              <div style={{ fontSize: "14px", color: "#374151", fontWeight: "400" }}>
-                Hourly Rate Per Task
-              </div>
-            </div>
-
-            {/* Watchlist */}
-            <div>
-              <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "4px" }}>
-                Add to dashboard watchlist.
-              </div>
-              <div style={{ fontSize: "13px" }}>
-                <span style={{ color: "#374151" }}>Enabled</span>
-                <span style={{ color: "#9ca3af", margin: "0 6px" }}>-</span>
-                <span style={{ color: "#2563eb", cursor: "pointer" }}>Disable</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Main Content Area */}
-        <div style={{ flex: 1 }}>
+        ) : (
+        <>
           {activeTab === "Overview" && (
             <>
-              {/* Project Hours & Summary */}
+            <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: "20px", alignItems: "stretch" }}>
+              {/* Left Sidebar - Project Details */}
               <div style={{
-                backgroundColor: "#fff",
-                borderRadius: "8px",
+                width: "280px",
+                backgroundColor: "#f3f4f6",
+                borderRadius: "6px",
                 padding: "24px",
-                marginBottom: "24px",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+                height: "100%",
+                border: "none",
+                boxShadow: "none",
+                display: "flex",
+                flexDirection: "column"
               }}>
+                {/* Project Header */}
+                <div style={{ marginBottom: "20px" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", marginBottom: "4px" }}>
+                    <div style={{ marginTop: "4px" }}>
+                      <Briefcase size={18} style={{ color: "#4b5563" }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "18px", fontWeight: "600", color: "#1f2937", lineHeight: "1.2" }}>
+                        {project.projectName || "Project"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Customer Link */}
+                <div style={{ marginBottom: "16px", display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div style={{ width: "24px", display: "flex", justifyContent: "center" }}>
+                    <User size={18} style={{ color: "#4b5563" }} />
+                  </div>
+                  <div>
+                    <span style={{ color: "#2563eb", fontWeight: "500", fontSize: "14px", cursor: "pointer" }}>
+                      {project.customerName || "Customer"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Divider */}
+                <div style={{ height: "1px", backgroundColor: "#e5e7eb", margin: "0 0 16px 0" }}></div>
+
+                {/* Details List */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {/* Billing Method */}
+                  <div>
+                    <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "6px" }}>
+                      Billing Method
+                    </div>
+                    <div style={{ fontSize: "13px", color: "#374151", fontWeight: "500" }}>
+                      {billingMethodLabel}
+                    </div>
+                  </div>
+
+                  {/* Total Project Cost */}
+                  <div>
+                    <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "6px" }}>
+                      Total Project Cost
+                    </div>
+                    <div style={{ fontSize: "13px", color: "#111827", fontWeight: "600" }}>
+                      {formatMoney(totalProjectCost)}
+                    </div>
+                  </div>
+
+                  {/* Watchlist */}
+                  <div>
+                    <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "6px" }}>
+                      Add to dashboard watchlist.
+                    </div>
+                    <div style={{ fontSize: "12px" }}>
+                      <span style={{ color: "#374151" }}>Enabled</span>
+                      <span style={{ color: "#9ca3af", margin: "0 6px" }}>-</span>
+                      <span style={{ color: "#2563eb", cursor: "pointer" }}>Disable</span>
+                    </div>
+                  </div>
+
+                  {/* Unbilled/Billed */}
+                  <div>
+                    <div style={{ fontSize: "12px", color: "#059669", marginBottom: "4px" }}>
+                      ● Unbilled Amount
+                    </div>
+                    <div style={{ fontSize: "13px", color: "#059669", fontWeight: "600" }}>
+                      {formatMoney(unbilledAmount)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "12px", color: "#ef4444", marginBottom: "4px" }}>
+                      ● Billed Amount
+                    </div>
+                    <div style={{ fontSize: "13px", color: "#ef4444", fontWeight: "600" }}>
+                      {formatMoney(billedAmount)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+                {/* Project Hours & Summary */}
+                <div style={{
+                  backgroundColor: "transparent",
+                  borderRadius: "6px",
+                  padding: "24px",
+                  marginBottom: "0",
+                  width: "100%",
+                  border: "1px solid #e5e7eb",
+                  boxShadow: "none"
+                }}>
                 <div style={{
                   display: "flex",
                   justifyContent: "space-between",
@@ -975,12 +3642,12 @@ export default function ProjectDetailPage() {
                         style={{
                           padding: "0 4px 8px 4px",
                           border: "none",
-                          borderBottom: hoursView === "Project Hours" ? "2px solid #156372" : "2px solid transparent",
+                          borderBottom: hoursView === "Project Hours" ? "2px solid #2563eb" : "2px solid transparent",
                           backgroundColor: "transparent",
                           cursor: "pointer",
                           fontSize: "14px",
-                          fontWeight: hoursView === "Project Hours" ? "600" : "400",
-                          color: hoursView === "Project Hours" ? "#156372" : "#6b7280"
+                          fontWeight: hoursView === "Project Hours" ? "600" : "500",
+                          color: hoursView === "Project Hours" ? "#111827" : "#2563eb"
                         }}
                       >
                         Project Hours
@@ -992,342 +3659,65 @@ export default function ProjectDetailPage() {
                       style={{
                         padding: "0 4px 8px 4px",
                         border: "none",
-                        borderBottom: hoursView === "Profitability Summary" ? "2px solid #156372" : "2px solid transparent",
+                        borderBottom: hoursView === "Profitability Summary" ? "2px solid #2563eb" : "2px solid transparent",
                         backgroundColor: "transparent",
                         cursor: "pointer",
                         fontSize: "14px",
-                        fontWeight: hoursView === "Profitability Summary" ? "600" : "400",
-                        color: hoursView === "Profitability Summary" ? "#156372" : "#6b7280"
+                        fontWeight: hoursView === "Profitability Summary" ? "600" : "500",
+                        color: hoursView === "Profitability Summary" ? "#111827" : "#2563eb"
                       }}
                     >
                       Profitability Summary
                     </button>
                   </div>
-                  {hoursView === "Profitability Summary" ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
-                      <span style={{ fontSize: "13px", color: "#374151", fontWeight: "500" }}>{dateRange}</span>
-                      <ChevronDown size={14} color="#6b7280" />
-                      <Calendar size={14} color="#6b7280" style={{ marginLeft: "4px" }} />
-                    </div>
-                  ) : (
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span style={{ fontSize: "13px", color: "#6b7280" }}>This Fiscal Year</span>
-                      <span style={{ fontSize: "13px", color: "#6b7280" }}>-</span>
-                      <div style={{ display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
-                        <span style={{ fontSize: "13px", color: "#374151", fontWeight: "500" }}>Cash</span>
-                        <ChevronDown size={14} color="#6b7280" />
-                      </div>
-                    </div>
-                  )}
+                  <div style={{ position: "relative", display: "inline-block" }}>
+                    <select
+                      value={dateRange}
+                      onChange={(e) => setDateRange(e.target.value)}
+                      style={{
+                        border: "1px solid #e2e8f0",
+                        padding: "6px 28px 6px 10px",
+                        borderRadius: "6px",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                        backgroundColor: "transparent",
+                        color: "#2563eb",
+                        appearance: "none",
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
+                        backgroundRepeat: "no-repeat",
+                        backgroundPosition: "right 8px center",
+                        paddingRight: "28px"
+                      }}
+                    >
+                      <option value="All">All</option>
+                      <option value="Today">Today</option>
+                      <option value="This Week">This Week</option>
+                      <option value="This Month">This Month</option>
+                      <option value="This Quarter">This Quarter</option>
+                      <option value="This Year">This Year</option>
+                      <option value="Yesterday">Yesterday</option>
+                      <option value="Previous Week">Previous Week</option>
+                      <option value="Previous Month">Previous Month</option>
+                      <option value="Previous Quarter">Previous Quarter</option>
+                      <option value="Previous Year">Previous Year</option>
+                    </select>
+                  </div>
                 </div>
 
-                {hoursView === "Profitability Summary" ? (
-                  <>
-                    {/* Profitability Summary - Line Chart */}
-                    <div style={{
-                      height: "300px",
-                      position: "relative",
-                      marginBottom: "24px"
-                    }}>
-                      <div style={{
-                        height: "260px",
-                        paddingLeft: "40px",
-                        paddingRight: "20px",
-                        borderBottom: "1px solid #e5e7eb",
-                        position: "relative"
-                      }}>
-                        {/* Y-axis labels */}
-                        <div style={{
-                          position: "absolute",
-                          left: "0",
-                          top: "0",
-                          bottom: "0",
-                          display: "flex",
-                          flexDirection: "column",
-                          justifyContent: "space-between",
-                          fontSize: "11px",
-                          color: "#9ca3af",
-                          paddingBottom: "10px",
-                          width: "35px"
-                        }}>
-                          <span>5K</span>
-                          <span>4K</span>
-                          <span>3K</span>
-                          <span>2K</span>
-                          <span>1K</span>
-                          <span>0</span>
-                        </div>
-
-                        {/* Line Chart Area */}
-                        <div style={{
-                          height: "100%",
-                          paddingTop: "10px",
-                          paddingBottom: "30px",
-                          position: "relative",
-                          marginLeft: "40px"
-                        }}>
-                          <svg
-                            width="100%"
-                            height="100%"
-                            viewBox="0 0 600 230"
-                            preserveAspectRatio="none"
-                            style={{ position: "absolute", top: "10px", left: 0 }}
-                          >
-                            {/* Grid lines */}
-                            {[0, 1, 2, 3, 4, 5].map(i => {
-                              const y = (i / 5) * 230;
-                              return (
-                                <line
-                                  key={i}
-                                  x1="0"
-                                  y1={y}
-                                  x2="600"
-                                  y2={y}
-                                  stroke="#f3f4f6"
-                                  strokeWidth="1"
-                                />
-                              );
-                            })}
-                            {/* Billable Hours line (light blue) - flat line at bottom (no data) */}
-                            <polyline
-                              points="0,230 100,230 200,230 300,230 400,230 500,230 600,230"
-                              fill="none"
-                              stroke="#93c5fd"
-                              strokeWidth="2"
-                            />
-                            {/* Unbilled Hours line (yellow-orange) - flat line at bottom (no data) */}
-                            <polyline
-                              points="0,230 100,230 200,230 300,230 400,230 500,230 600,230"
-                              fill="none"
-                              stroke="#fb923c"
-                              strokeWidth="2"
-                            />
-                          </svg>
-
-                          {/* Date labels on X-axis */}
-                          <div style={{
-                            position: "absolute",
-                            bottom: "-25px",
-                            left: "0",
-                            right: "40px",
-                            display: "flex",
-                            justifyContent: "space-between"
-                          }}>
-                            {['21 Dec', '22 Dec', '23 Dec', '24 Dec', '25 Dec', '26 Dec', '27 Dec'].map((date, i) => (
-                              <span key={i} style={{ fontSize: "11px", color: "#9ca3af" }}>
-                                {date}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Legend */}
-                      <div style={{
-                        display: "flex",
-                        gap: "24px",
-                        marginTop: "20px",
-                        paddingLeft: "40px"
-                      }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <div style={{ width: "16px", height: "4px", backgroundColor: "#93c5fd", borderRadius: "2px" }}></div>
-                          <span style={{ fontSize: "13px", color: "#374151" }}>Billable Hours</span>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <div style={{ width: "16px", height: "4px", backgroundColor: "#fb923c", borderRadius: "2px" }}></div>
-                          <span style={{ fontSize: "13px", color: "#374151" }}>Unbilled Hours</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Divider Line */}
-                    <div style={{ height: "1px", backgroundColor: "#f3f4f6", margin: "0 -24px 24px -24px" }}></div>
-
-                    {/* Summary Cards */}
-                    <div style={{
-                      display: "flex",
-                      width: "100%",
-                      gap: "24px"
-                    }}>
-                      {/* Logged Hours Card */}
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                        <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "8px" }}>Logged Hours</div>
-                        <div style={{ fontSize: "16px", fontWeight: "600", color: "#156372", marginBottom: "4px" }}>
-                          {hoursData.logged}
-                        </div>
-                        <div style={{ fontSize: "14px", color: "#1f2937" }}>{baseCurrencyCode}0.00</div>
-                      </div>
-
-                      {/* Billable Hours Card */}
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                        <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "8px" }}>Billable Hours</div>
-                        <div style={{ fontSize: "16px", fontWeight: "600", color: "#156372", marginBottom: "4px" }}>
-                          {hoursData.billable}
-                        </div>
-                        <div style={{ fontSize: "14px", color: "#1f2937" }}>{baseCurrencyCode}0.00</div>
-                      </div>
-
-                      {/* Billed Hours Card */}
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                        <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "8px" }}>Billed Hours</div>
-                        <div style={{ fontSize: "16px", fontWeight: "600", color: "#156372", marginBottom: "4px" }}>
-                          {hoursData.billed}
-                        </div>
-                        <div style={{ fontSize: "14px", color: "#1f2937" }}>{baseCurrencyCode}0.00</div>
-                      </div>
-
-                      {/* Unbilled Hours Card */}
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                        <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "8px" }}>Unbilled Hours</div>
-                        <div style={{ fontSize: "16px", fontWeight: "600", color: "#156372", marginBottom: "4px" }}>
-                          {hoursData.unbilled}
-                        </div>
-                        <div style={{ fontSize: "14px", color: "#1f2937" }}>{baseCurrencyCode}0.00</div>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    {/* Project Hours - Bar Chart */}
-                    <div style={{
-                      height: "300px",
-                      position: "relative",
-                      marginBottom: "24px"
-                    }}>
-                      <div style={{
-                        display: "flex",
-                        height: "260px",
-                        alignItems: "flex-end",
-                        justifyContent: "space-between",
-                        paddingLeft: "40px",
-                        paddingRight: "20px",
-                        borderBottom: "1px solid #e5e7eb",
-                        position: "relative"
-                      }}>
-                        {/* Y-axis labels */}
-                        <div style={{
-                          position: "absolute",
-                          left: "0",
-                          top: "0",
-                          bottom: "0",
-                          display: "flex",
-                          flexDirection: "column",
-                          justifyContent: "space-between",
-                          fontSize: "11px",
-                          color: "#9ca3af",
-                          paddingBottom: "10px"
-                        }}>
-                          <span>5 K</span>
-                          <span>4 K</span>
-                          <span>3 K</span>
-                          <span>2 K</span>
-                          <span>1 K</span>
-                          <span>0</span>
-                        </div>
-
-                        {/* Chart Bars - Mocking 12 months for "This Fiscal Year" look */}
-                        {['Jul 2025', 'Aug 2025', 'Sep 2025', 'Oct 2025', 'Nov 2025', 'Dec 2025', 'Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026'].map((month, i) => (
-                          <div key={i} style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            gap: "6px",
-                            flex: 1,
-                            height: "100%",
-                            justifyContent: "flex-end"
-                          }}>
-                            <div style={{ display: "flex", alignItems: "flex-end", gap: "4px", height: "100%" }}>
-                              {/* Income Bar (Blue) */}
-                              <div style={{
-                                width: "8px",
-                                height: i === 0 ? "40px" : "2px", // Mock data for demo
-                                backgroundColor: "#60a5fa",
-                                borderRadius: "2px 2px 0 0"
-                              }}></div>
-                              {/* Expense Bar (Yellow) */}
-                              <div style={{
-                                width: "8px",
-                                height: "2px",
-                                backgroundColor: "#fbbf24",
-                                borderRadius: "2px 2px 0 0"
-                              }}></div>
-                            </div>
-                            <div style={{
-                              fontSize: "10px",
-                              color: "#9ca3af",
-                              textAlign: "center",
-                              lineHeight: "1.2",
-                              width: "30px"
-                            }}>
-                              {month.split(' ').map((part, idx) => (
-                                <div key={idx}>{part}</div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Legend & Report Link */}
-                      <div style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginTop: "20px"
-                      }}>
-                        <div style={{ display: "flex", gap: "24px" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <div style={{ width: "16px", height: "4px", backgroundColor: "#60a5fa", borderRadius: "2px" }}></div>
-                            <span style={{ fontSize: "13px", color: "#374151" }}>Income</span>
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <div style={{ width: "16px", height: "4px", backgroundColor: "#fbbf24", borderRadius: "2px" }}></div>
-                            <span style={{ fontSize: "13px", color: "#374151" }}>Expense</span>
-                          </div>
-                        </div>
-
-                        <div style={{ display: "flex", alignItems: "center", gap: "4px", cursor: "pointer", color: "#156372" }}>
-                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M2.5 11.5V6.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-                            <path d="M7 11.5V2.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-                            <path d="M11.5 11.5V4.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                          <span style={{ fontSize: "13px" }}>Profitability Report</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Divider Line */}
-                    <div style={{ height: "1px", backgroundColor: "#f3f4f6", margin: "0 -24px 24px -24px" }}></div>
-
-                    {/* Actual Cost & Revenue Cards - Clean layout matching design */}
-                    <div style={{
-                      display: "flex",
-                      width: "100%"
-                    }}>
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", borderRight: "1px solid #f3f4f6" }}>
-                        <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "8px" }}>Actual Cost</div>
-                        <div style={{ fontSize: "20px", fontWeight: "600", color: "#1f2937" }}>
-                          {baseCurrencyCode}0.00
-                        </div>
-                      </div>
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
-                        <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "8px" }}>Actual Revenue</div>
-                        <div style={{ fontSize: "20px", fontWeight: "600", color: "#1f2937" }}>
-                          {baseCurrencyCode}0.00
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
+                {hoursView === "Profitability Summary" ? renderProfitabilitySummaryChart() : renderProjectHoursChart()}
               </div>
+              </div>
+            </div>
 
+            <div style={{ display: "flex", flexDirection: "column", gap: "24px", marginTop: "24px" }}>
               {/* Users Section */}
               <div style={{
-                backgroundColor: "#fff",
-                borderRadius: "8px",
+                backgroundColor: "transparent",
+                borderRadius: "6px",
                 padding: "24px",
-                marginBottom: "24px",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+                width: "100%",
+                border: "none",
+                boxShadow: "none"
               }}>
                 <div style={{
                   display: "flex",
@@ -1339,7 +3729,7 @@ export default function ProjectDetailPage() {
                     Users
                   </h3>
                   <button
-                    onClick={() => setShowAddUserModal(true)}
+                    onClick={openAddUsersModal}
                     style={{
                       padding: "6px 12px",
                       border: "none",
@@ -1361,20 +3751,17 @@ export default function ProjectDetailPage() {
 
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
-                    <tr style={{ backgroundColor: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                      <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>
+                    <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
+                      <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                         NAME
                       </th>
-                      <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>
+                      <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                         LOGGED HOURS
                       </th>
-                      <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>
-                        BILLED HOURS
+                      <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                        COST PER HOUR
                       </th>
-                      <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>
-                        UNBILLED HOURS
-                      </th>
-                      <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>
+                      <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                         ROLE
                       </th>
                     </tr>
@@ -1383,8 +3770,15 @@ export default function ProjectDetailPage() {
                     {project.users && project.users.length > 0 ? (
                       project.users.map((user, index) => {
                         const userHours = calculateUserHours(user.email || user.name);
+                        const userKey = String(user?._id || user?.id || user?.email || user?.name || index);
+                        const showRemove = hoveredUserKey === userKey;
                         return (
-                          <tr key={index} style={{ borderBottom: "1px solid #e5e7eb" }}>
+                          <tr
+                            key={userKey}
+                            style={{ borderBottom: "1px solid #e5e7eb" }}
+                            onMouseEnter={() => setHoveredUserKey(userKey)}
+                            onMouseLeave={() => setHoveredUserKey((current) => (current === userKey ? null : current))}
+                          >
                             <td style={{ padding: "12px", fontSize: "14px", color: "#333" }}>
                               <div>
                                 <div style={{ fontWeight: "500" }}>{user.name || user.email}</div>
@@ -1392,17 +3786,36 @@ export default function ProjectDetailPage() {
                               </div>
                             </td>
                             <td style={{ padding: "12px", fontSize: "14px", color: "#333" }}>{userHours.logged}</td>
-                            <td style={{ padding: "12px", fontSize: "14px", color: "#333" }}>{userHours.billed}</td>
-                            <td style={{ padding: "12px", fontSize: "14px", color: "#333" }}>{userHours.unbilled}</td>
                             <td style={{ padding: "12px", fontSize: "14px", color: "#333" }}>
-                              {user.role || "Admin"}
+                              {formatMoney(user.costPerHour || user.rate || 0)}
+                            </td>
+                            <td style={{ padding: "12px", fontSize: "14px", color: "#333" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                <span>{user.role || "Admin"}</span>
+                                {showRemove && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveUserClick(user)}
+                                    style={{
+                                      border: "none",
+                                      background: "transparent",
+                                      color: "#2563eb",
+                                      cursor: "pointer",
+                                      fontSize: "12px",
+                                      padding: 0
+                                    }}
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
                       })
                     ) : (
                       <tr>
-                        <td colSpan="5" style={{ padding: "20px", textAlign: "center", color: "#666" }}>
+                        <td colSpan={4} style={{ padding: "20px", textAlign: "center", color: "#666" }}>
                           No users added
                         </td>
                       </tr>
@@ -1413,10 +3826,12 @@ export default function ProjectDetailPage() {
 
               {/* Project Tasks Section */}
               <div style={{
-                backgroundColor: "#fff",
-                borderRadius: "8px",
+                backgroundColor: "transparent",
+                borderRadius: "6px",
                 padding: "24px",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+                width: "100%",
+                border: "none",
+                boxShadow: "none"
               }}>
                 <div style={{
                   display: "flex",
@@ -1451,7 +3866,7 @@ export default function ProjectDetailPage() {
                 {project.tasks && project.tasks.length > 0 ? (
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
-                      <tr style={{ backgroundColor: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
+                      <tr style={{ backgroundColor: "transparent", borderBottom: "1px solid #e5e7eb" }}>
                         <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>
                           NAME
                         </th>
@@ -1465,7 +3880,7 @@ export default function ProjectDetailPage() {
                           UNBILLED HOURS
                         </th>
                         <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>
-                          RATE ({baseCurrencyCode})
+                          RATE ({currencyCode})
                         </th>
                         <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>
                           TYPE
@@ -1475,17 +3890,65 @@ export default function ProjectDetailPage() {
                     <tbody>
                       {project.tasks.map((task, index) => {
                         const taskHours = calculateTaskHours(task.taskName);
+                        const taskKey = getTaskKey(task, index);
+                        const showTaskActions = hoveredTaskKey === taskKey;
+                        const isTaskActive = task.active !== false;
                         return (
-                          <tr key={index} style={{ borderBottom: "1px solid #e5e7eb" }}>
-                            <td style={{ padding: "12px", fontSize: "14px", color: "#333" }}>{task.taskName}</td>
+                          <tr
+                            key={taskKey}
+                            style={{
+                              borderBottom: "1px solid #e5e7eb",
+                              backgroundColor: isTaskActive ? "transparent" : "#f8fafc",
+                              opacity: isTaskActive ? 1 : 0.72
+                            }}
+                            onMouseEnter={() => setHoveredTaskKey(taskKey)}
+                            onMouseLeave={() => setHoveredTaskKey((current) => (current === taskKey ? null : current))}
+                          >
+                            <td style={{ padding: "12px", fontSize: "14px", color: "#333" }}>
+                              <div>
+                                <div style={{ fontWeight: "500", color: isTaskActive ? "#111827" : "#6b7280" }}>{task.taskName}</div>
+                                {!isTaskActive && (
+                                  <div style={{ fontSize: "12px", color: "#94a3b8" }}>Inactive</div>
+                                )}
+                              </div>
+                            </td>
                             <td style={{ padding: "12px", fontSize: "14px", color: "#333" }}>{taskHours.logged}</td>
                             <td style={{ padding: "12px", fontSize: "14px", color: "#333" }}>{taskHours.billed}</td>
                             <td style={{ padding: "12px", fontSize: "14px", color: "#333" }}>{taskHours.unbilled}</td>
                             <td style={{ padding: "12px", fontSize: "14px", color: "#333" }}>
-                              {baseCurrencyCode}{task.rate || task.hourlyRate || "0.00"}
+                              {currencyCode}{task.ratePerHour || task.rate || task.hourlyRate || "0.00"}
                             </td>
                             <td style={{ padding: "12px", fontSize: "14px", color: "#333" }}>
-                              {task.billable ? "Billable" : "Non-Billable"}
+                              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                <span>{task.billable ? "Billable" : "Non-Billable"}</span>
+                                {showTaskActions && (
+                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px", fontSize: "12px", marginLeft: "12px", width: "100%" }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => startTaskTimer(task)}
+                                      style={{ border: "none", background: "transparent", color: "#111827", cursor: "pointer", padding: 0, paddingRight: "8px", borderRight: "1px solid #d1d5db", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                                    >
+                                      <Clock size={14} />
+                                      Start
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleTaskActive(task, index)}
+                                      style={{ border: "none", background: "transparent", color: "#2563eb", cursor: "pointer", padding: 0, paddingLeft: "8px", paddingRight: "8px", borderRight: "1px solid #d1d5db" }}
+                                    >
+                                      {isTaskActive ? "Mark as Inactive" : "Mark as Active"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => promptDeleteTask(task, index)}
+                                      style={{ border: "none", background: "transparent", color: "#ef4444", cursor: "pointer", padding: 0, paddingLeft: "8px", display: "inline-flex", alignItems: "center" }}
+                                      aria-label="Delete task"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1498,74 +3961,105 @@ export default function ProjectDetailPage() {
                   </p>
                 )}
               </div>
+            </div>
             </>
           )}
 
           {/* Timesheet Tab */}
           {activeTab === "Timesheet" && (
             <div style={{
-              backgroundColor: "#fff",
-              borderRadius: "8px",
-              padding: "24px"
+              backgroundColor: "transparent",
+              borderRadius: "0",
+              padding: "24px 0 0",
+              border: "none",
+              boxShadow: "none"
             }}>
               {/* VIEW BY Filters */}
-              <div style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "16px",
-                marginBottom: "24px"
-              }}>
-                <span style={{ fontSize: "14px", fontWeight: "600", color: "#374151" }}>VIEW BY:</span>
-                <div style={{ position: "relative", display: "inline-block" }}>
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    style={{
-                      border: "none",
-                      padding: "6px 28px 6px 12px",
-                      borderRadius: "4px",
-                      fontSize: "14px",
-                      cursor: "pointer",
-                      backgroundColor: "#f3f4f6",
-                      color: "#374151",
-                      appearance: "none",
-                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                      backgroundRepeat: "no-repeat",
-                      backgroundPosition: "right 8px center",
-                      paddingRight: "28px"
-                    }}
-                  >
-                    <option value="All">Status: All</option>
-                    <option value="Billable">Status: Billable</option>
-                    <option value="Non-Billable">Status: Non-Billable</option>
-                  </select>
+              {selectedEntries.length === 0 && (
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  marginBottom: "16px"
+                }}>
+                  <span style={{ fontSize: "12px", fontWeight: "600", color: "#64748b", letterSpacing: "0.02em" }}>VIEW BY:</span>
+                  <div style={{ position: "relative", display: "inline-block" }}>
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      style={{
+                        border: "1px solid #e2e8f0",
+                        padding: "6px 28px 6px 10px",
+                        borderRadius: "6px",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                        backgroundColor: "transparent",
+                        color: "#475569",
+                        appearance: "none",
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
+                        backgroundRepeat: "no-repeat",
+                        backgroundPosition: "right 8px center",
+                        paddingRight: "28px"
+                      }}
+                    >
+                      <option value="__all_header" disabled>All</option>
+                      <option value="All">All</option>
+                      <option value="__billing_header" disabled>Billing Status</option>
+                      <option value="Non-Billable">Non-Billable</option>
+                      <option value="Billable">Billable</option>
+                      <option value="Yet to Invoice">Yet to Invoice</option>
+                      <option value="Invoiced">Invoiced</option>
+                      <option value="__approvals_header" disabled>Approvals</option>
+                      <option value="Yet to Create Approval">Yet to Create Approval</option>
+                      <option value="Approved">Approved</option>
+                      <option value="Rejected">Rejected</option>
+                      <option value="Yet to submit">Yet to submit</option>
+                      <option value="Yet to Approve">Yet to Approve</option>
+                      <option value="__customer_approvals_header" disabled>Customer Approvals</option>
+                      <option value="Yet to Create Customer Approval">Yet to Create Customer Approval</option>
+                      <option value="Approved by Customer">Approved by Customer</option>
+                      <option value="Rejected by Customer">Rejected by Customer</option>
+                      <option value="Yet to Submit to Customer">Yet to Submit to Customer</option>
+                      <option value="Customer Yet to Approve">Customer Yet to Approve</option>
+                    </select>
+                  </div>
+                  <div style={{ position: "relative", display: "inline-block" }}>
+                    <select
+                      value={periodFilter}
+                      onChange={(e) => setPeriodFilter(e.target.value)}
+                      style={{
+                        border: "1px solid #e2e8f0",
+                        padding: "6px 28px 6px 10px",
+                        borderRadius: "6px",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                        backgroundColor: "transparent",
+                        color: "#475569",
+                        appearance: "none",
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
+                        backgroundRepeat: "no-repeat",
+                        backgroundPosition: "right 8px center",
+                        paddingRight: "28px"
+                      }}
+                    >
+                      <option value="__all_header" disabled>All</option>
+                      <option value="All">All</option>
+                      <option value="__current_header" disabled>Current</option>
+                      <option value="Today">Today</option>
+                      <option value="This Week">This Week</option>
+                      <option value="This Month">This Month</option>
+                      <option value="This Quarter">This Quarter</option>
+                      <option value="This Year">This Year</option>
+                      <option value="__previous_header" disabled>Previous</option>
+                      <option value="Yesterday">Yesterday</option>
+                      <option value="Previous Week">Previous Week</option>
+                      <option value="Previous Month">Previous Month</option>
+                      <option value="Previous Quarter">Previous Quarter</option>
+                      <option value="Previous Year">Previous Year</option>
+                    </select>
+                  </div>
                 </div>
-                <div style={{ position: "relative", display: "inline-block" }}>
-                  <select
-                    value={periodFilter}
-                    onChange={(e) => setPeriodFilter(e.target.value)}
-                    style={{
-                      border: "none",
-                      padding: "6px 28px 6px 12px",
-                      borderRadius: "4px",
-                      fontSize: "14px",
-                      cursor: "pointer",
-                      backgroundColor: "#f3f4f6",
-                      color: "#374151",
-                      appearance: "none",
-                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                      backgroundRepeat: "no-repeat",
-                      backgroundPosition: "right 8px center",
-                      paddingRight: "28px"
-                    }}
-                  >
-                    <option value="All">Period: All</option>
-                    <option value="This Week">Period: This Week</option>
-                    <option value="This Month">Period: This Month</option>
-                    <option value="This Year">Period: This Year</option>
-                  </select>
-                </div>
-              </div>
+              )}
 
               {/* Action Buttons - Show when entries are selected */}
               {selectedEntries.length > 0 && (
@@ -1620,10 +4114,7 @@ export default function ProjectDetailPage() {
                     </button>
                     <button
                       onClick={() => {
-                        // Handle Delete
-                        if (window.confirm(`Are you sure you want to delete ${selectedEntries.length} timesheet(s)?`)) {
-                          setSelectedEntries([]);
-                        }
+                        openDeleteTimesheetModal();
                       }}
                       style={{
                         padding: "8px",
@@ -1637,7 +4128,7 @@ export default function ProjectDetailPage() {
                         justifyContent: "center"
                       }}
                     >
-                      <Trash2 size={16} />
+                      <Trash2 size={16} color="#dc2626" />
                     </button>
                     <button
                       onClick={() => {
@@ -1768,11 +4259,40 @@ export default function ProjectDetailPage() {
                   }
                 };
 
+                const isPastDate = (dateString) => {
+                  if (!dateString) return false;
+                  try {
+                    let date;
+                    if (typeof dateString === "string") {
+                      const dateMatch = dateString.match(/(\d{1,2})\s+(\w{3})\s+(\d{4})/);
+                      if (dateMatch) {
+                        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                        const monthIndex = months.indexOf(dateMatch[2]);
+                        if (monthIndex !== -1) {
+                          date = new Date(parseInt(dateMatch[3]), monthIndex, parseInt(dateMatch[1]));
+                        } else {
+                          date = new Date(dateString);
+                        }
+                      } else {
+                        date = new Date(dateString);
+                      }
+                    } else {
+                      date = new Date(dateString);
+                    }
+                    if (isNaN(date.getTime())) return false;
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    return date < today;
+                  } catch {
+                    return false;
+                  }
+                };
+
                 return (
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
-                      <tr style={{ borderBottom: "1px solid #e5e7eb" }}>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#374151", textTransform: "uppercase" }}>
+                      <tr style={{ borderBottom: "1px solid #e5e7eb", backgroundColor: "#f8fafc" }}>
+                        <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase", width: "36px" }}>
                           <input
                             type="checkbox"
                             checked={selectedEntries.length === filteredEntries.length && filteredEntries.length > 0 && filteredEntries.every(entry => selectedEntries.includes(entry.id))}
@@ -1784,35 +4304,36 @@ export default function ProjectDetailPage() {
                               }
                             }}
                             style={{
-                              marginRight: "8px",
                               cursor: "pointer",
                               accentColor: "#2563eb"
                             }}
                           />
-                          DATE
                         </th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#374151", textTransform: "uppercase" }}>
-                          TASK
-                          <ArrowUpDown size={12} style={{ marginLeft: "4px", display: "inline-block", verticalAlign: "middle" }} />
+                        <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>
+                          Date
                         </th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#374151", textTransform: "uppercase" }}>
-                          USER
+                        <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>
+                          Task
+                          <ArrowUpDown size={11} style={{ marginLeft: "4px", display: "inline-block", verticalAlign: "middle" }} />
                         </th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#374151", textTransform: "uppercase" }}>
-                          TIME
+                        <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>
+                          User
                         </th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#374151", textTransform: "uppercase" }}>
-                          BILLING STATUS
+                        <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>
+                          Time
                         </th>
-                        <th style={{ padding: "12px", textAlign: "right", fontSize: "12px", fontWeight: "600", color: "#374151", textTransform: "uppercase", width: "80px" }}>
-                          {/* Actions column header */}
+                        <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>
+                          Billing Status
+                        </th>
+                        <th style={{ padding: "8px 10px", textAlign: "right", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase", width: "140px" }}>
+                          &nbsp;
                         </th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredEntries.length === 0 ? (
                         <tr>
-                          <td colSpan="6" style={{ padding: "40px", textAlign: "center", color: "#6b7280", fontSize: "14px" }}>
+                          <td colSpan={7} style={{ padding: "40px", textAlign: "center", color: "#6b7280", fontSize: "14px" }}>
                             There are no timesheets.
                           </td>
                         </tr>
@@ -1832,20 +4353,24 @@ export default function ProjectDetailPage() {
                           }
 
                           // Handle multiple task names (split by newline or comma)
-                          const taskNames = entry.taskName ? entry.taskName.split(/[,\n]/).map(t => t.trim()).filter(t => t) : ["N/A"];
+                          const taskNames = entry.taskName ? entry.taskName.split(",").flatMap(t => t.split("\\n")).map(t => t.trim()).filter(t => t) : ["N/A"];
                           const isHovered = hoveredEntryId === entry.id;
+                          const isActiveTimerRow = isRunningForEntry(entry);
+                          const activeElapsedTime = isActiveTimerRow ? calculateElapsedTime(runningTimerState || {}) : 0;
 
                           return (
                             <tr
                               key={entry.id}
+                              onClick={() => handleEntryRowClick(entry)}
                               onMouseEnter={() => setHoveredEntryId(entry.id)}
                               onMouseLeave={() => setHoveredEntryId(null)}
                               style={{
                                 borderBottom: "1px solid #e5e7eb",
-                                backgroundColor: isHovered ? "#f9fafb" : "transparent"
+                                backgroundColor: isActiveTimerRow ? "#eef6ff" : selectedEntry?.id === entry.id ? "#e8f0da" : isHovered ? "#f9fafb" : "transparent",
+                                cursor: "pointer"
                               }}
                             >
-                              <td style={{ padding: "12px", fontSize: "14px", color: "#111827" }}>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>
                                 <input
                                   type="checkbox"
                                   checked={selectedEntries.includes(entry.id)}
@@ -1859,92 +4384,172 @@ export default function ProjectDetailPage() {
                                   }}
                                   onClick={(e) => e.stopPropagation()}
                                   style={{
-                                    marginRight: "8px",
                                     cursor: "pointer",
                                     accentColor: "#2563eb"
                                   }}
                                 />
+                              </td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>
                                 {formatDateDDMMYYYY(entry.date)}
                               </td>
-                              <td style={{ padding: "12px", fontSize: "14px", color: "#111827", lineHeight: "1.5" }}>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827", lineHeight: "1.5" }}>
                                 {taskNames.map((task, idx) => (
                                   <div key={idx}>{task}</div>
                                 ))}
                               </td>
-                              <td style={{ padding: "12px", fontSize: "14px", color: "#111827" }}>
-                                {entry.user || entry.userEmail || "N/A"}
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>
+                                {entry.userName || entry.user?.name || entry.user || entry.userEmail || "N/A"}
                               </td>
-                              <td style={{ padding: "12px", fontSize: "14px", color: "#111827" }}>
-                                {entry.timeSpent || "00:00"}
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>
+                                {isActiveTimerRow ? formatRunningTime(activeElapsedTime) : (entry.timeSpent || "00:00")}
                               </td>
-                              <td style={{ padding: "12px", fontSize: "14px", color: billingStatusColor }}>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: billingStatusColor }}>
                                 {billingStatusText}
                               </td>
-                              <td style={{ padding: "12px", textAlign: "right" }}>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827", textAlign: "right" }}>
                                 <div style={{
-                                  display: "flex",
+                                  display: "inline-flex",
                                   alignItems: "center",
-                                  justifyContent: "flex-end",
-                                  gap: "8px",
+                                  gap: "6px",
                                   opacity: isHovered ? 1 : 0,
-                                  transition: "opacity 0.2s"
+                                  transform: isHovered ? "translateY(0)" : "translateY(2px)",
+                                  transition: "opacity 0.15s ease, transform 0.15s ease",
+                                  pointerEvents: isHovered ? "auto" : "none"
                                 }}>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      // Handle edit action
-                                      setShowLogEntryForm(true);
+                                  {isActiveTimerRow ? (
+                                    <>
+                                      <div className="inline-flex h-7 items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 text-[12px] font-semibold text-blue-700">
+                                        <Clock size={13} />
+                                        <span>{formatRunningTime(activeElapsedTime)}</span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          pauseRunningTimer();
+                                        }}
+                                        style={{
+                                          width: "24px",
+                                          height: "24px",
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          border: "1px solid #d1d5db",
+                                          borderRadius: "6px",
+                                          backgroundColor: "#ffffff",
+                                          color: "#2563eb",
+                                          cursor: "pointer"
+                                        }}
+                                        aria-label="Pause timer"
+                                      >
+                                        <Pause size={13} />
+                                      </button>
+                                    </>
+                                  ) : !isPastDate(entry.date) && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        startEntryTimer(entry);
+                                      }}
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "4px",
+                                        padding: "3px 8px",
+                                        border: "1px solid #d1d5db",
+                                        borderRadius: "6px",
+                                        backgroundColor: "#ffffff",
+                                        color: "#111827",
+                                        fontSize: "12px",
+                                        cursor: "pointer"
+                                      }}
+                                    >
+                                      <Clock size={13} />
+                                      Start
+                                    </button>
+                                  )}
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openEditEntryForm(entry);
+                                      }}
+                                      style={{
+                                        width: "24px",
+                                        height: "24px",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        border: "1px solid #d1d5db",
+                                        borderRadius: "6px",
+                                        backgroundColor: "#ffffff",
+                                        color: "#111827",
+                                        cursor: "pointer"
                                     }}
-                                    style={{
-                                      padding: "6px",
-                                      border: "1px solid #d1d5db",
-                                      borderRadius: "4px",
-                                      backgroundColor: "#fff",
-                                      cursor: "pointer",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      transition: "all 0.2s"
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.backgroundColor = "#f3f4f6";
-                                      e.currentTarget.style.borderColor = "#9ca3af";
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.backgroundColor = "#fff";
-                                      e.currentTarget.style.borderColor = "#d1d5db";
-                                    }}
+                                    aria-label="Edit time entry"
                                   >
-                                    <Edit3 size={16} color="#374151" />
+                                    <Edit3 size={13} />
                                   </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      // Handle more options
-                                      alert("More options menu");
-                                    }}
-                                    style={{
-                                      padding: "6px",
-                                      border: "1px solid #d1d5db",
-                                      borderRadius: "4px",
-                                      backgroundColor: "#fff",
-                                      cursor: "pointer",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      transition: "all 0.2s"
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.backgroundColor = "#f3f4f6";
-                                      e.currentTarget.style.borderColor = "#9ca3af";
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.backgroundColor = "#fff";
-                                      e.currentTarget.style.borderColor = "#d1d5db";
-                                    }}
-                                  >
-                                    <MoreVertical size={16} color="#374151" />
-                                  </button>
+                                  <div className="relative" data-entry-row-menu ref={openRowEntryMenuId === entry.id ? rowEntryMenuRef : undefined}>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenRowEntryMenuId((current) => (current === entry.id ? null : entry.id));
+                                      }}
+                                      style={{
+                                        width: "24px",
+                                        height: "24px",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        border: "1px solid #d1d5db",
+                                        borderRadius: "6px",
+                                        backgroundColor: "#ffffff",
+                                        color: "#111827",
+                                        cursor: "pointer"
+                                      }}
+                                      aria-label="More actions"
+                                    >
+                                      <MoreVertical size={13} />
+                                    </button>
+                                    {openRowEntryMenuId === entry.id && (
+                                      <div className="absolute right-0 bottom-full z-50 mb-1 w-44 rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleEntryClone(entry);
+                                            setOpenRowEntryMenuId(null);
+                                          }}
+                                          className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        >
+                                          Clone
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteSelectedEntry(entry);
+                                          }}
+                                          className="w-full px-3 py-2 text-left text-red-600 hover:bg-red-50 hover:text-red-700"
+                                        >
+                                          Delete
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            openEntryCommentsHistory(entry);
+                                          }}
+                                          className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                                        >
+                                          Comments & History
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </td>
                             </tr>
@@ -1958,8 +4563,8 @@ export default function ProjectDetailPage() {
             </div>
           )}
 
-          {/* Purchases Tab */}
-          {activeTab === "Purchases" && (() => {
+                    {/* Expenses Tab */}
+          {activeTab === "Expenses" && (() => {
             // Helper function to format date
             const formatDate = (dateString) => {
               if (!dateString) return "";
@@ -1996,375 +4601,216 @@ export default function ProjectDetailPage() {
             return (
               <div style={{
                 backgroundColor: "#fff",
-                borderRadius: "8px",
-                padding: "24px"
+                borderRadius: "6px",
+                padding: "20px",
+                border: "1px solid #e5e7eb"
               }}>
                 {/* Go to transactions */}
-                <div style={{ marginBottom: "24px" }}>
-                  <a
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      navigate("/purchases");
-                    }}
+                <div style={{ marginBottom: "16px", position: "relative", display: "inline-block" }} ref={goToTransactionsRef}>
+                  <button
+                    type="button"
+                    onClick={() => setShowGoToTransactionsDropdown((open) => !open)}
                     style={{
-                      color: "#156372",
-                      fontSize: "14px",
-                      textDecoration: "none",
+                      color: "#1f2937",
+                      fontSize: "13px",
+                      fontWeight: "500",
+                      background: "transparent",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
-                      gap: "4px"
+                      gap: "6px"
                     }}
                   >
                     Go to transactions
                     <ChevronDown size={12} />
-                  </a>
+                  </button>
+                  {showGoToTransactionsDropdown && (
+                    <div style={{
+                      position: "absolute",
+                      top: "100%",
+                      left: 0,
+                      marginTop: "8px",
+                      minWidth: "160px",
+                      backgroundColor: "#fff",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "8px",
+                      boxShadow: "0 10px 24px rgba(15, 23, 42, 0.12)",
+                      padding: "6px",
+                      zIndex: 20
+                    }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowGoToTransactionsDropdown(false)}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "8px 10px",
+                          fontSize: "13px",
+                          borderRadius: "6px",
+                          border: "1px solid #93c5fd",
+                          backgroundColor: "#eff6ff",
+                          color: "#2563eb",
+                          cursor: "pointer"
+                        }}
+                      >
+                        Expenses
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Expenses Section */}
-                <div style={{ marginBottom: "32px" }}>
+                <div style={{ border: "1px solid #e5e7eb", borderRadius: "8px", overflow: "hidden" }}>
                   <div style={{
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
-                    marginBottom: "16px"
+                    padding: "10px 12px",
+                    backgroundColor: "#f8fafc",
+                    borderBottom: "1px solid #e5e7eb"
                   }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        cursor: "pointer",
-                        padding: "8px 12px",
-                        border: activePurchaseSection === "Expenses" ? "1px solid #156372" : "1px solid #d1d5db",
-                        borderRadius: "6px",
-                        backgroundColor: "#fff"
-                      }}
-                      onClick={() => {
-                        setActivePurchaseSection("Expenses");
-                        setExpensesExpanded(!expensesExpanded);
-                      }}
-                    >
-                      {expensesExpanded ? (
-                        <ChevronDown size={16} color="#156372" />
-                      ) : (
-                        <ChevronRight size={16} color="#666" />
-                      )}
-                      <span style={{
-                        fontSize: "14px",
-                        fontWeight: "500",
-                        color: activePurchaseSection === "Expenses" ? "#156372" : "#111827"
-                      }}>
-                        Expenses
-                      </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#111827", fontSize: "13px", fontWeight: "600" }}>
+                      <ChevronDown size={14} color="#2563eb" />
+                      Expenses
                     </div>
-                    {expensesExpanded && (
-                      <div style={{ position: "relative", display: "inline-block" }}>
-                        <select
-                          value={expensesStatusFilter}
-                          onChange={(e) => setExpensesStatusFilter(e.target.value)}
-                          style={{
-                            border: "none",
-                            padding: "6px 28px 6px 12px",
-                            borderRadius: "4px",
-                            fontSize: "14px",
-                            cursor: "pointer",
-                            backgroundColor: "#f3f4f6",
-                            color: "#374151",
-                            appearance: "none",
-                            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                            backgroundRepeat: "no-repeat",
-                            backgroundPosition: "right 8px center",
-                            paddingRight: "28px"
-                          }}
-                        >
-                          <option value="All">Status: All</option>
-                          <option value="Paid">Status: Paid</option>
-                          <option value="Unpaid">Status: Unpaid</option>
-                        </select>
-                      </div>
-                    )}
+                    <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: "6px", marginLeft: "auto" }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ color: "#2563eb" }}>
+                        <path d="M3 5h18l-7 8v5l-4 3v-8L3 5z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      <select
+                        value={expensesStatusFilter}
+                        onChange={(e) => setExpensesStatusFilter(e.target.value)}
+                        style={{
+                          border: "none",
+                          fontSize: "12px",
+                          cursor: "pointer",
+                          backgroundColor: "transparent",
+                          color: "#1f2937",
+                          appearance: "none",
+                          padding: "0 14px 0 0",
+                          lineHeight: 1.2
+                        }}
+                      >
+                        <option value="All">Status: All</option>
+                        <option value="Unbilled">Status: Unbilled</option>
+                        <option value="Invoiced">Status: Invoiced</option>
+                        <option value="Reimbursed">Status: Reimbursed</option>
+                        <option value="Billable">Status: Billable</option>
+                        <option value="Non-Billable">Status: Non-Billable</option>
+                        <option value="With Receipts">Status: With Receipts</option>
+                        <option value="Without Receipts">Status: Without Receipts</option>
+                      </select>
+                      <ChevronDown size={12} color="#6b7280" style={{ position: "absolute", right: 0, pointerEvents: "none" }} />
+                    </div>
                   </div>
-                  {expensesExpanded && (
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead>
-                        <tr style={{ backgroundColor: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>
-                            DATE
-                          </th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>EXPENSE ACCOUNT</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>REFERENCE#</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>VENDOR NAME</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>PAID THROUGH</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>CUSTOMER NAME</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>AMOUNT</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>STATUS</th>
+
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
+                        <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>DATE</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>EXPENSE ACCOUNT</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>REFERENCE#</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>VENDOR NAME</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>PAID THROUGH</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>CUSTOMER NAME</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>AMOUNT</th>
+                        <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>STATUS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredExpenses.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} style={{ padding: "28px", textAlign: "center", color: "#6b7280", fontSize: "13px" }}>
+                            There are no expenses.
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {filteredExpenses.length === 0 ? (
-                          <tr>
-                            <td colSpan="8" style={{ padding: "40px", textAlign: "center", color: "#6b7280", fontSize: "14px" }}>
-                              There are no expenses.
-                            </td>
-                          </tr>
-                        ) : (
-                          filteredExpenses.map((expense) => (
+                      ) : (
+                        filteredExpenses.map((expense) => {
+                          const status = (expense.status || "Unbilled").toLowerCase();
+                          let statusColor = "#64748b";
+                          if (status === "invoiced") statusColor = "#ef4444";
+                          if (status === "non-billable") statusColor = "#16a34a";
+                          if (status === "unbilled") statusColor = "#64748b";
+                          return (
                             <tr
                               key={expense.id}
                               style={{ borderBottom: "1px solid #e5e7eb" }}
                               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f9fafb"}
                               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#ffffff"}
                             >
-                              <td style={{ padding: "12px", fontSize: "14px", color: "#111827" }}>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>
                                 {formatDate(expense.date)}
                               </td>
-                              <td style={{ padding: "12px", fontSize: "14px", color: "#111827" }}>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#2563eb" }}>
                                 {expense.expenseAccount || "-"}
                               </td>
-                              <td style={{ padding: "12px", fontSize: "14px", color: "#111827" }}>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>
                                 {expense.reference || "-"}
                               </td>
-                              <td style={{ padding: "12px", fontSize: "14px", color: "#111827" }}>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>
                                 {expense.vendor || "-"}
                               </td>
-                              <td style={{ padding: "12px", fontSize: "14px", color: "#111827" }}>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>
                                 {expense.paidThrough || "-"}
                               </td>
-                              <td style={{ padding: "12px", fontSize: "14px", color: "#111827" }}>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>
                                 {expense.customerName || "-"}
                               </td>
-                              <td style={{ padding: "12px", fontSize: "14px", color: "#111827" }}>
-                                {expense.currency || "$"} {parseFloat(expense.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>
+                                {expense.currency || baseCurrencyCode} {parseFloat(expense.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </td>
-                              <td style={{ padding: "12px", fontSize: "14px", color: "#111827" }}>
-                                <span style={{
-                                  padding: "4px 8px",
-                                  borderRadius: "4px",
-                                  fontSize: "12px",
-                                  fontWeight: "500",
-                                  backgroundColor: (expense.status || "").toLowerCase() === "paid" ? "#d1fae5" : "#f3f4f6",
-                                  color: (expense.status || "").toLowerCase() === "paid" ? "#065f46" : "#374151"
-                                }}>
-                                  {expense.status || "Unpaid"}
-                                </span>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: statusColor }}>
+                                {expense.status || "Unbilled"}
                               </td>
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
 
-                {/* Bills Section */}
-                <div style={{ marginBottom: "32px" }}>
                   <div style={{
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
-                    marginBottom: "16px"
+                    padding: "10px 12px",
+                    color: "#64748b",
+                    fontSize: "12px"
                   }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        cursor: "pointer",
-                        padding: "8px 12px",
-                        border: activePurchaseSection === "Bills" ? "1px solid #156372" : "1px solid #d1d5db",
-                        borderRadius: "6px",
-                        backgroundColor: "#fff"
-                      }}
-                      onClick={() => {
-                        setActivePurchaseSection("Bills");
-                        setBillsExpanded(!billsExpanded);
-                      }}
-                    >
-                      {billsExpanded ? (
-                        <ChevronDown size={16} color="#156372" />
-                      ) : (
-                        <ChevronRight size={16} color="#666" />
-                      )}
-                      <span style={{
-                        fontSize: "14px",
-                        fontWeight: "500",
-                        color: activePurchaseSection === "Bills" ? "#156372" : "#111827"
-                      }}>
-                        Bills
-                      </span>
+                    <div>
+                      Total Count:{" "}
+                      <span style={{ color: "#2563eb", cursor: "pointer" }}>View</span>
                     </div>
-                    {billsExpanded && (
-                      <div style={{ position: "relative", display: "inline-block" }}>
-                        <select
-                          value={billsStatusFilter}
-                          onChange={(e) => setBillsStatusFilter(e.target.value)}
-                          style={{
-                            border: "none",
-                            padding: "6px 28px 6px 12px",
-                            borderRadius: "4px",
-                            fontSize: "14px",
-                            cursor: "pointer",
-                            backgroundColor: "#f3f4f6",
-                            color: "#374151",
-                            appearance: "none",
-                            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                            backgroundRepeat: "no-repeat",
-                            backgroundPosition: "right 8px center",
-                            paddingRight: "28px"
-                          }}
-                        >
-                          <option value="All">Status: All</option>
-                          <option value="PAID">Status: Paid</option>
-                          <option value="OPEN">Status: Open</option>
-                          <option value="OVERDUE">Status: Overdue</option>
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                  {billsExpanded && (
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead>
-                        <tr style={{ backgroundColor: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>DATE</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>BILL#</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>REFERENCE#</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>VENDOR NAME</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>AMOUNT</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>STATUS</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td colSpan="6" style={{ padding: "40px", textAlign: "center", color: "#6b7280", fontSize: "14px" }}>
-                            There are no bills.
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-
-                {/* Purchase Orders Section */}
-                <div style={{ marginBottom: "32px" }}>
-                  <div
-                    style={{
-                      display: "flex",
+                    <div style={{
+                      display: "inline-flex",
                       alignItems: "center",
                       gap: "8px",
-                      cursor: "pointer",
-                      padding: "8px 12px",
-                      border: activePurchaseSection === "Purchase Orders" ? "1px solid #156372" : "1px solid #d1d5db",
+                      padding: "4px 8px",
+                      border: "1px solid #e2e8f0",
                       borderRadius: "6px",
-                      backgroundColor: "#fff",
-                      marginBottom: "16px"
-                    }}
-                    onClick={() => {
-                      setActivePurchaseSection("Purchase Orders");
-                      setPurchaseOrdersExpanded(!purchaseOrdersExpanded);
-                    }}
-                  >
-                    {purchaseOrdersExpanded ? (
-                      <ChevronDown size={16} color="#156372" />
-                    ) : (
-                      <ChevronRight size={16} color="#666" />
-                    )}
-                    <span style={{
-                      fontSize: "14px",
-                      fontWeight: "500",
-                      color: activePurchaseSection === "Purchase Orders" ? "#156372" : "#111827"
+                      color: "#2563eb"
                     }}>
-                      Purchase Orders
-                    </span>
+                      <span style={{ cursor: "pointer" }}>‹</span>
+                      <span>1 - {Math.min(3, filteredExpenses.length)}</span>
+                      <span style={{ cursor: "pointer" }}>›</span>
+                    </div>
                   </div>
-                  {purchaseOrdersExpanded && (
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead>
-                        <tr style={{ backgroundColor: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>DATE</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>PO#</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>VENDOR NAME</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>AMOUNT</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>STATUS</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td colSpan="5" style={{ padding: "40px", textAlign: "center", color: "#6b7280", fontSize: "14px" }}>
-                            There are no purchase orders.
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-
-                {/* Vendor Credits Section */}
-                <div style={{ marginBottom: "32px" }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      cursor: "pointer",
-                      padding: "8px 12px",
-                      border: activePurchaseSection === "Vendor Credits" ? "1px solid #156372" : "1px solid #d1d5db",
-                      borderRadius: "6px",
-                      backgroundColor: "#fff",
-                      marginBottom: "16px"
-                    }}
-                    onClick={() => {
-                      setActivePurchaseSection("Vendor Credits");
-                      setVendorCreditsExpanded(!vendorCreditsExpanded);
-                    }}
-                  >
-                    {vendorCreditsExpanded ? (
-                      <ChevronDown size={16} color="#156372" />
-                    ) : (
-                      <ChevronRight size={16} color="#666" />
-                    )}
-                    <span style={{
-                      fontSize: "14px",
-                      fontWeight: "500",
-                      color: activePurchaseSection === "Vendor Credits" ? "#156372" : "#111827"
-                    }}>
-                      Vendor Credits
-                    </span>
-                  </div>
-                  {vendorCreditsExpanded && (
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead>
-                        <tr style={{ backgroundColor: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>DATE</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>VENDOR CREDIT#</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>VENDOR NAME</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>AMOUNT</th>
-                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>STATUS</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td colSpan="5" style={{ padding: "40px", textAlign: "center", color: "#6b7280", fontSize: "14px" }}>
-                            There are no vendor credits.
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  )}
                 </div>
               </div>
             );
           })()}
-
-          {/* Sales Tab */}
+                    {/* Sales Tab */}
           {activeTab === "Sales" && (
             <div style={{
               backgroundColor: "#fff",
-              borderRadius: "8px",
-              padding: "24px"
+              borderRadius: "6px",
+              padding: "20px",
+              border: "1px solid #e5e7eb"
             }}>
               {/* Go to transactions */}
-              <div style={{ marginBottom: "24px" }}>
+              <div style={{ marginBottom: "16px" }}>
                 <a
                   href="#"
                   onClick={(e) => {
@@ -2372,12 +4818,13 @@ export default function ProjectDetailPage() {
                     navigate("/sales");
                   }}
                   style={{
-                    color: "#156372",
-                    fontSize: "14px",
+                    color: "#1f2937",
+                    fontSize: "13px",
+                    fontWeight: "500",
                     textDecoration: "none",
                     display: "flex",
                     alignItems: "center",
-                    gap: "4px"
+                    gap: "6px"
                   }}
                 >
                   Go to transactions
@@ -2386,930 +4833,890 @@ export default function ProjectDetailPage() {
               </div>
 
               {/* Invoices Section */}
-              <div style={{ marginBottom: "32px" }}>
-                <div style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "16px"
-                }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      cursor: "pointer",
-                      padding: "8px 12px",
-                      border: activeSalesSection === "Invoices" ? "1px solid #156372" : "1px solid #d1d5db",
-                      borderRadius: "6px",
-                      backgroundColor: "#fff"
-                    }}
-                    onClick={() => {
-                      setActiveSalesSection("Invoices");
-                      setInvoicesExpanded(!invoicesExpanded);
-                    }}
-                  >
+              <div style={{ border: "1px solid #e5e7eb", borderRadius: "8px", overflow: "hidden", marginBottom: "16px" }}>
+                <div
+                  onClick={() => setInvoicesExpanded((open) => !open)}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "10px 12px",
+                    backgroundColor: "#f8fafc",
+                    borderBottom: "1px solid #e5e7eb",
+                    cursor: "pointer"
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#111827", fontSize: "13px", fontWeight: "600" }}>
                     {invoicesExpanded ? (
-                      <ChevronDown size={16} color="#156372" />
+                      <ChevronDown size={14} color="#2563eb" />
                     ) : (
-                      <ChevronRight size={16} color="#666" />
+                      <ChevronRight size={14} color="#64748b" />
                     )}
-                    <span style={{
-                      fontSize: "14px",
-                      fontWeight: "500",
-                      color: activeSalesSection === "Invoices" ? "#156372" : "#111827"
-                    }}>
-                      Invoices
-                    </span>
+                    Invoices
                   </div>
-                  {invoicesExpanded && (
-                    <div style={{ position: "relative", display: "inline-block" }}>
-                      <select
-                        value={invoicesStatusFilter}
-                        onChange={(e) => setInvoicesStatusFilter(e.target.value)}
-                        style={{
-                          border: "none",
-                          padding: "6px 28px 6px 12px",
-                          borderRadius: "4px",
-                          fontSize: "14px",
-                          cursor: "pointer",
-                          backgroundColor: "#f3f4f6",
-                          color: "#374151",
-                          appearance: "none",
-                          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                          backgroundRepeat: "no-repeat",
-                          backgroundPosition: "right 8px center",
-                          paddingRight: "28px"
-                        }}
-                      >
-                        <option value="All">Status: All</option>
-                        <option value="Paid">Status: Paid</option>
-                        <option value="Unpaid">Status: Unpaid</option>
-                      </select>
-                    </div>
-                  )}
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#1f2937" }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3 5h18l-7 8v5l-4 3v-8L3 5z" stroke="#2563eb" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <select
+                      value={invoicesStatusFilter}
+                      onChange={(e) => setInvoicesStatusFilter(e.target.value)}
+                      style={{
+                        border: "none",
+                        backgroundColor: "transparent",
+                        fontSize: "12px",
+                        color: "#1f2937",
+                        cursor: "pointer",
+                        appearance: "none",
+                        paddingRight: "14px"
+                      }}
+                    >
+                      {statusOptions.map((option) => (
+                        <option key={option} value={option}>Status: {option}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={12} color="#6b7280" />
+                  </div>
                 </div>
+
                 {invoicesExpanded && (
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ backgroundColor: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>
-                          DATE
-                          <ArrowUpDown size={12} style={{ marginLeft: "4px", display: "inline-block", verticalAlign: "middle" }} />
-                        </th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>INVOICE#</th>
-                        <th
-                          style={{
-                            padding: "12px",
-                            textAlign: "left",
-                            fontSize: "12px",
-                            fontWeight: "600",
-                            color: "#6b7280",
-                            textTransform: "uppercase",
-                            cursor: "pointer"
-                          }}
-                          onClick={() => setShowProjectInvoiceInfo(true)}
-                          title="Click to configure invoice information"
-                        >
-                          REFERENCE#
-                        </th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>PROJECT FEE</th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>AMOUNT</th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>BALANCE DUE</th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>STATUS</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td colSpan="7" style={{ padding: "40px", textAlign: "center", color: "#6b7280", fontSize: "14px" }}>
-                          There are no invoices.
-                        </td>
-                      </tr>
-                      {/* Example row with clickable reference - remove this when you have actual invoice data */}
-                      {/* <tr>
-                      <td style={{ padding: "12px", fontSize: "14px", color: "#111827" }}>-</td>
-                      <td style={{ padding: "12px", fontSize: "14px", color: "#111827" }}>-</td>
-                      <td 
-                        style={{ 
-                          padding: "12px", 
-                          fontSize: "14px", 
-                          color: "#156372", 
-                          cursor: "pointer",
-                          textDecoration: "underline"
-                        }}
-                        onClick={() => setShowProjectInvoiceInfo(true)}
-                      >
-                        Click here
-                      </td>
-                      <td style={{ padding: "12px", fontSize: "14px", color: "#111827" }}>-</td>
-                      <td style={{ padding: "12px", fontSize: "14px", color: "#111827" }}>-</td>
-                      <td style={{ padding: "12px", fontSize: "14px", color: "#111827" }}>-</td>
-                      <td style={{ padding: "12px", fontSize: "14px", color: "#111827" }}>-</td>
-                    </tr> */}
-                    </tbody>
-                  </table>
+                  <>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>
+                            DATE <ArrowUpDown size={11} style={{ marginLeft: "4px", display: "inline-block", verticalAlign: "middle" }} />
+                          </th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>INVOICE#</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>REFERENCE#</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>PROJECT FEE</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>AMOUNT</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>BALANCE DUE</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>STATUS</th>
+                        </tr>
+                      </thead>
+                      
+                      <tbody>
+                        {filteredSalesInvoices.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} style={{ padding: "28px", textAlign: "center", color: "#6b7280", fontSize: "13px" }}>
+                              There are no invoices.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredSalesInvoices.map((invoice) => (
+                            <tr key={invoice.id || invoice._id || invoice.invoiceNumber || invoice.number} style={{ borderBottom: "1px solid #e5e7eb" }}>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{formatSalesDate(invoice.date || invoice.invoiceDate || invoice.createdAt)}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#2563eb" }}>{invoice.invoiceNumber || invoice.number || invoice.invoiceNo || "-"}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{invoice.reference || invoice.referenceNumber || invoice.ref || "-"}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{invoice.projectFee || invoice.fee || "-"}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{invoice.currency || baseCurrencyCode} {Number(invoice.amount || invoice.total || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{invoice.currency || baseCurrencyCode} {Number(invoice.balanceDue || invoice.balance || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{invoice.status || "-"}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+
+                    <div style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "10px 12px",
+                      color: "#64748b",
+                      fontSize: "12px"
+                    }}>
+                      <div>
+                        Total Count:{" "}
+                        <span style={{ color: "#2563eb", cursor: "pointer" }}>View</span>
+                      </div>
+                      <div style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "4px 8px",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "6px",
+                        color: "#2563eb"
+                      }}>
+                        <span style={{ cursor: "pointer" }}>{"<"}</span>
+                        <span>1 - {Math.max(1, Math.min(3, filteredSalesInvoices.length || 1))}</span>
+                        <span style={{ cursor: "pointer" }}>{">"}</span>
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
 
               {/* Quotes Section */}
-              <div style={{ marginBottom: "32px" }}>
-                <div style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "16px"
-                }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      cursor: "pointer",
-                      padding: "8px 12px",
-                      border: activeSalesSection === "Quotes" ? "1px solid #156372" : "1px solid #d1d5db",
-                      borderRadius: "6px",
-                      backgroundColor: "#fff"
-                    }}
-                    onClick={() => {
-                      setActiveSalesSection("Quotes");
-                      setQuotesExpanded(!quotesExpanded);
-                    }}
-                  >
+              <div style={{ border: "1px solid #e5e7eb", borderRadius: "8px", overflow: "hidden", marginBottom: "16px" }}>
+                <div
+                  onClick={() => setQuotesExpanded((open) => !open)}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "10px 12px",
+                    backgroundColor: "#f8fafc",
+                    borderBottom: "1px solid #e5e7eb",
+                    cursor: "pointer"
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#111827", fontSize: "13px", fontWeight: "600" }}>
                     {quotesExpanded ? (
-                      <ChevronDown size={16} color="#156372" />
+                      <ChevronDown size={14} color="#2563eb" />
                     ) : (
-                      <ChevronRight size={16} color="#666" />
+                      <ChevronRight size={14} color="#64748b" />
                     )}
-                    <span style={{
-                      fontSize: "14px",
-                      fontWeight: "500",
-                      color: activeSalesSection === "Quotes" ? "#156372" : "#111827"
-                    }}>
-                      Quotes
-                    </span>
+                    Quotes
                   </div>
-                  {quotesExpanded && (
-                    <div style={{ position: "relative", display: "inline-block" }}>
-                      <select
-                        style={{
-                          border: "none",
-                          padding: "6px 28px 6px 12px",
-                          borderRadius: "4px",
-                          fontSize: "14px",
-                          cursor: "pointer",
-                          backgroundColor: "#f3f4f6",
-                          color: "#374151",
-                          appearance: "none",
-                          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                          backgroundRepeat: "no-repeat",
-                          backgroundPosition: "right 8px center",
-                          paddingRight: "28px"
-                        }}
-                      >
-                        <option>Status: All</option>
-                      </select>
-                    </div>
-                  )}
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#1f2937" }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3 5h18l-7 8v5l-4 3v-8L3 5z" stroke="#2563eb" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <select
+                      value={quotesStatusFilter}
+                      onChange={(e) => setQuotesStatusFilter(e.target.value)}
+                      style={{
+                        border: "none",
+                        backgroundColor: "transparent",
+                        fontSize: "12px",
+                        color: "#1f2937",
+                        cursor: "pointer",
+                        appearance: "none",
+                        paddingRight: "14px"
+                      }}
+                    >
+                      {statusOptions.map((option) => (
+                        <option key={option} value={option}>Status: {option}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={12} color="#6b7280" />
+                  </div>
                 </div>
+
                 {quotesExpanded && (
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ backgroundColor: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>
-                          DATE
-                          <ArrowUpDown size={12} style={{ marginLeft: "4px", display: "inline-block", verticalAlign: "middle" }} />
-                        </th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>QUOTE#</th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>REFERENCE#</th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>AMOUNT</th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>STATUS</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td colSpan="5" style={{ padding: "40px", textAlign: "center", color: "#6b7280", fontSize: "14px" }}>
-                          There are no quotes.
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+                  <>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>
+                            DATE <ArrowUpDown size={11} style={{ marginLeft: "4px", display: "inline-block", verticalAlign: "middle" }} />
+                          </th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>QUOTE#</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>REFERENCE#</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>AMOUNT</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>STATUS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredSalesQuotes.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} style={{ padding: "28px", textAlign: "center", color: "#6b7280", fontSize: "13px" }}>
+                              There are no quotes.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredSalesQuotes.map((quote) => (
+                            <tr key={quote.id || quote._id || quote.quoteNumber || quote.number} style={{ borderBottom: "1px solid #e5e7eb" }}>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{formatSalesDate(quote.date || quote.quoteDate || quote.createdAt)}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#2563eb" }}>{quote.quoteNumber || quote.number || quote.quoteNo || "-"}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{quote.reference || quote.referenceNumber || quote.ref || "-"}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{quote.currency || baseCurrencyCode} {Number(quote.amount || quote.total || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{quote.status || "-"}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </>
+                )}
+              </div>
+
+                            {/* Retainer Invoices Section */}
+              <div style={{ border: "1px solid #e5e7eb", borderRadius: "8px", overflow: "hidden", marginBottom: "16px" }}>
+                <div
+                  onClick={() => setRetainerInvoicesExpanded((open) => !open)}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "10px 12px",
+                    backgroundColor: "#f8fafc",
+                    borderBottom: "1px solid #e5e7eb",
+                    cursor: "pointer"
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#111827", fontSize: "13px", fontWeight: "600" }}>
+                    {retainerInvoicesExpanded ? (
+                      <ChevronDown size={14} color="#2563eb" />
+                    ) : (
+                      <ChevronRight size={14} color="#64748b" />
+                    )}
+                    Retainer Invoices
+                  </div>
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#1f2937" }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3 5h18l-7 8v5l-4 3v-8L3 5z" stroke="#2563eb" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <select
+                      value={retainerInvoicesStatusFilter}
+                      onChange={(e) => setRetainerInvoicesStatusFilter(e.target.value)}
+                      style={{
+                        border: "none",
+                        backgroundColor: "transparent",
+                        fontSize: "12px",
+                        color: "#1f2937",
+                        cursor: "pointer",
+                        appearance: "none",
+                        paddingRight: "14px"
+                      }}
+                    >
+                      {statusOptions.map((option) => (
+                        <option key={option} value={option}>Status: {option}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={12} color="#6b7280" />
+                  </div>
+                </div>
+
+                {retainerInvoicesExpanded && (
+                  <>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>
+                            DATE <ArrowUpDown size={11} style={{ marginLeft: "4px", display: "inline-block", verticalAlign: "middle" }} />
+                          </th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>RETAINER INVOICE NUMBER</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>REFERENCE#</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>AMOUNT</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>BALANCE DUE</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>STATUS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredSalesRetainerInvoices.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} style={{ padding: "28px", textAlign: "center", color: "#6b7280", fontSize: "13px" }}>
+                              There are no retainer invoices.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredSalesRetainerInvoices.map((retainer) => (
+                            <tr key={retainer.id || retainer._id || retainer.retainerNumber || retainer.number} style={{ borderBottom: "1px solid #e5e7eb" }}>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{formatSalesDate(retainer.date || retainer.invoiceDate || retainer.createdAt)}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#2563eb" }}>{retainer.retainerNumber || retainer.number || retainer.invoiceNumber || "-"}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{retainer.reference || retainer.referenceNumber || retainer.ref || "-"}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{retainer.currency || baseCurrencyCode} {Number(retainer.amount || retainer.total || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{retainer.currency || baseCurrencyCode} {Number(retainer.balanceDue || retainer.balance || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{retainer.status || "-"}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+
+                    <div style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "10px 12px",
+                      color: "#64748b",
+                      fontSize: "12px"
+                    }}>
+                      <div>
+                        Total Count:{" "}
+                        <span style={{ color: "#2563eb", cursor: "pointer" }}>View</span>
+                      </div>
+                      <div style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "4px 8px",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "6px",
+                        color: "#2563eb"
+                      }}>
+                        <span style={{ cursor: "pointer" }}>{"<"}</span>
+                        <span>1 - {Math.max(1, Math.min(3, filteredSalesRetainerInvoices.length || 1))}</span>
+                        <span style={{ cursor: "pointer" }}>{">"}</span>
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
 
               {/* Credit Notes Section */}
-              <div style={{ marginBottom: "32px" }}>
+              <div style={{ border: "1px solid #e5e7eb", borderRadius: "8px", overflow: "hidden", marginBottom: "16px" }}>
                 <div
+                  onClick={() => setCreditNotesExpanded((open) => !open)}
                   style={{
                     display: "flex",
+                    justifyContent: "space-between",
                     alignItems: "center",
-                    gap: "8px",
-                    cursor: "pointer",
-                    padding: "8px 12px",
-                    border: activeSalesSection === "Credit Notes" ? "1px solid #156372" : "1px solid #d1d5db",
-                    borderRadius: "6px",
-                    backgroundColor: "#fff",
-                    marginBottom: "16px"
-                  }}
-                  onClick={() => {
-                    setActiveSalesSection("Credit Notes");
-                    setCreditNotesExpanded(!creditNotesExpanded);
+                    padding: "10px 12px",
+                    backgroundColor: "#f8fafc",
+                    borderBottom: "1px solid #e5e7eb",
+                    cursor: "pointer"
                   }}
                 >
-                  {creditNotesExpanded ? (
-                    <ChevronDown size={16} color="#156372" />
-                  ) : (
-                    <ChevronRight size={16} color="#666" />
-                  )}
-                  <span style={{
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    color: activeSalesSection === "Credit Notes" ? "#156372" : "#111827"
-                  }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#111827", fontSize: "13px", fontWeight: "600" }}>
+                    {creditNotesExpanded ? (
+                      <ChevronDown size={14} color="#2563eb" />
+                    ) : (
+                      <ChevronRight size={14} color="#64748b" />
+                    )}
                     Credit Notes
-                  </span>
+                  </div>
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#1f2937" }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3 5h18l-7 8v5l-4 3v-8L3 5z" stroke="#2563eb" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <select
+                      value={creditNotesStatusFilter}
+                      onChange={(e) => setCreditNotesStatusFilter(e.target.value)}
+                      style={{
+                        border: "none",
+                        backgroundColor: "transparent",
+                        fontSize: "12px",
+                        color: "#1f2937",
+                        cursor: "pointer",
+                        appearance: "none",
+                        paddingRight: "14px"
+                      }}
+                    >
+                      {statusOptions.map((option) => (
+                        <option key={option} value={option}>Status: {option}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={12} color="#6b7280" />
+                  </div>
                 </div>
+
                 {creditNotesExpanded && (
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ backgroundColor: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>
-                          DATE
-                          <ArrowUpDown size={12} style={{ marginLeft: "4px", display: "inline-block", verticalAlign: "middle" }} />
-                        </th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>CREDIT NOTE#</th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>REFERENCE#</th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>AMOUNT</th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>STATUS</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td colSpan="5" style={{ padding: "40px", textAlign: "center", color: "#6b7280", fontSize: "14px" }}>
-                          There are no credit notes.
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+                  <>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>
+                            CREDIT DATE <ArrowUpDown size={11} style={{ marginLeft: "4px", display: "inline-block", verticalAlign: "middle" }} />
+                          </th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>CREDIT NOTE#</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>REFERENCE#</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>PROJECT FEE</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>BALANCE</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>AMOUNT</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>STATUS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredSalesCreditNotes.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} style={{ padding: "28px", textAlign: "center", color: "#6b7280", fontSize: "13px" }}>
+                              There are no credit notes.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredSalesCreditNotes.map((note) => (
+                            <tr key={note.id || note._id || note.creditNoteNumber || note.number} style={{ borderBottom: "1px solid #e5e7eb" }}>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{formatSalesDate(note.date || note.creditDate || note.createdAt)}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#2563eb" }}>{note.creditNoteNumber || note.number || note.noteNumber || "-"}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{note.reference || note.referenceNumber || note.ref || "-"}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{note.projectFee || note.fee || "-"}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{note.currency || baseCurrencyCode} {Number(note.balance || note.balanceDue || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{note.currency || baseCurrencyCode} {Number(note.amount || note.total || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{note.status || "-"}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </>
                 )}
               </div>
-            </div>
-          )}
 
-          {/* Budget Configuration Tab */}
-          {activeTab === "Budget Configuration" && (
-            <div style={{
-              backgroundColor: "#fff",
-              borderRadius: "8px",
-              padding: "60px 40px",
-              textAlign: "center"
-            }}>
-              <h2 style={{
-                fontSize: "28px",
-                fontWeight: "600",
-                color: "#1f2937",
-                marginBottom: "16px"
-              }}>
-                Budget your business finance. Stay on top of your expenses.
-              </h2>
-              <p style={{
-                fontSize: "16px",
-                color: "#1f2937",
-                marginBottom: "32px",
-                maxWidth: "600px",
-                margin: "0 auto 32px"
-              }}>
-                Create budgets for the various activities of your business, compare them with the actuals, and see how your business is performing.
-              </p>
-              <button
-                onClick={() => setShowNewBudgetForm(true)}
-                style={{
-                  padding: "12px 32px",
-                  border: "none",
-                  borderRadius: "6px",
-                  backgroundColor: "#156372",
-                  color: "white",
-                  cursor: "pointer",
-                  fontSize: "16px",
-                  fontWeight: "600",
-                  textTransform: "uppercase"
-                }}
-              >
-                CREATE BUDGET
-              </button>
-            </div>
-          )}
-
-          {/* Journals Tab */}
-          {activeTab === "Journals" && (
-            <div style={{
-              backgroundColor: "#fff",
-              borderRadius: "8px",
-              padding: "40px",
-              textAlign: "center",
-              color: "#6b7280",
-              fontSize: "14px"
-            }}>
-              There are no journals associated with this project.
-            </div>
-          )}
-
-          {activeTab === "Comments" && (
-            <div style={{
-              backgroundColor: "#fff",
-              borderRadius: "8px",
-              padding: "24px"
-            }}>
-              {/* Comment Input Area */}
-              <div style={{ marginBottom: "32px" }}>
-                {/* Formatting Buttons */}
-                <div style={{
-                  display: "flex",
-                  gap: "4px",
-                  marginBottom: "8px"
-                }}>
-                  <button
-                    onClick={() => setIsBold(!isBold)}
-                    style={{
-                      padding: "6px 10px",
-                      border: "1px solid #ddd",
-                      borderRadius: "4px",
-                      backgroundColor: isBold ? "#f0f0f0" : "#fff",
-                      cursor: "pointer",
-                      fontSize: "14px",
-                      fontWeight: "bold"
-                    }}
+              {/* Refunds Section */}
+              <div style={{ border: "1px solid #e5e7eb", borderRadius: "8px", overflow: "hidden" }}>
+                <div
+                  onClick={() => setRefundsExpanded((open) => !open)}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "10px 12px",
+                    backgroundColor: "#f8fafc",
+                    borderBottom: "1px solid #e5e7eb",
+                    cursor: "pointer"
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#111827", fontSize: "13px", fontWeight: "600" }}>
+                    {refundsExpanded ? (
+                      <ChevronDown size={14} color="#2563eb" />
+                    ) : (
+                      <ChevronRight size={14} color="#64748b" />
+                    )}
+                    Refunds
+                  </div>
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#1f2937" }}
                   >
-                    B
-                  </button>
-                  <button
-                    onClick={() => setIsItalic(!isItalic)}
-                    style={{
-                      padding: "6px 10px",
-                      border: "1px solid #ddd",
-                      borderRadius: "4px",
-                      backgroundColor: isItalic ? "#f0f0f0" : "#fff",
-                      cursor: "pointer",
-                      fontSize: "14px",
-                      fontStyle: "italic"
-                    }}
-                  >
-                    I
-                  </button>
-                  <button
-                    onClick={() => setIsUnderline(!isUnderline)}
-                    style={{
-                      padding: "6px 10px",
-                      border: "1px solid #ddd",
-                      borderRadius: "4px",
-                      backgroundColor: isUnderline ? "#f0f0f0" : "#fff",
-                      cursor: "pointer",
-                      fontSize: "14px",
-                      textDecoration: "underline"
-                    }}
-                  >
-                    U
-                  </button>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3 5h18l-7 8v5l-4 3v-8L3 5z" stroke="#2563eb" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <select
+                      value={refundsStatusFilter}
+                      onChange={(e) => setRefundsStatusFilter(e.target.value)}
+                      style={{
+                        border: "none",
+                        backgroundColor: "transparent",
+                        fontSize: "12px",
+                        color: "#1f2937",
+                        cursor: "pointer",
+                        appearance: "none",
+                        paddingRight: "14px"
+                      }}
+                    >
+                      {statusOptions.map((option) => (
+                        <option key={option} value={option}>Status: {option}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={12} color="#6b7280" />
+                  </div>
                 </div>
 
-                {/* Comment Text Area */}
-                <textarea
-                  value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
-                  placeholder="Add a comment..."
-                  style={{
-                    width: "100%",
-                    minHeight: "120px",
-                    padding: "12px",
-                    border: "1px solid #ddd",
-                    borderRadius: "4px",
-                    fontSize: "14px",
-                    outline: "none",
-                    resize: "vertical",
-                    fontFamily: "inherit",
-                    fontWeight: isBold ? "bold" : "normal",
-                    fontStyle: isItalic ? "italic" : "normal",
-                    textDecoration: isUnderline ? "underline" : "none"
-                  }}
-                />
-
-                {/* Add Comment Button */}
-                <button
-                  onClick={() => {
-                    if (!commentText.trim()) {
-                      return;
-                    }
-                    const newComment = {
-                      id: Date.now().toString(),
-                      text: commentText,
-                      author: "Current User", // You can replace this with actual user info
-                      createdAt: new Date().toISOString(),
-                      isBold,
-                      isItalic,
-                      isUnderline
-                    };
-                    const updatedComments = [...comments, newComment];
-                    setComments(updatedComments);
-
-                    // Save to localStorage
-                    const allComments = JSON.parse(localStorage.getItem('projectComments') || '{}');
-                    allComments[projectId] = updatedComments;
-                    localStorage.setItem('projectComments', JSON.stringify(allComments));
-
-                    // Reset form
-                    setCommentText("");
-                    setIsBold(false);
-                    setIsItalic(false);
-                    setIsUnderline(false);
-                  }}
-                  style={{
-                    marginTop: "12px",
-                    padding: "10px 20px",
-                    border: "none",
-                    borderRadius: "4px",
-                    backgroundColor: "#156372",
-                    color: "white",
-                    cursor: "pointer",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    transition: "background-color 0.2s"
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#0D4A52"}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#156372"}
-                >
-                  Add Comment
-                </button>
-              </div>
-
-              {/* All Comments Section */}
-              <div>
-                <h3 style={{
-                  fontSize: "16px",
-                  fontWeight: "600",
-                  color: "#333",
-                  marginBottom: "16px"
-                }}>
-                  ALL COMMENTS
-                </h3>
-
-                {comments.length === 0 ? (
-                  <div style={{
-                    textAlign: "center",
-                    padding: "40px",
-                    color: "#6b7280",
-                    fontSize: "14px"
-                  }}>
-                    No comments yet.
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                    {comments.map((comment) => (
-                      <div
-                        key={comment.id}
-                        style={{
-                          padding: "16px",
-                          border: "1px solid #e5e7eb",
-                          borderRadius: "4px",
-                          backgroundColor: "#fafafa"
-                        }}
-                      >
-                        <div style={{
-                          fontSize: "14px",
-                          color: "#333",
-                          whiteSpace: "pre-wrap",
-                          fontWeight: comment.isBold ? "bold" : "normal",
-                          fontStyle: comment.isItalic ? "italic" : "normal",
-                          textDecoration: comment.isUnderline ? "underline" : "none"
-                        }}>
-                          {comment.text}
-                        </div>
-                        <div style={{
-                          fontSize: "12px",
-                          color: "#6b7280",
-                          marginTop: "8px"
-                        }}>
-                          {comment.author} â€¢ {new Date(comment.createdAt).toLocaleDateString()}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                {refundsExpanded && (
+                  <>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>
+                            DATE <ArrowUpDown size={11} style={{ marginLeft: "4px", display: "inline-block", verticalAlign: "middle" }} />
+                          </th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>REFUND#</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>REFERENCE#</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>AMOUNT</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>STATUS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredSalesRefunds.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} style={{ padding: "28px", textAlign: "center", color: "#6b7280", fontSize: "13px" }}>
+                              There are no refunds.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredSalesRefunds.map((refund) => (
+                            <tr key={refund.id || refund._id || refund.refundNumber || refund.number} style={{ borderBottom: "1px solid #e5e7eb" }}>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{formatSalesDate(refund.date || refund.refundDate || refund.createdAt)}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#2563eb" }}>{refund.refundNumber || refund.number || refund.refundNo || "-"}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{refund.reference || refund.referenceNumber || refund.ref || "-"}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{refund.currency || baseCurrencyCode} {Number(refund.amount || refund.total || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td style={{ padding: "8px 10px", fontSize: "13px", color: "#111827" }}>{refund.status || "-"}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </>
                 )}
               </div>
             </div>
           )}
-        </div>
+        </>
+        )}
       </div>
-
-      {/* New Log Entry Form Modal */}
-      {showLogEntryForm && (
-        <NewLogEntryForm
-          onClose={() => setShowLogEntryForm(false)}
-          defaultProjectName={project?.projectName || ""}
-        />
-      )}
-
-      {/* Attachments Modal */}
-      {showAttachmentsModal && (
+      {/* Add Users Modal */}
+      {showAddUserModal && (
         <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              setShowAttachmentsModal(false);
+              setShowAddUserModal(false);
             }
           }}
           style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-            padding: '20px'
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(17, 24, 39, 0.55)",
+            zIndex: 2185,
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "center",
+            padding: "28px 20px 20px"
           }}
         >
           <div
             style={{
-              backgroundColor: 'white',
-              borderRadius: '8px',
-              width: '100%',
-              maxWidth: '600px',
-              maxHeight: '90vh',
-              overflowY: 'auto',
-              boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
+              width: "100%",
+              maxWidth: "560px",
+              backgroundColor: "#fff",
+              borderRadius: "8px",
+              overflow: "visible",
+              boxShadow: "0 24px 48px rgba(15, 23, 42, 0.25)",
+              border: "1px solid #e5e7eb"
             }}
           >
-            {/* Header */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '20px 24px',
-              borderBottom: '1px solid #e5e7eb'
-            }}>
-              <h2 style={{
-                fontSize: '20px',
-                fontWeight: '600',
-                color: '#1f2937',
-                margin: 0
-              }}>
-                Attachments
-              </h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: "1px solid #e5e7eb" }}>
+              <h2 style={{ margin: 0, fontSize: "18px", fontWeight: "500", color: "#111827" }}>Add users</h2>
               <button
-                onClick={() => setShowAttachmentsModal(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '24px',
-                  cursor: 'pointer',
-                  color: '#156372',
-                  padding: '4px',
-                  lineHeight: 1,
-                  fontWeight: 'bold',
-                  transition: 'color 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.color = '#0D4A52'}
-                onMouseLeave={(e) => e.currentTarget.style.color = '#156372'}
+                type="button"
+                onClick={closeAddUsersModal}
+                style={{ width: "30px", height: "30px", borderRadius: "6px", border: "none", backgroundColor: "#fff", color: "#ef4444", cursor: "pointer", fontSize: "18px", lineHeight: 1 }}
               >
-                Ã—
+                x
               </button>
             </div>
 
-            {/* Content */}
-            <div style={{ padding: '24px' }}>
-              {/* Status Message */}
-              {attachedFiles.length === 0 && (
-                <div style={{
-                  marginBottom: '24px',
-                  fontSize: '14px',
-                  color: '#6b7280',
-                  textAlign: 'center'
-                }}>
-                  No Files Attached
-                </div>
-              )}
-
-              {/* Upload Area */}
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                style={{
-                  border: '2px dashed #d1d5db',
-                  borderRadius: '8px',
-                  padding: '60px 20px',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  backgroundColor: '#f9fafb',
-                  transition: 'all 0.2s',
-                  marginBottom: '16px'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = '#156372';
-                  e.currentTarget.style.backgroundColor = '#f0f7ff';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = '#d1d5db';
-                  e.currentTarget.style.backgroundColor = '#f9fafb';
-                }}
-              >
-                <div style={{
-                  fontSize: '32px',
-                  marginBottom: '12px'
-                }}>
-                  â¬†
-                </div>
-                <div style={{
-                  fontSize: '16px',
-                  fontWeight: '500',
-                  color: '#374151',
-                  marginBottom: '4px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px'
-                }}>
-                  Upload your Files
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M3 4.5l3 3 3-3" stroke="#374151" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </div>
-              </div>
-
-              {/* File Input (Hidden) */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                style={{ display: 'none' }}
-                onChange={(e) => {
-                  const files = Array.from(e.target.files);
-                  // Check file count limit
-                  if (attachedFiles.length + files.length > 20) {
-                    alert('Maximum 20 files allowed. Please select fewer files.');
-                    return;
-                  }
-
-                  // Check file size (10MB each)
-                  const invalidFiles = files.filter(file => file.size > 10 * 1024 * 1024);
-                  if (invalidFiles.length > 0) {
-                    alert('Some files exceed 10MB limit. Please select smaller files.');
-                    return;
-                  }
-
-                  // Add files to state
-                  const newFiles = files.map(file => ({
-                    id: Date.now() + Math.random(),
-                    name: file.name,
-                    size: file.size,
-                    file: file
-                  }));
-                  setAttachedFiles([...attachedFiles, ...newFiles]);
-                }}
-              />
-
-              {/* Upload Limits */}
-              <div style={{
-                fontSize: '12px',
-                color: '#6b7280',
-                textAlign: 'center',
-                marginBottom: '24px'
-              }}>
-                You can upload a maximum of 20 files, 10MB each.
-              </div>
-
-              {/* Attached Files List */}
-              {attachedFiles.length > 0 && (
-                <div style={{
-                  marginTop: '24px'
-                }}>
-                  <div style={{
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    color: '#374151',
-                    marginBottom: '12px'
-                  }}>
-                    Attached Files ({attachedFiles.length}/20)
+            <div style={{ padding: "18px 20px 20px", position: "relative" }}>
+              <div ref={addUsersDropdownRef} style={{ position: "relative" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", color: "#ef4444" }}>Select Users*</label>
+                <button
+                  type="button"
+                  onClick={() => setAddUsersDropdownOpen((prev) => !prev)}
+                  style={{
+                    width: "100%",
+                    minHeight: "38px",
+                    border: `1px solid ${addUsersDropdownOpen ? "#3b82f6" : "#d1d5db"}`,
+                    borderRadius: "6px",
+                    backgroundColor: "#fff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "10px",
+                    padding: "8px 12px",
+                    cursor: "pointer",
+                    boxShadow: addUsersDropdownOpen ? "0 0 0 3px rgba(59, 130, 246, 0.12)" : "none"
+                  }}
+                >
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", flex: 1, minWidth: 0 }}>
+                    {selectedUsersToAdd.length ? (
+                      selectedUsersToAdd.map((user) => (
+                        <span
+                          key={user.value}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            maxWidth: "100%",
+                            padding: "5px 10px",
+                            borderRadius: "6px",
+                            border: "1px solid #cbd5e1",
+                            backgroundColor: "#f8fafc",
+                            color: "#334155",
+                            fontSize: "13px"
+                          }}
+                        >
+                          <span style={{ maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.label}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeSelectedUser(user.value);
+                            }}
+                            style={{
+                              border: "none",
+                              background: "transparent",
+                              color: "#94a3b8",
+                              cursor: "pointer",
+                              padding: 0,
+                              display: "inline-flex",
+                              alignItems: "center"
+                            }}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))
+                    ) : (
+                      <span style={{ color: "#94a3b8", fontSize: "14px" }}>Select Users</span>
+                    )}
                   </div>
-                  {attachedFiles.map((fileItem) => (
-                    <div
-                      key={fileItem.id}
+                  <ChevronDown size={16} color="#94a3b8" style={{ flexShrink: 0, transform: addUsersDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s ease" }} />
+                </button>
+
+                {addUsersDropdownOpen && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 8px)",
+                      left: 0,
+                      right: 0,
+                      zIndex: 40,
+                      backgroundColor: "#fff",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "8px",
+                      boxShadow: "0 12px 24px rgba(15, 23, 42, 0.12)",
+                      overflow: "hidden"
+                    }}
+                  >
+                    <div style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>
+                      <div style={{ position: "relative" }}>
+                        <Search size={15} color="#94a3b8" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+                        <input
+                          type="text"
+                          value={addUsersSearch}
+                          onChange={(e) => setAddUsersSearch(e.target.value)}
+                          placeholder="Search"
+                          style={{
+                            width: "100%",
+                            height: "36px",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: "6px",
+                            padding: "0 12px 0 32px",
+                            fontSize: "14px",
+                            outline: "none",
+                            color: "#111827"
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ maxHeight: "210px", overflowY: "auto" }}>
+                      {filteredAvailableUsers.length ? (
+                        filteredAvailableUsers.map((user) => {
+                          const isSelected = selectedUsersToAdd.some((item) => item.value === user.value);
+                          return (
+                            <button
+                              key={user.value}
+                              type="button"
+                              onClick={() => toggleSelectedUser(user)}
+                              style={{
+                                width: "100%",
+                                border: "none",
+                                backgroundColor: isSelected ? "#3b82f6" : "#fff",
+                                color: isSelected ? "#fff" : "#334155",
+                                padding: "10px 12px",
+                                textAlign: "left",
+                                cursor: "pointer",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                fontSize: "14px"
+                              }}
+                            >
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.label}</span>
+                              {isSelected ? <Check size={16} /> : null}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div style={{ padding: "12px", color: "#94a3b8", fontSize: "14px" }}>No users found</div>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        closeAddUsersModal();
+                        navigate("/settings/users");
+                      }}
                       style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '12px',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '6px',
-                        marginBottom: '8px',
-                        backgroundColor: '#fff'
+                        width: "100%",
+                        border: "none",
+                        borderTop: "1px solid #e5e7eb",
+                        backgroundColor: "#fff",
+                        padding: "10px 12px",
+                        color: "#156372",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        fontSize: "14px"
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
-                        <div style={{
-                          width: '40px',
-                          height: '40px',
-                          backgroundColor: '#f3f4f6',
-                          borderRadius: '6px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '20px'
-                        }}>
-                          ðŸ“„
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{
-                            fontSize: '14px',
-                            fontWeight: '500',
-                            color: '#1f2937',
-                            marginBottom: '2px'
-                          }}>
-                            {fileItem.name}
-                          </div>
-                          <div style={{
-                            fontSize: '12px',
-                            color: '#6b7280'
-                          }}>
-                            {(fileItem.size / 1024 / 1024).toFixed(2)} MB
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setAttachedFiles(attachedFiles.filter(f => f.id !== fileItem.id));
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#156372',
-                          cursor: 'pointer',
-                          padding: '4px 8px',
-                          fontSize: '18px',
-                          fontWeight: 'bold',
-                          transition: 'color 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.color = '#0D4A52'}
-                        onMouseLeave={(e) => e.currentTarget.style.color = '#156372'}
-                      >
-                        Ã—
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div style={{
-                display: 'flex',
-                gap: '12px',
-                paddingTop: '16px',
-                borderTop: '1px solid #e5e7eb',
-                marginTop: '24px'
-              }}>
-                <button
-                  onClick={() => setShowAttachmentsModal(false)}
-                  style={{
-                    flex: 1,
-                    padding: '12px 24px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    backgroundColor: 'white',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    color: '#374151'
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    // Save attachments to localStorage or handle save logic here
-                    // For now, just close the modal
-                    setShowAttachmentsModal(false);
-                  }}
-                  style={{
-                    flex: 1,
-                    padding: '12px 24px',
-                    border: 'none',
-                    borderRadius: '6px',
-                    backgroundColor: '#156372',
-                    color: 'white',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    transition: 'background-color 0.2s'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0D4A52'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#156372'}
-                >
-                  Save
-                </button>
+                      <Plus size={14} />
+                      Add new user
+                    </button>
+                  </div>
+                )}
               </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "8px", padding: "12px 20px 16px", borderTop: "1px solid #e5e7eb" }}>
+              <button
+                type="button"
+                onClick={handleSaveUsers}
+                style={{ border: "none", backgroundColor: "#156372", color: "white", borderRadius: "4px", padding: "8px 14px", fontSize: "14px", fontWeight: "600", cursor: "pointer" }}
+              >
+                Add users
+              </button>
+              <button
+                type="button"
+                onClick={closeAddUsersModal}
+                style={{ border: "1px solid #d1d5db", backgroundColor: "#f3f4f6", color: "#111827", borderRadius: "6px", padding: "8px 16px", fontSize: "15px", cursor: "pointer" }}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Invoice Preferences Modal */}
-      {showInvoicePreferences && (
+      {/* Add Project Task Modal */}
+      {showAddTaskModal && (
         <div
-          onClick={(e) => e.target === e.currentTarget && setShowInvoicePreferences(false)}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowAddTaskModal(false);
+            }
+          }}
           style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-            padding: '20px'
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(17, 24, 39, 0.55)",
+            zIndex: 2190,
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "center",
+            padding: "28px 20px 20px"
           }}
         >
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            width: '100%',
-            maxWidth: '500px',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
-            padding: '24px'
-          }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '24px'
-            }}>
-              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '600' }}>Invoice Preferences</h2>
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "440px",
+              backgroundColor: "#fff",
+              borderRadius: "8px",
+              overflow: "hidden",
+              boxShadow: "0 24px 48px rgba(15, 23, 42, 0.25)",
+              border: "1px solid #e5e7eb"
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", borderBottom: "1px solid #e5e7eb" }}>
+              <h2 style={{ margin: 0, fontSize: "18px", fontWeight: "500", color: "#111827" }}>Add Project Task</h2>
               <button
-                onClick={() => setShowInvoicePreferences(false)}
+                type="button"
+                onClick={() => setShowAddTaskModal(false)}
                 style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '24px',
-                  cursor: 'pointer',
-                  color: '#666'
+                  width: "30px",
+                  height: "30px",
+                  borderRadius: "6px",
+                  border: "none",
+                  backgroundColor: "#fff",
+                  color: "#ef4444",
+                  cursor: "pointer",
+                  fontSize: "18px",
+                  lineHeight: 1
                 }}
               >
-                Ã—
+                x
               </button>
             </div>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>
-                Invoice Template
+
+            <div style={{ padding: "16px 18px 12px" }}>
+              <div style={{ marginBottom: "10px" }}>
+                <label style={{ display: "block", fontSize: "15px", color: "#ef4444", marginBottom: "8px" }}>Task Name*</label>
+                <input
+                  type="text"
+                  value={newTaskName}
+                  onChange={(e) => setNewTaskName(e.target.value)}
+                  style={{ width: "100%", height: "38px", border: "1px solid #d1d5db", borderRadius: "7px", padding: "0 12px", fontSize: "14px", color: "#111827", backgroundColor: "#fff" }}
+                />
+              </div>
+
+              {showTaskRatePerHour && (
+                <div style={{ marginBottom: "10px" }}>
+                  <label style={{ display: "block", fontSize: "15px", color: "#374151", marginBottom: "8px" }}>Rate Per Hour</label>
+                  <div style={{ display: "flex", alignItems: "stretch", border: "1px solid #d1d5db", borderRadius: "7px", overflow: "hidden", backgroundColor: "#fff" }}>
+                    <span style={{ padding: "0 12px", display: "inline-flex", alignItems: "center", borderRight: "1px solid #d1d5db", color: "#374151", fontSize: "14px", backgroundColor: "#f8fafc" }}>{currencyCode}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={newTaskRatePerHour}
+                      onChange={(e) => setNewTaskRatePerHour(e.target.value)}
+                      style={{ flex: 1, height: "38px", border: "none", outline: "none", padding: "0 12px", fontSize: "14px", color: "#111827", backgroundColor: "transparent" }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginBottom: "8px" }}>
+                <label style={{ display: "block", fontSize: "15px", color: "#374151", marginBottom: "8px" }}>Description</label>
+                <textarea
+                  value={newTaskDescription}
+                  onChange={(e) => setNewTaskDescription(e.target.value)}
+                  rows={2}
+                  style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: "7px", padding: "8px 12px", fontSize: "14px", color: "#111827", backgroundColor: "#fff", resize: "vertical", minHeight: "62px" }}
+                />
+              </div>
+
+              <label style={{ display: "inline-flex", alignItems: "center", gap: "8px", fontSize: "14px", color: "#374151", marginTop: "2px" }}>
+                <input
+                  type="checkbox"
+                  checked={newTaskBillable}
+                  onChange={(e) => setNewTaskBillable(e.target.checked)}
+                  style={{ width: "15px", height: "15px", accentColor: "#3b82f6" }}
+                />
+                Billable
+                <span style={{ width: "16px", height: "16px", borderRadius: "50%", border: "1px solid #94a3b8", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "11px", color: "#64748b" }}>i</span>
               </label>
-              <select style={{
-                width: '100%',
-                padding: '10px',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                fontSize: '14px'
-              }}>
-                <option>Default Template</option>
-                <option>Custom Template</option>
-              </select>
             </div>
-            <div style={{
-              display: 'flex',
-              gap: '12px',
-              justifyContent: 'flex-end',
-              marginTop: '24px'
-            }}>
+
+            <div style={{ display: "flex", gap: "8px", padding: "12px 18px 16px", borderTop: "1px solid #e5e7eb" }}>
               <button
-                onClick={() => setShowInvoicePreferences(false)}
-                style={{
-                  padding: '10px 20px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  backgroundColor: 'white',
-                  cursor: 'pointer'
+                type="button"
+                onClick={async () => {
+                  if (!newTaskName.trim()) {
+                    toast.error('Task name is required');
+                    return;
+                  }
+                  const newTask = {
+                    taskName: newTaskName.trim(),
+                    ratePerHour: showTaskRatePerHour ? newTaskRatePerHour.trim() : "",
+                    description: newTaskDescription.trim(),
+                    billable: newTaskBillable,
+                    budgetHours: '',
+                    active: true
+                  };
+                  const updatedTasks = [...(project?.tasks || []), newTask];
+                  try {
+                    await projectsAPI.update(projectId, { tasks: updatedTasks });
+                    setProject({ ...project, tasks: updatedTasks });
+                    window.dispatchEvent(new Event('projectUpdated'));
+                    toast.success('Task added');
+                  } catch (error) {
+                    console.error('Error adding task:', error);
+                    toast.error('Failed to add task: ' + (error.message || 'Unknown error'));
+                    return;
+                  }
+                  setNewTaskName('');
+                  setNewTaskRatePerHour('');
+                  setNewTaskDescription('');
+                  setNewTaskBillable(true);
+                  setShowAddTaskModal(false);
                 }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  setShowInvoicePreferences(false);
-                  alert('Invoice preferences saved');
-                }}
-                style={{
-                  padding: '10px 20px',
-                  border: 'none',
-                  borderRadius: '4px',
-                  backgroundColor: '#156372',
-                  color: 'white',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  transition: 'background-color 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0D4A52'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#156372'}
+                style={{ border: "none", backgroundColor: "#156372", color: "white", borderRadius: "6px", padding: "8px 16px", fontSize: "15px", cursor: "pointer" }}
               >
                 Save
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddTaskModal(false);
+                  setNewTaskName('');
+                  setNewTaskRatePerHour('');
+                  setNewTaskDescription('');
+                  setNewTaskBillable(true);
+                }}
+                style={{ border: "1px solid #d1d5db", backgroundColor: "#f3f4f6", color: "#111827", borderRadius: "6px", padding: "8px 16px", fontSize: "15px", cursor: "pointer" }}
+              >
+                Cancel
               </button>
             </div>
           </div>
@@ -3319,1251 +5726,340 @@ export default function ProjectDetailPage() {
       {/* Project Invoice Information Modal */}
       {showProjectInvoiceInfo && (
         <div
-          onClick={(e) => e.target === e.currentTarget && setShowProjectInvoiceInfo(false)}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowProjectInvoiceInfo(false);
+            }
+          }}
           style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-            padding: '20px'
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(17, 24, 39, 0.55)",
+            zIndex: 2200,
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "center",
+            padding: "28px 20px 20px"
           }}
         >
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            width: '100%',
-            maxWidth: '600px',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
-            padding: '24px',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            overflowX: 'visible',
-            position: 'relative'
-          }}
-            onClick={(e) => e.stopPropagation()}
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "480px",
+              backgroundColor: "#fff",
+              borderRadius: "8px",
+              overflow: "visible",
+              boxShadow: "0 24px 48px rgba(15, 23, 42, 0.25)",
+              border: "1px solid #e5e7eb"
+            }}
           >
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '24px'
-            }}>
-              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '600' }}>Project Invoice Information</h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid #e5e7eb", overflow: "hidden", borderTopLeftRadius: "8px", borderTopRightRadius: "8px" }}>
+              <h2 style={{ margin: 0, fontSize: "18px", fontWeight: "500", color: "#111827" }}>Project Invoice Information</h2>
               <button
+                type="button"
                 onClick={() => setShowProjectInvoiceInfo(false)}
-                style={{
-                  backgroundColor: '#156372',
-                  border: '2px solid #156372',
-                  borderRadius: '4px',
-                  width: '32px',
-                  height: '32px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  color: 'white',
-                  fontSize: '18px',
-                  fontWeight: 'bold',
-                  transition: 'background-color 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0D4A52'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#156372'}
+                style={{ border: "none", background: "transparent", color: "#ef4444", cursor: "pointer", fontSize: "22px", lineHeight: 1 }}
               >
-                Ã—
+                x
               </button>
             </div>
 
-            {/* How to sort data on invoice */}
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{
-                display: 'block',
-                marginBottom: '8px',
-                fontSize: '14px',
-                fontWeight: '500',
-                color: '#111827'
-              }}>
-                How to sort data on invoice<span style={{ color: '#ef4444' }}>*</span>
-              </label>
-              <div style={{ position: 'relative' }} ref={sortDataDropdownRef}>
-                <div
-                  onClick={() => setSortDataDropdownOpen(!sortDataDropdownOpen)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    backgroundColor: 'white',
-                    cursor: 'pointer',
-                    minHeight: '42px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    backgroundImage: sortDataDropdownOpen ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 3L11 8H1z'/%3E%3C/svg%3E")` : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 12px center',
-                    paddingRight: '36px'
-                  }}
-                >
-                  <span>{invoiceInfoData.sortData}</span>
-                </div>
-                {sortDataDropdownOpen && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: 0,
-                    right: 0,
-                    marginTop: '4px',
-                    backgroundColor: 'white',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                    zIndex: 10005,
-                    maxHeight: '400px',
-                    overflowY: 'auto',
-                    isolation: 'isolate'
-                  }}>
-                    {/* Search bar */}
-                    <div style={{ padding: '8px', borderBottom: '1px solid #e5e7eb' }}>
-                      <div style={{ position: 'relative' }}>
-                        <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#6b7280' }} />
-                        <input
-                          type="text"
-                          placeholder="Search"
-                          value={sortDataSearch}
-                          onChange={(e) => setSortDataSearch(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          style={{
-                            width: '100%',
-                            padding: '8px 12px 8px 36px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            fontSize: '14px',
-                            outline: 'none'
+            <div style={{ padding: "22px 20px 18px", position: "relative", zIndex: 1 }}>
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", fontSize: "15px", color: "#ef4444", marginBottom: "8px" }}>How to sort data on invoice*</label>
+                <div className="relative" ref={sortDataDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setSortDataDropdownOpen((prev) => !prev)}
+                    style={{ width: "100%", height: "42px", border: "1px solid #d1d5db", borderRadius: "7px", padding: "0 12px", fontSize: "13px", color: "#374151", backgroundColor: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
+                  >
+                    <span>{invoiceInfoData.sortData || "Select a value"}</span>
+                    <ChevronDown size={14} color="#6b7280" style={{ transform: sortDataDropdownOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.15s ease" }} />
+                  </button>
+                  {sortDataDropdownOpen && (
+                    <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, backgroundColor: "#fff", border: "1px solid #d1d5db", borderRadius: "7px", boxShadow: "0 10px 24px rgba(15, 23, 42, 0.12)", zIndex: 5000, overflow: "hidden" }}>
+                      {["Single Line For The Project"].map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => {
+                            setInvoiceInfoData((prev) => ({ ...prev, sortData: option }));
+                            setSortDataDropdownOpen(false);
                           }}
-                        />
-                      </div>
-                    </div>
-                    {[
-                      { value: 'Single Line For The Project', description: 'Display the entire project information as a single line item' },
-                      { value: 'Show All Timesheet Entries Individually', description: 'Show all time sheet entries as individual line items' },
-                      { value: 'Group By Project Tasks', description: 'List the entries for each project task as a single line item' },
-                      { value: 'Group By Project Tasks And Users', description: 'List each line item as a combination of users and tasks' }
-                    ]
-                      .filter(option =>
-                        option.value.toLowerCase().includes(sortDataSearch.toLowerCase()) ||
-                        option.description.toLowerCase().includes(sortDataSearch.toLowerCase())
-                      )
-                      .map((option) => {
-                        const isSelected = invoiceInfoData.sortData === option.value;
-                        return (
-                          <div
-                            key={option.value}
-                            onClick={() => {
-                              setInvoiceInfoData({ ...invoiceInfoData, sortData: option.value });
-                              setSortDataDropdownOpen(false);
-                              setSortDataSearch('');
-                            }}
-                            style={{
-                              padding: '12px 16px',
-                              cursor: 'pointer',
-                              fontSize: '14px',
-                              color: isSelected ? 'white' : '#111827',
-                              backgroundColor: isSelected ? '#156372' : 'transparent',
-                              borderBottom: '1px solid #f3f4f6',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between'
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!isSelected) {
-                                e.currentTarget.style.backgroundColor = 'rgba(21, 99, 114, 0.1)';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!isSelected) {
-                                e.currentTarget.style.backgroundColor = 'transparent';
-                              }
-                            }}
-                          >
-                            <div>
-                              <div style={{ fontWeight: isSelected ? '500' : '400', marginBottom: '4px' }}>{option.value}</div>
-                              <div style={{ fontSize: '12px', color: isSelected ? 'rgba(255,255,255,0.9)' : '#6b7280' }}>{option.description}</div>
-                            </div>
-                            {isSelected && <Check size={16} color="white" />}
+                          style={{ width: "100%", textAlign: "left", padding: "10px 12px", fontSize: "13px", color: "#374151", backgroundColor: invoiceInfoData.sortData === option ? "#f3f4f6" : "#fff", border: "none", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px" }}
+                        >
+                          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                            <span style={{ fontWeight: 600 }}>{option}</span>
+                            <span style={{ fontSize: "12px", color: "#64748b" }}>Display the entire project information as a single line item</span>
                           </div>
-                        );
-                      })}
-                  </div>
-                )}
-              </div>
-              <p style={{
-                marginTop: '6px',
-                fontSize: '12px',
-                color: '#6b7280',
-                marginBottom: 0
-              }}>
-                {invoiceInfoData.sortData === 'Single Line For The Project' && 'Display the entire project information as a single line item'}
-                {invoiceInfoData.sortData === 'Show All Timesheet Entries Individually' && 'Show all time sheet entries as individual line items'}
-                {invoiceInfoData.sortData === 'Group By Project Tasks' && 'List the entries for each project task as a single line item'}
-                {invoiceInfoData.sortData === 'Group By Project Tasks And Users' && 'List each line item as a combination of users and tasks'}
-              </p>
-            </div>
-
-            {/* Show in item name */}
-            <div style={{ marginBottom: '24px', position: 'relative', zIndex: 1 }}>
-              <label style={{
-                display: 'block',
-                marginBottom: '8px',
-                fontSize: '14px',
-                fontWeight: '500',
-                color: '#111827'
-              }}>
-                Show in item name<span style={{ color: '#ef4444' }}>*</span>
-              </label>
-              <div style={{ position: 'relative', zIndex: 10001 }} ref={itemNameDropdownRef}>
-                <div
-                  onClick={() => setItemNameDropdownOpen(!itemNameDropdownOpen)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    backgroundColor: 'white',
-                    cursor: 'pointer',
-                    minHeight: '42px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '8px',
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 12px center',
-                    paddingRight: '36px'
-                  }}
-                >
-                  {invoiceInfoData.itemName.length > 0 ? (
-                    invoiceInfoData.itemName.map((item, index) => (
-                      <span
-                        key={index}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '4px 8px',
-                          backgroundColor: 'rgba(21, 99, 114, 0.1)',
-                          color: '#156372',
-                          borderRadius: '4px',
-                          fontSize: '13px',
-                          fontWeight: '500'
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const newItems = invoiceInfoData.itemName.filter((_, i) => i !== index);
-                          setInvoiceInfoData({ ...invoiceInfoData, itemName: newItems });
-                          setItemNameDropdownOpen(true);
-                        }}
-                      >
-                        {item}
-                        <span style={{ cursor: 'pointer', fontSize: '16px', lineHeight: '1' }}>Ã—</span>
-                      </span>
-                    ))
-                  ) : (
-                    <span style={{ color: '#9ca3af' }}>Select items...</span>
+                          {invoiceInfoData.sortData === option ? <Check size={14} color="#156372" style={{ flexShrink: 0 }} /> : null}
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
-                {itemNameDropdownOpen && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: 0,
-                    right: 0,
-                    marginTop: '4px',
-                    backgroundColor: 'white',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                    zIndex: 10005,
-                    maxHeight: '300px',
-                    overflowY: 'auto',
-                    isolation: 'isolate'
-                  }}>
-                    {/* Search bar */}
-                    <div style={{ padding: '8px', borderBottom: '1px solid #e5e7eb' }}>
-                      <div style={{ position: 'relative' }}>
-                        <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#6b7280' }} />
-                        <input
-                          type="text"
-                          placeholder="Search"
-                          value={itemNameSearch}
-                          onChange={(e) => setItemNameSearch(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          style={{
-                            width: '100%',
-                            padding: '8px 12px 8px 36px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            fontSize: '14px',
-                            outline: 'none'
-                          }}
-                        />
-                      </div>
-                    </div>
-                    {['Project Name', 'Project Code']
-                      .filter(option => option.toLowerCase().includes(itemNameSearch.toLowerCase()))
-                      .map((option) => {
-                        const isSelected = invoiceInfoData.itemName.includes(option);
-                        return (
-                          <div
-                            key={option}
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", fontSize: "15px", color: "#ef4444", marginBottom: "8px" }}>Show in item name*</label>
+                <div className="relative" ref={itemNameDropdownRef}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setItemNameDropdownOpen((prev) => !prev)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setItemNameDropdownOpen((prev) => !prev);
+                      }
+                    }}
+                    style={{ minHeight: "42px", border: "1px solid #d1d5db", borderRadius: "7px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "6px 10px", backgroundColor: "#fff", cursor: "pointer" }}
+                  >
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", flex: 1 }}>
+                      {selectedItemNames.length ? selectedItemNames.map((option) => (
+                        <span
+                          key={option}
+                          style={{ display: "inline-flex", alignItems: "center", gap: "6px", backgroundColor: "#f3f4f6", border: "1px solid #d1d5db", borderRadius: "6px", padding: "4px 8px", fontSize: "13px", color: "#374151", maxWidth: "100%" }}
+                        >
+                          <span style={{ whiteSpace: "nowrap" }}>{option}</span>
+                          <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (!isSelected) {
-                                setInvoiceInfoData({
-                                  ...invoiceInfoData,
-                                  itemName: [...invoiceInfoData.itemName, option]
-                                });
-                              }
-                              setItemNameSearch('');
-                              setItemNameDropdownOpen(false);
+                              removeItemNameOption(option);
                             }}
-                            style={{
-                              padding: '10px 12px',
-                              cursor: 'pointer',
-                              fontSize: '14px',
-                              color: isSelected ? 'white' : '#111827',
-                              backgroundColor: isSelected ? '#156372' : 'transparent',
-                              borderBottom: '1px solid #f3f4f6',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between'
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!isSelected) {
-                                e.currentTarget.style.backgroundColor = 'rgba(21, 99, 114, 0.1)';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!isSelected) {
-                                e.currentTarget.style.backgroundColor = 'transparent';
-                              }
-                            }}
+                            style={{ border: "none", background: "transparent", color: "#9ca3af", cursor: "pointer", display: "inline-flex", alignItems: "center", padding: 0 }}
+                            aria-label={`Remove ${option}`}
                           >
-                            {option}
-                            {isSelected && <Check size={16} color="white" />}
-                          </div>
-                        );
-                      })}
+                            <X size={12} />
+                          </button>
+                        </span>
+                      )) : <span style={{ fontSize: "13px", color: "#9ca3af" }}>Select options</span>}
+                    </div>
+                    <ChevronDown size={14} color="#6b7280" style={{ flexShrink: 0, transform: itemNameDropdownOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.15s ease" }} />
                   </div>
-                )}
-              </div>
-            </div>
-
-            {/* Show in item description */}
-            <div style={{ marginBottom: '24px', position: 'relative', zIndex: 1 }}>
-              <label style={{
-                display: 'block',
-                marginBottom: '8px',
-                fontSize: '14px',
-                fontWeight: '500',
-                color: '#111827'
-              }}>
-                Show in item description
-              </label>
-              <div style={{ position: 'relative', zIndex: 10001 }} ref={itemDescriptionDropdownRef}>
-                <div
-                  onClick={() => setItemDescriptionDropdownOpen(!itemDescriptionDropdownOpen)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    backgroundColor: 'white',
-                    cursor: 'pointer',
-                    minHeight: '42px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '8px',
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 12px center',
-                    paddingRight: '36px'
-                  }}
-                >
-                  {invoiceInfoData.itemDescription.length > 0 ? (
-                    invoiceInfoData.itemDescription.map((item, index) => (
-                      <span
-                        key={index}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '4px 8px',
-                          backgroundColor: 'rgba(21, 99, 114, 0.1)',
-                          color: '#156372',
-                          borderRadius: '4px',
-                          fontSize: '13px',
-                          fontWeight: '500'
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const newItems = invoiceInfoData.itemDescription.filter((_, i) => i !== index);
-                          setInvoiceInfoData({ ...invoiceInfoData, itemDescription: newItems });
-                          setItemDescriptionDropdownOpen(true);
-                        }}
-                      >
-                        {item}
-                        <span style={{ cursor: 'pointer', fontSize: '16px', lineHeight: '1' }}>Ã—</span>
-                      </span>
-                    ))
-                  ) : (
-                    <span style={{ color: '#9ca3af' }}>Select items...</span>
+                  {itemNameDropdownOpen && (
+                    <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, backgroundColor: "#fff", border: "1px solid #d1d5db", borderRadius: "7px", boxShadow: "0 10px 24px rgba(15, 23, 42, 0.12)", zIndex: 5000, overflow: "hidden" }}>
+                      <div style={{ padding: "8px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", height: "34px", border: "1px solid #d1d5db", borderRadius: "6px", padding: "0 10px", backgroundColor: "#fff" }}>
+                          <Search size={14} color="#9ca3af" />
+                          <input
+                            type="text"
+                            value={itemNameSearch}
+                            onChange={(e) => setItemNameSearch(e.target.value)}
+                            placeholder="Search"
+                            style={{ border: "none", outline: "none", width: "100%", fontSize: "13px", color: "#374151", backgroundColor: "transparent" }}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ maxHeight: "180px", overflowY: "auto" }}>
+                        {filteredItemNameOptions.length ? filteredItemNameOptions.map((option) => {
+                          const isSelected = selectedItemNames.includes(option);
+                          return (
+                            <button
+                              key={option}
+                              type="button"
+                              onClick={() => toggleItemNameOption(option)}
+                              style={{ width: "100%", textAlign: "left", padding: "10px 12px", fontSize: "13px", color: isSelected ? "#fff" : "#374151", backgroundColor: isSelected ? "#3b82f6" : "#fff", border: "none", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px" }}
+                            >
+                              <span style={{ fontWeight: 500 }}>{option}</span>
+                              {isSelected ? <Check size={14} color="#fff" style={{ flexShrink: 0 }} /> : null}
+                            </button>
+                          );
+                        }) : (
+                          <div style={{ padding: "10px 12px", fontSize: "13px", color: "#6b7280" }}>No options found.</div>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
-                {itemDescriptionDropdownOpen && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: 0,
-                    right: 0,
-                    marginTop: '4px',
-                    backgroundColor: 'white',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                    zIndex: 10005,
-                    maxHeight: '300px',
-                    overflowY: 'auto',
-                    isolation: 'isolate'
-                  }}>
-                    {/* Search bar */}
-                    <div style={{ padding: '8px', borderBottom: '1px solid #e5e7eb' }}>
-                      <div style={{ position: 'relative' }}>
-                        <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#6b7280' }} />
-                        <input
-                          type="text"
-                          placeholder="Search"
-                          value={itemDescriptionSearch}
-                          onChange={(e) => setItemDescriptionSearch(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          style={{
-                            width: '100%',
-                            padding: '8px 12px 8px 36px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            fontSize: '14px',
-                            outline: 'none'
-                          }}
-                        />
-                      </div>
-                    </div>
-                    {['Date Range', 'Project Description', 'Project Name', 'Project Code', 'Billed Hours']
-                      .filter(option => option.toLowerCase().includes(itemDescriptionSearch.toLowerCase()))
-                      .map((option) => {
-                        const isSelected = invoiceInfoData.itemDescription.includes(option);
-                        return (
-                          <div
-                            key={option}
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", fontSize: "15px", color: "#374151", marginBottom: "8px" }}>Show in item description</label>
+                <div className="relative" ref={itemDescriptionDropdownRef}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setItemDescriptionDropdownOpen((prev) => !prev)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setItemDescriptionDropdownOpen((prev) => !prev);
+                      }
+                    }}
+                    style={{ minHeight: "42px", border: "1px solid #d1d5db", borderRadius: "7px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "6px 10px", backgroundColor: "#fff", cursor: "pointer" }}
+                  >
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", flex: 1 }}>
+                      {selectedItemDescriptions.length ? selectedItemDescriptions.map((option) => (
+                        <span
+                          key={option}
+                          style={{ display: "inline-flex", alignItems: "center", gap: "6px", backgroundColor: "#f3f4f6", border: "1px solid #d1d5db", borderRadius: "6px", padding: "4px 8px", fontSize: "13px", color: "#374151", maxWidth: "100%" }}
+                        >
+                          <span style={{ whiteSpace: "nowrap" }}>{option}</span>
+                          <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (!isSelected) {
-                                setInvoiceInfoData({
-                                  ...invoiceInfoData,
-                                  itemDescription: [...invoiceInfoData.itemDescription, option]
-                                });
-                              }
-                              setItemDescriptionSearch('');
-                              setItemDescriptionDropdownOpen(false);
+                              removeItemDescriptionOption(option);
                             }}
-                            style={{
-                              padding: '10px 12px',
-                              cursor: 'pointer',
-                              fontSize: '14px',
-                              color: isSelected ? 'white' : '#111827',
-                              backgroundColor: isSelected ? '#156372' : 'transparent',
-                              borderBottom: '1px solid #f3f4f6',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between'
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!isSelected) {
-                                e.currentTarget.style.backgroundColor = 'rgba(21, 99, 114, 0.1)';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!isSelected) {
-                                e.currentTarget.style.backgroundColor = 'transparent';
-                              }
-                            }}
+                            style={{ border: "none", background: "transparent", color: "#9ca3af", cursor: "pointer", display: "inline-flex", alignItems: "center", padding: 0 }}
+                            aria-label={`Remove ${option}`}
                           >
-                            {option}
-                            {isSelected && <Check size={16} color="white" />}
-                          </div>
-                        );
-                      })}
+                            <X size={12} />
+                          </button>
+                        </span>
+                      )) : <span style={{ fontSize: "13px", color: "#9ca3af" }}>Select options</span>}
+                    </div>
+                    <ChevronDown size={14} color="#6b7280" style={{ flexShrink: 0, transform: itemDescriptionDropdownOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.15s ease" }} />
                   </div>
-                )}
+                  {itemDescriptionDropdownOpen && (
+                    <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, backgroundColor: "#fff", border: "1px solid #d1d5db", borderRadius: "7px", boxShadow: "0 10px 24px rgba(15, 23, 42, 0.12)", zIndex: 5000, overflow: "hidden" }}>
+                      <div style={{ padding: "8px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", height: "34px", border: "1px solid #d1d5db", borderRadius: "6px", padding: "0 10px", backgroundColor: "#fff" }}>
+                          <Search size={14} color="#9ca3af" />
+                          <input
+                            type="text"
+                            value={itemDescriptionSearch}
+                            onChange={(e) => setItemDescriptionSearch(e.target.value)}
+                            placeholder="Search"
+                            style={{ border: "none", outline: "none", width: "100%", fontSize: "13px", color: "#374151", backgroundColor: "transparent" }}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ maxHeight: "180px", overflowY: "auto" }}>
+                        {filteredItemDescriptionOptions.length ? filteredItemDescriptionOptions.map((option) => {
+                          const isSelected = selectedItemDescriptions.includes(option);
+                          return (
+                            <button
+                              key={option}
+                              type="button"
+                              onClick={() => toggleItemDescriptionOption(option)}
+                              style={{ width: "100%", textAlign: "left", padding: "10px 12px", fontSize: "13px", color: isSelected ? "#fff" : "#374151", backgroundColor: isSelected ? "#3b82f6" : "#fff", border: "none", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px" }}
+                            >
+                              <span style={{ fontWeight: 500 }}>{option}</span>
+                              {isSelected ? <Check size={14} color="#fff" style={{ flexShrink: 0 }} /> : null}
+                            </button>
+                          );
+                        }) : (
+                          <div style={{ padding: "10px 12px", fontSize: "13px", color: "#6b7280" }}>No options found.</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
 
-            {/* Checkbox */}
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                color: '#111827'
-              }}>
+              <div style={{ marginBottom: "8px" }}>
+                <label style={{ display: "block", fontSize: "15px", color: "#374151", marginBottom: "8px" }}>Tax</label>
+                <div className="relative" ref={taxDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setTaxDropdownOpen((prev) => !prev)}
+                    style={{ width: "100%", height: "42px", border: "1px solid #d1d5db", borderRadius: "7px", padding: "0 12px", fontSize: "13px", color: "#374151", backgroundColor: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
+                  >
+                    <span>{selectedTaxLabel || "Select a Tax"}</span>
+                    <ChevronDown size={14} color="#6b7280" style={{ transform: taxDropdownOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.15s ease" }} />
+                  </button>
+                  {taxDropdownOpen && (
+                    <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, backgroundColor: "#fff", border: "1px solid #d1d5db", borderRadius: "7px", boxShadow: "0 10px 24px rgba(15, 23, 42, 0.12)", zIndex: 2600, overflow: "hidden" }}>
+                      <div style={{ padding: "8px", borderBottom: "1px solid #e5e7eb" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", height: "34px", border: "1px solid #d1d5db", borderRadius: "6px", padding: "0 10px", backgroundColor: "#fff" }}>
+                          <Search size={14} color="#9ca3af" />
+                          <input
+                            type="text"
+                            value={taxSearch}
+                            onChange={(e) => setTaxSearch(e.target.value)}
+                            placeholder="Search"
+                            style={{ border: "none", outline: "none", width: "100%", fontSize: "13px", color: "#374151", backgroundColor: "transparent" }}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ maxHeight: "220px", overflowY: "auto" }}>
+                        {filteredTaxGroups.length ? filteredTaxGroups.map((group) => (
+                          <div key={group.label}>
+                            <div style={{ padding: "8px 12px 6px", fontSize: "11px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#6b7280" }}>{group.label}</div>
+                            {group.options.map((option) => {
+                              const selected = selectedTaxSelection === option.value || selectedTaxLabel === option.label;
+                              return (
+                                <button
+                                  key={option.value}
+                                  type="button"
+                                  onClick={() => {
+                                    setInvoiceInfoData((prev) => ({ ...prev, tax: option.value }));
+                                    setTaxDropdownOpen(false);
+                                    setTaxSearch("");
+                                  }}
+                                  style={{ width: "100%", textAlign: "left", padding: "10px 12px", fontSize: "13px", color: selected ? "#fff" : "#374151", backgroundColor: selected ? "#156372" : "#fff", border: "none", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px" }}
+                                >
+                                  <span>{option.label}</span>
+                                  {selected ? <Check size={14} color="#fff" style={{ flexShrink: 0 }} /> : null}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )) : (
+                          <div style={{ padding: "10px 12px", fontSize: "13px", color: "#6b7280" }}>No taxes found</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div style={{ fontSize: "12px", color: "#667085", marginTop: "6px", lineHeight: 1.4 }}>
+                  Note: If no tax is selected, the tax rate that is configured for this customer, or your organization's default tax rate will be used.
+                </div>
+              </div>
+
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#374151", marginTop: "16px" }}>
                 <input
                   type="checkbox"
-                  checked={invoiceInfoData.includeUnbilledExpenses}
-                  onChange={(e) => setInvoiceInfoData({ ...invoiceInfoData, includeUnbilledExpenses: e.target.checked })}
-                  style={{
-                    width: '18px',
-                    height: '18px',
-                    cursor: 'pointer'
-                  }}
+                  checked={!!invoiceInfoData.includeUnbilledExpenses}
+                  onChange={(e) => setInvoiceInfoData((prev) => ({ ...prev, includeUnbilledExpenses: e.target.checked }))}
+                  style={{ width: "15px", height: "15px" }}
                 />
-                <span>Always include all unbilled expenses associated with this project</span>
+                Always include all unbilled expenses associated with this project
               </label>
             </div>
 
-            {/* Buttons */}
-            <div style={{
-              display: 'flex',
-              gap: '12px',
-              justifyContent: 'flex-end',
-              marginTop: '24px',
-              paddingTop: '24px',
-              borderTop: '1px solid #e5e7eb'
-            }}>
+            <div style={{ display: "flex", gap: "8px", padding: "12px 20px 16px", borderTop: "1px solid #e5e7eb" }}>
               <button
-                onClick={() => setShowProjectInvoiceInfo(false)}
-                style={{
-                  padding: '10px 20px',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '6px',
-                  backgroundColor: 'white',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#374151'
+                type="button"
+                onClick={async () => {
+                  if (!projectId) return;
+                  const itemName = Array.isArray(invoiceInfoData.itemName) ? invoiceInfoData.itemName.filter(Boolean) : [];
+                  if (!itemName.length) {
+                    toast.error("Select at least one item name field.");
+                    return;
+                  }
+                  const resolvedTaxId = selectedTaxRecord ? getTaxId(selectedTaxRecord) : String(invoiceInfoData.tax || "").trim();
+                  const invoicePreferences = {
+                    sortData: invoiceInfoData.sortData,
+                    itemName,
+                    itemDescription: Array.isArray(invoiceInfoData.itemDescription) ? invoiceInfoData.itemDescription : ["Project Description"],
+                    tax: resolvedTaxId,
+                    includeUnbilledExpenses: !!invoiceInfoData.includeUnbilledExpenses,
+                  };
+                  try {
+                    await projectsAPI.update(projectId, { invoicePreferences });
+                    setProject((prev) => prev ? { ...prev, invoicePreferences } : prev);
+                    setShowProjectInvoiceInfo(false);
+                    toast.success("Invoice preferences saved successfully");
+                  } catch (error) {
+                    console.error("Error saving project invoice preferences:", error);
+                    toast.error("Failed to save project invoice preferences: " + (error.message || "Unknown error"));
+                  }
                 }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  // Handle save logic here
-                  setShowProjectInvoiceInfo(false);
-                  alert('Project invoice information saved');
-                }}
-                style={{
-                  padding: '10px 20px',
-                  border: 'none',
-                  borderRadius: '6px',
-                  backgroundColor: '#156372',
-                  color: 'white',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  transition: 'background-color 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0D4A52'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#156372'}
+                style={{ border: "none", backgroundColor: "#156372", color: "white", borderRadius: "6px", padding: "8px 16px", fontSize: "15px", cursor: "pointer" }}
               >
                 Add
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Add Project Task Modal */}
-      {showAddTaskModal && (
-        <div
-          onClick={(e) => e.target === e.currentTarget && setShowAddTaskModal(false)}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-            padding: '20px'
-          }}
-        >
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            width: '100%',
-            maxWidth: '400px',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
-            padding: '24px'
-          }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '24px'
-            }}>
-              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '600' }}>Add Project Task</h2>
               <button
-                onClick={() => setShowAddTaskModal(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '24px',
-                  cursor: 'pointer',
-                  color: '#666'
-                }}
-              >
-                Ã—
-              </button>
-            </div>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>
-                Task Name<span style={{ color: '#ef4444' }}>*</span>
-              </label>
-              <input
-                type="text"
-                value={newTaskName}
-                onChange={(e) => setNewTaskName(e.target.value)}
-                placeholder="Enter task name"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  fontSize: '14px'
-                }}
-              />
-            </div>
-            <div style={{
-              display: 'flex',
-              gap: '12px',
-              justifyContent: 'flex-end',
-              marginTop: '24px'
-            }}>
-              <button
-                onClick={() => {
-                  setShowAddTaskModal(false);
-                  setNewTaskName('');
-                }}
-                style={{
-                  padding: '10px 20px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  backgroundColor: 'white',
-                  cursor: 'pointer'
-                }}
+                type="button"
+                onClick={() => setShowProjectInvoiceInfo(false)}
+                style={{ border: "1px solid #d1d5db", backgroundColor: "#f3f4f6", color: "#111827", borderRadius: "6px", padding: "8px 16px", fontSize: "15px", cursor: "pointer" }}
               >
                 Cancel
               </button>
-              <button
-                onClick={async () => {
-                  if (!newTaskName.trim()) {
-                    toast.error('Please enter a task name');
-                    return;
-                  }
-
-                  try {
-                    // Get current tasks
-                    const currentTasks = project.tasks || [];
-
-                    // Add new task
-                    const newTask = {
-                      taskName: newTaskName,
-                      description: '',
-                      billable: false,
-                      budgetHours: ''
-                    };
-
-                    const updatedTasks = [...currentTasks, newTask];
-
-                    // Update project in database
-                    await projectsAPI.update(projectId, {
-                      tasks: updatedTasks
-                    });
-
-                    // Update local project state
-                    setProject({
-                      ...project,
-                      tasks: updatedTasks
-                    });
-
-                    // Dispatch custom event to notify other components
-                    window.dispatchEvent(new Event('projectUpdated'));
-
-                    setShowAddTaskModal(false);
-                    setNewTaskName('');
-                    toast.success('Task added successfully');
-                  } catch (error) {
-                    console.error("Error adding task:", error);
-                    toast.error("Failed to add task: " + getErrorMessage(error));
-                  }
-                }}
-                style={{
-                  padding: '10px 20px',
-                  border: 'none',
-                  borderRadius: '4px',
-                  backgroundColor: '#156372',
-                  color: 'white',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  transition: 'background-color 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0D4A52'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#156372'}
-              >
-                Add Task
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add User Modal */}
-      {showAddUserModal && (
-        <div
-          onClick={(e) => e.target === e.currentTarget && setShowAddUserModal(false)}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-            padding: '20px'
-          }}
-        >
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            width: '100%',
-            maxWidth: '400px',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
-            padding: '24px'
-          }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '24px'
-            }}>
-              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '600' }}>Add User</h2>
-              <button
-                onClick={() => setShowAddUserModal(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '24px',
-                  cursor: 'pointer',
-                  color: '#666'
-                }}
-              >
-                Ã—
-              </button>
-            </div>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>
-                Name<span style={{ color: '#ef4444' }}>*</span>
-              </label>
-              <input
-                type="text"
-                value={newUserName}
-                onChange={(e) => setNewUserName(e.target.value)}
-                placeholder="Enter user name"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  fontSize: '14px'
-                }}
-              />
-            </div>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>
-                Email
-              </label>
-              <input
-                type="email"
-                value={newUserEmail}
-                onChange={(e) => setNewUserEmail(e.target.value)}
-                placeholder="Enter user email"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  fontSize: '14px'
-                }}
-              />
-            </div>
-            <div style={{
-              display: 'flex',
-              gap: '12px',
-              justifyContent: 'flex-end',
-              marginTop: '24px'
-            }}>
-              <button
-                onClick={() => {
-                  setShowAddUserModal(false);
-                  setNewUserName('');
-                  setNewUserEmail('');
-                }}
-                style={{
-                  padding: '10px 20px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  backgroundColor: 'white',
-                  cursor: 'pointer'
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  if (!newUserName.trim()) {
-                    toast.error('Please enter a user name');
-                    return;
-                  }
-
-                  try {
-                    const users = project.users || [];
-                    const newUser = {
-                      id: Date.now().toString(), // temporary until backend replaces it if applicable
-                      name: newUserName,
-                      email: newUserEmail
-                    };
-                    const updatedUsers = [...users, newUser];
-
-                    projectsAPI.update(projectId, { users: updatedUsers })
-                      .then(() => {
-                        window.dispatchEvent(new Event('projectUpdated'));
-                        setProject((prev) => prev ? { ...prev, users: updatedUsers } : prev);
-                        setShowAddUserModal(false);
-                        setNewUserName('');
-                        setNewUserEmail('');
-                        toast.success('User added successfully');
-                      })
-                      .catch((error) => {
-                        console.error('Error adding user:', error);
-                        toast.error('Failed to add user');
-                      });
-                  } catch (e) {
-                    toast.error('Something went wrong');
-                  }
-                }}
-                style={{
-                  padding: '10px 20px',
-                  border: 'none',
-                  borderRadius: '4px',
-                  backgroundColor: '#156372',
-                  color: 'white',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  transition: 'background-color 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0D4A52'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#156372'}
-              >
-                Add User
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* New Budget Form Modal */}
-      {showNewBudgetForm && (
-        <div
-          onClick={(e) => e.target === e.currentTarget && setShowNewBudgetForm(false)}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-            padding: '20px'
-          }}
-        >
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            width: '100%',
-            maxWidth: '800px',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
-          }}>
-            {/* Header */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '20px 24px',
-              borderBottom: '1px solid #e5e7eb'
-            }}>
-              <h2 style={{
-                fontSize: '20px',
-                fontWeight: '600',
-                color: '#1f2937',
-                margin: 0
-              }}>
-                New Budget
-              </h2>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <button
-                  onClick={() => setActiveTab("Comments")}
-                  style={{
-                    padding: '6px 12px',
-                    border: 'none',
-                    backgroundColor: 'transparent',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#156372'
-                  }}
-                >
-                  Comments
-                </button>
-                <button
-                  onClick={() => setShowNewBudgetForm(false)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    fontSize: '24px',
-                    cursor: 'pointer',
-                    color: '#666',
-                    padding: '4px'
-                  }}
-                >
-                  Ã—
-                </button>
-              </div>
-            </div>
-
-            {/* Form Content */}
-            <div style={{ padding: '24px' }}>
-              {/* Name Field */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'block',
-                  marginBottom: '8px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#333'
-                }}>
-                  Name<span style={{ color: '#d32f2f' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  value={budgetFormData.name}
-                  onChange={(e) => setBudgetFormData({ ...budgetFormData, name: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1px solid #156372',
-                    borderRadius: '4px',
-                    fontSize: '14px',
-                    outline: 'none'
-                  }}
-                  placeholder="Enter budget name"
-                />
-              </div>
-
-              {/* Fiscal Year Field */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'block',
-                  marginBottom: '8px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#333'
-                }}>
-                  Fiscal Year<span style={{ color: '#d32f2f' }}>*</span>
-                </label>
-                <select
-                  value={budgetFormData.fiscalYear}
-                  onChange={(e) => setBudgetFormData({ ...budgetFormData, fiscalYear: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px',
-                    outline: 'none',
-                    appearance: 'none',
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 4.5l3 3 3-3' stroke='%23666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 12px center',
-                    paddingRight: '36px'
-                  }}
-                >
-                  <option value="Jul 2025 - Jun 2026">Jul 2025 - Jun 2026</option>
-                  <option value="Jul 2024 - Jun 2025">Jul 2024 - Jun 2025</option>
-                  <option value="Jul 2026 - Jun 2027">Jul 2026 - Jun 2027</option>
-                </select>
-              </div>
-
-              {/* Budget Period Field */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'block',
-                  marginBottom: '8px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#333'
-                }}>
-                  Budget Period<span style={{ color: '#d32f2f' }}>*</span>
-                </label>
-                <select
-                  value={budgetFormData.budgetPeriod}
-                  onChange={(e) => setBudgetFormData({ ...budgetFormData, budgetPeriod: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px',
-                    outline: 'none',
-                    appearance: 'none',
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 4.5l3 3 3-3' stroke='%23666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 12px center',
-                    paddingRight: '36px'
-                  }}
-                >
-                  <option value="Monthly">Monthly</option>
-                  <option value="Quarterly">Quarterly</option>
-                  <option value="Yearly">Yearly</option>
-                </select>
-              </div>
-
-              {/* Project Field */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'block',
-                  marginBottom: '8px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#333'
-                }}>
-                  Project
-                </label>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '10px 12px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  backgroundColor: '#f9fafb'
-                }}>
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M4 2h8v12H4V2z" stroke="#666" strokeWidth="1.5" fill="none" />
-                    <path d="M6 5h4M6 8h4M6 11h2" stroke="#666" strokeWidth="1.5" />
-                  </svg>
-                  <span style={{ fontSize: '14px', color: '#333' }}>
-                    {project?.projectName || 'taban'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Income and Expense Accounts Section */}
-              <div style={{ marginBottom: '24px' }}>
-                <h3 style={{
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  color: '#333',
-                  marginBottom: '16px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px'
-                }}>
-                  INCOME AND EXPENSE ACCOUNTS
-                </h3>
-
-                {/* Income Accounts */}
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{
-                    display: 'block',
-                    marginBottom: '8px',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    color: '#333'
-                  }}>
-                    Income Accounts
-                  </label>
-                  <div
-                    onClick={() => {
-                      setConfigureAccountsType("income");
-                      setSelectedAccounts([...incomeAccounts]);
-                      setShowConfigureAccountsModal(true);
-                      setExpandedAccountCategories({ "Income": true, "Income_Income": true });
-                      setAccountSearchTerm("");
-                    }}
-                    style={{
-                      padding: '20px',
-                      border: '2px dashed #ddd',
-                      borderRadius: '4px',
-                      textAlign: 'center',
-                      cursor: 'pointer',
-                      backgroundColor: '#fafafa'
-                    }}
-                  >
-                    <span style={{ color: '#156372', fontSize: '14px' }}>Add Accounts</span>
-                  </div>
-                </div>
-
-                {/* Expense Accounts */}
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{
-                    display: 'block',
-                    marginBottom: '8px',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    color: '#333'
-                  }}>
-                    Expense Accounts
-                  </label>
-                  <div
-                    onClick={() => {
-                      setConfigureAccountsType("expense");
-                      setSelectedAccounts([...expenseAccounts]);
-                      setShowConfigureAccountsModal(true);
-                      setExpandedAccountCategories({
-                        "Expense": true,
-                        "Expense_Cost Of Goods Sold": true,
-                        "Expense_Expense": true,
-                        "Expense_Other Expense": true
-                      });
-                      setAccountSearchTerm("");
-                    }}
-                    style={{
-                      padding: '20px',
-                      border: '2px dashed #ddd',
-                      borderRadius: '4px',
-                      textAlign: 'center',
-                      cursor: 'pointer',
-                      backgroundColor: '#fafafa'
-                    }}
-                  >
-                    <span style={{ color: '#156372', fontSize: '14px' }}>Add Accounts</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Include Asset, Liability, and Equity Accounts */}
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  color: '#333'
-                }}>
-                  <input
-                    type="checkbox"
-                    checked={budgetFormData.includeAssetLiabilityEquity}
-                    onChange={(e) => setBudgetFormData({ ...budgetFormData, includeAssetLiabilityEquity: e.target.checked })}
-                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                  />
-                  <Plus size={16} color="#156372" />
-                  <span>Include Asset, Liability, and Equity Accounts in Budget</span>
-                </label>
-              </div>
-
-              {/* Action Buttons */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'flex-end',
-                gap: '12px',
-                paddingTop: '24px',
-                borderTop: '1px solid #e5e7eb'
-              }}>
-                <button
-                  onClick={() => {
-                    setShowNewBudgetForm(false);
-                    setBudgetFormData({
-                      name: "",
-                      fiscalYear: "Jul 2025 - Jun 2026",
-                      budgetPeriod: "Monthly",
-                      includeAssetLiabilityEquity: false
-                    });
-                  }}
-                  style={{
-                    padding: '10px 20px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    backgroundColor: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#333'
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    if (!budgetFormData.name.trim()) {
-                      alert('Please enter a budget name');
-                      return;
-                    }
-                    // Save budget logic here
-                    alert('Budget created successfully');
-                    setShowNewBudgetForm(false);
-                    setBudgetFormData({
-                      name: "",
-                      fiscalYear: "Jul 2025 - Jun 2026",
-                      budgetPeriod: "Monthly",
-                      includeAssetLiabilityEquity: false
-                    });
-                  }}
-                  style={{
-                    padding: '10px 20px',
-                    border: 'none',
-                    borderRadius: '4px',
-                    backgroundColor: '#156372',
-                    color: 'white',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    transition: 'background-color 0.2s'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0D4A52'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#156372'}
-                >
-                  Create Budget
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -5004,8 +6500,12 @@ export default function ProjectDetailPage() {
                     fontWeight: '500',
                     transition: 'background-color 0.2s'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0D4A52'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#156372'}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#0D4A52';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#156372';
+                  }}
                 >
                   Update
                 </button>
@@ -5014,7 +6514,493 @@ export default function ProjectDetailPage() {
           </div>
         );
       })()}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-[200] flex items-start justify-center bg-black/40 pt-16">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3">
+              <div className="h-7 w-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-[12px] font-bold">
+                !
+              </div>
+              <h3 className="text-[15px] font-semibold text-slate-800 flex-1">Delete project?</h3>
+              <button
+                type="button"
+                className="h-7 w-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                onClick={() => setShowDeleteModal(false)}
+                aria-label="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="px-5 py-3 text-[13px] text-slate-600">
+              You cannot retrieve this project once it has been deleted.
+            </div>
+            <div className="flex items-center justify-start gap-2 border-t border-slate-100 px-5 py-3">
+              <button
+                type="button"
+                className="px-4 py-1.5 rounded-md bg-blue-600 text-white text-[12px] hover:bg-blue-700"
+                onClick={handleDeleteProject}
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                className="px-4 py-1.5 rounded-md border border-slate-300 text-[12px] text-slate-700 hover:bg-slate-50"
+                onClick={() => setShowDeleteModal(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showDeleteCommentModal && (
+        <div className="fixed inset-0 z-[300] flex items-start justify-center bg-black/40 pt-16">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3">
+              <div className="h-7 w-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-[12px] font-bold">
+                !
+              </div>
+              <h3 className="text-[15px] font-semibold text-slate-800 flex-1">Delete comment?</h3>
+              <button
+                type="button"
+                className="h-7 w-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                onClick={closeDeleteCommentModal}
+                aria-label="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="px-5 py-3 text-[13px] text-slate-600">
+              You cannot retrieve this comment once it has been deleted.
+            </div>
+            <div className="flex items-center justify-start gap-2 border-t border-slate-100 px-5 py-3">
+              <button
+                type="button"
+                className="px-4 py-1.5 rounded-md bg-blue-600 text-white text-[12px] hover:bg-blue-700"
+                onClick={confirmDeleteComment}
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                className="px-4 py-1.5 rounded-md border border-slate-300 text-[12px] text-slate-700 hover:bg-slate-50"
+                onClick={closeDeleteCommentModal}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showDeleteTaskModal && (
+        <div className="fixed inset-0 z-[200] flex items-start justify-center bg-black/40 pt-16">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3">
+              <div className="h-7 w-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-[12px] font-bold">
+                !
+              </div>
+              <h3 className="text-[15px] font-semibold text-slate-800 flex-1">Delete task?</h3>
+              <button
+                type="button"
+                className="h-7 w-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                onClick={closeDeleteTaskModal}
+                aria-label="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="px-5 py-3 text-[13px] text-slate-600">
+              You cannot retrieve this task once it has been deleted.
+            </div>
+            <div className="flex items-center justify-start gap-2 border-t border-slate-100 px-5 py-3">
+              <button
+                type="button"
+                className="px-4 py-1.5 rounded-md bg-blue-600 text-white text-[12px] hover:bg-blue-700"
+                onClick={handleDeleteTask}
+              >
+                OK
+              </button>
+              <button
+                type="button"
+                className="px-4 py-1.5 rounded-md border border-slate-300 text-[12px] text-slate-700 hover:bg-slate-50"
+                onClick={closeDeleteTaskModal}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showRemoveUserModal && (
+        <div className="fixed inset-0 z-[200] flex items-start justify-center bg-black/40 pt-16">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3">
+              <div className="h-7 w-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-[12px] font-bold">
+                !
+              </div>
+              <h3 className="text-[15px] font-semibold text-slate-800 flex-1">Remove this user from the project?</h3>
+              <button
+                type="button"
+                className="h-7 w-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                onClick={closeRemoveUserModal}
+                aria-label="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="px-5 py-3 text-[13px] text-slate-600">
+              This user will be removed from the project assignment list.
+            </div>
+            <div className="flex items-center justify-start gap-2 border-t border-slate-100 px-5 py-3">
+              <button
+                type="button"
+                className="px-4 py-1.5 rounded-md bg-blue-600 text-white text-[12px] hover:bg-blue-700"
+                onClick={handleConfirmRemoveUser}
+              >
+                OK
+              </button>
+              <button
+                type="button"
+                className="px-4 py-1.5 rounded-md border border-slate-300 text-[12px] text-slate-700 hover:bg-slate-50"
+                onClick={closeRemoveUserModal}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showLogEntryForm && (
+        <NewLogEntryForm
+          onClose={() => {
+            setShowLogEntryForm(false);
+            setTaskTimerDefaults(null);
+            setLogEntryFormTitle("New Log Entry");
+            setLogEntryFormEntryId(null);
+          }}
+          formTitle={logEntryFormTitle}
+          entryId={logEntryFormEntryId || undefined}
+          defaultProjectName={taskTimerDefaults?.defaultProjectName || project?.projectName || project?.name || ""}
+          defaultDate={taskTimerDefaults?.defaultDate || new Date()}
+          defaultTaskName={taskTimerDefaults?.defaultTaskName || ""}
+          defaultBillable={taskTimerDefaults?.defaultBillable}
+          defaultTimeSpent={taskTimerDefaults?.defaultTimeSpent || ""}
+          defaultUser={taskTimerDefaults?.defaultUser || ""}
+          defaultNotes={taskTimerDefaults?.defaultNotes || ""}
+        />
+      )}
+      {selectedEntry && (
+        <div className="fixed right-0 top-[53px] h-[calc(100vh-53px)] w-[360px] border-l border-gray-200 bg-white shadow-lg z-50 flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+            <div className="text-sm font-semibold text-gray-900">
+              {`${getEntryUserName(selectedEntry)}'s Log Entry`}
+            </div>
+            <div className="flex items-center gap-2" ref={entryMenuRef}>
+              <button
+                onClick={() => openEditEntryForm(selectedEntry)}
+                className="h-7 w-7 rounded border border-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-50"
+              >
+                <Edit3 size={14} />
+              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setShowEntryMenu((v) => !v)}
+                  className="h-7 w-7 rounded border border-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-50"
+                >
+                  <MoreVertical size={14} />
+                </button>
+                {showEntryMenu && (
+                  <div className="absolute right-0 mt-2 w-32 rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
+                    <button
+                      onClick={handleEntryClone}
+                      className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                    >
+                      Clone
+                    </button>
+                    <button
+                      onClick={handleDeleteSelectedEntry}
+                      className="w-full px-3 py-2 text-left text-red-600 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedEntry(null);
+                  setShowEntryMenu(false);
+                  setEntryDrawerTab("otherDetails");
+                }}
+                className="h-7 w-7 rounded border border-gray-200 text-red-500 flex items-center justify-center hover:bg-red-50"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+
+          <div className="p-4 border-b border-gray-200">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-4 text-center">
+              <div className="text-xs text-gray-500">
+                {selectedEntry.date || "--"}
+              </div>
+              <div className="text-xl font-semibold text-gray-900 mt-1">
+                {getEntryDuration(selectedEntry)}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-6 px-4 pt-3 text-sm">
+            <button
+              onClick={() => setEntryDrawerTab("otherDetails")}
+              className={`pb-2 border-b-2 ${entryDrawerTab === "otherDetails" ? "border-blue-500 text-blue-600" : "border-transparent text-gray-600"}`}
+            >
+              Other Details
+            </button>
+            <button
+              onClick={() => setEntryDrawerTab("comments")}
+              className={`pb-2 border-b-2 ${entryDrawerTab === "comments" ? "border-blue-500 text-blue-600" : "border-transparent text-gray-600"}`}
+            >
+              Comments
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-auto px-4 py-3">
+            {entryDrawerTab === "otherDetails" && (
+              <div className="space-y-3 text-sm text-gray-700">
+                <div className="flex justify-between"><span className="text-gray-500">Project Name :</span><span>{getEntryProjectName(selectedEntry)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Customer Name :</span><span>{getEntryCustomerName()}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Task Name :</span><span>{selectedEntry.taskName || selectedEntry.task || "--"}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">User Name :</span><span>{getEntryUserName(selectedEntry)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Total Cost :</span><span>{formatMoney(Number(selectedEntry.totalCost || selectedEntry.totalCostAmount || selectedEntry.cost || selectedEntry.amount || 0))}</span></div>
+              </div>
+            )}
+            {entryDrawerTab === "comments" && (
+              <div className="w-full max-w-[920px]">
+                <div className="mb-6 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+                  <div className="flex gap-4 p-3 bg-gray-50/80 border-b border-gray-200">
+                    <button
+                      type="button"
+                      className={`p-1.5 rounded-[7px] cursor-pointer transition-all flex items-center justify-center ${entryIsBold ? "text-gray-800 bg-white border border-[#cfd5e3] shadow-sm" : "text-gray-500 border border-transparent hover:bg-gray-100"}`}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => applyEntryCommentFormat("bold")}
+                      title="Bold"
+                    >
+                      <Bold size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      className={`p-1.5 rounded-[7px] cursor-pointer transition-all flex items-center justify-center ${entryIsItalic ? "text-gray-800 bg-white border border-[#cfd5e3] shadow-sm" : "text-gray-500 border border-transparent hover:bg-gray-100"}`}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => applyEntryCommentFormat("italic")}
+                      title="Italic"
+                    >
+                      <Italic size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      className={`p-1.5 rounded-[7px] cursor-pointer transition-all flex items-center justify-center ${entryIsUnderline ? "text-gray-800 bg-white border border-[#cfd5e3] shadow-sm" : "text-gray-500 border border-transparent hover:bg-gray-100"}`}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => applyEntryCommentFormat("underline")}
+                      title="Underline"
+                    >
+                      <Underline size={15} />
+                    </button>
+                  </div>
+                  <div className="p-0">
+                    <div className="relative">
+                      {entryIsEditorEmpty && (
+                        <div className="pointer-events-none absolute left-5 top-4 text-sm text-gray-400">
+                          Add a comment...
+                        </div>
+                      )}
+                      <div
+                        ref={entryCommentEditorRef}
+                        id="entry-comment-textarea"
+                        contentEditable
+                        suppressContentEditableWarning
+                        dir="ltr"
+                        className="min-h-40 w-full px-5 py-4 text-sm text-gray-700 outline-none whitespace-pre-wrap leading-relaxed border-none"
+                        onInput={syncEntryCommentEditorState}
+                        onMouseUp={syncEntryCommentEditorState}
+                        onKeyUp={syncEntryCommentEditorState}
+                        onFocus={syncEntryCommentEditorState}
+                        style={{ textAlign: "left", direction: "ltr" }}
+                      />
+                    </div>
+                  </div>
+                  <div className="border-t border-gray-200 px-5 py-4">
+                    <button
+                      type="button"
+                      className="px-5 py-2 bg-[#156372] text-white rounded text-[13px] font-bold cursor-pointer hover:opacity-90 active:scale-95 transition-all shadow-sm border-none"
+                      onClick={handleAddEntryComment}
+                    >
+                      Add Comment
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="flex items-center gap-1.5">
+                    <h3 className="text-[11px] font-bold text-gray-600 uppercase tracking-[0.2em] whitespace-nowrap">ALL COMMENTS</h3>
+                    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-500 px-1.5 text-[11px] font-bold leading-none text-white">
+                      {entryComments.length}
+                    </span>
+                  </div>
+                </div>
+
+                {entryComments.length === 0 ? (
+                  <div className="text-center py-20 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+                    <p className="text-sm text-gray-400 font-medium italic">No comments yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-5 pb-20 pr-2">
+                    {entryComments.map((comment) => (
+                      <div key={comment.id} className="group flex items-start gap-3">
+                        <div className="mt-0.5 h-6 w-6 shrink-0 rounded-full border border-[#cfdaf0] bg-white text-[11px] font-semibold text-[#6b7a90] flex items-center justify-center shadow-sm">
+                          {getCommentAuthorInitial(comment)}
+                        </div>
+                        <div className="flex-1">
+                          <div className="mb-2 flex items-center gap-2 text-[12px]">
+                            <span className="font-semibold text-[#111827]">{getCommentAuthorName(comment)}</span>
+                            <span className="text-[#94a3b8]">•</span>
+                            <span className="text-[#64748b]">
+                              {new Date(comment.createdAt).toLocaleString("en-GB", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit"
+                              })}
+                            </span>
+                          </div>
+                          <div className="rounded-lg bg-[#f8fafc] px-4 py-3 shadow-sm border border-[#eef2f7]">
+                            <div className="flex items-start justify-between gap-4">
+                              <div
+                                className="text-[15px] leading-relaxed text-[#156372] whitespace-pre-wrap font-semibold flex-1"
+                                dangerouslySetInnerHTML={{ __html: commentMarkupToHtml(comment.content || comment.text || "") }}
+                              />
+                              <button
+                                className="mt-0.5 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all cursor-pointer border-none bg-transparent opacity-0 group-hover:opacity-100"
+                                onClick={() => openDeleteEntryCommentModal(comment)}
+                                title="Delete comment"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {showDeleteEntryCommentModal && (
+        <div className="fixed inset-0 z-[2100] flex items-start justify-center bg-black/40 pt-16">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3">
+              <div className="h-7 w-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-[12px] font-bold">
+                !
+              </div>
+              <h3 className="text-[15px] font-semibold text-slate-800 flex-1">Delete comment?</h3>
+              <button
+                type="button"
+                className="h-7 w-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                onClick={closeDeleteEntryCommentModal}
+                aria-label="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="px-5 py-3 text-[13px] text-slate-600">
+              You cannot retrieve this comment once it has been deleted.
+            </div>
+            <div className="flex items-center justify-start gap-2 border-t border-slate-100 px-5 py-3">
+              <button
+                type="button"
+                className="px-4 py-1.5 rounded-md bg-[#156372] text-white text-[12px] hover:opacity-90"
+                onClick={confirmDeleteEntryComment}
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                className="px-4 py-1.5 rounded-md border border-slate-300 text-[12px] text-slate-700 hover:bg-slate-50"
+                onClick={closeDeleteEntryCommentModal}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showDeleteTimesheetModal && (
+        <div className="fixed inset-0 z-[2100] flex items-start justify-center bg-black/40 pt-16">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3">
+              <div className="h-7 w-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-[12px] font-bold">
+                !
+              </div>
+              <h3 className="text-[15px] font-semibold text-slate-800 flex-1">
+                {pendingDeleteTimesheetIds.length === 1 ? "Delete time entry?" : `Delete ${pendingDeleteTimesheetIds.length} time entries?`}
+              </h3>
+              <button
+                type="button"
+                className="h-7 w-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                onClick={closeDeleteTimesheetModal}
+                aria-label="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="px-5 py-3 text-[13px] text-slate-600">
+              {pendingDeleteTimesheetIds.length === 1
+                ? "You cannot retrieve this time entry once it has been deleted."
+                : "You cannot retrieve these time entries once they have been deleted."}
+            </div>
+            <div className="flex items-center justify-start gap-2 border-t border-slate-100 px-5 py-3">
+              <button
+                type="button"
+                className={`px-4 py-1.5 rounded-md bg-blue-600 text-white text-[12px] hover:bg-blue-700 ${isDeletingTimesheets ? "opacity-70 cursor-not-allowed" : ""}`}
+                onClick={confirmDeleteTimesheets}
+                disabled={isDeletingTimesheets}
+              >
+                {isDeletingTimesheets && <Loader2 size={14} className="animate-spin" />}
+                {isDeletingTimesheets ? "Deleting..." : "Delete"}
+              </button>
+              <button
+                type="button"
+                className={`px-4 py-1.5 rounded-md border border-slate-300 text-[12px] text-slate-700 hover:bg-slate-50 ${isDeletingTimesheets ? "opacity-70 cursor-not-allowed" : ""}`}
+                onClick={closeDeleteTimesheetModal}
+                disabled={isDeletingTimesheets}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

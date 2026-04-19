@@ -6,6 +6,14 @@ import { useCurrency } from "../../hooks/useCurrency";
 import NewLogEntryForm from "./NewLogEntryForm";
 import { ChevronDown, ChevronUp, ChevronRight, Search, ArrowUpDown, X, MessageSquare, Briefcase, User, Calendar, Plus, Paperclip, Minus, Check, Trash2, MoreVertical, Edit3 } from "lucide-react";
 
+const sanitizeCommentHtml = (html) => {
+  if (!html) return "";
+  return String(html)
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
 export default function ProjectDetailPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -95,6 +103,23 @@ export default function ProjectDetailPage() {
   const [accountSearchTerm, setAccountSearchTerm] = useState("");
   const [expandedAccountCategories, setExpandedAccountCategories] = useState({});
 
+  const normalizeComment = (comment, index = 0) => {
+    if (!comment || typeof comment !== "object") return null;
+    const text = String(comment.text || "").trim();
+    if (!text) return null;
+    return {
+      id: String(comment.id || comment._id || `project-comment-${index}-${Date.now()}`),
+      text,
+      content: String(comment.content || "").trim(),
+      authorName: String(comment.authorName || comment.author || "You").trim() || "You",
+      authorInitial: String(comment.authorInitial || "Y").trim() || "Y",
+      createdAt: String(comment.createdAt || new Date().toISOString()),
+      bold: Boolean(comment.bold),
+      italic: Boolean(comment.italic),
+      underline: Boolean(comment.underline)
+    };
+  };
+
   // Close dropdowns when modal closes
   useEffect(() => {
     if (!showProjectInvoiceInfo) {
@@ -107,15 +132,6 @@ export default function ProjectDetailPage() {
       setItemDescriptionSearch('');
     }
   }, [showProjectInvoiceInfo]);
-
-  // Load comments for this project
-  useEffect(() => {
-    if (projectId) {
-      const allComments = JSON.parse(localStorage.getItem('projectComments') || '{}');
-      const projectComments = allComments[projectId] || [];
-      setComments(projectComments);
-    }
-  }, [projectId]);
 
   // Load time entries for this project
   useEffect(() => {
@@ -231,6 +247,9 @@ export default function ProjectDetailPage() {
         }
 
         // Transform database project to match frontend format
+        const normalizedComments = Array.isArray(projectData.comments)
+          ? projectData.comments.map((comment, index) => normalizeComment(comment, index)).filter(Boolean)
+          : [];
         const transformedProject = {
           id: projectData._id || projectData.id,
           projectName: projectData.name || projectData.projectName,
@@ -251,10 +270,12 @@ export default function ProjectDetailPage() {
           tasks: projectData.tasks || [],
           users: projectData.assignedTo || [],
           isActive: projectData.status !== 'cancelled' && projectData.status !== 'completed',
+          comments: normalizedComments,
           ...projectData // Keep all other fields
         };
 
         setProject(transformedProject);
+        setComments(normalizedComments);
       } catch (error) {
         console.error("Error loading project:", error);
         toast.error("Failed to load project: " + (error.message || "Unknown error"));
@@ -584,6 +605,48 @@ export default function ProjectDetailPage() {
                       overflowY: "auto"
                     }}
                   >
+                    {/* INVENTORY Section */}
+                    <div style={{
+                      padding: "8px 0"
+                    }}>
+                      <div style={{
+                        padding: "8px 16px 4px 16px",
+                        fontSize: "12px",
+                        fontWeight: "600",
+                        color: "#6b7280",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px"
+                      }}>
+                        INVENTORY
+                      </div>
+                      <div
+                        onMouseEnter={() => setHoveredTransaction('Create Adjustment')}
+                        onMouseLeave={() => setHoveredTransaction(null)}
+                        onClick={() => {
+                          setShowTransactionDropdown(false);
+                          navigate('/inventory/new');
+                        }}
+                        style={{
+                          padding: "10px 16px",
+                          fontSize: "14px",
+                          color: hoveredTransaction === 'Create Adjustment' ? "white" : "#1f2937",
+                          cursor: "pointer",
+                          backgroundColor: hoveredTransaction === 'Create Adjustment' ? "#156372" : "transparent",
+                          border: hoveredTransaction === 'Create Adjustment' ? "1px solid #156372" : "1px solid transparent",
+                          margin: hoveredTransaction === 'Create Adjustment' ? "0" : "1px 0"
+                        }}
+                      >
+                        Create Adjustment
+                      </div>
+                    </div>
+
+                    {/* Divider */}
+                    <div style={{
+                      height: "1px",
+                      backgroundColor: "#e5e7eb",
+                      margin: "4px 0"
+                    }}></div>
+
                     {/* SALES Section */}
                     <div style={{
                       padding: "8px 0"
@@ -598,7 +661,7 @@ export default function ProjectDetailPage() {
                       }}>
                         SALES
                       </div>
-                      {['Create Quote', 'Create Invoice', 'Create Recurring Invoice', 'Create Credit Note'].map((option) => (
+                      {['Create Quote', 'Create Invoice', 'Create Retainer Invoice', 'Create Sales Order', 'Create Credit Note'].map((option) => (
                         <div
                           key={option}
                           onMouseEnter={() => setHoveredTransaction(option)}
@@ -613,8 +676,11 @@ export default function ProjectDetailPage() {
                               case 'Create Invoice':
                                 navigate('/sales/invoices/new');
                                 break;
-                              case 'Create Recurring Invoice':
-                                navigate('/sales/recurring-invoices/new');
+                              case 'Create Retainer Invoice':
+                                navigate('/sales/retainer-invoices/new');
+                                break;
+                              case 'Create Sales Order':
+                                navigate('/sales/sales-orders');
                                 break;
                               case 'Create Credit Note':
                                 navigate('/sales/credit-notes/new');
@@ -659,7 +725,7 @@ export default function ProjectDetailPage() {
                       }}>
                         PURCHASES
                       </div>
-                      {['Create Expense', 'Create Recurring Expense', 'Create Bill', 'Create Vendor Credits'].map((option) => (
+                      {['Create Expense', 'Create Recurring Expense', 'Create Purchase Order', 'Create Bill', 'Create Vendor Credits'].map((option) => (
                         <div
                           key={option}
                           onMouseEnter={() => setHoveredTransaction(option)}
@@ -673,6 +739,9 @@ export default function ProjectDetailPage() {
                                 break;
                               case 'Create Recurring Expense':
                                 navigate('/purchases/recurring-expenses/new');
+                                break;
+                              case 'Create Purchase Order':
+                                navigate('/purchases/purchase-orders/new');
                                 break;
                               case 'Create Bill':
                                 navigate('/purchases/bills/new');
@@ -698,13 +767,6 @@ export default function ProjectDetailPage() {
                         </div>
                       ))}
                     </div>
-
-                    {/* Divider */}
-                    <div style={{
-                      height: "1px",
-                      backgroundColor: "#e5e7eb",
-                      margin: "4px 0"
-                    }}></div>
 
                     {/* Create Manual Journal */}
                     <div
@@ -2917,32 +2979,38 @@ export default function ProjectDetailPage() {
 
                 {/* Add Comment Button */}
                 <button
-                  onClick={() => {
-                    if (!commentText.trim()) {
+                  onClick={async () => {
+                    const trimmedComment = commentText.trim();
+                    if (!trimmedComment || !projectId) {
                       return;
                     }
+
                     const newComment = {
                       id: Date.now().toString(),
-                      text: commentText,
-                      author: "Current User", // You can replace this with actual user info
+                      text: trimmedComment,
+                      content: sanitizeCommentHtml(trimmedComment),
+                      authorName: "Current User",
+                      authorInitial: "C",
                       createdAt: new Date().toISOString(),
-                      isBold,
-                      isItalic,
-                      isUnderline
+                      bold: isBold,
+                      italic: isItalic,
+                      underline: isUnderline
                     };
-                    const updatedComments = [...comments, newComment];
-                    setComments(updatedComments);
+                    const updatedComments = [newComment, ...comments];
 
-                    // Save to localStorage
-                    const allComments = JSON.parse(localStorage.getItem('projectComments') || '{}');
-                    allComments[projectId] = updatedComments;
-                    localStorage.setItem('projectComments', JSON.stringify(allComments));
-
-                    // Reset form
-                    setCommentText("");
-                    setIsBold(false);
-                    setIsItalic(false);
-                    setIsUnderline(false);
+                    try {
+                      await projectsAPI.update(projectId, { comments: updatedComments });
+                      setComments(updatedComments);
+                      setProject({ ...project, comments: updatedComments });
+                      setCommentText("");
+                      setIsBold(false);
+                      setIsItalic(false);
+                      setIsUnderline(false);
+                      toast.success("Comment added successfully.");
+                    } catch (error) {
+                      console.error("Failed to add comment:", error);
+                      toast.error("Failed to add comment.");
+                    }
                   }}
                   style={{
                     marginTop: "12px",

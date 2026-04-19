@@ -55,8 +55,8 @@ export default function EditProjectForm() {
     customerName: "",
     billingMethod: "",
     description: "",
-    costBudget: "SOS",
-    revenueBudget: "SOS",
+    costBudget: "",
+    revenueBudget: "",
     addToWatchlist: true
   });
 

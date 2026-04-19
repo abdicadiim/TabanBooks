@@ -202,7 +202,7 @@ export default function ProjectsGuidePage() {
         <main className="space-y-4">
           <section className="rounded-2xl border border-[#b9d4d8] bg-white p-5">
             <h1 className="text-[30px] font-semibold leading-tight">
-              Projects in Taban Books
+              Projects in Zoho Books
             </h1>
             <p className="mt-2 text-[13px] text-[#55737a] leading-6">
               Service and product businesses can track project work by hours, tasks, or fixed rates. This guide covers setup,
@@ -289,4 +289,3 @@ export default function ProjectsGuidePage() {
     </div>
   );
 }
-

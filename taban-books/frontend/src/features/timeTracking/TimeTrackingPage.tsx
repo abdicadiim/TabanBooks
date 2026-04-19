@@ -1,127 +1,146 @@
-﻿import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
-import { X, Search, ArrowUpDown, ChevronRight, Download, Upload, Settings, RefreshCw, Edit3, Eye, EyeOff, Info } from "lucide-react";
-import { projectsAPI, timeEntriesAPI } from "../../services/api";
+import { X, Search, ArrowUpDown, ChevronLeft, ChevronRight, Download, Upload, Settings, RefreshCw, Edit3, Eye, EyeOff, Info, ChevronDown, Play, Pause, Square, Trash2, Plus, MoreVertical, MoreHorizontal, SlidersHorizontal, LayoutGrid, List } from 'lucide-react';
+import { projectsAPI, timeEntriesAPI, usersAPI } from "../../services/api";
 import { getCurrentUser } from "../../services/auth";
-import toast from "react-hot-toast";
+import { toast } from "react-hot-toast";
 import { usePermissions } from "../../hooks/usePermissions";
 import AccessDenied from "../../components/AccessDenied";
-import TimeTrackingProject from "./TimeTrackingProject";
+import ProjectsPage from "../settings/module-settings/projects/list/ProjectsSettingsListPage";
 import NewProjectForm from "./NewProjectForm";
 import ProjectDetailPage from "./ProjectDetailPage";
-import EditProjectForm from "./EditProjectForm";
 import NewLogEntryForm from "./NewLogEntryForm";
 import WeeklyTimeLog from "./WeeklyTimeLog";
+import StartTimerModal from "./StartTimerModal";
 import ImportProjects from "./ImportProjects";
 import ImportTimesheets from "./ImportTimesheets";
 import ImportProjectTasks from "./ImportProjectTasks";
-import type {
-  TimeTrackingComment,
-  TimeTrackingCriterion,
-  TimeTrackingEntry,
-  TimeTrackingId,
-  TimeTrackingProject as TimeTrackingProjectRecord,
-  TimeTrackingUser,
-} from "./timeTrackingModel";
+import TimeTrackingProject from "./TimeTrackingProject";
+import Aptouvals from "./aprovals/aptouvals";
+import CustomerApproval from "./CustomerApproval/CustomerApproval";
+import NewCustomerApproval from "./CustomerApproval/NewCustomerApproval";
+import TimeEntryCommentsPanel from "./TimeEntryCommentsPanel";
 
-type TimesheetSortKey = "date" | "project" | "user" | "time";
-type TimesheetSortOption = "Date" | "Project Name" | "User" | "Time";
-type HoveredMenu = "sort" | "import" | "export" | "preferences" | null;
+const getUserDisplayName = (user) => {
+  if (!user || typeof user !== "object") return "";
+  const firstName = String(user.firstName || "").trim();
+  const lastName = String(user.lastName || "").trim();
+  return String(
+    user.name ||
+    user.fullName ||
+    user.username ||
+    [firstName, lastName].filter(Boolean).join(" ") ||
+    user.email ||
+    ""
+  ).trim();
+};
 
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "Unknown error";
+const getUserDisplayId = (user) => {
+  if (!user || typeof user !== "object") return "";
+  return String(user._id || user.id || user.userId || "").trim();
+};
 
-function ProjectsTable() {
-  const [projects, setProjects] = useState<TimeTrackingProjectRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+const isLikelyId = (value) => typeof value === "string" && /^[a-f0-9]{24}$/i.test(value);
 
-  useEffect(() => {
-    const fetchProjects = async () => {
-      setLoading(true);
-      try {
-        const response = await projectsAPI.getAll();
-        // Handle response format: { success: true, data: [...] } or direct array
-        const data = Array.isArray(response)
-          ? response
-          : (response?.data || []);
+const getEntryUserLabel = (entry, userById, currentUser = null) => {
+  if (!entry) return "--";
 
-        // Transform database projects to match frontend format
-        const transformedProjects: TimeTrackingProjectRecord[] = data.map((project: any) => ({
-          id: project._id || project.id,
-          projectName: project.name || project.projectName,
-          projectNumber: project.projectNumber || project.id,
-          customerName: project.customer?.name || project.customerName,
-          customerId: project.customer?._id || project.customerId,
-          description: project.description || '',
-          startDate: project.startDate || '',
-          endDate: project.endDate || '',
-          status: project.status || 'planning',
-          budget: project.budget || 0,
-          currency: project.currency || 'USD',
-          billable: project.billable !== undefined ? project.billable : true,
-          billingRate: project.billingRate || 0,
-          assignedTo: project.assignedTo || [],
-          tags: project.tags || [],
-          tasks: project.tasks || [],
-          users: project.assignedTo || [],
-          ...project // Keep all other fields
-        }));
-
-        setProjects(transformedProjects);
-      } catch (error) {
-        console.error("Error loading projects:", error);
-        toast.error("Failed to load projects: " + getErrorMessage(error));
-        setProjects([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchProjects();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="bg-white rounded-lg shadow-md overflow-hidden p-8 text-center">
-        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
-        <p className="mt-4 text-gray-500">Loading projects...</p>
-      </div>
-    );
+  if (entry.userName && entry.userName !== "--") {
+    return entry.userName;
   }
 
-  return (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden">
-      <table className="w-full border-collapse text-sm">
-        <thead>
-          <tr>
-            <th>Project Code</th>
-            <th>Project Name</th>
-          </tr>
-        </thead>
-        <tbody>
-          {projects.length === 0 ? (
-            <tr>
-              <td colSpan={2} className="text-center py-8 text-gray-500">
-                No projects found
-              </td>
-            </tr>
-          ) : (
-            projects.map((p) => (
-              <tr key={p.id || p._id}>
-                <td>{p.projectNumber || p.id || p._id}</td>
-                <td>{p.projectName || p.name}</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
+  if (entry.user && typeof entry.user === "object") {
+    const objectName = getUserDisplayName(entry.user);
+    if (objectName) return objectName;
+  }
+
+  const currentUserId = getUserDisplayId(currentUser);
+  const currentUserName = getUserDisplayName(currentUser);
+  const entryUserId = String(entry.userId || "").trim();
+  const rawUser = String(entry.user || "").trim();
+
+  if (currentUserId && entryUserId && entryUserId === currentUserId && currentUserName) {
+    return currentUserName;
+  }
+
+  for (const candidate of [entryUserId, rawUser].filter(Boolean)) {
+    const match = userById?.get?.(String(candidate));
+    const matchName = getUserDisplayName(match) || String(match?.name || "").trim();
+    if (matchName) return matchName;
+  }
+
+  if (currentUserId && rawUser === currentUserId && currentUserName) {
+    return currentUserName;
+  }
+
+  if (entry.user && !isLikelyId(entry.user) && entry.user !== "--") {
+    return entry.user;
+  }
+
+  return "--";
+};
+
+const pad2 = (value) => String(value).padStart(2, "0");
+
+const formatCalendarKey = (date) => {
+  if (!date) return "";
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+};
+
+type TimerState = {
+  elapsedTime?: number;
+  isTimerRunning?: boolean;
+  timerNotes?: string;
+  associatedProject?: string;
+  selectedProjectForTimer?: string;
+  selectedTaskForTimer?: string;
+  isBillable?: boolean;
+  lastUpdated?: number;
+  startTime?: number;
+  pausedElapsedTime?: number;
+};
+
+const getMonthStart = (date) => {
+  const d = new Date(date);
+  d.setDate(1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const getCalendarWeeks = (date) => {
+  const monthStart = getMonthStart(date);
+  const monthEnd = new Date(monthStart);
+  monthEnd.setMonth(monthEnd.getMonth() + 1);
+  monthEnd.setDate(0);
+
+  const cells = [];
+  for (let day = 1; day <= monthEnd.getDate(); day++) {
+    const cellDate = new Date(monthStart);
+    cellDate.setDate(day);
+    cells.push(cellDate);
+  }
+
+  return cells;
+};
+
+const getMonthLabel = (date) => {
+  if (!date) return "";
+  return new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" }).format(new Date(date));
+};
+
+const getLongMonthLabel = (date) => {
+  if (!date) return "";
+  return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(new Date(date));
+};
+
+
 
 // Time Entries Page Component
 function TimeEntriesPage() {
-  const [timeEntries, setTimeEntries] = useState<TimeTrackingEntry[]>([]);
+  const currentUser = getCurrentUser();
+  const [timeEntries, setTimeEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -134,11 +153,8 @@ function TimeEntriesPage() {
           ? response
           : (response?.data || []);
 
-        const transformedEntries: TimeTrackingEntry[] = data.map((entry: any) => {
-          // Extract user name as string (handle both object and string cases)
-          const userName = typeof entry.user === 'object' && entry.user !== null
-            ? (entry.user.name || entry.userName || '--')
-            : (entry.userName || entry.user || '--');
+        const transformedEntries = data.map(entry => {
+          const userName = getEntryUserLabel(entry, new Map(), currentUser);
 
           return {
             id: entry._id || entry.id,
@@ -149,6 +165,7 @@ function TimeEntriesPage() {
             user: userName,
             billable: entry.billable !== undefined ? entry.billable : false,
             notes: entry.description || entry.notes || '--',
+            comments: Array.isArray(entry.comments) ? entry.comments : [],
           };
         });
 
@@ -216,7 +233,7 @@ function TimeEntriesPage() {
                     <td className="px-4 py-3 text-sm text-gray-900">{entry.projectName || '--'}</td>
                     <td className="px-4 py-3 text-sm text-gray-900">{entry.taskName || '--'}</td>
                     <td className="px-4 py-3 text-sm text-gray-900">{entry.timeSpent || '--'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-900">{entry.user || '--'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{getEntryUserLabel(entry, new Map(), currentUser)}</td>
                     <td className="px-4 py-3 text-sm text-gray-900">{entry.billable ? 'Yes' : 'No'}</td>
                     <td className="px-4 py-3 text-sm text-gray-900 max-w-[200px] truncate">{entry.notes || '--'}</td>
                   </tr>
@@ -231,6 +248,7 @@ function TimeEntriesPage() {
 }
 
 function TimesheetTable() {
+  const currentUser = useMemo(() => getCurrentUser(), []);
   const navigate = useNavigate();
   const [showDropdown, setShowDropdown] = useState(false);
   const [billingStatusExpanded, setBillingStatusExpanded] = useState(true);
@@ -240,7 +258,7 @@ function TimesheetTable() {
   const [showTimerModal, setShowTimerModal] = useState(false);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0); // in seconds
-  const [timerInterval, setTimerInterval] = useState<ReturnType<typeof setInterval> | null>(null);
+  const [timerInterval, setTimerInterval] = useState(null);
   const [timerNotes, setTimerNotes] = useState('');
   const [associatedProject, setAssociatedProject] = useState('');
   const [showProjectDropdown, setShowProjectDropdown] = useState(false);
@@ -248,16 +266,22 @@ function TimesheetTable() {
   const [selectedTaskForTimer, setSelectedTaskForTimer] = useState('');
   const [isBillable, setIsBillable] = useState(true);
   const [showProjectFields, setShowProjectFields] = useState(false);
-  const [hoveredMenu, setHoveredMenu] = useState<HoveredMenu>(null); // 'sort', 'import', 'export', 'preferences'
-  const [hoveredEntryId, setHoveredEntryId] = useState<TimeTrackingId | null>(null);
-  const [openDropdownEntryId, setOpenDropdownEntryId] = useState<TimeTrackingId | null>(null);
+  const [showTaskDropdown, setShowTaskDropdown] = useState(false);
+  const [isCreatingTaskInline, setIsCreatingTaskInline] = useState(false);
+  const [taskSearchTerm, setTaskSearchTerm] = useState('');
+  const [hoveredMenu, setHoveredMenu] = useState(null); // 'sort', 'import', 'export', 'preferences'
+  const [hoveredEntryId, setHoveredEntryId] = useState(null);
+  const [openDropdownEntryId, setOpenDropdownEntryId] = useState(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteMode, setDeleteMode] = useState("single"); // "single" | "bulk"
+  const [pendingDeleteIds, setPendingDeleteIds] = useState([]);
   const [sortSubmenuOpen, setSortSubmenuOpen] = useState(false);
   const [importSubmenuOpen, setImportSubmenuOpen] = useState(false);
   const [exportSubmenuOpen, setExportSubmenuOpen] = useState(false);
   const [preferencesSubmenuOpen, setPreferencesSubmenuOpen] = useState(false);
-  const [selectedSort, setSelectedSort] = useState<TimesheetSortKey>('date'); // 'date', 'project', 'user', 'time'
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc'); // 'asc' or 'desc'
+  const [selectedSort, setSelectedSort] = useState('date'); // 'date', 'project', 'user', 'time'
+  const [sortDirection, setSortDirection] = useState('desc'); // 'asc' or 'desc'
   const [showExportCurrentViewModal, setShowExportCurrentViewModal] = useState(false);
   const [showExportProjectsModal, setShowExportProjectsModal] = useState(false);
   const [exportCurrentViewStep, setExportCurrentViewStep] = useState(1);
@@ -277,43 +301,105 @@ function TimesheetTable() {
     password: "",
     showPassword: false
   });
-  const sortSubmenuRef = useRef<HTMLDivElement | null>(null);
-  const importSubmenuRef = useRef<HTMLDivElement | null>(null);
-  const exportSubmenuRef = useRef<HTMLDivElement | null>(null);
-  const preferencesSubmenuRef = useRef<HTMLDivElement | null>(null);
-  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
-  const [selectedStatus, setSelectedStatus] = useState('All');
-  const [statusSearch, setStatusSearch] = useState('');
-  const [showPeriodDropdown, setShowPeriodDropdown] = useState(false);
-  const [selectedPeriod, setSelectedPeriod] = useState('All');
-  const [periodSearch, setPeriodSearch] = useState('');
-  const [criteria, setCriteria] = useState<TimeTrackingCriterion[]>([{ id: 1, field: '', comparator: '', value: '' }]);
-  const [selectedColumns, setSelectedColumns] = useState(['Project']);
+  const sortSubmenuRef = useRef(null);
+  const importSubmenuRef = useRef(null);
+  const exportSubmenuRef = useRef(null);
+  const preferencesSubmenuRef = useRef(null);
+  const LOCAL_TIMESHEET_COLUMNS_KEY = "taban_timesheet_columns";
+  const [selectedView, setSelectedView] = useState('All');
+  const [showNewDropdown, setShowNewDropdown] = useState(false);
+  const [criteria, setCriteria] = useState([{ id: 1, field: '', comparator: '', value: '' }]);
   const [visibility, setVisibility] = useState('only-me');
   const [isFavorite, setIsFavorite] = useState(false);
-  const [selectedEntry, setSelectedEntry] = useState<TimeTrackingEntry | null>(null);
+  const [selectedEntry, setSelectedEntry] = useState(null);
   const [activeTab, setActiveTab] = useState('otherDetails'); // 'otherDetails' or 'comments'
   const [isEditingEntry, setIsEditingEntry] = useState(false);
   const [showMoreDropdown, setShowMoreDropdown] = useState(false);
-  const [editedEntryData, setEditedEntryData] = useState<TimeTrackingEntry | null>(null);
+  const [editedEntryData, setEditedEntryData] = useState(null);
+  const [showEntryMenu, setShowEntryMenu] = useState(false);
   const [commentText, setCommentText] = useState('');
-  const [comments, setComments] = useState<TimeTrackingComment[]>([]);
+  const [comments, setComments] = useState([]);
   const [isBold, setIsBold] = useState(false);
   const [isItalic, setIsItalic] = useState(false);
   const [isUnderline, setIsUnderline] = useState(false);
+  const commentEditorRef = useRef<HTMLDivElement>(null);
+  const [commentIsEditorEmpty, setCommentIsEditorEmpty] = useState(true);
+  const [showDeleteCommentModal, setShowDeleteCommentModal] = useState(false);
+  const [commentToDelete, setCommentToDelete] = useState<any>(null);
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'calendar'
   const [calendarDate, setCalendarDate] = useState(new Date()); // Current month/year for calendar
-  const [selectedDateForLogEntry, setSelectedDateForLogEntry] = useState<Date | null>(null); // Selected date for new log entry
-  const [selectedEntries, setSelectedEntries] = useState<TimeTrackingId[]>([]); // Selected time entries for bulk actions
-  const dropdownRef = useRef<HTMLDivElement | null>(null);
-  const moreMenuRef = useRef<HTMLDivElement | null>(null);
-  const statusDropdownRef = useRef<HTMLDivElement | null>(null);
-  const periodDropdownRef = useRef<HTMLDivElement | null>(null);
-  const moreDropdownRef = useRef<HTMLDivElement | null>(null);
-  const projectDropdownRef = useRef<HTMLDivElement | null>(null);
-  const newLogEntryDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [selectedDateForLogEntry, setSelectedDateForLogEntry] = useState(null); // Selected date for new log entry
+  const [selectedEntries, setSelectedEntries] = useState([]); // Selected time entries for bulk actions
+  const [isTimerHydrated, setIsTimerHydrated] = useState(false);
+  const [showTimesheetColumnsModal, setShowTimesheetColumnsModal] = useState(false);
+  const [draftTimesheetColumns, setDraftTimesheetColumns] = useState<string[]>([]);
+  const [timesheetColumnsSearchTerm, setTimesheetColumnsSearchTerm] = useState("");
+  const dropdownRef = useRef(null);
+  const moreMenuRef = useRef(null);
+  const statusDropdownRef = useRef(null);
+  const periodDropdownRef = useRef(null);
+  const moreDropdownRef = useRef(null);
+  const projectDropdownRef = useRef(null);
+  const newLogEntryDropdownRef = useRef(null);
+  const entryMenuRef = useRef(null);
+  const taskDropdownRef = useRef(null);
+  const customerFilterRef = useRef(null);
+  const projectFilterRef = useRef(null);
+  const userFilterRef = useRef(null);
 
-  const availableColumns = ['Date', 'Customer', 'Task', 'User', 'Time', 'Billing Status'] as const;
+  const timesheetViews = [
+    { id: 'All', label: 'All' },
+    { id: 'Invoiced', label: 'Invoiced' },
+    { id: 'Unbilled', label: 'Unbilled' }
+  ];
+  const timesheetColumnOptions = [
+    { key: 'date', label: 'Date', locked: true },
+    { key: 'project', label: 'Project' },
+    { key: 'customer', label: 'Customer' },
+    { key: 'task', label: 'Task' },
+    { key: 'user', label: 'User' },
+    { key: 'time', label: 'Time' },
+    { key: 'totalCost', label: 'Total Cost' },
+    { key: 'approvals', label: 'Approvals' },
+    { key: 'customerApprovals', label: 'Customer Approvals' },
+    { key: 'billingStatus', label: 'Billing Status' },
+    { key: 'projectHead', label: 'Project Head' },
+  ];
+
+  const [selectedColumns, setSelectedColumns] = useState<string[]>(() => {
+    const saved = localStorage.getItem(LOCAL_TIMESHEET_COLUMNS_KEY);
+    const fallback = timesheetColumnOptions.map((col) => col.key).filter((key) => key !== "projectHead");
+
+    if (!saved) return fallback;
+
+    try {
+      const parsed = JSON.parse(saved);
+      const validKeys = Array.isArray(parsed)
+        ? parsed.filter((key) => timesheetColumnOptions.some((col) => col.key === key))
+        : fallback;
+      return Array.from(new Set([
+        ...validKeys,
+        ...timesheetColumnOptions.filter((col) => col.locked).map((col) => col.key),
+      ]));
+    } catch {
+      return fallback;
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_TIMESHEET_COLUMNS_KEY, JSON.stringify(selectedColumns));
+  }, [selectedColumns]);
+
+  const visibleTimesheetColumns = useMemo(
+    () => timesheetColumnOptions.filter((col) => selectedColumns.includes(col.key)),
+    [selectedColumns]
+  );
+
+  const filteredTimesheetColumnOptions = useMemo(() => {
+    const query = timesheetColumnsSearchTerm.trim().toLowerCase();
+    if (!query) return timesheetColumnOptions;
+    return timesheetColumnOptions.filter((column) => column.label.toLowerCase().includes(query));
+  }, [timesheetColumnsSearchTerm]);
 
   // Log Entry Form State
   const [logEntryData, setLogEntryData] = useState({
@@ -330,18 +416,32 @@ function TimesheetTable() {
   const [selectedCustomer, setSelectedCustomer] = useState('');
   const [selectedProjectFilter, setSelectedProjectFilter] = useState('');
   const [selectedUserFilter, setSelectedUserFilter] = useState('');
+  const [selectedPeriodFilter, setSelectedPeriodFilter] = useState('All');
+  const [periodSearchTerm, setPeriodSearchTerm] = useState('');
+  const [showPeriodDropdown, setShowPeriodDropdown] = useState(false);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [showProjectFilterDropdown, setShowProjectFilterDropdown] = useState(false);
+  const [showUserFilterDropdown, setShowUserFilterDropdown] = useState(false);
 
   // Get projects from localStorage for dropdown
-  const [projects, setProjects] = useState<TimeTrackingProjectRecord[]>([]);
+  const [projects, setProjects] = useState([]);
 
   // Load time entries from database (declare before useMemo that uses it)
-  const [timeEntries, setTimeEntries] = useState<TimeTrackingEntry[]>([]);
+  const [timeEntries, setTimeEntries] = useState([]);
   const [loadingEntries, setLoadingEntries] = useState(false);
+
+  const timerTaskOptions = useMemo(() => {
+    const selectedProject = projects.find((project) => project.projectName === selectedProjectForTimer);
+    const tasks = selectedProject?.tasks || [];
+    return tasks
+      .map((task) => task?.taskName || task?.name || task?.title || "")
+      .filter((name) => Boolean(name));
+  }, [projects, selectedProjectForTimer]);
 
   // Extract unique customers from projects
   const customers = useMemo(() => {
-    const customerSet = new Set<string>();
-    projects.forEach((project) => {
+    const customerSet = new Set();
+    projects.forEach(project => {
       if (project.customerName) {
         customerSet.add(project.customerName);
       }
@@ -349,46 +449,582 @@ function TimesheetTable() {
     return Array.from(customerSet).map((name, index) => ({ id: index + 1, name }));
   }, [projects]);
 
+  const [systemUsers, setSystemUsers] = useState([]);
+
   // Extract unique users from all projects and time entries
   const users = useMemo(() => {
-    const userMap = new Map<string, TimeTrackingUser>();
+    const userMap = new Map();
+
+    const addUser = (user) => {
+      if (!user || typeof user !== 'object') return;
+      const id = getUserDisplayId(user);
+      const name = getUserDisplayName(user);
+      if (!id || !name) return;
+      userMap.set(id, {
+        id,
+        name,
+        email: String(user.email || '').trim()
+      });
+    };
+
+    addUser(currentUser);
 
     // Add users from projects
-    projects.forEach((project) => {
-      if (project.users && Array.isArray(project.users)) {
-        project.users.forEach((user) => {
-          if (user.name && !userMap.has(user.name)) {
-            userMap.set(user.name, { id: user.id || Date.now() + Math.random(), name: user.name, email: user.email || '' });
+    projects.forEach(project => {
+      const projectUsers = project.users || project.assignedTo || [];
+      if (Array.isArray(projectUsers)) {
+        projectUsers.forEach(user => {
+          if (user && typeof user === 'object') {
+            addUser(user);
+          } else if (typeof user === 'string') {
+            if (!isLikelyId(user)) {
+              userMap.set(user, { id: user, name: user, email: '' });
+            }
           }
         });
       }
     });
 
     // Add users from time entries
-    timeEntries.forEach((entry) => {
-      const userName = entry.userName || entry.user || '';
+    timeEntries.forEach(entry => {
+      const userName = entry.userName || (typeof entry.user === 'string' && !isLikelyId(entry.user) ? entry.user : '');
       if (userName && userName !== '--' && !userMap.has(userName)) {
-        userMap.set(userName, {
-          id: entry.userId || Date.now() + Math.random(),
-          name: userName,
-          email: ''
-        });
+        const userId = String(entry.userId || entry.user || '').trim();
+        if (userId) {
+          userMap.set(userId, {
+            id: userId,
+            name: userName,
+            email: ''
+          });
+        }
       }
     });
 
     return Array.from(userMap.values());
   }, [projects, timeEntries]);
 
+  const userById = useMemo(() => {
+    const map = new Map();
+    users.forEach((user) => {
+      if (user?.id) {
+        map.set(String(user.id), user);
+      }
+    });
+    systemUsers.forEach((user) => {
+      const id = user?._id || user?.id;
+      if (id) {
+        map.set(String(id), {
+          id,
+          name: getUserDisplayName(user),
+          email: user?.email || ''
+        });
+      }
+    });
+    return map;
+  }, [users, systemUsers]);
+
+  const getProjectForEntry = (entry) => {
+    if (!entry) return null;
+    return projects.find((p) => (
+      (entry.projectId && (p.id === entry.projectId || p._id === entry.projectId)) ||
+      (entry.projectNumber && p.projectNumber === entry.projectNumber) ||
+      (entry.projectName && p.projectName === entry.projectName)
+    )) || null;
+  };
+
+  const getProjectName = (entry) => {
+    const project = getProjectForEntry(entry);
+    return project?.projectName || entry?.projectName || '--';
+  };
+
+  const getCustomerName = (entry) => {
+    const project = getProjectForEntry(entry);
+    return project?.customerName || '--';
+  };
+
+  const getUserName = (entry) => {
+    return getEntryUserLabel(entry, userById, currentUser);
+  };
+
+  const getTimesheetColumnValue = (entry, key) => {
+    switch (key) {
+      case 'date':
+        return entry?.date || '--';
+      case 'project':
+        return getProjectName(entry);
+      case 'customer':
+        return getCustomerName(entry);
+      case 'task':
+        return entry?.taskName || entry?.task || '--';
+      case 'user':
+        return getUserName(entry);
+      case 'time':
+        return entry?.timeSpent || '00:00';
+      case 'totalCost': {
+        const cost = Number(entry?.totalCost ?? entry?.billingCost ?? entry?.cost ?? 0);
+        return `$${cost.toFixed(2)}`;
+      }
+      case 'approvals':
+        return entry?.approvals || '--';
+      case 'customerApprovals':
+        return entry?.customerApprovals || entry?.customerApproval || '--';
+      case 'billingStatus':
+        return entry?.billingStatus || 'Unbilled';
+      case 'projectHead':
+        return entry?.projectHead || '--';
+      default:
+        return '--';
+    }
+  };
+
+  const handleOpenTimesheetColumnsModal = () => {
+    setTimesheetColumnsSearchTerm("");
+    setShowTimesheetColumnsModal(true);
+  };
+
+  const handleCloseTimesheetColumnsModal = () => {
+    setShowTimesheetColumnsModal(false);
+    setTimesheetColumnsSearchTerm("");
+  };
+
+  const handleSaveTimesheetColumns = () => {
+    const lockedColumns = timesheetColumnOptions.filter((column) => column.locked).map((column) => column.key);
+    setSelectedColumns(Array.from(new Set([...draftTimesheetColumns, ...lockedColumns])));
+    handleCloseTimesheetColumnsModal();
+  };
+
+  const handleToggleTimesheetColumn = (key: string) => {
+    const column = timesheetColumnOptions.find((item) => item.key === key);
+    if (!column || column.locked) return;
+    setDraftTimesheetColumns((current) =>
+      current.includes(key) ? current.filter((item) => item !== key) : [...current, key]
+    );
+  };
+
+  const resolveUserIdForEntry = (entry) => {
+    if (!entry) return '';
+    if (entry.userId) return entry.userId;
+    if (entry.user && isLikelyId(entry.user)) return entry.user;
+    const name = entry.userName || entry.user || '';
+    if (!name) return '';
+    const match = [...systemUsers, ...users].find((u) =>
+      (u?.name || u?.fullName || u?.username || u?.email) === name
+    );
+    return match?._id || match?.id || '';
+  };
+
   // Load comments when entry is selected
   useEffect(() => {
     if (selectedEntry) {
-      const allComments = JSON.parse(localStorage.getItem('timesheetComments') || '{}') as Record<string, TimeTrackingComment[]>;
-      const entryComments = allComments[selectedEntry.id] || [];
-      setComments(entryComments);
+      const entryComments = Array.isArray(selectedEntry.comments) ? selectedEntry.comments : [];
+      if (entryComments.length) {
+        setComments(entryComments);
+      } else {
+        const legacyStore = JSON.parse(localStorage.getItem('timesheetComments') || '{}');
+        const legacyComments = Array.isArray(legacyStore[selectedEntry.id]) ? legacyStore[selectedEntry.id] : [];
+        setComments(legacyComments);
+        if (legacyComments.length) {
+          void timeEntriesAPI.update(selectedEntry.id, { comments: legacyComments }).catch((error) => {
+            console.error("Failed to migrate legacy timesheet comments:", error);
+          });
+        }
+      }
     } else {
       setComments([]);
     }
   }, [selectedEntry]);
+
+  const updateTimeEntryComments = async (entryId: string, data: any) => {
+    try {
+      const response = await timeEntriesAPI.update(entryId, data);
+      const updatedEntry = response?.data || response;
+      return {
+        success: true,
+        data: updatedEntry,
+        timeEntry: updatedEntry,
+        comments: Array.isArray(updatedEntry?.comments) ? updatedEntry.comments : Array.isArray(data?.comments) ? data.comments : [],
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        message: error?.message || "Failed to update time entry",
+      };
+    }
+  };
+
+  const handleTimeEntryCommentsChange = (nextComments: any[]) => {
+    const entryId = String(selectedEntry?.id || "");
+    setComments(nextComments);
+    if (!entryId) return;
+    setSelectedEntry((prev) => (prev ? { ...prev, comments: nextComments } : prev));
+    setTimeEntries((prev) =>
+      prev.map((entry) => (String(entry.id) === entryId ? { ...entry, comments: nextComments } : entry))
+    );
+  };
+
+  const sanitizeCommentHtml = (html: string) => {
+    if (!html) return "";
+    if (typeof document === "undefined") return String(html);
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const allowedTags = new Set(["B", "STRONG", "I", "EM", "U", "BR", "DIV", "P", "SPAN"]);
+
+    const sanitizeNode = (node: Node) => {
+      if (node.nodeType === Node.TEXT_NODE) return;
+      if (node.nodeType !== Node.ELEMENT_NODE) {
+        node.parentNode?.removeChild(node);
+        return;
+      }
+
+      const element = node as HTMLElement;
+      if (!allowedTags.has(element.tagName)) {
+        const text = document.createTextNode(element.textContent || "");
+        element.parentNode?.replaceChild(text, element);
+        return;
+      }
+
+      while (element.attributes.length > 0) {
+        element.removeAttribute(element.attributes[0].name);
+      }
+
+      Array.from(element.childNodes).forEach(sanitizeNode);
+    };
+
+    Array.from(container.childNodes).forEach(sanitizeNode);
+    return container.innerHTML;
+  };
+
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const commentMarkupToHtml = (value: string) => {
+    const raw = String(value || "");
+    if (/<[a-z][\s\S]*>/i.test(raw)) return sanitizeCommentHtml(raw);
+
+    let result = "";
+    let i = 0;
+    let boldOpen = false;
+    let italicOpen = false;
+    let underlineOpen = false;
+
+    while (i < raw.length) {
+      const twoCharToken = raw.slice(i, i + 2);
+      if (twoCharToken === "**") {
+        result += boldOpen ? "</strong>" : "<strong>";
+        boldOpen = !boldOpen;
+        i += 2;
+        continue;
+      }
+      if (twoCharToken === "__") {
+        result += underlineOpen ? "</u>" : "<u>";
+        underlineOpen = !underlineOpen;
+        i += 2;
+        continue;
+      }
+      if (raw[i] === "*") {
+        result += italicOpen ? "</em>" : "<em>";
+        italicOpen = !italicOpen;
+        i += 1;
+        continue;
+      }
+
+      const char = raw[i];
+      result += char === "\n" ? "<br />" : escapeHtml(char);
+      i += 1;
+    }
+
+    if (italicOpen) result += "</em>";
+    if (underlineOpen) result += "</u>";
+    if (boldOpen) result += "</strong>";
+    return result;
+  };
+
+  const getLoggedInUserDisplay = () => {
+    const currentUser = getCurrentUser();
+    const name = String(
+      currentUser?.name ||
+      currentUser?.displayName ||
+      currentUser?.fullName ||
+      currentUser?.username ||
+      [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(" ") ||
+      currentUser?.email ||
+      "You"
+    ).trim() || "You";
+    return {
+      name,
+      initial: name.charAt(0).toUpperCase() || "Y",
+    };
+  };
+
+  const getCommentAuthorName = (comment: any) => {
+    const fallback = getLoggedInUserDisplay();
+    const authorName = String(comment?.authorName || "").trim();
+    const authorInitial = String(comment?.authorInitial || "").trim();
+    if (!authorName || authorName === "You" || authorInitial === "Y") return fallback.name;
+    return authorName;
+  };
+
+  const getCommentAuthorInitial = (comment: any) => {
+    const fallback = getLoggedInUserDisplay();
+    const authorName = String(comment?.authorName || "").trim();
+    const authorInitial = String(comment?.authorInitial || "").trim();
+    if (!authorName || authorName === "You" || authorInitial === "Y") return fallback.initial;
+    return authorInitial || authorName.charAt(0).toUpperCase() || "Y";
+  };
+
+  const normalizeComment = (comment: any, index = 0) => {
+    if (!comment || typeof comment !== "object") return null;
+    const id = String(comment.id || comment._id || `cm-${index}-${Date.now()}`).trim();
+    if (!id) return null;
+    const rawContent = String(comment.content ?? "").trim();
+    const legacyText = String(comment.text ?? "").trim();
+    const content = rawContent || sanitizeCommentHtml(
+      `${comment.bold ? "<b>" : ""}${comment.italic ? "<i>" : ""}${comment.underline ? "<u>" : ""}` +
+      `${legacyText}` +
+      `${comment.underline ? "</u>" : ""}${comment.italic ? "</i>" : ""}${comment.bold ? "</b>" : ""}`
+    );
+    return {
+      id,
+      text: legacyText || content.replace(/<[^>]*>/g, ""),
+      content,
+      authorName: String(comment.authorName || getLoggedInUserDisplay().name).trim() || "You",
+      authorInitial: String(comment.authorInitial || getLoggedInUserDisplay().initial).trim() || "Y",
+      createdAt: String(comment.createdAt || new Date().toISOString()),
+      bold: comment.bold,
+      italic: comment.italic,
+      underline: comment.underline
+    };
+  };
+
+  const syncCommentEditorState = () => {
+    const editor = commentEditorRef.current;
+    const isEmpty = !(editor?.innerText || "").trim();
+    setCommentIsEditorEmpty(isEmpty);
+    try {
+      setIsBold(document.queryCommandState("bold"));
+      setIsItalic(document.queryCommandState("italic"));
+      setIsUnderline(document.queryCommandState("underline"));
+    } catch {
+      setIsBold(false);
+      setIsItalic(false);
+      setIsUnderline(false);
+    }
+  };
+
+  const applyCommentFormat = (command: "bold" | "italic" | "underline") => {
+    if (!commentEditorRef.current) return;
+    commentEditorRef.current.focus();
+    document.execCommand(command, false);
+    syncCommentEditorState();
+  };
+
+  const openDeleteCommentModal = (comment: any) => {
+    setCommentToDelete(comment);
+    setShowDeleteCommentModal(true);
+  };
+
+  const closeDeleteCommentModal = () => {
+    setShowDeleteCommentModal(false);
+    setCommentToDelete(null);
+  };
+
+  const handleDeleteComment = async (commentId: string | number) => {
+    if (!selectedEntry) return false;
+    const previousComments = Array.isArray(selectedEntry.comments) ? selectedEntry.comments : comments;
+    const updatedComments = previousComments.filter((comment: any) => String(comment.id) !== String(commentId));
+    try {
+      await timeEntriesAPI.update(selectedEntry.id, { comments: updatedComments });
+      setComments(updatedComments);
+      setSelectedEntry((prev: any) => (prev ? { ...prev, comments: updatedComments } : prev));
+      setTimeEntries((prev: any[]) =>
+        prev.map((entry) => (String(entry.id) === String(selectedEntry.id) ? { ...entry, comments: updatedComments } : entry))
+      );
+      toast.success("Comment deleted successfully.");
+      return true;
+    } catch (error) {
+      console.error("Failed to delete timesheet comment:", error);
+      toast.error("Failed to delete comment.");
+      return false;
+    }
+  };
+
+  const confirmDeleteComment = async () => {
+    if (!commentToDelete) return;
+    const deleted = await handleDeleteComment(commentToDelete.id);
+    if (deleted) closeDeleteCommentModal();
+  };
+
+  const formatDuration = (entry) => {
+    const hours = Number(entry?.hours ?? 0);
+    const minutes = Number(entry?.minutes ?? 0);
+    if (Number.isFinite(hours) && Number.isFinite(minutes) && (hours > 0 || minutes > 0)) {
+      return `${String(hours).padStart(2, "0")} hrs : ${String(minutes).padStart(2, "0")} mins`;
+    }
+    const match = String(entry?.timeSpent || "").match(/(\d+)\s*h.*?(\d+)\s*m/i);
+    if (match) {
+      const h = Number(match[1] || 0);
+      const m = Number(match[2] || 0);
+      return `${String(h).padStart(2, "0")} hrs : ${String(m).padStart(2, "0")} mins`;
+    }
+    return "00 hrs : 00 mins";
+  };
+
+  const toHHMM = (entry) => {
+    if (!entry) return "00:00";
+    if (entry.hours || entry.minutes) {
+      const h = Number(entry.hours || 0);
+      const m = Number(entry.minutes || 0);
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    }
+    const match = String(entry.timeSpent || "").match(/(\d+)\s*h.*?(\d+)\s*m/i);
+    if (match) {
+      const h = Number(match[1] || 0);
+      const m = Number(match[2] || 0);
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    }
+    if (typeof entry.timeSpent === "string" && entry.timeSpent.includes(":")) {
+      return entry.timeSpent;
+    }
+    return "00:00";
+  };
+
+  const handleCloneSelectedEntry = async () => {
+    if (!selectedEntry) return;
+    try {
+      const projectObj = getProjectForEntry(selectedEntry);
+      const currentUser = getCurrentUser();
+      const currentUserName =
+        currentUser?.name ||
+        currentUser?.username ||
+        currentUser?.fullName ||
+        currentUser?.displayName ||
+        currentUser?.email ||
+        "";
+      const [hours, minutes] = String(toHHMM(selectedEntry)).split(":").map((v) => Number(v) || 0);
+      const payload = {
+        project: selectedEntry.projectId || projectObj?.id || projectObj?._id,
+        projectId: selectedEntry.projectId || projectObj?.id || projectObj?._id,
+        projectName: projectObj?.projectName || projectObj?.name || selectedEntry.projectName || "",
+        user: resolveUserIdForEntry(selectedEntry),
+        userId: resolveUserIdForEntry(selectedEntry),
+        userName: currentUserName || selectedEntry.userName || "",
+        date: selectedEntry.date ? new Date(selectedEntry.date).toISOString() : new Date().toISOString(),
+        hours,
+        minutes,
+        timeSpent: String(toHHMM(selectedEntry)),
+        description: selectedEntry.notes || selectedEntry.description || '',
+        billable: selectedEntry.billable !== undefined ? selectedEntry.billable : true,
+        task: selectedEntry.taskName || selectedEntry.task || '',
+        taskName: selectedEntry.taskName || selectedEntry.task || '',
+        notes: selectedEntry.notes || selectedEntry.description || '',
+      };
+      await timeEntriesAPI.create(payload);
+      toast.success("Time entry cloned successfully!");
+      window.dispatchEvent(new CustomEvent('timeEntryUpdated'));
+      setShowEntryMenu(false);
+    } catch (error) {
+      console.error("Error cloning time entry:", error);
+      toast.error("Failed to clone time entry");
+    }
+  };
+
+  const openDeleteConfirm = (mode, ids) => {
+    setDeleteMode(mode);
+    setPendingDeleteIds(ids);
+    setShowDeleteConfirm(true);
+  };
+
+  const getDeleteConfirmTitle = () => {
+    if (deleteMode === "bulk") {
+      return `Delete ${pendingDeleteIds.length} time entries?`;
+    }
+    const userName = selectedEntry && getUserName(selectedEntry) !== "--" ? getUserName(selectedEntry) : "this user";
+    return `Delete ${userName}'s log entry?`;
+  };
+
+  const getDeleteConfirmMessage = () => {
+    if (deleteMode === "bulk") {
+      return "You cannot retrieve these time entries once they have been deleted.";
+    }
+    const userName = selectedEntry && getUserName(selectedEntry) !== "--" ? getUserName(selectedEntry) : "this log entry";
+    return `You cannot retrieve ${userName}'s log entry once it has been deleted.`;
+  };
+
+  const handleDeleteSelectedEntry = () => {
+    if (!selectedEntry) return;
+    openDeleteConfirm("single", [selectedEntry.id]);
+    setShowEntryMenu(false);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDeleteIds.length) {
+      setShowDeleteConfirm(false);
+      return;
+    }
+    try {
+      if (deleteMode === "single") {
+        await timeEntriesAPI.delete(pendingDeleteIds[0]);
+        toast.success("Time entry deleted successfully!");
+        setSelectedEntry(null);
+      } else {
+        await Promise.all(pendingDeleteIds.map((entryId) => timeEntriesAPI.delete(entryId)));
+        toast.success("Successfully deleted entries.");
+        setSelectedEntries([]);
+      }
+      const response = await timeEntriesAPI.getAll();
+      setTimeEntries(Array.isArray(response) ? response : (response?.data || []));
+      window.dispatchEvent(new CustomEvent('timeEntryUpdated'));
+    } catch (error) {
+      console.error("Error deleting time entry:", error);
+      toast.error("Failed to delete time entry");
+    } finally {
+      setShowDeleteConfirm(false);
+      setPendingDeleteIds([]);
+    }
+  };
+
+  const handleAddComment = () => {
+    const editor = commentEditorRef.current;
+    const trimmedComment = editor?.innerText.trim() || "";
+    if (!selectedEntry || !trimmedComment) return;
+    const currentUser = getLoggedInUserDisplay();
+    const newComment = {
+      id: `${Date.now()}`,
+      text: trimmedComment,
+      content: sanitizeCommentHtml(editor?.innerHTML || ""),
+      authorName: currentUser.name,
+      authorInitial: currentUser.initial,
+      createdAt: new Date().toISOString(),
+      bold: false,
+      italic: false,
+      underline: false,
+    };
+    const nextComments = [...(Array.isArray(selectedEntry.comments) ? selectedEntry.comments : comments), newComment]
+      .map((comment, index) => normalizeComment(comment, index))
+      .filter(Boolean);
+    void (async () => {
+      try {
+        await timeEntriesAPI.update(selectedEntry.id, { comments: nextComments });
+        setComments(nextComments);
+        setSelectedEntry((prev) => (prev ? { ...prev, comments: nextComments } : prev));
+        setTimeEntries((prev) => prev.map((entry) => (String(entry.id) === String(selectedEntry.id) ? { ...entry, comments: nextComments } : entry)));
+        if (editor) editor.innerHTML = "";
+        setCommentIsEditorEmpty(true);
+        setIsBold(false);
+        setIsItalic(false);
+        setIsUnderline(false);
+        toast.success("Comment added successfully.");
+      } catch (error) {
+        console.error("Failed to save timesheet comment:", error);
+        toast.error("Failed to add comment");
+      }
+    })();
+  };
 
   // Load projects from database
   const [loadingProjects, setLoadingProjects] = useState(true);
@@ -404,7 +1040,7 @@ function TimesheetTable() {
           : (response?.data || []);
 
         // Transform database projects to match frontend format
-        const transformedProjects: TimeTrackingProjectRecord[] = data.map((project: any) => ({
+        const transformedProjects = data.map(project => ({
           id: project._id || project.id,
           projectName: project.name || project.projectName,
           projectNumber: project.projectNumber || project.id,
@@ -428,7 +1064,7 @@ function TimesheetTable() {
         setProjects(transformedProjects);
       } catch (error) {
         console.error("Error loading projects:", error);
-        toast.error("Failed to load projects: " + getErrorMessage(error));
+        toast.error("Failed to load projects: " + (error.message || "Unknown error"));
         setProjects([]);
       } finally {
         setLoadingProjects(false);
@@ -448,9 +1084,100 @@ function TimesheetTable() {
     };
   }, []);
 
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const response = await usersAPI.getAll();
+        const data = Array.isArray(response)
+          ? response
+          : (response?.data || []);
+        setSystemUsers(data);
+      } catch (error) {
+        console.error("Error loading users:", error);
+        setSystemUsers([]);
+      }
+    };
+    fetchUsers();
+  }, []);
+
   // Get tasks from selected project
   const selectedProject = projects.find(p => p.projectName === logEntryData.projectName);
   const availableTasks = selectedProject?.tasks || [];
+
+  const periodOptions = useMemo(() => ([
+    {
+      group: "Current",
+      items: [
+        { id: 'Today', label: 'Today' },
+        { id: 'This Week', label: 'This Week' },
+        { id: 'This Month', label: 'This Month' },
+        { id: 'This Quarter', label: 'This Quarter' },
+        { id: 'This Year', label: 'This Year' },
+      ],
+    },
+    {
+      group: "Previous",
+      items: [
+        { id: 'Yesterday', label: 'Yesterday' },
+        { id: 'Previous Week', label: 'Previous Week' },
+        { id: 'Previous Month', label: 'Previous Month' },
+        { id: 'Previous Quarter', label: 'Previous Quarter' },
+        { id: 'Previous Year', label: 'Previous Year' },
+      ],
+    },
+  ]), []);
+
+  const filterCustomers = useMemo(() => {
+    const unique = new Map();
+    projects.forEach((project) => {
+      const customerName = String(project.customerName || '').trim();
+      if (customerName) unique.set(customerName, customerName);
+    });
+    timeEntries.forEach((entry) => {
+      const customerName = String(entry.customerName || '').trim();
+      if (customerName && customerName !== '--') unique.set(customerName, customerName);
+    });
+    return Array.from(unique.values()).sort((a, b) => a.localeCompare(b));
+  }, [projects, timeEntries]);
+
+  const filterProjects = useMemo(() => {
+    const unique = new Map();
+    projects.forEach((project) => {
+      const projectName = String(project.projectName || '').trim();
+      if (projectName) unique.set(projectName, projectName);
+    });
+    timeEntries.forEach((entry) => {
+      const projectName = String(entry.projectName || '').trim();
+      if (projectName && projectName !== '--') unique.set(projectName, projectName);
+    });
+    return Array.from(unique.values()).sort((a, b) => a.localeCompare(b));
+  }, [projects, timeEntries]);
+
+  const filterUsers = useMemo(() => {
+    const unique = new Map();
+    const normalizeLabel = (value) => String(value || "").trim().toLowerCase();
+
+    [...users, ...systemUsers].forEach((user) => {
+      const userName = getUserDisplayName(user);
+      const userId = getUserDisplayId(user);
+      if (!userName) return;
+      const key = normalizeLabel(userName);
+      if (!unique.has(key)) {
+        unique.set(key, userName);
+      }
+    });
+
+    timeEntries.forEach((entry) => {
+      const userName = String(getUserName(entry) || '').trim();
+      if (!userName || userName === '--') return;
+      const key = normalizeLabel(userName);
+      if (!unique.has(key)) {
+        unique.set(key, userName);
+      }
+    });
+
+    return Array.from(unique.values()).sort((a, b) => a.localeCompare(b));
+  }, [users, systemUsers, timeEntries]);
 
   // Load entries on mount and when needed
   useEffect(() => {
@@ -462,22 +1189,29 @@ function TimesheetTable() {
         const data = Array.isArray(response)
           ? response
           : (response?.data || []);
-
         // Transform database entries to match frontend format
-        const transformedEntries: TimeTrackingEntry[] = data.map((entry: any) => {
-          // Extract user name as string (handle both object and string cases)
-          const userName = typeof entry.user === 'object' && entry.user !== null
-            ? (entry.user.name || '--')
-            : (entry.userName || entry.user || '--');
+        const currentUser = getCurrentUser();
+
+        const transformedEntries = data.map(entry => {
+          const isUserObject = typeof entry.user === 'object' && entry.user !== null;
+          const userName = isUserObject
+            ? (getUserDisplayName(entry.user) || entry.userName || '')
+            : getEntryUserLabel(entry, new Map(), currentUser);
+          const rawUser = !isUserObject ? entry.user : undefined;
+          const projectId = typeof entry.project === 'string'
+            ? entry.project
+            : (entry.project?._id || entry.projectId);
 
           return {
             id: entry._id || entry.id,
-            projectId: entry.project?._id || entry.projectId,
-            projectName: entry.project?.name || entry.projectName,
+            projectId: projectId,
+            projectName: entry.project?.name || entry.projectName || '',
             projectNumber: entry.project?.projectNumber || entry.projectNumber,
-            userId: entry.user?._id || entry.userId,
+            customerName: entry.project?.customer?.name || entry.customerName || '',
+            dateValue: entry.date ? new Date(entry.date) : new Date(),
+            userId: isUserObject ? (entry.user?._id || entry.userId) : (entry.userId || rawUser),
             userName: userName,
-            user: userName, // Ensure user is always a string
+            user: userName || (typeof rawUser === 'string' ? rawUser : ''), // keep fallback string (may be id)
             date: entry.date ? new Date(entry.date).toLocaleDateString() : new Date().toLocaleDateString(),
             hours: entry.hours || 0,
             minutes: entry.minutes || 0,
@@ -489,6 +1223,7 @@ function TimesheetTable() {
             billingRate: entry.billingRate || 0,
             notes: entry.description || entry.notes || '',
             billingStatus: entry.billingStatus || 'Unbilled',
+            comments: Array.isArray(entry.comments) ? entry.comments : [],
             // Don't spread entry to avoid overwriting our transformed fields
           };
         });
@@ -496,7 +1231,7 @@ function TimesheetTable() {
         setTimeEntries(transformedEntries);
       } catch (error) {
         console.error("Error loading time entries:", error);
-        toast.error("Failed to load time entries: " + getErrorMessage(error));
+        toast.error("Failed to load time entries: " + (error.message || "Unknown error"));
         setTimeEntries([]);
       } finally {
         setLoadingEntries(false);
@@ -517,11 +1252,7 @@ function TimesheetTable() {
   }, []);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (!(event.target instanceof Node)) {
-        return;
-      }
-
+    function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setShowDropdown(false);
       }
@@ -552,6 +1283,21 @@ function TimesheetTable() {
       if (newLogEntryDropdownRef.current && !newLogEntryDropdownRef.current.contains(event.target)) {
         setShowNewLogEntryDropdown(false);
       }
+      if (entryMenuRef.current && !entryMenuRef.current.contains(event.target)) {
+        setShowEntryMenu(false);
+      }
+      if (periodDropdownRef.current && !periodDropdownRef.current.contains(event.target)) {
+        setShowPeriodDropdown(false);
+      }
+      if (customerFilterRef.current && !customerFilterRef.current.contains(event.target)) {
+        setShowCustomerDropdown(false);
+      }
+      if (projectFilterRef.current && !projectFilterRef.current.contains(event.target)) {
+        setShowProjectFilterDropdown(false);
+      }
+      if (userFilterRef.current && !userFilterRef.current.contains(event.target)) {
+        setShowUserFilterDropdown(false);
+      }
       // Close row dropdown when clicking outside (will be handled by checking if click target is inside dropdown)
       if (openDropdownEntryId) {
         const dropdownElement = document.querySelector(`[data-dropdown-entry-id="${openDropdownEntryId}"]`);
@@ -561,7 +1307,7 @@ function TimesheetTable() {
       }
     }
 
-    if (showDropdown || showMoreMenu || showMoreDropdown || showNewLogEntryDropdown || openDropdownEntryId || sortSubmenuOpen || importSubmenuOpen || exportSubmenuOpen || preferencesSubmenuOpen) {
+    if (showDropdown || showMoreMenu || showMoreDropdown || showNewLogEntryDropdown || openDropdownEntryId || sortSubmenuOpen || importSubmenuOpen || exportSubmenuOpen || preferencesSubmenuOpen || showEntryMenu) {
       setTimeout(() => {
         document.addEventListener('mousedown', handleClickOutside);
       }, 0);
@@ -570,41 +1316,89 @@ function TimesheetTable() {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showDropdown, showMoreMenu, showMoreDropdown, showNewLogEntryDropdown, openDropdownEntryId, sortSubmenuOpen, importSubmenuOpen, exportSubmenuOpen, preferencesSubmenuOpen]);
+  }, [showDropdown, showMoreMenu, showMoreDropdown, showNewLogEntryDropdown, openDropdownEntryId, sortSubmenuOpen, importSubmenuOpen, exportSubmenuOpen, preferencesSubmenuOpen, showEntryMenu]);
+
+  useEffect(() => {
+    setShowEntryMenu(false);
+  }, [selectedEntry]);
 
   // Load timer state from localStorage on mount
   useEffect(() => {
     const savedTimerState = localStorage.getItem('timerState');
     if (savedTimerState) {
-      const timerState = JSON.parse(savedTimerState);
-      setElapsedTime(timerState.elapsedTime || 0);
+      const timerState = JSON.parse(savedTimerState) as TimerState;
+      const computedElapsed = calculateElapsedTime(timerState);
+      setElapsedTime(computedElapsed);
       setIsTimerRunning(timerState.isTimerRunning || false);
       setTimerNotes(timerState.timerNotes || '');
       setAssociatedProject(timerState.associatedProject || '');
+      setSelectedProjectForTimer(timerState.selectedProjectForTimer || timerState.associatedProject || '');
+      setSelectedTaskForTimer(timerState.selectedTaskForTimer || '');
+      setIsBillable(timerState.isBillable !== undefined ? timerState.isBillable : true);
+      if (timerState.isTimerRunning && !timerState.startTime) {
+        const updatedTimerState = {
+          ...timerState,
+          startTime: Date.now(),
+          pausedElapsedTime: computedElapsed,
+        };
+        localStorage.setItem('timerState', JSON.stringify(updatedTimerState));
+      }
     }
+    setIsTimerHydrated(true);
   }, []);
 
   // Save timer state to localStorage whenever it changes
   useEffect(() => {
-    const timerState = {
+    if (!isTimerHydrated) return;
+
+    const savedTimerState = localStorage.getItem('timerState');
+    let timerState: TimerState = {};
+
+    if (savedTimerState) {
+      try {
+        timerState = (JSON.parse(savedTimerState) || {}) as TimerState;
+      } catch {
+        timerState = {};
+      }
+    }
+
+    const updatedState: TimerState = {
+      ...timerState,
       elapsedTime,
       isTimerRunning,
       timerNotes,
       associatedProject,
-      lastUpdated: Date.now()
+      selectedProjectForTimer,
+      selectedTaskForTimer,
+      isBillable,
+      lastUpdated: Date.now(),
     };
-    localStorage.setItem('timerState', JSON.stringify(timerState));
-  }, [elapsedTime, isTimerRunning, timerNotes, associatedProject]);
+
+    if (isTimerRunning) {
+      if (!updatedState.startTime) {
+        updatedState.startTime = Date.now();
+        updatedState.pausedElapsedTime = elapsedTime;
+      }
+    } else if (updatedState.startTime) {
+      updatedState.pausedElapsedTime = elapsedTime;
+      delete updatedState.startTime;
+    }
+
+    localStorage.setItem('timerState', JSON.stringify(updatedState));
+  }, [isTimerHydrated, elapsedTime, isTimerRunning, timerNotes, associatedProject, selectedProjectForTimer, selectedTaskForTimer, isBillable]);
 
   // Listen for storage changes (when timer is updated from other page)
   useEffect(() => {
     const handleStorageChange = (e) => {
       if (e.key === 'timerState' && e.newValue) {
-        const timerState = JSON.parse(e.newValue);
-        setElapsedTime(timerState.elapsedTime || 0);
+        const timerState = JSON.parse(e.newValue) as TimerState;
+        setElapsedTime(calculateElapsedTime(timerState));
         setIsTimerRunning(timerState.isTimerRunning || false);
         setTimerNotes(timerState.timerNotes || '');
         setAssociatedProject(timerState.associatedProject || '');
+        setSelectedProjectForTimer(timerState.selectedProjectForTimer || timerState.associatedProject || '');
+        setSelectedTaskForTimer(timerState.selectedTaskForTimer || '');
+        setIsBillable(timerState.isBillable !== undefined ? timerState.isBillable : true);
       }
     };
 
@@ -612,11 +1406,14 @@ function TimesheetTable() {
     const handleCustomStorage = () => {
       const savedTimerState = localStorage.getItem('timerState');
       if (savedTimerState) {
-        const timerState = JSON.parse(savedTimerState);
-        setElapsedTime(timerState.elapsedTime || 0);
+        const timerState = JSON.parse(savedTimerState) as TimerState;
+        setElapsedTime(calculateElapsedTime(timerState));
         setIsTimerRunning(timerState.isTimerRunning || false);
         setTimerNotes(timerState.timerNotes || '');
         setAssociatedProject(timerState.associatedProject || '');
+        setSelectedProjectForTimer(timerState.selectedProjectForTimer || timerState.associatedProject || '');
+        setSelectedTaskForTimer(timerState.selectedTaskForTimer || '');
+        setIsBillable(timerState.isBillable !== undefined ? timerState.isBillable : true);
       }
     };
 
@@ -627,9 +1424,9 @@ function TimesheetTable() {
     const pollInterval = setInterval(() => {
       const savedTimerState = localStorage.getItem('timerState');
       if (savedTimerState) {
-        const timerState = JSON.parse(savedTimerState);
+        const timerState = JSON.parse(savedTimerState) as TimerState;
         if (timerState.lastUpdated && timerState.lastUpdated > (Date.now() - 2000)) {
-          setElapsedTime(timerState.elapsedTime || 0);
+          setElapsedTime(calculateElapsedTime(timerState));
           setIsTimerRunning(timerState.isTimerRunning || false);
         }
       }
@@ -644,23 +1441,35 @@ function TimesheetTable() {
 
   // Timer functionality
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
+    let interval = null;
     if (isTimerRunning) {
       interval = setInterval(() => {
-        setElapsedTime(prev => {
-          const newTime = prev + 1;
-          // Update localStorage on each tick
-          const timerState = {
-            elapsedTime: newTime,
-            isTimerRunning: true,
-            timerNotes,
-            associatedProject,
-            lastUpdated: Date.now()
-          };
-          localStorage.setItem('timerState', JSON.stringify(timerState));
-          window.dispatchEvent(new CustomEvent('timerStateUpdated'));
-          return newTime;
-        });
+        const savedTimerState = localStorage.getItem('timerState');
+        if (!savedTimerState) return;
+
+        const timerState = JSON.parse(savedTimerState) as TimerState;
+        const newTime = calculateElapsedTime(timerState);
+        setElapsedTime(newTime);
+
+        const updatedTimerState: TimerState = {
+          ...timerState,
+          elapsedTime: newTime,
+          isTimerRunning: true,
+          timerNotes,
+          associatedProject,
+          selectedProjectForTimer,
+          selectedTaskForTimer,
+          isBillable,
+          lastUpdated: Date.now(),
+        };
+
+        if (!updatedTimerState.startTime) {
+          updatedTimerState.startTime = Date.now();
+          updatedTimerState.pausedElapsedTime = timerState.pausedElapsedTime || timerState.elapsedTime || 0;
+        }
+
+        localStorage.setItem('timerState', JSON.stringify(updatedTimerState));
+        window.dispatchEvent(new CustomEvent('timerStateUpdated'));
       }, 1000);
       setTimerInterval(interval);
     } else {
@@ -675,10 +1484,16 @@ function TimesheetTable() {
         clearInterval(interval);
       }
     };
-  }, [isTimerRunning, timerNotes, associatedProject]);
+  }, [isTimerRunning, timerNotes, associatedProject, selectedProjectForTimer, selectedTaskForTimer, isBillable]);
+
+  useEffect(() => {
+    if (showTimesheetColumnsModal) {
+      setDraftTimesheetColumns([...selectedColumns]);
+    }
+  }, [showTimesheetColumnsModal, selectedColumns]);
 
   // Format time as HH:MM:SS
-  const formatTime = (seconds: number) => {
+  const formatTime = (seconds) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
@@ -686,62 +1501,175 @@ function TimesheetTable() {
   };
 
   // Format time as HH:MM for display in timer controls
-  const formatTimeShort = (seconds: number) => {
+  const formatTimeShort = (seconds) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-  const handleStartTimer = () => {
+  const formatTimeVerbose = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${String(hours).padStart(2, "0")}h : ${String(minutes).padStart(2, "0")}m : ${String(secs).padStart(2, "0")}s`;
+  };
+
+  const calculateElapsedTime = (timerState) => {
+    if (!timerState) return 0;
+
+    if (timerState.isTimerRunning && timerState.startTime) {
+      const elapsedFromStart = Math.floor((Date.now() - timerState.startTime) / 1000);
+      return (timerState.pausedElapsedTime || 0) + Math.max(0, elapsedFromStart);
+    }
+
+    return timerState.pausedElapsedTime || timerState.elapsedTime || 0;
+  };
+
+  const handleResumeTimer = () => {
+    const savedTimerState = localStorage.getItem('timerState');
+    const timerState = savedTimerState ? (JSON.parse(savedTimerState) as TimerState) : {};
+    const pausedElapsed = timerState.pausedElapsedTime || timerState.elapsedTime || elapsedTime || 0;
+
+    const updatedTimerState: TimerState = {
+      ...timerState,
+      startTime: Date.now(),
+      pausedElapsedTime: pausedElapsed,
+      elapsedTime: pausedElapsed,
+      isTimerRunning: true,
+      timerNotes,
+      associatedProject,
+      selectedProjectForTimer,
+      selectedTaskForTimer,
+      isBillable,
+      lastUpdated: Date.now(),
+    };
+
+    localStorage.setItem('timerState', JSON.stringify(updatedTimerState));
+    setElapsedTime(pausedElapsed);
     setIsTimerRunning(true);
+    window.dispatchEvent(new CustomEvent('timerStateUpdated'));
+  };
+
+  const handleStartTimerFromModal = () => {
+    if (!selectedProjectForTimer || !selectedTaskForTimer) {
+      toast.error("Please select a project and task");
+      return;
+    }
+
+    const timerState: TimerState = {
+      startTime: Date.now(),
+      pausedElapsedTime: 0,
+      elapsedTime: 0,
+      isTimerRunning: true,
+      timerNotes,
+      associatedProject: selectedProjectForTimer,
+      selectedProjectForTimer,
+      selectedTaskForTimer,
+      isBillable,
+      lastUpdated: Date.now(),
+    };
+
+    localStorage.setItem('timerState', JSON.stringify(timerState));
+    setElapsedTime(0);
+    setIsTimerRunning(true);
+    setAssociatedProject(selectedProjectForTimer);
+    setShowTimerModal(false);
+    setShowProjectFields(false);
+    setShowTaskDropdown(false);
+    setIsCreatingTaskInline(false);
+    setTaskSearchTerm('');
+    window.dispatchEvent(new CustomEvent('timerStateUpdated'));
+    toast.success('The timer has been started.');
   };
 
   const handlePauseTimer = () => {
+    const savedTimerState = localStorage.getItem('timerState');
+    const timerState = savedTimerState ? (JSON.parse(savedTimerState) as TimerState) : {};
+    const finalElapsedTime = calculateElapsedTime(timerState);
+
     setIsTimerRunning(false);
-    const timerState = {
-      elapsedTime,
+    setElapsedTime(finalElapsedTime);
+
+    const updatedState: TimerState = {
+      ...timerState,
+      elapsedTime: finalElapsedTime,
+      pausedElapsedTime: finalElapsedTime,
       isTimerRunning: false,
       timerNotes,
       associatedProject,
-      lastUpdated: Date.now()
+      selectedProjectForTimer,
+      selectedTaskForTimer,
+      isBillable,
+      lastUpdated: Date.now(),
     };
-    localStorage.setItem('timerState', JSON.stringify(timerState));
+
+    if (updatedState.startTime) {
+      delete updatedState.startTime;
+    }
+
+    localStorage.setItem('timerState', JSON.stringify(updatedState));
     window.dispatchEvent(new CustomEvent('timerStateUpdated'));
   };
 
   const handleStopTimer = async () => {
+    const savedTimerState = localStorage.getItem('timerState');
+    const timerState = savedTimerState ? (JSON.parse(savedTimerState) as TimerState) : {};
+    const finalElapsedTime = calculateElapsedTime(timerState);
+    const activeProjectName = associatedProject || selectedProjectForTimer || timerState.associatedProject || timerState.selectedProjectForTimer || '';
+    const activeTaskName = selectedTaskForTimer || timerState.selectedTaskForTimer || '';
+    const activeBillable = timerState.isBillable !== undefined ? timerState.isBillable : isBillable;
+
     setIsTimerRunning(false);
+    setElapsedTime(finalElapsedTime);
+
     // Save the time entry
-    if (elapsedTime > 0 && associatedProject) {
+    if (finalElapsedTime > 0 && activeProjectName) {
       try {
         // Find project
-        const projectObj = projects.find(p => p.projectName === associatedProject);
+        const projectObj = projects.find(p => p.projectName === activeProjectName);
         if (!projectObj) {
           toast.error('Invalid project selected');
           return;
         }
 
-        // Get current user
         const currentUser = getCurrentUser();
         if (!currentUser) {
           toast.error('User not found. Please log in again.');
           return;
         }
+        const currentUserName =
+          currentUser.name ||
+          currentUser.username ||
+          currentUser.fullName ||
+          currentUser.displayName ||
+          currentUser.email ||
+          "";
 
-        const hours = Math.floor(elapsedTime / 3600);
-        const minutes = Math.floor((elapsedTime % 3600) / 60);
+        // Parse time (formatTimeShort returns "Xh Ym" format)
+        const timeStr = formatTimeShort(finalElapsedTime);
+        const hoursMatch = timeStr.match(/(\d+)h/);
+        const minutesMatch = timeStr.match(/(\d+)m/);
+        const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
+        const minutes = minutesMatch ? parseInt(minutesMatch[1]) : 0;
 
         // Create time entry
         const newEntry = {
           project: projectObj.id,
+          projectId: projectObj.id,
+          projectName: projectObj.projectName || projectObj.name || "",
           user: currentUser.id,
+          userId: currentUser.id,
+          userName: currentUserName,
           date: new Date().toISOString(),
           hours: hours,
           minutes: minutes,
+          timeSpent: `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`,
           description: timerNotes || '',
-          billable: true,
-          task: '',
+          billable: activeBillable,
+          task: activeTaskName,
+          taskName: activeTaskName,
+          notes: timerNotes || '',
         };
 
         await timeEntriesAPI.create(newEntry);
@@ -749,8 +1677,7 @@ function TimesheetTable() {
         // Dispatch custom event to notify other components
         window.dispatchEvent(new CustomEvent('timeEntryUpdated'));
 
-        // Show success message
-        toast.success('Time entry saved successfully!');
+        toast.success('Time entry created successfully!');
       } catch (error) {
         console.error("Error saving timer entry:", error);
         toast.error("Failed to save time entry");
@@ -760,6 +1687,9 @@ function TimesheetTable() {
     setElapsedTime(0);
     setTimerNotes('');
     setAssociatedProject('');
+    setSelectedProjectForTimer('');
+    setSelectedTaskForTimer('');
+    setIsBillable(true);
     setShowTimerModal(false);
     // Clear from localStorage
     localStorage.removeItem('timerState');
@@ -771,16 +1701,19 @@ function TimesheetTable() {
     setElapsedTime(0);
     setTimerNotes('');
     setAssociatedProject('');
+    setSelectedProjectForTimer('');
+    setSelectedTaskForTimer('');
+    setIsBillable(true);
     // Clear from localStorage
     localStorage.removeItem('timerState');
     window.dispatchEvent(new CustomEvent('timerStateUpdated'));
   };
 
   // Sort options for timesheet entries
-  const sortOptions: TimesheetSortOption[] = ['Date', 'Project Name', 'User', 'Time'];
+  const sortOptions = ['Date', 'Project Name', 'User', 'Time'];
 
   // Sorting function
-  const getSortedEntries = (entries: TimeTrackingEntry[]) => {
+  const getSortedEntries = (entries) => {
     const sorted = [...entries];
 
     sorted.sort((a, b) => {
@@ -796,12 +1729,12 @@ function TimesheetTable() {
           bValue = (b.projectName || "").toLowerCase();
           break;
         case 'user':
-          aValue = (a.user || "").toLowerCase();
-          bValue = (b.user || "").toLowerCase();
+          aValue = getUserName(a).toLowerCase();
+          bValue = getUserName(b).toLowerCase();
           break;
         case 'time':
           // Parse time strings like "2h 30m" to minutes
-          const parseTime = (timeStr?: string) => {
+          const parseTime = (timeStr) => {
             if (!timeStr) return 0;
             const hours = (timeStr.match(/(\d+)h/) || [0, 0])[1];
             const minutes = (timeStr.match(/(\d+)m/) || [0, 0])[1];
@@ -828,110 +1761,78 @@ function TimesheetTable() {
     return sorted;
   };
 
+  const getPeriodRange = (period) => {
+    const now = new Date();
+    const start = new Date(now);
+    const end = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+
+    if (period === "Today") {
+      // already set to today
+    } else if (period === "This Week") {
+      const day = start.getDay();
+      const diff = (day + 6) % 7;
+      start.setDate(start.getDate() - diff);
+    } else if (period === "This Month") {
+      start.setDate(1);
+    } else if (period === "This Quarter") {
+      const quarterStartMonth = Math.floor(start.getMonth() / 3) * 3;
+      start.setMonth(quarterStartMonth, 1);
+    } else if (period === "This Year") {
+      start.setMonth(0, 1);
+    } else if (period === "Yesterday") {
+      start.setDate(start.getDate() - 1);
+      end.setDate(end.getDate() - 1);
+    } else if (period === "Last Month") {
+      start.setMonth(start.getMonth() - 1, 1);
+      end.setMonth(end.getMonth(), 0);
+      end.setHours(23, 59, 59, 999);
+    } else if (period === "Previous Week") {
+      const day = start.getDay();
+      const diff = (day + 6) % 7;
+      start.setDate(start.getDate() - diff - 7);
+      end.setDate(start.getDate() + 6);
+    } else if (period === "Previous Quarter") {
+      const quarterStartMonth = Math.floor(start.getMonth() / 3) * 3 - 3;
+      start.setMonth(quarterStartMonth, 1);
+      end.setMonth(quarterStartMonth + 3, 0);
+    } else if (period === "Previous Year") {
+      start.setFullYear(start.getFullYear() - 1, 0, 1);
+      end.setFullYear(end.getFullYear() - 1, 11, 31);
+    }
+
+    return { start, end };
+  };
+
   // Filter entries based on selected filters
-  const getFilteredEntries = (entries: TimeTrackingEntry[]) => {
+  const getFilteredEntries = (entries) => {
     let filtered = [...entries];
+    if (selectedView === 'Invoiced') {
+      filtered = filtered.filter(e => e.billingStatus === 'Invoiced');
+    } else if (selectedView === 'Unbilled') {
+      filtered = filtered.filter(e => e.billingStatus === 'Unbilled' || !e.billingStatus);
+    }
 
-    // Period filter
-    if (selectedPeriod && selectedPeriod !== 'All') {
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-      filtered = filtered.filter(entry => {
-        if (!entry.date) return false;
-
-        try {
-          const entryDate = new Date(entry.date);
-          if (isNaN(entryDate.getTime())) return false;
-
-          const entryDateOnly = new Date(entryDate.getFullYear(), entryDate.getMonth(), entryDate.getDate());
-
-          switch (selectedPeriod) {
-            case 'Today':
-              return entryDateOnly.getTime() === today.getTime();
-
-            case 'Yesterday': {
-              const yesterday = new Date(today);
-              yesterday.setDate(today.getDate() - 1);
-              return entryDateOnly.getTime() === yesterday.getTime();
-            }
-
-            case 'This Week': {
-              const weekStart = new Date(today);
-              weekStart.setDate(today.getDate() - today.getDay()); // Sunday
-              const weekEnd = new Date(weekStart);
-              weekEnd.setDate(weekStart.getDate() + 6);
-              return entryDateOnly >= weekStart && entryDateOnly <= weekEnd;
-            }
-
-            case 'This Month':
-              return entryDate.getMonth() === now.getMonth() && entryDate.getFullYear() === now.getFullYear();
-
-            case 'This Quarter': {
-              const quarter = Math.floor(now.getMonth() / 3);
-              const quarterStart = new Date(now.getFullYear(), quarter * 3, 1);
-              const quarterEnd = new Date(now.getFullYear(), (quarter + 1) * 3, 0);
-              return entryDateOnly >= quarterStart && entryDateOnly <= quarterEnd;
-            }
-
-            case 'This Year':
-              return entryDate.getFullYear() === now.getFullYear();
-
-            case 'Previous Week': {
-              const prevWeekStart = new Date(today);
-              prevWeekStart.setDate(today.getDate() - today.getDay() - 7);
-              const prevWeekEnd = new Date(prevWeekStart);
-              prevWeekEnd.setDate(prevWeekStart.getDate() + 6);
-              return entryDateOnly >= prevWeekStart && entryDateOnly <= prevWeekEnd;
-            }
-
-            case 'Previous Month': {
-              const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-              const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-              return entryDateOnly >= prevMonth && entryDateOnly <= prevMonthEnd;
-            }
-
-            case 'Previous Quarter': {
-              const quarter = Math.floor(now.getMonth() / 3);
-              const prevQuarter = quarter === 0 ? 3 : quarter - 1;
-              const prevQuarterYear = quarter === 0 ? now.getFullYear() - 1 : now.getFullYear();
-              const prevQuarterStart = new Date(prevQuarterYear, prevQuarter * 3, 1);
-              const prevQuarterEnd = new Date(prevQuarterYear, (prevQuarter + 1) * 3, 0);
-              return entryDateOnly >= prevQuarterStart && entryDateOnly <= prevQuarterEnd;
-            }
-
-            case 'Previous Year':
-              return entryDate.getFullYear() === now.getFullYear() - 1;
-
-            default:
-              return true;
-          }
-        } catch (e) {
-          console.error('Date parsing error in filter:', e);
-          return false;
-        }
+    if (selectedPeriodFilter !== "All") {
+      const { start, end } = getPeriodRange(selectedPeriodFilter);
+      filtered = filtered.filter((entry) => {
+        const entryDate = entry?.dateValue ? new Date(entry.dateValue) : new Date(entry?.date || "");
+        if (Number.isNaN(entryDate.getTime())) return false;
+        return entryDate >= start && entryDate <= end;
       });
     }
 
-    // Customer filter
     if (selectedCustomer) {
-      filtered = filtered.filter(entry => {
-        const project = projects.find(p => p.projectName === entry.projectName);
-        return project?.customerName === selectedCustomer;
-      });
+      filtered = filtered.filter((entry) => String(entry.customerName || "").trim() === selectedCustomer);
     }
 
-    // Project filter
     if (selectedProjectFilter) {
-      filtered = filtered.filter(entry => entry.projectName === selectedProjectFilter);
+      filtered = filtered.filter((entry) => String(entry.projectName || "").trim() === selectedProjectFilter);
     }
 
-    // User filter
     if (selectedUserFilter) {
-      filtered = filtered.filter(entry => {
-        const userName = entry.userName || entry.user || '';
-        return userName === selectedUserFilter;
-      });
+      filtered = filtered.filter((entry) => String(getUserName(entry) || "").trim() === selectedUserFilter);
     }
 
     return filtered;
@@ -941,11 +1842,66 @@ function TimesheetTable() {
   const sortedEntries = useMemo(() => {
     const filtered = getFilteredEntries(timeEntries);
     return getSortedEntries(filtered);
-  }, [timeEntries, selectedSort, sortDirection, selectedPeriod, selectedCustomer, selectedProjectFilter, selectedUserFilter, projects]);
+  }, [timeEntries, selectedSort, sortDirection, selectedView, selectedPeriodFilter, selectedCustomer, selectedProjectFilter, selectedUserFilter]);
+
+  const calendarEntries = useMemo(() => getFilteredEntries(timeEntries), [timeEntries, selectedView, selectedPeriodFilter, selectedCustomer, selectedProjectFilter, selectedUserFilter]);
+
+  const calendarCells = useMemo(() => getCalendarWeeks(calendarDate), [calendarDate]);
+
+  const calendarEntryMap = useMemo(() => {
+    const map = new Map();
+    calendarEntries.forEach((entry) => {
+      const key = formatCalendarKey(entry?.date);
+      if (!key) return;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(entry);
+    });
+    return map;
+  }, [calendarEntries]);
+
+  const selectedCalendarDateKey = selectedDateForLogEntry ? formatCalendarKey(selectedDateForLogEntry) : "";
+  const selectedCalendarEntries = selectedCalendarDateKey ? (calendarEntryMap.get(selectedCalendarDateKey) || []) : [];
+  const selectedCalendarTotalMinutes = selectedCalendarEntries.reduce((sum, entry) => sum + (Number(entry.hours || 0) * 60) + Number(entry.minutes || 0), 0);
+  const selectedCalendarTotalLabel = `${String(Math.floor(selectedCalendarTotalMinutes / 60)).padStart(2, "0")}:${String(selectedCalendarTotalMinutes % 60).padStart(2, "0")}`;
+  const selectedCalendarUniqueUsers = new Set(selectedCalendarEntries.map((entry) => getUserName(entry)).filter((name) => name && name !== "--")).size;
+
+  const monthDayTotals = useMemo(() => {
+    const totals = new Map();
+    calendarEntries.forEach((entry) => {
+      const key = formatCalendarKey(entry?.date);
+      if (!key) return;
+      const current = totals.get(key) || 0;
+      totals.set(key, current + (Number(entry.hours || 0) * 60) + Number(entry.minutes || 0));
+    });
+    return totals;
+  }, [calendarEntries]);
+
+  const goToPreviousMonth = () => {
+    setCalendarDate((prev) => {
+      const next = new Date(prev);
+      next.setMonth(next.getMonth() - 1, 1);
+      return next;
+    });
+  };
+
+  const goToNextMonth = () => {
+    setCalendarDate((prev) => {
+      const next = new Date(prev);
+      next.setMonth(next.getMonth() + 1, 1);
+      return next;
+    });
+  };
+
+  const moveSelectedCalendarDate = (days) => {
+    if (!selectedDateForLogEntry) return;
+    const next = new Date(selectedDateForLogEntry);
+    next.setDate(next.getDate() + days);
+    setSelectedDateForLogEntry(next);
+  };
 
   // Handle sort selection
-  const handleSortSelect = (sortOption: TimesheetSortOption) => {
-    const sortMap: Record<TimesheetSortOption, TimesheetSortKey> = {
+  const handleSortSelect = (sortOption) => {
+    const sortMap = {
       'Date': 'date',
       'Project Name': 'project',
       'User': 'user',
@@ -963,7 +1919,7 @@ function TimesheetTable() {
   };
 
   // Export function
-  const exportTimesheets = (format: string, entriesToExport: TimeTrackingEntry[]) => {
+  const exportTimesheets = (format, entriesToExport) => {
     const exportData = entriesToExport.slice(0, 25000);
 
     if (format === "csv") {
@@ -977,7 +1933,7 @@ function TimesheetTable() {
           `"${(entry.projectName || "").replace(/"/g, '""')}"`,
           `"${(entry.taskName || "").replace(/"/g, '""')}"`,
           `"${(entry.timeSpent || "").replace(/"/g, '""')}"`,
-          `"${(entry.user || "").replace(/"/g, '""')}"`,
+          `"${getUserName(entry).replace(/"/g, '""')}"`,
           entry.billable ? "Yes" : "No",
           `"${(entry.notes || "").replace(/"/g, '""')}"`,
         ];
@@ -1008,5362 +1964,1016 @@ function TimesheetTable() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100">
+    <div className="flex flex-col w-full relative h-[calc(100vh-64px)] overflow-hidden">
       {/* Header */}
       {selectedEntries.length === 0 && (
-        <div style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "12px 24px",
-          backgroundColor: "#fff",
-          borderBottom: "1px solid #e5e7eb",
-          position: "sticky",
-          top: "56px", // Below TopBar (h-14 = 56px)
-          zIndex: 100,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.1)"
-        }}>
-          {/* Left: All Timesheets Dropdown */}
-          <div style={{ position: 'relative' }} ref={dropdownRef}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                cursor: 'pointer',
-                userSelect: 'none'
-              }}
+        <div className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3 sticky top-0 z-30 shadow-sm">
+          <div ref={dropdownRef} className="relative">
+            <button
               onClick={() => setShowDropdown(!showDropdown)}
+              className="flex items-center gap-1.5 border-none bg-transparent p-0 text-[26px] font-semibold text-gray-800 hover:text-gray-900 cursor-pointer"
             >
-              <span style={{ fontSize: '18px', fontWeight: '600', color: '#1f2937' }}>All Timesheets</span>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M3 4.5l3 3 3-3" stroke="#156372" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-
-            {/* Dropdown Menu */}
+              All Timesheets
+              <ChevronDown size={12} className="text-[#156372]" />
+            </button>
             {showDropdown && (
-              <div style={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                marginTop: '8px',
-                backgroundColor: 'white',
-                borderRadius: '6px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                minWidth: '280px',
-                zIndex: 1000,
-                padding: '8px 0',
-                border: '1px solid #e5e7eb'
-              }}>
-                {/* ALL Section */}
-                <div style={{ padding: '4px 0' }}>
-                  <div style={{
-                    padding: '8px 16px',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    color: '#6b7280',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}>
-                    <span>ALL</span>
-                    <span style={{
-                      backgroundColor: '#156372',
-                      color: 'white',
-                      borderRadius: '50%',
-                      width: '20px',
-                      height: '20px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '11px',
-                      fontWeight: '600'
-                    }}>1</span>
-                  </div>
-                  <div style={{
-                    padding: '8px 16px 8px 32px',
-                    fontSize: '14px',
-                    color: '#1f2937',
-                    cursor: 'pointer'
-                  }}
-                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              <div className="absolute left-0 top-full z-[1200] mt-2 min-w-[210px] rounded-md border border-gray-200 bg-white py-2 shadow-lg">
+                {timesheetViews.map((view) => (
+                  <button
+                    key={view.id}
+                    onClick={() => { setSelectedView(view.id); setShowDropdown(false); }}
+                    className={`mx-2 mb-1 flex w-[calc(100%-16px)] items-center justify-between rounded border px-3 py-2 text-left text-sm ${selectedView === view.id ? "border-[#156372] bg-[#156372]/10 text-gray-800" : "border-transparent text-gray-700 hover:bg-gray-50"}`}
                   >
-                    All
-                  </div>
-                </div>
-
-                {/* BILLING STATUS Section */}
-                <div style={{ padding: '4px 0', borderTop: '1px solid #e5e7eb' }}>
-                  <div
-                    style={{
-                      padding: '8px 16px',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      color: '#6b7280',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      cursor: 'pointer'
-                    }}
-                    onClick={() => setBillingStatusExpanded(!billingStatusExpanded)}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '10px' }}>{billingStatusExpanded ? 'Ã¢â€“Â¼' : 'Ã¢â€“Â¶'}</span>
-                      <span>BILLING STATUS</span>
-                    </div>
-                    <span style={{
-                      backgroundColor: '#156372',
-                      color: 'white',
-                      borderRadius: '50%',
-                      width: '20px',
-                      height: '20px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '11px',
-                      fontWeight: '600'
-                    }}>4</span>
-                  </div>
-                  {billingStatusExpanded && (
-                    <div>
-                      <div style={{
-                        padding: '8px 16px 8px 40px',
-                        fontSize: '14px',
-                        color: '#1f2937',
-                        cursor: 'pointer'
-                      }}
-                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        Non-Billable
-                      </div>
-                      <div style={{
-                        padding: '8px 16px 8px 40px',
-                        fontSize: '14px',
-                        color: '#1f2937',
-                        cursor: 'pointer'
-                      }}
-                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        Billable
-                      </div>
-                      <div style={{
-                        padding: '8px 16px 8px 40px',
-                        fontSize: '14px',
-                        color: '#1f2937',
-                        cursor: 'pointer'
-                      }}
-                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        Yet to Invoice
-                      </div>
-                      <div style={{
-                        padding: '8px 16px 8px 40px',
-                        fontSize: '14px',
-                        color: '#1f2937',
-                        cursor: 'pointer'
-                      }}
-                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        Invoiced
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* New Custom View */}
-                <div style={{
-                  padding: '4px 0',
-                  borderTop: '1px solid #e5e7eb',
-                  marginTop: '4px'
-                }}>
-                  <div style={{
-                    padding: '8px 16px',
-                    fontSize: '14px',
-                    color: '#156372',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}
-                    onClick={() => {
-                      setShowCustomView(true);
-                      setShowDropdown(false);
-                    }}
-                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    <span style={{ fontSize: '16px' }}>+</span>
-                    <span>New Custom View</span>
-                  </div>
-                </div>
+                    {view.label}
+                  </button>
+                ))}
               </div>
             )}
           </div>
 
-          {/* Right: Action Buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {/* Summary Button */}
-            <button style={{
-              backgroundColor: 'transparent',
-              color: '#156372',
-              border: 'none',
-              padding: '8px 12px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '14px',
-              fontWeight: '500'
-            }}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M3 12h10M3 8h10M3 4h10" stroke="#156372" strokeWidth="1.5" strokeLinecap="round" />
-                <rect x="3" y="2" width="2" height="4" fill="#156372" />
-                <rect x="3" y="6" width="2" height="4" fill="#3b82f6" />
-                <rect x="3" y="10" width="2" height="4" fill="#3b82f6" />
-              </svg>
-              Summary
-            </button>
-
-            {/* View Toggle - Segmented Button */}
-            <div style={{
-              display: "flex",
-              border: "1px solid #e5e7eb",
-              borderRadius: "4px",
-              overflow: "hidden",
-              backgroundColor: "#f9fafb"
-            }}>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center overflow-hidden rounded-full border border-gray-200 bg-gray-100">
               <button
                 onClick={() => setViewMode('list')}
-                style={{
-                  padding: "6px 12px",
-                  border: "none",
-                  backgroundColor: viewMode === 'list' ? "#fff" : "transparent",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "14px",
-                  color: "#374151",
-                  borderRight: "1px solid #e5e7eb"
-                }}
+                className={`flex items-center justify-center border-none px-3 py-1.5 ${viewMode === 'list' ? 'bg-white text-gray-800' : 'bg-transparent text-gray-500'}`}
               >
-                Ã¢ËœÂ°
+                <List size={14} />
               </button>
               <button
-                onClick={() => setViewMode('calendar')}
-                style={{
-                  padding: "6px 12px",
-                  border: "none",
-                  backgroundColor: viewMode === 'calendar' ? "#fff" : "transparent",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "14px",
-                  color: "#374151"
-                }}
+                onClick={() => setViewMode('grid')}
+                className={`flex items-center justify-center border-none px-3 py-1.5 ${viewMode === 'grid' ? 'bg-white text-gray-800' : 'bg-transparent text-gray-500'}`}
               >
-                Ã°Å¸â€œâ€¦
+                <LayoutGrid size={14} />
               </button>
             </div>
 
-            {/* Timer Display - Show when timer is running or has elapsed time */}
-            {(isTimerRunning || elapsedTime > 0) && (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                padding: '6px 12px',
-                backgroundColor: '#f9fafb',
-                borderRadius: '6px',
-                border: '1px solid #e5e7eb'
-              }}>
-                {/* Clock Icon */}
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-                  <circle cx="9" cy="9" r="8" stroke="#374151" strokeWidth="1.5" />
-                  <path d="M9 5v4l3 2" stroke="#374151" strokeWidth="1.5" strokeLinecap="round" />
-                </svg>
-
-                {/* Time Display */}
-                <span style={{
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  color: '#1f2937',
-                  fontFamily: 'monospace',
-                  minWidth: '75px',
-                  letterSpacing: '0.5px'
-                }}>
-                  {formatTimeShort(elapsedTime)}
-                </span>
-
-                {/* Pause Button */}
-                <button
-                  onClick={handlePauseTimer}
-                  style={{
-                    width: '28px',
-                    height: '28px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: '#156372',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    padding: 0,
-                    flexShrink: 0
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0D4A52'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#156372'}
-                >
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="3" y="2" width="2" height="8" fill="white" rx="0.5" />
-                    <rect x="7" y="2" width="2" height="8" fill="white" rx="0.5" />
-                  </svg>
-                </button>
-
-                {/* Stop Button */}
-                <button
-                  onClick={handleStopTimer}
-                  style={{
-                    width: '28px',
-                    height: '28px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: '#156372',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    padding: 0,
-                    flexShrink: 0
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0D4A52'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#156372'}
-                >
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="2.5" y="2.5" width="7" height="7" fill="white" rx="1" />
-                  </svg>
-                </button>
-
-                {/* Trash/Delete Button */}
-                <button
-                  onClick={handleDeleteTimer}
-                  style={{
-                    width: '32px',
-                    height: '32px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: 'transparent',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    padding: 0,
-                    flexShrink: 0
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = 'rgba(21, 99, 114, 0.1)';
-                    e.currentTarget.style.borderColor = '#156372';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M5.5 4.5V3.5C5.5 2.95 5.95 2.5 6.5 2.5H9.5C10.05 2.5 10.5 2.95 10.5 3.5V4.5M3.5 4.5H12.5M4.5 4.5V13C4.5 13.55 4.95 14 5.5 14H10.5C11.05 14 11.5 13.55 11.5 13V4.5M6.5 7V11.5M9.5 7V11.5" stroke="#6b7280" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-              </div>
-            )}
-
-            {/* Start Button - Show when timer is not running */}
             {!(isTimerRunning || elapsedTime > 0) && (
               <button
                 onClick={() => setShowTimerModal(true)}
-                style={{
-                  backgroundColor: "#156372",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  padding: "8px 16px",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  transition: "background-color 0.2s"
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#0D4A52"}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#156372"}
+                className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 cursor-pointer"
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="8" cy="8" r="7" stroke="white" strokeWidth="1.5" />
-                  <path d="M8 5v3l2 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+                  <circle cx="8" cy="8" r="7" stroke="#374151" strokeWidth="1.5" />
+                  <path d="M8 5v3l2 2" stroke="#374151" strokeWidth="1.5" strokeLinecap="round" />
                 </svg>
                 Start
               </button>
             )}
 
-            {/* New Log Entry Button with Dropdown */}
-            <div
-              ref={newLogEntryDropdownRef}
-              style={{
-                position: 'relative',
-                display: 'flex',
-                alignItems: 'center',
-                overflow: 'visible',
-                zIndex: 101
-              }}
-            >
+            {(isTimerRunning || elapsedTime > 0) && (
+              <div className="flex items-center overflow-hidden rounded-md border border-gray-200 bg-white">
+                <div className="flex h-9 items-center gap-1.5 border-r border-gray-200 px-3 text-xs font-medium text-gray-800">
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="8" cy="8" r="7" stroke="#6b7280" strokeWidth="1.5" />
+                    <path d="M8 5v3l2 2" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                  {formatTime(elapsedTime)}
+                </div>
+                <button
+                  onClick={isTimerRunning ? handlePauseTimer : handleResumeTimer}
+                  className="flex h-9 w-8 items-center justify-center border-none border-r border-gray-200 bg-white text-[#2563eb] hover:bg-gray-50 cursor-pointer"
+                >
+                  {isTimerRunning ? <Pause size={13} /> : <Play size={13} />}
+                </button>
+                <button
+                  onClick={handleStopTimer}
+                  className="flex h-9 w-8 items-center justify-center border-none border-r border-gray-200 bg-white text-red-500 hover:bg-gray-50 cursor-pointer"
+                  title="Stop timer"
+                >
+                  <Square size={12} />
+                </button>
+                <button
+                  onClick={handleDeleteTimer}
+                  className="flex h-9 w-8 items-center justify-center border-none bg-white text-gray-500 hover:bg-gray-50 cursor-pointer"
+                  title="Delete timer"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            )}
+
+            <div className="relative flex items-center">
               <button
                 onClick={() => setShowLogEntryForm(true)}
-                style={{
-                  backgroundColor: "#156372",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "6px 0 0 6px",
-                  padding: "8px 12px",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  transition: "background-color 0.2s"
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#0e4a5e"}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#156372"}
+                className="flex h-9 items-center gap-1 whitespace-nowrap rounded-l-md border-none bg-[#156372] px-2.5 text-[12px] font-semibold text-white hover:bg-[#0f4f5c] cursor-pointer"
               >
-                <span style={{ fontSize: "16px" }}>+</span>
+                <Plus size={14} />
                 New Log Entry
               </button>
               <button
-                onClick={() => setShowNewLogEntryDropdown(!showNewLogEntryDropdown)}
-                style={{
-                  backgroundColor: "#156372",
-                  color: "white",
-                  border: "none",
-                  borderLeft: "1px solid rgba(255, 255, 255, 0.2)",
-                  borderRadius: "0 6px 6px 0",
-                  padding: "8px 8px",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  transition: "background-color 0.2s"
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#0e4a5e";
-                  e.currentTarget.style.outline = "2px solid #3b82f6";
-                  e.currentTarget.style.outlineOffset = "-2px";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "#156372";
-                  e.currentTarget.style.outline = "none";
-                }}
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M3 4.5l3 3 3-3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-
-              {/* Dropdown Menu */}
-              {showNewLogEntryDropdown && (
-                <div style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 4px)',
-                  right: 0,
-                  backgroundColor: 'white',
-                  borderRadius: '6px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                  minWidth: '220px',
-                  width: 'max-content',
-                  maxWidth: '280px',
-                  zIndex: 10000,
-                  border: '1px solid #e5e7eb',
-                  overflow: 'hidden',
-                  isolation: 'isolate'
-                }}>
-                  <button
-                    onClick={() => {
-                      setShowNewLogEntryDropdown(false);
-                      navigate('/time-tracking/timesheet/weekly');
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '10px 16px',
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      textAlign: 'left',
-                      fontSize: '14px',
-                      color: '#1f2937',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    New Week
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setShowLogEntryForm(true);
-                      setShowNewLogEntryDropdown(false);
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '10px 16px',
-                      backgroundColor: '#1e40af',
-                      border: 'none',
-                      textAlign: 'left',
-                      fontSize: '14px',
-                      color: 'white',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      fontWeight: '500'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e3a8a'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#1e40af'}
-                  >
-                    New Log Entry
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      // Handle "Timer - Chrome Extension" option
-                      setShowNewLogEntryDropdown(false);
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '10px 16px',
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      textAlign: 'left',
-                      fontSize: '14px',
-                      color: '#1f2937',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      borderTop: '1px solid #e5e7eb'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <circle cx="10" cy="10" r="9" fill="#4285F4" />
-                      <circle cx="10" cy="10" r="7" fill="#34A853" />
-                      <circle cx="10" cy="10" r="5" fill="#FBBC04" />
-                      <circle cx="10" cy="10" r="3" fill="#EA4335" />
-                    </svg>
-                    Timer - Chrome Extension
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Three Dots Menu */}
-            <div
-              ref={moreMenuRef}
-              style={{
-                position: "relative"
-              }}
-            >
-              <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setShowMoreMenu(!showMoreMenu);
-                  if (showMoreMenu) {
-                    setHoveredMenu(null);
-                    setSortSubmenuOpen(false);
-                    setImportSubmenuOpen(false);
-                    setExportSubmenuOpen(false);
-                    setPreferencesSubmenuOpen(false);
-                  }
+                  setShowNewDropdown(!showNewDropdown);
                 }}
-                style={{
-                  width: "32px",
-                  height: "32px",
-                  cursor: "pointer",
-                  backgroundColor: "#f3f4f6",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "4px",
-                  fontSize: "18px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#374151",
-                  padding: 0
-                }}
+                className="flex h-9 w-9 items-center justify-center rounded-r-md border-none border-l border-white/20 bg-[#156372] text-white hover:bg-[#0f4f5c] cursor-pointer"
               >
-                Ã¢â€¹Â¯
+                <ChevronDown size={14} />
               </button>
-
-              {/* More Menu Dropdown */}
-              {showMoreMenu && (
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  style={{
-                    position: "absolute",
-                    top: "100%",
-                    right: 0,
-                    marginTop: "8px",
-                    backgroundColor: "#fff",
-                    borderRadius: "6px",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                    minWidth: "220px",
-                    zIndex: 1000,
-                    border: "1px solid #e5e7eb",
-                    padding: "4px 0"
-                  }}>
-                  {/* Sort by */}
-                  <div style={{ position: "relative" }} ref={sortSubmenuRef}>
-                    <div
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSortSubmenuOpen(!sortSubmenuOpen);
-                      }}
-                      style={{
-                        padding: "12px 16px",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        backgroundColor: sortSubmenuOpen ? "#156372" : "transparent",
-                        color: sortSubmenuOpen ? "white" : ""
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!sortSubmenuOpen) {
-                          e.currentTarget.style.backgroundColor = "#156372";
-                          e.currentTarget.style.color = "white";
-                          e.currentTarget.style.border = "1px solid #156372";
-                          e.currentTarget.style.borderRadius = "4px";
-                          e.currentTarget.style.margin = "2px 4px";
-                          const icon = e.currentTarget.querySelector('svg');
-                          if (icon) {
-                            const paths = icon.querySelectorAll('path, polyline, line');
-                            paths.forEach(p => p.setAttribute('stroke', 'white'));
-                          }
-                          const chevron = e.currentTarget.querySelector('svg:last-child');
-                          if (chevron) {
-                            const paths = chevron.querySelectorAll('path, polyline, line');
-                            paths.forEach(p => p.setAttribute('stroke', 'white'));
-                          }
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!sortSubmenuOpen) {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                          e.currentTarget.style.color = "";
-                          e.currentTarget.style.border = "none";
-                          e.currentTarget.style.borderRadius = "0";
-                          e.currentTarget.style.margin = "0";
-                          const icon = e.currentTarget.querySelector('svg');
-                          if (icon) {
-                            const paths = icon.querySelectorAll('path, polyline, line');
-                            paths.forEach(p => p.setAttribute('stroke', '#1976d2'));
-                          }
-                          const chevron = e.currentTarget.querySelector('svg:last-child');
-                          if (chevron) {
-                            const paths = chevron.querySelectorAll('path, polyline, line');
-                            paths.forEach(p => p.setAttribute('stroke', '#666'));
-                          }
-                        }
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                        <ArrowUpDown size={16} style={{ color: sortSubmenuOpen ? "white" : "#156372" }} />
-                        <span style={{ fontSize: "14px", color: sortSubmenuOpen ? "white" : "#333" }}>Sort by</span>
-                      </div>
-                      <ChevronRight size={12} style={{ color: sortSubmenuOpen ? "white" : "#666" }} />
-                    </div>
-                    {sortSubmenuOpen && (
-                      <div style={{
-                        position: "absolute",
-                        top: 0,
-                        right: "100%",
-                        marginRight: "8px",
-                        backgroundColor: "#fff",
-                        borderRadius: "6px",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                        minWidth: "180px",
-                        border: "1px solid #e5e7eb",
-                        zIndex: 1001,
-                        padding: "4px 0"
-                      }}>
-                        {sortOptions.map((option) => {
-                          const sortMap = {
-                            'Date': 'date',
-                            'Project Name': 'project',
-                            'User': 'user',
-                            'Time': 'time'
-                          };
-                          const sortKey = sortMap[option];
-                          const isSelected = selectedSort === sortKey;
-
-                          return (
-                            <button
-                              key={option}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleSortSelect(option);
-                              }}
-                              style={{
-                                width: "100%",
-                                padding: "10px 16px",
-                                fontSize: "14px",
-                                color: "#111827",
-                                cursor: "pointer",
-                                border: "none",
-                                background: isSelected ? "rgba(21, 99, 114, 0.1)" : "transparent",
-                                textAlign: "left",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between"
-                              }}
-                              onMouseEnter={(e) => {
-                                if (!isSelected) {
-                                  e.currentTarget.style.backgroundColor = "#156372";
-                                  e.currentTarget.style.color = "white";
-                                }
-                              }}
-                              onMouseLeave={(e) => {
-                                if (!isSelected) {
-                                  e.currentTarget.style.backgroundColor = "transparent";
-                                  e.currentTarget.style.color = "#111827";
-                                }
-                              }}
-                            >
-                              <span>{option}</span>
-                              {isSelected && (
-                                <span style={{ fontSize: "12px", color: "#156372" }}>
-                                  {sortDirection === "asc" ? "Ã¢â€ â€˜" : "Ã¢â€ â€œ"}
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Import */}
-                  <div style={{ position: "relative" }} ref={importSubmenuRef}>
-                    <div
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const newState = !importSubmenuOpen;
-                        setImportSubmenuOpen(newState);
-                        if (newState) {
-                          setSortSubmenuOpen(false);
-                          setExportSubmenuOpen(false);
-                          setPreferencesSubmenuOpen(false);
-                        }
-                      }}
-                      style={{
-                        padding: "12px 16px",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        backgroundColor: importSubmenuOpen ? "#156372" : "transparent",
-                        color: importSubmenuOpen ? "white" : ""
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!importSubmenuOpen) {
-                          e.currentTarget.style.backgroundColor = "#156372";
-                          e.currentTarget.style.color = "white";
-                          e.currentTarget.style.border = "1px solid #156372";
-                          e.currentTarget.style.borderRadius = "4px";
-                          e.currentTarget.style.margin = "2px 4px";
-                          const icon = e.currentTarget.querySelector('svg');
-                          if (icon) {
-                            const paths = icon.querySelectorAll('path, polyline, line');
-                            paths.forEach(p => p.setAttribute('stroke', 'white'));
-                          }
-                          const chevron = e.currentTarget.querySelector('svg:last-child');
-                          if (chevron) {
-                            const paths = chevron.querySelectorAll('path, polyline, line');
-                            paths.forEach(p => p.setAttribute('stroke', 'white'));
-                          }
-                          const span = e.currentTarget.querySelector('span');
-                          if (span) span.style.color = 'white';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!importSubmenuOpen) {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                          e.currentTarget.style.color = "";
-                          e.currentTarget.style.border = "none";
-                          e.currentTarget.style.borderRadius = "0";
-                          e.currentTarget.style.margin = "0";
-                          const icon = e.currentTarget.querySelector('svg');
-                          if (icon) {
-                            const paths = icon.querySelectorAll('path, polyline, line');
-                            paths.forEach(p => p.setAttribute('stroke', '#666'));
-                          }
-                          const chevron = e.currentTarget.querySelector('svg:last-child');
-                          if (chevron) {
-                            const paths = chevron.querySelectorAll('path, polyline, line');
-                            paths.forEach(p => p.setAttribute('stroke', '#666'));
-                          }
-                          const span = e.currentTarget.querySelector('span');
-                          if (span) span.style.color = '#333';
-                        }
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                        <Download size={16} style={{ color: importSubmenuOpen ? "white" : "#666" }} />
-                        <span style={{ fontSize: "14px", color: importSubmenuOpen ? "white" : "#333" }}>Import</span>
-                      </div>
-                      <ChevronRight size={12} style={{ color: importSubmenuOpen ? "white" : "#666" }} />
-                    </div>
-                    {importSubmenuOpen && (
-                      <div style={{
-                        position: "absolute",
-                        top: 0,
-                        right: "100%",
-                        marginRight: "8px",
-                        backgroundColor: "#fff",
-                        borderRadius: "6px",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                        minWidth: "200px",
-                        border: "1px solid #e5e7eb",
-                        zIndex: 1001,
-                        padding: "4px 0"
-                      }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate("/time-tracking/projects/import");
-                            setImportSubmenuOpen(false);
-                            setShowMoreMenu(false);
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "10px 16px",
-                            fontSize: "14px",
-                            color: "#111827",
-                            cursor: "pointer",
-                            border: "none",
-                            background: "none",
-                            textAlign: "left"
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = "#156372";
-                            e.currentTarget.style.color = "white";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = "transparent";
-                            e.currentTarget.style.color = "#111827";
-                          }}
-                        >
-                          Import Projects
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate("/time-tracking/projects/import-tasks");
-                            setImportSubmenuOpen(false);
-                            setShowMoreMenu(false);
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "10px 16px",
-                            fontSize: "14px",
-                            color: "#111827",
-                            cursor: "pointer",
-                            border: "none",
-                            background: "none",
-                            textAlign: "left"
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = "#156372";
-                            e.currentTarget.style.color = "white";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = "transparent";
-                            e.currentTarget.style.color = "#111827";
-                          }}
-                        >
-                          Import Project Tasks
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate("/time-tracking/timesheet/import");
-                            setImportSubmenuOpen(false);
-                            setShowMoreMenu(false);
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "10px 16px",
-                            fontSize: "14px",
-                            color: "#111827",
-                            cursor: "pointer",
-                            border: "none",
-                            background: "none",
-                            textAlign: "left"
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = "#156372";
-                            e.currentTarget.style.color = "white";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = "transparent";
-                            e.currentTarget.style.color = "#111827";
-                          }}
-                        >
-                          Import Timesheet
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Export */}
-                  <div style={{ position: "relative" }} ref={exportSubmenuRef}>
-                    <div
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const newState = !exportSubmenuOpen;
-                        setExportSubmenuOpen(newState);
-                        if (newState) {
-                          setSortSubmenuOpen(false);
-                          setImportSubmenuOpen(false);
-                          setPreferencesSubmenuOpen(false);
-                        }
-                      }}
-                      style={{
-                        padding: "12px 16px",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        backgroundColor: exportSubmenuOpen ? "#156372" : "transparent",
-                        color: exportSubmenuOpen ? "white" : ""
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!exportSubmenuOpen) {
-                          e.currentTarget.style.backgroundColor = "#156372";
-                          e.currentTarget.style.color = "white";
-                          e.currentTarget.style.border = "1px solid #156372";
-                          e.currentTarget.style.borderRadius = "4px";
-                          e.currentTarget.style.margin = "2px 4px";
-                          const icon = e.currentTarget.querySelector('svg');
-                          if (icon) {
-                            const paths = icon.querySelectorAll('path, polyline, line');
-                            paths.forEach(p => p.setAttribute('stroke', 'white'));
-                          }
-                          const chevron = e.currentTarget.querySelector('svg:last-child');
-                          if (chevron) {
-                            const paths = chevron.querySelectorAll('path, polyline, line');
-                            paths.forEach(p => p.setAttribute('stroke', 'white'));
-                          }
-                          const span = e.currentTarget.querySelector('span');
-                          if (span) span.style.color = 'white';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!exportSubmenuOpen) {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                          e.currentTarget.style.color = "";
-                          e.currentTarget.style.border = "none";
-                          e.currentTarget.style.borderRadius = "0";
-                          e.currentTarget.style.margin = "0";
-                          const icon = e.currentTarget.querySelector('svg');
-                          if (icon) {
-                            const paths = icon.querySelectorAll('path, polyline, line');
-                            paths.forEach(p => p.setAttribute('stroke', '#666'));
-                          }
-                          const chevron = e.currentTarget.querySelector('svg:last-child');
-                          if (chevron) {
-                            const paths = chevron.querySelectorAll('path, polyline, line');
-                            paths.forEach(p => p.setAttribute('stroke', '#666'));
-                          }
-                          const span = e.currentTarget.querySelector('span');
-                          if (span) span.style.color = '#333';
-                        }
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                        <Upload size={16} style={{ color: exportSubmenuOpen ? "white" : "#666" }} />
-                        <span style={{ fontSize: "14px", color: exportSubmenuOpen ? "white" : "#333" }}>Export</span>
-                      </div>
-                      <ChevronRight size={12} style={{ color: exportSubmenuOpen ? "white" : "#666" }} />
-                    </div>
-                    {exportSubmenuOpen && (
-                      <div style={{
-                        position: "absolute",
-                        top: 0,
-                        right: "100%",
-                        marginRight: "8px",
-                        backgroundColor: "#fff",
-                        borderRadius: "6px",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                        minWidth: "200px",
-                        border: "1px solid #e5e7eb",
-                        zIndex: 1001,
-                        padding: "4px 0"
-                      }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowExportProjectsModal(true);
-                            setExportProjectsData({ ...exportProjectsData, module: "Projects" });
-                            setExportSubmenuOpen(false);
-                            setShowMoreMenu(false);
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "10px 16px",
-                            fontSize: "14px",
-                            color: "#111827",
-                            cursor: "pointer",
-                            border: "none",
-                            background: "none",
-                            textAlign: "left"
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = "#156372";
-                            e.currentTarget.style.color = "white";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = "transparent";
-                            e.currentTarget.style.color = "#111827";
-                          }}
-                        >
-                          Export Projects
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowExportProjectsModal(true);
-                            setExportProjectsData({ ...exportProjectsData, module: "Project Tasks" });
-                            setExportSubmenuOpen(false);
-                            setShowMoreMenu(false);
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "10px 16px",
-                            fontSize: "14px",
-                            color: "#111827",
-                            cursor: "pointer",
-                            border: "none",
-                            background: "none",
-                            textAlign: "left"
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = "#156372";
-                            e.currentTarget.style.color = "white";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = "transparent";
-                            e.currentTarget.style.color = "#111827";
-                          }}
-                        >
-                          Export Project Tasks
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowExportProjectsModal(true);
-                            setExportProjectsData({ ...exportProjectsData, module: "Timesheet" });
-                            setExportSubmenuOpen(false);
-                            setShowMoreMenu(false);
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "10px 16px",
-                            fontSize: "14px",
-                            color: "#111827",
-                            cursor: "pointer",
-                            border: "none",
-                            background: "none",
-                            textAlign: "left"
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = "#156372";
-                            e.currentTarget.style.color = "white";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = "transparent";
-                            e.currentTarget.style.color = "#111827";
-                          }}
-                        >
-                          Export Timesheet
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowExportCurrentViewModal(true);
-                            setExportSubmenuOpen(false);
-                            setShowMoreMenu(false);
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "10px 16px",
-                            fontSize: "14px",
-                            color: "#111827",
-                            cursor: "pointer",
-                            border: "none",
-                            background: "none",
-                            textAlign: "left"
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = "#156372";
-                            e.currentTarget.style.color = "white";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = "transparent";
-                            e.currentTarget.style.color = "#111827";
-                          }}
-                        >
-                          Export Current View
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Preferences */}
-                  <div style={{ position: "relative" }} ref={preferencesSubmenuRef}>
-                    <div
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const newState = !preferencesSubmenuOpen;
-                        setPreferencesSubmenuOpen(newState);
-                        if (newState) {
-                          setSortSubmenuOpen(false);
-                          setImportSubmenuOpen(false);
-                          setExportSubmenuOpen(false);
-                        }
-                      }}
-                      style={{
-                        padding: "12px 16px",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        backgroundColor: preferencesSubmenuOpen ? "#156372" : "transparent",
-                        color: preferencesSubmenuOpen ? "white" : ""
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!preferencesSubmenuOpen) {
-                          e.currentTarget.style.backgroundColor = "#156372";
-                          e.currentTarget.style.color = "white";
-                          e.currentTarget.style.border = "1px solid #156372";
-                          e.currentTarget.style.borderRadius = "4px";
-                          e.currentTarget.style.margin = "2px 4px";
-                          const icon = e.currentTarget.querySelector('svg');
-                          if (icon) {
-                            const paths = icon.querySelectorAll('path, polyline, line');
-                            paths.forEach(p => p.setAttribute('stroke', 'white'));
-                          }
-                          const chevron = e.currentTarget.querySelector('svg:last-child');
-                          if (chevron) {
-                            const paths = chevron.querySelectorAll('path, polyline, line');
-                            paths.forEach(p => p.setAttribute('stroke', 'white'));
-                          }
-                          const span = e.currentTarget.querySelector('span');
-                          if (span) span.style.color = 'white';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!preferencesSubmenuOpen) {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                          e.currentTarget.style.color = "";
-                          e.currentTarget.style.border = "none";
-                          e.currentTarget.style.borderRadius = "0";
-                          e.currentTarget.style.margin = "0";
-                          const icon = e.currentTarget.querySelector('svg');
-                          if (icon) {
-                            const paths = icon.querySelectorAll('path, polyline, line');
-                            paths.forEach(p => p.setAttribute('stroke', '#666'));
-                          }
-                          const chevron = e.currentTarget.querySelector('svg:last-child');
-                          if (chevron) {
-                            const paths = chevron.querySelectorAll('path, polyline, line');
-                            paths.forEach(p => p.setAttribute('stroke', '#666'));
-                          }
-                          const span = e.currentTarget.querySelector('span');
-                          if (span) span.style.color = '#333';
-                        }
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                        <Settings size={16} style={{ color: preferencesSubmenuOpen ? "white" : "#666" }} />
-                        <span style={{ fontSize: "14px", color: preferencesSubmenuOpen ? "white" : "#333" }}>Preferences</span>
-                      </div>
-                      <ChevronRight size={12} style={{ color: preferencesSubmenuOpen ? "white" : "#666" }} />
-                    </div>
-                    {preferencesSubmenuOpen && (
-                      <div style={{
-                        position: "absolute",
-                        top: 0,
-                        right: "100%",
-                        marginRight: "8px",
-                        backgroundColor: "#fff",
-                        borderRadius: "6px",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                        minWidth: "200px",
-                        border: "1px solid #e5e7eb",
-                        zIndex: 1001,
-                        padding: "4px 0"
-                      }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Navigate to Project Preferences settings page
-                            navigate("/settings/projects");
-                            setPreferencesSubmenuOpen(false);
-                            setShowMoreMenu(false);
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "10px 16px",
-                            fontSize: "14px",
-                            color: "#111827",
-                            cursor: "pointer",
-                            border: "none",
-                            background: "none",
-                            textAlign: "left"
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = "#156372";
-                            e.currentTarget.style.color = "white";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = "transparent";
-                            e.currentTarget.style.color = "#111827";
-                          }}
-                        >
-                          Project Preferences
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Navigate to Timesheet Preferences settings page
-                            navigate("/settings/timesheet");
-                            setPreferencesSubmenuOpen(false);
-                            setShowMoreMenu(false);
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "10px 16px",
-                            fontSize: "14px",
-                            color: "#111827",
-                            cursor: "pointer",
-                            border: "none",
-                            background: "none",
-                            textAlign: "left"
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = "#156372";
-                            e.currentTarget.style.color = "white";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = "transparent";
-                            e.currentTarget.style.color = "#111827";
-                          }}
-                        >
-                          Timesheet Preferences
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Timer - Chrome Extension */}
-                  <div
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      window.open("https://chrome.google.com/webstore", "_blank");
-                      setShowMoreMenu(false);
-                    }}
-                    style={{
-                      padding: "12px 16px",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between"
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = "#156372";
-                      e.currentTarget.style.color = "white";
-                      e.currentTarget.style.border = "1px solid #156372";
-                      e.currentTarget.style.borderRadius = "4px";
-                      e.currentTarget.style.margin = "2px 4px";
-                      const chevron = e.currentTarget.querySelector('svg:last-child');
-                      if (chevron) {
-                        const paths = chevron.querySelectorAll('path, polyline, line');
-                        paths.forEach(p => p.setAttribute('stroke', 'white'));
-                      }
-                      const span = e.currentTarget.querySelector('span');
-                      if (span) span.style.color = 'white';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = "transparent";
-                      e.currentTarget.style.color = "";
-                      e.currentTarget.style.border = "none";
-                      e.currentTarget.style.borderRadius = "0";
-                      e.currentTarget.style.margin = "0";
-                      const chevron = e.currentTarget.querySelector('svg:last-child');
-                      if (chevron) {
-                        const paths = chevron.querySelectorAll('path, polyline, line');
-                        paths.forEach(p => p.setAttribute('stroke', '#666'));
-                      }
-                      const span = e.currentTarget.querySelector('span');
-                      if (span) span.style.color = '#333';
-                    }}
+              {showNewDropdown && (
+                <div className="absolute right-0 top-full z-[1200] mt-2 w-max min-w-[160px] rounded-md border border-gray-200 bg-white py-2 shadow-lg">
+                  <button
+                    onClick={() => { navigate('/time-tracking/timesheet/weekly'); setShowNewDropdown(false); }}
+                    className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-xs text-gray-700 hover:bg-gray-50 border-none bg-transparent cursor-pointer"
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                      <div style={{
-                        width: "16px",
-                        height: "16px",
-                        borderRadius: "50%",
-                        background: "linear-gradient(135deg, #4285F4 0%, #34A853 25%, #FBBC05 50%, #EA4335 75%)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center"
-                      }}>
-                        <div style={{
-                          width: "12px",
-                          height: "12px",
-                          borderRadius: "50%",
-                          backgroundColor: "#fff"
-                        }}></div>
-                      </div>
-                      <span style={{ fontSize: "14px", color: "#333" }}>Timer - Chrome Extension</span>
-                    </div>
-                    <ChevronRight size={12} style={{ color: "#666" }} />
-                  </div>
+                    <Plus size={13} />
+                    New Weekly Time Log
+                  </button>
                 </div>
               )}
             </div>
+
+            <button 
+              onClick={() => setShowMoreMenu(!showMoreMenu)}
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-[#f4f4f4] p-0 text-gray-700 hover:bg-gray-200 cursor-pointer ml-1"
+            >
+              <MoreHorizontal size={18} />
+            </button>
+            {showMoreMenu && (
+              <div className="absolute right-0 top-full z-[1200] mt-2 min-w-[210px] rounded-md border border-gray-200 bg-white py-2 shadow-lg">
+                <button
+                  onClick={() => { exportTimesheets('csv', sortedEntries); setShowMoreMenu(false); }}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 border-none bg-transparent cursor-pointer"
+                >
+                  <Download size={14} />
+                  Export as CSV
+                </button>
+                <button
+                  onClick={() => { navigate('/time-tracking/timesheet/import'); setShowMoreMenu(false); }}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 border-none bg-transparent cursor-pointer"
+                >
+                  <Upload size={14} />
+                  Import Timesheets
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Bulk Actions Header - Shows when items are selected */}
       {selectedEntries.length > 0 && (
-        <div style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "12px 24px",
-          backgroundColor: "#fff",
-          borderBottom: "1px solid #e5e7eb"
-        }}>
-          {/* Left: Bulk Action Buttons */}
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px"
-          }}>
+        <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-3 sticky top-0 z-30 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => {
-                navigate('/sales/invoices/new');
-              }}
-              style={{
-                padding: "6px 12px",
-                fontSize: "14px",
-                fontWeight: "500",
-                color: "#374151",
-                backgroundColor: "#ffffff",
-                border: "1px solid #d1d5db",
-                borderRadius: "6px",
-                cursor: "pointer"
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f9fafb"}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#ffffff"}
+              onClick={() => {}}
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 cursor-pointer"
             >
               Create Invoice
             </button>
             <button
               onClick={async () => {
-                if (selectedEntries.length === 0) {
-                  toast.error("Please select at least one entry.");
-                  return;
-                }
                 try {
-                  // Update each selected entry via API
-                  await Promise.all(selectedEntries.map(entryId => {
-                    const entry = timeEntries.find(e => e.id === entryId);
-                    if (entry) {
-                      return timeEntriesAPI.update(entryId, { billingStatus: 'Invoiced' });
-                    }
-                    return Promise.resolve();
-                  }));
-
-                  // Refresh entries
+                  await Promise.all(selectedEntries.map(entryId => timeEntriesAPI.update(entryId, { billingStatus: 'Invoiced' })));
                   const response = await timeEntriesAPI.getAll();
-                  const data = Array.isArray(response) ? response : (response?.data || []);
-                  const transformedEntries = data.map(entry => {
-                    const userName = typeof entry.user === 'object' && entry.user !== null
-                      ? (entry.user.name || '--')
-                      : (entry.userName || entry.user || '--');
-
-                    return {
-                      id: entry._id || entry.id,
-                      projectId: entry.project?._id || entry.projectId,
-                      projectName: entry.project?.name || entry.projectName,
-                      projectNumber: entry.project?.projectNumber || entry.projectNumber,
-                      userId: entry.user?._id || entry.userId,
-                      userName: userName,
-                      user: userName,
-                      date: entry.date ? new Date(entry.date).toLocaleDateString() : new Date().toLocaleDateString(),
-                      hours: entry.hours || 0,
-                      minutes: entry.minutes || 0,
-                      timeSpent: entry.hours ? `${entry.hours}h ${entry.minutes || 0}m` : '0h',
-                      description: entry.description || '',
-                      task: entry.task || entry.taskName || '',
-                      taskName: entry.task || entry.taskName || '',
-                      billable: entry.billable !== undefined ? entry.billable : true,
-                      billingRate: entry.billingRate || 0,
-                      notes: entry.description || entry.notes || '',
-                      billingStatus: entry.billingStatus || 'Unbilled',
-                    };
-                  });
-                  setTimeEntries(transformedEntries);
+                  setTimeEntries(Array.isArray(response) ? response : (response?.data || []));
                   setSelectedEntries([]);
-                  toast.success(`Successfully marked ${selectedEntries.length} entr${selectedEntries.length > 1 ? 'ies' : 'y'} as invoiced.`);
-                } catch (error) {
-                  console.error("Error updating entries:", error);
-                  toast.error("Failed to update entries");
-                }
+                  toast.success(`Successfully marked entries as invoiced.`);
+                } catch (e) { toast.error("Failed to update entries"); }
               }}
-              style={{
-                padding: "6px 12px",
-                fontSize: "14px",
-                fontWeight: "500",
-                color: "#374151",
-                backgroundColor: "#ffffff",
-                border: "1px solid #d1d5db",
-                borderRadius: "6px",
-                cursor: "pointer"
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f9fafb"}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#ffffff"}
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 cursor-pointer"
             >
               Mark as Invoiced
             </button>
             <button
               onClick={async () => {
-                if (selectedEntries.length === 0) {
-                  toast.error("Please select at least one entry.");
-                  return;
-                }
                 try {
-                  // Update each selected entry via API
-                  await Promise.all(selectedEntries.map(entryId => {
-                    const entry = timeEntries.find(e => e.id === entryId);
-                    if (entry) {
-                      return timeEntriesAPI.update(entryId, { billingStatus: 'Unbilled' });
-                    }
-                    return Promise.resolve();
-                  }));
-
-                  // Refresh entries
+                  await Promise.all(selectedEntries.map(entryId => timeEntriesAPI.update(entryId, { billingStatus: 'Unbilled' })));
                   const response = await timeEntriesAPI.getAll();
-                  const data = Array.isArray(response) ? response : (response?.data || []);
-                  const transformedEntries = data.map(entry => {
-                    const userName = typeof entry.user === 'object' && entry.user !== null
-                      ? (entry.user.name || '--')
-                      : (entry.userName || entry.user || '--');
-
-                    return {
-                      id: entry._id || entry.id,
-                      projectId: entry.project?._id || entry.projectId,
-                      projectName: entry.project?.name || entry.projectName,
-                      projectNumber: entry.project?.projectNumber || entry.projectNumber,
-                      userId: entry.user?._id || entry.userId,
-                      userName: userName,
-                      user: userName,
-                      date: entry.date ? new Date(entry.date).toLocaleDateString() : new Date().toLocaleDateString(),
-                      hours: entry.hours || 0,
-                      minutes: entry.minutes || 0,
-                      timeSpent: entry.hours ? `${entry.hours}h ${entry.minutes || 0}m` : '0h',
-                      description: entry.description || '',
-                      task: entry.task || entry.taskName || '',
-                      taskName: entry.task || entry.taskName || '',
-                      billable: entry.billable !== undefined ? entry.billable : true,
-                      billingRate: entry.billingRate || 0,
-                      notes: entry.description || entry.notes || '',
-                      billingStatus: entry.billingStatus || 'Unbilled',
-                    };
-                  });
-                  setTimeEntries(transformedEntries);
+                  setTimeEntries(Array.isArray(response) ? response : (response?.data || []));
                   setSelectedEntries([]);
-                  toast.success(`Successfully marked ${selectedEntries.length} entr${selectedEntries.length > 1 ? 'ies' : 'y'} as unbilled.`);
-                } catch (error) {
-                  console.error("Error updating entries:", error);
-                  toast.error("Failed to update entries");
-                }
+                  toast.success(`Successfully marked entries as unbilled.`);
+                } catch (e) { toast.error("Failed to update entries"); }
               }}
-              style={{
-                padding: "6px 12px",
-                fontSize: "14px",
-                fontWeight: "500",
-                color: "#374151",
-                backgroundColor: "#ffffff",
-                border: "1px solid #d1d5db",
-                borderRadius: "6px",
-                cursor: "pointer"
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f9fafb"}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#ffffff"}
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 cursor-pointer"
             >
               Mark as Unbilled
             </button>
             <button
               onClick={async () => {
-                if (selectedEntries.length === 0) {
-                  toast.error("Please select at least one entry to delete.");
-                  return;
-                }
-
-                const confirmMessage = `Are you sure you want to delete ${selectedEntries.length} entr${selectedEntries.length > 1 ? 'ies' : 'y'}? This action cannot be undone.`;
-                if (!window.confirm(confirmMessage)) {
-                  return;
-                }
-
-                try {
-                  // Delete each selected entry via API
-                  await Promise.all(selectedEntries.map(entryId =>
-                    timeEntriesAPI.delete(entryId)
-                  ));
-
-                  // Refresh entries
-                  const response = await timeEntriesAPI.getAll();
-                  const data = Array.isArray(response) ? response : (response?.data || []);
-                  const transformedEntries = data.map(entry => {
-                    const userName = typeof entry.user === 'object' && entry.user !== null
-                      ? (entry.user.name || '--')
-                      : (entry.userName || entry.user || '--');
-
-                    return {
-                      id: entry._id || entry.id,
-                      projectId: entry.project?._id || entry.projectId,
-                      projectName: entry.project?.name || entry.projectName,
-                      projectNumber: entry.project?.projectNumber || entry.projectNumber,
-                      userId: entry.user?._id || entry.userId,
-                      userName: userName,
-                      user: userName,
-                      date: entry.date ? new Date(entry.date).toLocaleDateString() : new Date().toLocaleDateString(),
-                      hours: entry.hours || 0,
-                      minutes: entry.minutes || 0,
-                      timeSpent: entry.hours ? `${entry.hours}h ${entry.minutes || 0}m` : '0h',
-                      description: entry.description || '',
-                      task: entry.task || entry.taskName || '',
-                      taskName: entry.task || entry.taskName || '',
-                      billable: entry.billable !== undefined ? entry.billable : true,
-                      billingRate: entry.billingRate || 0,
-                      notes: entry.description || entry.notes || '',
-                      billingStatus: entry.billingStatus || 'Unbilled',
-                    };
-                  });
-                  setTimeEntries(transformedEntries);
-                  setSelectedEntries([]);
-                  toast.success(`Successfully deleted ${selectedEntries.length} entr${selectedEntries.length > 1 ? 'ies' : 'y'}.`);
-                  window.dispatchEvent(new CustomEvent('timeEntryUpdated'));
-                } catch (error) {
-                  console.error("Error deleting entries:", error);
-                  toast.error("Failed to delete entries");
-                }
+                if (!selectedEntries.length) return;
+                openDeleteConfirm("bulk", [...selectedEntries]);
               }}
-              style={{
-                padding: "6px 12px",
-                fontSize: "14px",
-                fontWeight: "500",
-                color: "#374151",
-                backgroundColor: "#ffffff",
-                border: "1px solid #d1d5db",
-                borderRadius: "6px",
-                cursor: "pointer"
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f9fafb"}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#ffffff"}
+              className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-100 cursor-pointer"
             >
               Delete
             </button>
           </div>
-
-          {/* Right: Selected Count and Close */}
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "12px"
-          }}>
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              fontSize: "14px",
-              color: "#374151"
-            }}>
-              <div style={{
-                width: "32px",
-                height: "32px",
-                borderRadius: "50%",
-                backgroundColor: "#3b82f6",
-                color: "white",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "12px",
-                fontWeight: "600"
-              }}>
-                {selectedEntries.length}
-              </div>
-              <span>Selected</span>
-            </div>
+          <div className="flex items-center gap-3">
+            <span className="rounded bg-[#156372] px-2 py-0.5 text-xs font-semibold text-white">{selectedEntries.length}</span>
+            <span className="text-sm text-gray-700">Selected</span>
+            <span className="text-xs text-gray-400">Esc</span>
             <button
               onClick={() => setSelectedEntries([])}
-              style={{
-                padding: "6px 12px",
-                fontSize: "14px",
-                fontWeight: "500",
-                color: "#374151",
-                backgroundColor: "transparent",
-                border: "1px solid #d1d5db",
-                borderRadius: "6px",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "4px"
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "#f9fafb";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "transparent";
-              }}
+              className="text-red-500 hover:text-red-600 cursor-pointer border-none bg-transparent flex items-center justify-center p-0"
             >
-              <span>Esc</span>
-              <X size={14} />
+              <X size={16} />
             </button>
           </div>
         </div>
       )}
 
-      {/* Filter Bar */}
-      <div style={{
-        backgroundColor: 'white',
-        padding: '12px 24px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '16px',
-        borderBottom: '1px solid #e5e7eb',
-        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-        position: 'sticky',
-        top: '112px', // Below TopBar (56px) + Header (56px) = 112px
-        zIndex: 99
-      }}>
-        <span style={{ fontSize: '14px', fontWeight: '600', color: '#374151' }}>VIEW BY:</span>
-        <div style={{ position: 'relative' }} ref={periodDropdownRef}>
-          <div
-            onClick={() => setShowPeriodDropdown(!showPeriodDropdown)}
-            style={{
-              border: '1px solid #d1d5db',
-              padding: '6px 12px',
-              borderRadius: '4px',
-              fontSize: '14px',
-              cursor: 'pointer',
-              backgroundColor: 'white',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              minWidth: '120px'
-            }}
-          >
-            <span>Period: {selectedPeriod}</span>
-            <span style={{ fontSize: '10px', color: '#6b7280' }}>
-              {showPeriodDropdown ? 'Ã¢â€“Â²' : 'Ã¢â€“Â¼'}
-            </span>
+      {selectedEntries.length === 0 && viewMode === 'list' && (
+        <div className="flex items-center gap-4 border-b border-gray-200 bg-white px-6 py-3 text-sm text-gray-700">
+          <div className="flex items-center gap-2 font-semibold uppercase text-gray-500">
+            <span>VIEW BY:</span>
           </div>
 
-          {/* Period Dropdown */}
-          {showPeriodDropdown && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              marginTop: '4px',
-              backgroundColor: 'white',
-              borderRadius: '6px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              minWidth: '220px',
-              maxHeight: '400px',
-              zIndex: 1000,
-              border: '1px solid #e5e7eb',
-              overflow: 'hidden'
-            }}>
-              {/* Search Bar */}
-              <div style={{
-                padding: '8px',
-                borderBottom: '1px solid #e5e7eb'
-              }}>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type="text"
-                    placeholder="Search"
-                    value={periodSearch}
-                    onChange={(e) => setPeriodSearch(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 32px 8px 12px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '4px',
-                      fontSize: '14px',
-                      outline: 'none'
-                    }}
-                    onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                    onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                  />
-                  <span style={{
-                    position: 'absolute',
-                    right: '12px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    color: '#9ca3af',
-                    fontSize: '16px'
-                  }}>Ã°Å¸â€Â</span>
-                </div>
-              </div>
-
-              {/* Period Options */}
-              <div style={{
-                maxHeight: '320px',
-                overflowY: 'auto',
-                padding: '4px 0'
-              }}>
-                {/* All Option */}
-                <div
-                  onClick={() => {
-                    setSelectedPeriod('All');
-                    setShowPeriodDropdown(false);
-                    setPeriodSearch('');
-                  }}
-                  style={{
-                    padding: '10px 16px',
-                    fontSize: '14px',
-                    color: '#1f2937',
-                    cursor: 'pointer',
-                    backgroundColor: selectedPeriod === 'All' ? '#f0f7ff' : 'transparent',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (selectedPeriod !== 'All') {
-                      e.currentTarget.style.backgroundColor = '#f9fafb';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (selectedPeriod !== 'All') {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }
-                  }}
-                >
-                  <span style={{ color: selectedPeriod === 'All' ? '#3b82f6' : '#1f2937' }}>All</span>
-                  {selectedPeriod === 'All' && (
-                    <span style={{ color: '#3b82f6', fontSize: '16px' }}>Ã¢Å“â€œ</span>
-                  )}
-                </div>
-
-                {/* Current Section */}
-                <div style={{
-                  padding: '8px 16px 4px 16px',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  color: '#6b7280',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px'
-                }}>
-                  Current
-                </div>
-                {['Today', 'This Week', 'This Month', 'This Quarter', 'This Year'].map((period) => {
-                  const matchesSearch = !periodSearch || period.toLowerCase().includes(periodSearch.toLowerCase());
-                  if (!matchesSearch) return null;
-
-                  return (
-                    <div
-                      key={period}
-                      onClick={() => {
-                        setSelectedPeriod(period);
-                        setShowPeriodDropdown(false);
-                        setPeriodSearch('');
-                      }}
-                      style={{
-                        padding: '10px 16px 10px 32px',
-                        fontSize: '14px',
-                        color: '#1f2937',
-                        cursor: 'pointer',
-                        backgroundColor: selectedPeriod === period ? 'rgba(21, 99, 114, 0.1)' : 'transparent',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (selectedPeriod !== period) {
-                          e.currentTarget.style.backgroundColor = '#f9fafb';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (selectedPeriod !== period) {
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                        }
-                      }}
-                    >
-                      <span style={{ color: selectedPeriod === period ? '#156372' : '#1f2937' }}>{period}</span>
-                      {selectedPeriod === period && (
-                        <span style={{ color: '#156372', fontSize: '16px' }}>Ã¢Å“â€œ</span>
-                      )}
-                    </div>
-                  );
-                })}
-
-                {/* Previous Section */}
-                <div style={{
-                  padding: '8px 16px 4px 16px',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  color: '#6b7280',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  marginTop: '8px'
-                }}>
-                  Previous
-                </div>
-                {['Yesterday', 'Previous Week', 'Previous Month', 'Previous Quarter', 'Previous Year'].map((period) => {
-                  const matchesSearch = !periodSearch || period.toLowerCase().includes(periodSearch.toLowerCase());
-                  if (!matchesSearch) return null;
-
-                  return (
-                    <div
-                      key={period}
-                      onClick={() => {
-                        setSelectedPeriod(period);
-                        setShowPeriodDropdown(false);
-                        setPeriodSearch('');
-                      }}
-                      style={{
-                        padding: '10px 16px 10px 32px',
-                        fontSize: '14px',
-                        color: '#1f2937',
-                        cursor: 'pointer',
-                        backgroundColor: selectedPeriod === period ? 'rgba(21, 99, 114, 0.1)' : 'transparent',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (selectedPeriod !== period) {
-                          e.currentTarget.style.backgroundColor = '#f9fafb';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (selectedPeriod !== period) {
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                        }
-                      }}
-                    >
-                      <span style={{ color: selectedPeriod === period ? '#156372' : '#1f2937' }}>{period}</span>
-                      {selectedPeriod === period && (
-                        <span style={{ color: '#156372', fontSize: '16px' }}>Ã¢Å“â€œ</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-        <div style={{ width: '1px', height: '24px', backgroundColor: '#e5e7eb' }}></div>
-        <select
-          value={selectedCustomer}
-          onChange={(e) => setSelectedCustomer(e.target.value)}
-          style={{
-            border: '1px solid #d1d5db',
-            padding: '6px 12px',
-            borderRadius: '4px',
-            fontSize: '14px',
-            cursor: 'pointer',
-            backgroundColor: 'white',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <option value="">Ã°Å¸â€˜Â¤ Select customer</option>
-          {customers.map(customer => (
-            <option key={customer.id} value={customer.name}>{customer.name}</option>
-          ))}
-        </select>
-        <div style={{ width: '1px', height: '24px', backgroundColor: '#e5e7eb' }}></div>
-        <select
-          value={selectedProjectFilter}
-          onChange={(e) => setSelectedProjectFilter(e.target.value)}
-          style={{
-            border: '1px solid #d1d5db',
-            padding: '6px 12px',
-            borderRadius: '4px',
-            fontSize: '14px',
-            cursor: 'pointer',
-            backgroundColor: 'white'
-          }}
-        >
-          <option value="">Ã°Å¸â€™Â¼ Select a project</option>
-          {projects.map(project => (
-            <option key={project.id} value={project.projectName}>{project.projectName}</option>
-          ))}
-        </select>
-        <div style={{ width: '1px', height: '24px', backgroundColor: '#e5e7eb' }}></div>
-        <select
-          value={selectedUserFilter}
-          onChange={(e) => setSelectedUserFilter(e.target.value)}
-          style={{
-            border: '1px solid #d1d5db',
-            padding: '6px 12px',
-            borderRadius: '4px',
-            fontSize: '14px',
-            cursor: 'pointer',
-            backgroundColor: 'white'
-          }}
-        >
-          <option value="">Ã°Å¸â€˜Â¥ Select user</option>
-          {users.map(user => (
-            <option key={user.id} value={user.name}>{user.name}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Main Content Area - Custom View Form or Empty State */}
-      {showCustomView ? (
-        <div style={{
-          flex: 1,
-          backgroundColor: '#f5f5f5',
-          padding: '24px',
-          overflowY: 'auto'
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            padding: '32px',
-            maxWidth: '1000px',
-            margin: '0 auto',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-          }}>
-            {/* Page Title */}
-            <h1 style={{
-              fontSize: '24px',
-              fontWeight: '600',
-              color: '#1f2937',
-              marginBottom: '32px'
-            }}>
-              New Custom View
-            </h1>
-
-            {/* Name Section */}
-            <div style={{ marginBottom: '32px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '8px' }}>
-                <label style={{
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  color: '#374151',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}>
-                  Name<span style={{ color: '#156372' }}>*</span>
-                </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
-                  onClick={() => setIsFavorite(!isFavorite)}>
-                  <span style={{ fontSize: '18px', color: isFavorite ? '#fbbf24' : '#9ca3af' }}>
-                    {isFavorite ? 'Ã¢Ëœâ€¦' : 'Ã¢Ëœâ€ '}
-                  </span>
-                  <span style={{ fontSize: '14px', color: '#6b7280' }}>Mark as Favorite</span>
-                </div>
-              </div>
-              <input
-                type="text"
-                placeholder="Enter view name"
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  outline: 'none'
-                }}
-                onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-              />
-            </div>
-
-            {/* Define the criteria Section */}
-            <div style={{ marginBottom: '32px' }}>
-              <label style={{
-                fontSize: '14px',
-                fontWeight: '600',
-                color: '#374151',
-                display: 'block',
-                marginBottom: '16px'
-              }}>
-                Define the criteria (if any)
-              </label>
-              {criteria.map((criterion, index) => (
-                <div key={criterion.id} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  marginBottom: '12px'
-                }}>
-                  <span style={{
-                    fontSize: '14px',
-                    color: '#6b7280',
-                    minWidth: '24px'
-                  }}>{index + 1}</span>
-                  <select style={{
-                    flex: 1,
-                    padding: '8px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                    backgroundColor: 'white'
-                  }}>
-                    <option>Select a field</option>
-                    <option>Date</option>
-                    <option>Customer</option>
-                    <option>Project</option>
-                    <option>Billing Status</option>
-                  </select>
-                  <select style={{
-                    flex: 1,
-                    padding: '8px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                    backgroundColor: 'white'
-                  }}>
-                    <option>Select a comparator</option>
-                    <option>Equals</option>
-                    <option>Not equals</option>
-                    <option>Contains</option>
-                    <option>Greater than</option>
-                    <option>Less than</option>
-                  </select>
-                  <input
-                    type="text"
-                    placeholder="Enter value"
-                    style={{
-                      flex: 1,
-                      padding: '8px 12px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      fontSize: '14px',
-                      outline: 'none'
-                    }}
-                    onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                    onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                  />
-                  <button
-                    style={{
-                      padding: '8px',
-                      border: 'none',
-                      backgroundColor: 'transparent',
-                      cursor: 'pointer',
-                      fontSize: '18px',
-                      color: '#3b82f6'
-                    }}
-                    onClick={() => setCriteria([...criteria, { id: Date.now(), field: '', comparator: '', value: '' }])}
-                  >
-                    +
-                  </button>
-                  {criteria.length > 1 && (
-                    <button
-                      style={{
-                        padding: '8px',
-                        border: 'none',
-                        backgroundColor: 'transparent',
-                        cursor: 'pointer',
-                        fontSize: '16px',
-                        color: '#ef4444'
-                      }}
-                      onClick={() => setCriteria(criteria.filter(c => c.id !== criterion.id))}
-                    >
-                      Ã°Å¸â€”â€˜Ã¯Â¸Â
-                    </button>
-                  )}
-                </div>
-              ))}
-              <button
-                style={{
-                  padding: '8px 16px',
-                  border: '1px dashed #d1d5db',
-                  backgroundColor: 'transparent',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  color: '#6b7280',
-                  marginTop: '8px'
-                }}
-                onClick={() => setCriteria([...criteria, { id: Date.now(), field: '', comparator: '', value: '' }])}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.borderColor = '#3b82f6';
-                  e.currentTarget.style.color = '#3b82f6';
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.borderColor = '#d1d5db';
-                  e.currentTarget.style.color = '#6b7280';
-                }}
-              >
-                + Add Criterion
-              </button>
-            </div>
-
-            {/* Columns Preference Section */}
-            <div style={{ marginBottom: '32px' }}>
-              <label style={{
-                fontSize: '14px',
-                fontWeight: '600',
-                color: '#374151',
-                display: 'block',
-                marginBottom: '16px'
-              }}>
-                Columns Preference:
-              </label>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '16px'
-              }}>
-                {/* Available Columns */}
-                <div style={{
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '6px',
-                  padding: '16px'
-                }}>
-                  <div style={{
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    color: '#6b7280',
-                    textTransform: 'uppercase',
-                    marginBottom: '12px'
-                  }}>
-                    AVAILABLE COLUMNS
-                  </div>
-                  <div style={{
-                    position: 'relative',
-                    marginBottom: '12px'
-                  }}>
+          <div className="relative" ref={periodDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setShowPeriodDropdown((value) => !value)}
+              className="flex items-center gap-2 rounded-md border-none bg-transparent px-0 py-0 text-sm text-gray-700 cursor-pointer"
+            >
+              <span className="text-gray-500">Period:</span>
+              <span className="font-medium text-gray-800">{selectedPeriodFilter}</span>
+              <ChevronDown size={12} className="text-gray-500" />
+            </button>
+            {showPeriodDropdown && (
+              <div className="absolute left-0 top-full z-[1200] mt-2 min-w-[220px] max-h-[320px] overflow-y-auto rounded-md bg-white py-2 shadow-lg">
+                <div className="px-2 pb-2">
+                  <div className="relative">
+                    <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input
                       type="text"
+                      value={periodSearchTerm}
+                      onChange={(e) => setPeriodSearchTerm(e.target.value)}
                       placeholder="Search"
-                      style={{
-                        width: '100%',
-                        padding: '8px 32px 8px 12px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                        outline: 'none'
-                      }}
-                      onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                      onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                      className="w-full rounded-md border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-[#156372]"
                     />
-                    <span style={{
-                      position: 'absolute',
-                      right: '12px',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      color: '#9ca3af'
-                    }}>Ã°Å¸â€Â</span>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {availableColumns
-                      .filter(col => !selectedColumns.includes(col))
-                      .map((column) => (
-                        <div
-                          key={column}
-                          style={{
-                            padding: '10px',
-                            border: '1px solid #e5e7eb',
-                            borderRadius: '4px',
-                            fontSize: '14px',
-                            color: '#1f2937',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px'
-                          }}
-                          onClick={() => setSelectedColumns([...selectedColumns, column])}
-                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                        >
-                          <span style={{ fontSize: '16px', color: '#9ca3af' }}>Ã¢â€¹Â®Ã¢â€¹Â®</span>
-                          {column}
-                        </div>
-                      ))}
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPeriodFilter('All');
+                    setShowPeriodDropdown(false);
+                  }}
+                  className={`mx-2 mb-1 flex w-[calc(100%-16px)] items-center justify-between rounded px-3 py-2 text-left text-sm ${selectedPeriodFilter === 'All' ? "bg-[#156372]/10 text-gray-800" : "text-gray-700 hover:bg-gray-50"}`}
+                >
+                  All
+                </button>
+                {periodOptions.map((group) => {
+                  const filteredItems = group.items.filter((option) =>
+                    option.label.toLowerCase().includes(periodSearchTerm.trim().toLowerCase())
+                  );
 
-                {/* Selected Columns */}
-                <div style={{
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '6px',
-                  padding: '16px'
-                }}>
-                  <div style={{
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    color: '#6b7280',
-                    textTransform: 'uppercase',
-                    marginBottom: '12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                  }}>
-                    <span style={{ color: '#10b981', fontSize: '16px' }}>Ã¢Å“â€œ</span>
-                    SELECTED COLUMNS
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {selectedColumns.map((column) => (
-                      <div
-                        key={column}
-                        style={{
-                          padding: '10px',
-                          border: '1px solid #e5e7eb',
-                          borderRadius: '4px',
-                          fontSize: '14px',
-                          color: '#1f2937',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          justifyContent: 'space-between'
-                        }}
-                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '16px', color: '#9ca3af' }}>Ã¢â€¹Â®Ã¢â€¹Â®</span>
-                          {column}
-                          {column === 'Project' && <span style={{ color: '#156372' }}>*</span>}
-                        </div>
-                        {column !== 'Project' && (
-                          <button
-                            style={{
-                              border: 'none',
-                              backgroundColor: 'transparent',
-                              cursor: 'pointer',
-                              color: '#156372',
-                              fontSize: '16px',
-                              padding: '4px'
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedColumns(selectedColumns.filter(c => c !== column));
-                            }}
-                          >
-                            Ãƒâ€”
-                          </button>
-                        )}
+                  if (filteredItems.length === 0) return null;
+
+                  return (
+                    <div key={group.group} className="mt-1">
+                      <div className="px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                        {group.group}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                      {filteredItems.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedPeriodFilter(option.id);
+                            setShowPeriodDropdown(false);
+                          }}
+                          className={`mx-2 mb-1 flex w-[calc(100%-16px)] items-center justify-between rounded px-3 py-2 text-left text-sm ${selectedPeriodFilter === option.id ? "bg-[#156372]/10 text-gray-800" : "text-gray-700 hover:bg-gray-50"}`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
-            </div>
-
-            {/* Visibility Preference Section */}
-            <div style={{ marginBottom: '32px' }}>
-              <label style={{
-                fontSize: '14px',
-                fontWeight: '600',
-                color: '#374151',
-                display: 'block',
-                marginBottom: '16px'
-              }}>
-                Visibility Preference
-              </label>
-              <div style={{ marginBottom: '12px' }}>
-                <span style={{ fontSize: '14px', color: '#6b7280', marginRight: '16px' }}>
-                  Share With:
-                </span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  color: '#1f2937'
-                }}>
-                  <input
-                    type="radio"
-                    name="visibility"
-                    value="only-me"
-                    checked={visibility === 'only-me'}
-                    onChange={(e) => setVisibility(e.target.value)}
-                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                  />
-                  Only Me
-                </label>
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  color: '#1f2937'
-                }}>
-                  <input
-                    type="radio"
-                    name="visibility"
-                    value="selected-users"
-                    checked={visibility === 'selected-users'}
-                    onChange={(e) => setVisibility(e.target.value)}
-                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                  />
-                  <span style={{ marginRight: '6px' }}>Ã°Å¸â€˜Â¤</span>
-                  Only Selected Users & Roles
-                </label>
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  color: '#1f2937'
-                }}>
-                  <input
-                    type="radio"
-                    name="visibility"
-                    value="everyone"
-                    checked={visibility === 'everyone'}
-                    onChange={(e) => setVisibility(e.target.value)}
-                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                  />
-                  <span style={{ marginRight: '6px' }}>Ã°Å¸ÂÂ¢</span>
-                  Everyone
-                </label>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div style={{
-              display: 'flex',
-              gap: '12px',
-              paddingTop: '24px',
-              borderTop: '1px solid #e5e7eb'
-            }}>
-              <button
-                style={{
-                  padding: '10px 24px',
-                  backgroundColor: '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: 'pointer'
-                }}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
-                onClick={() => {
-                  // Handle save logic here
-                  setShowCustomView(false);
-                }}
-              >
-                Save
-              </button>
-              <button
-                style={{
-                  padding: '10px 24px',
-                  backgroundColor: 'white',
-                  color: '#374151',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: 'pointer'
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f9fafb';
-                  e.currentTarget.style.borderColor = '#9ca3af';
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.backgroundColor = 'white';
-                  e.currentTarget.style.borderColor = '#d1d5db';
-                }}
-                onClick={() => setShowCustomView(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : timeEntries.length === 0 ? (
-        <div style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          alignItems: 'center',
-          backgroundColor: 'white',
-          padding: '40px'
-        }}>
-          {/* Video Tutorial Card */}
-          <div style={{
-            backgroundColor: '#f9fafb',
-            borderRadius: '8px',
-            padding: '24px',
-            marginBottom: '32px',
-            position: 'relative',
-            overflow: 'hidden',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-            maxWidth: '500px',
-            width: '100%'
-          }}>
-            <div style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: 'radial-gradient(circle, rgba(229,231,235,0.3) 1px, transparent 1px)',
-              backgroundSize: '20px 20px',
-              opacity: 0.5
-            }}></div>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              position: 'relative',
-              zIndex: 1,
-              gap: '16px'
-            }}>
-              <div style={{
-                width: '60px',
-                height: '60px',
-                backgroundColor: '#10b981',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                boxShadow: '0 4px 6px rgba(16,185,129,0.3)'
-              }}>
-                <span style={{ color: 'white', fontSize: '24px', marginLeft: '4px' }}>Ã¢â€“Â¶</span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <div style={{ fontSize: '16px', fontWeight: '600', color: '#1f2937' }}>Taban Books</div>
-                <div style={{ fontSize: '14px', color: '#6b7280' }}>How to log time</div>
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* Heading */}
-          <h2 style={{
-            fontSize: '24px',
-            fontWeight: '600',
-            color: '#1f2937',
-            marginBottom: '12px',
-            textAlign: 'center'
-          }}>
-            Create your first time entry
-          </h2>
+          <div className="h-4 w-px bg-gray-200" />
 
-          {/* Descriptive Text */}
-          <p style={{
-            fontSize: '16px',
-            color: '#6b7280',
-            marginBottom: '24px',
-            textAlign: 'center',
-            maxWidth: '500px'
-          }}>
-            Log the time spent on project tasks and charge your customers accordingly.
-          </p>
-
-          {/* Primary Action Button */}
-          <button style={{
-            backgroundColor: '#3b82f6',
-            color: 'white',
-            border: 'none',
-            padding: '12px 32px',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '16px',
-            fontWeight: '600',
-            marginBottom: '32px',
-            boxShadow: '0 4px 6px rgba(59,130,246,0.3)',
-            transition: 'all 0.2s'
-          }}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
-          >
-            LOG TIME
-          </button>
-
-          {/* Chrome Extension Link */}
-          <a href="#" style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            color: '#3b82f6',
-            textDecoration: 'none',
-            fontSize: '14px'
-          }}
-            onMouseOver={(e) => e.currentTarget.style.textDecoration = 'none'}
-            onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
-          >
-            <span style={{ fontSize: '18px' }}>Ã°Å¸Å’Â</span>
-            <span>Timer - Chrome Extension</span>
-          </a>
-        </div>
-      ) : viewMode === 'calendar' ? (
-        <div style={{
-          flex: 1,
-          backgroundColor: '#f5f5f5',
-          padding: '24px',
-          overflowY: 'auto'
-        }}>
-          {/* Calendar View */}
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            padding: '24px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-          }}>
-            {/* Calendar Header with Month Navigation */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '24px'
-            }}>
-              <button
-                onClick={() => {
-                  const newDate = new Date(calendarDate);
-                  newDate.setMonth(newDate.getMonth() - 1);
-                  setCalendarDate(newDate);
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '18px',
-                  color: '#374151',
-                  padding: '8px'
-                }}
-              >
-                Ã¢â‚¬Â¹
-              </button>
-              <h2 style={{
-                fontSize: '18px',
-                fontWeight: '600',
-                color: '#1f2937',
-                margin: 0
-              }}>
-                {calendarDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-              </h2>
-              <button
-                onClick={() => {
-                  const newDate = new Date(calendarDate);
-                  newDate.setMonth(newDate.getMonth() + 1);
-                  setCalendarDate(newDate);
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '18px',
-                  color: '#374151',
-                  padding: '8px'
-                }}
-              >
-                Ã¢â‚¬Âº
-              </button>
-            </div>
-
-            {/* Calendar Grid */}
-            <div style={{ marginBottom: '24px' }}>
-              {/* Days of Week Header */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(7, 1fr) auto',
-                gap: '1px',
-                backgroundColor: '#e5e7eb',
-                border: '1px solid #e5e7eb',
-                borderRadius: '4px',
-                overflow: 'hidden'
-              }}>
-                {['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'TOTAL'].map(day => (
-                  <div
-                    key={day}
-                    style={{
-                      backgroundColor: '#f9fafb',
-                      padding: '12px 8px',
-                      textAlign: 'center',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      color: '#6b7280',
-                      textTransform: 'uppercase'
+          <div className="relative" ref={customerFilterRef}>
+            <button
+              type="button"
+              onClick={() => setShowCustomerDropdown((value) => !value)}
+              className="flex items-center gap-2 rounded-md border-none bg-transparent px-0 py-0 text-sm text-gray-700 cursor-pointer"
+            >
+              <span className={selectedCustomer ? "text-gray-800" : "text-gray-500"}>{selectedCustomer || "Select customer"}</span>
+              <ChevronDown size={12} className="text-gray-500" />
+            </button>
+            {showCustomerDropdown && (
+              <div className="absolute left-0 top-full z-[1200] mt-2 min-w-[180px] rounded-md bg-white py-2 shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCustomer('');
+                    setShowCustomerDropdown(false);
+                  }}
+                  className="mx-2 mb-1 flex w-[calc(100%-16px)] items-center rounded px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  All customers
+                </button>
+                {filterCustomers.map((customer) => (
+                  <button
+                    key={customer}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCustomer(customer);
+                      setShowCustomerDropdown(false);
                     }}
+                    className={`mx-2 mb-1 flex w-[calc(100%-16px)] items-center rounded px-3 py-2 text-left text-sm ${selectedCustomer === customer ? "bg-[#156372]/10 text-gray-800" : "text-gray-700 hover:bg-gray-50"}`}
                   >
-                    {day}
-                  </div>
+                    {customer}
+                  </button>
                 ))}
               </div>
+            )}
+          </div>
 
-              {/* Calendar Days */}
-              {(() => {
-                const year = calendarDate.getFullYear();
-                const month = calendarDate.getMonth();
-                const firstDay = new Date(year, month, 1);
-                const lastDay = new Date(year, month + 1, 0);
-                const startDate = new Date(firstDay);
-                startDate.setDate(startDate.getDate() - startDate.getDay());
-                const weeks = [];
-                let currentDate = new Date(startDate);
-                const today = new Date();
-
-                while (currentDate <= lastDay || weeks.length < 6) {
-                  const week = [];
-                  let weekTotalMinutes = 0;
-
-                  for (let i = 0; i < 7; i++) {
-                    const dayEntries = timeEntries.filter(entry => {
-                      try {
-                        const entryDate = new Date(entry.date.split(' ').reverse().join(' '));
-                        return entryDate.toDateString() === currentDate.toDateString();
-                      } catch (e) {
-                        return false;
-                      }
-                    });
-
-                    let dayTotalMinutes = 0;
-                    dayEntries.forEach(entry => {
-                      const timeParts = entry.timeSpent.split(':');
-                      dayTotalMinutes += (parseInt(timeParts[0]) || 0) * 60 + (parseInt(timeParts[1]) || 0);
-                    });
-                    weekTotalMinutes += dayTotalMinutes;
-
-                    const isCurrentMonth = currentDate.getMonth() === month;
-                    const isToday = currentDate.toDateString() === today.toDateString();
-
-                    week.push({
-                      date: new Date(currentDate),
-                      day: currentDate.getDate(),
-                      entries: dayEntries,
-                      totalMinutes: dayTotalMinutes,
-                      isCurrentMonth,
-                      isToday
-                    });
-
-                    currentDate.setDate(currentDate.getDate() + 1);
-                  }
-
-                  weeks.push({ days: week, totalMinutes: weekTotalMinutes });
-                  if (currentDate > lastDay && currentDate.getDay() === 0) break;
-                }
-
-                return weeks.map((week, weekIndex) => (
-                  <div
-                    key={weekIndex}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(7, 1fr) auto',
-                      gap: '1px',
-                      backgroundColor: '#e5e7eb',
-                      borderLeft: '1px solid #e5e7eb',
-                      borderRight: '1px solid #e5e7eb',
-                      borderBottom: weekIndex === weeks.length - 1 ? '1px solid #e5e7eb' : 'none'
+          <div className="relative" ref={projectFilterRef}>
+            <button
+              type="button"
+              onClick={() => setShowProjectFilterDropdown((value) => !value)}
+              className="flex items-center gap-2 rounded-md border-none bg-transparent px-0 py-0 text-sm text-gray-700 cursor-pointer"
+            >
+              <span className={selectedProjectFilter ? "text-gray-800" : "text-gray-500"}>{selectedProjectFilter || "Select a project"}</span>
+              <ChevronDown size={12} className="text-gray-500" />
+            </button>
+            {showProjectFilterDropdown && (
+              <div className="absolute left-0 top-full z-[1200] mt-2 min-w-[180px] rounded-md bg-white py-2 shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedProjectFilter('');
+                    setShowProjectFilterDropdown(false);
+                  }}
+                  className="mx-2 mb-1 flex w-[calc(100%-16px)] items-center rounded px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  All projects
+                </button>
+                {filterProjects.map((project) => (
+                  <button
+                    key={project}
+                    type="button"
+                    onClick={() => {
+                      setSelectedProjectFilter(project);
+                      setShowProjectFilterDropdown(false);
                     }}
+                    className={`mx-2 mb-1 flex w-[calc(100%-16px)] items-center rounded px-3 py-2 text-left text-sm ${selectedProjectFilter === project ? "bg-[#156372]/10 text-gray-800" : "text-gray-700 hover:bg-gray-50"}`}
                   >
-                    {week.days.map((day, dayIndex) => {
-                      const hours = Math.floor(day.totalMinutes / 60);
-                      const minutes = day.totalMinutes % 60;
-                      const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+                    {project}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
-                      return (
-                        <div
-                          key={dayIndex}
-                          style={{
-                            backgroundColor: 'white',
-                            padding: '12px 8px',
-                            minHeight: '100px',
-                            borderRight: dayIndex < 6 ? '1px solid #e5e7eb' : 'none',
-                            opacity: day.isCurrentMonth ? 1 : 0.3,
-                            cursor: 'pointer',
-                            position: 'relative'
-                          }}
-                          onClick={() => {
-                            // Could open entry form for this day
-                          }}
-                        >
-                          {/* Plus Icon */}
-                          {day.isCurrentMonth && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const formattedDate = day.date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                                setSelectedDateForLogEntry(formattedDate);
-                                setShowLogEntryForm(true);
-                              }}
-                              style={{
-                                position: 'absolute',
-                                top: '8px',
-                                right: '8px',
-                                width: '24px',
-                                height: '24px',
-                                borderRadius: '50%',
-                                backgroundColor: '#156372',
-                                color: 'white',
-                                border: 'none',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '16px',
-                                fontWeight: '600',
-                                padding: 0,
-                                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                                zIndex: 10
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor = '#2563eb';
-                                e.currentTarget.style.transform = 'scale(1.1)';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor = '#3b82f6';
-                                e.currentTarget.style.transform = 'scale(1)';
-                              }}
-                            >
-                              +
-                            </button>
-                          )}
-                          <div style={{
-                            fontSize: '14px',
-                            fontWeight: day.isToday ? '600' : '400',
-                            marginBottom: '8px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: '28px',
-                            height: '28px',
-                            borderRadius: '50%',
-                            backgroundColor: day.isToday ? '#e3f2fd' : 'transparent',
-                            color: day.isToday ? '#3b82f6' : (day.isCurrentMonth ? '#1f2937' : '#9ca3af'),
-                            margin: '0 auto 8px'
-                          }}>
-                            {day.day}
-                          </div>
-                          {day.entries.length > 0 && (
-                            <div style={{
-                              fontSize: '12px',
-                              color: '#1f2937',
-                              textAlign: 'center'
-                            }}>
-                              <div style={{
-                                fontWeight: '600',
-                                marginBottom: '4px'
-                              }}>
-                                {timeStr}
-                              </div>
-                              <div style={{
-                                fontSize: '11px',
-                                color: '#6b7280',
-                                marginBottom: '2px'
-                              }}>
-                                Total Logged Hours
-                              </div>
-                              <div
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  // Navigate to entries for this day
-                                }}
-                                style={{
-                                  fontSize: '11px',
-                                  color: '#156372',
-                                  cursor: 'pointer',
-                                  textDecoration: 'none'
-                                }}
-                              >
-                                {day.entries.length} Timesheet{day.entries.length > 1 ? 's' : ''} Ã¢â‚¬Âº
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {/* Week Total */}
-                    <div style={{
-                      backgroundColor: '#f9fafb',
-                      padding: '12px 8px',
-                      textAlign: 'center',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      color: '#374151',
-                      minHeight: '100px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}>
-                      {(() => {
-                        const weekHours = Math.floor(week.totalMinutes / 60);
-                        const weekMins = week.totalMinutes % 60;
-                        return `${String(weekHours).padStart(2, '0')}:${String(weekMins).padStart(2, '0')}`;
-                      })()}
-                    </div>
-                  </div>
-                ));
-              })()}
-            </div>
-
-            {/* Grand Total */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              alignItems: 'center',
-              paddingTop: '16px',
-              borderTop: '2px solid #e5e7eb',
-              fontSize: '14px',
-              fontWeight: '600',
-              color: '#1f2937'
-            }}>
-              <span style={{ marginRight: '12px' }}>Total Hours :</span>
-              <span style={{
-                color: '#156372',
-                fontSize: '16px'
-              }}>
-                {(() => {
-                  // Calculate total from filtered entries
-                  const filtered = getFilteredEntries(timeEntries);
-                  const totalMinutes = filtered.reduce((sum, entry) => {
-                    // Handle both "HH:MM" and "3h 0m" formats
-                    let hours = 0;
-                    let minutes = 0;
-                    if (entry.timeSpent && (entry.timeSpent.includes('h') || entry.timeSpent.includes('m'))) {
-                      const hoursMatch = entry.timeSpent.match(/(\d+)h/);
-                      const minutesMatch = entry.timeSpent.match(/(\d+)m/);
-                      hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
-                      minutes = minutesMatch ? parseInt(minutesMatch[1]) : 0;
-                    } else if (entry.timeSpent && entry.timeSpent.includes(':')) {
-                      const timeParts = entry.timeSpent.split(':');
-                      hours = parseInt(timeParts[0]) || 0;
-                      minutes = parseInt(timeParts[1]) || 0;
-                    } else if (entry.hours !== undefined) {
-                      hours = entry.hours || 0;
-                      minutes = entry.minutes || 0;
-                    }
-                    return sum + hours * 60 + minutes;
-                  }, 0);
-                  const hours = Math.floor(totalMinutes / 60);
-                  const minutes = totalMinutes % 60;
-                  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-                })()}
-              </span>
-            </div>
+          <div className="relative" ref={userFilterRef}>
+            <button
+              type="button"
+              onClick={() => setShowUserFilterDropdown((value) => !value)}
+              className="flex items-center gap-2 rounded-md border-none bg-transparent px-0 py-0 text-sm text-gray-700 cursor-pointer"
+            >
+              <span className={selectedUserFilter ? "text-gray-800" : "text-gray-500"}>{selectedUserFilter || "Select user"}</span>
+              <ChevronDown size={12} className="text-gray-500" />
+            </button>
+            {showUserFilterDropdown && (
+              <div className="absolute left-0 top-full z-[1200] mt-2 min-w-[180px] rounded-md bg-white py-2 shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedUserFilter('');
+                    setShowUserFilterDropdown(false);
+                  }}
+                  className="mx-2 mb-1 flex w-[calc(100%-16px)] items-center rounded px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  All users
+                </button>
+                {filterUsers.map((user) => (
+                  <button
+                    key={user}
+                    type="button"
+                    onClick={() => {
+                      setSelectedUserFilter(user);
+                      setShowUserFilterDropdown(false);
+                    }}
+                    className={`mx-2 mb-1 flex w-[calc(100%-16px)] items-center rounded px-3 py-2 text-left text-sm ${selectedUserFilter === user ? "bg-[#156372]/10 text-gray-800" : "text-gray-700 hover:bg-gray-50"}`}
+                  >
+                    {user}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      ) : (
-        <div style={{
-          flex: 1,
-          display: 'flex',
-          backgroundColor: 'white',
-          overflow: 'hidden'
-        }}>
-          {/* Table Section */}
-          <div style={{
-            flex: selectedEntry ? '0 0 60%' : '1',
-            overflowY: 'auto',
-            borderRight: selectedEntry ? '1px solid #e5e7eb' : 'none'
-          }}>
-            <div style={{
-              backgroundColor: 'white',
-              borderRadius: '8px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-              overflow: 'visible'
-            }}>
-              <table style={{
-                width: '100%',
-                borderCollapse: 'collapse'
-              }}>
-                {selectedEntries.length === 0 && (
-                  <thead>
-                    <tr style={{
-                      backgroundColor: '#f9fafb',
-                      borderBottom: '2px solid #e5e7eb'
-                    }}>
-                      <th style={{
-                        padding: '12px 16px',
-                        textAlign: 'left',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        color: '#6b7280',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
-                        width: '40px'
-                      }}>
-                      </th>
-                      <th style={{
-                        padding: '12px 16px',
-                        textAlign: 'left',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        color: '#6b7280',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>
-                        <div style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px"
-                        }}>
-                          <input
-                            type="checkbox"
-                            checked={selectedEntries.length === sortedEntries.length && sortedEntries.length > 0}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedEntries(sortedEntries.map(e => e.id));
-                              } else {
-                                setSelectedEntries([]);
-                              }
-                            }}
-                            style={{
-                              cursor: "pointer"
-                            }}
-                          />
-                          DATE
-                        </div>
-                      </th>
-                      <th style={{
-                        padding: '12px 16px',
-                        textAlign: 'left',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        color: '#6b7280',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>
-                        PROJECT
-                      </th>
-                      <th style={{
-                        padding: '12px 16px',
-                        textAlign: 'left',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        color: '#6b7280',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>
-                        CUSTOMER
-                      </th>
-                      <th style={{
-                        padding: '12px 16px',
-                        textAlign: 'left',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        color: '#6b7280',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          TASK
-                          <span style={{ fontSize: '10px' }}>Ã¢â€“Â²Ã¢â€“Â¼</span>
-                        </div>
-                      </th>
-                      <th style={{
-                        padding: '12px 16px',
-                        textAlign: 'left',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        color: '#6b7280',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>
-                        USER
-                      </th>
-                      <th style={{
-                        padding: '12px 16px',
-                        textAlign: 'left',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        color: '#6b7280',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>
-                        TIME
-                      </th>
-                      <th style={{
-                        padding: '12px 16px',
-                        textAlign: 'left',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        color: '#6b7280',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>
-                        BILLING STATUS
-                      </th>
-                      <th style={{
-                        padding: '12px 16px',
-                        textAlign: 'right',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        color: '#6b7280',
-                        width: '80px'
-                      }}>
-                        {/* Actions column header */}
-                      </th>
-                    </tr>
-                  </thead>
-                )}
-                <tbody>
-                  {sortedEntries.map((entry) => {
-                    // Find project to get customer name
-                    const project = projects.find(p => p.projectName === entry.projectName);
-                    const customerName = project?.customerName || '';
+      )}
 
-                    const isHovered = hoveredEntryId === entry.id;
-
-                    return (
-                      <tr key={entry.id} style={{
-                        borderBottom: '1px solid #e5e7eb',
-                        cursor: 'pointer',
-                        backgroundColor: selectedEntry?.id === entry.id ? '#f0f7ff' : (isHovered ? '#f9fafb' : 'white')
-                      }}
-                        onClick={() => setSelectedEntry(entry)}
-                        onMouseEnter={(e) => {
-                          setHoveredEntryId(entry.id);
-                          if (selectedEntry?.id !== entry.id) {
-                            e.currentTarget.style.backgroundColor = '#f9fafb';
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          setHoveredEntryId(null);
-                          if (selectedEntry?.id !== entry.id) {
-                            e.currentTarget.style.backgroundColor = 'white';
-                          }
-                        }}
+      <div className="flex-1 overflow-hidden bg-white flex flex-col">
+        {viewMode === 'list' ? (
+          <div className="flex-1 overflow-auto border-t border-gray-200 bg-white">
+            <table className="w-full border-collapse bg-white">
+              <thead className="sticky top-0 z-20 bg-gray-50 shadow-sm">
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="w-[60px] px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 projects-select-header">
+                    <div className="flex items-center gap-2 projects-select-header-actions">
+                      <button
+                        type="button"
+                        onClick={handleOpenTimesheetColumnsModal}
+                        className="border-none bg-transparent p-0 text-[#156372] cursor-pointer"
+                        aria-label="Customize columns"
                       >
-                        <td
-                          style={{ padding: '12px 16px' }}
-                          onClick={(e) => e.stopPropagation()}
-                        >
+                        <SlidersHorizontal size={14} />
+                      </button>
+                    </div>
+                    <div className="projects-select-header-checkbox mt-1">
+                      <input
+                        type="checkbox"
+                        checked={selectedEntries.length === sortedEntries.length && sortedEntries.length > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedEntries(sortedEntries.map((e) => e.id));
+                          else setSelectedEntries([]);
+                        }}
+                        className="cursor-pointer"
+                      />
+                    </div>
+                  </th>
+                  {visibleTimesheetColumns.map((column) => (
+                    <th
+                      key={column.key}
+                      className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500"
+                    >
+                      {column.label}
+                    </th>
+                  ))}
+                  <th className="w-[40px] px-4 py-3 text-right">
+                    <button className="border-none bg-transparent p-0 text-gray-500 cursor-pointer">
+                      <Search size={16} />
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedEntries.map((entry) => {
+                  return (
+                    <tr key={entry.id} className="cursor-pointer border-b border-gray-200 hover:bg-gray-50">
+                      <td className="px-4 py-3 projects-select-cell">
+                        <div className="projects-select-cell-checkbox">
                           <input
                             type="checkbox"
                             checked={selectedEntries.includes(entry.id)}
                             onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedEntries([...selectedEntries, entry.id]);
-                              } else {
-                                setSelectedEntries(selectedEntries.filter(id => id !== entry.id));
-                              }
+                              if (e.target.checked) setSelectedEntries([...selectedEntries, entry.id]);
+                              else setSelectedEntries(selectedEntries.filter((id) => id !== entry.id));
                             }}
                             onClick={(e) => e.stopPropagation()}
-                            style={{ cursor: 'pointer' }}
+                            className="cursor-pointer"
                           />
-                        </td>
-                        <td style={{ padding: '12px 16px', fontSize: '14px', color: '#1f2937' }}>
-                          {entry.date}
-                        </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <span style={{
-                            fontSize: '14px',
-                            color: '#156372',
-                            cursor: 'pointer',
-                            textDecoration: 'none'
-                          }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const projectId = project?.id;
-                              if (projectId) {
-                                navigate(`/time-tracking/projects/${projectId}`);
-                              }
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'none'}
-                            onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}
+                        </div>
+                      </td>
+                      {visibleTimesheetColumns.map((column) => {
+                        const value = getTimesheetColumnValue(entry, column.key);
+                        const cellClassName =
+                          column.key === "project"
+                            ? "px-4 py-3 text-sm text-[#156372]"
+                            : column.key === "customerApprovals"
+                              ? "px-4 py-3 text-sm text-[#10b981]"
+                              : column.key === "billingStatus"
+                                ? "px-4 py-3 text-sm text-gray-800"
+                                : "px-4 py-3 text-sm text-gray-800";
+
+                        return (
+                          <td
+                            key={`${entry.id}-${column.key}`}
+                            className={cellClassName}
+                            onClick={() => typeof setSelectedEntry === 'function' && setSelectedEntry(entry)}
                           >
-                            {entry.projectName}
-                          </span>
-                        </td>
-                        <td style={{ padding: '12px 16px', fontSize: '14px', color: '#1f2937' }}>
-                          {customerName}
-                        </td>
-                        <td style={{ padding: '12px 16px', fontSize: '14px', color: '#1f2937' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            {entry.taskName.split(',').map((task, idx) => (
-                              <span key={idx}>{task.trim()}</span>
-                            ))}
-                          </div>
-                        </td>
-                        <td style={{ padding: '12px 16px', fontSize: '14px', color: '#1f2937' }}>
-                          {entry.user}
-                        </td>
-                        <td style={{ padding: '12px 16px', fontSize: '14px', color: '#1f2937' }}>
-                          {entry.timeSpent}
-                        </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <span style={{
-                            fontSize: '14px',
-                            color: entry.billingStatus === 'Invoiced' ? '#10b981' : '#156372',
-                            fontWeight: '500'
-                          }}>
-                            {entry.billingStatus || 'Unbilled'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'flex-end',
-                            gap: '8px',
-                            opacity: isHovered ? 1 : 0,
-                            transition: 'opacity 0.2s'
-                          }}>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedEntry(entry);
-                                setIsEditingEntry(true);
-                                // Convert date to YYYY-MM-DD format for date picker
-                                let dateValue = entry.date;
-                                try {
-                                  const date = new Date(entry.date);
-                                  if (!isNaN(date.getTime())) {
-                                    dateValue = date.toISOString().split('T')[0];
-                                  }
-                                } catch (e) {
-                                  // Keep original if parsing fails
-                                }
-                                // Convert timeSpent from "3h 0m" to "HH:MM" format
-                                let timeSpentValue = entry.timeSpent;
-                                if (timeSpentValue && (timeSpentValue.includes('h') || timeSpentValue.includes('m'))) {
-                                  const hoursMatch = timeSpentValue.match(/(\d+)h/);
-                                  const minutesMatch = timeSpentValue.match(/(\d+)m/);
-                                  const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
-                                  const minutes = minutesMatch ? parseInt(minutesMatch[1]) : 0;
-                                  timeSpentValue = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-                                }
-                                setEditedEntryData({
-                                  ...entry,
-                                  date: dateValue,
-                                  timeSpent: timeSpentValue
-                                });
-                              }}
-                              style={{
-                                padding: '6px',
-                                border: '1px solid #d1d5db',
-                                borderRadius: '4px',
-                                backgroundColor: '#fff',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                transition: 'all 0.2s'
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor = '#f3f4f6';
-                                e.currentTarget.style.borderColor = '#9ca3af';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor = '#fff';
-                                e.currentTarget.style.borderColor = '#d1d5db';
-                              }}
-                            >
-                              <Edit3 size={16} color="#374151" />
-                            </button>
-                            <div style={{ position: 'relative', zIndex: openDropdownEntryId === entry.id ? 10000 : 'auto' }} data-dropdown-entry-id={entry.id}>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenDropdownEntryId(openDropdownEntryId === entry.id ? null : entry.id);
-                                }}
-                                style={{
-                                  padding: '6px',
-                                  border: '1px solid #d1d5db',
-                                  borderRadius: '4px',
-                                  backgroundColor: '#fff',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  transition: 'all 0.2s'
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.backgroundColor = '#f3f4f6';
-                                  e.currentTarget.style.borderColor = '#9ca3af';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.backgroundColor = '#fff';
-                                  e.currentTarget.style.borderColor = '#d1d5db';
-                                }}
-                              >
-                                <Settings size={16} color="#374151" />
-                              </button>
-                              {openDropdownEntryId === entry.id && (
-                                <div
-                                  style={{
-                                    position: 'absolute',
-                                    top: '100%',
-                                    right: 0,
-                                    marginTop: '8px',
-                                    backgroundColor: 'white',
-                                    borderRadius: '8px',
-                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                                    minWidth: '180px',
-                                    zIndex: 9999,
-                                    padding: '4px 0',
-                                    border: '1px solid #e5e7eb'
-                                  }}
-                                >
-                                  <div
-                                    onClick={async (e) => {
-                                      e.stopPropagation();
-                                      try {
-                                        // Clone entry by creating a new one with same data
-                                        // Parse date correctly
-                                        let entryDate = new Date();
-                                        try {
-                                          if (entry.date) {
-                                            const parsedDate = new Date(entry.date);
-                                            if (!isNaN(parsedDate.getTime())) {
-                                              entryDate = parsedDate;
-                                            }
-                                          }
-                                        } catch (e) {
-                                          console.error('Date parsing error in clone:', e);
-                                        }
+                            {value}
+                          </td>
+                        );
+                      })}
+                      <td className="px-4 py-3" />
+                    </tr>
+                  );
+                })}
+                {sortedEntries.length === 0 && (
+                  <tr>
+                    <td colSpan={visibleTimesheetColumns.length + 2} className="px-4 py-10 text-center text-sm text-gray-500">
+                      No log entries found. Click "+ New" to create your first log entry.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-white">
+            <div className="flex items-center justify-center gap-4 border-b border-gray-200 bg-white px-6 py-4">
+              <button
+                onClick={goToPreviousMonth}
+                className="rounded-full border-none bg-transparent p-1 text-gray-500 hover:text-[#156372] cursor-pointer"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <div className="text-[18px] font-semibold text-gray-800">{getMonthLabel(calendarDate)}</div>
+              <button
+                onClick={goToNextMonth}
+                className="rounded-full border-none bg-transparent p-1 text-gray-500 hover:text-[#156372] cursor-pointer"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
 
-                                        const clonedEntryData = {
-                                          project: entry.projectId,
-                                          user: entry.userId,
-                                          date: entryDate.toISOString(),
-                                          hours: entry.hours || 0,
-                                          minutes: entry.minutes || 0,
-                                          description: entry.notes || entry.description || '',
-                                          billable: entry.billable !== undefined ? entry.billable : true,
-                                          task: entry.taskName || entry.task || '',
-                                        };
+            <div className={`flex-1 min-h-0 overflow-auto ${selectedDateForLogEntry ? "pr-[380px]" : ""}`}>
+              <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50 text-[11px] font-semibold uppercase text-gray-500">
+                {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => (
+                  <div key={day} className="px-3 py-3 text-center">{day}</div>
+                ))}
+              </div>
 
-                                        const response = await timeEntriesAPI.create(clonedEntryData);
-                                        const clonedEntry = {
-                                          id: response?._id || response?.id || response?.data?._id,
-                                          ...clonedEntryData,
-                                          projectName: entry.projectName,
-                                          userName: entry.userName || entry.user || '--',
-                                          user: entry.userName || entry.user || '--', // Ensure user is a string
-                                          timeSpent: entry.timeSpent,
-                                          billingStatus: entry.billingStatus || 'Unbilled',
-                                        };
+              <div className="grid grid-cols-7">
+                {calendarCells.map((cell) => {
+                  const key = formatCalendarKey(cell);
+                  const entries = calendarEntryMap.get(key) || [];
+                  const totalMinutes = monthDayTotals.get(key) || 0;
+                  const totalHours = `${String(Math.floor(totalMinutes / 60)).padStart(2, "0")}:${String(totalMinutes % 60).padStart(2, "0")}`;
+                  const isSelected = selectedCalendarDateKey === key;
+                  const hasEntries = entries.length > 0;
 
-                                        // Refresh entries
-                                        const allResponse = await timeEntriesAPI.getAll();
-                                        const data = Array.isArray(allResponse) ? allResponse : (allResponse?.data || []);
-                                        const transformedEntries = data.map(e => {
-                                          const userName = typeof e.user === 'object' && e.user !== null
-                                            ? (e.user.name || '--')
-                                            : (e.userName || e.user || '--');
+                  return (
+                    <div
+                      key={key || cell.toISOString()}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        setSelectedDateForLogEntry(new Date(cell));
+                        setSelectedEntry(null);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedDateForLogEntry(new Date(cell));
+                          setSelectedEntry(null);
+                        }
+                      }}
+                      className={`group relative min-h-[150px] border-b border-r border-gray-200 bg-white px-3 py-2 text-left transition-colors hover:bg-[#f7fbff] ${
+                        isSelected ? "ring-1 ring-inset ring-[#4a8cf7] bg-[#f2f7ff]" : ""
+                      } cursor-pointer`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <span className="text-[13px] font-medium text-gray-800">
+                          {cell.getDate()}
+                        </span>
+                        <span className={`opacity-0 transition-opacity group-hover:opacity-100 ${isSelected ? "opacity-100" : ""}`}>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSelectedDateForLogEntry(new Date(cell));
+                              setSelectedEntry(null);
+                              setShowLogEntryForm(true);
+                            }}
+                            className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-[#156372] text-white hover:bg-[#0f4f5c] cursor-pointer"
+                            title="Add log entry"
+                          >
+                            <Plus size={11} />
+                          </button>
+                        </span>
+                      </div>
 
-                                          return {
-                                            id: e._id || e.id,
-                                            projectId: e.project?._id || e.projectId,
-                                            projectName: e.project?.name || e.projectName,
-                                            projectNumber: e.project?.projectNumber || e.projectNumber,
-                                            userId: e.user?._id || e.userId,
-                                            userName: userName,
-                                            user: userName,
-                                            date: e.date ? new Date(e.date).toLocaleDateString() : new Date().toLocaleDateString(),
-                                            hours: e.hours || 0,
-                                            minutes: e.minutes || 0,
-                                            timeSpent: e.hours ? `${e.hours}h ${e.minutes || 0}m` : '0h',
-                                            description: e.description || '',
-                                            task: e.task || e.taskName || '',
-                                            taskName: e.task || e.taskName || '',
-                                            billable: e.billable !== undefined ? e.billable : true,
-                                            billingRate: e.billingRate || 0,
-                                            notes: e.description || e.notes || '',
-                                            billingStatus: e.billingStatus || 'Unbilled',
-                                          };
-                                        });
-                                        setTimeEntries(transformedEntries);
-
-                                        window.dispatchEvent(new CustomEvent('timeEntryUpdated'));
-                                        setOpenDropdownEntryId(null);
-                                        setSelectedEntry(clonedEntry);
-                                        toast.success('Entry cloned successfully');
-                                      } catch (error) {
-                                        console.error("Error cloning entry:", error);
-                                        toast.error("Failed to clone entry");
-                                      }
-                                    }}
-                                    style={{
-                                      padding: '10px 16px',
-                                      fontSize: '14px',
-                                      color: 'white',
-                                      cursor: 'pointer',
-                                      background: 'linear-gradient(90deg, #156372 0%, #0D4A52 100%)',
-                                      border: 'none',
-                                      borderRadius: '4px'
-                                    }}
-                                    onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
-                                    onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
-                                  >
-                                    Clone
-                                  </div>
-                                  <div
-                                    onClick={async (e) => {
-                                      e.stopPropagation();
-                                      if (window.confirm('Are you sure you want to delete this log entry?')) {
-                                        try {
-                                          await timeEntriesAPI.delete(entry.id);
-
-                                          // Refresh entries
-                                          const response = await timeEntriesAPI.getAll();
-                                          const data = Array.isArray(response) ? response : (response?.data || []);
-                                          const transformedEntries = data.map(e => {
-                                            const userName = typeof e.user === 'object' && e.user !== null
-                                              ? (e.user.name || '--')
-                                              : (e.userName || e.user || '--');
-
-                                            return {
-                                              id: e._id || e.id,
-                                              projectId: e.project?._id || e.projectId,
-                                              projectName: e.project?.name || e.projectName,
-                                              projectNumber: e.project?.projectNumber || e.projectNumber,
-                                              userId: e.user?._id || e.userId,
-                                              userName: userName,
-                                              user: userName,
-                                              date: e.date ? new Date(e.date).toLocaleDateString() : new Date().toLocaleDateString(),
-                                              hours: e.hours || 0,
-                                              minutes: e.minutes || 0,
-                                              timeSpent: e.hours ? `${e.hours}h ${e.minutes || 0}m` : '0h',
-                                              description: e.description || '',
-                                              task: e.task || e.taskName || '',
-                                              taskName: e.task || e.taskName || '',
-                                              billable: e.billable !== undefined ? e.billable : true,
-                                              billingRate: e.billingRate || 0,
-                                              notes: e.description || e.notes || '',
-                                              billingStatus: e.billingStatus || 'Unbilled',
-                                            };
-                                          });
-                                          setTimeEntries(transformedEntries);
-
-                                          window.dispatchEvent(new CustomEvent('timeEntryUpdated'));
-                                          setOpenDropdownEntryId(null);
-                                          if (selectedEntry?.id === entry.id) {
-                                            setSelectedEntry(null);
-                                          }
-                                          toast.success('Entry deleted successfully');
-                                        } catch (error) {
-                                          console.error("Error deleting entry:", error);
-                                          toast.error("Failed to delete entry");
-                                        }
-                                      }
-                                    }}
-                                    style={{
-                                      padding: '10px 16px',
-                                      fontSize: '14px',
-                                      color: '#1f2937',
-                                      cursor: 'pointer'
-                                    }}
-                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
-                                  >
-                                    Delete
-                                  </div>
-                                  <div
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedEntry(entry);
-                                      setActiveTab('comments');
-                                      setOpenDropdownEntryId(null);
-                                    }}
-                                    style={{
-                                      padding: '10px 16px',
-                                      fontSize: '14px',
-                                      color: '#1f2937',
-                                      cursor: 'pointer'
-                                    }}
-                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
-                                  >
-                                    Comments & History
-                                  </div>
-                                </div>
-                              )}
+                      <div className="mt-8 space-y-1">
+                        {hasEntries ? (
+                          <>
+                            <div className="border-l-2 border-[#d7dff1] pl-2 text-[12px] font-medium text-gray-800">
+                              {totalHours}
+                            </div>
+                            <div className="border-l-2 border-[#d7dff1] pl-2 text-[11px] text-gray-500">
+                              Total Logged Hours
+                            </div>
+                            <div className="pl-2 text-[11px] text-[#156372]">
+                              {entries.length} Timesheets
+                              <ChevronRight size={12} className="inline-block align-middle" />
+                            </div>
+                          </>
+                        ) : (
+                          <div className="opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                            <div className="border-l-2 border-[#d7dff1] pl-2 text-[12px] text-gray-500">
+                              No logged hours
                             </div>
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {selectedDateForLogEntry && (
+              <div className="absolute right-0 top-0 z-40 flex h-full w-[380px] flex-col border-l border-gray-200 bg-white shadow-lg">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                  <div className="text-sm font-medium text-gray-700">
+                    {selectedDateForLogEntry.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setShowLogEntryForm(true)}
+                      className="flex h-8 w-8 items-center justify-center rounded-md border-none bg-[#156372] text-white hover:bg-[#0f4f5c] cursor-pointer"
+                      title="Add log entry"
+                    >
+                      <Plus size={14} />
+                    </button>
+                    <button
+                      onClick={() => moveSelectedCalendarDate(-1)}
+                      className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer"
+                      title="Previous day"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                    <button
+                      onClick={() => moveSelectedCalendarDate(1)}
+                      className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer"
+                      title="Next day"
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                    <button
+                      onClick={() => setSelectedDateForLogEntry(null)}
+                      className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 bg-white text-red-500 hover:bg-red-50 cursor-pointer"
+                      title="Close"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="border-b border-gray-200 px-4 py-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-lg border border-gray-200 bg-white px-3 py-3">
+                      <div className="text-xs text-gray-500">Total Logged Hours</div>
+                      <div className="mt-1 text-[18px] font-semibold text-gray-900">{selectedCalendarTotalLabel}</div>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 bg-white px-3 py-3">
+                      <div className="text-xs text-gray-500">Total Users</div>
+                      <div className="mt-1 text-[18px] font-semibold text-gray-900">{selectedCalendarUniqueUsers}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-auto">
+                  {selectedCalendarEntries.length === 0 ? (
+                    <div className="px-4 py-6 text-sm text-gray-500">No entries for this date.</div>
+                  ) : (
+                    <div className="divide-y divide-gray-200">
+                      {selectedCalendarEntries.map((entry) => (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          onClick={() => setSelectedEntry(entry)}
+                          className="flex w-full items-start gap-3 px-4 py-4 text-left hover:bg-gray-50"
+                        >
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-200 text-sm font-medium text-gray-600">
+                            {String(getUserName(entry) || "U").charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[13px] font-medium text-gray-900">
+                              {toHHMM(entry)} hrs
+                            </div>
+                            <div className="truncate text-[12px] text-gray-500">
+                              {getProjectName(entry)} • {getUserName(entry)}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {viewMode === 'list' && selectedEntry && (
+        <div className="absolute right-0 top-0 h-full w-[360px] border-l border-gray-200 bg-white shadow-lg z-40 flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+            <div className="text-sm font-semibold text-gray-900">
+              {`${getUserName(selectedEntry) || "User"}'s Log Entry`}
+            </div>
+            <div className="flex items-center gap-2" ref={entryMenuRef}>
+              <button
+                onClick={() => {
+                  setIsEditingEntry(true);
+                  setEditedEntryData(selectedEntry);
+                }}
+                className="h-7 w-7 rounded border border-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-50"
+              >
+                <Edit3 size={14} />
+              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setShowEntryMenu((v) => !v)}
+                  className="h-7 w-7 rounded border border-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-50"
+                >
+                <MoreVertical size={14} />
+                </button>
+                {showEntryMenu && (
+                  <div className="absolute right-0 mt-2 w-32 rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
+                    <button
+                      onClick={handleCloneSelectedEntry}
+                      className="w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50"
+                    >
+                      Clone
+                    </button>
+                    <button
+                      onClick={handleDeleteSelectedEntry}
+                      className="w-full px-3 py-2 text-left text-red-600 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => setSelectedEntry(null)}
+                className="h-7 w-7 rounded border border-gray-200 text-red-500 flex items-center justify-center hover:bg-red-50"
+              >
+                <X size={14} />
+              </button>
             </div>
           </div>
 
-          {/* Detail Panel */}
-          {selectedEntry && (
-            <div style={{
-              flex: '0 0 40%',
-              backgroundColor: 'white',
-              borderLeft: '1px solid #e5e7eb',
-              display: 'flex',
-              flexDirection: 'column',
-              overflowY: 'auto'
-            }}>
-              {/* Header */}
-              <div style={{
-                padding: '20px 24px',
-                borderBottom: '1px solid #e5e7eb',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}>
-                <h2 style={{
-                  fontSize: '18px',
-                  fontWeight: '600',
-                  color: '#1f2937',
-                  margin: 0
-                }}>
-                  {selectedEntry.user}'s Log Entry
-                </h2>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <button
-                    onClick={() => {
-                      setIsEditingEntry(true);
-                      // Convert date to YYYY-MM-DD format for date picker
-                      let dateValue = selectedEntry.date;
-                      try {
-                        const date = new Date(selectedEntry.date);
-                        if (!isNaN(date.getTime())) {
-                          dateValue = date.toISOString().split('T')[0];
-                        }
-                      } catch (e) {
-                        // Keep original if parsing fails
-                      }
-                      // Convert timeSpent from "3h 0m" to "HH:MM" format
-                      let timeSpentValue = selectedEntry.timeSpent;
-                      if (timeSpentValue && (timeSpentValue.includes('h') || timeSpentValue.includes('m'))) {
-                        const hoursMatch = timeSpentValue.match(/(\d+)h/);
-                        const minutesMatch = timeSpentValue.match(/(\d+)m/);
-                        const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
-                        const minutes = minutesMatch ? parseInt(minutesMatch[1]) : 0;
-                        timeSpentValue = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-                      }
-                      setEditedEntryData({
-                        ...selectedEntry,
-                        date: dateValue,
-                        timeSpent: timeSpentValue
-                      });
-                      setActiveTab('otherDetails'); // Switch to Other Details tab when editing
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      padding: '6px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: '4px'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
-                  <div style={{ position: 'relative' }} ref={moreDropdownRef}>
+          <div className="p-4 border-b border-gray-200">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-4 text-center">
+              <div className="text-xs text-gray-500">
+                {selectedEntry.date || "--"}
+              </div>
+              <div className="text-xl font-semibold text-gray-900 mt-1">
+                {formatDuration(selectedEntry)}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-6 px-4 pt-3 text-sm">
+            <button
+              onClick={() => setActiveTab('otherDetails')}
+              className={`pb-2 border-b-2 ${activeTab === 'otherDetails' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600'}`}
+            >
+              Other Details
+            </button>
+            <button
+              onClick={() => setActiveTab('comments')}
+              className={`pb-2 border-b-2 ${activeTab === 'comments' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600'}`}
+            >
+              Comments
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-auto px-4 py-3">
+            {activeTab === 'otherDetails' && (
+              <div className="space-y-3 text-sm text-gray-700">
+                <div className="flex justify-between"><span className="text-gray-500">Project Name :</span><span>{getProjectName(selectedEntry)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Customer Name :</span><span>{getCustomerName(selectedEntry)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Task Name :</span><span>{selectedEntry.taskName || "--"}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">User Name :</span><span>{getUserName(selectedEntry)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Total Cost :</span><span>$0.00</span></div>
+              </div>
+            )}
+
+            {false && (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                  <div className="flex items-center gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3">
                     <button
-                      onClick={() => setShowMoreDropdown(!showMoreDropdown)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        padding: '6px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        borderRadius: '4px'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      onClick={() => applyCommentFormat("bold")}
+                      className={`h-7 w-7 rounded border ${isBold ? "border-blue-500 bg-blue-50 text-blue-600" : "border-gray-200 text-gray-600"} text-xs font-semibold`}
+                      type="button"
                     >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="12" cy="5" r="1.5" fill="#6b7280" />
-                        <circle cx="12" cy="12" r="1.5" fill="#6b7280" />
-                        <circle cx="12" cy="19" r="1.5" fill="#6b7280" />
-                      </svg>
+                      B
                     </button>
-                    {showMoreDropdown && (
-                      <div style={{
-                        position: 'absolute',
-                        top: '100%',
-                        right: 0,
-                        marginTop: '8px',
-                        backgroundColor: 'white',
-                        borderRadius: '8px',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                        minWidth: '140px',
-                        zIndex: 1000,
-                        padding: '4px 0',
-                        border: '1px solid #e5e7eb'
-                      }}>
-                        <div
-                          onClick={() => {
-                            // Clone entry
-                            const existingEntries = JSON.parse(localStorage.getItem('timeEntries') || '[]');
-                            const clonedEntry = {
-                              ...selectedEntry,
-                              id: Date.now().toString(),
-                              createdAt: new Date().toISOString()
-                            };
-                            existingEntries.push(clonedEntry);
-                            localStorage.setItem('timeEntries', JSON.stringify(existingEntries));
-                            window.dispatchEvent(new CustomEvent('timeEntryUpdated'));
-                            setShowMoreDropdown(false);
-                            setSelectedEntry(clonedEntry);
-                          }}
-                          style={{
-                            padding: '10px 16px',
-                            fontSize: '14px',
-                            cursor: 'pointer',
-                            backgroundColor: '#156372',
-                            color: 'white'
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
-                        >
-                          Clone
-                        </div>
-                        <div
-                          onClick={() => {
-                            if (window.confirm('Are you sure you want to delete this log entry?')) {
-                              const existingEntries = JSON.parse(localStorage.getItem('timeEntries') || '[]');
-                              const filteredEntries = existingEntries.filter(e => e.id !== selectedEntry.id);
-                              localStorage.setItem('timeEntries', JSON.stringify(filteredEntries));
-                              window.dispatchEvent(new CustomEvent('timeEntryUpdated'));
-                              setShowMoreDropdown(false);
-                              setSelectedEntry(null);
-                            }
-                          }}
-                          style={{
-                            padding: '10px 16px',
-                            fontSize: '14px',
-                            color: '#1f2937',
-                            cursor: 'pointer'
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
-                        >
-                          Delete
-                        </div>
-                      </div>
-                    )}
+                    <button
+                      onClick={() => applyCommentFormat("italic")}
+                      className={`h-7 w-7 rounded border ${isItalic ? "border-blue-500 bg-blue-50 text-blue-600" : "border-gray-200 text-gray-600"} text-xs italic`}
+                      type="button"
+                    >
+                      I
+                    </button>
+                    <button
+                      onClick={() => applyCommentFormat("underline")}
+                      className={`h-7 w-7 rounded border ${isUnderline ? "border-blue-500 bg-blue-50 text-blue-600" : "border-gray-200 text-gray-600"} text-xs underline`}
+                      type="button"
+                    >
+                      U
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setSelectedEntry(null)}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      padding: '6px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: '4px'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M18 6L6 18M6 6l12 12" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              {/* Summary Card */}
-              <div style={{
-                margin: '20px 24px',
-                padding: '20px',
-                backgroundColor: '#fff7ed',
-                borderRadius: '8px',
-                border: '1px solid #fed7aa',
-                position: 'relative',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-              }}>
-                <div style={{
-                  position: 'absolute',
-                  top: '12px',
-                  right: '12px',
-                  padding: '4px 12px',
-                  backgroundColor: selectedEntry.billingStatus === 'Invoiced' ? '#10b981' : '#fb923c',
-                  color: 'white',
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                  fontWeight: '600'
-                }}>
-                  {selectedEntry.billingStatus || 'Unbilled'}
-                </div>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  fontSize: '14px',
-                  color: '#1f2937',
-                  marginBottom: '12px'
-                }}>
-                  <span style={{ fontSize: '16px' }}>Ã°Å¸â€œâ€¦</span>
-                  <span>{selectedEntry.date}</span>
-                </div>
-                <div style={{
-                  fontSize: '20px',
-                  fontWeight: '700',
-                  color: '#1f2937'
-                }}>
-                  {(() => {
-                    // Handle both "HH:MM" and "3h 0m" formats
-                    let hours = 0;
-                    let minutes = 0;
-
-                    if (selectedEntry.timeSpent.includes('h') || selectedEntry.timeSpent.includes('m')) {
-                      // Format: "3h 0m"
-                      const hoursMatch = selectedEntry.timeSpent.match(/(\d+)h/);
-                      const minutesMatch = selectedEntry.timeSpent.match(/(\d+)m/);
-                      hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
-                      minutes = minutesMatch ? parseInt(minutesMatch[1]) : 0;
-                    } else if (selectedEntry.timeSpent.includes(':')) {
-                      // Format: "HH:MM"
-                      const timeParts = selectedEntry.timeSpent.split(':');
-                      hours = parseInt(timeParts[0]) || 0;
-                      minutes = parseInt(timeParts[1]) || 0;
-                    } else if (selectedEntry.hours !== undefined) {
-                      // Use hours and minutes directly from entry
-                      hours = selectedEntry.hours || 0;
-                      minutes = selectedEntry.minutes || 0;
-                    }
-
-                    return `${hours} hrs : ${minutes} mins`;
-                  })()}
-                </div>
-              </div>
-
-              {/* Tabs */}
-              <div style={{
-                display: 'flex',
-                borderBottom: '1px solid #e5e7eb',
-                padding: '0 24px'
-              }}>
-                <button
-                  onClick={() => setActiveTab('otherDetails')}
-                  style={{
-                    padding: '12px 16px',
-                    background: 'none',
-                    border: 'none',
-                    borderBottom: activeTab === 'otherDetails' ? '2px solid #3b82f6' : '2px solid transparent',
-                    color: activeTab === 'otherDetails' ? '#3b82f6' : '#6b7280',
-                    fontSize: '14px',
-                    fontWeight: activeTab === 'otherDetails' ? '600' : '500',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Other Details
-                </button>
-                <button
-                  onClick={() => setActiveTab('comments')}
-                  style={{
-                    padding: '12px 16px',
-                    background: 'none',
-                    border: 'none',
-                    borderBottom: activeTab === 'comments' ? '2px solid #3b82f6' : '2px solid transparent',
-                    color: activeTab === 'comments' ? '#3b82f6' : '#6b7280',
-                    fontSize: '14px',
-                    fontWeight: activeTab === 'comments' ? '600' : '500',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Comments
-                </button>
-              </div>
-
-              {/* Tab Content */}
-              <div style={{
-                flex: 1,
-                padding: '24px',
-                overflowY: 'auto'
-              }}>
-                {activeTab === 'otherDetails' && (
-                  isEditingEntry ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                      {/* Date Field */}
-                      <div>
-                        <label style={{
-                          fontSize: '14px',
-                          fontWeight: '500',
-                          color: '#374151',
-                          display: 'block',
-                          marginBottom: '6px'
-                        }}>
-                          Date<span style={{ color: '#156372' }}>*</span>
-                        </label>
-                        <input
-                          type="date"
-                          value={(() => {
-                            // Convert date to YYYY-MM-DD format for date input
-                            if (!editedEntryData?.date) return '';
-                            try {
-                              const date = new Date(editedEntryData.date);
-                              if (!isNaN(date.getTime())) {
-                                return date.toISOString().split('T')[0];
-                              }
-                              // Try parsing as locale date string
-                              const parts = editedEntryData.date.split('/');
-                              if (parts.length === 3) {
-                                const [month, day, year] = parts;
-                                return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-                              }
-                            } catch (e) {
-                              console.error('Date parsing error:', e);
-                            }
-                            return '';
-                          })()}
-                          onChange={(e) => setEditedEntryData({ ...editedEntryData, date: e.target.value })}
-                          style={{
-                            width: '100%',
-                            padding: '10px 12px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '6px',
-                            fontSize: '14px',
-                            outline: 'none'
-                          }}
-                          onFocus={(e) => e.currentTarget.style.borderColor = '#156372'}
-                          onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                        />
-                      </div>
-
-                      {/* Project Name Field */}
-                      <div>
-                        <label style={{
-                          fontSize: '14px',
-                          fontWeight: '500',
-                          color: '#374151',
-                          display: 'block',
-                          marginBottom: '6px'
-                        }}>
-                          Project Name<span style={{ color: '#156372' }}>*</span>
-                        </label>
-                        <div style={{ position: 'relative' }}>
-                          <select
-                            value={editedEntryData?.projectName || ''}
-                            onChange={(e) => {
-                              setEditedEntryData({
-                                ...editedEntryData,
-                                projectName: e.target.value,
-                                taskName: '' // Reset task when project changes
-                              });
-                            }}
-                            style={{
-                              width: '100%',
-                              padding: '10px 36px 10px 12px',
-                              border: '1px solid #d1d5db',
-                              borderRadius: '6px',
-                              fontSize: '14px',
-                              outline: 'none',
-                              appearance: 'none',
-                              cursor: 'pointer',
-                              backgroundColor: 'white'
-                            }}
-                            onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                            onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                          >
-                            <option value="">Select a project</option>
-                            {projects.map((project) => (
-                              <option key={project.id} value={project.projectName}>
-                                {project.projectName}
-                              </option>
-                            ))}
-                          </select>
-                          <span style={{
-                            position: 'absolute',
-                            right: '12px',
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            pointerEvents: 'none',
-                            color: '#6b7280'
-                          }}>Ã¢â€“Â¼</span>
-                        </div>
-                      </div>
-
-                      {/* Task Name Field */}
-                      <div>
-                        <label style={{
-                          fontSize: '14px',
-                          fontWeight: '500',
-                          color: '#374151',
-                          display: 'block',
-                          marginBottom: '6px'
-                        }}>
-                          Task Name<span style={{ color: '#156372' }}>*</span>
-                        </label>
-                        <div style={{ position: 'relative' }}>
-                          <select
-                            value={editedEntryData?.taskName || ''}
-                            onChange={(e) => setEditedEntryData({ ...editedEntryData, taskName: e.target.value })}
-                            disabled={!editedEntryData?.projectName}
-                            style={{
-                              width: '100%',
-                              padding: '10px 36px 10px 12px',
-                              border: '1px solid #d1d5db',
-                              borderRadius: '6px',
-                              fontSize: '14px',
-                              outline: 'none',
-                              appearance: 'none',
-                              cursor: editedEntryData?.projectName ? 'pointer' : 'not-allowed',
-                              backgroundColor: editedEntryData?.projectName ? 'white' : '#f9fafb',
-                              color: editedEntryData?.projectName ? '#1f2937' : '#9ca3af'
-                            }}
-                            onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                            onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                          >
-                            <option value="">Select task</option>
-                            {(() => {
-                              const selectedProject = projects.find(p => p.projectName === editedEntryData?.projectName);
-                              return selectedProject?.tasks || [];
-                            })().map((task, index) => (
-                              <option key={index} value={task.taskName || task.taskName}>
-                                {task.taskName || 'Untitled Task'}
-                              </option>
-                            ))}
-                          </select>
-                          <span style={{
-                            position: 'absolute',
-                            right: '12px',
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            pointerEvents: 'none',
-                            color: '#6b7280'
-                          }}>Ã¢â€“Â¼</span>
-                        </div>
-                      </div>
-
-                      {/* Time Spent Field */}
-                      <div>
-                        <label style={{
-                          fontSize: '14px',
-                          fontWeight: '500',
-                          color: '#374151',
-                          display: 'block',
-                          marginBottom: '6px'
-                        }}>
-                          Time Spent<span style={{ color: '#156372' }}>*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={editedEntryData?.timeSpent || ''}
-                          onChange={(e) => setEditedEntryData({ ...editedEntryData, timeSpent: e.target.value })}
-                          placeholder="HH:MM"
-                          style={{
-                            width: '100%',
-                            padding: '10px 12px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '6px',
-                            fontSize: '14px',
-                            outline: 'none'
-                          }}
-                          onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                          onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                        />
-                      </div>
-
-                      {/* User Field */}
-                      <div>
-                        <label style={{
-                          fontSize: '14px',
-                          fontWeight: '500',
-                          color: '#374151',
-                          display: 'block',
-                          marginBottom: '6px'
-                        }}>
-                          User<span style={{ color: '#156372' }}>*</span>
-                        </label>
-                        <div style={{ position: 'relative' }}>
-                          <select
-                            value={editedEntryData?.user || ''}
-                            onChange={(e) => setEditedEntryData({ ...editedEntryData, user: e.target.value })}
-                            style={{
-                              width: '100%',
-                              padding: '10px 36px 10px 12px',
-                              border: '1px solid #d1d5db',
-                              borderRadius: '6px',
-                              fontSize: '14px',
-                              outline: 'none',
-                              appearance: 'none',
-                              cursor: 'pointer',
-                              backgroundColor: 'white'
-                            }}
-                            onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                            onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                          >
-                            <option value="">Select user</option>
-                            <option value="tabanaaaa">tabanaaaa</option>
-                            <option value="user2">user2</option>
-                            <option value="user3">user3</option>
-                          </select>
-                          <span style={{
-                            position: 'absolute',
-                            right: '12px',
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            pointerEvents: 'none',
-                            color: '#6b7280'
-                          }}>Ã¢â€“Â¼</span>
-                        </div>
-                      </div>
-
-                      {/* Billable Field */}
-                      <div>
-                        <label style={{
-                          fontSize: '14px',
-                          fontWeight: '500',
-                          color: '#374151',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          cursor: 'pointer'
-                        }}>
-                          <input
-                            type="checkbox"
-                            checked={editedEntryData?.billable !== false}
-                            onChange={(e) => setEditedEntryData({ ...editedEntryData, billable: e.target.checked })}
-                            style={{
-                              width: '16px',
-                              height: '16px',
-                              cursor: 'pointer'
-                            }}
-                          />
-                          Billable
-                        </label>
-                      </div>
-
-                      {/* Notes Field */}
-                      <div>
-                        <label style={{
-                          fontSize: '14px',
-                          fontWeight: '500',
-                          color: '#374151',
-                          display: 'block',
-                          marginBottom: '6px'
-                        }}>
-                          Notes
-                        </label>
-                        <textarea
-                          value={editedEntryData?.notes || ''}
-                          onChange={(e) => setEditedEntryData({ ...editedEntryData, notes: e.target.value })}
-                          placeholder="Add notes"
-                          rows="4"
-                          style={{
-                            width: '100%',
-                            padding: '10px 12px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '6px',
-                            fontSize: '14px',
-                            outline: 'none',
-                            resize: 'vertical',
-                            fontFamily: 'inherit'
-                          }}
-                          onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                          onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                        />
-                      </div>
-
-                      {/* Action Buttons */}
-                      <div style={{
-                        display: 'flex',
-                        gap: '12px',
-                        paddingTop: '16px',
-                        borderTop: '1px solid #e5e7eb',
-                        marginTop: '8px'
-                      }}>
-                        <button
-                          onClick={async () => {
-                            // Validate required fields
-                            if (!editedEntryData?.date || !editedEntryData?.projectName || !editedEntryData?.taskName || !editedEntryData?.timeSpent) {
-                              toast.error('Please fill in all required fields');
-                              return;
-                            }
-
-                            try {
-                              // Parse time spent - handle both "HH:MM" and "3h 0m" formats
-                              let hours = 0;
-                              let minutes = 0;
-
-                              if (editedEntryData.timeSpent.includes('h') || editedEntryData.timeSpent.includes('m')) {
-                                // Format: "3h 0m" or "3h" or "30m"
-                                const hoursMatch = editedEntryData.timeSpent.match(/(\d+)h/);
-                                const minutesMatch = editedEntryData.timeSpent.match(/(\d+)m/);
-                                hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
-                                minutes = minutesMatch ? parseInt(minutesMatch[1]) : 0;
-                              } else if (editedEntryData.timeSpent.includes(':')) {
-                                // Format: "HH:MM"
-                                [hours, minutes] = editedEntryData.timeSpent.split(':').map(Number);
-                              } else {
-                                // Try to parse as number (hours)
-                                const num = parseFloat(editedEntryData.timeSpent);
-                                if (!isNaN(num)) {
-                                  hours = Math.floor(num);
-                                  minutes = Math.round((num % 1) * 60);
-                                }
-                              }
-
-                              // Find project ID
-                              const projectObj = projects.find(p => p.projectName === editedEntryData.projectName);
-                              if (!projectObj) {
-                                toast.error('Invalid project selected');
-                                return;
-                              }
-
-                              // Parse date - handle YYYY-MM-DD format from date picker
-                              let entryDate;
-                              if (editedEntryData.date instanceof Date) {
-                                entryDate = editedEntryData.date;
-                              } else if (editedEntryData.date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                                // YYYY-MM-DD format from date picker
-                                entryDate = new Date(editedEntryData.date);
-                              } else {
-                                // Try parsing other formats
-                                entryDate = new Date(editedEntryData.date);
-                              }
-
-                              if (isNaN(entryDate.getTime())) {
-                                toast.error('Invalid date format');
-                                return;
-                              }
-
-                              // Update entry via API
-                              const updateData = {
-                                project: projectObj.id,
-                                date: entryDate.toISOString(),
-                                hours: hours || 0,
-                                minutes: minutes || 0,
-                                description: editedEntryData.notes || editedEntryData.description || '',
-                                billable: editedEntryData.billable !== undefined ? editedEntryData.billable : true,
-                                task: editedEntryData.taskName || '',
-                              };
-
-                              await timeEntriesAPI.update(selectedEntry.id, updateData);
-
-                              // Refresh entries
-                              const response = await timeEntriesAPI.getAll();
-                              const data = Array.isArray(response) ? response : (response?.data || []);
-                              const transformedEntries = data.map(e => {
-                                const userName = typeof e.user === 'object' && e.user !== null
-                                  ? (e.user.name || '--')
-                                  : (e.userName || e.user || '--');
-
-                                return {
-                                  id: e._id || e.id,
-                                  projectId: e.project?._id || e.projectId,
-                                  projectName: e.project?.name || e.projectName,
-                                  projectNumber: e.project?.projectNumber || e.projectNumber,
-                                  userId: e.user?._id || e.userId,
-                                  userName: userName,
-                                  user: userName,
-                                  date: e.date ? new Date(e.date).toLocaleDateString() : new Date().toLocaleDateString(),
-                                  hours: e.hours || 0,
-                                  minutes: e.minutes || 0,
-                                  timeSpent: e.hours ? `${e.hours}h ${e.minutes || 0}m` : '0h',
-                                  description: e.description || '',
-                                  task: e.task || e.taskName || '',
-                                  taskName: e.task || e.taskName || '',
-                                  billable: e.billable !== undefined ? e.billable : true,
-                                  billingRate: e.billingRate || 0,
-                                  notes: e.description || e.notes || '',
-                                  billingStatus: e.billingStatus || 'Unbilled',
-                                };
-                              });
-                              setTimeEntries(transformedEntries);
-
-                              // Find updated entry
-                              const updatedEntry = transformedEntries.find(e => e.id === selectedEntry.id) || selectedEntry;
-
-                              // Dispatch update event to refresh the timesheet table
-                              window.dispatchEvent(new CustomEvent('timeEntryUpdated'));
-
-                              // Update selected entry and exit edit mode
-                              setSelectedEntry(updatedEntry);
-                              setIsEditingEntry(false);
-                              setEditedEntryData(null);
-                              toast.success('Entry updated successfully');
-                            } catch (error) {
-                              console.error("Error updating entry:", error);
-                              toast.error("Failed to update entry");
-                            }
-                          }}
-                          style={{
-                            flex: 1,
-                            padding: '10px 24px',
-                            background: 'linear-gradient(90deg, #156372 0%, #0D4A52 100%)',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '6px',
-                            fontSize: '14px',
-                            fontWeight: '600',
-                            cursor: 'pointer'
-                          }}
-                          onMouseOver={(e) => e.currentTarget.style.opacity = '0.9'}
-                          onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => {
-                            setIsEditingEntry(false);
-                            setEditedEntryData(null);
-                          }}
-                          style={{
-                            flex: 1,
-                            padding: '10px 24px',
-                            backgroundColor: 'white',
-                            color: '#374151',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '6px',
-                            fontSize: '14px',
-                            fontWeight: '500',
-                            cursor: 'pointer'
-                          }}
-                          onMouseOver={(e) => {
-                            e.currentTarget.style.backgroundColor = '#f9fafb';
-                            e.currentTarget.style.borderColor = '#9ca3af';
-                          }}
-                          onMouseOut={(e) => {
-                            e.currentTarget.style.backgroundColor = 'white';
-                            e.currentTarget.style.borderColor = '#d1d5db';
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <span style={{
-                          fontSize: '14px',
-                          fontWeight: '400',
-                          color: '#6b7280'
-                        }}>
-                          Project Name :
-                        </span>
-                        <span style={{
-                          fontSize: '14px',
-                          fontWeight: '600',
-                          color: '#1f2937'
-                        }}>
-                          {selectedEntry.projectName}
-                        </span>
-                      </div>
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <span style={{
-                          fontSize: '14px',
-                          fontWeight: '400',
-                          color: '#6b7280'
-                        }}>
-                          Customer Name :
-                        </span>
-                        <span style={{
-                          fontSize: '14px',
-                          fontWeight: '600',
-                          color: '#1f2937'
-                        }}>
-                          {(() => {
-                            const project = projects.find(p => p.projectName === selectedEntry.projectName);
-                            return project?.customerName || '--';
-                          })()}
-                        </span>
-                      </div>
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <span style={{
-                          fontSize: '14px',
-                          fontWeight: '400',
-                          color: '#6b7280'
-                        }}>
-                          Task Name :
-                        </span>
-                        <span style={{
-                          fontSize: '14px',
-                          fontWeight: '600',
-                          color: '#1f2937'
-                        }}>
-                          {selectedEntry.taskName}
-                        </span>
-                      </div>
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <span style={{
-                          fontSize: '14px',
-                          fontWeight: '400',
-                          color: '#6b7280'
-                        }}>
-                          User Name :
-                        </span>
-                        <span style={{
-                          fontSize: '14px',
-                          fontWeight: '600',
-                          color: '#1f2937'
-                        }}>
-                          {selectedEntry.user}
-                        </span>
-                      </div>
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <span style={{
-                          fontSize: '14px',
-                          fontWeight: '400',
-                          color: '#6b7280'
-                        }}>
-                          Notes :
-                        </span>
-                        <span style={{
-                          fontSize: '14px',
-                          fontWeight: '600',
-                          color: '#1f2937'
-                        }}>
-                          {selectedEntry.notes || '--'}
-                        </span>
-                      </div>
-                    </div>
-                  )
-                )}
-                {activeTab === 'comments' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                    {/* Comment Input Section */}
-                    <div>
-                      {/* Formatting Buttons */}
-                      <div style={{
-                        display: 'flex',
-                        gap: '8px',
-                        marginBottom: '8px',
-                        padding: '8px',
-                        backgroundColor: '#f9fafb',
-                        borderRadius: '6px',
-                        border: '1px solid #e5e7eb'
-                      }}>
-                        <button
-                          type="button"
-                          onClick={() => setIsBold(!isBold)}
-                          style={{
-                            padding: '6px 12px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            backgroundColor: isBold ? '#e5e7eb' : 'white',
-                            cursor: 'pointer',
-                            fontWeight: 'bold',
-                            fontSize: '14px'
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = isBold ? '#e5e7eb' : '#f3f4f6'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isBold ? '#e5e7eb' : 'white'}
-                        >
-                          B
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setIsItalic(!isItalic)}
-                          style={{
-                            padding: '6px 12px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            backgroundColor: isItalic ? '#e5e7eb' : 'white',
-                            cursor: 'pointer',
-                            fontStyle: 'italic',
-                            fontSize: '14px'
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = isItalic ? '#e5e7eb' : '#f3f4f6'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isItalic ? '#e5e7eb' : 'white'}
-                        >
-                          I
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setIsUnderline(!isUnderline)}
-                          style={{
-                            padding: '6px 12px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            backgroundColor: isUnderline ? '#e5e7eb' : 'white',
-                            cursor: 'pointer',
-                            textDecoration: 'underline',
-                            fontSize: '14px'
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = isUnderline ? '#e5e7eb' : '#f3f4f6'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isUnderline ? '#e5e7eb' : 'white'}
-                        >
-                          U
-                        </button>
-                      </div>
-
-                      {/* Comment Text Area */}
-                      <textarea
-                        value={commentText}
-                        onChange={(e) => setCommentText(e.target.value)}
-                        placeholder="Add a comment..."
-                        style={{
-                          width: '100%',
-                          minHeight: '100px',
-                          padding: '12px',
-                          border: '1px solid #d1d5db',
-                          borderRadius: '6px',
-                          fontSize: '14px',
-                          fontFamily: 'inherit',
-                          resize: 'vertical',
-                          outline: 'none',
-                          fontWeight: isBold ? 'bold' : 'normal',
-                          fontStyle: isItalic ? 'italic' : 'normal',
-                          textDecoration: isUnderline ? 'underline' : 'none'
-                        }}
-                        onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                        onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                      />
-
-                      {/* Add Comment Button */}
-                      <button
-                        onClick={() => {
-                          if (commentText.trim() && selectedEntry) {
-                            const newComment = {
-                              id: Date.now().toString(),
-                              text: commentText,
-                              author: selectedEntry.user || 'User',
-                              date: new Date().toISOString(),
-                              formatting: {
-                                bold: isBold,
-                                italic: isItalic,
-                                underline: isUnderline
-                              }
-                            };
-
-                            const allComments = JSON.parse(localStorage.getItem('timesheetComments') || '{}');
-                            const entryComments = allComments[selectedEntry.id] || [];
-                            entryComments.push(newComment);
-                            allComments[selectedEntry.id] = entryComments;
-                            localStorage.setItem('timesheetComments', JSON.stringify(allComments));
-
-                            setComments(entryComments);
-                            setCommentText('');
-                            setIsBold(false);
-                            setIsItalic(false);
-                            setIsUnderline(false);
-                          }
-                        }}
-                        style={{
-                          marginTop: '12px',
-                          padding: '8px 16px',
-                          backgroundColor: '#156372',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '6px',
-                          fontSize: '14px',
-                          fontWeight: '500',
-                          cursor: commentText.trim() ? 'pointer' : 'not-allowed',
-                          opacity: commentText.trim() ? 1 : 0.5
-                        }}
-                        disabled={!commentText.trim()}
-                        onMouseEnter={(e) => {
-                          if (commentText.trim()) {
-                            e.currentTarget.style.backgroundColor = '#2563eb';
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (commentText.trim()) {
-                            e.currentTarget.style.backgroundColor = '#3b82f6';
-                          }
-                        }}
-                      >
-                        Add Comment
-                      </button>
-                    </div>
-
-                    {/* All Comments Section */}
-                    <div>
-                      <h3 style={{
-                        fontSize: '14px',
-                        fontWeight: '600',
-                        color: '#111827',
-                        marginBottom: '16px'
-                      }}>
-                        ALL COMMENTS
-                      </h3>
-
-                      {comments.length === 0 ? (
-                        <div style={{
-                          textAlign: 'center',
-                          padding: '40px 20px',
-                          color: '#6b7280'
-                        }}>
-                          <p style={{ fontSize: '14px' }}>No comments yet.</p>
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                          {comments.map((comment) => (
-                            <div
-                              key={comment.id}
-                              style={{
-                                padding: '16px',
-                                backgroundColor: '#f9fafb',
-                                borderRadius: '6px',
-                                border: '1px solid #e5e7eb'
-                              }}
-                            >
-                              <div style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'flex-start',
-                                marginBottom: '8px'
-                              }}>
-                                <div>
-                                  <div style={{
-                                    fontSize: '14px',
-                                    fontWeight: '600',
-                                    color: '#111827',
-                                    marginBottom: '4px'
-                                  }}>
-                                    {comment.author}
-                                  </div>
-                                  <div style={{
-                                    fontSize: '12px',
-                                    color: '#6b7280'
-                                  }}>
-                                    {new Date(comment.date).toLocaleDateString('en-GB', {
-                                      day: '2-digit',
-                                      month: 'short',
-                                      year: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    })}
-                                  </div>
-                                </div>
-                              </div>
-                              <div style={{
-                                fontSize: '14px',
-                                color: '#111827',
-                                lineHeight: '1.6',
-                                fontWeight: comment.formatting?.bold ? 'bold' : 'normal',
-                                fontStyle: comment.formatting?.italic ? 'italic' : 'normal',
-                                textDecoration: comment.formatting?.underline ? 'underline' : 'none'
-                              }}>
-                                {comment.text}
-                              </div>
-                            </div>
-                          ))}
+                  <div className="p-0">
+                    <div className="relative">
+                      {commentIsEditorEmpty && (
+                        <div className="pointer-events-none absolute left-5 top-4 text-sm text-gray-400">
+                          Add a comment...
                         </div>
                       )}
+                      <div
+                        ref={commentEditorRef}
+                        id="timesheet-comment-textarea"
+                        contentEditable
+                        suppressContentEditableWarning
+                        dir="ltr"
+                        className="min-h-40 w-full px-5 py-4 text-sm text-gray-700 outline-none whitespace-pre-wrap leading-relaxed border-none"
+                        onInput={syncCommentEditorState}
+                        onMouseUp={syncCommentEditorState}
+                        onKeyUp={syncCommentEditorState}
+                        onFocus={syncCommentEditorState}
+                        style={{ textAlign: "left", direction: "ltr" }}
+                      />
                     </div>
+                  </div>
+                  <div className="border-t border-gray-200 px-5 py-4">
+                    <button
+                      type="button"
+                      className="px-5 py-2 bg-[#156372] text-white rounded text-[13px] font-bold cursor-pointer hover:opacity-90 active:scale-95 transition-all shadow-sm border-none"
+                      onClick={handleAddComment}
+                    >
+                      Add Comment
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="flex items-center gap-1.5">
+                    <h3 className="text-[11px] font-bold text-gray-600 uppercase tracking-[0.2em] whitespace-nowrap">ALL COMMENTS</h3>
+                    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-500 px-1.5 text-[11px] font-bold leading-none text-white">
+                      {comments.length}
+                    </span>
+                  </div>
+                </div>
+
+                {comments.length === 0 ? (
+                  <div className="text-center py-20 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+                    <p className="text-sm text-gray-400 font-medium italic">No comments yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-5 pb-20 pr-2">
+                    {comments.map((comment) => (
+                      <div key={comment.id} className="group flex items-start gap-3">
+                        <div className="mt-0.5 h-6 w-6 shrink-0 rounded-full border border-[#cfdaf0] bg-white text-[11px] font-semibold text-[#6b7a90] flex items-center justify-center shadow-sm">
+                          {getCommentAuthorInitial(comment)}
+                        </div>
+                        <div className="flex-1">
+                          <div className="mb-2 flex items-center gap-2 text-[12px]">
+                            <span className="font-semibold text-[#111827]">{getCommentAuthorName(comment)}</span>
+                            <span className="text-[#94a3b8]">•</span>
+                            <span className="text-[#64748b]">
+                              {new Date(comment.createdAt).toLocaleString("en-GB", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit"
+                              })}
+                            </span>
+                          </div>
+                          <div className="rounded-lg bg-[#f8fafc] px-4 py-3 shadow-sm border border-[#eef2f7]">
+                            <div className="flex items-start justify-between gap-4">
+                              <div
+                                className="text-[15px] leading-relaxed text-[#156372] whitespace-pre-wrap font-semibold flex-1"
+                                dangerouslySetInnerHTML={{ __html: commentMarkupToHtml(comment.content || comment.text || "") }}
+                              />
+                              <button
+                                className="mt-0.5 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all cursor-pointer border-none bg-transparent opacity-0 group-hover:opacity-100"
+                                onClick={() => openDeleteCommentModal(comment)}
+                                title="Delete comment"
+                                type="button"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
-      {/* New Log Entry Form Modal */}
-      {showLogEntryForm && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 2000,
-          padding: '20px'
-        }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowLogEntryForm(false);
-            }
-          }}
-        >
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            width: '100%',
-            maxWidth: '600px',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
-          }}>
-            {/* Header */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              padding: '24px 24px 8px 24px',
-              borderBottom: '1px solid #e5e7eb'
-            }}>
+            {activeTab === 'comments' && selectedEntry && (
+              <TimeEntryCommentsPanel
+                open={activeTab === "comments" && Boolean(selectedEntry)}
+                onClose={() => setActiveTab("otherDetails")}
+                entryId={String(selectedEntry.id)}
+                comments={comments}
+                onCommentsChange={handleTimeEntryCommentsChange}
+                updateEntry={updateTimeEntryComments}
+              />
+            )}
+
+      {showDeleteCommentModal && commentToDelete && (
+        <div className="fixed inset-0 z-[2200] flex items-center justify-center bg-black/40 p-4" onClick={closeDeleteCommentModal}>
+          <div className="w-full max-w-md rounded-xl bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center gap-3 border-b border-gray-200 px-5 py-4">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                <Trash2 size={16} />
+              </div>
               <div>
-                <h2 style={{
-                  fontSize: '20px',
-                  fontWeight: '600',
-                  color: '#1f2937',
-                  margin: 0,
-                  marginBottom: '4px'
-                }}>
-                  New Log Entry
-                </h2>
-                <p style={{
-                  fontSize: '12px',
-                  color: '#6b7280',
-                  margin: 0
-                }}>
-                  Log time instantly using shortcut keys c + t
-                </p>
+                <div className="text-base font-semibold text-gray-900">Delete comment?</div>
+                <div className="text-xs text-gray-500">You cannot retrieve this comment once it has been deleted.</div>
               </div>
-              <button
-                onClick={() => setShowLogEntryForm(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '24px',
-                  cursor: 'pointer',
-                  color: '#1f2937',
-                  padding: '4px',
-                  lineHeight: 1
-                }}
-              >
-                Ãƒâ€”
-              </button>
             </div>
-
-            {/* Form Content */}
-            <div style={{
-              padding: '24px'
-            }}>
-              {/* Date Field */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#374151',
-                  display: 'block',
-                  marginBottom: '6px'
-                }}>
-                  Date<span style={{ color: '#156372' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  value={logEntryData.date}
-                  onChange={(e) => setLogEntryData({ ...logEntryData, date: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    outline: 'none'
-                  }}
-                  onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                  onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                />
-              </div>
-
-              {/* Project Name Field */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#374151',
-                  display: 'block',
-                  marginBottom: '6px'
-                }}>
-                  Project Name<span style={{ color: '#156372' }}>*</span>
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <select
-                    value={logEntryData.projectName}
-                    onChange={(e) => {
-                      setLogEntryData({
-                        ...logEntryData,
-                        projectName: e.target.value,
-                        taskName: '' // Reset task when project changes
-                      });
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '10px 36px 10px 12px',
-                      border: '1px solid #3b82f6',
-                      borderRadius: '6px',
-                      fontSize: '14px',
-                      outline: 'none',
-                      appearance: 'none',
-                      cursor: 'pointer',
-                      backgroundColor: 'white'
-                    }}
-                    onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                    onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                  >
-                    <option value="">Select a project</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.projectName}>
-                        {project.projectName}
-                      </option>
-                    ))}
-                  </select>
-                  <span style={{
-                    position: 'absolute',
-                    right: '12px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    pointerEvents: 'none',
-                    color: '#6b7280'
-                  }}>Ã¢â€“Â¼</span>
-                </div>
-              </div>
-
-              {/* Task Name Field */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#374151',
-                  display: 'block',
-                  marginBottom: '6px'
-                }}>
-                  Task Name<span style={{ color: '#156372' }}>*</span>
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <select
-                    value={logEntryData.taskName}
-                    onChange={(e) => setLogEntryData({ ...logEntryData, taskName: e.target.value })}
-                    disabled={!logEntryData.projectName}
-                    style={{
-                      width: '100%',
-                      padding: '10px 36px 10px 12px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      fontSize: '14px',
-                      outline: 'none',
-                      appearance: 'none',
-                      cursor: logEntryData.projectName ? 'pointer' : 'not-allowed',
-                      backgroundColor: logEntryData.projectName ? 'white' : '#f9fafb',
-                      color: logEntryData.projectName ? '#1f2937' : '#9ca3af'
-                    }}
-                    onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                    onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                  >
-                    <option value="">Select task</option>
-                    {availableTasks.map((task, index) => (
-                      <option key={index} value={task.taskName || task.taskName}>
-                        {task.taskName || 'Untitled Task'}
-                      </option>
-                    ))}
-                  </select>
-                  <span style={{
-                    position: 'absolute',
-                    right: '12px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    pointerEvents: 'none',
-                    color: '#6b7280'
-                  }}>Ã¢â€“Â¼</span>
-                </div>
-              </div>
-
-              {/* Time Spent Field */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#374151',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  marginBottom: '6px'
-                }}>
-                  Time Spent<span style={{ color: '#156372' }}>*</span>
-                  <div style={{
-                    width: '18px',
-                    height: '18px',
-                    borderRadius: '50%',
-                    border: '1px solid #d1d5db',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '12px',
-                    color: '#6b7280',
-                    cursor: 'help'
-                  }}>?</div>
-                </label>
-                <input
-                  type="text"
-                  value={logEntryData.timeSpent}
-                  onChange={(e) => setLogEntryData({ ...logEntryData, timeSpent: e.target.value })}
-                  placeholder="HH:MM"
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    outline: 'none',
-                    marginBottom: '8px'
-                  }}
-                  onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                  onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                />
-                <a href="#" style={{
-                  fontSize: '14px',
-                  color: '#156372',
-                  textDecoration: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-                  onMouseOver={(e) => e.currentTarget.style.textDecoration = 'none'}
-                  onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
-                >
-                  <span>Ã°Å¸â€¢Â</span>
-                  <span>Set start and end time instead</span>
-                </a>
-              </div>
-
-              {/* Billable Checkbox */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  cursor: 'pointer'
-                }}>
-                  <input
-                    type="checkbox"
-                    checked={logEntryData.billable}
-                    onChange={(e) => setLogEntryData({ ...logEntryData, billable: e.target.checked })}
-                    style={{
-                      width: '18px',
-                      height: '18px',
-                      cursor: 'pointer',
-                      accentColor: '#3b82f6'
-                    }}
-                  />
-                  <span style={{
-                    fontSize: '14px',
-                    color: '#374151'
-                  }}>
-                    Billable
-                  </span>
-                </label>
-              </div>
-
-              {/* User Field */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#374151',
-                  display: 'block',
-                  marginBottom: '6px'
-                }}>
-                  User<span style={{ color: '#156372' }}>*</span>
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <select
-                    value={logEntryData.user}
-                    onChange={(e) => setLogEntryData({ ...logEntryData, user: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 36px 10px 12px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      fontSize: '14px',
-                      outline: 'none',
-                      appearance: 'none',
-                      cursor: 'pointer',
-                      backgroundColor: 'white'
-                    }}
-                    onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                    onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                  >
-                    <option value="">Select user</option>
-                    <option value="tabanaaaa">tabanaaaa</option>
-                    <option value="user2">user2</option>
-                    <option value="user3">user3</option>
-                  </select>
-                  <span style={{
-                    position: 'absolute',
-                    right: '12px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    pointerEvents: 'none',
-                    color: '#6b7280'
-                  }}>Ã¢â€“Â¼</span>
-                </div>
-              </div>
-
-              {/* Notes Field */}
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#374151',
-                  display: 'block',
-                  marginBottom: '6px'
-                }}>
-                  Notes
-                </label>
-                <textarea
-                  value={logEntryData.notes}
-                  onChange={(e) => setLogEntryData({ ...logEntryData, notes: e.target.value })}
-                  placeholder="Add notes"
-                  rows="4"
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    outline: 'none',
-                    resize: 'vertical',
-                    fontFamily: 'inherit'
-                  }}
-                  onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                  onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div style={{
-                display: 'flex',
-                gap: '12px',
-                paddingTop: '16px',
-                borderTop: '1px solid #e5e7eb'
-              }}>
-                <button
-                  onClick={() => {
-                    // Get existing log entries from localStorage
-                    const existingEntries = JSON.parse(localStorage.getItem('timeEntries') || '[]');
-
-                    // Create new log entry
-                    const newEntry = {
-                      id: Date.now().toString(),
-                      date: logEntryData.date || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-                      projectName: logEntryData.projectName || '',
-                      taskName: logEntryData.taskName || '',
-                      timeSpent: logEntryData.timeSpent || '',
-                      billable: logEntryData.billable,
-                      user: logEntryData.user || '',
-                      notes: logEntryData.notes || '',
-                      createdAt: new Date().toISOString()
-                    };
-
-                    // Add to array
-                    existingEntries.push(newEntry);
-
-                    // Save to localStorage
-                    localStorage.setItem('timeEntries', JSON.stringify(existingEntries));
-
-                    // Dispatch custom event to notify other components
-                    window.dispatchEvent(new CustomEvent('timeEntryUpdated'));
-
-                    // Reset form and close
-                    setLogEntryData({
-                      date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-                      projectName: '',
-                      taskName: '',
-                      timeSpent: '',
-                      billable: true,
-                      user: '',
-                      notes: ''
-                    });
-                    setShowLogEntryForm(false);
-
-                    // Navigate to time entries page
-                    navigate('/time-tracking/timesheet/entries');
-                  }}
-                  style={{
-                    padding: '10px 24px',
-                    backgroundColor: '#156372',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    cursor: 'pointer'
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
-                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
-                >
-                  Save
-                </button>
-                <button
-                  onClick={() => {
-                    setShowLogEntryForm(false);
-                    setShowTimerModal(true);
-                  }}
-                  style={{
-                    padding: '10px 24px',
-                    backgroundColor: 'white',
-                    color: '#374151',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    cursor: 'pointer'
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.backgroundColor = '#f9fafb';
-                    e.currentTarget.style.borderColor = '#9ca3af';
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.backgroundColor = 'white';
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                  }}
-                >
-                  Start Timer
-                </button>
-                <button
-                  onClick={() => setShowLogEntryForm(false)}
-                  style={{
-                    padding: '10px 24px',
-                    backgroundColor: 'white',
-                    color: '#374151',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    cursor: 'pointer'
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.backgroundColor = '#f9fafb';
-                    e.currentTarget.style.borderColor = '#9ca3af';
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.backgroundColor = 'white';
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
+            <div className="flex items-center justify-end gap-3 px-5 py-4">
+              <button
+                type="button"
+                onClick={closeDeleteCommentModal}
+                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteComment}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Timer Modal - START TIMER */}
-      {showTimerModal && (
+      {showTimesheetColumnsModal && (
         <div
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowTimerModal(false);
-            }
-          }}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-            padding: '20px'
-          }}
+          className="fixed inset-0 z-[2100] flex items-start justify-center bg-black/40 pt-16"
+          onClick={handleCloseTimesheetColumnsModal}
         >
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            width: '100%',
-            maxWidth: '500px',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
-            padding: '24px'
-          }}>
-            {/* Header */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginBottom: '32px',
-              position: 'relative'
-            }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}>
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="10" cy="10" r="9" stroke="#374151" strokeWidth="1.5" />
-                  <path d="M10 6v4l3 2" stroke="#374151" strokeWidth="1.5" strokeLinecap="round" />
-                </svg>
-                <h2 style={{
-                  fontSize: '18px',
-                  fontWeight: '600',
-                  color: '#1f2937',
-                  margin: 0
-                }}>
-                  START TIMER
-                </h2>
+          <div
+            className="w-full max-w-[450px] rounded-lg bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+              <div className="flex items-center gap-2 text-[15px] font-medium text-slate-800">
+                <SlidersHorizontal size={14} className="text-slate-500" />
+                <span>Customize Columns</span>
               </div>
-              <button
-                onClick={() => setShowTimerModal(false)}
-                style={{
-                  position: 'absolute',
-                  right: 0,
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '24px',
-                  cursor: 'pointer',
-                  color: '#1f2937',
-                  padding: '4px',
-                  lineHeight: 1,
-                  width: '32px',
-                  height: '32px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                Ãƒâ€”
-              </button>
-            </div>
-
-            {/* Timer Display */}
-            <div style={{
-              textAlign: 'center',
-              marginBottom: '24px'
-            }}>
-              <div style={{
-                fontSize: '36px',
-                fontWeight: '700',
-                color: '#1f2937',
-                letterSpacing: '2px'
-              }}>
-                00h : 00m : 00s
-              </div>
-            </div>
-
-            {/* Associate Project Link */}
-            {!showProjectFields && (
-              <div style={{ marginBottom: '24px' }}>
-                <a
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setShowProjectFields(true);
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    color: '#156372',
-                    textDecoration: 'none',
-                    fontSize: '14px',
-                    cursor: 'pointer'
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.textDecoration = 'none'}
-                  onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M8 2l4 4-4 4M4 8h8" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  Associate Project
-                </a>
-              </div>
-            )}
-
-            {/* Project Name Field - Show when Associate Project is clicked */}
-            {showProjectFields && (
-              <>
-                <div style={{ marginBottom: '20px' }}>
-                  <label style={{
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    color: '#374151',
-                    display: 'block',
-                    marginBottom: '6px'
-                  }}>
-                    Project Name<span style={{ color: '#156372' }}>*</span>
-                  </label>
-                  <div style={{ position: 'relative' }} ref={projectDropdownRef}>
-                    <select
-                      value={selectedProjectForTimer}
-                      onChange={(e) => {
-                        setSelectedProjectForTimer(e.target.value);
-                        setSelectedTaskForTimer(''); // Reset task when project changes
-                        setShowProjectDropdown(false);
-                      }}
-                      onFocus={(e) => {
-                        setShowProjectDropdown(true);
-                        e.currentTarget.style.borderColor = '#3b82f6';
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '10px 36px 10px 12px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                        outline: 'none',
-                        appearance: 'none',
-                        cursor: 'pointer',
-                        backgroundColor: 'white'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                      onMouseLeave={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                      onBlur={() => setTimeout(() => setShowProjectDropdown(false), 200)}
-                    >
-                      <option value="">Select a project</option>
-                      {projects.map((project) => (
-                        <option key={project.id} value={project.projectName}>
-                          {project.projectName}
-                        </option>
-                      ))}
-                    </select>
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 12 12"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                      style={{
-                        position: 'absolute',
-                        right: '12px',
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        pointerEvents: 'none',
-                        color: '#6b7280'
-                      }}
-                    >
-                      <path d="M3 4.5l3 3 3-3" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </div>
-                </div>
-
-                {/* Task Name Field */}
-                <div style={{ marginBottom: '20px' }}>
-                  <label style={{
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    color: '#374151',
-                    display: 'block',
-                    marginBottom: '6px'
-                  }}>
-                    Task Name<span style={{ color: '#156372' }}>*</span>
-                  </label>
-                  <div style={{ position: 'relative' }}>
-                    {(() => {
-                      const selectedProject = projects.find(p => p.projectName === selectedProjectForTimer);
-                      const availableTasks = selectedProject?.tasks || [];
-
-                      return (
-                        <select
-                          value={selectedTaskForTimer}
-                          onChange={(e) => setSelectedTaskForTimer(e.target.value)}
-                          disabled={!selectedProjectForTimer}
-                          style={{
-                            width: '100%',
-                            padding: '10px 36px 10px 12px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '6px',
-                            fontSize: '14px',
-                            outline: 'none',
-                            appearance: 'none',
-                            cursor: selectedProjectForTimer ? 'pointer' : 'not-allowed',
-                            backgroundColor: selectedProjectForTimer ? 'white' : '#f9fafb',
-                            color: selectedProjectForTimer ? '#1f2937' : '#9ca3af'
-                          }}
-                          onFocus={(e) => {
-                            if (selectedProjectForTimer) {
-                              e.currentTarget.style.borderColor = '#3b82f6';
-                            }
-                          }}
-                          onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                        >
-                          <option value="">Select task</option>
-                          {availableTasks.map((task, index) => (
-                            <option key={index} value={task.taskName || ''}>
-                              {task.taskName || 'Untitled Task'}
-                            </option>
-                          ))}
-                        </select>
-                      );
-                    })()}
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 12 12"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                      style={{
-                        position: 'absolute',
-                        right: '12px',
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        pointerEvents: 'none',
-                        color: '#6b7280'
-                      }}
-                    >
-                      <path d="M3 4.5l3 3 3-3" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* Billable Checkbox */}
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                cursor: 'pointer'
-              }}>
-                <input
-                  type="checkbox"
-                  checked={isBillable}
-                  onChange={(e) => setIsBillable(e.target.checked)}
-                  style={{
-                    width: '18px',
-                    height: '18px',
-                    cursor: 'pointer',
-                    accentColor: '#3b82f6'
-                  }}
-                />
-                <span style={{
-                  fontSize: '14px',
-                  color: '#374151'
-                }}>
-                  Billable
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] text-slate-500">
+                  {new Set([
+                    ...draftTimesheetColumns,
+                    ...timesheetColumnOptions.filter((column) => column.locked).map((column) => column.key),
+                  ]).size} of {timesheetColumnOptions.length} Selected
                 </span>
-              </label>
+                <button
+                  type="button"
+                  onClick={handleCloseTimesheetColumnsModal}
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                  aria-label="Close"
+                >
+                  <X size={14} />
+                </button>
+              </div>
             </div>
 
-            {/* Notes Section */}
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{
-                fontSize: '14px',
-                fontWeight: '500',
-                color: '#374151',
-                display: 'block',
-                marginBottom: '8px'
-              }}>
-                Notes
-              </label>
-              <textarea
-                value={timerNotes}
-                onChange={(e) => setTimerNotes(e.target.value)}
-                placeholder="Add notes"
-                rows="4"
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  outline: 'none',
-                  resize: 'vertical',
-                  fontFamily: 'inherit'
-                }}
-                onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-              />
+            <div className="px-5 py-4">
+              <div className="relative">
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={timesheetColumnsSearchTerm}
+                  onChange={(event) => setTimesheetColumnsSearchTerm(event.target.value)}
+                  placeholder="Search"
+                  className="w-full rounded-md border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
+                />
+              </div>
+
+              <div className="mt-3 max-h-[320px] overflow-y-auto pr-1">
+                {filteredTimesheetColumnOptions.map((column) => {
+                  const checked = column.locked || draftTimesheetColumns.includes(column.key);
+                  return (
+                    <label
+                      key={column.key}
+                      className="mb-2 flex items-center gap-2 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700"
+                    >
+                      <span className="flex h-4 w-4 items-center justify-center text-slate-400">⋮⋮</span>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={column.locked}
+                        onChange={() => handleToggleTimesheetColumn(column.key)}
+                        className="h-4 w-4 cursor-pointer accent-[#156372] disabled:cursor-not-allowed disabled:accent-slate-400"
+                      />
+                      <span className={column.locked ? "text-slate-400" : "text-slate-700"}>{column.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Action Buttons */}
-            <div style={{
-              display: 'flex',
-              gap: '12px'
-            }}>
+            <div className="flex items-center gap-2 border-t border-slate-200 px-5 py-4">
               <button
-                onClick={() => {
-                  // Start the timer and close the modal
-                  setIsTimerRunning(true);
-                  setShowTimerModal(false);
-                }}
-                style={{
-                  flex: 1,
-                  padding: '12px 24px',
-                  backgroundColor: '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: 'pointer'
-                }}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
+                type="button"
+                onClick={handleSaveTimesheetColumns}
+                className="rounded-md bg-[#156372] px-4 py-2 text-sm font-medium text-white hover:bg-[#0f4f5c]"
               >
-                Start Timer
+                Save
               </button>
               <button
-                onClick={() => {
-                  setShowTimerModal(false);
-                  setTimerNotes('');
-                  setSelectedProjectForTimer('');
-                  setSelectedTaskForTimer('');
-                  setIsBillable(true);
-                  setShowProjectFields(false);
-                }}
-                style={{
-                  flex: 1,
-                  padding: '12px 24px',
-                  backgroundColor: '#f3f4f6',
-                  color: '#374151',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  cursor: 'pointer'
-                }}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#e5e7eb'}
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                type="button"
+                onClick={handleCloseTimesheetColumnsModal}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
               >
                 Cancel
               </button>
@@ -6372,879 +2982,495 @@ function TimesheetTable() {
         </div>
       )}
 
-      {/* New Log Entry Form Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[2100] flex items-start justify-center bg-black/40 pt-16 backdrop-blur-none">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3">
+              <div className="h-7 w-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-[12px] font-bold">
+                !
+              </div>
+              <h3 className="text-[15px] font-semibold text-slate-800 flex-1">
+                {getDeleteConfirmTitle()}
+              </h3>
+              <button
+                type="button"
+                className="h-7 w-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                onClick={() => setShowDeleteConfirm(false)}
+                aria-label="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="px-5 py-3 text-[13px] text-slate-600">
+              {getDeleteConfirmMessage()}
+            </div>
+            <div className="flex items-center justify-start gap-2 border-t border-slate-100 px-5 py-3">
+              <button
+                type="button"
+                className="px-4 py-1.5 rounded-md bg-blue-600 text-white text-[12px] hover:bg-blue-700"
+                onClick={handleConfirmDelete}
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                className="px-4 py-1.5 rounded-md border border-slate-300 text-[12px] text-slate-700 hover:bg-slate-50"
+                onClick={() => setShowDeleteConfirm(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showLogEntryForm && (
         <NewLogEntryForm
-          onClose={() => {
-            setShowLogEntryForm(false);
-            setSelectedDateForLogEntry(null);
-          }}
+          onClose={() => setShowLogEntryForm(false)}
           defaultDate={selectedDateForLogEntry}
         />
       )}
 
-      {/* Export Current View Modal */}
-      {showExportCurrentViewModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 2000
-        }}
-          onClick={() => {
-            setShowExportCurrentViewModal(false);
-            setExportCurrentViewStep(1);
+      <StartTimerModal
+        open={showTimerModal}
+        onClose={() => setShowTimerModal(false)}
+        elapsedTime={elapsedTime}
+        defaultProjectName={associatedProject || selectedProjectForTimer}
+        defaultTaskName={selectedTaskForTimer}
+      />
+
+      {isEditingEntry && selectedEntry && (
+        <div
+          className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/50 p-5"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsEditingEntry(false);
+            }
           }}
         >
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            padding: '24px',
-            maxWidth: '700px',
-            width: '90%',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
-          }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '24px'
-            }}>
-              <h2 style={{
-                fontSize: '20px',
-                fontWeight: '600',
-                color: '#111827',
-                margin: 0
-              }}>
-                Export Current View
-              </h2>
-              <button
-                onClick={() => {
-                  setShowExportCurrentViewModal(false);
-                  setExportCurrentViewStep(1);
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: '4px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <X size={20} color="#6b7280" />
-              </button>
-            </div>
-
-            {/* Progress Steps */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '32px',
-              position: 'relative'
-            }}>
-              <div style={{
-                position: 'absolute',
-                top: '12px',
-                left: '0',
-                right: '0',
-                height: '2px',
-                backgroundColor: '#e5e7eb',
-                zIndex: 0
-              }} />
-              {[1, 2, 3].map((step) => (
-                <div key={step} style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  position: 'relative',
-                  zIndex: 1,
-                  flex: 1
-                }}>
-                  <div style={{
-                    width: '24px',
-                    height: '24px',
-                    borderRadius: '50%',
-                    backgroundColor: exportCurrentViewStep >= step ? '#156372' : '#e5e7eb',
-                    color: exportCurrentViewStep >= step ? 'white' : '#9ca3af',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    marginBottom: '8px'
-                  }}>
-                    {exportCurrentViewStep > step ? 'Ã¢Å“â€œ' : step}
-                  </div>
-                  <span style={{
-                    fontSize: '12px',
-                    color: exportCurrentViewStep >= step ? '#156372' : '#9ca3af',
-                    fontWeight: exportCurrentViewStep === step ? '600' : '400'
-                  }}>
-                    {step === 1 ? 'Configure' : step === 2 ? 'Review' : 'Export'}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {/* Step Content */}
-            {exportCurrentViewStep === 1 && (
-              <div>
-                <div style={{
-                  backgroundColor: '#e0f2fe',
-                  border: '1px solid #bae6fd',
-                  borderRadius: '6px',
-                  padding: '12px 16px',
-                  marginBottom: '24px',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '12px'
-                }}>
-                  <Info size={20} color="#156372" style={{ flexShrink: 0, marginTop: '2px' }} />
-                  <p style={{
-                    margin: 0,
-                    fontSize: '14px',
-                    color: '#1e40af',
-                    lineHeight: '1.5'
-                  }}>
-                    Only the current view with its visible columns will be exported from Taban Books in CSV or XLS format.
-                  </p>
-                </div>
-                <div style={{ marginBottom: '24px' }}>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '8px'
-                  }}>
-                    Decimal Format <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
-                  <select
-                    value={exportCurrentViewData.decimalFormat}
-                    onChange={(e) => setExportCurrentViewData({ ...exportCurrentViewData, decimalFormat: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      fontSize: '14px',
-                      color: '#111827',
-                      backgroundColor: 'white',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <option value="1234567.89">1234567.89</option>
-                    <option value="1,234,567.89">1,234,567.89</option>
-                    <option value="1234567,89">1234567,89</option>
-                    <option value="1.234.567,89">1.234.567,89</option>
-                  </select>
-                </div>
-                <div style={{ marginBottom: '24px' }}>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '12px'
-                  }}>
-                    Export File Format <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      cursor: 'pointer',
-                      padding: '10px',
-                      borderRadius: '6px',
-                      border: exportCurrentViewData.fileFormat === 'CSV' ? '2px solid #156372' : '1px solid #e5e7eb',
-                      backgroundColor: exportCurrentViewData.fileFormat === 'CSV' ? 'rgba(21, 99, 114, 0.05)' : 'transparent'
-                    }}>
-                      <input
-                        type="radio"
-                        name="exportFileFormat"
-                        value="CSV"
-                        checked={exportCurrentViewData.fileFormat === 'CSV'}
-                        onChange={(e) => setExportCurrentViewData({ ...exportCurrentViewData, fileFormat: e.target.value })}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          cursor: 'pointer',
-                          accentColor: '#156372'
-                        }}
-                      />
-                      <span style={{ fontSize: '14px', color: '#374151' }}>CSV (Comma Separated Value)</span>
-                    </label>
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      cursor: 'pointer',
-                      padding: '10px',
-                      borderRadius: '6px',
-                      border: exportCurrentViewData.fileFormat === 'XLS' ? '2px solid #156372' : '1px solid #e5e7eb',
-                      backgroundColor: exportCurrentViewData.fileFormat === 'XLS' ? 'rgba(21, 99, 114, 0.05)' : 'transparent'
-                    }}>
-                      <input
-                        type="radio"
-                        name="exportFileFormat"
-                        value="XLS"
-                        checked={exportCurrentViewData.fileFormat === 'XLS'}
-                        onChange={(e) => setExportCurrentViewData({ ...exportCurrentViewData, fileFormat: e.target.value })}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          cursor: 'pointer',
-                          accentColor: '#156372'
-                        }}
-                      />
-                      <span style={{ fontSize: '14px', color: '#374151' }}>XLS (Microsoft Excel 1997-2004 Compatible)</span>
-                    </label>
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      cursor: 'pointer',
-                      padding: '10px',
-                      borderRadius: '6px',
-                      border: exportCurrentViewData.fileFormat === 'XLSX' ? '2px solid #156372' : '1px solid #e5e7eb',
-                      backgroundColor: exportCurrentViewData.fileFormat === 'XLSX' ? 'rgba(21, 99, 114, 0.05)' : 'transparent'
-                    }}>
-                      <input
-                        type="radio"
-                        name="exportFileFormat"
-                        value="XLSX"
-                        checked={exportCurrentViewData.fileFormat === 'XLSX'}
-                        onChange={(e) => setExportCurrentViewData({ ...exportCurrentViewData, fileFormat: e.target.value })}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          cursor: 'pointer',
-                          accentColor: '#156372'
-                        }}
-                      />
-                      <span style={{ fontSize: '14px', color: '#374151' }}>XLSX (Microsoft Excel)</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {exportCurrentViewStep === 2 && (
-              <div>
-                <div style={{
-                  backgroundColor: '#e0f2fe',
-                  border: '1px solid #bae6fd',
-                  borderRadius: '6px',
-                  padding: '12px 16px',
-                  marginBottom: '24px',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '12px'
-                }}>
-                  <Info size={20} color="#156372" style={{ flexShrink: 0, marginTop: '2px' }} />
-                  <p style={{
-                    margin: 0,
-                    fontSize: '14px',
-                    color: '#1e40af',
-                    lineHeight: '1.5'
-                  }}>
-                    Review your export settings before proceeding.
-                  </p>
-                </div>
-                <div style={{
-                  backgroundColor: '#f9fafb',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '6px',
-                  padding: '16px',
-                  marginBottom: '24px'
-                }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#111827', marginBottom: '16px' }}>Export Settings</h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#6b7280', fontSize: '14px' }}>Decimal Format:</span>
-                      <span style={{ color: '#111827', fontSize: '14px', fontWeight: '500' }}>{exportCurrentViewData.decimalFormat}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#6b7280', fontSize: '14px' }}>File Format:</span>
-                      <span style={{ color: '#111827', fontSize: '14px', fontWeight: '500' }}>{exportCurrentViewData.fileFormat}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#6b7280', fontSize: '14px' }}>Records to Export:</span>
-                      <span style={{ color: '#111827', fontSize: '14px', fontWeight: '500' }}>{sortedEntries.length} entries</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {exportCurrentViewStep === 3 && (
-              <div>
-                <div style={{
-                  backgroundColor: '#d1fae5',
-                  border: '1px solid #86efac',
-                  borderRadius: '6px',
-                  padding: '12px 16px',
-                  marginBottom: '24px',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '12px'
-                }}>
-                  <Info size={20} color="#059669" style={{ flexShrink: 0, marginTop: '2px' }} />
-                  <p style={{
-                    margin: 0,
-                    fontSize: '14px',
-                    color: '#047857',
-                    lineHeight: '1.5'
-                  }}>
-                    Your export is ready! Click Export to download the file.
-                  </p>
-                </div>
-                <div style={{
-                  backgroundColor: '#f9fafb',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '6px',
-                  padding: '16px',
-                  marginBottom: '24px'
-                }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#111827', marginBottom: '12px' }}>Export Summary</h3>
-                  <p style={{ fontSize: '14px', color: '#6b7280', margin: 0 }}>
-                    You are about to export {sortedEntries.length} time entries in {exportCurrentViewData.fileFormat} format.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Navigation Buttons */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: '12px',
-              paddingTop: '16px',
-              borderTop: '1px solid #e5e7eb',
-              marginTop: '24px'
-            }}>
-              <button
-                onClick={() => {
-                  if (exportCurrentViewStep === 1) {
-                    setShowExportCurrentViewModal(false);
-                    setExportCurrentViewStep(1);
-                  } else {
-                    setExportCurrentViewStep(exportCurrentViewStep - 1);
-                  }
-                }}
-                style={{
-                  padding: '10px 20px',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '6px',
-                  backgroundColor: '#f3f4f6',
-                  color: '#111827',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500'
-                }}
-              >
-                {exportCurrentViewStep === 1 ? 'Cancel' : 'Previous'}
-              </button>
-              <button
-                onClick={() => {
-                  if (exportCurrentViewStep < 3) {
-                    setExportCurrentViewStep(exportCurrentViewStep + 1);
-                  } else {
-                    exportTimesheets(exportCurrentViewData.fileFormat.toLowerCase(), sortedEntries);
-                    setShowExportCurrentViewModal(false);
-                    setExportCurrentViewStep(1);
-                    toast.success('Export completed');
-                  }
-                }}
-                style={{
-                  padding: '10px 20px',
-                  border: 'none',
-                  borderRadius: '6px',
-                  backgroundColor: '#156372',
-                  color: 'white',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500'
-                }}
-              >
-                {exportCurrentViewStep === 3 ? 'Export' : 'Next >'}
-              </button>
-            </div>
-          </div>
+          <EditLogEntryModal
+            entry={selectedEntry}
+            projects={projects}
+            users={systemUsers.length > 0 ? systemUsers : users}
+            userById={userById}
+            onClose={() => setIsEditingEntry(false)}
+            onSaved={() => {
+              setIsEditingEntry(false);
+              window.dispatchEvent(new CustomEvent('timeEntryUpdated'));
+            }}
+            toHHMM={toHHMM}
+          />
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* Export Projects Modal */}
-      {showExportProjectsModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 2000
-        }}
-          onClick={() => {
-            setShowExportProjectsModal(false);
-            setExportProjectsStep(1);
-          }}
-        >
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            padding: '24px',
-            maxWidth: '700px',
-            width: '90%',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
-          }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '24px'
-            }}>
-              <h2 style={{
-                fontSize: '20px',
-                fontWeight: '600',
-                color: '#111827',
-                margin: 0
-              }}>
-                Export {exportProjectsData.module}
-              </h2>
-              <button
-                onClick={() => {
-                  setShowExportProjectsModal(false);
-                  setExportProjectsStep(1);
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: '4px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <X size={20} color="#6b7280" />
-              </button>
-            </div>
+function EditLogEntryModal({ entry, projects, users, userById, onClose, onSaved, toHHMM }) {
+  const resolveProjectName = () => {
+    const byId = entry?.projectId
+      ? projects.find((p) => p.id === entry.projectId || p._id === entry.projectId)
+      : null;
+    if (byId?.projectName) return byId.projectName;
+    const byNumber = entry?.projectNumber
+      ? projects.find((p) => p.projectNumber === entry.projectNumber)
+      : null;
+    if (byNumber?.projectName) return byNumber.projectName;
+    return entry?.projectName || '';
+  };
 
-            {/* Progress Steps */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '32px',
-              position: 'relative'
-            }}>
-              <div style={{
-                position: 'absolute',
-                top: '12px',
-                left: '0',
-                right: '0',
-                height: '2px',
-                backgroundColor: '#e5e7eb',
-                zIndex: 0
-              }} />
-              {[1, 2, 3].map((step) => (
-                <div key={step} style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  position: 'relative',
-                  zIndex: 1,
-                  flex: 1
-                }}>
-                  <div style={{
-                    width: '24px',
-                    height: '24px',
-                    borderRadius: '50%',
-                    backgroundColor: exportProjectsStep >= step ? '#156372' : '#e5e7eb',
-                    color: exportProjectsStep >= step ? 'white' : '#9ca3af',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    marginBottom: '8px'
-                  }}>
-                    {exportProjectsStep > step ? 'Ã¢Å“â€œ' : step}
+  const resolveUserId = () => {
+    if (entry?.userId) return entry.userId;
+    if (entry?.user && userById?.get && userById.get(String(entry.user))) {
+      return entry.user;
+    }
+    if (entry?.userName) {
+      const match = users.find((u) => (u?.name || u?.fullName || u?.username || u?.email) === entry.userName);
+      return match?._id || match?.id || '';
+    }
+    if (entry?.user) {
+      const match = users.find((u) => (u?.name || u?.fullName || u?.username || u?.email) === entry.user);
+      return match?._id || match?.id || '';
+    }
+    return '';
+  };
+
+  const [form, setForm] = useState({
+    date: entry?.date ? new Date(entry.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+    projectName: resolveProjectName(),
+    taskName: entry?.taskName || entry?.task || '',
+    timeSpent: toHHMM(entry),
+    userId: resolveUserId(),
+    notes: entry?.notes || entry?.description || '',
+    billable: entry?.billable !== undefined ? entry.billable : true,
+  });
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
+  const [showTaskDropdown, setShowTaskDropdown] = useState(false);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [projectSearchTerm, setProjectSearchTerm] = useState('');
+  const [taskSearchTerm, setTaskSearchTerm] = useState('');
+  const [userSearchTerm, setUserSearchTerm] = useState('');
+  const projectDropdownRef = useRef(null);
+  const taskDropdownRef = useRef(null);
+  const userDropdownRef = useRef(null);
+
+  const selectedProject = projects.find((p) => p.projectName === form.projectName);
+  const tasks = selectedProject?.tasks || [];
+  const costPerHour = Number(selectedProject?.billingRate || 0);
+  const currencyCode = String(selectedProject?.currency || "USD").substring(0, 3).toUpperCase();
+  const [h, m] = String(form.timeSpent || "00:00").split(":").map((v) => Number(v) || 0);
+  const totalCost = (h + m / 60) * costPerHour;
+  const filteredProjects = projects.filter((project) => {
+    const query = projectSearchTerm.toLowerCase();
+    if (!query) return true;
+    const projectName = String(project.projectName || '').toLowerCase();
+    const projectCode = String(project.projectNumber || project.projectCode || project.code || project.number || '').toLowerCase();
+    return projectName.includes(query) || projectCode.includes(query);
+  });
+  const filteredTasks = tasks.filter((task) => {
+    const taskName = String(task.taskName || task.name || '').toLowerCase();
+    return taskName.includes(taskSearchTerm.toLowerCase());
+  });
+  const filteredUsers = users.filter((user) => {
+    const displayName = String(user?.name || user?.fullName || user?.username || user?.email || '').toLowerCase();
+    return displayName.includes(userSearchTerm.toLowerCase());
+  });
+
+  return (
+    <div className="w-full max-w-[600px] overflow-hidden rounded-lg bg-white shadow-2xl">
+      <div className="flex items-start justify-between border-b border-gray-200 px-6 pt-6 pb-2">
+        <div>
+          <h2 className="m-0 mb-1 text-xl font-semibold text-gray-900">Edit Log Entry</h2>
+          <p className="m-0 text-xs text-gray-500">Log time instantly using shortcut keys c + t</p>
+        </div>
+        <button onClick={onClose} className="border-none bg-transparent p-1 text-gray-900 hover:text-gray-600">
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="flex flex-col gap-3 p-4">
+        <div className="mb-5">
+          <label className="mb-1.5 block text-sm font-medium text-[#ef4444]">
+            Date<span className="text-red-500">*</span>
+          </label>
+          <input
+            type="date"
+            value={form.date}
+            onChange={(e) => setForm({ ...form, date: e.target.value })}
+            className="w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500"
+          />
+        </div>
+
+        <div className="mb-5">
+          <label className="mb-1.5 block text-sm font-medium text-[#ef4444]">
+            Project Name<span className="text-red-500">*</span>
+          </label>
+          <div className="relative" ref={projectDropdownRef}>
+            <input
+              type="text"
+              value={form.projectName}
+              readOnly
+              onClick={() => {
+                setShowProjectDropdown((open) => !open);
+                setProjectSearchTerm('');
+              }}
+              placeholder="Select a project"
+              className="w-full cursor-pointer rounded-md border border-blue-500 bg-white px-3 py-2.5 pr-9 text-sm text-gray-900 outline-none focus:border-blue-500"
+            />
+            <span
+              className="pointer-events-none absolute right-3 top-[54%] -translate-y-1/2 text-gray-500"
+              style={{ transform: showProjectDropdown ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+            >
+              <ChevronDown size={14} />
+            </span>
+            {showProjectDropdown && (
+              <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border border-gray-300 bg-white shadow-lg">
+                <div className="border-b border-gray-200 p-2">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={projectSearchTerm}
+                      onChange={(e) => setProjectSearchTerm(e.target.value)}
+                      placeholder="Search"
+                      className="w-full rounded-md border border-gray-300 py-2 pl-3 pr-3 text-sm outline-none focus:border-blue-500"
+                      autoFocus
+                    />
                   </div>
-                  <span style={{
-                    fontSize: '12px',
-                    color: exportProjectsStep >= step ? '#156372' : '#9ca3af',
-                    fontWeight: exportProjectsStep === step ? '600' : '400'
-                  }}>
-                    {step === 1 ? 'Configure' : step === 2 ? 'Review' : 'Export'}
-                  </span>
                 </div>
-              ))}
-            </div>
-
-            {/* Step Content */}
-            {exportProjectsStep === 1 && (
-              <div>
-                <div style={{
-                  backgroundColor: '#e0f2fe',
-                  border: '1px solid #bae6fd',
-                  borderRadius: '6px',
-                  padding: '12px 16px',
-                  marginBottom: '24px',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '12px'
-                }}>
-                  <Info size={20} color="#156372" style={{ flexShrink: 0, marginTop: '2px' }} />
-                  <p style={{
-                    margin: 0,
-                    fontSize: '14px',
-                    color: '#1e40af',
-                    lineHeight: '1.5'
-                  }}>
-                    You can export your data from Taban Books in CSV, XLS or XLSX format.
-                  </p>
-                </div>
-                <div style={{ marginBottom: '24px' }}>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '8px'
-                  }}>
-                    Module <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
-                  <select
-                    value={exportProjectsData.module}
-                    onChange={(e) => setExportProjectsData({ ...exportProjectsData, module: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      fontSize: '14px',
-                      color: '#111827',
-                      backgroundColor: 'white',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <option value="Projects">Projects</option>
-                    <option value="Project Tasks">Project Tasks</option>
-                    <option value="Timesheet">Timesheet</option>
-                  </select>
-                </div>
-                <div style={{ marginBottom: '24px' }}>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '8px'
-                  }}>
-                    Decimal Format <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
-                  <select
-                    value={exportProjectsData.decimalFormat}
-                    onChange={(e) => setExportProjectsData({ ...exportProjectsData, decimalFormat: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      fontSize: '14px',
-                      color: '#111827',
-                      backgroundColor: 'white',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <option value="1234567.89">1234567.89</option>
-                    <option value="1,234,567.89">1,234,567.89</option>
-                    <option value="1234567,89">1234567,89</option>
-                    <option value="1.234.567,89">1.234.567,89</option>
-                  </select>
-                </div>
-                <div style={{ marginBottom: '24px' }}>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '12px'
-                  }}>
-                    Export File Format <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      cursor: 'pointer',
-                      padding: '10px',
-                      borderRadius: '6px',
-                      border: exportProjectsData.fileFormat === 'CSV' ? '2px solid #156372' : '1px solid #e5e7eb',
-                      backgroundColor: exportProjectsData.fileFormat === 'CSV' ? 'rgba(21, 99, 114, 0.05)' : 'transparent'
-                    }}>
-                      <input
-                        type="radio"
-                        name="exportProjectsFileFormat"
-                        value="CSV"
-                        checked={exportProjectsData.fileFormat === 'CSV'}
-                        onChange={(e) => setExportProjectsData({ ...exportProjectsData, fileFormat: e.target.value })}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          cursor: 'pointer',
-                          accentColor: '#156372'
-                        }}
-                      />
-                      <span style={{ fontSize: '14px', color: '#374151' }}>CSV (Comma Separated Value)</span>
-                    </label>
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      cursor: 'pointer',
-                      padding: '10px',
-                      borderRadius: '6px',
-                      border: exportProjectsData.fileFormat === 'XLS' ? '2px solid #156372' : '1px solid #e5e7eb',
-                      backgroundColor: exportProjectsData.fileFormat === 'XLS' ? 'rgba(21, 99, 114, 0.05)' : 'transparent'
-                    }}>
-                      <input
-                        type="radio"
-                        name="exportProjectsFileFormat"
-                        value="XLS"
-                        checked={exportProjectsData.fileFormat === 'XLS'}
-                        onChange={(e) => setExportProjectsData({ ...exportProjectsData, fileFormat: e.target.value })}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          cursor: 'pointer',
-                          accentColor: '#156372'
-                        }}
-                      />
-                      <span style={{ fontSize: '14px', color: '#374151' }}>XLS (Microsoft Excel 1997-2004 Compatible)</span>
-                    </label>
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      cursor: 'pointer',
-                      padding: '10px',
-                      borderRadius: '6px',
-                      border: exportProjectsData.fileFormat === 'XLSX' ? '2px solid #156372' : '1px solid #e5e7eb',
-                      backgroundColor: exportProjectsData.fileFormat === 'XLSX' ? 'rgba(21, 99, 114, 0.05)' : 'transparent'
-                    }}>
-                      <input
-                        type="radio"
-                        name="exportProjectsFileFormat"
-                        value="XLSX"
-                        checked={exportProjectsData.fileFormat === 'XLSX'}
-                        onChange={(e) => setExportProjectsData({ ...exportProjectsData, fileFormat: e.target.value })}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          cursor: 'pointer',
-                          accentColor: '#156372'
-                        }}
-                      />
-                      <span style={{ fontSize: '14px', color: '#374151' }}>XLSX (Microsoft Excel)</span>
-                    </label>
-                  </div>
+                <div className="max-h-[180px] overflow-auto py-1">
+                  {filteredProjects.length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-gray-500">No projects found</div>
+                  ) : (
+                    filteredProjects.map((project) => {
+                      const projectName = project.projectName || 'Untitled Project';
+                      const projectCode = String(project.projectNumber || project.projectCode || project.code || project.number || '').trim();
+                      const label = projectCode ? `${projectName} (${projectCode})` : projectName;
+                      const isActive = form.projectName === projectName;
+                      return (
+                        <button
+                          key={project.id || project._id || projectName}
+                          type="button"
+                          onClick={() => {
+                            setForm({ ...form, projectName, taskName: '' });
+                            setShowProjectDropdown(false);
+                            setProjectSearchTerm('');
+                          }}
+                          className={`mx-2 flex w-[calc(100%-16px)] items-center justify-between rounded px-3 py-2 text-left text-sm ${
+                            isActive ? 'text-gray-700' : 'text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          <span className="truncate">{label}</span>
+                          {isActive && <span className="ml-3 font-semibold">✓</span>}
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             )}
-
-            {exportProjectsStep === 2 && (
-              <div>
-                <div style={{
-                  backgroundColor: '#e0f2fe',
-                  border: '1px solid #bae6fd',
-                  borderRadius: '6px',
-                  padding: '12px 16px',
-                  marginBottom: '24px',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '12px'
-                }}>
-                  <Info size={20} color="#156372" style={{ flexShrink: 0, marginTop: '2px' }} />
-                  <p style={{
-                    margin: 0,
-                    fontSize: '14px',
-                    color: '#1e40af',
-                    lineHeight: '1.5'
-                  }}>
-                    Review your export settings before proceeding.
-                  </p>
-                </div>
-                <div style={{
-                  backgroundColor: '#f9fafb',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '6px',
-                  padding: '16px',
-                  marginBottom: '24px'
-                }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#111827', marginBottom: '16px' }}>Export Settings</h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#6b7280', fontSize: '14px' }}>Module:</span>
-                      <span style={{ color: '#111827', fontSize: '14px', fontWeight: '500' }}>{exportProjectsData.module}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#6b7280', fontSize: '14px' }}>Decimal Format:</span>
-                      <span style={{ color: '#111827', fontSize: '14px', fontWeight: '500' }}>{exportProjectsData.decimalFormat}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#6b7280', fontSize: '14px' }}>File Format:</span>
-                      <span style={{ color: '#111827', fontSize: '14px', fontWeight: '500' }}>{exportProjectsData.fileFormat}</span>
-                    </div>
-                    {exportProjectsData.exportTemplate && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#6b7280', fontSize: '14px' }}>Export Template:</span>
-                        <span style={{ color: '#111827', fontSize: '14px', fontWeight: '500' }}>{exportProjectsData.exportTemplate}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {exportProjectsStep === 3 && (
-              <div>
-                <div style={{
-                  backgroundColor: '#d1fae5',
-                  border: '1px solid #86efac',
-                  borderRadius: '6px',
-                  padding: '12px 16px',
-                  marginBottom: '24px',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '12px'
-                }}>
-                  <Info size={20} color="#059669" style={{ flexShrink: 0, marginTop: '2px' }} />
-                  <p style={{
-                    margin: 0,
-                    fontSize: '14px',
-                    color: '#047857',
-                    lineHeight: '1.5'
-                  }}>
-                    Your export is ready! Click Export to download the file.
-                  </p>
-                </div>
-                <div style={{
-                  backgroundColor: '#f9fafb',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '6px',
-                  padding: '16px',
-                  marginBottom: '24px'
-                }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#111827', marginBottom: '12px' }}>Export Summary</h3>
-                  <p style={{ fontSize: '14px', color: '#6b7280', margin: 0 }}>
-                    You are about to export {exportProjectsData.module} data in {exportProjectsData.fileFormat} format.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Navigation Buttons */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: '12px',
-              paddingTop: '16px',
-              borderTop: '1px solid #e5e7eb',
-              marginTop: '24px'
-            }}>
-              <button
-                onClick={() => {
-                  if (exportProjectsStep === 1) {
-                    setShowExportProjectsModal(false);
-                    setExportProjectsStep(1);
-                  } else {
-                    setExportProjectsStep(exportProjectsStep - 1);
-                  }
-                }}
-                style={{
-                  padding: '10px 20px',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '6px',
-                  backgroundColor: '#f3f4f6',
-                  color: '#111827',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500'
-                }}
-              >
-                {exportProjectsStep === 1 ? 'Cancel' : 'Previous'}
-              </button>
-              <button
-                onClick={() => {
-                  if (exportProjectsStep < 3) {
-                    setExportProjectsStep(exportProjectsStep + 1);
-                  } else {
-                    if (exportProjectsData.module === "Timesheet") {
-                      exportTimesheets(exportProjectsData.fileFormat.toLowerCase(), timeEntries);
-                    } else {
-                      toast.success(`Export ${exportProjectsData.module} functionality will be implemented`);
-                    }
-                    setShowExportProjectsModal(false);
-                    setExportProjectsStep(1);
-                    toast.success('Export completed');
-                  }
-                }}
-                style={{
-                  padding: '10px 20px',
-                  border: 'none',
-                  borderRadius: '6px',
-                  backgroundColor: '#156372',
-                  color: 'white',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500'
-                }}
-              >
-                {exportProjectsStep === 3 ? 'Export' : 'Next >'}
-              </button>
-            </div>
           </div>
         </div>
-      )}
 
+        <div className="mb-5">
+          <label className="mb-1.5 block text-sm font-medium text-[#ef4444]">
+            Task Name<span className="text-red-500">*</span>
+          </label>
+          <div className="relative" ref={taskDropdownRef}>
+            <input
+              type="text"
+              value={form.taskName}
+              readOnly
+              onClick={() => {
+                if (form.projectName) {
+                  setShowTaskDropdown((open) => !open);
+                  setTaskSearchTerm('');
+                }
+              }}
+              disabled={!form.projectName}
+              placeholder={form.projectName ? 'Select task' : 'Select project first'}
+              className={`w-full cursor-pointer rounded-md border bg-white px-3 py-2.5 pr-9 text-sm outline-none ${
+                form.projectName ? 'border-blue-500 text-gray-900 focus:border-blue-500' : 'cursor-not-allowed border-gray-300 text-gray-400'
+              }`}
+            />
+            <span
+              className="pointer-events-none absolute right-3 top-[54%] -translate-y-1/2 text-gray-500"
+              style={{ transform: showTaskDropdown ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+            >
+              <ChevronDown size={14} />
+            </span>
+            {showTaskDropdown && form.projectName && (
+              <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border border-gray-300 bg-white shadow-lg">
+                <div className="border-b border-gray-200 p-2">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={taskSearchTerm}
+                      onChange={(e) => setTaskSearchTerm(e.target.value)}
+                      placeholder="Search"
+                      className="w-full rounded-md border border-gray-300 py-2 pl-8 pr-3 text-sm outline-none focus:border-blue-500"
+                      autoFocus
+                    />
+                    <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-[#8b5cf6]" />
+                  </div>
+                </div>
+                <div className="max-h-[180px] overflow-auto py-1">
+                  {filteredTasks.length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-gray-500">No tasks found</div>
+                  ) : (
+                    filteredTasks.map((task, index) => {
+                      const taskName = task.taskName || task.name || `Task ${index + 1}`;
+                      const isActive = form.taskName === taskName;
+                      return (
+                        <button
+                          type="button"
+                          key={`${taskName}-${index}`}
+                          onClick={() => {
+                            setForm({ ...form, taskName });
+                            setShowTaskDropdown(false);
+                            setTaskSearchTerm('');
+                          }}
+                          className={`mx-2 flex w-[calc(100%-16px)] items-center justify-between rounded px-3 py-2 text-left text-sm ${
+                            isActive ? 'text-gray-700' : 'text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          <span className="truncate">{taskName}</span>
+                          {isActive && <span className="ml-3 font-semibold">✓</span>}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mb-5">
+          <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-[#ef4444]">
+            Time Spent<span className="text-red-500">*</span>
+            <div className="flex h-[18px] w-[18px] items-center justify-center rounded-full border border-gray-300 text-xs text-gray-500">?</div>
+          </label>
+          <input
+            type="text"
+            value={form.timeSpent}
+            onChange={(e) => setForm({ ...form, timeSpent: e.target.value })}
+            placeholder="HH:MM"
+            className="w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500"
+          />
+        </div>
+
+        <div className="mb-5">
+          <label className="mb-1.5 block text-sm font-medium text-[#ef4444]">
+            User<span className="text-red-500">*</span>
+          </label>
+          <div className="relative z-[60]" ref={userDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setShowUserDropdown((open) => !open)}
+              className="flex w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 py-2.5 pr-3 text-left text-sm text-gray-900 outline-none focus:border-blue-500"
+            >
+              <span className={form.userId ? "text-gray-900" : "text-gray-400"}>
+                {form.userId
+                  ? (users.find((u, idx) => (u?._id || u?.id || u?.userId || String(idx)) === form.userId)?.name ||
+                    users.find((u, idx) => (u?._id || u?.id || u?.userId || String(idx)) === form.userId)?.fullName ||
+                    users.find((u, idx) => (u?._id || u?.id || u?.userId || String(idx)) === form.userId)?.username ||
+                    users.find((u, idx) => (u?._id || u?.id || u?.userId || String(idx)) === form.userId)?.email ||
+                    "Select user")
+                  : "Select user"}
+              </span>
+              <ChevronDown size={14} className={`text-gray-500 transition-transform ${showUserDropdown ? "rotate-180" : ""}`} />
+            </button>
+            {showUserDropdown && (
+              <div className="absolute top-full z-[9999] mt-1 w-full overflow-hidden rounded-md border border-gray-300 bg-white shadow-xl">
+                <div className="border-b border-gray-200 p-2">
+                  <div className="relative">
+                    <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={userSearchTerm}
+                      onChange={(e) => setUserSearchTerm(e.target.value)}
+                      placeholder="Search"
+                      className="w-full rounded-md border border-blue-400 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="max-h-[140px] overflow-y-auto">
+                  {filteredUsers.length > 0 ? (
+                    filteredUsers.map((user, idx) => {
+                      const id = user?._id || user?.id || user?.userId || String(idx);
+                      const name = user?.name || user?.fullName || user?.username || user?.email || 'User';
+                      const selected = form.userId === id;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => {
+                            setForm({ ...form, userId: id });
+                            setShowUserDropdown(false);
+                            setUserSearchTerm('');
+                          }}
+                          className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${
+                            selected ? "text-gray-700" : "hover:bg-blue-50 text-gray-700"
+                          }`}
+                        >
+                          <span>{name}</span>
+                          {selected && <span>✓</span>}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="px-3 py-2 text-sm text-gray-500">No users found</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mb-5 text-sm text-gray-800">
+          <div className="font-medium text-gray-700">Total Cost</div>
+          <div className="mt-1 text-gray-700">
+            {currencyCode} {totalCost.toFixed(2)} for {form.timeSpent || "00:00"} hours (Cost Per Hour: {currencyCode} {costPerHour.toFixed(2)})
+          </div>
+        </div>
+
+        <div className="mb-6">
+          <label className="mb-1.5 block text-sm font-medium text-gray-700">Notes</label>
+          <textarea
+            value={form.notes}
+            onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            placeholder="Add notes"
+            rows={4}
+            className="w-full resize-y rounded-md border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500"
+          />
+        </div>
+
+        <div className="flex items-center gap-3 border-t border-gray-200 pt-4">
+          <button
+            onClick={async () => {
+              if (!form.date || !form.projectName || !form.taskName || !form.timeSpent) {
+                toast.error("Please fill in all required fields");
+                return;
+              }
+              const projectObj = projects.find((p) => p.projectName === form.projectName);
+              const [hours, minutes] = String(form.timeSpent).split(":").map(Number);
+              const payload = {
+                project: projectObj?.id || projectObj?._id || entry.projectId,
+                user: form.userId || entry.userId || entry.user,
+                date: new Date(form.date).toISOString(),
+                hours: hours || 0,
+                minutes: minutes || 0,
+                description: form.notes || '',
+                billable: form.billable,
+                task: form.taskName || '',
+              };
+              try {
+                await timeEntriesAPI.update(entry.id, payload);
+                toast.success("Time entry updated successfully!");
+                onSaved();
+              } catch (error) {
+                toast.error("Failed to update time entry");
+              }
+            }}
+            className="cursor-pointer rounded-md border-none px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+            style={{ background: "#2563eb" }}
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            className="cursor-pointer rounded-md border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
 export default function TimeTrackingPage() {
   const location = useLocation();
-  const { hasPermission, loading: permissionsLoading } = usePermissions();
+  const navigate = useNavigate();
+  const {
+    loading: permissionsLoading,
+    canView,
+    canCreate,
+    canEdit,
+  } = usePermissions() as any;
 
-  const canViewTimeTracking = hasPermission("timesheets", "projects", "view");
-  const canCreateTimeTracking = hasPermission("timesheets", "projects", "create");
-  const canEditTimeTracking = hasPermission("timesheets", "projects", "edit");
+  const canViewTimeTracking = typeof canView === "function" ? canView("timesheets", "projects") : true;
+  const canCreateTimeTracking = typeof canCreate === "function" ? canCreate("timesheets", "projects") : true;
+  const canEditTimeTracking = typeof canEdit === "function" ? canEdit("timesheets", "projects") : true;
+
+  useEffect(() => {
+    const message = location.state?.toast;
+    if (message) {
+      toast.success(message);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.pathname, location.state, navigate]);
 
   if (permissionsLoading) {
     return (
@@ -7269,21 +3495,22 @@ export default function TimeTrackingPage() {
         <Route path="projects" element={<TimeTrackingProject />} />
         <Route path="projects/new" element={canCreateTimeTracking ? <NewProjectForm /> : <AccessDenied />} />
         <Route path="projects/:projectId" element={<ProjectDetailPage />} />
-        <Route path="projects/:projectId/edit" element={canEditTimeTracking ? <EditProjectForm /> : <AccessDenied />} />
+        <Route path="projects/:projectId/edit" element={canEditTimeTracking ? <NewProjectForm /> : <AccessDenied />} />
         <Route path="projects/import" element={canCreateTimeTracking ? <ImportProjects /> : <AccessDenied />} />
         <Route path="projects/import-tasks" element={canCreateTimeTracking ? <ImportProjectTasks /> : <AccessDenied />} />
-        <Route path="tasks" element={<TimeTrackingProject />} />
+        <Route path="tasks" element={<ProjectsPage />} />
         <Route path="timesheet" element={<TimesheetTable />} />
         <Route path="timesheet/entries" element={<TimeEntriesPage />} />
         <Route path="timesheet/weekly" element={<WeeklyTimeLog />} />
         <Route path="timesheet/import" element={canCreateTimeTracking ? <ImportTimesheets /> : <AccessDenied />} />
+        <Route path="approvals" element={<Aptouvals />} />
+        <Route path="customer-approvals" element={<CustomerApproval />} />
+        <Route path="customer-approvals/new" element={<NewCustomerApproval />} />
         <Route
           path="*"
-          element={location.pathname === "/time-tracking" ? <TimeTrackingProject /> : <TimeTrackingProject />}
+          element={<ProjectsPage />}
         />
       </Routes>
     </div>
   );
 }
-
-

@@ -2886,7 +2886,7 @@ export default function TimeTrackingProject() {
                   }}>
                     <th style={{
                       padding: "12px 16px",
-                      textAlign: "left",
+                      textAlign: "center",
                       fontSize: "12px",
                       fontWeight: "600",
                       color: "#6b7280",
@@ -2894,6 +2894,9 @@ export default function TimeTrackingProject() {
                       letterSpacing: "0.5px",
                       width: "40px"
                     }}>
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: "block", margin: "0 auto 6px" }}>
+                        <path d="M3 4h10M5 8h6M6.5 12h3" stroke="#156372" strokeWidth="1.5" strokeLinecap="round" />
+                      </svg>
                     </th>
                     <th style={{
                       padding: "12px 16px",
@@ -2909,20 +2912,21 @@ export default function TimeTrackingProject() {
                         alignItems: "center",
                         gap: "8px"
                       }}>
-                        <input
-                          type="checkbox"
-                          checked={selectedProjects.length === filteredAndSortedProjects.length && filteredAndSortedProjects.length > 0}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedProjects(filteredAndSortedProjects.map(p => p.id));
-                            } else {
-                              setSelectedProjects([]);
-                            }
-                          }}
-                          style={{
-                            cursor: "pointer"
-                          }}
-                        />
+                      <input
+                        type="checkbox"
+                        checked={selectedProjects.length === filteredAndSortedProjects.length && filteredAndSortedProjects.length > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedProjects(filteredAndSortedProjects.map(p => p.id));
+                          } else {
+                            setSelectedProjects([]);
+                          }
+                        }}
+                        style={{
+                          cursor: "pointer",
+                          accentColor: "#a855f7"
+                        }}
+                      />
                         CUSTOMER NAME
                       </div>
                     </th>
@@ -2995,7 +2999,8 @@ export default function TimeTrackingProject() {
                   >
                     <td style={{
                       padding: "12px 16px",
-                      fontSize: "14px"
+                      fontSize: "14px",
+                      textAlign: "center"
                     }}>
                       <input
                         type="checkbox"
@@ -3009,7 +3014,8 @@ export default function TimeTrackingProject() {
                         }}
                         onClick={(e) => e.stopPropagation()}
                         style={{
-                          cursor: "pointer"
+                          cursor: "pointer",
+                          accentColor: "#a855f7"
                         }}
                       />
                     </td>
@@ -3559,7 +3565,7 @@ export default function TimeTrackingProject() {
                     width: '18px',
                     height: '18px',
                     cursor: 'pointer',
-                    accentColor: '#156372'
+                    accentColor: '#a855f7'
                   }}
                 />
                 <span style={{
@@ -4187,7 +4193,7 @@ export default function TimeTrackingProject() {
                       width: '18px',
                       height: '18px',
                       cursor: 'pointer',
-                      accentColor: '#156372'
+                      accentColor: '#a855f7'
                     }}
                   />
                   <span style={{ fontSize: '14px', color: '#374151' }}>CSV (Comma Separated Value)</span>
@@ -4212,7 +4218,7 @@ export default function TimeTrackingProject() {
                       width: '18px',
                       height: '18px',
                       cursor: 'pointer',
-                      accentColor: '#156372'
+                      accentColor: '#a855f7'
                     }}
                   />
                   <span style={{ fontSize: '14px', color: '#374151' }}>XLS (Microsoft Excel 1997-2004 Compatible)</span>
@@ -4237,7 +4243,7 @@ export default function TimeTrackingProject() {
                       width: '18px',
                       height: '18px',
                       cursor: 'pointer',
-                      accentColor: '#156372'
+                      accentColor: '#a855f7'
                     }}
                   />
                   <span style={{ fontSize: '14px', color: '#374151' }}>XLSX (Microsoft Excel)</span>
@@ -4581,7 +4587,7 @@ export default function TimeTrackingProject() {
                       width: '18px',
                       height: '18px',
                       cursor: 'pointer',
-                      accentColor: '#156372'
+                      accentColor: '#a855f7'
                     }}
                   />
                   <span style={{ fontSize: '14px', color: '#374151' }}>CSV (Comma Separated Value)</span>
@@ -4606,7 +4612,7 @@ export default function TimeTrackingProject() {
                       width: '18px',
                       height: '18px',
                       cursor: 'pointer',
-                      accentColor: '#156372'
+                      accentColor: '#a855f7'
                     }}
                   />
                   <span style={{ fontSize: '14px', color: '#374151' }}>XLS (Microsoft Excel 1997-2004 Compatible)</span>
@@ -4631,7 +4637,7 @@ export default function TimeTrackingProject() {
                       width: '18px',
                       height: '18px',
                       cursor: 'pointer',
-                      accentColor: '#156372'
+                      accentColor: '#a855f7'
                     }}
                   />
                   <span style={{ fontSize: '14px', color: '#374151' }}>XLSX (Microsoft Excel)</span>
@@ -4655,7 +4661,7 @@ export default function TimeTrackingProject() {
                     width: '18px',
                     height: '18px',
                     cursor: 'pointer',
-                    accentColor: '#156372'
+                      accentColor: '#a855f7'
                   }}
                 />
                 <span style={{ fontSize: '14px', color: '#374151' }}>
