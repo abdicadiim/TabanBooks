@@ -99,7 +99,14 @@ export const getItemRate = (item: Item, fallback = 0) =>
 
 export const getItemDisplay = (item: Item, rateFallback = DEFAULT_DISPLAY_COST) => {
   const selectedItem = item.item || item.selectedItem || {};
-  const quantityAdjusted = toNumber(item.quantityAdjusted);
+  const stockQuantity = toNumber(item.quantityOnHand ?? item.quantityAvailable ?? item.stockQuantity ?? item.quantity ?? 0);
+  const newQuantityOnHand = toNumber(item.newQuantityOnHand ?? item.newQuantity ?? 0);
+  const quantityAdjusted =
+    Number.isFinite(Number(item.quantityAdjusted))
+      ? toNumber(item.quantityAdjusted)
+      : newQuantityOnHand !== 0
+        ? newQuantityOnHand - stockQuantity
+        : 0;
   const rate = getItemRate(item, rateFallback);
 
   return {
@@ -127,7 +134,14 @@ export const resolveJournalLines = (adjustment: Adjustment | null | undefined, i
   let totalDecreaseAmount = 0;
 
   itemRows.forEach((item) => {
-    const quantity = toNumber(item.quantityAdjusted);
+    const stockQuantity = toNumber(item.quantityOnHand ?? item.quantityAvailable ?? item.stockQuantity ?? item.quantity ?? 0);
+    const newQuantityOnHand = toNumber(item.newQuantityOnHand ?? item.newQuantity ?? 0);
+    const quantity =
+      Number.isFinite(Number(item.quantityAdjusted))
+        ? toNumber(item.quantityAdjusted)
+        : newQuantityOnHand !== 0
+          ? newQuantityOnHand - stockQuantity
+          : 0;
     const rate = getItemRate(item);
     const amount = Math.abs(quantity * rate);
 

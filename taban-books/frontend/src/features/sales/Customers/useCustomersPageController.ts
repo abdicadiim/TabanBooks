@@ -1475,7 +1475,8 @@ export default function useCustomersPageController() {
       search: "",
     };
     const queryKey = customerQueryKeys.list(queryParams);
-    const cachedResult = queryClient.getQueryData<CustomersListQueryResult>(queryKey);
+    const canUseQueryClient = Boolean(queryClient && typeof queryClient.getQueryData === "function" && typeof queryClient.setQueryData === "function");
+    const cachedResult = canUseQueryClient ? queryClient.getQueryData<CustomersListQueryResult>(queryKey) : null;
     const shouldShowBlockingLoader = !rowRefreshOnly && customers.length === 0 && !cachedResult;
 
     try {
@@ -1489,7 +1490,9 @@ export default function useCustomersPageController() {
       }
 
       const response = await fetchCustomersList(queryParams);
-      queryClient.setQueryData(queryKey, response);
+      if (canUseQueryClient) {
+        queryClient.setQueryData(queryKey, response);
+      }
 
       applyCustomerListResult(response);
     } catch (error: any) {

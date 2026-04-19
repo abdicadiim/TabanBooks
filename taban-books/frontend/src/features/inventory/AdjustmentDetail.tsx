@@ -276,7 +276,7 @@ export default function AdjustmentDetail({
 
   const handleDeleteRequest = () => {
     setMoreMenuOpen(false);
-    setDeleteModalOpen(true);
+    void confirmDelete();
   };
 
   const handleClone = async () => {
@@ -333,7 +333,6 @@ export default function AdjustmentDetail({
 
     try {
       await inventoryAdjustmentsAPI.delete(currentAdjustmentId);
-      setDeleteModalOpen(false);
       toast.success("Adjustment deleted successfully");
       await runCallback(onDelete);
       await runCallback(onRefresh);

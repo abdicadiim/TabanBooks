@@ -79,6 +79,7 @@ function InventoryPageContent() {
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<DeleteConfirmModalState>({ open: false, count: 0, itemIds: [] });
+  const [periodMenuPos, setPeriodMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   // Format date for display
   const formatDate = (dateString: string | Date | null | undefined): string => {
