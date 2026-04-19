@@ -14,6 +14,7 @@ import {
   DeleteConfirmationModal,
   ImageViewerModal,
 } from "./adjustment-detail/AdjustmentDetailPanels";
+import { getTodayDate } from "./new-adjustment-form/utils";
 import type { Adjustment, Attachment, Comment, MaybeAsyncVoid } from "./adjustment-detail/types";
 import {
   DEFAULT_BASE_CURRENCY,
@@ -274,8 +275,8 @@ export default function AdjustmentDetail({
   };
 
   const handleDeleteRequest = () => {
-    setDeleteModalOpen(true);
     setMoreMenuOpen(false);
+    setDeleteModalOpen(true);
   };
 
   const handleClone = async () => {
@@ -283,22 +284,33 @@ export default function AdjustmentDetail({
     const toastId = toast.loading("Cloning adjustment...");
 
     try {
-      if (!currentAdjustmentId) {
-        throw new Error("Adjustment ID not found. Please refresh and try again.");
-      }
-
-      const created = await inventoryAdjustmentsAPI.clone(currentAdjustmentId);
-      const createdDocument = created?.data || created;
-      const createdId = getAdjustmentId(createdDocument);
-
-      if (!createdId) {
-        throw new Error("Clone was not saved to database. Please try again.");
+      if (!activeAdjustment) {
+        throw new Error("Adjustment data not found. Please refresh and try again.");
       }
 
       toast.success("Adjustment cloned successfully", { id: toastId });
       setMoreMenuOpen(false);
-      await runCallback(onRefresh);
-      navigate(`/inventory/edit/${createdId}`);
+
+      const clonedItems = Array.isArray(activeAdjustment.items)
+        ? activeAdjustment.items
+        : Array.isArray(activeAdjustment.itemRows)
+          ? activeAdjustment.itemRows
+          : [];
+
+      navigate("/inventory/new", {
+        state: {
+          clonedAdjustmentData: {
+            mode: activeAdjustment.type?.toLowerCase() === "value" ? "value" : "quantity",
+            reference: "",
+            date: getTodayDate(),
+            account: activeAdjustment.account || activeAdjustment.adjustmentAccount || "",
+            reason: activeAdjustment.reason || "",
+            location: (activeAdjustment as any).location || (activeAdjustment as any).locationName || "",
+            description: activeAdjustment.description || activeAdjustment.notes || "",
+            items: clonedItems,
+          },
+        },
+      });
     } catch (error: any) {
       console.error("Error cloning adjustment:", error);
       const errorMessage =

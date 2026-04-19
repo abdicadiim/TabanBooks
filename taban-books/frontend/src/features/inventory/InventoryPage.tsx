@@ -1016,7 +1016,9 @@ function InventoryPageContent() {
             adjustment={selectedAdjustment}
             onClose={() => setSelectedAdjustment(null)}
             onEdit={() => {
-              navigate(`/inventory/edit/${selectedAdjustment.id || selectedAdjustment._id}`);
+              navigate(`/inventory/edit/${selectedAdjustment.id || selectedAdjustment._id}`, {
+                state: { adjustment: selectedAdjustment },
+              });
             }}
             onRefresh={fetchAdjustments}
             onDelete={async () => {

@@ -43,6 +43,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
   const location = useLocation();
   const { id } = useParams();
   const isEditMode = Boolean(id);
+  const initialAdjustment = (location.state as any)?.adjustment;
 
   const [items, setItems] = useState<Item[]>(propItems);
   const [loading, setLoading] = useState(false);
@@ -136,6 +137,36 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
   }, [items.length, propItems]);
 
   useEffect(() => {
+    if (isEditMode && initialAdjustment) {
+      const adjustment = initialAdjustment;
+
+      let formattedDate = adjustment.date || getTodayDate();
+      if (adjustment.date && !adjustment.date.includes("/")) {
+        formattedDate = formatDate(parseDateString(adjustment.date));
+      }
+
+      setFormData({
+        mode: adjustment.type === "Quantity" || adjustment.type === "quantity" ? "quantity" : "value",
+        reference: adjustment.adjustmentNumber || adjustment.referenceNumber || "",
+        date: formattedDate,
+        account: adjustment.account || DEFAULT_ADJUSTMENT_ACCOUNT,
+        reason: adjustment.reason || "",
+        location: adjustment.location || adjustment.locationName || "",
+        description: adjustment.description || adjustment.notes || "",
+      });
+
+      if (Array.isArray(adjustment.items) && adjustment.items.length > 0) {
+        const isValueAdjustment = adjustment.type === "Value" || adjustment.type === "value";
+        setItemRows(adjustment.items.map((item: any) => mapAdjustmentItemToRow(item, isValueAdjustment)));
+      } else if (Array.isArray(adjustment.itemRows) && adjustment.itemRows.length > 0) {
+        setItemRows(adjustment.itemRows as ItemRow[]);
+      }
+
+      const adjustmentDate = parseDateString(formattedDate);
+      setDateCalendar(new Date(adjustmentDate.getFullYear(), adjustmentDate.getMonth(), 1));
+      return;
+    }
+
     const fetchAdjustment = async () => {
       if (!id) {
         return;
@@ -187,7 +218,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
     if (isEditMode && id) {
       void fetchAdjustment();
     }
-  }, [id, isEditMode, navigate]);
+  }, [id, isEditMode, navigate, initialAdjustment]);
 
   useEffect(() => {
     if (isEditMode) {
