@@ -60,6 +60,7 @@ const TableRowSkeleton = ({ columns }: { columns: any[] }) => (
 
 const ItemsList = ({
   items,
+  initialSearchTerm = "",
   onSelect,
   onNew,
   onBulkMarkActive,
@@ -305,6 +306,10 @@ const ItemsList = ({
     acc[option.key] = option.label;
     return acc;
   }, {});
+
+  useEffect(() => {
+    setSearchTerm(initialSearchTerm);
+  }, [initialSearchTerm]);
 
   const toggleFavoriteView = (view: string) => {
     const key = getFilterKey(view);

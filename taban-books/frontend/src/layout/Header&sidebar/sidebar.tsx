@@ -128,7 +128,7 @@ export default function Sidebar() {
   const orgInitial = organizationName.trim().charAt(0).toUpperCase() || "T";
 
   useEffect(() => {
-    document.documentElement.style.setProperty("--sidebar-width", isCollapsed ? "72px" : "276px");
+    document.documentElement.style.setProperty("--sidebar-width", isCollapsed ? "96px" : "246px");
   }, [isCollapsed]);
 
   useEffect(() => {
@@ -212,13 +212,15 @@ export default function Sidebar() {
           title={isCollapsed ? item.label : undefined}
           className={[
             "flex items-center rounded-[14px] py-3 text-[14px] font-semibold transition-all",
-            isCollapsed ? "justify-center gap-0 px-0" : "gap-3 px-4",
+            isCollapsed ? "relative flex-col justify-center gap-1 px-2 py-3 text-center" : "gap-3 px-4",
             isActiveParent ? "bg-[#3f86ff] text-white" : "text-white/90 hover:bg-white/10 hover:text-white",
           ].join(" ")}
         >
           <span className={isCollapsed ? "hidden" : "w-4 shrink-0"} />
           <Icon size={18} className="shrink-0" />
-          <span className={isCollapsed ? "hidden" : "truncate"}>{item.label}</span>
+          <span className={isCollapsed ? "w-full truncate text-[11px] font-medium leading-tight" : "truncate"}>
+            {item.label}
+          </span>
         </NavLink>
       );
     }
@@ -236,14 +238,16 @@ export default function Sidebar() {
           aria-expanded={!isCollapsed ? isOpen : undefined}
           className={[
             "flex w-full items-center rounded-[14px] py-3 text-[14px] font-semibold transition-all",
-            isCollapsed ? "relative justify-center gap-0 px-0" : "gap-3 px-4",
+            isCollapsed ? "relative flex-col justify-center gap-1 px-2 py-3 text-center" : "gap-3 px-4",
             isActiveParent ? "bg-[#3f86ff] text-white" : "text-white/90 hover:bg-white/10 hover:text-white",
           ].join(" ")}
         >
           {isCollapsed ? (
             <ChevronRight
               size={10}
-              className={`absolute bottom-2 right-2 rotate-45 transition-transform duration-200 ${isActiveParent ? "text-white/80" : "text-white/35"}`}
+              className={`absolute right-2 top-1/2 -translate-y-1/2 rotate-45 transition-transform duration-200 ${
+                isActiveParent ? "text-white/80" : "text-white/35"
+              }`}
             />
           ) : (
             <ChevronRight
@@ -251,8 +255,10 @@ export default function Sidebar() {
               className={`shrink-0 transition-transform duration-200 ${isOpen ? "rotate-90" : "rotate-0"} ${isActiveParent ? "text-white/90" : "text-white/70"}`}
             />
           )}
-          <Icon size={isCollapsed ? 20 : 18} className="shrink-0" />
-          <span className={isCollapsed ? "hidden" : "truncate"}>{item.label}</span>
+          <Icon size={18} className="shrink-0" />
+          <span className={isCollapsed ? "w-full truncate text-[11px] font-medium leading-tight" : "truncate"}>
+            {item.label}
+          </span>
         </button>
 
         {!isCollapsed && isOpen && item.children?.length ? (
@@ -332,16 +338,16 @@ export default function Sidebar() {
         }
       `}</style>
       <aside
-        className="fixed left-3 top-3 bottom-3 z-[70] hidden overflow-visible rounded-[24px] shadow-[0_18px_35px_rgba(4,38,46,0.14)] md:flex md:flex-col transition-[width] duration-200"
+        className="fixed left-3 top-3 bottom-3 z-[70] hidden overflow-visible rounded-[22px] shadow-[0_18px_35px_rgba(4,38,46,0.14)] md:flex md:flex-col transition-[width] duration-200"
         style={{
-          width: isCollapsed ? "72px" : "276px",
+          width: isCollapsed ? "96px" : "246px",
           background: "linear-gradient(180deg, #0f5f6c 0%, #156372 100%)",
         }}
       >
         <div className={isCollapsed ? "px-2 pt-4" : "px-4 pt-4"}>
           {isCollapsed ? (
             <div className="flex justify-center">
-              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-[#f9d34f] text-[#0f5f6c] font-bold shadow-[0_8px_18px_rgba(0,0,0,0.12)]">
+              <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 text-white font-bold">
                 {organization?.logo ? (
                   <img src={organization.logo} alt={organizationName} className="h-full w-full object-cover" />
                 ) : (
@@ -350,9 +356,9 @@ export default function Sidebar() {
               </div>
             </div>
           ) : (
-            <div className="rounded-[18px] border border-white/10 bg-white/10 px-3 py-3 text-white">
+            <div className="rounded-[18px] border border-white/10 bg-white/10 px-3 py-2.5 text-white">
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-[#f9d34f] text-[#0f5f6c] font-bold">
+                <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-[#f9d34f] text-[#0f5f6c] font-bold">
                   {organization?.logo ? (
                     <img src={organization.logo} alt={organizationName} className="h-full w-full object-cover" />
                   ) : (
@@ -360,7 +366,7 @@ export default function Sidebar() {
                   )}
                 </div>
                 <div className="min-w-0">
-                  <div className="truncate text-[18px] font-semibold leading-tight">{organizationName}</div>
+                  <div className="truncate text-[17px] font-semibold leading-tight">{organizationName}</div>
                   <div className="text-[12px] text-white/75">Inventory & Accounting</div>
                   <div className="text-[11px] text-white/55">Role: {roleLabel}</div>
                 </div>
@@ -372,8 +378,8 @@ export default function Sidebar() {
             type="button"
             onClick={() => setIsCollapsed((current) => !current)}
             className={[
-              "mt-4 flex h-12 items-center justify-center rounded-[12px] border border-white/10 bg-white/10 text-white/90",
-              isCollapsed ? "mx-auto w-12" : "w-full",
+              "mt-4 flex h-11 items-center justify-center rounded-[12px] border border-white/10 bg-white/10 text-white/90",
+              isCollapsed ? "mx-auto w-11" : "w-full",
             ].join(" ")}
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
@@ -381,13 +387,13 @@ export default function Sidebar() {
           </button>
         </div>
 
-        <nav className="sidebar-no-scrollbar flex-1 overflow-y-auto overflow-x-visible px-3 py-4">
-          <div className="space-y-2">
+        <nav className="sidebar-no-scrollbar flex-1 overflow-y-auto overflow-x-visible px-3 py-3.5">
+          <div className="space-y-1.5">
             {items.map(renderItem)}
           </div>
         </nav>
 
-        <div className="flex-none w-full border-t border-white/10 px-5 pb-4 pt-4 text-[11px] text-white/70 " style={{ display: isCollapsed ? "none" : "block" }}>
+        <div className="flex-none w-full border-t border-white/10 px-4 pb-4 pt-3 text-[11px] text-white/70 " style={{ display: isCollapsed ? "none" : "block" }}>
           <div className="font-semibold text-white/85">Version 1.0.0</div>
           <div className="mt-1">Copyright Taban Enterprise</div>
         </div>

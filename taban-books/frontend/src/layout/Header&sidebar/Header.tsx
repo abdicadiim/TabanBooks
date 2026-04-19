@@ -16,13 +16,14 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { apiRequest } from "../../services/api";
 import { setOrganization } from "../../services/auth";
 import { useAppBootstrap } from "../../context/AppBootstrapContext";
 
 export default function Header() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { authenticated, currentUser, organization } = useAppBootstrap();
   const [orgDropdownOpen, setOrgDropdownOpen] = useState(false);
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
@@ -110,8 +111,51 @@ export default function Header() {
   const handleSearchScopeChange = (option: { label: string; path: string }) => {
     setSearchScope(option.label);
     setSearchDropdownOpen(false);
-    navigate(option.path);
+    const query = searchQuery.trim();
+    navigate(query ? `${option.path}?search=${encodeURIComponent(query)}` : option.path);
   };
+
+  useEffect(() => {
+    const currentOption = searchOptions.find((option) => {
+      if (option.path === "/") return location.pathname === "/";
+      return location.pathname === option.path || location.pathname.startsWith(`${option.path}/`);
+    });
+
+    if (currentOption) {
+      setSearchScope(currentOption.label);
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    setSearchQuery(new URLSearchParams(location.search).get("search") || "");
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    const currentOption = searchOptions.find((option) => option.label === searchScope) || searchOptions[0];
+
+    if (!query) {
+      const currentUrl = `${location.pathname}${location.search}`;
+      if (currentUrl !== currentOption.path) {
+        const timeout = window.setTimeout(() => {
+          navigate(currentOption.path, { replace: true });
+        }, 0);
+
+        return () => window.clearTimeout(timeout);
+      }
+      return;
+    }
+
+    const targetUrl = `${currentOption.path}?search=${encodeURIComponent(query)}`;
+    const currentUrl = `${location.pathname}${location.search}`;
+    if (currentUrl === targetUrl) return;
+
+    const timeout = window.setTimeout(() => {
+      navigate(targetUrl, { replace: true });
+    }, 250);
+
+    return () => window.clearTimeout(timeout);
+  }, [location.pathname, location.search, navigate, searchQuery, searchScope]);
 
   const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -215,14 +259,15 @@ export default function Header() {
 
   return (
     <header
-      className="fixed top-3 left-3 right-3 z-[80] h-[44px] rounded-[14px] px-4 shadow-[0_12px_28px_rgba(4,38,46,0.14)] border border-white/10 md:left-[calc(var(--sidebar-width)+24px)]"
+      className="fixed top-3 left-3 right-3 z-[80] h-[68px] overflow-hidden rounded-[20px] border border-white/12 px-4 shadow-[0_16px_34px_rgba(4,38,46,0.16)] backdrop-blur-md md:left-[calc(var(--sidebar-width)+24px)]"
       style={{
         background: "linear-gradient(90deg, #0f5f6c 0%, #156372 100%)",
       }}
     >
-      <div className="flex h-full items-center justify-between gap-3">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent_65%)]" />
+      <div className="relative flex h-full items-center justify-between gap-3">
         <form className="relative flex min-w-0 flex-1 items-center" ref={searchRef} onSubmit={handleSearchSubmit}>
-          <div className="flex h-8 w-full max-w-[360px] items-stretch overflow-hidden rounded-lg border border-white/15 bg-white/10 text-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] focus-within:ring-2 focus-within:ring-white/25">
+          <div className="flex h-11 w-full max-w-[420px] items-stretch overflow-hidden rounded-[14px] border border-white/15 bg-white/10 text-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] focus-within:ring-2 focus-within:ring-white/25">
             <button
               type="button"
               onClick={() => {
@@ -230,11 +275,11 @@ export default function Header() {
                 setQuickCreateOpen(false);
                 setOrgDropdownOpen(false);
               }}
-              className="flex w-9 shrink-0 items-center justify-center text-white/85 transition-colors hover:bg-white/10 hover:text-white"
+              className="flex w-11 shrink-0 items-center justify-center text-white/85 transition-colors hover:bg-white/10 hover:text-white"
               aria-label="Search"
               title="Search"
             >
-              <Search size={14} />
+              <Search size={15} />
             </button>
 
             <button
@@ -244,18 +289,18 @@ export default function Header() {
                 setQuickCreateOpen(false);
                 setOrgDropdownOpen(false);
               }}
-              className="flex w-7 shrink-0 items-center justify-center border-r border-white/10 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+              className="flex w-8 shrink-0 items-center justify-center border-r border-white/10 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
               aria-label="Open search models"
               title="Open search models"
             >
-              {searchDropdownOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              {searchDropdownOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </button>
 
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder={`Search in ${searchScope} ( / )`}
-              className="min-w-0 flex-1 bg-transparent px-3 py-1.5 text-[12px] text-white/85 outline-none placeholder:text-white/60"
+              className="min-w-0 flex-1 bg-transparent px-3.5 py-2.5 text-[13px] text-white/85 outline-none placeholder:text-white/60"
             />
           </div>
 
@@ -297,11 +342,11 @@ export default function Header() {
                   return next;
                 });
               }}
-              className="flex h-8 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-[12px] font-medium text-white transition-colors hover:bg-white/15"
+              className="flex h-11 items-center gap-1.5 rounded-[14px] bg-white/10 px-3.5 text-[13px] font-semibold text-white transition-colors hover:bg-white/15"
               aria-label="Organizations"
             >
               <span className="max-w-[120px] truncate">{orgLabel}</span>
-              {orgDropdownOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              {orgDropdownOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
             </button>
 
             {orgDropdownOpen && (
@@ -457,11 +502,11 @@ export default function Header() {
                 setQuickCreateOpen((current) => !current);
                 setOrgDropdownOpen(false);
               }}
-              className="grid h-8 w-8 place-items-center rounded-md bg-white/10 text-white transition-colors hover:bg-white/15"
+              className="grid h-11 w-11 place-items-center rounded-[14px] bg-white/10 text-white transition-colors hover:bg-white/15"
               aria-label="Quick Create"
               title="Quick Create"
             >
-              <Plus size={16} />
+              <Plus size={17} />
             </button>
 
             {quickCreateOpen && (
@@ -500,33 +545,33 @@ export default function Header() {
 
           <button
             type="button"
-            className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/15"
+            className="grid h-11 w-11 place-items-center rounded-[14px] bg-white/10 text-white transition-colors hover:bg-white/15"
             aria-label="Users"
           >
-            <Users size={15} />
+            <Users size={16} />
           </button>
 
           <button
             type="button"
-            className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/15"
+            className="grid h-11 w-11 place-items-center rounded-[14px] bg-white/10 text-white transition-colors hover:bg-white/15"
             aria-label="Notifications"
           >
-            <Bell size={15} />
+            <Bell size={16} />
           </button>
 
           <button
             type="button"
             onClick={() => navigate("/settings")}
-            className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/15"
+            className="grid h-11 w-11 place-items-center rounded-[14px] bg-white/10 text-white transition-colors hover:bg-white/15"
             aria-label="Settings"
             title="Settings"
           >
-            <Settings size={15} />
+            <Settings size={16} />
           </button>
 
           <button
             type="button"
-            className="grid h-8 w-8 place-items-center rounded-full bg-white text-[#0f5f6c] shadow-sm md:hidden"
+            className="grid h-11 w-11 place-items-center rounded-[14px] bg-white text-[#0f5f6c] shadow-sm md:hidden"
             aria-label={orgName}
           >
             {organization?.logo ? (
@@ -542,10 +587,10 @@ export default function Header() {
 
           <button
             type="button"
-            className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/15"
+            className="grid h-11 w-11 place-items-center rounded-[14px] bg-white/10 text-white transition-colors hover:bg-white/15"
             aria-label="App launcher"
           >
-            <Grid3x3 size={15} />
+            <Grid3x3 size={16} />
           </button>
         </div>
       </div>

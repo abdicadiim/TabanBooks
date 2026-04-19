@@ -17,6 +17,7 @@ import { usePermissions } from "../../hooks/usePermissions";
 
 function ItemsPageContent() {
   const location = useLocation();
+  const searchQuery = new URLSearchParams(location.search).get("search") || "";
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [view, setView] = useState<string>("list"); // list | new | detail | edit
@@ -309,6 +310,7 @@ function ItemsPageContent() {
           {view === "list" && (
             <ItemsList
               items={items}
+              initialSearchTerm={searchQuery}
               onSelect={(id: string) => { setSelectedId(id); setView("detail"); window.scrollTo(0, 0); }}
               onNew={() => { if (canCreateItems) { setView("new"); setSelectedId(null); } }}
               onDelete={handleDeleteItem}
