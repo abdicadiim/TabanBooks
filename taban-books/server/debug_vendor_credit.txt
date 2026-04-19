@@ -1,0 +1,17 @@
+2026-02-21T06:45:53.338Z - Error: Converting circular structure to JSON
+    --> starting at object with constructor 'MongoClient'
+    |     property 's' -> object with constructor 'Object'
+    |     property 'sessionPool' -> object with constructor 'ServerSessionPool'
+    --- property 'client' closes the circle
+Stack: TypeError: Converting circular structure to JSON
+    --> starting at object with constructor 'MongoClient'
+    |     property 's' -> object with constructor 'Object'
+    |     property 'sessionPool' -> object with constructor 'ServerSessionPool'
+    --- property 'client' closes the circle
+    at JSON.stringify (<anonymous>)
+    at stringify (C:\Users\hp\Downloads\taban-book-main (5)\taban-book-main\server\node_modules\express\lib\response.js:1160:12)
+    at ServerResponse.json (C:\Users\hp\Downloads\taban-book-main (5)\taban-book-main\server\node_modules\express\lib\response.js:271:14)
+    at createVendorCredit (C:\Users\hp\Downloads\taban-book-main (5)\taban-book-main\server\controllers\purchases.controller.ts:2111:21)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+Data: {"vendor":"6998a96a1599e2c9c0e01c6e","vendorName":"maxamed  ali (Copy)","creditNote":"fs","orderNumber":"asd","date":"2026-02-21","items":[{"item":"69942c33e68fee497d58df3a","quantity":1,"rate":14.857142857142858,"tax":"Non-Taxable","amount":14.857142857142858,"account":"Cost of Goods Sold"}],"subtotal":14.857142857142858,"discount":10,"discountType":"%","tax":0,"adjustment":10,"total":23.371428571428574,"status":"open","currency":"USD","notes":"","subject":"","accountsPayable":"Accounts Payable","taxPreference":"Tax Exclusive","taxLevel":"At Transaction Level","currency_code":"USD"}
+

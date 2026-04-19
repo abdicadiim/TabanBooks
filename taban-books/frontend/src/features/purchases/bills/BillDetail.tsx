@@ -1,0 +1,2381 @@
+﻿import React, { useState, useRef, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import {
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  MoreVertical,
+  X,
+  Pencil,
+  FileText,
+  Folder,
+  Eye,
+  Search,
+  Download,
+  Upload,
+  Trash2,
+  Copy,
+  ChevronRight,
+  Paperclip,
+  MessageSquare,
+  History,
+  Mail,
+  Share2,
+  Settings,
+} from "lucide-react";
+import { billsAPI, purchaseOrdersAPI, chartOfAccountsAPI, bankAccountsAPI, paymentsMadeAPI, transactionNumberSeriesAPI } from "../../../services/api";
+import { getBillStatusDisplay } from "../../../utils/billUtils";
+import { toast } from "react-hot-toast";
+import { AlertTriangle, Info } from "lucide-react";
+import PaymentModeDropdown from "../../../components/PaymentModeDropdown";
+import TabanSelect from "../../../components/TabanSelect";
+import { useCurrency } from "../../../hooks/useCurrency";
+import { jsPDF } from "jspdf";
+import html2canvas from "html2canvas";
+import { getAccountOptionLabel, getBankAccountsFromResponse, getChartAccountsFromResponse, mergeAccountOptions } from "../shared/accountOptions";
+
+interface BillItem {
+  id: string;
+  itemDetails: string;
+  account: string;
+  quantity: string | number;
+  rate: string | number;
+  tax: string;
+  amount: string | number;
+}
+
+interface Bill {
+  id: string | number;
+  billNumber: string;
+  vendorName: string;
+  vendorAddress?: string;
+  vendorCity?: string;
+  vendorCountry?: string;
+  vendorEmail?: string;
+  billDate: string;
+  dueDate: string;
+  referenceNumber?: string;
+  orderNumber?: string;
+  paymentTerms?: string;
+  subject?: string;
+  items: BillItem[];
+  subTotal: string | number;
+  discountAmount?: string | number;
+  total: string | number;
+  balanceDue: string | number;
+  currency: string;
+  status: string;
+  accountsPayable?: string;
+  purchaseOrderId?: string | number;
+  vendorId?: string | number;
+  paidAmount?: string | number;
+  comments?: Array<{
+    text?: string;
+    author?: string;
+    createdAt?: string;
+  }>;
+  attachments?: Array<{
+    id?: string;
+    name?: string;
+    url?: string;
+    size?: number;
+    type?: string;
+    uploadedAt?: string;
+  }>;
+}
+
+interface PurchaseOrder {
+  id: string | number;
+  _id?: string;
+  purchaseOrderNumber: string;
+  date: string;
+  status: string;
+}
+
+interface Payment {
+  id: string | number;
+  billId: string | number;
+  billNumber: string;
+  amount: string | number;
+  date: string;
+  paymentNumber?: string;
+  payment_number?: string;
+  reference?: string;
+  referenceNumber?: string;
+  reference_number?: string;
+  mode?: string;
+  paymentMethod?: string;
+  paymentMode?: string;
+}
+
+export default function BillDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { code: baseCurrencyCode, symbol: baseCurrencySymbol } = useCurrency();
+  const resolvedBaseCurrency = baseCurrencyCode || "USD";
+  const resolvedBaseCurrencySymbol = baseCurrencySymbol || resolvedBaseCurrency;
+  const [bill, setBill] = useState<Bill | null>(null);
+  const [bills, setBills] = useState<Bill[]>([]);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [sidebarMoreMenuOpen, setSidebarMoreMenuOpen] = useState(false);
+  const [showPdfView, setShowPdfView] = useState(true);
+  const [pdfMenuOpen, setPdfMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [exportSubmenuOpen, setExportSubmenuOpen] = useState(false);
+  const [selectedBills, setSelectedBills] = useState<(string | number)[]>([]);
+  const [isBulkActionsDropdownOpen, setIsBulkActionsDropdownOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("Payments Made");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [moreActionsMenuOpen, setMoreActionsMenuOpen] = useState(false);
+  const bulkActionsDropdownRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const moreActionsMenuRef = useRef<HTMLDivElement>(null);
+  const pdfMenuRef = useRef<HTMLDivElement>(null);
+  const sidebarMoreMenuRef = useRef<HTMLDivElement>(null);
+  const exportSubmenuRef = useRef<HTMLDivElement>(null);
+  const billDocumentRef = useRef<HTMLDivElement>(null);
+
+  // Payment Recording State
+  const [isRecordingPayment, setIsRecordingPayment] = useState(false);
+  const [paidThroughAccounts, setPaidThroughAccounts] = useState<any[]>([]);
+  const [paymentFormData, setPaymentFormData] = useState({
+    paymentAmount: "",
+    bankCharges: "",
+    paymentDate: new Date().toISOString().split('T')[0],
+    paymentMode: "Cash",
+    paidThrough: "",
+    paidThroughId: "",
+    reference: "",
+    deductTDS: false,
+    notes: "",
+    paymentNumber: "1"
+  });
+  const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const billAttachmentInputRef = useRef<HTMLInputElement>(null);
+
+  const normalizePaymentRecord = (paymentData: any): Payment => ({
+    id: paymentData?._id || paymentData?.id || paymentData?.paymentNumber || "",
+    billId:
+      paymentData?.billId ||
+      paymentData?.bill?._id ||
+      paymentData?.bill?.id ||
+      paymentData?.bill ||
+      "",
+    billNumber:
+      paymentData?.billNumber ||
+      paymentData?.bill?.billNumber ||
+      paymentData?.bill_number ||
+      "",
+    amount: paymentData?.amountPaid ?? paymentData?.amount ?? 0,
+    date: paymentData?.date || paymentData?.paymentDate || paymentData?.createdAt || "",
+    paymentNumber: paymentData?.paymentNumber || paymentData?.payment_number || "",
+    payment_number: paymentData?.payment_number || paymentData?.paymentNumber || "",
+    reference:
+      paymentData?.reference ||
+      paymentData?.referenceNumber ||
+      paymentData?.reference_number ||
+      "",
+    referenceNumber:
+      paymentData?.referenceNumber ||
+      paymentData?.reference ||
+      paymentData?.reference_number ||
+      "",
+    reference_number:
+      paymentData?.reference_number ||
+      paymentData?.referenceNumber ||
+      paymentData?.reference ||
+      "",
+    mode: paymentData?.mode || paymentData?.paymentMethod || paymentData?.paymentMode || "",
+    paymentMethod:
+      paymentData?.paymentMethod || paymentData?.paymentMode || paymentData?.mode || "",
+    paymentMode:
+      paymentData?.paymentMode || paymentData?.mode || paymentData?.paymentMethod || "",
+  });
+
+  const loadBillsList = async () => {
+    try {
+      const response = await billsAPI.getAll();
+      if (response && response.success && response.data) {
+        // Transform bills for sidebar
+        const allBills = response.data.map((b: any) => ({
+          id: b._id || b.id,
+          billNumber: b.billNumber,
+          vendorName: b.vendorName || b.vendor?.displayName || "",
+          billDate: b.date,
+          dueDate: b.dueDate,
+          total: b.total || 0,
+          balance: b.balance !== undefined ? b.balance : b.total,
+          currency: b.currency || resolvedBaseCurrency,
+          status: b.status || "DRAFT"
+        }));
+        setBills(allBills);
+      }
+    } catch (error) {
+      console.error("Error loading bills list:", error);
+    }
+  };
+
+  const loadPurchaseOrders = async (purchaseOrderId: string | number) => {
+    try {
+      const response = await purchaseOrdersAPI.getById(String(purchaseOrderId));
+      if (response && response.success && response.data) {
+        const poData = response.data;
+        setPurchaseOrders([{
+          id: poData._id || poData.id,
+          _id: poData._id,
+          purchaseOrderNumber: poData.purchaseOrderNumber || poData.orderNumber || '',
+          date: poData.date || poData.orderDate || '',
+          status: poData.status || 'open'
+        }]);
+      }
+    } catch (error) {
+      console.error("Error loading purchase orders:", error);
+      setPurchaseOrders([]);
+    }
+  };
+
+  const loadPayments = async () => {
+    try {
+      if (id) {
+        const response = await paymentsMadeAPI.getByBill(id);
+        if (response && response.success && response.data) {
+          setPayments(
+            Array.isArray(response.data)
+              ? response.data.map((payment: any) => normalizePaymentRecord(payment))
+              : []
+          );
+        } else {
+          setPayments([]);
+        }
+      } else {
+        setPayments([]);
+      }
+    } catch (error) {
+      console.error("Error loading payments:", error);
+      setPayments([]);
+    }
+  };
+
+  const loadBill = async () => {
+    try {
+      if (!id || id === 'undefined' || id === 'null') {
+        setBill(null);
+        return;
+      }
+
+      const response = await billsAPI.getById(id);
+      if (response && response.success && response.data) {
+        const billData = response.data;
+        const transformedBill: Bill = {
+          id: billData._id || billData.id,
+          billNumber: billData.billNumber,
+          vendorName: billData.vendorName || billData.vendor?.displayName || '',
+          vendorAddress: billData.vendor?.billingAddress?.street || '',
+          vendorCity: billData.vendor?.billingAddress?.city || '',
+          vendorCountry: billData.vendor?.billingAddress?.country || '',
+          vendorEmail: billData.vendor?.email || '',
+          billDate: billData.date,
+          dueDate: billData.dueDate,
+          referenceNumber: billData.referenceNumber || '',
+          orderNumber: billData.orderNumber || '',
+          paymentTerms: billData.paymentTerms || '',
+          subject: billData.subject || '',
+          items: (billData.items || []).map((item: any, index: number) => ({
+            id: item._id || `item-${index}`,
+            item: item.item?._id || item.item,
+            itemDetails: item.description || item.name || item.itemDetails || '',
+            account: item.account || '',
+            quantity: item.quantity || 0,
+            rate: item.unitPrice || item.rate || 0,
+            tax: item.tax || item.taxRate || '',
+            amount: item.total || item.amount || 0
+          })),
+          subTotal: billData.subtotal || billData.subTotal || 0,
+          discountAmount: billData.discount || 0,
+          total: billData.total || 0,
+          balanceDue: billData.balance !== undefined ? billData.balance : (billData.total || 0),
+          currency: billData.currency || resolvedBaseCurrency,
+          status: billData.status || 'draft',
+          accountsPayable: billData.accountsPayable || '',
+          purchaseOrderId: billData.purchaseOrderId || billData.purchaseOrder,
+          vendorId: toEntityId(billData.vendor || billData.vendorId || billData.vendor_id),
+          paidAmount: billData.paidAmount || 0,
+          comments: Array.isArray(billData.comments) ? billData.comments : [],
+          attachments: Array.isArray(billData.attachments) ? billData.attachments : [],
+        };
+
+        setBill(transformedBill);
+        if (transformedBill.purchaseOrderId) {
+          loadPurchaseOrders(transformedBill.purchaseOrderId);
+        }
+      } else {
+        setBill(null);
+      }
+    } catch (error) {
+      console.error('Error loading bill:', error);
+      setBill(null);
+    }
+  };
+
+  useEffect(() => {
+    loadBillsList();
+    loadBill();
+    loadPayments();
+  }, [id]);
+
+  // Load paid through accounts
+  useEffect(() => {
+    const loadAccounts = async () => {
+      try {
+        const [chartAccountsResponse, bankAccountsResponse] = await Promise.all([
+          chartOfAccountsAPI.getAccounts({ isActive: true, limit: 1000 }),
+          bankAccountsAPI.getAll({ limit: 1000 }),
+        ]);
+        const paidThroughTypes = [
+          'bank',
+          'cash',
+          'mobile_wallet',
+          'credit_card',
+          'other_current_liability',
+          'equity',
+          'other_current_asset'
+        ];
+        const mergedAccounts = mergeAccountOptions(
+          getChartAccountsFromResponse(chartAccountsResponse),
+          getBankAccountsFromResponse(bankAccountsResponse)
+        );
+        const filtered = mergedAccounts.filter((acc: any) =>
+          paidThroughTypes.includes(String(acc.accountType || "").toLowerCase())
+        );
+        const transformed = filtered.map((acc: any) => ({
+          ...acc,
+          name: getAccountOptionLabel(acc)
+        }));
+        setPaidThroughAccounts(transformed);
+      } catch (error) {
+        console.error("Error loading accounts:", error);
+      }
+    };
+    loadAccounts();
+  }, []);
+
+  useEffect(() => {
+    if (bill && bill.id) {
+      loadPayments();
+    }
+  }, [bill?.id]);
+
+  useEffect(() => {
+    const refreshData = async () => {
+      const response = await billsAPI.getAll();
+      if (response && response.success && response.data) {
+        setBills(response.data.map((b: any) => ({
+          id: b._id || b.id,
+          billNumber: b.billNumber,
+          vendorName: b.vendorName || b.vendor?.displayName || "",
+          billDate: b.date,
+          dueDate: b.dueDate,
+          total: b.total || 0,
+          balance: b.balance !== undefined ? b.balance : b.total,
+          currency: b.currency || resolvedBaseCurrency,
+          status: b.status || "DRAFT"
+        })));
+      }
+
+      if (id && id !== 'undefined' && id !== 'null') {
+        const billRes = await billsAPI.getById(id);
+        if (billRes && billRes.success && billRes.data) {
+          const billData = billRes.data;
+          const transformedBill: Bill = {
+            id: billData._id || billData.id,
+            billNumber: billData.billNumber,
+            vendorName: billData.vendorName || billData.vendor?.displayName || '',
+            vendorAddress: billData.vendor?.billingAddress?.street || '',
+            vendorCity: billData.vendor?.billingAddress?.city || '',
+            vendorCountry: billData.vendor?.billingAddress?.country || '',
+            vendorEmail: billData.vendor?.email || '',
+            billDate: billData.date,
+            dueDate: billData.dueDate,
+            referenceNumber: billData.referenceNumber || '',
+            orderNumber: billData.orderNumber || '',
+            paymentTerms: billData.paymentTerms || '',
+            subject: billData.subject || '',
+            items: (billData.items || []).map((item: any, index: number) => ({
+              id: item._id || `item-${index}`,
+              itemDetails: item.description || item.name || item.itemDetails || '',
+              account: item.account || '',
+              quantity: item.quantity || 0,
+              rate: item.unitPrice || item.rate || 0,
+              tax: item.tax || item.taxRate || '',
+              amount: item.total || item.amount || 0
+            })),
+            subTotal: billData.subtotal || billData.subTotal || 0,
+            discountAmount: billData.discount || 0,
+            total: billData.total || 0,
+            balanceDue: billData.balance !== undefined ? billData.balance : (billData.total || 0),
+            currency: billData.currency || resolvedBaseCurrency,
+            status: billData.status || 'draft',
+            accountsPayable: billData.accountsPayable || '',
+            purchaseOrderId: billData.purchaseOrderId || billData.purchaseOrder
+          };
+          setBill(transformedBill);
+
+          // Load purchase orders if purchaseOrderId exists
+          if (transformedBill.purchaseOrderId) {
+            loadPurchaseOrders(transformedBill.purchaseOrderId);
+          } else {
+            setPurchaseOrders([]);
+          }
+        }
+      }
+    };
+
+    // Listen for updates
+    const handleBillsUpdate = () => {
+      refreshData();
+    };
+
+    window.addEventListener("billsUpdated", handleBillsUpdate);
+    window.addEventListener("paymentsUpdated", handleBillsUpdate);
+    window.addEventListener("storage", handleBillsUpdate);
+    window.addEventListener("focus", handleBillsUpdate);
+
+    return () => {
+      window.removeEventListener("billsUpdated", handleBillsUpdate);
+      window.removeEventListener("paymentsUpdated", handleBillsUpdate);
+      window.removeEventListener("storage", handleBillsUpdate);
+      window.removeEventListener("focus", handleBillsUpdate);
+    };
+  }, [id]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false);
+      }
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setMoreMenuOpen(false);
+      }
+      if (pdfMenuRef.current && !pdfMenuRef.current.contains(event.target as Node)) {
+        setPdfMenuOpen(false);
+      }
+      if (sidebarMoreMenuRef.current && !sidebarMoreMenuRef.current.contains(event.target as Node)) {
+        setSidebarMoreMenuOpen(false);
+      }
+      if (moreActionsMenuRef.current && !moreActionsMenuRef.current.contains(event.target as Node)) {
+        setMoreActionsMenuOpen(false);
+      }
+    };
+
+    if (dropdownOpen || moreMenuOpen || pdfMenuOpen || sidebarMoreMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [dropdownOpen, moreMenuOpen, pdfMenuOpen, sidebarMoreMenuOpen, isBulkActionsDropdownOpen]);
+
+
+  const formatDate = (dateString: string | undefined) => {
+    if (!dateString) return "";
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "";
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      return `${date.getDate().toString().padStart(2, "0")} ${months[date.getMonth()]} ${date.getFullYear()}`;
+    } catch (e) {
+      return "";
+    }
+  };
+
+  const formatDateShort = (dateString: string | undefined) => {
+    if (!dateString) return "";
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "";
+      return `${date.getDate().toString().padStart(2, "0")}/${(date.getMonth() + 1).toString().padStart(2, "0")}/${date.getFullYear()}`;
+    } catch (e) {
+      return "";
+    }
+  };
+
+  // Calculate overdue days
+  const calculateOverdueDays = (dueDate: string | undefined) => {
+    if (!dueDate) return 0;
+    const due = new Date(dueDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    due.setHours(0, 0, 0, 0);
+    const diffTime = today.getTime() - due.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 ? diffDays : 0;
+  };
+
+  const toFiniteNumber = (value: any, fallback = 0) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  const toEntityId = (value: any): string => {
+    if (!value) return "";
+    if (typeof value === "string" || typeof value === "number") return String(value);
+    if (typeof value === "object") return String(value._id || value.id || "");
+    return "";
+  };
+
+  const toISODate = (value: any) => {
+    if (!value) return new Date().toISOString().split("T")[0];
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return new Date().toISOString().split("T")[0];
+    return parsed.toISOString().split("T")[0];
+  };
+
+  const getNextBillNumber = async () => {
+    const seriesResponse = await transactionNumberSeriesAPI.getAll();
+    if (!seriesResponse || (!seriesResponse.success && seriesResponse.code !== 0)) {
+      return "";
+    }
+
+    const allSeries = Array.isArray(seriesResponse.data) ? seriesResponse.data : [];
+    const billSeries = allSeries.find((series: any) => {
+      const moduleName = String(series?.module || "").toLowerCase();
+      return moduleName === "bill" || moduleName === "bills";
+    });
+
+    if (!billSeries?._id) return "";
+
+    const nextNumberResponse = await transactionNumberSeriesAPI.getNextNumber(billSeries._id);
+    if (!nextNumberResponse || (!nextNumberResponse.success && nextNumberResponse.code !== 0)) {
+      return "";
+    }
+
+    return String(nextNumberResponse?.data?.number || nextNumberResponse?.number || "").trim();
+  };
+
+  const getFallbackBillNumber = (value: any) => {
+    const source = String(value || "").trim();
+    const matched = source.match(/^(.*?)(\d+)([^0-9]*)$/);
+
+    if (matched) {
+      const [, prefix, digits, suffix] = matched;
+      const incremented = String(Number.parseInt(digits, 10) + 1).padStart(digits.length, "0");
+      return `${prefix}${incremented}${suffix}`;
+    }
+
+    const uniqueSuffix = `${Date.now()}`.slice(-8);
+    return source ? `${source}-${uniqueSuffix}` : `BILL-${uniqueSuffix}`;
+  };
+
+  const isDuplicateBillNumberError = (message: string) =>
+    /duplicate|already exists|bill number/i.test(String(message || ""));
+
+  const handleClone = async () => {
+    setMoreMenuOpen(false);
+    if (!bill) return;
+
+    try {
+      const sourceId = String((bill as any)._id || bill.id || id || "");
+      if (!sourceId) {
+        toast.error("Cannot clone this bill because it has no ID.");
+        return;
+      }
+
+      const sourceResponse = await billsAPI.getById(sourceId);
+      const sourceBill = sourceResponse?.data || sourceResponse?.bill || sourceResponse;
+      if (!sourceBill) {
+        throw new Error("Could not load bill details for cloning.");
+      }
+
+      const vendorId = toEntityId(sourceBill.vendor || sourceBill.vendorId || sourceBill.vendor_id || bill.vendorId);
+      if (!vendorId) {
+        throw new Error("Cannot clone this bill because it has no vendor.");
+      }
+
+      let nextBillNumber = await getNextBillNumber();
+      if (!nextBillNumber) {
+        nextBillNumber = getFallbackBillNumber(sourceBill.billNumber || sourceBill.bill_number || bill.billNumber);
+      }
+
+      const sourceItems = Array.isArray(sourceBill.items) ? sourceBill.items : [];
+      const clonedItems = sourceItems.map((item: any) => {
+        const quantity = Math.max(1, toFiniteNumber(item?.quantity, 1));
+        const unitPrice = toFiniteNumber(item?.unitPrice ?? item?.rate ?? item?.price, 0);
+        const lineTotal = toFiniteNumber(item?.total ?? item?.amount, quantity * unitPrice);
+        const itemId = toEntityId(item?.item || item?.itemId);
+        const account =
+          typeof item?.account === "object"
+            ? toEntityId(item?.account)
+            : String(item?.account || "");
+
+        return {
+          item: itemId || undefined,
+          account: account || undefined,
+          name: item?.name || item?.itemDetails || item?.description || "Item",
+          description: item?.description || item?.itemDetails || item?.name || "",
+          quantity,
+          unitPrice,
+          taxRate: toFiniteNumber(item?.taxRate ?? item?.tax, 0),
+          taxAmount: toFiniteNumber(item?.taxAmount, 0),
+          total: lineTotal,
+        };
+      });
+
+      const subtotal = toFiniteNumber(sourceBill.subtotal ?? sourceBill.subTotal ?? sourceBill.sub_total);
+      const tax = toFiniteNumber(sourceBill.tax ?? sourceBill.taxAmount);
+      const discount = toFiniteNumber(sourceBill.discount ?? sourceBill.discountAmount);
+      const totalFromSource = toFiniteNumber(sourceBill.total ?? sourceBill.amount);
+      const computedTotal = subtotal - discount + tax;
+      const total = totalFromSource > 0 ? totalFromSource : Math.max(0, computedTotal);
+
+      const clonePayload = {
+        billNumber: nextBillNumber,
+        orderNumber: sourceBill.orderNumber || sourceBill.order_number || "",
+        referenceNumber: sourceBill.referenceNumber || sourceBill.reference_number || "",
+        vendor: vendorId,
+        vendorName:
+          sourceBill.vendorName
+          || sourceBill.vendor_name
+          || sourceBill.vendor?.displayName
+          || sourceBill.vendor?.name
+          || bill.vendorName
+          || "",
+        date: toISODate(sourceBill.date || sourceBill.billDate),
+        dueDate: toISODate(sourceBill.dueDate || sourceBill.date || sourceBill.billDate),
+        items: clonedItems,
+        subtotal,
+        tax,
+        discount,
+        total,
+        status: "draft",
+        paymentTerms: sourceBill.paymentTerms || sourceBill.payment_terms || bill.paymentTerms || "Due on Receipt",
+        accountsPayable: sourceBill.accountsPayable || sourceBill.accounts_payable || bill.accountsPayable || "Accounts Payable",
+        notes: sourceBill.notes || "",
+        terms: sourceBill.terms || "",
+        currency: sourceBill.currency || bill.currency || resolvedBaseCurrency,
+        purchaseOrderId: null,
+        paidAmount: 0,
+        vendorCreditsApplied: 0,
+        balance: total,
+      };
+
+      let cloneResponse: any = null;
+      let currentBillNumber = String(clonePayload.billNumber || "").trim();
+      let lastErrorMessage = "";
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        cloneResponse = await billsAPI.create({ ...clonePayload, billNumber: currentBillNumber });
+        if (cloneResponse && (cloneResponse.success || cloneResponse.code === 0)) {
+          break;
+        }
+
+        lastErrorMessage = String(cloneResponse?.message || cloneResponse?.error || "");
+        const shouldRetryWithNewNumber =
+          isDuplicateBillNumberError(lastErrorMessage)
+          || /generate bill number|number series|numbering/i.test(lastErrorMessage);
+
+        if (!shouldRetryWithNewNumber) {
+          break;
+        }
+
+        currentBillNumber = getFallbackBillNumber(`${currentBillNumber || sourceBill.billNumber || "BILL"}-${attempt + 1}`);
+      }
+
+      if (!cloneResponse || (!cloneResponse.success && cloneResponse.code !== 0)) {
+        throw new Error(lastErrorMessage || cloneResponse?.message || "Failed to clone bill.");
+      }
+
+      const clonedBillId =
+        cloneResponse?.data?._id
+        || cloneResponse?.data?.id
+        || cloneResponse?.bill?._id
+        || cloneResponse?.bill?.id;
+
+      window.dispatchEvent(new Event("billsUpdated"));
+
+      if (clonedBillId) {
+        toast.success("Bill cloned successfully");
+        navigate(`/purchases/bills/${clonedBillId}`);
+        return;
+      }
+
+      toast.success("Bill cloned successfully, but it could not be opened automatically.");
+    } catch (error: any) {
+      console.error("Error cloning bill:", error);
+      toast.error(error?.message || "Failed to clone bill.");
+    }
+  };
+
+
+  // Handle Void
+  const handleVoid = async () => {
+    if (!bill) return;
+    if (window.confirm("Are you sure you want to void this bill? This action cannot be undone.")) {
+      try {
+        const response = await billsAPI.update(bill.id, { status: "void" });
+        if (response && (response.code === 0 || response.success)) {
+          toast.success("Bill voided successfully");
+          // Refresh data
+          await Promise.all([loadBill(), loadBillsList(), loadPayments()]);
+        } else {
+          toast.error("Failed to void bill: " + (response.message || "Unknown error"));
+        }
+      } catch (error) {
+        console.error("Error voiding bill:", error);
+        toast.error("An error occurred while voiding the bill.");
+      }
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!bill) return;
+    setPdfMenuOpen(false);
+
+    if (!billDocumentRef.current) {
+      setShowPdfView(true);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+
+    const target = billDocumentRef.current;
+    if (!target) {
+      toast.error("Unable to generate PDF preview.");
+      return;
+    }
+
+    try {
+      const canvas = await html2canvas(target, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+      });
+
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const printableWidth = pageWidth - margin * 2;
+      const printableHeight = pageHeight - margin * 2;
+      const imgWidth = printableWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const imgData = canvas.toDataURL("image/png");
+
+      let heightLeft = imgHeight;
+      let position = margin;
+
+      pdf.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
+      heightLeft -= printableHeight;
+
+      while (heightLeft > 0.01) {
+        position = margin - (imgHeight - heightLeft);
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
+        heightLeft -= printableHeight;
+      }
+
+      const fileName = String(bill.billNumber || bill.id || "bill").replace(/[^a-z0-9-]/gi, "_");
+      pdf.save(`${fileName}.pdf`);
+    } catch (error) {
+      console.error("Error generating bill PDF:", error);
+      toast.error("Failed to generate PDF.");
+    }
+  };
+
+  const getBillId = () => String((bill as any)?._id || bill?.id || id || "");
+
+  const persistBillPatch = async (patch: Record<string, any>) => {
+    const billId = getBillId();
+    if (!billId) throw new Error("Bill ID is missing.");
+    const response = await billsAPI.update(billId, patch);
+    const updated = response?.data || response?.bill || response;
+    if (updated && typeof updated === "object") {
+      setBill((prev: any) => ({ ...(prev || {}), ...updated }));
+    }
+    window.dispatchEvent(new Event("billsUpdated"));
+  };
+
+  const handleAddBillComment = async () => {
+    if (!bill) return;
+    const text = window.prompt("Enter comment");
+    if (!String(text || "").trim()) return;
+
+    try {
+      const existing = Array.isArray(bill.comments) ? bill.comments : [];
+      const comments = [
+        ...existing,
+        {
+          id: `${Date.now()}`,
+          text: String(text).trim(),
+          author: "User",
+          createdAt: new Date().toISOString(),
+        },
+      ];
+      await persistBillPatch({ comments });
+      toast.success("Comment saved");
+    } catch (error: any) {
+      console.error("Error saving bill comment:", error);
+      toast.error(error?.message || "Failed to save comment");
+    }
+  };
+
+  const readFileAsDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleBillAttachmentUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!bill) return;
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    try {
+      const existing = Array.isArray(bill.attachments) ? bill.attachments : [];
+      const attachments = await Promise.all(
+        files.map(async (file) => ({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          name: file.name,
+          size: file.size,
+          type: file.type || "application/octet-stream",
+          url: await readFileAsDataUrl(file),
+          uploadedAt: new Date().toISOString(),
+        }))
+      );
+      await persistBillPatch({ attachments: [...existing, ...attachments] });
+      toast.success("Attachment uploaded");
+    } catch (error: any) {
+      console.error("Error uploading bill attachment:", error);
+      toast.error(error?.message || "Failed to upload attachment");
+    } finally {
+      if (event.target) event.target.value = "";
+    }
+  };
+
+  // Filter bills based on search
+  const filteredBills = bills.filter((b: Bill) => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      b.billNumber?.toLowerCase().includes(query) ||
+      b.vendorName?.toLowerCase().includes(query) ||
+      b.referenceNumber?.toLowerCase().includes(query)
+    );
+  });
+
+  // Bill selection handlers
+  const handleBillCheckboxChange = (billId: string | number, e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    setSelectedBills(prev => {
+      if (prev.includes(billId)) {
+        return prev.filter(id => id !== billId);
+      } else {
+        return [...prev, billId];
+      }
+    });
+  };
+
+  const handleSelectAllBills = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedBills(filteredBills.map(b => b.id));
+    } else {
+      setSelectedBills([]);
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedBills([]);
+  };
+
+  // Calculate payments total
+  const paymentsTotal = payments.reduce((sum, payment) => {
+    return sum + toFiniteNumber(payment.amount);
+  }, 0);
+
+  // Get currency
+  const currency = resolvedBaseCurrencySymbol;
+
+  if (!bill) {
+    return (
+      <div style={{ padding: "48px", textAlign: "center" }}>
+        <p>Bill not found</p>
+        <button onClick={() => navigate("/purchases/bills")}>
+          Back to Bills
+        </button>
+      </div>
+    );
+  }
+
+  const handlePaymentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target;
+    // @ts-ignore
+    const checked = e.target.checked;
+    setPaymentFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handlePaymentSubmit = async (status: 'draft' | 'paid') => {
+    if (!bill) return;
+    if (!paymentFormData.paymentAmount) {
+      toast.error("Please enter a payment amount.");
+      return;
+    }
+
+    const vendorId = toEntityId((bill as any).vendorId || (bill as any).vendor || (bill as any).vendor_id);
+    const billId = toEntityId((bill as any)._id || bill.id || id);
+
+    if (!vendorId) {
+      toast.error("This bill is missing a vendor. Please reload the page and try again.");
+      return;
+    }
+
+    if (!billId) {
+      toast.error("This bill is missing an ID. Please reload the page and try again.");
+      return;
+    }
+
+    try {
+      const paymentData = {
+        vendorId,
+        vendor: vendorId,
+        vendorName: bill.vendorName,
+        paymentNumber: paymentFormData.paymentNumber,
+        date: paymentFormData.paymentDate,
+        amount: parseFloat(paymentFormData.paymentAmount) || 0,
+        currency: resolvedBaseCurrency,
+        bankCharges: parseFloat(paymentFormData.bankCharges) || 0,
+        mode: paymentFormData.paymentMode,
+        paidThrough: paymentFormData.paidThroughId || paymentFormData.paidThrough,
+        reference: paymentFormData.reference,
+        notes: paymentFormData.notes,
+        status: status === "paid" ? "PAID" : "DRAFT",
+        allocations: [{
+          billId,
+          amount: parseFloat(paymentFormData.paymentAmount) || 0
+        }]
+      };
+
+      const response = await paymentsMadeAPI.create(paymentData);
+      if (response && (response.code === 0 || response.success)) {
+        toast.success("Payment recorded successfully");
+        setIsRecordingPayment(false);
+        // Refresh payments list
+        loadPayments();
+        // Refresh bill data
+        if (id) {
+          const billRes = await billsAPI.getById(id);
+          if (billRes && billRes.success) {
+            const billData = billRes.data;
+            const transformedBill: Bill = {
+              id: billData._id || billData.id,
+              billNumber: billData.billNumber,
+              vendorName: billData.vendorName || billData.vendor?.displayName || '',
+              vendorAddress: billData.vendor?.billingAddress?.street || '',
+              vendorCity: billData.vendor?.billingAddress?.city || '',
+              vendorCountry: billData.vendor?.billingAddress?.country || '',
+              vendorEmail: billData.vendor?.email || '',
+              billDate: billData.date,
+              dueDate: billData.dueDate,
+              referenceNumber: billData.referenceNumber || '',
+              orderNumber: billData.orderNumber || '',
+              paymentTerms: billData.paymentTerms || '',
+              subject: billData.subject || '',
+              items: (billData.items || []).map((item: any, index: number) => ({
+                id: item._id || `item-${index}`,
+                item: item.item?._id || item.item,
+                itemDetails: item.description || item.name || item.itemDetails || '',
+                account: item.account || '',
+                quantity: item.quantity || 0,
+                rate: item.unitPrice || item.rate || 0,
+                tax: item.tax || item.taxRate || '',
+                amount: item.total || item.amount || 0
+              })),
+              subTotal: billData.subtotal || billData.subTotal || 0,
+              discountAmount: billData.discount || 0,
+              total: billData.total || 0,
+              balanceDue: billData.balance || billData.total || 0,
+              currency: billData.currency || resolvedBaseCurrency,
+              status: billData.status || 'draft',
+              accountsPayable: billData.accountsPayable || '',
+              purchaseOrderId: billData.purchaseOrderId || billData.purchaseOrder,
+              vendorId: toEntityId(billData.vendor || billData.vendorId || billData.vendor_id)
+            };
+            setBill(transformedBill);
+          }
+        }
+      } else {
+        toast.error(response?.message || "Failed to record payment");
+      }
+    } catch (error) {
+      console.error("Error submitting payment:", error);
+      toast.error("An error occurred while saving the payment.");
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    if (uploadedFiles.length + files.length > 5) {
+      toast.error("You can upload a maximum of 5 files.");
+      return;
+    }
+    const newFiles = files.map(file => ({
+      id: Date.now() + Math.random(),
+      file,
+      name: file.name,
+      size: file.size
+    }));
+    setUploadedFiles(prev => [...prev, ...newFiles]);
+  };
+
+  const styles: { [key: string]: React.CSSProperties } = {
+    container: {
+      display: "flex",
+      width: "100%",
+      height: "100vh",
+      overflow: "hidden",
+      backgroundColor: "#ffffff",
+      position: "relative",
+    },
+    sidebar: {
+      width: isSidebarCollapsed ? "0px" : "320px",
+      borderRight: "1px solid #e5e7eb",
+      backgroundColor: "#ffffff",
+      display: "flex",
+      flexDirection: "column",
+      transition: "width 0.3s ease",
+      overflow: "hidden",
+    },
+    sidebarHeader: {
+      padding: "16px",
+      borderBottom: "1px solid #e5e7eb",
+    },
+    searchBar: {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      padding: "8px 12px",
+      backgroundColor: "#f9fafb",
+      borderRadius: "6px",
+      marginBottom: "12px",
+      border: "1px solid #e5e7eb",
+    },
+    searchInput: {
+      flex: 1,
+      border: "none",
+      outline: "none",
+      backgroundColor: "transparent",
+      fontSize: "14px",
+      color: "#111827",
+    },
+    sidebarTitle: {
+      fontSize: "16px",
+      fontWeight: "600",
+      color: "#111827",
+      margin: 0,
+      marginBottom: "12px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    sidebarActions: {
+      display: "flex",
+      gap: "4px",
+    },
+    sidebarButton: {
+      padding: "6px",
+      backgroundColor: "#156372",
+      color: "#ffffff",
+      border: "none",
+      borderRadius: "4px",
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    sidebarMoreButton: {
+      padding: "6px",
+      backgroundColor: "transparent",
+      color: "#6b7280",
+      border: "none",
+      borderRadius: "4px",
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    sidebarList: {
+      flex: 1,
+      overflowY: "auto",
+    },
+    sidebarItem: {
+      padding: "16px",
+      borderBottom: "1px solid #f3f4f6",
+      cursor: "pointer",
+      backgroundColor: "transparent",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+    },
+    sidebarItemActive: {
+      backgroundColor: "#f3f8ff",
+      borderLeft: "3px solid #156372",
+    },
+    sidebarItemContent: {
+      flex: 1,
+      display: "flex",
+      flexDirection: "column",
+      gap: "4px",
+    },
+    sidebarItemVendor: {
+      fontSize: "14px",
+      fontWeight: "700",
+      color: "#111827",
+    },
+    sidebarItemNumber: {
+      fontSize: "12px",
+      color: "#6b7280",
+      marginTop: "2px",
+    },
+    sidebarItemStatus: {
+      fontSize: "12px",
+      fontWeight: "600",
+      marginTop: "8px",
+      textTransform: "uppercase",
+    },
+    sidebarItemAmount: {
+      fontSize: "14px",
+      fontWeight: "700",
+      color: "#111827",
+      textAlign: "right",
+    },
+    mainContent: {
+      flex: 1,
+      display: "flex",
+      flexDirection: "column",
+      overflow: "hidden",
+      backgroundColor: "#ffffff",
+    },
+    header: {
+      padding: "12px 24px",
+      borderBottom: "1px solid #e5e7eb",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: "#ffffff",
+    },
+    headerTitle: {
+      fontSize: "18px",
+      fontWeight: "600",
+      color: "#111827",
+    },
+    headerActions: {
+      display: "flex",
+      alignItems: "center",
+      gap: "12px",
+      color: "#6b7280",
+    },
+    headerIconButton: {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 0,
+      border: "none",
+      background: "transparent",
+      color: "inherit",
+      cursor: "pointer",
+    },
+    toolbar: {
+      padding: "8px 24px",
+      borderBottom: "1px solid #e5e7eb",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: "#f9fafb",
+    },
+    toolbarLeft: {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+    },
+    toolbarButton: {
+      display: "flex",
+      alignItems: "center",
+      gap: "6px",
+      padding: "6px 12px",
+      fontSize: "13px",
+      color: "#374151",
+      backgroundColor: "#ffffff",
+      border: "1px solid #d1d5db",
+      borderRadius: "4px",
+      cursor: "pointer",
+      transition: "all 0.2s",
+    },
+    recordPaymentBtn: {
+      backgroundColor: "#156372",
+      color: "#ffffff",
+      border: "none",
+    },
+    tabsContainer: {
+      display: "flex",
+      padding: "0 24px",
+      borderBottom: "1px solid #e5e7eb",
+      backgroundColor: "#ffffff",
+    },
+    tabItem: {
+      padding: "12px 16px",
+      fontSize: "14px",
+      fontWeight: "500",
+      color: "#6b7280",
+      cursor: "pointer",
+      position: "relative",
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+    },
+    tabItemActive: {
+      color: "#156372",
+      borderBottom: "2px solid #156372",
+    },
+    tabBadge: {
+      padding: "2px 6px",
+      fontSize: "11px",
+      backgroundColor: "#f3f4f6",
+      color: "#6b7280",
+      borderRadius: "10px",
+    },
+    tabBadgeActive: {
+      backgroundColor: "#eff6ff",
+      color: "#156372",
+    },
+    banner: {
+      margin: "16px 24px",
+      padding: "12px 16px",
+      backgroundColor: "#f0f7ff",
+      border: "1px solid #e0f2fe",
+      borderRadius: "8px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    bannerText: {
+      fontSize: "13px",
+      color: "#0369a1",
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+    },
+    contentArea: {
+      flex: 1,
+      overflowY: "auto",
+      padding: "32px 24px",
+      backgroundColor: "#ffffff",
+    },
+    pdfControls: {
+      display: "flex",
+      justifyContent: "flex-end",
+      marginBottom: "16px",
+    },
+    billDocument: {
+      backgroundColor: "#ffffff",
+      border: "1px solid #e5e7eb",
+      borderRadius: "8px",
+      padding: "64px",
+      maxWidth: "850px",
+      margin: "0 auto",
+      position: "relative",
+      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+    },
+    ribbon: {
+      position: "absolute",
+      top: "0",
+      left: "0",
+      width: "100px",
+      height: "100px",
+      overflow: "hidden",
+      zIndex: 1,
+    },
+    ribbonText: {
+      position: "absolute",
+      display: "block",
+      width: "160px",
+      padding: "8px 0",
+      backgroundColor: "#f97316",
+      boxShadow: "0 5px 10px rgba(0,0,0,.1)",
+      color: "#fff",
+      fontSize: "13px",
+      fontWeight: "700",
+      textShadow: "0 1px 1px rgba(0,0,0,.2)",
+      textTransform: "uppercase",
+      textAlign: "center",
+      left: "-35px",
+      top: "25px",
+      transform: "rotate(-45deg)",
+    },
+    docHeader: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      marginBottom: "48px",
+    },
+    docHeaderRight: {
+      textAlign: "right",
+    },
+    billType: {
+      fontSize: "32px",
+      fontWeight: "400",
+      color: "#6b7280",
+      letterSpacing: "2px",
+    },
+    billNo: {
+      fontSize: "14px",
+      color: "#111827",
+      marginTop: "8px",
+    },
+    balanceDueSection: {
+      marginTop: "24px",
+      textAlign: "right",
+    },
+    balanceDueLabel: {
+      fontSize: "12px",
+      color: "#6b7280",
+      textTransform: "uppercase",
+      fontWeight: "600",
+    },
+    balanceDueValue: {
+      fontSize: "18px",
+      fontWeight: "700",
+      color: "#111827",
+      marginTop: "4px",
+    },
+    docBody: {
+      display: "flex",
+      justifyContent: "space-between",
+      marginBottom: "48px",
+    },
+    billFromLabel: {
+      fontSize: "12px",
+      fontWeight: "700",
+      color: "#f59e0b",
+      textTransform: "uppercase",
+      marginBottom: "8px",
+    },
+    vendorName: {
+      fontSize: "15px",
+      fontWeight: "600",
+      color: "#156372",
+      textDecoration: "none",
+    },
+    vendorAddress: {
+      fontSize: "13px",
+      color: "#4b5563",
+      marginTop: "4px",
+      lineHeight: "1.5",
+    },
+    docDetailsList: {
+      display: "grid",
+      gridTemplateColumns: "150px 150px",
+      gap: "12px 24px",
+      fontSize: "13px",
+    },
+    detailLabel: {
+      color: "#6b7280",
+      textAlign: "right",
+    },
+    detailValue: {
+      color: "#111827",
+      fontWeight: "500",
+    },
+    itemsTable: {
+      width: "100%",
+      borderCollapse: "collapse",
+      marginBottom: "32px",
+    },
+    itemsTableHeader: {
+      backgroundColor: "#374151",
+    },
+    itemsTableHeaderCell: {
+      padding: "10px 12px",
+      textAlign: "left",
+      color: "#ffffff",
+      fontSize: "12px",
+      fontWeight: "600",
+      textTransform: "uppercase",
+    },
+    itemsTableRow: {
+      borderBottom: "1px solid #e5e7eb",
+    },
+    itemsTableCell: {
+      padding: "12px",
+      fontSize: "13px",
+      color: "#111827",
+    },
+    docSummary: {
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "flex-end",
+      marginTop: "24px",
+    },
+    summaryRow: {
+      display: "grid",
+      gridTemplateColumns: "140px 120px",
+      gap: "12px",
+      fontSize: "13px",
+      marginBottom: "8px",
+      padding: "2px 0",
+    },
+    summaryTotal: {
+      marginTop: "8px",
+      fontWeight: "700",
+      fontSize: "14px",
+    },
+    paymentsMadeRow: {
+      color: "#156372",
+    },
+    finalBalanceDue: {
+      marginTop: "12px",
+      padding: "10px 16px",
+      backgroundColor: "#f3f4f6",
+      borderLeft: "none",
+      fontWeight: "700",
+      fontSize: "14px",
+      display: "grid",
+      gridTemplateColumns: "140px 120px",
+      gap: "12px",
+    },
+    journalSection: {
+      marginTop: "64px",
+      paddingTop: "0",
+    },
+    journalHeader: {
+      borderBottom: "1px solid #e5e7eb",
+      marginBottom: "16px",
+      paddingBottom: "8px",
+    },
+    journalTitle: {
+      fontSize: "13px",
+      fontWeight: "600",
+      color: "#374151",
+      position: "relative",
+      paddingBottom: "6px",
+    },
+    journalTitleActive: {
+      borderBottom: "2px solid #156372",
+      color: "#111827",
+    },
+    journalCurrencyBadge: {
+      padding: "2px 6px",
+      backgroundColor: "#22c55e",
+      color: "#ffffff",
+      fontSize: "11px",
+      fontWeight: "700",
+      borderRadius: "2px",
+      marginLeft: "8px",
+      verticalAlign: "middle",
+    },
+    journalSubtitle: {
+      fontSize: "16px",
+      fontWeight: "700",
+      color: "#111827",
+      margin: "16px 0",
+    },
+    journalTable: {
+      width: "100%",
+      borderCollapse: "collapse",
+    },
+    journalTableHeaderCell: {
+      padding: "8px 0",
+      textAlign: "left",
+      fontSize: "11px",
+      fontWeight: "600",
+      color: "#6b7280",
+      textTransform: "uppercase",
+      borderBottom: "1px solid #e5e7eb",
+    },
+    journalTableCell: {
+      padding: "12px 0",
+      fontSize: "13px",
+      color: "#374151",
+      borderBottom: "1px solid #f3f4f6",
+    },
+    paymentForm: {
+      padding: '24px',
+      backgroundColor: '#ffffff',
+    },
+    formGroup: {
+      marginBottom: '20px',
+    },
+    label: {
+      display: 'block',
+      fontSize: '13px',
+      fontWeight: '500',
+      color: '#374151',
+      marginBottom: '6px',
+    },
+    input: {
+      width: '100%',
+      padding: '8px 12px',
+      fontSize: '14px',
+      border: '1px solid #d1d5db',
+      borderRadius: '4px',
+      outline: 'none',
+    },
+    select: {
+      width: '100%',
+      padding: '8px 12px',
+      fontSize: '14px',
+      border: '1px solid #d1d5db',
+      borderRadius: '4px',
+      outline: 'none',
+      backgroundColor: '#ffffff',
+    }
+  };
+
+  return (
+    <div style={styles.container}>
+      {/* Sidebar */}
+      <div style={styles.sidebar}>
+        <div style={styles.sidebarHeader}>
+          <div style={styles.searchBar}>
+            <Search size={16} style={{ color: "#9ca3af" }} />
+            <input
+              type="text"
+              placeholder="Search Bills..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={styles.searchInput}
+            />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+              <h2 style={{ ...styles.sidebarTitle, marginBottom: 0 }}>All Bills</h2>
+              <ChevronDown size={16} />
+            </div>
+            <div style={styles.sidebarActions}>
+              <button style={{ ...styles.sidebarButton, backgroundColor: "#156372" }} onClick={() => navigate("/purchases/bills/new")}>
+                <Plus size={16} />
+              </button>
+              <button style={styles.sidebarMoreButton}>
+                <MoreVertical size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+        <div style={styles.sidebarList}>
+          {filteredBills.map((b) => {
+            const status = getBillStatusDisplay(b);
+            const isSelected = String(b.id) === String(id);
+            return (
+              <div
+                key={b.id}
+                style={{
+                  ...styles.sidebarItem,
+                  ...(isSelected ? styles.sidebarItemActive : {}),
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "12px",
+                  padding: "16px",
+                  borderBottom: "1px solid #f3f4f6",
+                }}
+                onClick={() => navigate(`/purchases/bills/${b.id}`)}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedBills.includes(b.id)}
+                  onChange={(e) => handleBillCheckboxChange(b.id, e)}
+                  style={{ marginTop: "4px" }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div style={styles.sidebarItemVendor}>{b.vendorName || "Vendor"}</div>
+                    <div style={styles.sidebarItemAmount}>
+                      {resolvedBaseCurrencySymbol} {parseFloat(String(b.total || 0)).toFixed(2)}
+                    </div>
+                  </div>
+                  <div style={styles.sidebarItemNumber}>
+                    {b.billNumber} â€¢ {formatDateShort(b.billDate)}
+                  </div>
+                  <div
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-block ${status.color}`}
+                    style={{ marginTop: "8px", textTransform: "uppercase" }}
+                  >
+                    {status.text}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div style={styles.mainContent}>
+        {/* Top Header */}
+        {!isRecordingPayment && (
+          <div style={styles.header}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <button
+                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                style={{ ...styles.sidebarMoreButton, padding: "4px" }}
+              >
+                <MoreVertical size={18} />
+              </button>
+              <h1 style={styles.headerTitle}>{bill.billNumber}</h1>
+            </div>
+            <div style={styles.headerActions}>
+              <button
+                type="button"
+                onClick={() => billAttachmentInputRef.current?.click()}
+                title="Add Attachment"
+                aria-label="Add Attachment"
+                style={styles.headerIconButton}
+              >
+                <Paperclip size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={handleAddBillComment}
+                title="Add Comment"
+                aria-label="Add Comment"
+                style={styles.headerIconButton}
+              >
+                <MessageSquare size={18} />
+              </button>
+              <input
+                type="file"
+                ref={billAttachmentInputRef}
+                onChange={handleBillAttachmentUpload}
+                style={{ display: "none" }}
+                multiple
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+              />
+              <X
+                size={18}
+                style={{ cursor: "pointer" }}
+                onClick={() => navigate("/purchases/bills")}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Action Bar */}
+        {!isRecordingPayment ? (
+          <div style={styles.toolbar}>
+            <div style={styles.toolbarLeft}>
+              <button
+                style={styles.toolbarButton}
+                onClick={() => navigate(`/purchases/bills/new`, { state: { editBill: bill, isEdit: true } })}
+              >
+                <Pencil size={14} /> Edit
+              </button>
+              <div style={{ position: "relative" }} ref={pdfMenuRef}>
+                <button
+                  style={styles.toolbarButton}
+                  onClick={() => setPdfMenuOpen(!pdfMenuOpen)}
+                >
+                  <Download size={14} /> PDF <ChevronDown size={12} />
+                </button>
+                {pdfMenuOpen && (
+                  <div style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    marginTop: "4px",
+                    backgroundColor: "#ffffff",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "4px",
+                    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+                    zIndex: 100,
+                    minWidth: "160px",
+                    padding: "4px 0"
+                  }}>
+                    <div style={{ padding: "8px 12px", fontSize: "13px", cursor: "pointer" }} onClick={handleDownloadPDF}>Download PDF</div>
+                  </div>
+                )}
+              </div>
+              {getBillStatusDisplay(bill).text !== "PAID" && (
+                <button
+                  style={{ ...styles.toolbarButton, ...styles.recordPaymentBtn }}
+                  onClick={() => {
+                    setPaymentFormData(prev => ({
+                      ...prev,
+                      paymentAmount: String(bill.balanceDue || bill.total || ""),
+                      reference: `Payment for ${bill.billNumber}`
+                    }));
+                    setIsRecordingPayment(true);
+                  }}
+                >
+                  Record Payment
+                </button>
+              )}
+              <div style={{ position: "relative" }} ref={moreActionsMenuRef}>
+                <button
+                  style={styles.toolbarButton}
+                  onClick={() => setMoreActionsMenuOpen(!moreActionsMenuOpen)}
+                >
+                  ...
+                </button>
+                {moreActionsMenuOpen && (
+                  <div style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    marginTop: "4px",
+                    backgroundColor: "#ffffff",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
+                    boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+                    zIndex: 100,
+                    minWidth: "200px",
+                    padding: "4px 0",
+                    overflow: "hidden"
+                  }}>
+                    <div
+                      style={{
+                        padding: "10px 16px",
+                        fontSize: "14px",
+                        cursor: "pointer",
+                        backgroundColor: "#156372",
+                        color: "#ffffff"
+                      }}
+                      onClick={() => {
+                        handleVoid();
+                        setMoreActionsMenuOpen(false);
+                      }}
+                    >
+                      Void
+                    </div>
+                    {[
+                      {
+                        key: "clone",
+                        label: "Clone",
+                        onClick: () => {
+                          handleClone();
+                          setMoreActionsMenuOpen(false);
+                        },
+                      },
+                      {
+                        key: "make-recurring",
+                        label: "Make Recurring",
+                        onClick: () => {
+                          if (!bill) return;
+                          navigate("/purchases/recurring-bills/new", {
+                            state: {
+                              billData: {
+                                vendorName: bill.vendorName,
+                                items: bill.items,
+                                paymentTerms: bill.paymentTerms,
+                                currency: resolvedBaseCurrency,
+                                accountsPayable: bill.accountsPayable,
+                                subTotal: bill.subTotal,
+                                total: bill.total
+                              }
+                            }
+                          });
+                          setMoreActionsMenuOpen(false);
+                        },
+                      },
+                      {
+                        key: "view-po",
+                        label: "View Purchase Orders",
+                        onClick: () => {
+                          if (bill && bill.purchaseOrderId) {
+                            navigate(`/purchases/purchase-orders/${bill.purchaseOrderId}`);
+                            setMoreActionsMenuOpen(false);
+                            return;
+                          }
+                          alert("No purchase order linked to this bill");
+                        },
+                      },
+                    ].map((item) => (
+                      <div
+                        key={item.key}
+                        style={{
+                          padding: "10px 16px",
+                          fontSize: "14px",
+                          cursor: "pointer",
+                          color: "#374151"
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f3f4f6")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                        onClick={item.onClick}
+                      >
+                        {item.label}
+                      </div>
+                    ))}
+                    <div style={{ height: "1px", backgroundColor: "#e5e7eb", margin: "4px 0" }} />
+                    <div
+                      style={{
+                        padding: "10px 16px",
+                        fontSize: "14px",
+                        cursor: "pointer",
+                        color: "#156372"
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f3f4f6")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                      onClick={async () => {
+                        const billId = getBillId();
+                        if (!billId) return;
+                        if (!window.confirm("Are you sure you want to delete this bill?")) return;
+                        try {
+                          await billsAPI.delete(billId);
+                          window.dispatchEvent(new Event("billsUpdated"));
+                          toast.success("Bill deleted successfully");
+                          navigate("/purchases/bills");
+                        } catch (error: any) {
+                          console.error("Error deleting bill:", error);
+                          toast.error(error?.message || "Failed to delete bill");
+                        } finally {
+                          setMoreActionsMenuOpen(false);
+                        }
+                      }}
+                    >
+                      Delete
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Banners */}
+        {!isRecordingPayment && getBillStatusDisplay(bill).text !== "PAID" && calculateOverdueDays(bill.dueDate) > 0 && (
+          <div style={styles.banner}>
+            <div style={styles.bannerText}>
+              <span style={{ backgroundColor: "#8b5cf6", color: "#fff", borderRadius: "50%", padding: "4px", display: "flex", alignItems: "center", justifyContent: "center" }}>âœ¨</span>
+              <span><strong>WHAT'S NEXT?</strong> Payment for this bill is overdue. You can record the payment for this bill if paid.</span>
+            </div>
+            <button
+              style={{ ...styles.toolbarButton, ...styles.recordPaymentBtn, padding: "4px 12px" }}
+              onClick={() => {
+                setPaymentFormData(prev => ({
+                  ...prev,
+                  paymentAmount: String(bill.balanceDue || bill.total || ""),
+                  reference: `Payment for ${bill.billNumber}`
+                }));
+                setIsRecordingPayment(true);
+              }}
+            >
+              Record Payment
+            </button>
+          </div>
+        )}
+
+        {/* Tabs */}
+        {!isRecordingPayment && (
+          <div style={styles.tabsContainer}>
+            <div
+              style={{ ...styles.tabItem, ...(activeTab === "Payments Made" ? styles.tabItemActive : {}) }}
+              onClick={() => setActiveTab("Payments Made")}
+            >
+              Payments Made <span style={{ ...styles.tabBadge, ...(activeTab === "Payments Made" ? styles.tabBadgeActive : {}) }}>{payments.length}</span>
+            </div>
+            <div
+              style={{ ...styles.tabItem, ...(activeTab === "Purchase Orders" ? styles.tabItemActive : {}) }}
+              onClick={() => setActiveTab("Purchase Orders")}
+            >
+              Purchase Orders <span style={{ ...styles.tabBadge, ...(activeTab === "Purchase Orders" ? styles.tabBadgeActive : {}) }}>{purchaseOrders.length}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Scrollable Area */}
+        <div style={styles.contentArea}>
+          {isRecordingPayment ? (
+            <div style={styles.paymentForm}>
+              <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '24px' }}>Payment for {bill.billNumber}</h2>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
+                {/* Left Column */}
+                <div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Payment Made *({resolvedBaseCurrency})</label>
+                    <input
+                      type="text"
+                      name="paymentAmount"
+                      value={paymentFormData.paymentAmount}
+                      onChange={handlePaymentChange}
+                      style={styles.input}
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                    <input
+                      type="checkbox"
+                      name="deductTDS"
+                      checked={paymentFormData.deductTDS}
+                      onChange={handlePaymentChange}
+                    />
+                    <span style={{ fontSize: '14px' }}>Deduct TDS Tax</span>
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Bank Charges (if any) <Info size={14} style={{ marginLeft: '4px' }} /></label>
+                    <input
+                      type="text"
+                      name="bankCharges"
+                      value={paymentFormData.bankCharges}
+                      onChange={handlePaymentChange}
+                      style={styles.input}
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Payment Date*</label>
+                    <input
+                      type="date"
+                      name="paymentDate"
+                      value={paymentFormData.paymentDate}
+                      onChange={handlePaymentChange}
+                      style={styles.input}
+                    />
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Payment Made on</label>
+                    <input
+                      type="date"
+                      style={styles.input}
+                      placeholder="dd MMM yyyy"
+                    />
+                  </div>
+                </div>
+
+                {/* Right Column */}
+                <div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Payment Mode</label>
+                    <PaymentModeDropdown
+                      value={paymentFormData.paymentMode}
+                      onChange={(value) => setPaymentFormData(prev => ({ ...prev, paymentMode: value }))}
+                    />
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Payment #*</label>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="text"
+                        name="paymentNumber"
+                        value={paymentFormData.paymentNumber}
+                        onChange={handlePaymentChange}
+                        style={styles.input}
+                      />
+                      <Settings size={14} style={{ position: 'absolute', right: '12px', top: '12px', color: '#6b7280' }} />
+                    </div>
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Paid Through*</label>
+                    <TabanSelect
+                      value={paymentFormData.paidThrough}
+                      options={paidThroughAccounts}
+                      groupBy="accountType"
+                      placeholder="Select Paid Through Account"
+                      onChange={(val) => {
+                        const account = paidThroughAccounts.find(a => a.name === val);
+                        setPaymentFormData(prev => ({
+                          ...prev,
+                          paidThrough: val,
+                          paidThroughId: account?._id || account?.id || ""
+                        }));
+                      }}
+                    />
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Reference#</label>
+                    <input
+                      type="text"
+                      name="reference"
+                      value={paymentFormData.reference}
+                      onChange={handlePaymentChange}
+                      style={styles.input}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Notes</label>
+                <textarea
+                  name="notes"
+                  value={paymentFormData.notes}
+                  onChange={handlePaymentChange}
+                  style={{ ...styles.input, height: '80px', paddingTop: '8px' }}
+                ></textarea>
+              </div>
+
+              <div style={{ marginBottom: '24px' }}>
+                <label style={styles.label}>Attachments</label>
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 16px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '14px'
+                  }}
+                >
+                  <Upload size={14} /> Upload File <ChevronDown size={14} />
+                </div>
+                <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} multiple />
+                <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px' }}>You can upload a maximum of 5 files, 10MB each</p>
+
+                {uploadedFiles.length > 0 && (
+                  <div style={{ marginTop: '12px' }}>
+                    {uploadedFiles.map(file => (
+                      <div key={file.id} style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <Paperclip size={12} /> {file.name}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px' }}>
+                <input type="checkbox" />
+                <span style={{ fontSize: '14px' }}>Send a Payment Made email notification.</span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  onClick={() => handlePaymentSubmit('draft')}
+                  style={{ ...styles.toolbarButton, padding: '8px 16px' }}
+                >Save as Draft</button>
+                <button
+                  onClick={() => handlePaymentSubmit('paid')}
+                  style={{ ...styles.toolbarButton, ...styles.recordPaymentBtn, padding: '8px 16px' }}
+                >Save as Paid</button>
+                <button
+                  onClick={() => setIsRecordingPayment(false)}
+                  style={{ ...styles.toolbarButton, padding: '8px 16px' }}
+                >Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Payments Made Tab Content */}
+              {activeTab === "Payments Made" && (
+                <div style={{ padding: "24px", backgroundColor: "#ffffff" }}>
+                  {payments.length > 0 ? (
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr style={{ borderBottom: "2px solid #e5e7eb" }}>
+                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>Date</th>
+                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>Payment#</th>
+                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>Reference#</th>
+                          <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>Mode</th>
+                          <th style={{ padding: "12px", textAlign: "right", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {payments.map((p) => (
+                          <tr key={p.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                            <td style={{ padding: "16px 12px", fontSize: "14px", color: "#111827" }}>
+                              {formatDateShort(p.date)}
+                            </td>
+                            <td style={{ padding: "16px 12px", fontSize: "14px" }}>
+                              <a
+                                href="#"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  navigate(`/purchases/payments-made/${p.id}`);
+                                }}
+                                style={{ color: "#156372", textDecoration: "none", fontWeight: "500" }}
+                              >
+                                {p.paymentNumber || p.payment_number || String(p.id)}
+                              </a>
+                            </td>
+                            <td style={{ padding: "16px 12px", fontSize: "14px", color: "#374151" }}>
+                              {p.reference || p.referenceNumber || p.reference_number || "-"}
+                            </td>
+                            <td style={{ padding: "16px 12px", fontSize: "14px", color: "#374151", textTransform: "capitalize" }}>
+                              {p.mode || p.paymentMethod || p.paymentMode || "-"}
+                            </td>
+                            <td style={{ padding: "16px 12px", fontSize: "14px", fontWeight: "600", textAlign: "right", color: "#111827" }}>
+                              {resolvedBaseCurrencySymbol}
+                              {parseFloat(String(p.amount)).toFixed(2)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>
+                      No payments recorded for this bill.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Purchase Orders Tab Content */}
+              {activeTab === "Purchase Orders" && purchaseOrders.length > 0 && (
+                <div style={{ padding: "24px", backgroundColor: "#ffffff" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "2px solid #e5e7eb" }}>
+                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>Date</th>
+                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>Purchase Order#</th>
+                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {purchaseOrders.map((po) => (
+                        <tr key={po.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                          <td style={{ padding: "16px 12px", fontSize: "14px", color: "#111827" }}>
+                            {formatDateShort(po.date)}
+                          </td>
+                          <td style={{ padding: "16px 12px", fontSize: "14px" }}>
+                            <a
+                              href="#"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                navigate(`/purchases/purchase-orders/${po.id}`);
+                              }}
+                              style={{ color: "#156372", textDecoration: "none", fontWeight: "500" }}
+                            >
+                              {po.purchaseOrderNumber}
+                            </a>
+                          </td>
+                          <td style={{ padding: "16px 12px", fontSize: "14px" }}>
+                            <span style={{
+                              padding: "4px 12px",
+                              borderRadius: "12px",
+                              fontSize: "12px",
+                              fontWeight: "600",
+                              backgroundColor: po.status === "closed" ? "#d1fae5" : "#dbeafe",
+                              color: po.status === "closed" ? "#065f46" : "#1e40af",
+                              textTransform: "capitalize"
+                            }}>
+                              {po.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div style={styles.pdfControls}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "13px", color: "#374151" }}>Show PDF View</span>
+                  <div
+                    style={{
+                      width: "36px",
+                      height: "18px",
+                      borderRadius: "9px",
+                      backgroundColor: showPdfView ? "#156372" : "#d1d5db",
+                      position: "relative",
+                      cursor: "pointer",
+                      transition: "background-color 0.2s"
+                    }}
+                    onClick={() => setShowPdfView(!showPdfView)}
+                  >
+                    <div style={{
+                      width: "14px",
+                      height: "14px",
+                      borderRadius: "50%",
+                      backgroundColor: "#ffffff",
+                      position: "absolute",
+                      top: "2px",
+                      left: showPdfView ? "20px" : "2px",
+                      transition: "left 0.2s"
+                    }} />
+                  </div>
+                </div>
+              </div>
+
+              {showPdfView && (
+                <div style={styles.billDocument} ref={billDocumentRef}>
+                  {getBillStatusDisplay(bill).text.startsWith("OVERDUE") && (
+                    <div style={styles.ribbon}><span style={styles.ribbonText}>Overdue</span></div>
+                  )}
+                  {getBillStatusDisplay(bill).text === "PAID" && (
+                    <div style={styles.ribbon}><span style={{ ...styles.ribbonText, backgroundColor: "#10b981" }}>Paid</span></div>
+                  )}
+                  {getBillStatusDisplay(bill).text === "PARTIALLY PAID" && (
+                    <div style={styles.ribbon}><span style={{ ...styles.ribbonText, backgroundColor: "#156372" }}>Partially Paid</span></div>
+                  )}
+                  {getBillStatusDisplay(bill).text === "VOID" && (
+                    <div style={styles.ribbon}><span style={{ ...styles.ribbonText, backgroundColor: "#6b7280" }}>Void</span></div>
+                  )}
+
+                  <div style={styles.docHeader}>
+                    <div>
+                      <div style={{ fontSize: "16px", fontWeight: "700", color: "#111827" }}>d</div>
+                      <div style={styles.vendorAddress}>Aland Islands</div>
+                      <div style={styles.vendorAddress}>ascwcs685@gmail.com</div>
+                    </div>
+                    <div style={styles.docHeaderRight}>
+                      <div style={styles.billType}>BILL</div>
+                      <div style={styles.billNo}>Bill# {bill.billNumber}</div>
+                      <div style={styles.balanceDueSection}>
+                        <div style={styles.balanceDueLabel}>Balance Due</div>
+                        <div style={styles.balanceDueValue}>{resolvedBaseCurrencySymbol} {parseFloat(String(bill.balanceDue || 0)).toFixed(2)}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={styles.docBody}>
+                    <div>
+                      <div style={styles.billFromLabel}>Bill From</div>
+                      <div style={styles.vendorName}>{bill.vendorName}</div>
+                      <div style={styles.vendorAddress}>{bill.vendorAddress}<br />{bill.vendorCity}, {bill.vendorCountry}</div>
+                    </div>
+                    <div style={styles.docDetailsList}>
+                      <div style={styles.detailLabel}>Order Number :</div>
+                      <div style={styles.detailValue}>{bill.orderNumber || "-"}</div>
+                      <div style={styles.detailLabel}>Bill Date :</div>
+                      <div style={styles.detailValue}>{formatDateShort(bill.billDate)}</div>
+                      <div style={styles.detailLabel}>Due Date :</div>
+                      <div style={styles.detailValue}>{formatDateShort(bill.dueDate)}</div>
+                      <div style={styles.detailLabel}>Terms :</div>
+                      <div style={styles.detailValue}>{bill.paymentTerms || "Due on Receipt"}</div>
+                    </div>
+                  </div>
+
+                  <table style={styles.itemsTable}>
+                    <thead>
+                      <tr style={styles.itemsTableHeader}>
+                        <th style={{ ...styles.itemsTableHeaderCell, width: "40px" }}>#</th>
+                        <th style={styles.itemsTableHeaderCell}>Item & Description</th>
+                        <th style={{ ...styles.itemsTableHeaderCell, textAlign: "right", width: "80px" }}>Qty</th>
+                        <th style={{ ...styles.itemsTableHeaderCell, textAlign: "right", width: "100px" }}>Rate</th>
+                        <th style={{ ...styles.itemsTableHeaderCell, textAlign: "right", width: "120px" }}>Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bill.items.map((item, idx) => (
+                        <tr key={idx} style={styles.itemsTableRow}>
+                          <td style={styles.itemsTableCell}>{idx + 1}</td>
+                          <td style={styles.itemsTableCell}>{item.itemDetails}</td>
+                          <td style={{ ...styles.itemsTableCell, textAlign: "right" }}>{parseFloat(String(item.quantity)).toFixed(2)}</td>
+                          <td style={{ ...styles.itemsTableCell, textAlign: "right" }}>{parseFloat(String(item.rate)).toFixed(2)}</td>
+                          <td style={{ ...styles.itemsTableCell, textAlign: "right" }}>{parseFloat(String(item.amount)).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  <div style={styles.docSummary}>
+                    <div style={styles.summaryRow}>
+                      <div style={styles.detailLabel}>Sub Total</div>
+                      <div style={{ textAlign: "right" }}>{parseFloat(String(bill.subTotal)).toFixed(2)}</div>
+                    </div>
+                    <div style={{ ...styles.summaryRow, ...styles.summaryTotal }}>
+                      <div style={{ fontWeight: "700" }}>Total</div>
+                      <div style={{ textAlign: "right" }}><strong>{resolvedBaseCurrencySymbol}{parseFloat(String(bill.total)).toFixed(2)}</strong></div>
+                    </div>
+
+                    {paymentsTotal > 0 && (
+                      <div style={{ ...styles.summaryRow, color: "#475569" }}>
+                        <div style={{ fontSize: "13px" }}>Payments Made</div>
+                        <div style={{ textAlign: "right" }}>(-) {paymentsTotal.toFixed(2)}</div>
+                      </div>
+                    )}
+
+                    {bill && (parseFloat(String(bill.total)) - parseFloat(String(bill.balanceDue)) - paymentsTotal) > 0.001 && (
+                      <div style={{ ...styles.summaryRow, color: "#156372" }}>
+                        <div style={{ color: "#156372" }}>Credits Applied</div>
+                        <div style={{ textAlign: "right", color: "#156372" }}>(-) {(parseFloat(String(bill.total)) - parseFloat(String(bill.balanceDue)) - paymentsTotal).toFixed(2)}</div>
+                      </div>
+                    )}
+
+                    <div style={styles.finalBalanceDue}>
+                      <div style={{ fontWeight: "700" }}>Balance Due</div>
+                      <div style={{ textAlign: "right" }}>{resolvedBaseCurrencySymbol}{parseFloat(String(bill.balanceDue || 0)).toFixed(2)}</div>
+                    </div>
+                  </div>
+
+                  {/* Journal Section */}
+                  <div style={styles.journalSection}>
+                    <div style={styles.journalHeader}>
+                      <span style={{ ...styles.journalTitle, ...styles.journalTitleActive }}>Journal</span>
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "16px" }}>
+                      Amount is displayed in your base currency <span style={styles.journalCurrencyBadge}>{resolvedBaseCurrency}</span>
+                    </div>
+
+                    <h3 style={styles.journalSubtitle}>Bill</h3>
+
+                    <table style={styles.journalTable}>
+                      <thead>
+                        <tr>
+                          <th style={styles.journalTableHeaderCell}>ACCOUNT</th>
+                          <th style={{ ...styles.journalTableHeaderCell, textAlign: "right", width: "100px" }}>DEBIT</th>
+                          <th style={{ ...styles.journalTableHeaderCell, textAlign: "right", width: "100px" }}>CREDIT</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td style={styles.journalTableCell}>Accounts Payable</td>
+                          <td style={{ ...styles.journalTableCell, textAlign: "right" }}>0.00</td>
+                          <td style={{ ...styles.journalTableCell, textAlign: "right" }}>{parseFloat(String(bill.total)).toFixed(2)}</td>
+                        </tr>
+                        <tr>
+                          <td style={styles.journalTableCell}>Cost Of Goods Sold</td>
+                          <td style={{ ...styles.journalTableCell, textAlign: "right" }}>{parseFloat(String(bill.total)).toFixed(2)}</td>
+                          <td style={{ ...styles.journalTableCell, textAlign: "right" }}>0.00</td>
+                        </tr>
+                        <tr style={{ fontWeight: "700" }}>
+                          <td style={{ ...styles.journalTableCell, padding: "16px 0" }}></td>
+                          <td style={{ ...styles.journalTableCell, textAlign: "right", padding: "16px 0" }}>{parseFloat(String(bill.total)).toFixed(2)}</td>
+                          <td style={{ ...styles.journalTableCell, textAlign: "right", padding: "16px 0" }}>{parseFloat(String(bill.total)).toFixed(2)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Payments Made Tab Content */}
+              {false && activeTab === "Payments Made" && (
+                <div style={{ padding: "24px", backgroundColor: "#ffffff" }}>
+                  {payments.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "48px 0", color: "#9ca3af" }}>
+                      No payments recorded yet
+                    </div>
+                  ) : (
+                    <div>
+                      {payments.map((payment) => (
+                        <div key={payment.id} style={{ padding: "16px", borderBottom: "1px solid #e5e7eb" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <div>
+                              <div style={{ fontWeight: "600" }}>Payment #{payment.id}</div>
+                              <div style={{ fontSize: "13px", color: "#6b7280" }}>{formatDateShort(payment.date)}</div>
+                            </div>
+                            <div style={{ fontWeight: "600", color: "#059669" }}>
+                              {resolvedBaseCurrencySymbol} {parseFloat(String(payment.amount)).toFixed(2)}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
