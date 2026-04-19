@@ -269,8 +269,8 @@ export function DeleteConfirmationModal({ open, isDeleting, onClose, onConfirm }
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/40 z-[2190]" onClick={onClose} />
-      <div className="fixed inset-0 z-[2200] flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black/40 z-[30010]" onClick={onClose} />
+      <div className="fixed inset-0 z-[30020] flex items-center justify-center p-4">
         <div className="w-full max-w-md bg-white rounded-lg shadow-xl p-5">
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Adjustment</h3>
           <p className="text-sm text-gray-600 mb-5">Are you sure you want to delete this adjustment?</p>
