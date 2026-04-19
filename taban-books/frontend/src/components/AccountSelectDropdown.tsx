@@ -89,7 +89,7 @@ export const AccountSelectDropdown: React.FC<AccountSelectDropdownProps> = ({
                                         <div
                                             key={account.id}
                                             onClick={() => handleSelectAccount(account)}
-                                            className="px-4 py-2 hover:bg-blue-50 hover:text-blue-600 cursor-pointer text-sm text-gray-700 flex justify-between items-center group"
+                                            className="px-4 py-2 cursor-pointer text-sm text-gray-700 flex justify-between items-center"
                                         >
                                             <span>{account.name}</span>
                                             {/* Optional: Checkmark if selected */}
@@ -107,7 +107,7 @@ export const AccountSelectDropdown: React.FC<AccountSelectDropdownProps> = ({
 
                     {/* Footer - New Account */}
                     <div className="border-t border-gray-200 p-2 bg-gray-50 rounded-b-md">
-                        <button className="flex items-center text-blue-500 hover:text-blue-700 text-sm font-medium w-full px-2 py-1 rounded hover:bg-blue-100 transition-colors">
+                        <button className="flex items-center text-blue-500 text-sm font-medium w-full px-2 py-1 rounded transition-colors">
                             <Plus size={16} className="mr-2" />
                             New Account
                         </button>

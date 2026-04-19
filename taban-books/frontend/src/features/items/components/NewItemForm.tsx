@@ -36,9 +36,37 @@ interface NewItemFormProps {
     initialData?: any;
 }
 
+const REQUIRED_RED = "#ff0000";
+
+const FieldRow = ({
+    children,
+    className = "",
+    delay = 0,
+}: {
+    children: React.ReactNode;
+    className?: string;
+    delay?: number;
+}) => (
+    <div
+        className={`${className} taban-field-in`}
+        style={{
+            animationDelay: delay ? `${delay}ms` : undefined,
+        }}
+    >
+        {children}
+    </div>
+);
+
 const Label = ({ children, required = false, help = true, tooltip, htmlFor }: { children: React.ReactNode; required?: boolean; help?: boolean; tooltip?: React.ReactNode; htmlFor?: string }) => (
-    <div className="flex items-center gap-1 w-full md:w-[140px] shrink-0">
-        <label htmlFor={htmlFor} className={`block text-[13px] font-medium ${required ? "text-red-500" : "text-slate-600"}`}>
+    <div className="flex items-center gap-1 w-full md:w-[170px] shrink-0">
+        <label
+            htmlFor={htmlFor}
+            className={`block text-[13px] font-medium ${required ? "underline decoration-dotted underline-offset-4" : "text-slate-600"}`}
+            style={{
+                color: required ? REQUIRED_RED : undefined,
+                textDecorationColor: required ? REQUIRED_RED : undefined,
+            }}
+        >
             {children}{required && "*"}
         </label>
         {help && (
@@ -64,9 +92,9 @@ const Input = ({ className = "", error, ...props }: InputProps) => {
     return (
         <input
             {...props}
-            className={`block w-full max-w-[400px] rounded-md border text-[13px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 transition-all ${error ? "border-red-500 ring-red-500/20 ring-1" : "border-slate-200"} ${className}`}
+            className={`block w-full max-w-[560px] h-9 px-3 rounded-md border text-[13px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 transition-all ${error ? "border-red-500 ring-red-500/20 ring-1" : "border-slate-200"} ${className}`}
             style={{
-                '--tw-ring-color': error ? undefined : '#1b5e6a',
+                '--tw-ring-color': error ? undefined : (accentColor || "#3b82f6"),
             } as any}
         />
     );
@@ -79,11 +107,11 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
 const Select = ({ className = "", children, error, ...props }: SelectProps) => {
     const { accentColor } = useOrganizationBranding();
     return (
-        <div className="relative w-full max-w-[400px]">
+        <div className="relative w-full max-w-[560px]">
             <select
                 {...props}
-                className={`w-full appearance-none rounded-md border px-3 py-1.5 pr-8 text-[13px] text-gray-900 focus:outline-none focus:ring-1 bg-white transition-all ${error ? "border-red-500 ring-red-500/20 ring-1" : "border-slate-200"} ${className}`}
-                style={{ '--tw-ring-color': error ? undefined : '#1b5e6a' } as any}
+                className={`w-full h-9 appearance-none rounded-md border px-3 py-1.5 pr-8 text-[13px] text-gray-900 focus:outline-none focus:ring-1 bg-white transition-all ${error ? "border-red-500 ring-red-500/20 ring-1" : "border-slate-200"} ${className}`}
+                style={{ '--tw-ring-color': error ? undefined : (accentColor || "#3b82f6") } as any}
             >
                 {children}
             </select>
@@ -101,9 +129,9 @@ const Textarea = ({ className = "", error, ...props }: TextareaProps) => {
     return (
         <textarea
             {...props}
-            className={`block w-full max-w-[400px] rounded-md border px-3 py-1.5 text-[13px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 resize-none transition-all ${error ? "border-red-500 ring-red-500/20 ring-1" : "border-slate-200"} ${className}`}
-            style={{ '--tw-ring-color': error ? undefined : '#1b5e6a' } as any}
-            rows={2}
+            className={`block w-full max-w-[560px] rounded-md border px-3 py-1.5 text-[13px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 resize-none transition-all ${error ? "border-red-500 ring-red-500/20 ring-1" : "border-slate-200"} ${className}`}
+            style={{ '--tw-ring-color': error ? undefined : (accentColor || "#3b82f6") } as any}
+            rows={3}
         />
     );
 };
@@ -111,6 +139,7 @@ const Textarea = ({ className = "", error, ...props }: TextareaProps) => {
 export default function NewItemForm({ onCancel, onCreate, baseCurrency, initialData }: NewItemFormProps) {
     const navigate = useNavigate();
     const { accentColor } = useOrganizationBranding();
+    const uiAccent = accentColor || "#3b82f6";
     const currencyCode = baseCurrency?.symbol || baseCurrency?.code || "AED";
 
     const [form, setForm] = useState({
@@ -237,39 +266,42 @@ export default function NewItemForm({ onCancel, onCreate, baseCurrency, initialD
     };
 
     return (
-        <div className="bg-[#fbfcff] min-h-screen font-sans flex flex-col">
+        <div className="bg-white min-h-screen font-sans flex flex-col">
+            <style>
+                {`.taban-field-in { animation: tabanFieldIn 260ms ease-out both; }\n@keyframes tabanFieldIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }`}
+            </style>
             {/* Header */}
-            <div className="flex-none flex items-center justify-between px-6 py-4 bg-white border-b border-slate-100">
+            <div className="flex-none flex items-center justify-between px-6 py-4 bg-white border-b border-slate-200">
                 <h2 className="text-[18px] font-bold text-slate-800">New Item</h2>
                 <button type="button" onClick={onCancel} className="p-1 rounded-full hover:bg-slate-50 transition-colors">
                     <X size={20} className="text-slate-400" />
                 </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="flex-1 flex flex-col pb-24">
+            <form onSubmit={handleSubmit} className="flex-1 flex flex-col pb-10">
                 {/* Top Section - Basic Info & Image */}
-                <div className="p-4 md:p-8 bg-[#f9faff]">
+                <div className="p-4 md:p-8 bg-slate-50/50 border-b border-slate-200">
                     <div className="flex flex-col md:flex-row gap-8 md:gap-12">
                         {/* Left: Info Grid */}
                         <div className="flex-1 space-y-5">
-                            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                            <FieldRow delay={0} className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
                                 <Label required help={false}>Name</Label>
                                 <Input name="name" value={form.name} onChange={handleChange} error={errors.name} />
-                            </div>
-                            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                            </FieldRow>
+                            <FieldRow delay={30} className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
                                 <Label>Type</Label>
                                 <div className="flex items-center gap-6">
                                     <label className="flex items-center gap-2 cursor-pointer group">
-                                        <input type="radio" name="type" value="Goods" checked={form.type === "Goods"} onChange={handleChange} className="w-4 h-4 border-slate-300" style={{ accentColor: '#1b5e6a' }} />
+                                        <input type="radio" name="type" value="Goods" checked={form.type === "Goods"} onChange={handleChange} className="w-4 h-4 border-slate-300" style={{ accentColor: uiAccent } as any} />
                                         <span className="text-[13px] text-slate-700 group-hover:text-slate-900 transition-colors">Goods</span>
                                     </label>
                                     <label className="flex items-center gap-2 cursor-pointer group">
-                                        <input type="radio" name="type" value="Service" checked={form.type === "Service"} onChange={handleChange} className="w-4 h-4 border-slate-300" style={{ accentColor: '#1b5e6a' }} />
+                                        <input type="radio" name="type" value="Service" checked={form.type === "Service"} onChange={handleChange} className="w-4 h-4 border-slate-300" style={{ accentColor: uiAccent } as any} />
                                         <span className="text-[13px] text-slate-700 group-hover:text-slate-900 transition-colors">Service</span>
                                     </label>
                                 </div>
-                            </div>
-                            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                            </FieldRow>
+                            <FieldRow delay={60} className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
                                 <Label tooltip="The item will be measured in terms of this unit (e.g.: kg, dozen)">Unit</Label>
                                 <TabanSelect
                                     value={form.unit}
@@ -278,19 +310,19 @@ export default function NewItemForm({ onCancel, onCreate, baseCurrency, initialD
                                     onAddNew={() => setIsManageUnitsModalOpen(true)}
                                     addNewLabel="Manage Units"
                                     placeholder="Select or type to add"
-                                    className="w-full max-w-[400px]"
+                                    className="w-full max-w-[560px]"
                                 />
-                            </div>
-                            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                            </FieldRow>
+                            <FieldRow delay={90} className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
                                 <Label tooltip="The Stock Keeping Unit of the item">SKU</Label>
                                 <Input name="sku" value={form.sku} onChange={handleChange} />
-                            </div>
+                            </FieldRow>
                         </div>
 
                         {/* Right: Image Upload Area */}
-                        <div className="w-full md:w-[300px] shrink-0">
+                        <FieldRow delay={30} className="w-full md:w-[300px] shrink-0">
                             <div
-                                className="w-full aspect-square border-2 border-dashed border-slate-200 rounded-md bg-white flex flex-col items-center justify-center cursor-pointer hover:border-teal-300 hover:bg-teal-50/20 transition-all p-4 text-center group"
+                                className="w-full aspect-square border-2 border-dashed border-slate-200 rounded-md bg-white flex flex-col items-center justify-center cursor-pointer hover:border-slate-300 transition-all p-4 text-center group"
                                 onClick={() => fileInputRef.current?.click()}
                             >
                                 {images.length > 0 ? (
@@ -311,35 +343,35 @@ export default function NewItemForm({ onCancel, onCreate, baseCurrency, initialD
                                     </div>
                                 ) : (
                                     <>
-                                        <ImageIcon size={40} className="text-slate-200 mb-3 group-hover:text-teal-600 transition-colors" />
+                                        <ImageIcon size={40} className="text-slate-300 mb-3 transition-colors" />
                                         <p className="text-[12px] text-slate-500">
                                             Drag Image(s) here or <br />
-                                            <span className="font-medium" style={{ color: '#1b5e6a' }}>Browse Images</span>
+                                            <span className="font-medium" style={{ color: uiAccent }}>Browse Images</span>
                                         </p>
                                     </>
                                 )}
                             </div>
                             <input ref={fileInputRef} type="file" hidden multiple accept="image/*" onChange={handleImageUpload} />
-                        </div>
+                        </FieldRow>
                     </div>
                 </div>
 
                 {/* Sales Information Section */}
-                <div className="p-4 md:p-8 bg-white border-y border-slate-100">
-                    <div className="flex items-center gap-2 mb-8">
-                        <input type="checkbox" name="sellable" checked={form.sellable} onChange={handleChange} className="w-4 h-4 rounded border-slate-300" style={{ accentColor: '#1b5e6a' }} />
+                <div className="p-4 md:p-8 bg-white border-b border-slate-200">
+                    <FieldRow delay={0} className="flex items-center gap-2 mb-8">
+                        <input type="checkbox" name="sellable" checked={form.sellable} onChange={handleChange} className="w-4 h-4 rounded border-slate-300" style={{ accentColor: uiAccent } as any} />
                         <h3 className="text-[14px] font-semibold text-slate-800">Sales Information</h3>
-                    </div>
+                    </FieldRow>
 
-                    <div className={`grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-5 transition-opacity duration-200 ${!form.sellable ? "opacity-40 pointer-events-none" : ""}`}>
-                        <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                    <div className={`grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-5 transition-all duration-200 ${!form.sellable ? "opacity-40 pointer-events-none" : "opacity-100"}`}>
+                        <FieldRow delay={0} className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
                             <Label required>Selling Price</Label>
-                            <div className="flex w-full max-w-[400px] group">
-                                <span className={`h-9 px-3 border border-r-0 rounded-l flex items-center bg-slate-50 text-slate-400 text-[11px] font-medium transition-colors group-focus-within:border-teal-400 group-focus-within:bg-white ${errors.sellingPrice ? "border-red-500" : "border-slate-200"}`}>{currencyCode}</span>
+                            <div className="flex w-full max-w-[560px] group">
+                                <span className={`h-9 px-3 border border-r-0 rounded-l flex items-center bg-slate-50 text-slate-400 text-[11px] font-medium transition-colors ${errors.sellingPrice ? "border-red-500" : "border-slate-200"}`}>{currencyCode}</span>
                                 <Input name="sellingPrice" type="number" value={form.sellingPrice} onChange={handleChange} className="rounded-l-none" error={errors.sellingPrice} />
                             </div>
-                        </div>
-                        <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                        </FieldRow>
+                        <FieldRow delay={30} className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
                             <Label required>Account</Label>
                             <TabanSelect
                                 value={form.salesAccount}
@@ -362,14 +394,14 @@ export default function NewItemForm({ onCancel, onCreate, baseCurrency, initialD
                                     setIsAccountModalOpen(true);
                                 }}
                                 addNewLabel="New Account"
-                                className="w-full max-w-[400px]"
+                                className="w-full max-w-[560px]"
                             />
-                        </div>
-                        <div className="flex flex-col md:flex-row md:items-start gap-2 md:gap-4">
+                        </FieldRow>
+                        <FieldRow delay={60} className="flex flex-col md:flex-row md:items-start gap-2 md:gap-4">
                             <Label help={false}>Description</Label>
                             <Textarea name="salesDescription" value={form.salesDescription} onChange={handleChange} />
-                        </div>
-                        <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                        </FieldRow>
+                        <FieldRow delay={90} className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
                             <Label tooltip={<>Add the sales tax that's applicable<br />for this item. Create a group tax from<br />Settings if you want to apply more than<br />one tax. This tax will be auto-populated<br />when you create transactions with this item.</>}>Tax</Label>
                             <TabanSelect
                                 value={form.salesTax}
@@ -381,28 +413,28 @@ export default function NewItemForm({ onCancel, onCreate, baseCurrency, initialD
                                 }}
                                 addNewLabel="New Tax"
                                 placeholder="Select a Tax"
-                                className="w-full max-w-[400px]"
+                                className="w-full max-w-[560px]"
                             />
-                        </div>
+                        </FieldRow>
                     </div>
                 </div>
 
                 {/* Purchase Information Section */}
-                <div className="p-4 md:p-8 bg-white border-b border-slate-100">
-                    <div className="flex items-center gap-2 mb-8">
-                        <input type="checkbox" name="purchasable" checked={form.purchasable} onChange={handleChange} className="w-4 h-4 rounded border-slate-300" style={{ accentColor: '#1b5e6a' }} />
+                <div className="p-4 md:p-8 bg-white border-b border-slate-200">
+                    <FieldRow delay={0} className="flex items-center gap-2 mb-8">
+                        <input type="checkbox" name="purchasable" checked={form.purchasable} onChange={handleChange} className="w-4 h-4 rounded border-slate-300" style={{ accentColor: uiAccent } as any} />
                         <h3 className="text-[14px] font-semibold text-slate-800">Purchase Information</h3>
-                    </div>
+                    </FieldRow>
 
-                    <div className={`grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-5 transition-opacity duration-200 ${!form.purchasable ? "opacity-40 pointer-events-none" : ""}`}>
-                        <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                    <div className={`grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-5 transition-all duration-200 ${!form.purchasable ? "opacity-40 pointer-events-none" : "opacity-100"}`}>
+                        <FieldRow delay={0} className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
                             <Label required>Cost Price</Label>
-                            <div className="flex w-full max-w-[400px] group">
-                                <span className={`h-9 px-3 border border-r-0 rounded-l flex items-center bg-slate-50 text-slate-400 text-[11px] font-medium transition-colors group-focus-within:border-teal-400 group-focus-within:bg-white ${errors.costPrice ? "border-red-500" : "border-slate-200"}`}>{currencyCode}</span>
+                            <div className="flex w-full max-w-[560px] group">
+                                <span className={`h-9 px-3 border border-r-0 rounded-l flex items-center bg-slate-50 text-slate-400 text-[11px] font-medium transition-colors ${errors.costPrice ? "border-red-500" : "border-slate-200"}`}>{currencyCode}</span>
                                 <Input name="costPrice" type="number" value={form.costPrice} onChange={handleChange} className="rounded-l-none" error={errors.costPrice} />
                             </div>
-                        </div>
-                        <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                        </FieldRow>
+                        <FieldRow delay={30} className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
                             <Label required>Account</Label>
                             <TabanSelect
                                 value={form.purchaseAccount}
@@ -425,14 +457,14 @@ export default function NewItemForm({ onCancel, onCreate, baseCurrency, initialD
                                     setIsAccountModalOpen(true);
                                 }}
                                 addNewLabel="New Account"
-                                className="w-full max-w-[400px]"
+                                className="w-full max-w-[560px]"
                             />
-                        </div>
-                        <div className="flex flex-col md:flex-row md:items-start gap-2 md:gap-4">
+                        </FieldRow>
+                        <FieldRow delay={60} className="flex flex-col md:flex-row md:items-start gap-2 md:gap-4">
                             <Label help={false}>Description</Label>
                             <Textarea name="purchaseDescription" value={form.purchaseDescription} onChange={handleChange} />
-                        </div>
-                        <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                        </FieldRow>
+                        <FieldRow delay={90} className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
                             <Label tooltip={<>Add the purchase tax that's applicable<br />for this item.</>}>Tax</Label>
                             <TabanSelect
                                 value={form.purchaseTax}
@@ -444,10 +476,10 @@ export default function NewItemForm({ onCancel, onCreate, baseCurrency, initialD
                                 }}
                                 addNewLabel="New Tax"
                                 placeholder="Select a Tax"
-                                className="w-full max-w-[400px]"
+                                className="w-full max-w-[560px]"
                             />
-                        </div>
-                        <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                        </FieldRow>
+                        <FieldRow delay={120} className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
                             <Label help={false}>Preferred Vendor</Label>
                             <TabanSelect
                                 value={form.preferredVendor}
@@ -461,24 +493,24 @@ export default function NewItemForm({ onCancel, onCreate, baseCurrency, initialD
                                 options={dbVendors}
                                 onAddNew={() => setIsVendorModalOpen(true)}
                                 addNewLabel="New Vendor"
-                                className="w-full max-w-[400px]"
+                                className="w-full max-w-[560px]"
                             />
-                        </div>
+                        </FieldRow>
                     </div>
                 </div>
 
                 {/* Inventory Tracking Section */}
-                <div className="p-4 md:p-8 bg-white border-b border-slate-100">
-                    <div className="flex flex-col gap-1">
+                <div className="p-4 md:p-8 bg-white border-b border-slate-200">
+                    <FieldRow delay={0} className="flex flex-col gap-1">
                         <label className="flex items-center gap-2 cursor-pointer w-fit">
-                            <input type="checkbox" name="trackInventory" checked={form.trackInventory} onChange={handleChange} className="w-4 h-4 rounded border-slate-300" style={{ accentColor: '#1b5e6a' }} />
+                            <input type="checkbox" name="trackInventory" checked={form.trackInventory} onChange={handleChange} className="w-4 h-4 rounded border-slate-300" style={{ accentColor: uiAccent } as any} />
                             <span className="text-[13px] font-medium text-slate-700">Track Inventory for this item</span>
                             <HelpCircle size={14} className="text-slate-300" />
                         </label>
                         <p className="text-[11px] text-slate-400 ml-6">
                             You cannot enable/disable inventory tracking once you've created transactions for this item
                         </p>
-                    </div>
+                    </FieldRow>
 
                     {form.trackInventory && (
                         <div className="mt-8 ml-0 md:ml-6 grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-5 animate-in slide-in-from-top-2 duration-200">
@@ -499,16 +531,26 @@ export default function NewItemForm({ onCancel, onCreate, baseCurrency, initialD
                                         setIsAccountModalOpen(true);
                                     }}
                                     addNewLabel="New Account"
-                                    className="w-full max-w-[400px]"
+                                    className="w-full max-w-[560px]"
                                 />
                             </div>
                             <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
                                 <Label required>Valuation Method</Label>
-                                <Select name="inventoryValuationMethod" value={form.inventoryValuationMethod} onChange={handleChange} error={errors.inventoryValuationMethod}>
-                                    <option value="FIFO (First In First Out)">FIFO (First In First Out)</option>
-                                    <option value="LIFO (Last In First Out)">LIFO (Last In First Out)</option>
-                                    <option value="Weighted Average">Weighted Average</option>
-                                </Select>
+                                <TabanSelect
+                                    value={form.inventoryValuationMethod}
+                                    onChange={(val) => {
+                                        setErrors(prev => ({ ...prev, inventoryValuationMethod: false }));
+                                        setForm(f => ({ ...f, inventoryValuationMethod: val }));
+                                    }}
+                                    error={errors.inventoryValuationMethod}
+                                    options={[
+                                        "FIFO (First In First Out)",
+                                        "LIFO (Last In First Out)",
+                                        "Weighted Average",
+                                    ]}
+                                    placeholder="Select the valuation method"
+                                    className="w-full max-w-[560px]"
+                                />
                             </div>
                             <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
                                 <Label>Reorder Point</Label>
@@ -520,11 +562,13 @@ export default function NewItemForm({ onCancel, onCreate, baseCurrency, initialD
 
                 {/* Reporting Tags Section */}
                 {availableTags.length > 0 && (
-                    <div className="p-8 bg-white border-b border-slate-100">
-                        <h3 className="text-[14px] font-semibold text-slate-800 mb-8">Reporting Tags</h3>
+                    <div className="p-4 md:p-8 bg-white border-b border-slate-200">
+                        <FieldRow delay={0} className="text-[14px] font-semibold text-slate-800 mb-8">
+                            <h3>Associated Tags</h3>
+                        </FieldRow>
                         <div className="grid grid-cols-2 gap-x-16 gap-y-5">
-                            {availableTags.map((tag) => (
-                                <div key={tag._id} className="flex items-center gap-4">
+                            {availableTags.map((tag, idx) => (
+                                <FieldRow key={tag._id} delay={30 + idx * 20} className="flex items-center gap-4">
                                     <Label help={false}>{tag.name}</Label>
                                     <Select
                                         value={selectedTagIds.find(id => tag.options?.some((opt: any) => opt._id === id)) || ""}
@@ -540,19 +584,19 @@ export default function NewItemForm({ onCancel, onCreate, baseCurrency, initialD
                                             <option key={opt._id} value={opt._id}>{opt.name}</option>
                                         ))}
                                     </Select>
-                                </div>
+                                </FieldRow>
                             ))}
                         </div>
                     </div>
                 )}
 
                 {/* Footer Buttons */}
-                <div className="sticky bottom-0 left-0 right-0 px-6 py-4 bg-white border-t border-slate-100 flex items-center gap-3 z-50 mt-auto shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                <div className="px-6 py-6 bg-white flex items-center gap-3 mt-auto">
                     <button
                         type="submit"
                         disabled={isLoading}
-                        className={`w-full md:w-auto cursor-pointer transition-all text-white px-6 py-1.5 rounded border-b-[3px] hover:brightness-110 active:border-b-0 active:translate-y-[2px] text-[13px] font-semibold flex items-center justify-center gap-2 ${isLoading ? "opacity-70 cursor-not-allowed" : ""}`}
-                        style={{ backgroundColor: '#1b5e6a', borderColor: '#1b5e6a' }}
+                        className={`w-full md:w-auto cursor-pointer transition-all text-white px-6 py-2 rounded-md hover:brightness-110 text-[13px] font-semibold flex items-center justify-center gap-2 ${isLoading ? "opacity-70 cursor-not-allowed" : ""}`}
+                        style={{ backgroundColor: uiAccent }}
                     >
                         {isLoading && <RefreshCw className="animate-spin" size={14} />}
                         Save
@@ -560,7 +604,7 @@ export default function NewItemForm({ onCancel, onCreate, baseCurrency, initialD
                     <button
                         type="button"
                         onClick={onCancel}
-                        className="w-full md:w-auto cursor-pointer transition-all bg-white text-slate-600 px-6 py-1.5 rounded border-slate-200 border border-b-[3px] hover:bg-slate-50 active:border-b-0 active:translate-y-[2px] text-[13px] font-semibold flex items-center justify-center"
+                        className="w-full md:w-auto cursor-pointer transition-all bg-white text-slate-600 px-6 py-2 rounded-md border-slate-300 border hover:bg-slate-50 text-[13px] font-semibold flex items-center justify-center"
                     >
                         Cancel
                     </button>

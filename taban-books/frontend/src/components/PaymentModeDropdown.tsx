@@ -28,7 +28,6 @@ export default function PaymentModeDropdown({
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [modes, setModes] = useState<PaymentMode[]>([]);
-    const [isHovered, setIsHovered] = useState<string | null>(null);
     const [isConfigureModalOpen, setIsConfigureModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -183,15 +182,9 @@ export default function PaymentModeDropdown({
                                         className="px-4 py-2 text-sm cursor-pointer flex items-center justify-between transition-colors"
                                         style={{
                                             backgroundColor:
-                                                selectedValue === mode.name
-                                                    ? "#2563eb"
-                                                    : isHovered === mode._id
-                                                        ? "#f9fafb"
-                                                        : "transparent",
+                                                selectedValue === mode.name ? "#2563eb" : "transparent",
                                             color: selectedValue === mode.name ? "white" : "#374151",
                                         }}
-                                        onMouseEnter={() => setIsHovered(mode._id)}
-                                        onMouseLeave={() => setIsHovered(null)}
                                         onClick={() => {
                                             onChange(mode.name);
                                             setIsOpen(false);

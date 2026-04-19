@@ -1,6 +1,19 @@
 ﻿import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Search, ChevronDown, Plus, Check, Trash2 } from "lucide-react";
 import { useOrganizationBranding } from "../hooks/useOrganizationBranding";
+
+function toRgba(color: string, alpha: number) {
+    const trimmed = (color || "").trim();
+    const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(trimmed);
+    if (!m) return color;
+    let hex = m[1];
+    if (hex.length === 3) hex = hex.split("").map((c) => c + c).join("");
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
 interface TabanSelectProps {
     value: string;
@@ -38,13 +51,20 @@ export default function TabanSelect({
     disabled = false
 }: TabanSelectProps) {
     const { accentColor } = useOrganizationBranding();
+    const uiAccent = accentColor || "#3b82f6";
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const controlRef = useRef<HTMLDivElement>(null);
+    const menuRef = useRef<HTMLDivElement>(null);
+    const [menuStyle, setMenuStyle] = useState<{ left: number; top: number; width: number } | null>(null);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+            const target = event.target as Node;
+            const clickedAnchor = dropdownRef.current?.contains(target);
+            const clickedMenu = menuRef.current?.contains(target);
+            if (!clickedAnchor && !clickedMenu) {
                 setIsOpen(false);
                 setSearchTerm("");
             }
@@ -52,6 +72,30 @@ export default function TabanSelect({
         if (isOpen) document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [isOpen]);
+
+    const updateMenuPosition = () => {
+        const el = controlRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const gap = 8; // matches `mt-2` / `mb-2`
+        setMenuStyle({
+            left: rect.left,
+            top: direction === "up" ? rect.top - gap : rect.bottom + gap,
+            width: rect.width,
+        });
+    };
+
+    useEffect(() => {
+        if (!isOpen || disabled) return;
+        updateMenuPosition();
+        const onScrollOrResize = () => updateMenuPosition();
+        window.addEventListener("resize", onScrollOrResize);
+        window.addEventListener("scroll", onScrollOrResize, true);
+        return () => {
+            window.removeEventListener("resize", onScrollOrResize);
+            window.removeEventListener("scroll", onScrollOrResize, true);
+        };
+    }, [isOpen, disabled, direction]);
 
     useEffect(() => {
         if (disabled) {
@@ -85,10 +129,11 @@ export default function TabanSelect({
 
             <div className={`relative w-full group/select`}>
                 <div
-                    className={`w-full h-10 px-3 border rounded-lg flex items-center transition-all outline-none ${disabled ? "bg-slate-50 border-gray-200 cursor-not-allowed opacity-70" : "bg-white"} ${isOpen ? "" : error ? "border-red-500 shadow-[0_0_0_1px_rgba(239,68,68,0.2)]" : disabled ? "" : "border-gray-200 hover:border-gray-300 shadow-sm"}`}
+                    ref={controlRef}
+                    className={`w-full h-9 px-3 border rounded-md flex items-center transition-all outline-none ${disabled ? "bg-slate-50 border-gray-200 cursor-not-allowed opacity-70" : "bg-white"} ${isOpen ? "" : error ? "border-red-500 shadow-[0_0_0_1px_rgba(239,68,68,0.2)]" : disabled ? "" : "border-gray-200 hover:border-gray-300 shadow-sm"}`}
                     style={!disabled && isOpen ? {
-                        borderColor: accentColor,
-                        boxShadow: `0 0 0 2px ${accentColor}20`,
+                        borderColor: uiAccent,
+                        boxShadow: `0 0 0 2px ${toRgba(uiAccent, 0.12)}`,
                         borderWidth: '1.5px'
                     } : {}}
                 >
@@ -109,7 +154,7 @@ export default function TabanSelect({
                             }
                         }}
                         placeholder={value || placeholder}
-                        className={`bg-transparent border-none outline-none w-full h-full text-sm ${disabled ? "cursor-not-allowed" : ""} ${value && !isOpen ? "text-slate-700 font-medium" : "text-slate-400"}`}
+                        className={`bg-transparent border-none outline-none w-full h-full text-[13px] ${disabled ? "cursor-not-allowed" : ""} ${value && !isOpen ? "text-slate-700 font-medium" : "text-slate-400"}`}
                     />
                     <div className="flex items-center gap-1">
                         {value && !isOpen && !disabled && (
@@ -125,7 +170,7 @@ export default function TabanSelect({
                             size={14}
                             className="transition-transform flex-shrink-0"
                             style={{
-                                color: disabled ? "#94a3b8" : accentColor,
+                                color: disabled ? "#94a3b8" : uiAccent,
                                 transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)'
                             }}
                         />
@@ -133,8 +178,17 @@ export default function TabanSelect({
                 </div>
             </div>
 
-            {!disabled && isOpen && (
-                <div className={`absolute ${direction === "up" ? "bottom-full mb-2" : "top-full mt-2"} left-0 right-0 bg-white border border-gray-100 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] z-[1000] flex flex-col max-h-[350px] overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top`}>
+            {!disabled && isOpen && menuStyle && typeof document !== "undefined" && createPortal(
+                <div
+                    ref={menuRef}
+                    className={`fixed bg-white border border-gray-100 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] z-[10000] flex flex-col max-h-[350px] overflow-hidden animate-in fade-in zoom-in-95 duration-200 ${direction === "up" ? "origin-bottom" : "origin-top"}`}
+                    style={{
+                        left: menuStyle.left,
+                        top: menuStyle.top,
+                        width: menuStyle.width,
+                        transform: direction === "up" ? "translateY(-100%)" : undefined,
+                    }}
+                >
                     {/* Options List */}
                     <div className="overflow-y-auto flex-1 py-2 custom-scrollbar focus-within:ring-0">
                         {Object.entries(groupedOptions).map(([group, groupOpts]: [string, any]) => (
@@ -158,22 +212,8 @@ export default function TabanSelect({
                                             }}
                                             className={`w-full px-4 py-2.5 text-[13px] text-left flex items-center transition-all group/item ${isSelected ? "" : "text-slate-600"}`}
                                             style={{
-                                                backgroundColor: isSelected ? `#1b5e6a1A` : undefined,
-                                                color: isSelected ? '#1b5e6a' : undefined,
-                                                borderLeft: isSelected ? `4px solid #1b5e6a` : '4px solid transparent',
+                                                color: isSelected ? uiAccent : undefined,
                                                 fontWeight: isSelected ? 600 : 400
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                if (!isSelected) {
-                                                    e.currentTarget.style.backgroundColor = '#1b5e6a';
-                                                    e.currentTarget.style.color = 'white';
-                                                }
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                if (!isSelected) {
-                                                    e.currentTarget.style.backgroundColor = '';
-                                                    e.currentTarget.style.color = '';
-                                                }
                                             }}
                                         >
                                             <div className="flex items-center justify-between w-full">
@@ -190,7 +230,7 @@ export default function TabanSelect({
                                                         />
                                                     )}
                                                     {isSelected && (
-                                                        <Check size={14} className="flex-shrink-0 transition-colors" style={{ color: '#1b5e6a' }} />
+                                                        <Check size={14} className="flex-shrink-0 transition-colors" style={{ color: uiAccent }} />
                                                     )}
                                                 </div>
                                             </div>
@@ -217,14 +257,15 @@ export default function TabanSelect({
                                     setIsOpen(false);
                                 }}
                                 className="w-full px-4 py-3 text-[13px] font-medium flex items-center gap-2 hover:bg-slate-50 transition-colors"
-                                style={{ color: '#1b5e6a' }}
+                                style={{ color: uiAccent }}
                             >
-                                <Plus size={18} className="text-white rounded-full p-0.5" strokeWidth={3} style={{ backgroundColor: '#1b5e6a' }} />
+                                <Plus size={18} className="text-white rounded-full p-0.5" strokeWidth={3} style={{ backgroundColor: uiAccent }} />
                                 {addNewLabel}
                             </button>
                         </div>
                     )}
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

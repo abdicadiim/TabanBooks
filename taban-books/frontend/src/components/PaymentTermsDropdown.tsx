@@ -92,7 +92,7 @@ export const PaymentTermsDropdown: React.FC<PaymentTermsDropdownProps> = ({
                                     key={term.id}
                                     type="button"
                                     onClick={() => handleSelect(term)}
-                                    className={`w-full px-3 py-2.5 text-left text-sm hover:bg-blue-50 flex items-center justify-between ${value === term.value ? 'bg-blue-500 text-white hover:bg-blue-600' : 'text-gray-900'
+                                    className={`w-full px-3 py-2.5 text-left text-sm flex items-center justify-between ${value === term.value ? 'bg-blue-500 text-white' : 'text-gray-900'
                                         }`}
                                 >
                                     <span>{term.label}</span>
