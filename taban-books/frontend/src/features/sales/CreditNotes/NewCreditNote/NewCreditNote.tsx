@@ -1,4 +1,5 @@
-﻿import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
+import { toast } from "react-hot-toast";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import {
@@ -9,6 +10,7 @@ import {
   Settings,
   Trash2,
   Check,
+  Edit2,
   Printer,
   FileText,
   Calendar,
@@ -23,8 +25,11 @@ import {
   CheckSquare,
   Copy,
   Grid3x3,
+  PlusCircle,
   Image as ImageIcon,
-  Loader2
+  Loader2,
+  Tag,
+  Mail
 } from "lucide-react";
 import {
   getCustomers,
@@ -38,17 +43,74 @@ import {
   Customer,
   Tax,
   CreditNote,
-  AttachedFile
+  AttachedFile,
+  buildTaxOptionGroups,
+  taxLabel
 } from "../../salesModel";
 import { getAllDocuments } from "../../../../utils/documentStorage";
-import { customersAPI, salespersonsAPI, itemsAPI, taxesAPI, currenciesAPI, creditNotesAPI } from "../../../../services/api";
-import { API_BASE_URL, getToken } from "../../../../services/auth";
+import { customersAPI, salespersonsAPI, itemsAPI, taxesAPI, currenciesAPI, creditNotesAPI, reportingTagsAPI, locationsAPI, transactionNumberSeriesAPI } from "../../../../services/api";
+import { getToken } from "../../../../services/auth";
 
 const accountCategories = {
-  "Income": ["Sales", "Discount", "General Income"],
-  "Expense": ["Shipping Charge", "Office Supplies", "Travel Expense"],
-  "Accounts Receivable": ["Accounts Receivable"]
-};
+  "Other Current Asset": [
+    "Advance Tax",
+    "Employee Advance",
+    "Goods In Transit",
+    "Prepaid Expenses",
+    "Retention Receivable"
+  ],
+  "Fixed Asset": [
+    "Furniture and Equipment"
+  ],
+  "Other Current Liability": [
+    "Employee Reimbursements",
+    "Opening Balance Adjustments",
+    "Retention Payable",
+    "Unearned Revenue"
+  ],
+  "Equity": [
+    "Drawings",
+    "Opening Balance Offset",
+    "Owner's Equity"
+  ],
+  "Income": [
+    "Discount",
+    "General Income",
+    "Interest Income",
+    "Late Fee Income",
+    "Other Charges",
+    "Sales",
+    "Shipping Charge"
+  ],
+  "Expense": [
+    "Advertising And Marketing",
+    "Automobile Expense",
+    "Bad Debt",
+    "Bank Fees and Charges",
+    "Consultant Expense",
+    "Credit Card Charges",
+    "Depreciation Expense",
+    "IT and Internet Expenses",
+    "Janitorial Expense",
+    "Lodging",
+    "Meals and Entertainment",
+    "Office Supplies",
+    "Other Expenses",
+    "Postage",
+    "Printing and Stationery",
+    "Purchase Discounts",
+    "Rent Expense",
+    "Repairs and Maintenance",
+    "Salaries and Employee Wages",
+    "sdff",
+    "Telephone Expense",
+    "Travel Expense",
+    "Uncategorized"
+  ],
+  "Cost Of Goods Sold": [
+    "Cost of Goods Sold"
+  ]
+} as const;
 
 const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -66,12 +128,123 @@ interface CreditNoteItem {
   id: number;
   itemId?: string;
   itemDetails: string;
+  account?: string;
   quantity: number;
   rate: number;
   tax: string;
   amount: number;
   stockOnHand?: number;
+  reportingTags?: Array<{ tagId: string; value: string; name?: string }>;
 }
+
+const sanitizeCreditNotePrefix = (value: string) => value.replace(/\d/g, "").slice(0, 10);
+const extractCreditNoteDigits = (value: string) => value.replace(/\D/g, "").slice(0, 10);
+const buildCreditNoteNumber = (prefix: string, nextNumber: string) => `${prefix}${nextNumber}`;
+const normalizeReportingTagOptions = (tag: any): string[] => {
+  const rawOptions = Array.isArray(tag?.options) ? tag.options
+    : Array.isArray(tag?.values) ? tag.values
+      : Array.isArray(tag?.tagValues) ? tag.tagValues
+        : Array.isArray(tag?.choices) ? tag.choices
+          : [];
+  return Array.from(new Set(rawOptions
+    .map((option: any) => {
+      if (typeof option === "string") return option.trim();
+      if (option && typeof option === "object") {
+        return String(option.value ?? option.name ?? option.option ?? option.title ?? "").trim();
+      }
+      return "";
+    })
+    .filter(Boolean)));
+};
+const normalizeReportingTagAppliesTo = (tag: any): string[] => {
+  const rawAppliesTo = Array.isArray(tag?.appliesTo)
+    ? tag.appliesTo
+    : Array.isArray(tag?.modules)
+      ? tag.modules
+      : Array.isArray(tag?.moduleNames)
+        ? tag.moduleNames
+        : Array.isArray(tag?.entities)
+          ? tag.entities
+          : [];
+  return rawAppliesTo
+    .map((value: any) => String(value || "").toLowerCase().trim())
+    .filter(Boolean);
+};
+const resolveItemAccount = (item: any): string => {
+  const direct = item?.account || item?.accountName || item?.incomeAccount || item?.incomeAccountName;
+  if (direct) return String(direct);
+  const salesAccount = item?.salesAccount;
+  if (salesAccount) {
+    if (typeof salesAccount === "string") return salesAccount;
+    return String(salesAccount?.name || salesAccount?.accountName || "");
+  }
+  return "";
+};
+const resolveItemTaxId = (item: any, taxOptions: any[]): string => {
+  const rawArray = item?.taxs || item?.taxes || item?.tax_ids;
+  if (Array.isArray(rawArray) && rawArray.length > 0) {
+    const first = rawArray[0];
+    if (typeof first === "string" || typeof first === "number") return String(first);
+    const firstId = first?.id || first?._id || first?.taxId || first?.tax_id;
+    if (firstId) return String(firstId);
+    const firstName = first?.name || first?.label;
+    if (firstName) {
+      const match = taxOptions.find((t) => String(t?.name || "").toLowerCase() === String(firstName).toLowerCase());
+      if (match) return String(match.id);
+    }
+  }
+
+  const raw = item?.taxId || item?.tax || item?.taxRateId || item?.salesTaxId || item?.tax_id || item?.taxs || item?.taxes;
+  if (raw !== undefined && raw !== null && raw !== "") {
+    const rawStr = String(raw).trim();
+    const idMatch = taxOptions.find((t) => String(t?.id) === rawStr);
+    if (idMatch) return String(idMatch.id);
+    const cleanedName = rawStr.toLowerCase().replace(/\[.*?\]/g, "").trim();
+    const nameMatch = taxOptions.find((t) => {
+      const tName = String(t?.name || "").toLowerCase().trim();
+      return tName === rawStr.toLowerCase() || tName === cleanedName || tName.includes(cleanedName);
+    });
+    if (nameMatch) return String(nameMatch.id);
+    const percentMatch = rawStr.match(/(\d+(\.\d+)?)/);
+    if (percentMatch) {
+      const rateVal = Number(percentMatch[1]);
+      const byRate = taxOptions.find((t) => Math.abs(Number(t?.rate || 0) - rateVal) < 0.0001);
+      if (byRate) return String(byRate.id);
+    }
+  }
+  const numericRate = item?.taxRate || item?.tax_rate || item?.taxPercent || item?.tax_percentage || item?.percentage;
+  if (numericRate !== undefined && numericRate !== null && numericRate !== "") {
+    const rateVal = Number(numericRate);
+    const byRate = taxOptions.find((t) => Math.abs(Number(t?.rate || 0) - rateVal) < 0.0001);
+    if (byRate) return String(byRate.id);
+  }
+  const taxObj = item?.taxRate || item?.tax_rate || item?.taxInfo;
+  if (taxObj) {
+    const byId = taxObj?.id || taxObj?._id || taxObj?.taxId;
+    if (byId) return String(byId);
+    const byName = taxObj?.name || taxObj?.label;
+    if (byName) {
+      const match = taxOptions.find((t) => String(t?.name || "").toLowerCase() === String(byName).toLowerCase());
+      if (match) return String(match.id);
+    }
+  }
+  const taxName = item?.taxName || item?.tax_label || item?.taxNameDisplay || item?.taxDisplayName;
+  if (taxName) {
+    const cleanedName = String(taxName).toLowerCase().replace(/\[.*?\]/g, "").trim();
+    const match = taxOptions.find((t) => {
+      const tName = String(t?.name || "").toLowerCase().trim();
+      return tName === String(taxName).toLowerCase().trim() || tName === cleanedName || tName.includes(cleanedName);
+    });
+    if (match) return String(match.id);
+    const percentMatch = String(taxName).match(/(\d+(\.\d+)?)/);
+    if (percentMatch) {
+      const rateVal = Number(percentMatch[1]);
+      const byRate = taxOptions.find((t) => Math.abs(Number(t?.rate || 0) - rateVal) < 0.0001);
+      if (byRate) return String(byRate.id);
+    }
+  }
+  return "";
+};
 
 export default function NewCreditNote() {
   const navigate = useNavigate();
@@ -82,13 +255,16 @@ export default function NewCreditNote() {
 
   const [formData, setFormData] = useState({
     customerName: "",
-    creditNoteNumber: "CN-00001",
+    creditNoteNumber: transactionNumberSeriesAPI.getCachedNextNumber({
+      module: "Credit Note",
+      locationName: "Head Office",
+    }) || "",
     referenceNumber: "",
     creditNoteDate: "29 Dec 2025",
     accountsReceivable: "Accounts Receivable",
     salesperson: "",
     subject: "",
-    items: [{ id: Date.now(), itemDetails: "", quantity: 1, rate: 0, tax: "", amount: 0 }] as CreditNoteItem[],
+    items: [{ id: Date.now(), itemDetails: "", account: "", quantity: 1, rate: 0, tax: "", amount: 0, reportingTags: [] }] as CreditNoteItem[],
     subTotal: 0,
     discount: 0,
     discountType: "percent",
@@ -107,6 +283,26 @@ export default function NewCreditNote() {
   const showTransactionDiscount = discountMode === "transaction";
   const showShippingCharges = enabledSettings?.chargeSettings?.shippingCharges !== false;
   const showAdjustment = enabledSettings?.chargeSettings?.adjustments !== false;
+  const initialCreditNoteDigits = extractCreditNoteDigits(
+    transactionNumberSeriesAPI.getCachedNextNumber({ module: "Credit Note", locationName: "Head Office" })
+  ) || "";
+  const [isCreditNoteNumberModalOpen, setIsCreditNoteNumberModalOpen] = useState(false);
+  const [creditNoteNumberMode, setCreditNoteNumberMode] = useState<"auto" | "manual">("auto");
+  const [creditNotePrefix, setCreditNotePrefix] = useState("CN-");
+  const [creditNoteNextNumber, setCreditNoteNextNumber] = useState(initialCreditNoteDigits);
+  const [warehouseLocation, setWarehouseLocation] = useState("Head Office");
+  const [priceList, setPriceList] = useState("");
+  const [availableReportingTags, setAvailableReportingTags] = useState<any[]>([]);
+  const normalizedReportingTags = useMemo(
+    () =>
+      (Array.isArray(availableReportingTags) ? availableReportingTags : []).map((tag: any, index: number) => ({
+        ...tag,
+        key: String(tag?.id || tag?._id || tag?.name || tag?.title || `reporting-tag-${index}`),
+        label: String(tag?.name || tag?.title || tag?.label || `Reporting Tag ${index + 1}`),
+        options: normalizeReportingTagOptions(tag),
+      })),
+    [availableReportingTags]
+  );
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [taxOptions, setTaxOptions] = useState<Tax[]>([]);
@@ -121,6 +317,15 @@ export default function NewCreditNote() {
   const [isAutoSelectingCustomerFromQuickAction, setIsAutoSelectingCustomerFromQuickAction] = useState(false);
   const [customerQuickActionFrameKey, setCustomerQuickActionFrameKey] = useState(0);
   const [isReloadingCustomerFrame, setIsReloadingCustomerFrame] = useState(false);
+  const [itemReportingTagsTargetId, setItemReportingTagsTargetId] = useState<number | null>(null);
+  const [itemReportingTagDraftValues, setItemReportingTagDraftValues] = useState<Record<string, string>>({});
+  const [itemReportingTagsPopoverId, setItemReportingTagsPopoverId] = useState<number | null>(null);
+  const [isWarehouseDropdownOpen, setIsWarehouseDropdownOpen] = useState(false);
+  const [warehouseSearch, setWarehouseSearch] = useState("");
+  const [isPriceListDropdownOpen, setIsPriceListDropdownOpen] = useState(false);
+  const [priceListSearch, setPriceListSearch] = useState("");
+  const [availableLocations, setAvailableLocations] = useState<string[]>([]);
+  const [availablePriceLists, setAvailablePriceLists] = useState<string[]>([]);
 
   // Customer search modal state
   const [customerSearchModalOpen, setCustomerSearchModalOpen] = useState(false);
@@ -129,10 +334,18 @@ export default function NewCreditNote() {
   const [customerSearchResults, setCustomerSearchResults] = useState<Customer[]>([]);
   const [customerSearchPage, setCustomerSearchPage] = useState(1);
   const [customerSearchCriteriaOpen, setCustomerSearchCriteriaOpen] = useState(false);
+  const prefillFromProjectRef = useRef(false);
 
   const [isSalespersonDropdownOpen, setIsSalespersonDropdownOpen] = useState(false);
   const [salespersonSearch, setSalespersonSearch] = useState("");
   const [selectedSalesperson, setSelectedSalesperson] = useState<any>(null);
+  const [isManageSalespersonsOpen, setIsManageSalespersonsOpen] = useState(false);
+  const [manageSalespersonSearch, setManageSalespersonSearch] = useState("");
+  const [manageSalespersonMenuOpen, setManageSalespersonMenuOpen] = useState<string | null>(null);
+  const [selectedSalespersonIds, setSelectedSalespersonIds] = useState<string[]>([]);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [isNewSalespersonFormOpen, setIsNewSalespersonFormOpen] = useState(false);
+  const [newSalespersonData, setNewSalespersonData] = useState({ name: "", email: "" });
   const [isNewSalespersonQuickActionOpen, setIsNewSalespersonQuickActionOpen] = useState(false);
   const [salespersonQuickActionBaseIds, setSalespersonQuickActionBaseIds] = useState<string[]>([]);
   const [isRefreshingSalespersonsQuickAction, setIsRefreshingSalespersonsQuickAction] = useState(false);
@@ -162,11 +375,13 @@ export default function NewCreditNote() {
   const [newHeaderText, setNewHeaderText] = useState("");
   const [newHeaderItemId, setNewHeaderItemId] = useState<number | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<Record<string | number, string>>({});
+  const [accountSearches, setAccountSearches] = useState<Record<string | number, string>>({});
   const [itemSearches, setItemSearches] = useState<Record<string | number, string>>({});
+  const [taxSearches, setTaxSearches] = useState<Record<string | number, string>>({});
 
   const [isUploadDropdownOpen, setIsUploadDropdownOpen] = useState(false);
   const [isCloudPickerOpen, setIsCloudPickerOpen] = useState(false);
-  const [selectedCloudProvider, setSelectedCloudProvider] = useState("taban");
+  const [selectedCloudProvider, setSelectedCloudProvider] = useState("zoho");
   const [cloudSearchQuery, setCloudSearchQuery] = useState("");
   const [selectedCloudFiles, setSelectedCloudFiles] = useState<any[]>([]);
   const [isDocumentsModalOpen, setIsDocumentsModalOpen] = useState(false);
@@ -209,7 +424,8 @@ export default function NewCreditNote() {
         rate: Number(item.rate ?? item.price ?? 0) || 0,
         tax: String(item.tax || item.taxId || ""),
         amount: Number(item.amount ?? 0) || 0,
-        stockOnHand: Number(item.stockOnHand ?? item.stockQuantity ?? 0) || 0
+        stockOnHand: Number(item.stockOnHand ?? item.stockQuantity ?? 0) || 0,
+        reportingTags: Array.isArray(item.reportingTags) ? item.reportingTags : []
       }))
       : undefined;
 
@@ -275,6 +491,10 @@ export default function NewCreditNote() {
   useEffect(() => {
     const loadData = async () => {
       try {
+        let loadedCustomers: any[] = [];
+        let loadedSalespersons: any[] = [];
+        let loadedTaxes: any[] = [];
+
         // Load customers from backend
         try {
           const customersResponse = await customersAPI.getAll();
@@ -284,6 +504,7 @@ export default function NewCreditNote() {
               id: c._id || c.id,
               name: c.displayName || c.companyName || `${c.firstName || ''} ${c.lastName || ''}`.trim() || "Unknown"
             }));
+            loadedCustomers = normalizedCustomers;
             setCustomers(normalizedCustomers);
           }
         } catch (error) {
@@ -294,7 +515,9 @@ export default function NewCreditNote() {
         try {
           const salespersonsResponse = await salespersonsAPI.getAll();
           if (salespersonsResponse && salespersonsResponse.success && salespersonsResponse.data) {
-            setSalespersons(salespersonsResponse.data.map((s: any) => normalizeSalesperson(s)));
+            const normalizedSalespersons = salespersonsResponse.data.map((s: any) => normalizeSalesperson(s));
+            loadedSalespersons = normalizedSalespersons;
+            setSalespersons(normalizedSalespersons);
           }
         } catch (error) {
           console.error('Error loading salespersons:', error);
@@ -302,12 +525,95 @@ export default function NewCreditNote() {
 
         // Load taxes from backend
         try {
-          const taxesResponse = await taxesAPI.getForTransactions("sales");
+          const taxesResponse = await taxesAPI.getForTransactions();
           if (taxesResponse && taxesResponse.success && taxesResponse.data) {
-            setTaxOptions(taxesResponse.data);
+            const normalizedTaxes = taxesResponse.data.map((t: any) => ({
+              ...t,
+              id: t.id || t._id || t.taxId || t.tax_id || t.code,
+              name: t.name || t.label || t.taxName || t.tax_name || t.title || t.displayName,
+              rate: Number(t.rate ?? t.taxRate ?? t.percentage ?? t.value ?? 0)
+            }));
+            loadedTaxes = normalizedTaxes;
+            setTaxOptions(normalizedTaxes);
           }
         } catch (error) {
           console.error('Error loading taxes:', error);
+        }
+
+        // Load reporting tags
+        try {
+          const response = await reportingTagsAPI.getAll();
+          const rows = Array.isArray(response) ? response : (response?.data || []);
+          const fallbackRows = (() => {
+            try {
+              const raw = localStorage.getItem("taban_books_reporting_tags");
+              const parsed = raw ? JSON.parse(raw) : [];
+              return Array.isArray(parsed) ? parsed : [];
+            } catch {
+              return [];
+            }
+          })();
+          const sourceRows = Array.isArray(rows) && rows.length > 0 ? rows : fallbackRows;
+          const activeRows = sourceRows.filter((tag: any) => String(tag?.status || "active").toLowerCase() !== "inactive");
+          const scopedRows = activeRows.filter((tag: any) => {
+            const appliesTo = normalizeReportingTagAppliesTo(tag);
+            return appliesTo.some((entry) => entry.includes("credit") || entry.includes("sales"));
+          });
+          const tagsToUse = (scopedRows.length > 0 ? scopedRows : activeRows).map((tag: any) => ({
+            ...tag,
+            options: normalizeReportingTagOptions(tag),
+          }));
+          setAvailableReportingTags(tagsToUse);
+        } catch (error) {
+          console.error("Error loading reporting tags:", error);
+          setAvailableReportingTags([]);
+        }
+
+        // Load locations from settings
+        try {
+          const locationsResponse = await locationsAPI.getAll();
+          const rows = Array.isArray(locationsResponse?.data)
+            ? locationsResponse.data
+            : Array.isArray(locationsResponse?.locations)
+              ? locationsResponse.locations
+              : Array.isArray(locationsResponse)
+                ? locationsResponse
+                : [];
+          const cached = (() => {
+            try {
+              const raw = localStorage.getItem("taban_locations_cache");
+              const parsed = raw ? JSON.parse(raw) : [];
+              return Array.isArray(parsed) ? parsed : [];
+            } catch {
+              return [];
+            }
+          })();
+          const combined = [...rows, ...cached];
+          const names = Array.from(new Set(combined
+            .map((loc: any) =>
+              loc?.name || loc?.locationName || loc?.location_name || loc?.branchName || loc?.displayName || loc?.title
+            )
+            .filter(Boolean)
+            .map((value: string) => String(value).trim())
+            .filter(Boolean)));
+          setAvailableLocations(names);
+          if (!warehouseLocation && names[0]) setWarehouseLocation(names[0]);
+        } catch (error) {
+          console.error("Error loading locations:", error);
+        }
+
+        // Load price lists from settings cache
+        try {
+          const raw = localStorage.getItem("inv_price_lists_v1");
+          const parsed = raw ? JSON.parse(raw) : [];
+          const names = Array.from(new Set((Array.isArray(parsed) ? parsed : [])
+            .map((row: any) => row?.name || row?.priceListName || row?.title || row?.label)
+            .filter(Boolean)
+            .map((value: string) => String(value).trim())
+            .filter(Boolean)));
+          setAvailablePriceLists(names);
+        } catch (error) {
+          console.error("Error loading price lists:", error);
         }
 
         // Load items from backend
@@ -320,7 +626,10 @@ export default function NewCreditNote() {
               sku: item.sku || "",
               rate: item.sellingPrice || item.costPrice || item.rate || 0,
               stockOnHand: item.stockOnHand || item.quantityOnHand || 0,
-              unit: item.unit || item.unitOfMeasure || "pcs"
+              unit: item.unit || item.unitOfMeasure || "pcs",
+              taxId: item.taxId || item.tax || item.salesTaxId || item.taxRateId || "",
+              taxName: item.taxName || item.tax_label || item.taxRate?.name || "",
+              account: resolveItemAccount(item)
             }));
             setAvailableItems(transformedItems);
           }
@@ -344,7 +653,7 @@ export default function NewCreditNote() {
           }
 
           try {
-            const nextNumber = await fetchNextCreditNoteNumber();
+            const nextNumber = await fetchNextCreditNoteNumber({ reserve: false });
             if (nextNumber) {
               setFormData(prev => ({
                 ...prev,
@@ -354,19 +663,6 @@ export default function NewCreditNote() {
           } catch (error) {
             console.error("Error loading next credit note number:", error);
           }
-        }
-
-        try {
-          const generalResponse = await fetch(`${API_BASE_URL}/settings/general`, {
-            headers: { Authorization: `Bearer ${getToken()}` },
-          });
-          if (generalResponse.ok) {
-            const generalJson = await generalResponse.json();
-            const settings = generalJson?.data?.settings;
-            if (settings) setEnabledSettings(settings);
-          }
-        } catch (generalError) {
-          console.error("Error loading general settings:", generalError);
         }
 
         // If navigated from an Invoice (query param invoiceId), prefill credit note fields
@@ -384,7 +680,8 @@ export default function NewCreditNote() {
                 quantity: it.quantity || it.qty || 1,
                 rate: it.rate || it.unitPrice || it.price || 0,
                 tax: it.taxId || it.tax || "",
-                amount: it.total || it.amount || ((it.quantity || 0) * (it.rate || it.unitPrice || 0) || 0)
+                amount: it.total || it.amount || ((it.quantity || 0) * (it.rate || it.unitPrice || 0) || 0),
+                reportingTags: Array.isArray(it.reportingTags) ? it.reportingTags : []
               }));
 
               console.debug('[NewCreditNote] Prefilling from invoice', invoiceData);
@@ -403,7 +700,7 @@ export default function NewCreditNote() {
                 termsAndConditions: (invoiceData as any).terms || invoiceData.termsAndConditions || prev.termsAndConditions
               }));
 
-              // set selected customer if available â€” if not found, set a minimal selectedCustomer so the UI shows name
+              // set selected customer if available — if not found, set a minimal selectedCustomer so the UI shows name
               try {
                 const custs = (await customersAPI.getAll()).data || [];
                 let found = null;
@@ -429,20 +726,109 @@ export default function NewCreditNote() {
           try {
             const existing = await getCreditNoteById(id!);
             if (existing) {
-              setFormData(prev => ({
-                ...prev,
-                ...existing,
-                creditNoteDate: existing.date ? formatDate(existing.date) : prev.creditNoteDate
+              const normalizedReference = String(
+                (existing as any)?.referenceNumber ??
+                (existing as any)?.reference ??
+                (existing as any)?.referenceNo ??
+                (existing as any)?.refNumber ??
+                ""
+              ).trim();
+
+              const mappedItems = (Array.isArray((existing as any)?.items) ? (existing as any).items : []).map((item: any, index: number) => {
+                const quantity = Number(item?.quantity ?? item?.qty ?? 1) || 1;
+                const rate = Number(item?.rate ?? item?.unitPrice ?? item?.price ?? 0) || 0;
+                const rawItem = item?.item;
+                const normalizedItemId = rawItem && typeof rawItem === "object"
+                  ? String(rawItem?._id || rawItem?.id || item?.itemId || "")
+                  : String(item?.itemId || rawItem || "");
+                const itemDetails = String(
+                  item?.itemDetails ||
+                  item?.name ||
+                  item?.description ||
+                  (rawItem && typeof rawItem === "object" ? rawItem?.name || rawItem?.itemDetails || "" : "")
+                );
+                const taxId = resolveItemTaxId(item, loadedTaxes.length ? loadedTaxes : taxOptions);
+                const amount = Number(item?.amount ?? item?.total ?? (quantity * rate)) || 0;
+                const account = String(
+                  item?.account ||
+                  resolveItemAccount(item) ||
+                  (rawItem && typeof rawItem === "object" ? resolveItemAccount(rawItem) : "")
+                );
+
+                return {
+                  id: Number(item?.id) || Date.now() + index,
+                  itemId: normalizedItemId || undefined,
+                  itemDetails,
+                  account,
+                  quantity,
+                  rate,
+                  tax: taxId,
+                  amount,
+                  reportingTags: Array.isArray(item?.reportingTags) ? item.reportingTags : []
+                };
+              });
+
+              const mappedDocuments: CreditNoteDocument[] = (Array.isArray((existing as any)?.attachedFiles) ? (existing as any).attachedFiles : []).map((file: any, index: number) => ({
+                id: Number(file?.id) || Date.now() + index,
+                name: String(file?.name || file?.filename || file?.originalName || `Attachment ${index + 1}`),
+                size: Number(file?.size || file?.fileSize || 0) || 0,
+                file: null
               }));
 
-              // Find objects to set selected state
-              const custs = (await customersAPI.getAll()).data;
-              const cust = custs?.find((c: any) => (c._id || c.id) === (existing.customer || (existing as any).customerId));
-              if (cust) setSelectedCustomer({ ...cust, id: cust._id || cust.id, name: cust.displayName || cust.name });
+              setFormData(prev => ({
+                ...prev,
+                customerName:
+                  existing.customerName ||
+                  (typeof existing.customer === "object"
+                    ? ((existing.customer as any)?.displayName || (existing.customer as any)?.name || (existing.customer as any)?.companyName || "")
+                    : prev.customerName) ||
+                  prev.customerName,
+                creditNoteNumber: (existing as any).creditNoteNumber || prev.creditNoteNumber,
+                referenceNumber: normalizedReference || prev.referenceNumber,
+                creditNoteDate: (existing as any).date ? formatDate((existing as any).date) : prev.creditNoteDate,
+                accountsReceivable: (existing as any).accountsReceivable || prev.accountsReceivable,
+                salesperson:
+                  typeof (existing as any).salesperson === "object"
+                    ? ((existing as any).salesperson?.name || "")
+                    : ((existing as any).salesperson || ""),
+                subject: (existing as any).subject || "",
+                items: mappedItems.length ? mappedItems : prev.items,
+                subTotal: Number((existing as any).subtotal ?? (existing as any).subTotal ?? prev.subTotal) || 0,
+                discount: Number((existing as any).discount ?? prev.discount) || 0,
+                discountType: (existing as any).discountType || prev.discountType,
+                shippingCharges: Number((existing as any).shippingCharges ?? (existing as any).shipping ?? prev.shippingCharges) || 0,
+                adjustment: Number((existing as any).adjustment ?? prev.adjustment) || 0,
+                total: Number((existing as any).total ?? (existing as any).amount ?? prev.total) || 0,
+                currency: (existing as any).currency || prev.currency,
+                customerNotes: (existing as any).customerNotes || (existing as any).notes || "",
+                termsAndConditions: (existing as any).termsAndConditions || (existing as any).terms || "",
+                documents: mappedDocuments
+              }));
 
-              const spData = (await salespersonsAPI.getAll()).data;
-              const sp = spData?.find((s: any) => s.name === (existing as any).salesperson);
-              if (sp) setSelectedSalesperson(sp);
+              const customerId = String(
+                (typeof existing.customer === "object" ? (existing.customer as any)?._id || (existing.customer as any)?.id : existing.customer) ||
+                (existing as any).customerId ||
+                ""
+              );
+              const cust = loadedCustomers.find((c: any) => String(c?._id || c?.id || c?.customerId || "") === customerId);
+              if (cust) {
+                setSelectedCustomer({ ...cust, id: cust._id || cust.id, name: cust.displayName || cust.name });
+              } else if (customerId || existing.customerName) {
+                setSelectedCustomer({
+                  id: customerId || "unknown",
+                  name: existing.customerName || (typeof existing.customer === "string" ? existing.customer : "")
+                } as any);
+              }
+
+              const salespersonName = String(
+                typeof (existing as any).salesperson === "object"
+                  ? ((existing as any).salesperson?.name || "")
+                  : ((existing as any).salesperson || "")
+              ).trim().toLowerCase();
+              if (salespersonName) {
+                const sp = loadedSalespersons.find((s: any) => String(s?.name || "").trim().toLowerCase() === salespersonName);
+                if (sp) setSelectedSalesperson(sp);
+              }
             }
           } catch (error) {
             console.error("Error fetching credit note:", error);
@@ -457,12 +843,102 @@ export default function NewCreditNote() {
   }, [id, isEditMode]);
 
   useEffect(() => {
+    if (prefillFromProjectRef.current) return;
+    if (isEditMode) return;
+    const state = location.state as any;
+    if (!state || state.source !== "timeTrackingProjects") return;
+
+    const customerId = String(state.customerId || state.project?.customerId || "").trim();
+    const customerName = String(state.customerName || state.project?.customerName || "").trim();
+    const currency = String(state.currency || "").trim();
+
+    if (customerId || customerName) {
+      const matchedCustomer =
+        customers.find((c: any) => String(c?.id || c?._id || "") === customerId) ||
+        customers.find(
+          (c: any) =>
+            String(c?.name || c?.displayName || "").trim().toLowerCase() ===
+            customerName.toLowerCase()
+        );
+      if (matchedCustomer) {
+        setSelectedCustomer(matchedCustomer);
+      } else if (customerName) {
+        setSelectedCustomer({ id: customerId || "unknown", name: customerName, displayName: customerName } as any);
+      }
+
+      setFormData((prev: any) => ({
+        ...prev,
+        customerName: customerName || prev.customerName,
+        currency: currency || prev.currency,
+      }));
+    }
+
+    prefillFromProjectRef.current = true;
+  }, [location.state, customers, isEditMode]);
+
+  useEffect(() => {
+    if (prefillFromProjectRef.current) return;
+    if (isEditMode) return;
+
+    const state = location.state as any;
+    if (!state || state.source) return;
+
+    const customerId = String(state.customerId || state.customer?._id || state.customer?.id || "").trim();
+    const customerName = String(
+      state.customerName ||
+        state.customer?.displayName ||
+        state.customer?.companyName ||
+        state.customer?.name ||
+        ""
+    ).trim();
+
+    if (!customerId && !customerName) return;
+
+    const matchedCustomer =
+      (customerId
+        ? customers.find((c: any) => String(c?.id || c?._id || "") === customerId)
+        : null) ||
+      customers.find(
+        (c: any) =>
+          String(c?.name || c?.displayName || c?.companyName || "")
+            .trim()
+            .toLowerCase() === customerName.toLowerCase()
+      );
+
+    if (matchedCustomer) {
+      setSelectedCustomer(matchedCustomer);
+    } else {
+      setSelectedCustomer({
+        id: customerId || "unknown",
+        name: customerName,
+        displayName: customerName,
+      } as any);
+    }
+
+    setFormData((prev: any) => ({
+      ...prev,
+      customerName: customerName || prev.customerName,
+    }));
+  }, [location.state, customers, isEditMode]);
+
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       if (customerDropdownRef.current && !customerDropdownRef.current.contains(target)) setIsCustomerDropdownOpen(false);
       if (salespersonDropdownRef.current && !salespersonDropdownRef.current.contains(target)) setIsSalespersonDropdownOpen(false);
       if (datePickerRef.current && !datePickerRef.current.contains(target)) setIsDatePickerOpen(false);
       if (uploadDropdownRef.current && !uploadDropdownRef.current.contains(target)) setIsUploadDropdownOpen(false);
+      Object.entries(accountDropdownRefs.current).forEach(([key, ref]) => {
+        if (ref && !ref.contains(target)) {
+          setOpenAccountDropdowns(prev => ({ ...prev, [key]: false }));
+        }
+      });
+      Object.entries(taxDropdownRefs.current).forEach(([key, ref]) => {
+        if (ref && !ref.contains(target)) {
+          setOpenTaxDropdowns(prev => ({ ...prev, [key]: false }));
+          setTaxSearches(prev => ({ ...prev, [key]: "" }));
+        }
+      });
 
       // Close item dropdowns
       Object.keys(openItemDropdowns).forEach(key => {
@@ -603,15 +1079,25 @@ export default function NewCreditNote() {
   };
 
   const handleCustomerSelect = (customer: Customer) => {
+    closeAllDropdownMenus();
     setSelectedCustomer(customer);
     setFormData(prev => ({ ...prev, customerName: customer.displayName || customer.name || "" }));
-    setIsCustomerDropdownOpen(false);
   };
 
   const handleSalespersonSelect = (sp: any) => {
+    closeAllDropdownMenus();
     setSelectedSalesperson(sp);
     setFormData(prev => ({ ...prev, salesperson: sp.name }));
+    setSalespersonSearch("");
+  };
+
+  const closeAllDropdownMenus = () => {
+    setIsCustomerDropdownOpen(false);
+    setIsDatePickerOpen(false);
     setIsSalespersonDropdownOpen(false);
+    setIsWarehouseDropdownOpen(false);
+    setIsPriceListDropdownOpen(false);
+    setIsBulkActionsOpen(false);
   };
 
   const getEntityId = (entity: any): string => {
@@ -729,6 +1215,85 @@ export default function NewCreditNote() {
     }
   };
 
+  const filteredManageSalespersons = salespersons.filter((salesperson: any) =>
+    String(salesperson?.name || "").toLowerCase().includes(manageSalespersonSearch.toLowerCase()) ||
+    String(salesperson?.email || "").toLowerCase().includes(manageSalespersonSearch.toLowerCase())
+  );
+
+  const handleNewSalespersonChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setNewSalespersonData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleSaveAndSelectSalesperson = async () => {
+    if (!newSalespersonData.name.trim()) {
+      toast("Please enter a name for the salesperson");
+      return;
+    }
+
+    try {
+      const response = await salespersonsAPI.create({
+        name: newSalespersonData.name.trim(),
+        email: newSalespersonData.email.trim() || "",
+        phone: ""
+      });
+
+      if (response && response.success && response.data) {
+        const savedSalesperson = normalizeSalesperson(response.data);
+        setSalespersons(prev => [...prev, savedSalesperson]);
+        handleSalespersonSelect(savedSalesperson);
+        setNewSalespersonData({ name: "", email: "" });
+        setIsNewSalespersonFormOpen(false);
+        setIsManageSalespersonsOpen(false);
+      } else {
+        toast("Failed to save salesperson");
+      }
+    } catch (error: any) {
+      console.error("Error saving salesperson:", error);
+      toast("Error saving salesperson: " + (error?.message || "Unknown error"));
+    }
+  };
+
+  const handleDeleteSalesperson = async (salespersonId: string) => {
+    if (!window.confirm("Are you sure you want to delete this salesperson?")) {
+      return;
+    }
+
+    try {
+      const response = await salespersonsAPI.delete(salespersonId);
+      if (response && response.success) {
+        try {
+          const latestSalespersons = await reloadSalespersonsForCreditNote();
+          setSalespersons(latestSalespersons);
+        } catch (error) {
+          console.error("Error reloading salespersons:", error);
+          setSalespersons(prev => prev.filter(sp => String(sp.id || sp._id) !== salespersonId));
+        }
+
+        if (selectedSalesperson && String(selectedSalesperson.id || selectedSalesperson._id) === salespersonId) {
+          setSelectedSalesperson(null);
+          setFormData(prev => ({
+            ...prev,
+            salesperson: ""
+          }));
+        }
+      } else {
+        toast("Failed to delete salesperson: " + ((response as any)?.message || "Unknown error"));
+      }
+    } catch (error: any) {
+      console.error("Error deleting salesperson:", error);
+      toast("Error deleting salesperson: " + (error?.message || "Unknown error"));
+    }
+  };
+
+  const handleCancelNewSalesperson = () => {
+    setNewSalespersonData({ name: "", email: "" });
+    setIsNewSalespersonFormOpen(false);
+  };
+
   const handleItemChange = (itemId: number, field: string, value: any) => {
     setFormData(prev => {
       const updatedItems = prev.items.map(item => {
@@ -769,17 +1334,106 @@ export default function NewCreditNote() {
   };
 
   const handleItemSelect = (itemId: number, pItem: any) => {
-    setFormData(prev => ({
-      ...prev,
-      items: prev.items.map(item => item.id === itemId ? {
-        ...item,
-        itemId: pItem._id || pItem.id,
-        itemDetails: pItem.name,
-        rate: pItem.rate,
-        amount: pItem.rate * item.quantity,
-        stockOnHand: pItem.stockOnHand
-      } : item)
-    }));
+    closeAllDropdownMenus();
+    const rawTaxValue = pItem?.taxId || pItem?.tax || pItem?.taxRateId || pItem?.salesTaxId || pItem?.tax_id || pItem?.taxs || pItem?.taxes;
+    const rawTaxName = pItem?.taxName || pItem?.tax_label || pItem?.taxRate?.name || pItem?.taxNameDisplay || pItem?.taxDisplayName;
+    const rawTaxRate =
+      pItem?.taxRate ||
+      pItem?.tax_rate ||
+      pItem?.taxPercent ||
+      pItem?.tax_percentage ||
+      pItem?.percentage;
+    const parsedRateFromName = rawTaxName
+      ? Number(String(rawTaxName).match(/(\d+(\.\d+)?)/)?.[1] || "")
+      : undefined;
+    let ensuredTaxId = resolveItemTaxId(pItem, taxOptions);
+
+    if (!ensuredTaxId) {
+      const fallbackName = rawTaxName || (rawTaxValue && typeof rawTaxValue === "string" ? rawTaxValue : "");
+      const fallbackRate =
+        rawTaxRate !== undefined && rawTaxRate !== null && rawTaxRate !== ""
+          ? Number(rawTaxRate)
+          : parsedRateFromName;
+      if (fallbackName || (fallbackRate !== undefined && !Number.isNaN(fallbackRate))) {
+        const existing = taxOptions.find((t) => {
+          const tName = String(t?.name || "").toLowerCase().trim();
+          const fName = String(fallbackName || "").toLowerCase().trim();
+          return (
+            (fName && (tName === fName || tName.includes(fName))) ||
+            (fallbackRate !== undefined && Math.abs(Number(t?.rate || 0) - Number(fallbackRate || 0)) < 0.0001)
+          );
+        });
+        if (existing) {
+          ensuredTaxId = String(existing.id);
+        } else {
+          const tempId = `temp-${String(fallbackName || "tax").replace(/\s+/g, "-").toLowerCase()}-${Date.now()}`;
+          const tempOption = {
+            id: tempId,
+            name: String(fallbackName || `Tax ${fallbackRate ?? ""}`).trim() || "Tax",
+            rate: Number(fallbackRate || 0),
+            isTemp: true
+          };
+          setTaxOptions((prev) => [tempOption, ...prev]);
+          ensuredTaxId = tempId;
+        }
+      }
+    }
+
+    setFormData(prev => {
+      console.debug("[CreditNote] item selected", {
+        itemId,
+        item: pItem,
+        rawTaxValue,
+        rawTaxName,
+        rawTaxRate,
+        ensuredTaxId,
+        taxOptions: taxOptions.map((t) => ({ id: t.id, name: t.name, rate: t.rate }))
+      });
+      const updatedItems = prev.items.map(item => {
+        if (item.id !== itemId) return item;
+        const nextRate = Number(pItem.rate ?? 0);
+        const nextQty = Number(item.quantity ?? 1) || 1;
+        const nextAccount = resolveItemAccount(pItem) || item.account;
+        const nextTaxId = ensuredTaxId || resolveItemTaxId(pItem, taxOptions);
+        console.debug("[CreditNote] resolved item tax", {
+          nextTaxId,
+          nextAccount,
+          rawTax: rawTaxValue,
+          rawTaxName,
+          rawTaxRate
+        });
+        const taxOption = taxOptions.find(t => String(t.id) === nextTaxId);
+        const taxRate = taxOption ? Number(taxOption.rate) || 0 : 0;
+        const subAmt = nextQty * nextRate;
+        const amount = subAmt + (subAmt * taxRate / 100);
+        return {
+          ...item,
+          itemId: pItem._id || pItem.id,
+          itemDetails: pItem.name,
+          rate: nextRate,
+          account: nextAccount,
+          tax: nextTaxId,
+          amount,
+          stockOnHand: pItem.stockOnHand
+        };
+      });
+
+      const { subTotal, roundOff, total } = calculateTotals(
+        updatedItems,
+        prev.discount,
+        prev.discountType,
+        prev.shippingCharges,
+        prev.adjustment
+      );
+
+      return {
+        ...prev,
+        items: updatedItems,
+        subTotal,
+        roundOff,
+        total
+      };
+    });
     setOpenItemDropdowns(prev => ({ ...prev, [itemId]: false }));
 
     // Clear the search term for this item
@@ -789,12 +1443,12 @@ export default function NewCreditNote() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : [];
     if (formData.documents.length + files.length > 10) {
-      alert("You can upload a maximum of 10 files");
+      toast("You can upload a maximum of 10 files");
       return;
     }
     const invalidFiles = files.filter(file => file.size > 10 * 1024 * 1024);
     if (invalidFiles.length > 0) {
-      alert(`Some files exceed 10MB limit. Maximum file size is 10MB.`);
+      toast(`Some files exceed 10MB limit. Maximum file size is 10MB.`);
       return;
     }
     const newFiles: CreditNoteDocument[] = files.map(file => ({
@@ -837,7 +1491,7 @@ export default function NewCreditNote() {
       ...prev,
       items: [
         ...prev.items,
-        { id: Date.now(), itemDetails: "", quantity: 1, rate: 0, tax: "", amount: 0 }
+        { id: Date.now(), itemDetails: "", account: "", quantity: 1, rate: 0, tax: "", amount: 0, reportingTags: [] }
       ]
     }));
   };
@@ -952,7 +1606,8 @@ export default function NewCreditNote() {
           rate: rate,
           tax: "",
           amount: quantity * rate,
-          stockOnHand: selectedItem.stockOnHand
+          stockOnHand: selectedItem.stockOnHand,
+          reportingTags: []
         };
       });
 
@@ -995,7 +1650,25 @@ export default function NewCreditNote() {
     return `${day} ${month} ${year}`;
   };
 
-  async function fetchNextCreditNoteNumber() {
+  async function fetchNextCreditNoteNumber(options?: { reserve?: boolean }) {
+    const reserve = Boolean(options?.reserve);
+    try {
+      const response = await transactionNumberSeriesAPI.getNextNumber({
+        module: "Credit Note",
+        locationName: warehouseLocation,
+        reserve
+      });
+      const nextNumber =
+        response?.data?.nextNumber ||
+        response?.data?.next_number ||
+        response?.data?.creditNoteNumber ||
+        response?.nextNumber ||
+        "";
+      if (nextNumber) return String(nextNumber).trim();
+    } catch (error) {
+      console.error("Error fetching next credit note number from transaction series:", error);
+    }
+
     try {
       const response = await creditNotesAPI.getNextNumber();
       const nextNumber = response?.data?.creditNoteNumber || response?.nextNumber || "";
@@ -1032,8 +1705,8 @@ export default function NewCreditNote() {
     setSaveLoading(status === "draft" ? "draft" : "open");
     try {
       let effectiveCreditNoteNumber = String(formData.creditNoteNumber || "").trim();
-      if (!isEditMode && (!effectiveCreditNoteNumber || effectiveCreditNoteNumber === "CN-00001")) {
-        const nextNumber = await fetchNextCreditNoteNumber();
+      if (!isEditMode && !effectiveCreditNoteNumber) {
+        const nextNumber = await fetchNextCreditNoteNumber({ reserve: true });
         if (nextNumber) {
           effectiveCreditNoteNumber = nextNumber;
           setFormData(prev => ({ ...prev, creditNoteNumber: nextNumber }));
@@ -1094,7 +1767,7 @@ export default function NewCreditNote() {
             throw error;
           }
 
-          const retryNumber = await fetchNextCreditNoteNumber();
+          const retryNumber = await fetchNextCreditNoteNumber({ reserve: true });
           if (!retryNumber) {
             throw error;
           }
@@ -1110,7 +1783,7 @@ export default function NewCreditNote() {
       navigate("/sales/credit-notes");
     } catch (error) {
       console.error("Error saving credit note:", error);
-      alert("Failed to save credit note. Please try again.");
+      toast("Failed to save credit note. Please try again.");
     } finally {
       setSaveLoading(null);
     }
@@ -1118,10 +1791,60 @@ export default function NewCreditNote() {
 
   const handleCancel = () => navigate("/sales/credit-notes");
 
-  const filteredCustomers = customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()));
+  const getCustomerDisplayName = (customer: any) =>
+    String(
+      customer?.displayName ||
+      customer?.name ||
+      customer?.companyName ||
+      `${customer?.firstName || ""} ${customer?.lastName || ""}`.trim() ||
+      "Unknown"
+    ).trim();
+  const getCustomerCode = (customer: any) =>
+    String(customer?.customerNumber || customer?.customerCode || customer?.code || customer?.id || "").trim();
+  const getCustomerDetailLine = (customer: any) => {
+    const parts = [
+      customer?.email ? String(customer.email).trim() : "",
+      customer?.companyName ? String(customer.companyName).trim() : "",
+      customer?.workPhone || customer?.mobile ? String(customer.workPhone || customer.mobile).trim() : "",
+    ].filter(Boolean);
+    return parts.join(" • ");
+  };
+  const getCustomerInitial = (customer: any) => {
+    const label = getCustomerDisplayName(customer);
+    return label ? label.charAt(0).toUpperCase() : "C";
+  };
+  const formatDecimal = (value: any, digits = 2) => {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue.toFixed(digits) : (0).toFixed(digits);
+  };
+  const filteredCustomers = customers.filter((customer: any) => {
+    const term = customerSearch.toLowerCase().trim();
+    if (!term) return true;
+    return [
+      getCustomerDisplayName(customer),
+      getCustomerCode(customer),
+      customer?.email,
+      customer?.companyName,
+      customer?.workPhone || customer?.mobile
+    ].some((value) => String(value || "").toLowerCase().includes(term));
+  });
+  const filteredSalespersons = salespersons.filter((salesperson: any) =>
+    String(salesperson?.name || "").toLowerCase().includes(salespersonSearch.toLowerCase())
+  );
+  const getFilteredTaxGroups = (searchValue: string) => {
+    const grouped = buildTaxOptionGroups(taxOptions);
+    const keyword = String(searchValue || "").trim().toLowerCase();
+    if (!keyword) return grouped;
+    return grouped
+      .map((group) => ({
+        ...group,
+        options: group.options.filter((tax) => taxLabel(tax).toLowerCase().includes(keyword)),
+      }))
+      .filter((group) => group.options.length > 0);
+  };
 
   return (
-    <div className="w-full min-h-screen bg-white">
+    <div className="w-full h-full min-h-0 bg-white flex flex-col overflow-hidden">
       {/* Header */}
       <div className="border-b border-gray-200 bg-white">
         <div className="w-full px-6 py-4 flex justify-between items-center">
@@ -1136,34 +1859,47 @@ export default function NewCreditNote() {
       </div>
 
       {/* Content */}
-      <div className="w-full py-6 pb-28">
+      <div className="flex-1 min-h-0 w-full overflow-y-auto py-6 pb-28">
         <div className="bg-white overflow-visible">
           {/* Customer Row */}
           <div className="px-6 py-5 border-b border-gray-100 bg-[#fafafa]">
-            <div className="flex items-start gap-4">
+              <div className="max-w-[980px]">
+                <div className="flex items-start gap-4">
               <label className="text-sm text-red-600 w-40 pt-2 flex-shrink-0">Customer Name*</label>
-              <div className="flex-1 relative" ref={customerDropdownRef}>
+              <div className="w-full max-w-[540px] relative" ref={customerDropdownRef}>
                 <div className="relative flex items-stretch">
                   <input
                     type="text"
-                    className="flex-1 px-3 py-2 pr-10 border border-gray-300 rounded-l text-sm text-gray-700 focus:outline-none focus:border-[#156372] bg-white"
+                    className="flex-1 px-3 py-2 pr-10 border border-gray-300 rounded-l text-sm text-gray-700 focus:outline-none focus:border-gray-300 bg-white"
                     placeholder="Select or add a customer"
                     value={formData.customerName}
                     readOnly
-                    onClick={() => setIsCustomerDropdownOpen(!isCustomerDropdownOpen)}
+                    onClick={() => {
+                      if (isCustomerDropdownOpen) {
+                        setIsCustomerDropdownOpen(false);
+                      } else {
+                        closeAllDropdownMenus();
+                        setIsCustomerDropdownOpen(true);
+                      }
+                    }}
                   />
                   <div
                     className="absolute right-10 top-0 bottom-0 flex items-center px-2 cursor-pointer"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setIsCustomerDropdownOpen(!isCustomerDropdownOpen);
+                      if (isCustomerDropdownOpen) {
+                        setIsCustomerDropdownOpen(false);
+                      } else {
+                        closeAllDropdownMenus();
+                        setIsCustomerDropdownOpen(true);
+                      }
                     }}
                   >
                     <ChevronDown size={14} className="text-gray-400" />
                   </div>
                   <button
                     type="button"
-                    className="w-10 bg-[#156372] text-white rounded-r hover:bg-[#0D4A52] flex items-center justify-center border border-[#156372]"
+                    className="w-10 bg-[#3b82f6] text-white rounded-r hover:bg-[#2563eb] flex items-center justify-center border border-[#3b82f6]"
                     onClick={(e) => {
                       e.stopPropagation();
                       setCustomerSearchModalOpen(true);
@@ -1174,15 +1910,15 @@ export default function NewCreditNote() {
                 </div>
 
                 {isCustomerDropdownOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-80 overflow-y-auto">
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md shadow-lg z-50 overflow-hidden max-h-80">
                     <div className="flex items-center gap-2 p-2 border-b border-gray-200 sticky top-0 bg-white">
-                      <Search size={14} className="text-gray-400" />
+                      <Search size={14} className="text-blue-500" />
                       <input
                         type="text"
                         placeholder="Search"
                         value={customerSearch}
                         onChange={(e) => setCustomerSearch(e.target.value)}
-                        className="flex-1 text-sm focus:outline-none"
+                        className="flex-1 text-sm focus:outline-none placeholder:text-gray-400"
                         autoFocus
                       />
                     </div>
@@ -1191,10 +1927,30 @@ export default function NewCreditNote() {
                         filteredCustomers.map((c) => (
                           <div
                             key={c.id}
-                            className="p-2 cursor-pointer hover:bg-gray-50"
+                            className="px-3 py-2.5 cursor-pointer hover:bg-blue-50 transition-colors"
                             onClick={() => handleCustomerSelect(c)}
                           >
-                            <div className="text-sm font-medium truncate text-gray-900">{c.name}</div>
+                            <div className="flex items-start gap-3">
+                              <div className="h-9 w-9 shrink-0 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-sm font-semibold">
+                                {getCustomerInitial(c)}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <div className="text-sm font-medium truncate text-gray-900">
+                                    {getCustomerDisplayName(c)}
+                                  </div>
+                                  {getCustomerCode(c) && (
+                                    <div className="text-xs text-gray-500 shrink-0">| {getCustomerCode(c)}</div>
+                                  )}
+                                </div>
+                                {getCustomerDetailLine(c) && (
+                                  <div className="mt-1 text-xs text-gray-500 flex items-center gap-1.5 truncate">
+                                    <Mail size={11} className="text-gray-400 shrink-0" />
+                                    <span className="truncate">{getCustomerDetailLine(c)}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         ))
                       ) : (
@@ -1202,7 +1958,7 @@ export default function NewCreditNote() {
                       )}
                     </div>
                     <button
-                      className="flex items-center gap-2 px-3 py-2 border-t border-gray-200 bg-gray-50 text-sm font-medium text-[#156372] w-full"
+                      className="flex items-center gap-2 px-3 py-2 border-t border-gray-200 bg-white text-sm font-medium text-[#3b82f6] w-full hover:bg-blue-50"
                       onClick={(e) => {
                         e.stopPropagation();
                         setIsCustomerDropdownOpen(false);
@@ -1216,21 +1972,34 @@ export default function NewCreditNote() {
                 )}
               </div>
             </div>
+            </div>
           </div>
 
-          <div className="px-6 py-5 space-y-4">
+          <div className="px-6 py-5 space-y-4 max-w-[980px]">
 
             {/* Credit Note# */}
             <div className="flex items-center group">
               <label className="w-48 text-sm font-medium text-red-600">Credit Note#*</label>
-              <div className="flex-1 relative">
+              <div className="flex-1 max-w-xs relative">
                 <input
                   type="text"
                   className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-50 text-sm focus:outline-none"
                   value={formData.creditNoteNumber}
-                  readOnly
+                  readOnly={creditNoteNumberMode === "auto"}
+                  onChange={(e) => {
+                    if (creditNoteNumberMode === "manual") {
+                      setFormData(p => ({ ...p, creditNoteNumber: e.target.value }));
+                    }
+                  }}
                 />
-                <button className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: "#156372" }} onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget as HTMLElement).style.color = "#0D4A52"} onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget as HTMLElement).style.color = "#156372"}>
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 -translate-y-1/2"
+                  style={{ color: "#156372" }}
+                  onClick={() => setIsCreditNoteNumberModalOpen(true)}
+                  onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget as HTMLElement).style.color = "#0D4A52"}
+                  onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget as HTMLElement).style.color = "#156372"}
+                >
                   <Settings size={18} />
                 </button>
               </div>
@@ -1239,7 +2008,7 @@ export default function NewCreditNote() {
             {/* Reference# */}
             <div className="flex items-center">
               <label className="w-48 text-sm font-medium text-gray-700">Reference#</label>
-              <div className="flex-1">
+              <div className="flex-1 max-w-xs">
                 <input
                   type="text"
                   className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:border-[#156372] focus:outline-none bg-gray-50"
@@ -1252,20 +2021,27 @@ export default function NewCreditNote() {
             {/* Credit Note Date */}
             <div className="flex items-center">
               <label className="w-48 text-sm font-medium text-red-600">Credit Note Date*</label>
-              <div className="flex-1 relative" ref={datePickerRef}>
+              <div className="flex-1 max-w-xs relative" ref={datePickerRef}>
                 <input
                   type="text"
                   className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none cursor-pointer bg-gray-50"
                   value={formData.creditNoteDate}
                   readOnly
-                  onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
+                  onClick={() => {
+                    if (isDatePickerOpen) {
+                      setIsDatePickerOpen(false);
+                    } else {
+                      closeAllDropdownMenus();
+                      setIsDatePickerOpen(true);
+                    }
+                  }}
                 />
                 {isDatePickerOpen && (
                   <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-xl z-50 w-64 p-2">
                     <div className="flex items-center justify-between mb-2">
-                      <button onClick={() => setDateCalendar(new Date(dateCalendar.getFullYear(), dateCalendar.getMonth() - 1, 1))}>Â«</button>
+                      <button onClick={() => setDateCalendar(new Date(dateCalendar.getFullYear(), dateCalendar.getMonth() - 1, 1))}>«</button>
                       <span className="text-sm font-semibold">{months[dateCalendar.getMonth()]} {dateCalendar.getFullYear()}</span>
-                      <button onClick={() => setDateCalendar(new Date(dateCalendar.getFullYear(), dateCalendar.getMonth() + 1, 1))}>Â»</button>
+                      <button onClick={() => setDateCalendar(new Date(dateCalendar.getFullYear(), dateCalendar.getMonth() + 1, 1))}>»</button>
                     </div>
                     <div className="grid grid-cols-7 text-[10px] text-center font-bold text-gray-400 mb-1">
                       {daysOfWeek.map(d => <div key={d}>{d}</div>)}
@@ -1297,44 +2073,67 @@ export default function NewCreditNote() {
               </div>
             </div>
 
-            {/* Accounts Receivable */}
-            <div className="flex items-center">
-              <label className="w-48 text-sm font-medium text-gray-700 flex items-center gap-1">
-                Accounts Receivable <Info size={14} className="text-gray-400" />
-              </label>
-              <div className="flex-1 relative">
-                <select className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none appearance-none bg-gray-50">
-                  <option key="accounts-receivable" value="Accounts Receivable">Accounts Receivable</option>
-                  <option key="other-income" value="Other Income">Other Income</option>
-                </select>
-                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              </div>
-            </div>
-
             {/* Salesperson */}
             <div className="flex items-center pt-4 border-t border-gray-100">
               <label className="w-48 text-sm font-medium text-gray-700">Salesperson</label>
-              <div className="flex-1 relative" ref={salespersonDropdownRef}>
+              <div className="flex-1 max-w-xs relative" ref={salespersonDropdownRef}>
                 <div
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-400 cursor-pointer flex justify-between items-center bg-gray-50"
-                  onClick={() => setIsSalespersonDropdownOpen(!isSalespersonDropdownOpen)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm text-gray-700 flex justify-between items-center bg-white cursor-pointer"
+                  onClick={() => {
+                    if (isSalespersonDropdownOpen) {
+                      setIsSalespersonDropdownOpen(false);
+                    } else {
+                      closeAllDropdownMenus();
+                      setIsSalespersonDropdownOpen(true);
+                    }
+                  }}
                 >
-                  {formData.salesperson || "Select or Add Salesperson"}
-                  <ChevronDown size={14} />
+                  <span className={formData.salesperson ? "text-gray-900" : "text-gray-400"}>
+                    {formData.salesperson || "Select or Add Salesperson"}
+                  </span>
+                  <ChevronDown size={14} className="text-gray-400" />
                 </div>
                 {isSalespersonDropdownOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
-                    {salespersons.map(s => (
-                      <div key={s.id} className="px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm" onClick={() => handleSalespersonSelect(s)}>
-                        {s.name}
-                      </div>
-                    ))}
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg z-50 flex flex-col">
+                    <div className="flex items-center gap-2 p-2 border-b border-gray-200 sticky top-0 bg-white">
+                      <Search size={14} className="text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Search"
+                        value={salespersonSearch}
+                        onChange={(e) => setSalespersonSearch(e.target.value)}
+                        className="flex-1 text-sm focus:outline-none"
+                        autoFocus
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                    <div className="max-h-60 overflow-y-auto">
+                      {filteredSalespersons.length > 0 ? (
+                        filteredSalespersons.map((salesperson: any) => (
+                          <div
+                            key={salesperson.id || salesperson._id}
+                            className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer truncate"
+                            onClick={() => handleSalespersonSelect(salesperson)}
+                          >
+                            {salesperson.name}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="px-4 py-2 text-sm text-gray-500 italic">No salespersons found</div>
+                      )}
+                    </div>
                     <div
-                      className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm border-t border-gray-100 flex items-center gap-2"
-                      style={{ color: "#156372" }}
-                      onClick={openSalespersonQuickAction}
+                      className="p-3 border-t border-gray-100 flex items-center gap-2 text-[#156372] hover:bg-gray-50 cursor-pointer text-sm font-medium"
+                      onClick={() => {
+                        setIsSalespersonDropdownOpen(false);
+                        setManageSalespersonSearch("");
+                        setSelectedSalespersonIds([]);
+                        setIsNewSalespersonFormOpen(false);
+                        setIsManageSalespersonsOpen(true);
+                      }}
                     >
-                      <Plus size={14} /> New Salesperson
+                      <PlusCircle size={16} />
+                      <span>Manage Salespersons</span>
                     </div>
                   </div>
                 )}
@@ -1346,7 +2145,7 @@ export default function NewCreditNote() {
               <label className="w-48 text-sm font-medium text-gray-700 flex items-center gap-1 pt-2">
                 Subject <Info size={14} className="text-gray-400" />
               </label>
-              <div className="flex-1 relative">
+              <div className="flex-1 max-w-[330px] relative">
                 <textarea
                   className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:border-[#156372] focus:outline-none h-20 resize-none font-sans bg-gray-50"
                   placeholder="Let your customer know what this Credit Note is for"
@@ -1359,27 +2158,140 @@ export default function NewCreditNote() {
 
             {/* Item Table Section */}
             <div className="pt-10">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-base font-bold text-gray-800 uppercase tracking-tight">Item Table</h2>
-                <div className="flex items-center gap-3">
-                  <button
-                    className="px-4 py-2 text-white border-none rounded-lg text-sm font-semibold transition-all flex items-center gap-2"
-                    style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                    onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget as HTMLElement).style.opacity = "0.9"}
-                    onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget as HTMLElement).style.opacity = "1"}
-                    onClick={() => setIsScanModeOpen(true)}
-                  >
-                    <ScanLine size={16} />
-                    Scan Item
-                  </button>
-                  <div className="relative" ref={bulkActionsRef}>
+              <div className="mb-4 flex flex-wrap items-center gap-6 text-sm text-gray-600">
+                <label className="flex items-center gap-3">
+                  <span className="text-gray-600">Warehouse Location</span>
+                  <div className="relative">
                     <button
-                      className="px-4 py-2 bg-white border-2 border-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors flex items-center gap-2"
-                      onClick={() => setIsBulkActionsOpen(!isBulkActionsOpen)}
+                      type="button"
+                      className="h-9 min-w-[180px] border-b-2 border-gray-200 bg-transparent text-left text-sm text-gray-700 focus:border-[#156372] focus:outline-none flex items-center justify-between"
+                      onClick={() => {
+                        if (isWarehouseDropdownOpen) {
+                          setIsWarehouseDropdownOpen(false);
+                        } else {
+                          closeAllDropdownMenus();
+                          setIsWarehouseDropdownOpen(true);
+                        }
+                      }}
                     >
-                      <CheckSquare size={16} />
-                      Bulk Actions
+                      <span>{warehouseLocation}</span>
+                      <ChevronDown size={14} className={`text-gray-400 transition-transform ${isWarehouseDropdownOpen ? "rotate-180" : ""}`} />
                     </button>
+                    {isWarehouseDropdownOpen && (
+                      <div className="absolute left-0 top-full mt-2 w-[220px] rounded-md border border-gray-200 bg-white shadow-lg z-[200]">
+                        <div className="p-2 border-b border-gray-100">
+                          <div className="relative">
+                            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                              type="text"
+                              value={warehouseSearch}
+                              onChange={(e) => setWarehouseSearch(e.target.value)}
+                              placeholder="Search"
+                              className="h-8 w-full rounded-md border border-gray-200 pl-8 pr-2 text-xs outline-none focus:border-[#156372]"
+                            />
+                          </div>
+                        </div>
+                        <div className="max-h-[200px] overflow-y-auto">
+                          {(availableLocations.length > 0 ? availableLocations : ["Head Office"])
+                            .filter((loc) => loc.toLowerCase().includes(warehouseSearch.toLowerCase()))
+                            .map((loc) => (
+                              <button
+                                key={loc}
+                                type="button"
+                                className={`w-full px-3 py-2 text-left text-sm ${warehouseLocation === loc ? "bg-slate-100 text-gray-900" : "text-gray-700 hover:bg-gray-50"}`}
+                                onClick={() => {
+                                  closeAllDropdownMenus();
+                                  setWarehouseLocation(loc);
+                                  setWarehouseSearch("");
+                                  (document.activeElement as HTMLElement | null)?.blur?.();
+                                }}
+                              >
+                                {loc}
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </label>
+                <label className="flex items-center gap-3">
+                  <span className="text-gray-600">Select Price List</span>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="h-9 min-w-[180px] border-b-2 border-gray-200 bg-transparent text-left text-sm text-gray-700 focus:border-[#156372] focus:outline-none flex items-center justify-between"
+                      onClick={() => {
+                        if (isPriceListDropdownOpen) {
+                          setIsPriceListDropdownOpen(false);
+                        } else {
+                          closeAllDropdownMenus();
+                          setIsPriceListDropdownOpen(true);
+                        }
+                      }}
+                    >
+                      <span>{priceList || "Select Price List"}</span>
+                      <ChevronDown size={14} className={`text-gray-400 transition-transform ${isPriceListDropdownOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {isPriceListDropdownOpen && (
+                      <div className="absolute left-0 top-full mt-2 w-[220px] rounded-md border border-gray-200 bg-white shadow-lg z-[200]">
+                        <div className="p-2 border-b border-gray-100">
+                          <div className="relative">
+                            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                              type="text"
+                              value={priceListSearch}
+                              onChange={(e) => setPriceListSearch(e.target.value)}
+                              placeholder="Search"
+                              className="h-8 w-full rounded-md border border-gray-200 pl-8 pr-2 text-xs outline-none focus:border-[#156372]"
+                            />
+                          </div>
+                        </div>
+                        <div className="max-h-[200px] overflow-y-auto">
+                          {availablePriceLists
+                            .filter((pl) => pl.toLowerCase().includes(priceListSearch.toLowerCase()))
+                            .map((pl) => (
+                              <button
+                                key={pl}
+                                type="button"
+                                className={`w-full px-3 py-2 text-left text-sm ${priceList === pl ? "bg-slate-100 text-gray-900" : "text-gray-700 hover:bg-gray-50"}`}
+                                onClick={() => {
+                                  closeAllDropdownMenus();
+                                  setPriceList(pl);
+                                  setPriceListSearch("");
+                                  (document.activeElement as HTMLElement | null)?.blur?.();
+                                }}
+                              >
+                                {pl}
+                              </button>
+                            ))}
+                          {availablePriceLists.length === 0 && (
+                            <div className="px-3 py-2 text-xs text-gray-500">No price lists found</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </label>
+              </div>
+              {!isBulkUpdateMode && (
+                <div className="flex items-center justify-between mb-4 rounded-md border border-gray-200 bg-[#f5f6f8] px-4 py-3">
+                  <span className="ms-4 text-[15px] font-semibold text-gray-800">Item Table</span>
+                  <div className="flex items-center gap-2">
+                    <div className="relative" ref={bulkActionsRef}>
+                      <button
+                        className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                        onClick={() => {
+                          if (isBulkActionsOpen) {
+                            setIsBulkActionsOpen(false);
+                          } else {
+                            closeAllDropdownMenus();
+                            setIsBulkActionsOpen(true);
+                          }
+                        }}
+                      >
+                        <CheckSquare size={15} className="text-gray-600" />
+                        Bulk Actions
+                      </button>
                     {isBulkActionsOpen && (
                       <div className="absolute top-full right-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 min-w-[240px] overflow-hidden">
                         <div
@@ -1425,84 +2337,30 @@ export default function NewCreditNote() {
                         </div>
                       </div>
                     )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Scan Mode Interface */}
-              {isScanModeOpen && (
-                <div className="bg-gray-50 bg-opacity-50 mb-6 p-6 rounded-xl" style={{
-                  backgroundImage: 'radial-gradient(circle, #e5e7eb 1px, transparent 1px)',
-                  backgroundSize: '20px 20px'
-                }}>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <ScanLine size={20} className="text-gray-700" />
-                      <h2 className="text-lg font-semibold text-gray-900">Item Details</h2>
                     </div>
-                    <button
-                      onClick={() => {
-                        setIsScanModeOpen(false);
-                        setScanInput("");
-                      }}
-                      className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
-                    >
-                      <span className="text-sm font-medium">Close Scan</span>
-                      <X size={18} className="text-red-500" />
-                    </button>
                   </div>
-                  <input
-                    type="text"
-                    value={scanInput}
-                    onChange={(e) => setScanInput(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter' && scanInput.trim()) {
-                        // Handle scan input - add item or search
-                        const newItem = { id: Date.now(), itemDetails: scanInput, quantity: 1, rate: 0, tax: "", amount: 0 };
-                        setFormData(prev => ({
-                          ...prev,
-                          items: [...prev.items, newItem]
-                        }));
-                        setScanInput("");
-                      }
-                    }}
-                    placeholder="Scan or type item name/SKU and press Enter"
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
-                    autoFocus
-                  />
                 </div>
               )}
 
               {/* Bulk Update Banner */}
               {isBulkUpdateMode && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 flex items-center justify-between">
+                <div className="mb-4 flex items-center justify-between rounded-md border border-[#d7dee8] bg-[#e7edf5] px-4 py-3">
                   <div className="flex items-center gap-3">
                     <button
-                      className="px-4 py-2 text-white border-none rounded-md text-sm font-medium cursor-pointer transition-all"
-                      style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+                      className="rounded-md bg-[#22b573] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1ea465]"
+                      type="button"
                       onMouseEnter={(e) => (e.currentTarget as any).style.opacity = "0.9"}
                       onMouseLeave={(e) => (e.currentTarget as any).style.opacity = "1"}
                       onClick={() => {
                         // Handle Update Reporting Tags
-                        alert("Update Reporting Tags functionality");
+                        toast("Update Reporting Tags functionality");
                       }}
                     >
                       Update Reporting Tags
                     </button>
-                    <button
-                      className="px-4 py-2 text-white border-none rounded-md text-sm font-medium cursor-pointer transition-all"
-                      style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                      onMouseEnter={(e) => (e.currentTarget as any).style.opacity = "0.9"}
-                      onMouseLeave={(e) => (e.currentTarget as any).style.opacity = "1"}
-                      onClick={() => {
-                        // Handle Update Account
-                        alert("Update Account functionality");
-                      }}
-                    >
-                      Update Account
-                    </button>
                   </div>
                   <button
+                    type="button"
                     onClick={() => {
                       setIsBulkUpdateMode(false);
                       setBulkSelectedItemIds([]);
@@ -1514,9 +2372,21 @@ export default function NewCreditNote() {
                 </div>
               )}
 
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200">
+              <div className="border border-gray-200 rounded-md bg-white">
+                <table className="w-full table-fixed text-sm">
+                  <colgroup>
+                    {isBulkUpdateMode ? <col className="w-8" /> : null}
+                    <col className="w-8" />
+                    <col className="w-[31%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[8%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[16%]" />
+                    <col className="w-[8%]" />
+                    <col className="w-[8%]" />
+                  </colgroup>
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-[#f9fafb]">
                     {isBulkUpdateMode && (
                       <th className="w-12 py-3 px-3">
                         <input
@@ -1534,23 +2404,25 @@ export default function NewCreditNote() {
                         />
                       </th>
                     )}
-                    <th className="text-left py-3 px-3 font-medium text-gray-700">ITEM DETAILS</th>
-                    <th className="text-left py-3 px-3 font-medium text-gray-700">QUANTITY</th>
-                    <th className="text-center py-3 px-3 font-medium text-gray-700">
+                    <th className="w-8"></th>
+                    <th className="text-left py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">ITEM DETAILS</th>
+                    <th className="text-left py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">ACCOUNT</th>
+                    <th className="text-left py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">QUANTITY</th>
+                    <th className="text-center py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">
                       <div className="flex items-center justify-center gap-1">
                         RATE
-                        <Grid3x3 size={14} className="text-gray-400" />
+                        <Grid3x3 size={14} className="hidden" />
                       </div>
                     </th>
-                    <th className="text-left py-3 px-3 font-medium text-gray-700">TAX</th>
-                    <th className="text-right py-3 px-3 font-medium text-gray-700">AMOUNT</th>
+                    <th className="text-left py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">TAX</th>
+                    <th className="text-right py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">AMOUNT</th>
                     <th className="w-12"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {formData.items.map((item) => (
                     <React.Fragment key={item.id}>
-                      <tr className="border-b border-gray-100">
+                      <tr className="border-b border-gray-200 bg-white">
                         {isBulkUpdateMode && (
                           <td className="py-3 px-3">
                             <input
@@ -1562,7 +2434,10 @@ export default function NewCreditNote() {
                             />
                           </td>
                         )}
-                        <td className="py-2 px-2">
+                        <td className="py-3 px-2 text-center">
+                          <GripVertical size={16} className="text-gray-300" />
+                        </td>
+                        <td className="py-3 px-3">
                           <div
                             className="relative"
                             ref={el => {
@@ -1570,7 +2445,7 @@ export default function NewCreditNote() {
                             }}
                           >
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 bg-gray-200 rounded flex items-center justify-center flex-shrink-0">
+                              <div className="w-7 h-7 bg-[#f1f5f9] border border-gray-200 rounded flex items-center justify-center flex-shrink-0">
                                 <ImageIcon size={14} className="text-gray-400" />
                               </div>
                               <input
@@ -1579,7 +2454,7 @@ export default function NewCreditNote() {
                                 value={item.itemDetails}
                                 readOnly
                                 onClick={() => setOpenItemDropdowns(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
-                                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:outline-none cursor-pointer focus:border-[#156372]"
+                                className="h-9 w-full px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:outline-none cursor-pointer focus:border-[#156372]"
                               />
                             </div>
                             {item.itemId && (
@@ -1604,7 +2479,7 @@ export default function NewCreditNote() {
                                       <div className="flex-1 min-w-0">
                                         <div className="text-sm font-medium text-gray-900 truncate">{productItem.name}</div>
                                         <div className="text-xs text-gray-500 truncate">
-                                          SKU: {productItem.sku} â€¢ Rate: {formData.currency} {productItem.rate.toFixed(2)} â€¢ Stock: {productItem.stockOnHand}
+                                          SKU: {productItem.sku} • Rate: {formData.currency} {formatDecimal(productItem.rate)} • Stock: {productItem.stockOnHand}
                                         </div>
                                       </div>
                                     </div>
@@ -1629,43 +2504,193 @@ export default function NewCreditNote() {
                             )}
                           </div>
                         </td>
-                        <td className="p-3">
+                        <td className="py-3 px-3">
+                          <div
+                            className="relative"
+                            ref={el => {
+                              accountDropdownRefs.current[item.id] = el;
+                            }}
+                          >
+                            <div
+                              className="h-9 w-full px-3 border border-gray-300 rounded-md text-sm bg-white flex items-center justify-between cursor-pointer"
+                              onClick={() => setOpenAccountDropdowns(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                            >
+                              <span className={item.account ? "text-gray-900 truncate" : "text-gray-400 truncate"}>
+                                {item.account || "Select an account"}
+                              </span>
+                              <ChevronDown
+                                size={14}
+                                className={`text-gray-400 transition-transform ${openAccountDropdowns[item.id] ? "rotate-180" : ""}`}
+                              />
+                            </div>
+                            {openAccountDropdowns[item.id] && (
+                    <div className="absolute left-0 top-full z-50 mt-1 w-[260px] overflow-hidden rounded-md border border-gray-300 bg-white shadow-lg">
+                                <div className="border-b border-gray-200 p-3">
+                                  <div className="relative">
+                                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <input
+                                      type="text"
+                                      placeholder="Search"
+                                      value={accountSearches[item.id] || ""}
+                                      onChange={(e) => setAccountSearches(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="h-9 w-full rounded-md border border-gray-300 pl-9 pr-3 text-sm focus:outline-none"
+                                      autoFocus
+                                    />
+                                  </div>
+                                </div>
+                                <div className="max-h-[260px] overflow-y-auto py-1">
+                                  {Object.entries(accountCategories)
+                                    .map(([category, accounts]) => {
+                                      const search = (accountSearches[item.id] || "").trim().toLowerCase();
+                                      const filteredAccounts = accounts.filter((account) =>
+                                        !search || account.toLowerCase().includes(search) || category.toLowerCase().includes(search)
+                                      );
+                                      if (filteredAccounts.length === 0) return null;
+                                      return (
+                                        <div key={category}>
+                                          <div className="px-4 py-2 text-sm font-semibold text-gray-800">{category}</div>
+                                          {filteredAccounts.map((account) => (
+                                            <button
+                                              key={account}
+                                              type="button"
+                                              className={`block w-full px-4 py-2 text-left text-sm ${item.account === account ? "bg-[#4285f4] text-white" : "text-gray-700 hover:bg-gray-50"}`}
+                                              onClick={() => {
+                                                closeAllDropdownMenus();
+                                                handleItemChange(item.id, "account", account);
+                                                setOpenAccountDropdowns(prev => ({ ...prev, [item.id]: false }));
+                                                setAccountSearches(prev => ({ ...prev, [item.id]: "" }));
+                                              }}
+                                            >
+                                              {account}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      );
+                                    })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3">
                           <input
                             type="number"
                             value={item.quantity}
                             onChange={(e) => handleItemChange(item.id, "quantity", e.target.value)}
-                            className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
+                            className="h-9 w-full px-3 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] bg-white"
                             min="0"
                             step="0.01"
                           />
                         </td>
-                        <td className="p-3">
+                        <td className="py-3 px-3">
                           <input
                             type="number"
                             value={item.rate}
                             onChange={(e) => handleItemChange(item.id, "rate", e.target.value)}
-                            className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
+                            className="h-9 w-full px-3 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] bg-white"
                             min="0"
                             step="0.01"
                           />
                         </td>
-                        <td className="p-3">
-                          <div className="relative">
-                            <select
-                              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm appearance-none bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
-                              value={item.tax}
-                              onChange={(e) => handleItemChange(item.id, 'tax', e.target.value)}
-                            >
-                              <option key="select-tax" value="">Select a Tax</option>
-                              {taxOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                            </select>
-                            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                        <td className="py-3 px-3">
+                          <div
+                            className="relative"
+                            ref={(el) => {
+                              taxDropdownRefs.current[item.id] = el;
+                            }}
+                          >
+                            {(() => {
+                              const selectedTax = taxOptions.find((tax) => String(tax.id) === String(item.tax));
+                              const displayLabel = selectedTax ? taxLabel(selectedTax) : "Select a Tax";
+                              const searchValue = taxSearches[item.id] || "";
+                              const filteredGroups = getFilteredTaxGroups(searchValue);
+                              const hasTaxes = filteredGroups.some((group) => group.options.length > 0);
+
+                              return (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="h-9 w-full px-3 border border-gray-300 rounded-md text-sm bg-white text-left flex items-center justify-between focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                                    onClick={() =>
+                                      setOpenTaxDropdowns((prev) => ({
+                                        ...prev,
+                                        [item.id]: !prev[item.id],
+                                      }))
+                                    }
+                                  >
+                                    <span className={displayLabel === "Select a Tax" ? "text-gray-500" : "text-gray-900"}>
+                                      {displayLabel}
+                                    </span>
+                                    <ChevronDown
+                                      size={14}
+                                      className={`text-gray-400 transition-transform ${openTaxDropdowns[item.id] ? "rotate-180" : ""}`}
+                                    />
+                                  </button>
+
+                                  {openTaxDropdowns[item.id] && (
+                                    <div className="absolute left-0 top-full z-[9999] mt-1 w-72 rounded-xl border border-[#d6dbe8] bg-white p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
+                                      <div className="p-2">
+                                        <div className="flex items-center gap-2 rounded-lg border bg-slate-50/50 px-3 py-1.5 transition-all focus-within:bg-white" style={{ borderColor: "#156372" }}>
+                                          <Search size={14} className="text-slate-400" />
+                                          <input
+                                            value={searchValue}
+                                            onChange={(e) =>
+                                              setTaxSearches((prev) => ({ ...prev, [item.id]: e.target.value }))
+                                            }
+                                            placeholder="Search..."
+                                            className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                                          />
+                                        </div>
+                                      </div>
+                                      <div className="max-h-64 overflow-y-auto px-2 pb-2">
+                                        {!hasTaxes ? (
+                                          <div className="px-2 py-3 text-sm text-slate-500">No taxes found.</div>
+                                        ) : (
+                                          filteredGroups.map((group) => (
+                                            <div key={group.label} className="mb-2">
+                                              <div className="px-2 py-1 text-[11px] font-semibold uppercase text-slate-500">
+                                                {group.label}
+                                              </div>
+                                              <div className="space-y-1">
+                                                {group.options.map((tax) => {
+                                                  const taxId = String(tax.id);
+                                                  const selected = String(item.tax) === taxId;
+                                                  return (
+                                                    <button
+                                                      key={taxId}
+                                                      type="button"
+                                                      className={`w-full rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${selected ? "bg-slate-100 text-[#156372]" : "text-slate-700 hover:bg-slate-50"}`}
+                                                      onClick={() => {
+                                                        closeAllDropdownMenus();
+                                                        handleItemChange(item.id, "tax", taxId);
+                                                        setOpenTaxDropdowns((prev) => ({ ...prev, [item.id]: false }));
+                                                        setTaxSearches((prev) => ({ ...prev, [item.id]: "" }));
+                                                      }}
+                                                    >
+                                                      <div className="flex items-center justify-between gap-3">
+                                                        <span>{taxLabel(tax)}</span>
+                                                        {selected && <Check size={14} className="text-[#156372]" />}
+                                                      </div>
+                                                    </button>
+                                                  );
+                                                })}
+                                              </div>
+                                            </div>
+                                          ))
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                         </td>
-                        <td className="p-3">
-                          <span className="text-sm font-semibold text-gray-900">{formData.currency} {item.amount.toFixed(2)}</span>
+                        <td className="py-3 px-3">
+                          <span className="text-sm font-semibold text-gray-900">{item.amount.toFixed(2)}</span>
                         </td>
-                        <td className="p-3">
+                        <td className="py-3 px-3">
                           <div className="flex items-center gap-2">
                             <div
                               className="relative"
@@ -1722,7 +2747,7 @@ export default function NewCreditNote() {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       const currentIndex = formData.items.findIndex(i => i.id === item.id);
-                                      const newItem = { id: Date.now(), itemDetails: "", quantity: 1, rate: 0, tax: "", amount: 0 };
+                                      const newItem = { id: Date.now(), itemDetails: "", account: "", quantity: 1, rate: 0, tax: "", amount: 0, reportingTags: [] };
                                       setFormData(prev => {
                                         const newItems = [...prev.items];
                                         newItems.splice(currentIndex + 1, 0, newItem);
@@ -1769,9 +2794,133 @@ export default function NewCreditNote() {
                           </div>
                         </td>
                       </tr>
+                      {(showAdditionalInformation || itemsWithAdditionalInfo.has(item.id)) && (
+                        <tr className="border-b border-gray-100 bg-white">
+                          <td colSpan={isBulkUpdateMode ? 9 : 8} className="pl-2 pr-4 py-2">
+                            <div className="relative inline-flex">
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-2 text-sm text-red-500 hover:text-red-600"
+                                onClick={() => {
+                                  const existing = Array.isArray((item as any).reportingTags) ? (item as any).reportingTags : [];
+                                  const initialValues: Record<string, string> = {};
+                                  normalizedReportingTags.forEach((tag: any) => {
+                                    const existingTag = existing.find((entry: any) =>
+                                      String(entry?.tagId || "") === String(tag?.id || tag?._id || tag?.key || "") ||
+                                      String(entry?.name || "") === String(tag?.label || "")
+                                    );
+                                    initialValues[String(tag.key)] = existingTag?.value ? String(existingTag.value) : "";
+                                  });
+                                  setItemReportingTagDraftValues(initialValues);
+                                  setItemReportingTagsTargetId(item.id);
+                                  setItemReportingTagsPopoverId(itemReportingTagsPopoverId === item.id ? null : item.id);
+                                }}
+                              >
+                                <Tag size={14} className="text-red-400" />
+                                <span className="font-medium">Reporting Tags*</span>
+                                <ChevronDown size={14} className="text-gray-400" />
+                                <span className="sr-only">
+                                  {Array.isArray((item as any).reportingTags)
+                                    ? (item as any).reportingTags.filter((entry: any) => String(entry?.value || "").trim()).length
+                                    : 0}{" "}
+                                  / {normalizedReportingTags.length}
+                                </span>
+                              </button>
+
+                              {itemReportingTagsPopoverId === item.id && (
+                                <div className="absolute left-0 top-full z-[200] mt-2 w-[320px] rounded-md border border-gray-200 bg-white shadow-lg">
+                                  <div className="px-3 py-2 border-b border-gray-200 text-sm font-semibold text-gray-800">
+                                    Reporting Tags
+                                  </div>
+                                  <div className="p-3 space-y-3">
+                                    {normalizedReportingTags.length === 0 ? (
+                                      <div className="text-sm text-gray-500">No reporting tags available.</div>
+                                    ) : (
+                                      normalizedReportingTags.map((tag: any) => (
+                                        <div key={`item-reporting-tag-${tag.key}`}>
+                                          <label className="block text-xs text-gray-700 mb-1">
+                                            {tag.label} <span className="text-red-500">*</span>
+                                          </label>
+                                          <div className="relative max-w-[220px]">
+                                            <select
+                                              value={itemReportingTagDraftValues[String(tag.key)] ?? ""}
+                                              onChange={(e) =>
+                                                setItemReportingTagDraftValues((prev) => ({
+                                                  ...prev,
+                                                  [String(tag.key)]: e.target.value,
+                                                }))
+                                              }
+                                              className="w-full h-8 px-2.5 pr-7 border border-gray-300 rounded-md text-sm text-gray-700 appearance-none bg-white focus:outline-none focus:border-[#3f83f8]"
+                                            >
+                                              <option value="">None</option>
+                                              {Array.isArray(tag.options) &&
+                                                tag.options.map((option: string, index: number) => (
+                                                  <option key={`${tag.key}-item-option-${index}-${option}`} value={option}>
+                                                    {option}
+                                                  </option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                          </div>
+                                        </div>
+                                      ))
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-200">
+                                    <button
+                                      onClick={() => {
+                                        if (!itemReportingTagsTargetId) {
+                                          setItemReportingTagsPopoverId(null);
+                                          return;
+                                        }
+                                        const selectedUpdates = normalizedReportingTags
+                                          .map((tag: any) => ({
+                                            tag,
+                                            value: String(itemReportingTagDraftValues[String(tag.key)] ?? ""),
+                                          }))
+                                          .filter((entry: any) => entry.value !== "");
+
+                                        setFormData((prev: any) => ({
+                                          ...prev,
+                                          items: prev.items.map((row: any) => {
+                                            if (String(row.id) !== String(itemReportingTagsTargetId)) return row;
+                                            const existing = Array.isArray(row.reportingTags) ? [...row.reportingTags] : [];
+                                            const nextTags = [...existing];
+                                            selectedUpdates.forEach((entry: any) => {
+                                              const tagId = String(entry.tag?.id || entry.tag?._id || entry.tag?.key || "");
+                                              const tagName = String(entry.tag?.label || entry.tag?.name || "");
+                                              const idx = nextTags.findIndex((t: any) =>
+                                                String(t?.tagId || "") === tagId || String(t?.name || "") === tagName
+                                              );
+                                              const payload = { tagId, value: entry.value, name: tagName };
+                                              if (idx >= 0) nextTags[idx] = { ...nextTags[idx], ...payload };
+                                              else nextTags.push(payload);
+                                            });
+                                            return { ...row, reportingTags: nextTags };
+                                          }),
+                                        }));
+                                        setItemReportingTagsPopoverId(null);
+                                      }}
+                                      className="px-3 py-1.5 bg-[#25b46b] text-white rounded-md text-xs font-medium hover:bg-[#1f9c5d] transition-colors"
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      onClick={() => setItemReportingTagsPopoverId(null)}
+                                      className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-md text-xs font-medium transition-colors"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
                       {newHeaderItemId === item.id && showNewHeaderInput && (
                         <tr>
-                          <td colSpan={isBulkUpdateMode ? 7 : 6} className="p-3">
+                          <td colSpan={isBulkUpdateMode ? 8 : 7} className="p-3">
                             <div className="flex items-center gap-2">
                               <button
                                 className="p-1 text-gray-400 hover:text-gray-600 cursor-pointer"
@@ -1814,10 +2963,11 @@ export default function NewCreditNote() {
                   ))}
                 </tbody>
               </table>
+              </div>
               <div className="flex items-center gap-4 mt-4">
                 <button
                   className="px-4 py-2 rounded-md text-sm font-semibold transition-colors flex items-center gap-2"
-                  style={{ backgroundColor: "rgba(21, 99, 114, 0.1)", color: "#156372" }}
+                  style={{ backgroundColor: "rgba(21, 99, 114, 0.12)", color: "#156372" }}
                   onMouseEnter={(e) => (e.currentTarget as any).style.backgroundColor = "rgba(21, 99, 114, 0.15)"}
                   onMouseLeave={(e) => (e.currentTarget as any).style.backgroundColor = "rgba(21, 99, 114, 0.1)"}
                   onClick={handleAddItem}
@@ -1827,14 +2977,14 @@ export default function NewCreditNote() {
                 </button>
                 <button
                   onClick={() => setIsBulkAddModalOpen(true)}
-                  className="px-4 py-2 rounded-md text-sm font-semibold transition-colors flex items-center gap-2 border"
-                  style={{ backgroundColor: "rgba(21, 99, 114, 0.1)", color: "#156372", borderColor: "#156372" }}
+                  className="px-4 py-2 rounded-md text-sm font-semibold transition-colors flex items-center gap-2 border bg-white"
+                  style={{ color: "#156372", borderColor: "#156372" }}
                   onMouseEnter={(e) => {
-                    (e.currentTarget as any).style.backgroundColor = "rgba(21, 99, 114, 0.15)";
+                    (e.currentTarget as any).style.backgroundColor = "rgba(21, 99, 114, 0.08)";
                     (e.currentTarget as any).style.borderColor = "#0D4A52";
                   }}
                   onMouseLeave={(e) => {
-                    (e.currentTarget as any).style.backgroundColor = "rgba(21, 99, 114, 0.1)";
+                    (e.currentTarget as any).style.backgroundColor = "#ffffff";
                     (e.currentTarget as any).style.borderColor = "#156372";
                   }}
                 >
@@ -1849,14 +2999,14 @@ export default function NewCreditNote() {
               <div>
                 <label className="block text-sm font-medium text-gray-900 mb-2">Customer Notes</label>
                 <textarea
-                  className="w-full h-24 px-3 py-2 border border-gray-300 rounded text-sm text-gray-700 focus:outline-none focus:border-[#156372] bg-white"
+                  className="w-full h-28 px-3 py-2 border border-gray-300 rounded text-sm text-gray-700 focus:outline-none focus:border-[#156372] bg-white"
                   value={formData.customerNotes}
                   onChange={(e) => setFormData(p => ({ ...p, customerNotes: e.target.value }))}
                 />
                 <p className="mt-1 text-xs text-gray-500">Will be displayed on the credit note</p>
               </div>
 
-              <div className="bg-[#fafafa] border border-gray-200 rounded-md p-6 space-y-4">
+              <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-5 shadow-sm">
                 <div className="flex justify-between items-center text-sm">
                   <span className="font-semibold text-gray-600">Sub Total</span>
                   <span className="font-semibold text-gray-900">{formData.subTotal.toFixed(2)}</span>
@@ -1967,88 +3117,6 @@ export default function NewCreditNote() {
               />
             </div>
 
-            {/* Additional Fields Note */}
-            <p className="text-[10px] text-gray-500 pt-8 italic">
-              <span className="font-bold">Additional Fields:</span> Start adding custom fields for your credit notes by going to <span className="underline">Settings</span> âž¡ <span className="underline">Sales</span> âž¡ <span className="underline">Credit Notes</span>.
-            </p>
-
-            {/* Documents Section */}
-            <div className="pt-10 border-t border-gray-100" ref={uploadDropdownRef}>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Documents</label>
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileUpload}
-                multiple
-                style={{ display: "none" }}
-                accept="*/*"
-              />
-              <div className="flex items-center gap-3">
-                <div className="relative inline-block">
-                  <button
-                    type="button"
-                    className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:border-gray-400 hover:bg-gray-50 transition-colors disabled:bg-gray-100 disabled:cursor-not-allowed disabled:border-gray-200"
-                    onClick={() => setIsUploadDropdownOpen(!isUploadDropdownOpen)}
-                    disabled={formData.documents && formData.documents.length >= 10}
-                  >
-                    <Upload size={16} />
-                    Upload File
-                    <ChevronDown size={14} />
-                  </button>
-                  {isUploadDropdownOpen && (
-                    <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-md shadow-lg z-50 min-w-[200px]">
-                      <div
-                        onClick={() => {
-                          handleUploadClick();
-                          setIsUploadDropdownOpen(false);
-                        }}
-                        className="px-4 py-2 text-sm text-white cursor-pointer transition-colors"
-                        style={{ backgroundColor: "#156372" }}
-                        onMouseEnter={(e) => (e.currentTarget as any).style.backgroundColor = "#0D4A52"}
-                        onMouseLeave={(e) => (e.currentTarget as any).style.backgroundColor = "#156372"}
-                      >
-                        Attach From Desktop
-                      </div>
-                      <div
-                        className="px-4 py-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-100 transition-colors"
-                        onClick={() => {
-                          setIsUploadDropdownOpen(false);
-                          setIsDocumentsModalOpen(true);
-                        }}
-                      >
-                        Attach From Documents
-                      </div>
-                      <div
-                        className="px-4 py-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-100 transition-colors"
-                        onClick={() => {
-                          setSelectedCloudProvider("taban");
-                          setIsUploadDropdownOpen(false);
-                          setIsCloudPickerOpen(true);
-                        }}
-                      >
-                        Attach From Cloud
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="mt-4 space-y-2">
-                {formData.documents && formData.documents.map((doc) => (
-                  <div key={doc.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-gray-200">
-                    <div className="flex items-center gap-3">
-                      <FileText size={18} className="text-gray-400" />
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium text-gray-700">{doc.name}</span>
-                        <span className="text-xs text-gray-400">{(doc.size / 1024).toFixed(2)} KB</span>
-                      </div>
-                    </div>
-                    <button onClick={() => handleRemoveFile(doc.id)} className="text-red-500 hover:text-red-700">
-                      <X size={16} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         </div >
       </div >
@@ -2110,7 +3178,7 @@ export default function NewCreditNote() {
                             <FileText size={20} className="text-gray-400" />
                             <div>
                               <div className="text-sm font-semibold text-gray-900">{doc.name}</div>
-                              <div className="text-xs text-gray-500">{doc.size} â€¢ Uploaded by {doc.uploadedBy || "Me"}</div>
+                              <div className="text-xs text-gray-500">{doc.size} • Uploaded by {doc.uploadedBy || "Me"}</div>
                             </div>
                           </div>
                           <div className={`w-5 h-5 rounded-sm border flex items-center justify-center ${selectedDocuments.includes(doc.id) ? '' : 'border-gray-300'}`}
@@ -2174,7 +3242,7 @@ export default function NewCreditNote() {
                 <div className="w-64 bg-gray-50 border-r border-gray-100 p-4 flex flex-col justify-between">
                   <div className="space-y-2">
                     {[
-                      { id: 'taban', name: 'Taban Books Drive' },
+                      { id: 'zoho', name: 'Zoho WorkDrive' },
                       { id: 'gdrive', name: 'Google Drive' },
                       { id: 'dropbox', name: 'Dropbox' },
                       { id: 'box', name: 'Box' },
@@ -2264,7 +3332,7 @@ export default function NewCreditNote() {
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books. The use and transfer of information received from Google APIs to Taban Books will adhere to{" "}
+                          and understand that the rights to use this product do not come from Zoho. The use and transfer of information received from Google APIs to Zoho will adhere to{" "}
                           <a
                             href="#"
                             className="underline"
@@ -2354,7 +3422,7 @@ export default function NewCreditNote() {
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books.
+                          and understand that the rights to use this product do not come from Zoho.
                         </p>
                       </div>
 
@@ -2414,7 +3482,7 @@ export default function NewCreditNote() {
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books.
+                          and understand that the rights to use this product do not come from Zoho.
                         </p>
                       </div>
 
@@ -2471,7 +3539,7 @@ export default function NewCreditNote() {
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books.
+                          and understand that the rights to use this product do not come from Zoho.
                         </p>
                       </div>
 
@@ -2491,7 +3559,7 @@ export default function NewCreditNote() {
                         Authenticate OneDrive
                       </button>
                     </div>
-                  ) : selectedCloudProvider === "taban" || selectedCloudProvider === "gdrive" || selectedCloudProvider === "dropbox" || selectedCloudProvider === "box" ? (
+                  ) : selectedCloudProvider === "zoho" || selectedCloudProvider === "gdrive" || selectedCloudProvider === "dropbox" || selectedCloudProvider === "box" ? (
                     /* Functional Cloud Picker Content */
                     <div className="w-full flex-1 overflow-hidden flex flex-col">
                       {/* Search bar inside picker */}
@@ -2602,7 +3670,7 @@ export default function NewCreditNote() {
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books.
+                          and understand that the rights to use this product do not come from Zoho.
                         </p>
                       </div>
 
@@ -2620,7 +3688,7 @@ export default function NewCreditNote() {
                       </button>
                     </div>
                   ) : (
-                    /* Default Content for Taban Books Drive */
+                    /* Default Content for Zoho WorkDrive */
                     <div className="flex flex-col items-center justify-center">
                       <div className="relative w-full max-w-md h-64 mb-6 flex items-center justify-center">
                         <div className="relative w-full h-full">
@@ -2671,14 +3739,14 @@ export default function NewCreditNote() {
                       </div>
 
                       <p className="text-sm text-gray-600 text-center mb-6 max-w-md">
-                        Taban Books Drive is an online file sync, storage and content collaboration platform.
+                        Zoho WorkDrive is an online file sync, storage and content collaboration platform.
                       </p>
 
                       <button
                         className="px-6 py-2.5 bg-green-600 text-white rounded-md text-sm font-semibold hover:bg-green-700 transition-colors shadow-sm"
                         onClick={() => {
                           window.open(
-                            "https://drive.tabanbooks.com",
+                            "https://workdrive.zoho.com",
                             "_blank"
                           );
                         }}
@@ -2774,7 +3842,7 @@ export default function NewCreditNote() {
                           <div className="flex-1">
                             <div className="font-medium text-gray-900">{item.name}</div>
                             <div className="text-xs text-gray-500 mt-1">
-                              SKU: {item.sku} Rate: {formData.currency}{item.rate.toFixed(2)}
+                              SKU: {item.sku} Rate: {formData.currency}{formatDecimal(item.rate)}
                             </div>
                           </div>
                           <div className="text-right">
@@ -2818,7 +3886,7 @@ export default function NewCreditNote() {
                             <div className="flex-1">
                               <div className="font-medium text-gray-900">{selectedItem.name}</div>
                               <div className="text-xs text-gray-500 mt-1">
-                                SKU: {selectedItem.sku} â€¢ {formData.currency}{selectedItem.rate.toFixed(2)}
+                                SKU: {selectedItem.sku} • {formData.currency}{formatDecimal(selectedItem.rate)}
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -3166,9 +4234,354 @@ export default function NewCreditNote() {
         document.body
       )}
 
+      {isCreditNoteNumberModalOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center pt-16 z-50"
+          onClick={() => setIsCreditNoteNumberModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl w-full max-w-[600px] mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <h2 className="text-[18px] leading-none font-medium text-gray-800">Configure Credit Note Number Preferences</h2>
+              <button
+                type="button"
+                onClick={() => setIsCreditNoteNumberModalOpen(false)}
+                className="w-7 h-7 rounded-md border border-[#2f80ed] text-red-500 flex items-center justify-center hover:bg-blue-50"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="px-5 py-5">
+              <div className="grid grid-cols-[1fr_1.4fr] gap-x-5 gap-y-1 pb-5 border-b border-gray-200">
+                <div>
+                  <p className="text-[13px] leading-none font-semibold text-gray-800 mb-2">Location</p>
+                  <p className="text-[14px] leading-none text-gray-700">Head Office</p>
+                </div>
+                <div>
+                  <p className="text-[13px] leading-none font-semibold text-gray-800 mb-2">Associated Series</p>
+                  <p className="text-[14px] leading-none text-gray-700">Default Transaction Series</p>
+                </div>
+              </div>
+
+              <div className="pt-5">
+                {creditNoteNumberMode === "auto" ? (
+                  <p className="text-[12px] leading-[1.45] text-gray-700 mb-4 max-w-[96%]">
+                    Your credit note numbers are set on auto-generate mode to save your time. Are you sure about changing this setting?
+                  </p>
+                ) : (
+                  <p className="text-[12px] leading-[1.45] text-gray-700 mb-4 max-w-[96%]">
+                    You have selected manual credit note numbering. Do you want us to auto-generate it for you?
+                  </p>
+                )}
+
+                <div className="space-y-4">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <div className="pt-1">
+                      <input
+                        type="radio"
+                        name="creditNoteNumberMode"
+                        value="auto"
+                        checked={creditNoteNumberMode === "auto"}
+                        onChange={() => setCreditNoteNumberMode("auto")}
+                        className="w-4 h-4 text-[#2f80ed] border-gray-300 focus:ring-[#2f80ed] cursor-pointer"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] leading-none font-semibold text-gray-800">
+                          Continue auto-generating credit note numbers
+                        </span>
+                        <Info size={11} className="text-gray-400" />
+                      </div>
+                      {creditNoteNumberMode === "auto" && (
+                        <div className="mt-3 pl-4">
+                          <div className="grid grid-cols-[110px_1fr] gap-4">
+                            <div>
+                              <label className="block text-[11px] text-gray-700 mb-1">Prefix</label>
+                              <input
+                                type="text"
+                                value={creditNotePrefix}
+                                onChange={(e) => {
+                                  const nextPrefix = sanitizeCreditNotePrefix(e.target.value);
+                                  setCreditNotePrefix(nextPrefix);
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    creditNoteNumber: buildCreditNoteNumber(nextPrefix, creditNoteNextNumber)
+                                  }));
+                                }}
+                                className="w-full h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 focus:outline-none focus:border-[#156372]"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] text-gray-700 mb-1">Next Number</label>
+                              <input
+                                type="text"
+                                value={creditNoteNextNumber}
+                                onChange={(e) => {
+                                  const nextDigits = extractCreditNoteDigits(e.target.value) || "";
+                                  setCreditNoteNextNumber(nextDigits);
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    creditNoteNumber: buildCreditNoteNumber(creditNotePrefix, nextDigits)
+                                  }));
+                                }}
+                                className="w-full h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 focus:outline-none focus:border-[#156372]"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <div className="pt-1">
+                      <input
+                        type="radio"
+                        name="creditNoteNumberMode"
+                        value="manual"
+                        checked={creditNoteNumberMode === "manual"}
+                        onChange={() => setCreditNoteNumberMode("manual")}
+                        className="w-4 h-4 text-[#2f80ed] border-gray-300 focus:ring-[#2f80ed] cursor-pointer"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <span className="text-[13px] leading-none text-gray-700">
+                        Enter credit note numbers manually
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 px-5 py-5 border-t border-gray-200">
+              <button
+                type="button"
+                onClick={() => {
+                  if (creditNoteNumberMode === "auto") {
+                    setFormData(prev => ({
+                      ...prev,
+                      creditNoteNumber: buildCreditNoteNumber(creditNotePrefix, creditNoteNextNumber)
+                    }));
+                  }
+                  setIsCreditNoteNumberModalOpen(false);
+                }}
+                className="px-4 h-8 bg-[#22b573] text-white rounded-md text-[12px] font-semibold hover:bg-[#1ea465]"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsCreditNoteNumberModalOpen(false)}
+                className="px-4 h-8 bg-white border border-gray-300 text-gray-700 rounded-md text-[12px] font-medium hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isManageSalespersonsOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000]">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900">Manage Salespersons</h2>
+              <button
+                onClick={() => setIsManageSalespersonsOpen(false)}
+                className="p-2 rounded-lg text-gray-400"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {selectedSalespersonIds.length > 0 ? (
+              <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+                <div className="flex items-center gap-2">
+                  <button className="px-3 py-1.5 bg-white border border-gray-300 rounded text-sm text-gray-700 hover:bg-gray-50 shadow-sm">
+                    Merge
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setMenuPosition({ top: rect.bottom, left: rect.left });
+                      setManageSalespersonMenuOpen("BULK_ACTIONS");
+                    }}
+                    className="px-3 py-1.5 bg-white border border-gray-300 rounded text-sm text-gray-700 hover:bg-gray-50 shadow-sm flex items-center gap-2"
+                  >
+                    More Actions
+                    <ChevronDown size={14} />
+                  </button>
+                </div>
+                <button
+                  onClick={() => setSelectedSalespersonIds([])}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            ) : (
+              <div className="p-6 border-b border-gray-200 flex items-center gap-3">
+                <div className="flex-1 relative">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search Salesperson"
+                    value={manageSalespersonSearch}
+                    onChange={(e) => setManageSalespersonSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#156372]"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    setIsNewSalespersonFormOpen(true);
+                    setManageSalespersonSearch("");
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#156372] text-white rounded-md"
+                >
+                  <Plus size={16} />
+                  New Salesperson
+                </button>
+              </div>
+            )}
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {isNewSalespersonFormOpen ? (
+                <div className="mb-6 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Add New Salesperson</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                      <input
+                        type="text"
+                        name="name"
+                        value={newSalespersonData.name}
+                        onChange={handleNewSalespersonChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#156372]"
+                        placeholder="Enter name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                      <input
+                        type="email"
+                        name="email"
+                        value={newSalespersonData.email}
+                        onChange={handleNewSalespersonChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#156372]"
+                        placeholder="Enter email"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleSaveAndSelectSalesperson}
+                        className="flex-1 px-4 py-2 bg-[#156372] text-white rounded-md"
+                      >
+                        Add
+                      </button>
+                      <button
+                        onClick={handleCancelNewSalesperson}
+                        className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <table className="w-full">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300 text-[#156372] focus:ring-[#156372]"
+                        checked={filteredManageSalespersons.length > 0 && selectedSalespersonIds.length === filteredManageSalespersons.length}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedSalespersonIds(filteredManageSalespersons.map((s: any) => String(s.id || s._id)));
+                          } else {
+                            setSelectedSalespersonIds([]);
+                          }
+                        }}
+                      />
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">SALESPERSON NAME</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">EMAIL</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredManageSalespersons.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
+                        {manageSalespersonSearch ? "No salespersons found" : "No salespersons available"}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredManageSalespersons.map((salesperson: any) => {
+                      const salespersonId = String(salesperson.id || salesperson._id);
+                      return (
+                        <tr key={salespersonId} className="group hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center">
+                              <input
+                                type="checkbox"
+                                className="rounded border-gray-300 text-[#156372] focus:ring-[#156372]"
+                                checked={selectedSalespersonIds.includes(salespersonId)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedSalespersonIds([...selectedSalespersonIds, salespersonId]);
+                                  } else {
+                                    setSelectedSalespersonIds(selectedSalespersonIds.filter(id => id !== salespersonId));
+                                  }
+                                }}
+                              />
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900">{salesperson.name}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{salesperson.email || ""}</td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="hidden group-hover:flex items-center justify-end gap-2">
+                              <button
+                                className="p-1 text-gray-500 hover:text-[#156372] hover:bg-gray-100 rounded"
+                                title="Edit"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setMenuPosition({ top: rect.bottom, left: rect.right });
+                                  setManageSalespersonMenuOpen(manageSalespersonMenuOpen === salespersonId ? null : salespersonId);
+                                }}
+                                className={`p-1 text-gray-500 hover:text-[#156372] hover:bg-gray-100 rounded ${manageSalespersonMenuOpen === salespersonId ? "bg-gray-100 text-[#156372]" : ""}`}
+                              >
+                                <MoreVertical size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Footer */}
       <div className="fixed bottom-0 left-[260px] right-0 bg-white border-t border-gray-200 py-4 px-8 z-[100] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-        <div className="max-w-5xl mx-auto flex items-center gap-3">
+        <div className="max-w-[980px] mx-auto flex items-center gap-3">
           <button
             onClick={() => handleSave("draft")}
             disabled={saveLoading !== null}

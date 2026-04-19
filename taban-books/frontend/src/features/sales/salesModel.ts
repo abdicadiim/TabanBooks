@@ -1,5 +1,6 @@
-import { recurringInvoicesAPI, quotesAPI, invoicesAPI, customersAPI, taxesAPI, itemsAPI, salespersonsAPI, salesReceiptsAPI, paymentsReceivedAPI, creditNotesAPI, projectsAPI, settingsAPI } from "../../services/api";
-import { getPaymentModeLabel } from "../../utils/paymentModes";
+import { useEffect, useRef, useState } from "react";
+import { recurringInvoicesAPI, quotesAPI, invoicesAPI, customersAPI, taxesAPI, itemsAPI, salespersonsAPI, salesReceiptsAPI, paymentsReceivedAPI, creditNotesAPI, projectsAPI, settingsAPI, plansAPI, reportingTagsAPI } from "../../services/api";
+
 
 const STORAGE_KEY = "taban_books_customers";
 
@@ -9,6 +10,15 @@ const MEMORY_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
 type CacheEntry<T> = { ts: number; value?: T; promise?: Promise<T> };
 const memoryCache = new Map<string, CacheEntry<any>>();
 
+const shouldCacheFetchedValue = (value: any) => {
+  if (Array.isArray(value)) return value.length > 0;
+  if (value && typeof value === "object") {
+    const data = (value as any).data;
+    if (Array.isArray(data)) return data.length > 0;
+  }
+  return value !== undefined && value !== null;
+};
+
 const cachedFetch = async <T,>(
   key: string,
   fetcher: () => Promise<T>,
@@ -17,7 +27,7 @@ const cachedFetch = async <T,>(
   const now = Date.now();
   const entry = memoryCache.get(key) as CacheEntry<T> | undefined;
 
-  if (entry?.value !== undefined && now - entry.ts < ttlMs) {
+  if (entry?.value !== undefined && now - entry.ts < ttlMs && shouldCacheFetchedValue(entry.value)) {
     return entry.value;
   }
   if (entry?.promise) {
@@ -26,7 +36,11 @@ const cachedFetch = async <T,>(
 
   const promise = fetcher()
     .then((value) => {
-      memoryCache.set(key, { ts: Date.now(), value });
+      if (shouldCacheFetchedValue(value)) {
+        memoryCache.set(key, { ts: Date.now(), value });
+      } else {
+        memoryCache.delete(key);
+      }
       return value;
     })
     .catch((err) => {
@@ -59,6 +73,7 @@ export interface Customer {
   id: string;
   _id?: string;
   name: string;
+  customerName?: string;
   customerNumber?: string;
   displayName?: string;
   companyName?: string;
@@ -92,8 +107,12 @@ export interface Customer {
   firstName?: string;
   lastName?: string;
   customerType?: string;
+  type?: string;
   enablePortal?: boolean;
+  portalEnabled?: boolean;
+  portalStatus?: string;
   customerLanguage?: string;
+  language?: string;
   paymentTerms?: string;
   unusedCredits?: number;
   billingAddress?: {
@@ -165,7 +184,12 @@ export const getCustomers = async (params: any = {}): Promise<Customer[]> => {
 };
 
 export const getCustomersPaginated = async (params: any = {}): Promise<any> => {
-  return getCustomersFromAPI(params);
+  const { __skipCache, ...finalParams } = params || {};
+  if (__skipCache) {
+    return getCustomersFromAPI(finalParams);
+  }
+  const cacheKey = `customers:paginated:${JSON.stringify(finalParams)}`;
+  return cachedFetch(cacheKey, async () => getCustomersFromAPI(finalParams), 30 * 1000);
 };
 
 
@@ -182,7 +206,7 @@ export const getCustomersFromAPI = async (params: any = {}): Promise<any> => {
       }));
       return {
         data,
-        pagination: response.pagination || {
+        pagination: (response as any).pagination || {
           total: data.length,
           page: 1,
           limit: data.length,
@@ -208,6 +232,101 @@ export const getCustomerById = async (customerId: string | number): Promise<Cust
     console.error("Error getting customer by ID from API:", error);
     return null;
   }
+};
+
+const CUSTOMER_LOOKUP_LIMIT = 1000;
+
+const normalizeCustomerLookupValue = (value: any) =>
+  String(value ?? "").trim().toLowerCase();
+
+const looksLikeMongoObjectId = (value: any) =>
+  /^[a-f0-9]{24}$/i.test(String(value ?? "").trim());
+
+const getCustomerDisplayName = (customer: any) =>
+  String(
+    customer?.displayName ||
+      customer?.companyName ||
+      customer?.name ||
+      customer?.customerName ||
+      `${customer?.firstName || ""} ${customer?.lastName || ""}`.trim() ||
+      "",
+  ).trim();
+
+const buildCustomerNameLookup = (customers: any[] = []) => {
+  const lookup = new Map<string, string>();
+
+  (Array.isArray(customers) ? customers : []).forEach((customer: any) => {
+    const name = getCustomerDisplayName(customer);
+    if (!name) return;
+
+    [
+      customer?._id,
+      customer?.id,
+      customer?.customerId,
+      customer?.customer_id,
+    ].forEach((key) => {
+      const normalizedKey = normalizeCustomerLookupValue(key);
+      if (normalizedKey) {
+        lookup.set(normalizedKey, name);
+      }
+    });
+  });
+
+  return lookup;
+};
+
+const resolveInvoiceCustomerName = (
+  invoice: any,
+  customerNameLookup?: Map<string, string>,
+) => {
+  const customer = invoice?.customer;
+  const customerId = String(
+    invoice?.customerId ||
+      invoice?.customer_id ||
+      customer?._id ||
+      customer?.id ||
+      (typeof customer === "string" ? customer : ""),
+  ).trim();
+  const normalizedCustomerId = normalizeCustomerLookupValue(customerId);
+  const embeddedCustomerName = getCustomerDisplayName(customer);
+
+  if (
+    embeddedCustomerName &&
+    normalizeCustomerLookupValue(embeddedCustomerName) !== normalizedCustomerId
+  ) {
+    return embeddedCustomerName;
+  }
+
+  const explicitCustomerName = String(invoice?.customerName || "").trim();
+  const normalizedExplicitCustomerName =
+    normalizeCustomerLookupValue(explicitCustomerName);
+
+  if (
+    explicitCustomerName &&
+    normalizedExplicitCustomerName !== normalizedCustomerId &&
+    !looksLikeMongoObjectId(explicitCustomerName)
+  ) {
+    return explicitCustomerName;
+  }
+
+  for (const candidate of [customerId, explicitCustomerName]) {
+    const matchedName = customerNameLookup?.get(
+      normalizeCustomerLookupValue(candidate),
+    );
+    if (matchedName) {
+      return matchedName;
+    }
+  }
+
+  if (explicitCustomerName) {
+    return explicitCustomerName;
+  }
+
+  if (typeof customer === "string") {
+    return customer.trim();
+  }
+
+  return "";
 };
 
 export const saveCustomer = async (customerData: Partial<Customer>): Promise<Customer> => {
@@ -383,6 +502,17 @@ export interface Invoice {
   customerNotes?: string;
   termsAndConditions?: string;
   attachedFiles?: AttachedFile[];
+  attachments?: AttachedFile[];
+  comments?: any[];
+  customerAddress?: {
+    street1?: string;
+    street2?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
+  };
+  poNumber?: string;
   balanceDue?: number;
   balance?: number;
   amountPaid?: number;
@@ -417,12 +547,16 @@ export const getInvoices = async (params: any = {}): Promise<Invoice[]> => {
 
 export const getInvoicesPaginated = async (params: any = {}): Promise<any> => {
   try {
-    const response = await invoicesAPI.getAll(params);
+    const [response, customers] = await Promise.all([
+      invoicesAPI.getAll(params),
+      getCustomers({ limit: CUSTOMER_LOOKUP_LIMIT }).catch(() => []),
+    ]);
     if (response && response.success && response.data) {
+      const customerNameLookup = buildCustomerNameLookup(customers);
       const data = response.data.map((invoice: any) => ({
         ...invoice,
         id: invoice._id || invoice.id, // Ensure id exists
-        customerName: invoice.customerName || invoice.customer?.displayName || invoice.customer?.companyName || invoice.customer?.name || (typeof invoice.customer === 'string' ? invoice.customer : ""),
+        customerName: resolveInvoiceCustomerName(invoice, customerNameLookup),
         status: invoice.status || "draft"
       }));
       return {
@@ -444,13 +578,17 @@ export const getInvoicesPaginated = async (params: any = {}): Promise<any> => {
 
 export const getInvoiceById = async (invoiceId: string): Promise<Invoice | null> => {
   try {
-    const response = await invoicesAPI.getById(invoiceId);
+    const [response, customers] = await Promise.all([
+      invoicesAPI.getById(invoiceId),
+      getCustomers({ limit: CUSTOMER_LOOKUP_LIMIT }).catch(() => []),
+    ]);
     if (response && response.success && response.data) {
+      const customerNameLookup = buildCustomerNameLookup(customers);
       const invoice = response.data;
       return {
         ...invoice,
         id: invoice._id || invoice.id,
-        customerName: invoice.customer?.displayName || invoice.customer?.companyName || invoice.customer?.name || "",
+        customerName: resolveInvoiceCustomerName(invoice, customerNameLookup),
         status: invoice.status || "draft"
       };
     }
@@ -468,9 +606,21 @@ export const saveInvoice = async (invoiceData: Partial<Invoice>): Promise<Invoic
       const saved = response.data;
       return { ...saved, id: saved._id || saved.id };
     }
-    throw new Error("Failed to create invoice");
+    const message =
+      String(response?.message || response?.data?.message || response?.error || "Failed to create invoice").trim();
+    const error: any = new Error(message || "Failed to create invoice");
+    if (response && typeof response.status === "number") {
+      error.status = response.status;
+    }
+    if (response?.data !== undefined) {
+      error.data = response.data;
+    }
+    throw error;
   } catch (error) {
-    console.error("Error saving invoice to API:", error);
+    const status = Number((error as any)?.status || (error as any)?.response?.status || 0);
+    if (status !== 409) {
+      console.error("Error saving invoice to API:", error);
+    }
     throw error;
   }
 };
@@ -518,6 +668,81 @@ export const sampleInvoices = [];
 
 // Taxes Storage
 const TAXES_STORAGE_KEY = "taban_books_taxes";
+export const TAXES_STORAGE_EVENT = "taban_books_taxes_updated";
+
+const normalizeStoredTax = (tax: any): any => {
+  if (!tax || typeof tax !== "object") return null;
+  const id = String(tax._id || tax.id || tax.name || "").trim();
+  return {
+    ...tax,
+    _id: id || tax._id || tax.id,
+    id: id || tax.id || tax._id,
+  };
+};
+
+export const readTaxesLocal = (): Tax[] => {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(TAXES_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.map(normalizeStoredTax).filter(Boolean)
+      : [];
+  } catch (error) {
+    console.error("Error reading taxes from local storage:", error);
+    return [];
+  }
+};
+
+export const writeTaxesLocal = (taxes: any[]): Tax[] => {
+  if (typeof window === "undefined") return Array.isArray(taxes) ? taxes : [];
+  const normalized = (Array.isArray(taxes) ? taxes : [])
+    .map(normalizeStoredTax)
+    .filter(Boolean);
+
+  try {
+    window.localStorage.setItem(TAXES_STORAGE_KEY, JSON.stringify(normalized));
+    window.dispatchEvent(new CustomEvent(TAXES_STORAGE_EVENT, { detail: normalized }));
+  } catch (error) {
+    console.error("Error writing taxes to local storage:", error);
+  }
+
+  return normalized;
+};
+
+export const createTaxLocal = (taxData: any): Tax | null => {
+  const normalizedInput = normalizeCreatedTaxPayload(taxData);
+  if (!normalizedInput.name) return null;
+
+  const nextTax = normalizeStoredTax({
+    ...normalizedInput.raw,
+    _id:
+      String(normalizedInput.raw?._id || normalizedInput.raw?.id || normalizedInput.name)
+        .trim() || normalizedInput.name,
+    id:
+      String(normalizedInput.raw?._id || normalizedInput.raw?.id || normalizedInput.name)
+        .trim() || normalizedInput.name,
+    name: normalizedInput.name,
+    rate: normalizedInput.rate,
+    isActive:
+      typeof normalizedInput.raw?.isActive === "boolean"
+        ? normalizedInput.raw.isActive
+        : true,
+    isCompound: normalizedInput.isCompound,
+  });
+
+  if (!nextTax) return null;
+
+  const existing = readTaxesLocal().filter((row: any) => {
+    const rowId = String(row?._id || row?.id || "").trim();
+    const nextId = String(nextTax._id || nextTax.id || "").trim();
+    return rowId !== nextId;
+  });
+
+  writeTaxesLocal([nextTax, ...existing]);
+  return nextTax as Tax;
+};
 
 export const getTaxes = async (): Promise<Tax[]> => {
   return getTaxesFromAPI();
@@ -556,6 +781,76 @@ export const deleteTax = async (taxId: string): Promise<void> => {
     console.error("Error deleting tax from API:", error);
     throw error;
   }
+};
+
+function normalizeTaxRateValue(value: any): number {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+export const taxLabel = (tax: any): string => {
+  const raw = tax?.raw ?? tax ?? {};
+  const name = String(raw?.name || raw?.taxName || raw?.label || raw?.title || "Tax").trim() || "Tax";
+  const rate = normalizeTaxRateValue(raw?.rate ?? raw?.taxRate ?? raw?.percentage ?? raw?.value);
+  return rate > 0 ? `${name} [${rate}%]` : name;
+};
+
+export const isTaxActive = (tax: any): boolean => {
+  const raw = tax?.raw ?? tax ?? {};
+  if (typeof raw?.isActive === "boolean") return raw.isActive;
+  if (typeof raw?.active === "boolean") return raw.active;
+  const status = String(raw?.status || "").trim().toLowerCase();
+  if (!status) return true;
+  return !["inactive", "disabled", "archived", "deleted"].includes(status);
+};
+
+export const normalizeCreatedTaxPayload = (payload: any) => {
+  const raw = payload?.data || payload || {};
+  const name = String(raw?.name || raw?.taxName || "").trim();
+  const rate = normalizeTaxRateValue(raw?.rate ?? raw?.taxRate ?? raw?.percentage ?? raw?.value);
+  return {
+    raw,
+    name,
+    rate,
+    isCompound: Boolean(raw?.isCompound ?? raw?.compound ?? false),
+  };
+};
+
+export const buildTaxOptionGroups = (taxes: any[] = []) => {
+  const groups = new Map<string, Array<{ id: string; rate: number; raw: any }>>();
+
+  taxes.forEach((tax) => {
+    const raw = tax?.raw ?? tax;
+    if (!raw) return;
+
+    const typeKey = String(raw?.type || raw?.taxType || "other").trim().toLowerCase();
+    const label =
+      typeKey === "sales"
+        ? "Sales Taxes"
+        : typeKey === "purchase"
+          ? "Purchase Taxes"
+          : typeKey === "both"
+            ? "Sales & Purchase Taxes"
+            : "Other Taxes";
+
+    const id = String(raw?._id || raw?.id || raw?.name || taxLabel(raw)).trim();
+    if (!id) return;
+
+    const option = {
+      id,
+      rate: normalizeTaxRateValue(raw?.rate ?? raw?.taxRate ?? raw?.percentage ?? raw?.value),
+      raw,
+    };
+
+    const existing = groups.get(label) || [];
+    existing.push(option);
+    groups.set(label, existing);
+  });
+
+  return Array.from(groups.entries()).map(([label, options]) => ({
+    label,
+    options: options.sort((a, b) => taxLabel(a.raw).localeCompare(taxLabel(b.raw))),
+  }));
 };
 
 export interface RecurringInvoice extends Invoice {
@@ -671,6 +966,8 @@ export interface Payment {
   customer?: any;
   customerName?: string;
   customerId?: string;
+  invoiceId?: string;
+  invoiceNumber?: string;
   amount?: number;
   amountReceived?: number;
   date: string;
@@ -745,13 +1042,22 @@ export const getPayments = async (): Promise<Payment[]> => {
       return response.data.map((item: any) => ({
         ...item,
         id: item._id || item.id,
-        customerName: item.customer?.displayName || item.customer?.name || item.customer?.companyName || (typeof item.customer === 'string' ? item.customer : ""),
+        customerName:
+          item.customerName ||
+          item.customer?.displayName ||
+          item.customer?.name ||
+          item.customer?.companyName ||
+          (typeof item.customer === 'string' ? item.customer : ""),
         customerId: item.customer?._id || item.customer,
         amountReceived: item.amount,
         status: item.status || 'paid',
         paymentDate: item.date,
-        paymentMode: getPaymentModeLabel(item.paymentMethod),
-        referenceNumber: item.paymentReference || item.referenceNumber || ""
+        paymentMode: item.paymentMethod === 'cash' ? 'Cash' :
+          item.paymentMethod === 'check' ? 'Check' :
+            item.paymentMethod === 'card' ? 'Credit Card' :
+              item.paymentMethod === 'bank_transfer' ? 'Bank Transfer' :
+                (item.paymentMethod || 'Other'),
+        referenceNumber: item.referenceNumber || item.paymentReference || ""
       }));
     }
     return [];
@@ -772,9 +1078,18 @@ export const getPaymentById = async (paymentId: string): Promise<Payment | null>
         status: payment.status || 'paid',
         amountReceived: payment.amount,
         paymentDate: payment.date,
-        customerName: payment.customer?.displayName || payment.customer?.name || "",
-        paymentMode: getPaymentModeLabel(payment.paymentMethod),
-        referenceNumber: payment.paymentReference || payment.referenceNumber || "",
+        customerName:
+          payment.customerName ||
+          payment.customer?.displayName ||
+          payment.customer?.name ||
+          payment.customer?.companyName ||
+          (typeof payment.customer === 'string' ? payment.customer : ""),
+        paymentMode: payment.paymentMethod === 'cash' ? 'Cash' :
+          payment.paymentMethod === 'check' ? 'Check' :
+            payment.paymentMethod === 'card' ? 'Credit Card' :
+              payment.paymentMethod === 'bank_transfer' ? 'Bank Transfer' :
+                (payment.paymentMethod || 'Other'),
+        referenceNumber: payment.referenceNumber || payment.paymentReference || "",
         allocations: payment.allocations || []
       };
     }
@@ -871,6 +1186,15 @@ export interface CreditNote {
 
 // Credit Notes Storage
 const CREDIT_NOTES_STORAGE_KEY = "taban_books_credit_notes";
+const normalizeCreditNoteReference = (note: any): string =>
+  String(
+    note?.referenceNumber ??
+    note?.reference ??
+    note?.referenceNo ??
+    note?.refNumber ??
+    note?.ref ??
+    ""
+  ).trim();
 
 export const getCreditNotes = async (): Promise<CreditNote[]> => {
   try {
@@ -879,7 +1203,8 @@ export const getCreditNotes = async (): Promise<CreditNote[]> => {
       return response.data.map((item: any) => ({
         ...item,
         id: item._id || item.id,
-        customerName: item.customerName || item.customer?.displayName || item.customer?.companyName || item.customer?.name || (typeof item.customer === 'string' ? item.customer : "")
+        customerName: item.customerName || item.customer?.displayName || item.customer?.companyName || item.customer?.name || (typeof item.customer === 'string' ? item.customer : ""),
+        referenceNumber: normalizeCreditNoteReference(item)
       }));
     }
     return [];
@@ -899,7 +1224,8 @@ export const getCreditNoteById = async (creditNoteId: string): Promise<CreditNot
         id: note._id || note.id,
         customerId: note.customer?._id || note.customer,
         customerName: note.customer?.displayName || note.customer?.name || "",
-        customerEmail: note.customer?.email || ""
+        customerEmail: note.customer?.email || "",
+        referenceNumber: normalizeCreditNoteReference(note)
       };
     }
     return null;
@@ -911,7 +1237,55 @@ export const getCreditNoteById = async (creditNoteId: string): Promise<CreditNot
 
 export const saveCreditNote = async (creditNoteData: Partial<CreditNote>): Promise<CreditNote> => {
   try {
-    const response = await creditNotesAPI.create(creditNoteData);
+    const toISO = (dateVal: any) => {
+      if (!dateVal) return undefined;
+      try {
+        const d = new Date(dateVal);
+        if (!isNaN(d.getTime())) return d.toISOString();
+        if (typeof dateVal === "string" && dateVal.includes("/")) {
+          const parts = dateVal.split("/");
+          if (parts.length === 3) {
+            const day = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            const year = parseInt(parts[2], 10);
+            const dd = new Date(year, month, day);
+            if (!isNaN(dd.getTime())) return dd.toISOString();
+          }
+        }
+      } catch {}
+      return undefined;
+    };
+
+    const apiData: any = {
+      ...creditNoteData,
+      creditNoteNumber: String((creditNoteData as any).creditNoteNumber || (creditNoteData as any).number || ""),
+      referenceNumber: normalizeCreditNoteReference(creditNoteData as any),
+      reference: normalizeCreditNoteReference(creditNoteData as any),
+      customer: creditNoteData.customerId || (creditNoteData as any).customer,
+      customerId: creditNoteData.customerId || (creditNoteData as any).customer,
+      customerName:
+        creditNoteData.customerName ||
+        (typeof (creditNoteData as any).customer === "object" && (creditNoteData as any).customer
+          ? ((creditNoteData as any).customer.displayName || (creditNoteData as any).customer.name || (creditNoteData as any).customer.companyName || "")
+          : ""),
+      invoiceId: String((creditNoteData as any).invoiceId || (creditNoteData as any).invoice || ""),
+      invoiceNumber: String((creditNoteData as any).invoiceNumber || ""),
+      date: toISO((creditNoteData as any).creditNoteDate || (creditNoteData as any).date) || new Date().toISOString(),
+      subtotal: Number((creditNoteData as any).subtotal ?? (creditNoteData as any).subTotal ?? 0) || 0,
+      subTotal: Number((creditNoteData as any).subtotal ?? (creditNoteData as any).subTotal ?? 0) || 0,
+      tax: Number((creditNoteData as any).tax ?? (creditNoteData as any).taxAmount ?? 0) || 0,
+      discount: Number((creditNoteData as any).discount ?? 0) || 0,
+      discountType: (creditNoteData as any).discountType || "percent",
+      shippingCharges: Number((creditNoteData as any).shippingCharges ?? 0) || 0,
+      shippingChargeTax: String((creditNoteData as any).shippingChargeTax || ""),
+      adjustment: Number((creditNoteData as any).adjustment ?? 0) || 0,
+      roundOff: Number((creditNoteData as any).roundOff ?? 0) || 0,
+      total: Number((creditNoteData as any).total ?? 0) || 0,
+      balance: Number((creditNoteData as any).balance ?? (creditNoteData as any).total ?? 0) || 0,
+      status: (creditNoteData as any).status || "open",
+    };
+
+    const response = await creditNotesAPI.create(apiData);
     if (response && response.success && response.data) {
       return response.data;
     }
@@ -924,7 +1298,55 @@ export const saveCreditNote = async (creditNoteData: Partial<CreditNote>): Promi
 
 export const updateCreditNote = async (creditNoteId: string, creditNoteData: Partial<CreditNote>): Promise<CreditNote> => {
   try {
-    const response = await creditNotesAPI.update(creditNoteId, creditNoteData);
+    const toISO = (dateVal: any) => {
+      if (!dateVal) return undefined;
+      try {
+        const d = new Date(dateVal);
+        if (!isNaN(d.getTime())) return d.toISOString();
+        if (typeof dateVal === "string" && dateVal.includes("/")) {
+          const parts = dateVal.split("/");
+          if (parts.length === 3) {
+            const day = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            const year = parseInt(parts[2], 10);
+            const dd = new Date(year, month, day);
+            if (!isNaN(dd.getTime())) return dd.toISOString();
+          }
+        }
+      } catch {}
+      return undefined;
+    };
+
+    const apiData: any = {
+      ...creditNoteData,
+      creditNoteNumber: String((creditNoteData as any).creditNoteNumber || (creditNoteData as any).number || ""),
+      referenceNumber: normalizeCreditNoteReference(creditNoteData as any),
+      reference: normalizeCreditNoteReference(creditNoteData as any),
+      customer: creditNoteData.customerId || (creditNoteData as any).customer,
+      customerId: creditNoteData.customerId || (creditNoteData as any).customer,
+      customerName:
+        creditNoteData.customerName ||
+        (typeof (creditNoteData as any).customer === "object" && (creditNoteData as any).customer
+          ? ((creditNoteData as any).customer.displayName || (creditNoteData as any).customer.name || (creditNoteData as any).customer.companyName || "")
+          : ""),
+      invoiceId: String((creditNoteData as any).invoiceId || (creditNoteData as any).invoice || ""),
+      invoiceNumber: String((creditNoteData as any).invoiceNumber || ""),
+      date: toISO((creditNoteData as any).creditNoteDate || (creditNoteData as any).date),
+      subtotal: Number((creditNoteData as any).subtotal ?? (creditNoteData as any).subTotal ?? 0) || 0,
+      subTotal: Number((creditNoteData as any).subtotal ?? (creditNoteData as any).subTotal ?? 0) || 0,
+      tax: Number((creditNoteData as any).tax ?? (creditNoteData as any).taxAmount ?? 0) || 0,
+      discount: Number((creditNoteData as any).discount ?? 0) || 0,
+      discountType: (creditNoteData as any).discountType || "percent",
+      shippingCharges: Number((creditNoteData as any).shippingCharges ?? 0) || 0,
+      shippingChargeTax: String((creditNoteData as any).shippingChargeTax || ""),
+      adjustment: Number((creditNoteData as any).adjustment ?? 0) || 0,
+      roundOff: Number((creditNoteData as any).roundOff ?? 0) || 0,
+      total: Number((creditNoteData as any).total ?? 0) || 0,
+      balance: Number((creditNoteData as any).balance ?? (creditNoteData as any).total ?? 0) || 0,
+      status: (creditNoteData as any).status || "open",
+    };
+
+    const response = await creditNotesAPI.update(creditNoteId, apiData);
     if (response && response.success && response.data) {
       return response.data;
     }
@@ -950,11 +1372,37 @@ export const deleteCreditNote = async (creditNoteId: string): Promise<CreditNote
 
 export const getCreditNotesByInvoiceId = async (invoiceId: string): Promise<CreditNote[]> => {
   try {
-    const response = await creditNotesAPI.getByInvoice(invoiceId);
-    if (response && response.success && response.data) {
-      return response.data;
-    }
-    return [];
+    const normalizedInvoiceId = String(invoiceId || "");
+    const response = await creditNotesAPI.getByInvoice(normalizedInvoiceId);
+    const directRows: CreditNote[] =
+      response && response.success && Array.isArray(response.data) ? response.data : [];
+
+    const allResponse = await creditNotesAPI.getAll({ limit: 10000 });
+    const allRows: CreditNote[] =
+      allResponse && allResponse.success && Array.isArray(allResponse.data) ? allResponse.data : [];
+
+    const fromAllocations = allRows.filter((note: any) =>
+      Array.isArray(note?.allocations) &&
+      note.allocations.some((allocation: any) => {
+        const allocationInvoiceId = String(
+          allocation?.invoiceId ||
+          allocation?.invoice?._id ||
+          allocation?.invoice?.id ||
+          allocation?.invoice ||
+          ""
+        );
+        return allocationInvoiceId === normalizedInvoiceId;
+      })
+    );
+
+    const merged = [...directRows, ...fromAllocations];
+    const seen = new Set<string>();
+    return merged.filter((note: any) => {
+      const noteId = String(note?.id || note?._id || "");
+      if (!noteId || seen.has(noteId)) return false;
+      seen.add(noteId);
+      return true;
+    });
   } catch (error) {
     console.error("Error fetching credit notes by invoice ID:", error);
     return [];
@@ -967,6 +1415,9 @@ export interface SalesReceipt {
   receiptNumber: string;
   customer?: any;
   customerName?: string;
+  customerId?: string;
+  referenceNumber?: string;
+  receiptDate?: string;
   date: string;
   items: any[];
   subtotal: number;
@@ -977,6 +1428,7 @@ export interface SalesReceipt {
   shippingChargeTax?: string;
   adjustment?: number;
   total: number;
+  amount?: number;
   status: string;
   paymentMethod?: string;
   attachments?: Array<{
@@ -1010,7 +1462,11 @@ export const getSalesReceipts = async (params: any = {}): Promise<SalesReceipt[]
 
 export const getSalesReceiptsPaginated = async (params: any = {}): Promise<any> => {
   try {
-    const response = await salesReceiptsAPI.getAll(params);
+    const finalParams = { ...params };
+    if (String(finalParams.status || "").toLowerCase() === "all") {
+      delete finalParams.status;
+    }
+    const response = await salesReceiptsAPI.getAll(finalParams);
     if (response && response.success && response.data) {
       const data = response.data.map((item: any) => ({
         ...item,
@@ -1053,11 +1509,93 @@ export const getSalesReceiptById = async (receiptId: string): Promise<SalesRecei
 
 export const saveSalesReceipt = async (receiptData: Partial<SalesReceipt>): Promise<SalesReceipt> => {
   try {
-    const response = await salesReceiptsAPI.create(receiptData);
+    const normalizeSavedReceipt = async (response: any) => {
+      const payload = response?.data?.data ?? response?.data ?? response?.result ?? response ?? {};
+      let id = String(
+        payload?.id ||
+        payload?._id ||
+        payload?.receiptId ||
+        payload?.salesReceiptId ||
+        payload?.documentId ||
+        payload?.uuid ||
+        ""
+      ).trim();
+      if (!id && payload?.receiptNumber) {
+        try {
+          const listResponse: any = await salesReceiptsAPI.getAll({
+            limit: 100000,
+            _cacheBust: Date.now(),
+          });
+          const rows = Array.isArray(listResponse?.data)
+            ? listResponse.data
+            : Array.isArray(listResponse?.data?.data)
+              ? listResponse.data.data
+              : [];
+          const match = [...rows].reverse().find(
+            (row: any) =>
+              String(row?.receiptNumber || "").trim() === String(payload?.receiptNumber || "").trim(),
+          );
+          id = String(match?.id || match?._id || match?.receiptId || "").trim();
+        } catch {}
+      }
+      return {
+        ...payload,
+        id,
+        _id: id,
+      };
+    };
+
+    const toISO = (dateVal: any) => {
+      if (!dateVal) return undefined;
+      try {
+        const d = new Date(dateVal);
+        if (!isNaN(d.getTime())) return d.toISOString();
+        if (typeof dateVal === "string" && dateVal.includes("/")) {
+          const parts = dateVal.split("/");
+          if (parts.length === 3) {
+            const day = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            const year = parseInt(parts[2], 10);
+            const dd = new Date(year, month, day);
+            if (!isNaN(dd.getTime())) return dd.toISOString();
+          }
+        }
+      } catch {}
+      return undefined;
+    };
+
+    const apiData: any = {
+      ...receiptData,
+      receiptNumber: String(receiptData.receiptNumber || ""),
+      customer: receiptData.customerId || (receiptData as any).customer,
+      customerId: receiptData.customerId || (receiptData as any).customer,
+      customerName:
+        receiptData.customerName ||
+        (typeof (receiptData as any).customer === "object" && (receiptData as any).customer
+          ? ((receiptData as any).customer.displayName || (receiptData as any).customer.name || (receiptData as any).customer.companyName || "")
+          : ""),
+      date: toISO((receiptData as any).receiptDate || (receiptData as any).date) || new Date().toISOString(),
+      receiptDate: toISO((receiptData as any).receiptDate || (receiptData as any).date) || new Date().toISOString(),
+      subtotal: Number(receiptData.subtotal ?? (receiptData as any).subTotal ?? 0) || 0,
+      subTotal: Number(receiptData.subtotal ?? (receiptData as any).subTotal ?? 0) || 0,
+      tax: Number((receiptData as any).tax ?? (receiptData as any).taxAmount ?? 0) || 0,
+      discount: Number(receiptData.discount ?? 0) || 0,
+      discountType: receiptData.discountType || "percent",
+      shippingCharges: Number(receiptData.shippingCharges ?? 0) || 0,
+      shippingChargeTax: String(receiptData.shippingChargeTax || ""),
+      adjustment: Number(receiptData.adjustment ?? 0) || 0,
+      roundOff: Number((receiptData as any).roundOff ?? 0) || 0,
+      total: Number(receiptData.total ?? 0) || 0,
+      status: receiptData.status || "paid",
+    };
+
+    if (apiData.receiptDate && apiData.date) delete apiData.receiptDate;
+
+    const response = await salesReceiptsAPI.create(apiData);
     if (response && response.success && response.data) {
-      return response.data;
+      return normalizeSavedReceipt(response);
     }
-    throw new Error('Failed to save sales receipt');
+    throw new Error((response as any)?.message || (response as any)?.error || "Failed to save sales receipt");
   } catch (error) {
     console.error("Error saving sales receipt to API:", error);
     throw error;
@@ -1066,22 +1604,84 @@ export const saveSalesReceipt = async (receiptData: Partial<SalesReceipt>): Prom
 
 export const updateSalesReceipt = async (receiptId: string, receiptData: Partial<SalesReceipt>): Promise<SalesReceipt> => {
   try {
-    const response = await salesReceiptsAPI.update(receiptId, receiptData);
+    const normalizeSavedReceipt = async (response: any) => {
+      const payload = response?.data?.data ?? response?.data ?? response?.result ?? response ?? {};
+      let id = String(
+        payload?.id ||
+        payload?._id ||
+        payload?.receiptId ||
+        payload?.salesReceiptId ||
+        payload?.documentId ||
+        payload?.uuid ||
+        receiptId ||
+        ""
+      ).trim();
+      return {
+        ...payload,
+        id,
+        _id: id,
+      };
+    };
+
+    const toISO = (dateVal: any) => {
+      if (!dateVal) return undefined;
+      try {
+        const d = new Date(dateVal);
+        if (!isNaN(d.getTime())) return d.toISOString();
+        if (typeof dateVal === "string" && dateVal.includes("/")) {
+          const parts = dateVal.split("/");
+          if (parts.length === 3) {
+            const day = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            const year = parseInt(parts[2], 10);
+            const dd = new Date(year, month, day);
+            if (!isNaN(dd.getTime())) return dd.toISOString();
+          }
+        }
+      } catch {}
+      return undefined;
+    };
+
+    const apiData: any = {
+      ...receiptData,
+      receiptNumber: String(receiptData.receiptNumber || ""),
+      customer: receiptData.customerId || (receiptData as any).customer,
+      customerId: receiptData.customerId || (receiptData as any).customer,
+      customerName:
+        receiptData.customerName ||
+        (typeof (receiptData as any).customer === "object" && (receiptData as any).customer
+          ? ((receiptData as any).customer.displayName || (receiptData as any).customer.name || (receiptData as any).customer.companyName || "")
+          : ""),
+      date: toISO((receiptData as any).receiptDate || (receiptData as any).date),
+      subtotal: Number(receiptData.subtotal ?? (receiptData as any).subTotal ?? 0) || 0,
+      subTotal: Number(receiptData.subtotal ?? (receiptData as any).subTotal ?? 0) || 0,
+      tax: Number((receiptData as any).tax ?? (receiptData as any).taxAmount ?? 0) || 0,
+      discount: Number(receiptData.discount ?? 0) || 0,
+      discountType: receiptData.discountType || "percent",
+      shippingCharges: Number(receiptData.shippingCharges ?? 0) || 0,
+      shippingChargeTax: String(receiptData.shippingChargeTax || ""),
+      adjustment: Number(receiptData.adjustment ?? 0) || 0,
+      roundOff: Number((receiptData as any).roundOff ?? 0) || 0,
+      total: Number(receiptData.total ?? 0) || 0,
+      status: receiptData.status || "paid",
+    };
+
+    const response = await salesReceiptsAPI.update(receiptId, apiData);
     if (response && response.success && response.data) {
-      return response.data;
+      return normalizeSavedReceipt(response);
     }
-    throw new Error('Failed to update sales receipt');
+    throw new Error((response as any)?.message || (response as any)?.error || "Failed to update sales receipt");
   } catch (error) {
     console.error("Error updating sales receipt via API:", error);
     throw error;
   }
 };
 
-export const deleteSalesReceipt = async (receiptId: string): Promise<SalesReceipt[]> => {
+export const deleteSalesReceipt = async (receiptId: string): Promise<boolean> => {
   try {
     const response = await salesReceiptsAPI.delete(receiptId);
     if (response && response.success) {
-      return await getSalesReceipts();
+      return true;
     }
     throw new Error('Failed to delete sales receipt');
   } catch (error) {
@@ -1097,6 +1697,8 @@ export interface Quote {
   customer?: any;
   customerId?: string;
   customerName?: string;
+  priceListId?: string;
+  priceListName?: string;
   customerEmail?: string;
   salesperson?: any;
   salespersonId?: string;
@@ -1106,17 +1708,25 @@ export interface Quote {
   date: string;
   quoteDate?: string;
   expiryDate?: string;
+  productId?: string;
+  productName?: string;
+  planName?: string;
+  addonLines?: any[];
   items: any[];
   subTotal: number;
   subtotal: number;
   tax?: number;
   taxAmount?: number;
+  totalTax?: number;
   taxName?: string;
   discount: number;
   discountType?: string;
   discountAccount?: string;
   shippingCharges?: number;
   shippingChargeTax?: string;
+  shippingTaxAmount?: number;
+  shippingTaxName?: string;
+  shippingTaxRate?: number;
   adjustment?: number;
   roundOff?: number;
   total: number;
@@ -1139,8 +1749,12 @@ export interface Quote {
 export interface QuoteComment {
   id: string | number;
   text: string;
+  content: string;
   author: string;
+  authorName?: string;
+  authorInitial?: string;
   timestamp: string;
+  createdAt?: string;
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
@@ -1168,19 +1782,23 @@ const mapQuoteAttachedFiles = (quote: any): AttachedFile[] => {
 const mapQuoteComments = (quote: any): QuoteComment[] => {
   if (!Array.isArray(quote?.comments)) return [];
   return quote.comments
-    .filter((comment: any) => comment && String(comment.text || "").trim())
+    .filter((comment: any) => comment && String(comment.text || comment.content || "").trim())
     .map((comment: any, index: number) => ({
       id: comment?._id || comment?.id || `${quote?._id || quote?.id || 'quote'}-comment-${index}`,
       text: String(comment?.text || ""),
-      author: comment?.author || "User",
+      content: String(comment?.content || comment?.text || ""),
+      author: comment?.author || comment?.authorName || "User",
+      authorName: String(comment?.authorName || comment?.author || "User"),
+      authorInitial: String(comment?.authorInitial || String(comment?.authorName || comment?.author || "User").charAt(0).toUpperCase() || "U").trim() || "U",
       timestamp: comment?.timestamp || comment?.createdAt || new Date().toISOString(),
+      createdAt: comment?.createdAt || comment?.timestamp || new Date().toISOString(),
       bold: Boolean(comment?.bold),
       italic: Boolean(comment?.italic),
       underline: Boolean(comment?.underline)
     }));
 };
 
-const mapQuoteFromApi = (quote: any): Quote => {
+export const mapQuoteFromApi = (quote: any): Quote => {
   // Extract customer name safely
   let customerName = '';
   if (quote?.customer) {
@@ -1192,7 +1810,7 @@ const mapQuoteFromApi = (quote: any): Quote => {
   }
 
   const subtotalValue = Number(quote?.subtotal ?? quote?.subTotal ?? 0) || 0;
-  const taxValue = Number(quote?.tax ?? quote?.taxAmount ?? 0) || 0;
+  const taxValue = Number(quote?.tax ?? quote?.taxAmount ?? quote?.totalTax ?? 0) || 0;
   const taxExclusive = quote?.taxExclusive || 'Tax Exclusive';
   const taxLabel = quote?.taxName || (taxValue > 0 ? (taxExclusive === 'Tax Inclusive' ? 'Tax (Included)' : 'Tax') : '');
 
@@ -1202,34 +1820,45 @@ const mapQuoteFromApi = (quote: any): Quote => {
     quoteNumber: quote?.quoteNumber,
     customerId: quote?.customer?._id || quote?.customer,
     customerName: customerName || quote?.customerName || '',
+    customerEmail: String(quote?.customerEmail || quote?.email || quote?.customer?.email || quote?.customer?.primaryEmail || '').trim(),
+    priceListId: String(quote?.priceListId || quote?.priceList?._id || quote?.priceList?.id || ""),
+    priceListName: String(quote?.priceListName || quote?.priceList?.name || ""),
     customer: quote?.customer,
     salesperson: quote?.salesperson?.name || quote?.salesperson,
     salespersonId: quote?.salesperson?._id || quote?.salesperson,
     project: quote?.project,
     projectId: quote?.project?._id || quote?.project,
     projectName: quote?.project?.name || quote?.projectName || '',
-    date: quote?.date,
-    quoteDate: quote?.date,
+    productId: String(quote?.productId || quote?.product?._id || quote?.product?.id || ""),
+    productName: String(quote?.productName || quote?.product?.name || quote?.product?.productName || ""),
+    planName: String(quote?.planName || ""),
+    addonLines: Array.isArray(quote?.addonLines) ? quote.addonLines : [],
+    date: quote?.quoteDate || quote?.date || quote?.createdAt,
+    quoteDate: quote?.quoteDate || quote?.date || quote?.createdAt,
     expiryDate: quote?.expiryDate,
     items: quote?.items || [],
     subTotal: subtotalValue,
     subtotal: subtotalValue,
     tax: taxValue,
     taxAmount: taxValue,
+    totalTax: Number(quote?.totalTax ?? taxValue) || taxValue,
     taxName: taxLabel,
     discount: Number(quote?.discount || 0) || 0,
     discountType: quote?.discountType || 'percent',
     discountAccount: quote?.discountAccount || 'General Income',
     shippingCharges: Number(quote?.shippingCharges || 0) || 0,
     shippingChargeTax: String(quote?.shippingChargeTax || ''),
+    shippingTaxAmount: Number(quote?.shippingTaxAmount ?? quote?.shippingTax ?? 0) || 0,
+    shippingTaxName: String(quote?.shippingTaxName || ''),
+    shippingTaxRate: Number(quote?.shippingTaxRate || 0) || 0,
     adjustment: Number(quote?.adjustment || 0) || 0,
     roundOff: Number(quote?.roundOff || 0) || 0,
     total: Number(quote?.total || 0) || 0,
-    currency: quote?.currency || 'KES',
+    currency: quote?.currency,
     status: quote?.status || 'draft',
-    notes: quote?.notes || '',
-    customerNotes: quote?.notes || '',
-    termsAndConditions: quote?.terms || '',
+    notes: quote?.notes || quote?.customerNotes || '',
+    customerNotes: quote?.customerNotes || quote?.notes || '',
+    termsAndConditions: quote?.termsAndConditions || quote?.terms || '',
     referenceNumber: quote?.referenceNumber || '',
     taxExclusive: taxExclusive,
     attachedFiles: mapQuoteAttachedFiles(quote),
@@ -1244,8 +1873,21 @@ const mapQuoteFromApi = (quote: any): Quote => {
 export const getQuotes = async (): Promise<Quote[]> => {
   try {
     const response = await quotesAPI.getAll();
-    if (response && response.success && response.data) {
-      return response.data.map((quote: any) => mapQuoteFromApi(quote));
+    if (response && response.success) {
+      const payload: any = response.data;
+      const rows =
+        Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.quotes)
+              ? payload.quotes
+              : Array.isArray(payload?.items)
+                ? payload.items
+                : Array.isArray(payload?.data?.data)
+                  ? payload.data.data
+                  : [];
+      return rows.map((quote: any) => mapQuoteFromApi(quote));
     }
     return [];
   } catch (error) {
@@ -1258,8 +1900,10 @@ export const getQuotes = async (): Promise<Quote[]> => {
 export const getQuoteById = async (quoteId: string): Promise<Quote | null> => {
   try {
     const response = await quotesAPI.getById(quoteId);
-    if (response && response.success && response.data) {
-      return mapQuoteFromApi(response.data);
+    if (response && response.success) {
+      const payload: any = response.data;
+      const row = payload?.data || payload?.quote || payload || null;
+      if (row) return mapQuoteFromApi(row);
     }
     return null;
   } catch (error) {
@@ -1268,7 +1912,7 @@ export const getQuoteById = async (quoteId: string): Promise<Quote | null> => {
   }
 };
 
-export const saveQuote = async (quoteData: Partial<Quote>): Promise<Quote> => {
+export const saveQuote = async (quoteData: Partial<Quote>, retryCount = 0): Promise<Quote> => {
   try {
     // Helper to normalize dates to ISO format
     const toISO = (dateVal: any) => {
@@ -1303,12 +1947,20 @@ export const saveQuote = async (quoteData: Partial<Quote>): Promise<Quote> => {
       quoteNumber: String(quoteData.quoteNumber || ''),
       customer: quoteData.customerId || quoteData.customer, // Use ID as priority
       customerId: quoteData.customerId || quoteData.customer,
+      customerName:
+        quoteData.customerName ||
+        (typeof (quoteData as any).customer === "object" && (quoteData as any).customer
+          ? ((quoteData as any).customer.displayName || (quoteData as any).customer.name || (quoteData as any).customer.companyName || "")
+          : ""),
+      priceListId: String((quoteData as any).priceListId || ""),
+      priceListName: String((quoteData as any).priceListName || ""),
       date: toISO(quoteData.quoteDate || quoteData.date) || new Date().toISOString(),
       quoteDate: toISO(quoteData.quoteDate || quoteData.date) || new Date().toISOString(),
       expiryDate: toISO(quoteData.expiryDate),
       subtotal: parseFloat(String(quoteData.subTotal || quoteData.subtotal || 0)) || 0,
       subTotal: parseFloat(String(quoteData.subTotal || quoteData.subtotal || 0)) || 0,
-      tax: parseFloat(String(quoteData.tax ?? quoteData.taxAmount ?? 0)) || 0,
+      tax: parseFloat(String(quoteData.tax ?? quoteData.taxAmount ?? quoteData.totalTax ?? 0)) || 0,
+      totalTax: parseFloat(String(quoteData.totalTax ?? quoteData.taxAmount ?? quoteData.tax ?? 0)) || 0,
       discount: parseFloat(String(quoteData.discount || 0)) || 0,
       discountType: quoteData.discountType || 'percent',
       discountAccount: quoteData.discountAccount || 'General Income',
@@ -1324,12 +1976,56 @@ export const saveQuote = async (quoteData: Partial<Quote>): Promise<Quote> => {
     if (apiData.quoteDate && apiData.date) delete apiData.quoteDate;
 
     console.log('Sending quote data to API:', apiData);
-    const response = await quotesAPI.create(apiData);
+    const response: any = await quotesAPI.create(apiData);
     if (response && response.success && response.data) {
       return mapQuoteFromApi(response.data);
     }
-    throw new Error('Failed to save quote: Invalid response from API');
+    const apiMessage = response?.message || response?.data?.message || response?.error || "Invalid response from API";
+    throw new Error(`Failed to save quote: ${apiMessage}`);
   } catch (error) {
+    const msg = String((error as any)?.message || "");
+    if (
+      retryCount < 2 &&
+      (msg.toLowerCase().includes("already exists") || msg.toLowerCase().includes("duplicate"))
+    ) {
+      try {
+        const rawNumber = String(quoteData.quoteNumber || "QT-").trim();
+        const prefixMatch = rawNumber.match(/^(.*?)(\d+)\s*$/);
+        const prefix = prefixMatch && String(prefixMatch[1] || "").trim() ? prefixMatch[1] : "QT-";
+        let nextNumber = "";
+        try {
+          const next = await quotesAPI.getNextNumber(prefix);
+          nextNumber =
+            next?.data?.nextNumber ||
+            next?.data?.quoteNumber ||
+            next?.nextNumber ||
+            next?.quoteNumber ||
+            "";
+        } catch (nextErr) {
+          console.warn("Quote next-number endpoint failed, falling back to local scan.", nextErr);
+        }
+
+        if (!nextNumber) {
+          const existing = await getQuotes();
+          const maxSuffix = existing
+            .map((q) => String((q as any)?.quoteNumber || ""))
+            .filter((num) => num.startsWith(prefix))
+            .map((num) => {
+              const digits = num.match(/\d+$/);
+              return digits ? parseInt(digits[0], 10) : 0;
+            })
+            .reduce((max, cur) => (cur > max ? cur : max), 0);
+          nextNumber = `${prefix}${String(maxSuffix + 1).padStart(6, "0")}`;
+        }
+
+        if (nextNumber) {
+          const retryData = { ...quoteData, quoteNumber: String(nextNumber).trim() };
+          return await saveQuote(retryData, retryCount + 1);
+        }
+      } catch (retryError) {
+        console.error("Error retrying quote number:", retryError);
+      }
+    }
     console.error("Error saving quote to API:", error);
     throw error;
   }
@@ -1409,8 +2105,20 @@ export const updateQuote = async (quoteId: string, quoteData: Partial<Quote>): P
       apiData.subTotal = subtotalValue;
       apiData.subtotal = subtotalValue;
     }
-    if (quoteData.tax !== undefined || quoteData.taxAmount !== undefined) {
-      apiData.tax = parseFloat(String(quoteData.tax ?? quoteData.taxAmount ?? 0)) || 0;
+    if (quoteData.tax !== undefined || quoteData.taxAmount !== undefined || quoteData.totalTax !== undefined) {
+      apiData.tax = parseFloat(String(quoteData.tax ?? quoteData.taxAmount ?? quoteData.totalTax ?? 0)) || 0;
+      apiData.totalTax = parseFloat(String(quoteData.totalTax ?? quoteData.taxAmount ?? quoteData.tax ?? 0)) || 0;
+    }
+
+    if (quoteData.customerName !== undefined) {
+      apiData.customerName = String(quoteData.customerName || "");
+    }
+
+    if ((quoteData as any).priceListId !== undefined) {
+      apiData.priceListId = String((quoteData as any).priceListId || "");
+    }
+    if ((quoteData as any).priceListName !== undefined) {
+      apiData.priceListName = String((quoteData as any).priceListName || "");
     }
 
     if (quoteData.discountType !== undefined) {
@@ -1432,11 +2140,12 @@ export const updateQuote = async (quoteId: string, quoteData: Partial<Quote>): P
       apiData.adjustment = parseFloat(String(quoteData.adjustment || 0)) || 0;
     }
 
-    const response = await quotesAPI.update(quoteId, apiData);
+    const response: any = await quotesAPI.update(quoteId, apiData);
     if (response && response.success && response.data) {
       return mapQuoteFromApi(response.data);
     }
-    throw new Error('Failed to update quote: Invalid response from API');
+    const apiMessage = response?.message || response?.data?.message || response?.error || "Invalid response from API";
+    throw new Error(`Failed to update quote: ${apiMessage}`);
   } catch (error) {
     console.error("Error updating quote via API:", error);
     throw error;
@@ -1464,7 +2173,8 @@ export const deleteQuotes = async (quoteIds: string[]): Promise<Quote[]> => {
       // Return updated list
       return await getQuotes();
     }
-    throw new Error('Failed to delete quotes');
+    const apiMessage = (response as any)?.message || (response as any)?.data?.message || "Failed to delete quotes";
+    throw new Error(apiMessage);
   } catch (error) {
     console.error("Error deleting quotes via API:", error);
     throw error;
@@ -1474,9 +2184,13 @@ export const deleteQuotes = async (quoteIds: string[]): Promise<Quote[]> => {
 export interface Project {
   id: string;
   _id?: string;
-  name: string;
+  name?: string;
+  projectName?: string;
+  projectCode?: string;
   customer?: any;
-  status: string;
+  customerId?: string;
+  customerName?: string;
+  status?: string;
   budget?: number;
   createdAt?: string;
   updatedAt?: string;
@@ -1554,6 +2268,8 @@ export interface Salesperson {
   name: string;
   email: string;
   status?: string;
+  displayName?: string;
+  fullName?: string;
 }
 
 export const getSalespersonsFromAPI = async (): Promise<Salesperson[]> => {
@@ -1586,7 +2302,7 @@ export const getItemsFromAPI = async (): Promise<any[]> => {
           allItems.push(...batch);
         }
 
-        const paginationPages = Number(response?.pagination?.pages || 0);
+        const paginationPages = Number((response as any)?.pagination?.pages || 0);
         if (paginationPages > 0) {
           totalPages = paginationPages;
         } else if (batch.length < limit) {
@@ -1683,4 +2399,414 @@ export const getBaseCurrency = async (): Promise<string> => {
     console.error('Error fetching base currency:', error);
     return 'USD';
   }
+};
+
+export const getPlansFromAPI = async (): Promise<any[]> => {
+  return cachedFetch("plans:all", async () => {
+    try {
+      const response = await plansAPI.getAll();
+      if (response && response.success && response.data) {
+        return response.data;
+      }
+      return [];
+    } catch (error) {
+      console.error("Error fetching plans from API:", error);
+      return [];
+    }
+  });
+};
+
+export interface ReportingTag {
+  id: string;
+  _id?: string;
+  name: string;
+  status?: string;
+}
+
+export const getReportingTagsFromAPI = async (): Promise<ReportingTag[]> => {
+  return cachedFetch("reportingTags:all", async () => {
+    try {
+      const response = await reportingTagsAPI.getAll();
+      if (response && response.success && response.data) {
+        return response.data;
+      }
+      return [];
+    } catch (error) {
+      console.error("Error fetching reporting tags from API:", error);
+      return [];
+    }
+  });
+};
+
+type QueryKey = readonly unknown[] | unknown;
+type QueryStatus = "pending" | "success" | "error";
+
+type QueryRecord<T = any> = {
+  key: readonly unknown[];
+  data?: T;
+  error?: unknown;
+  status: QueryStatus;
+  isFetching: boolean;
+  updatedAt: number;
+  queryFn?: () => Promise<T>;
+  listeners: Set<() => void>;
+  promise?: Promise<T>;
+};
+
+const queryCache = new Map<string, QueryRecord<any>>();
+
+const stableStringify = (value: any): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
+
+  return JSON.stringify(value);
+};
+
+const normalizeQueryKey = (key: QueryKey): readonly unknown[] => (Array.isArray(key) ? key : [key]);
+
+const queryKeyToCacheId = (key: QueryKey): string => stableStringify(normalizeQueryKey(key));
+
+const isPrefixMatch = (candidate: readonly unknown[], partial?: QueryKey): boolean => {
+  if (!partial) return true;
+  const normalizedPartial = normalizeQueryKey(partial);
+  if (normalizedPartial.length > candidate.length) return false;
+  return normalizedPartial.every((part, index) => stableStringify(candidate[index]) === stableStringify(part));
+};
+
+const getOrCreateQueryRecord = (key: QueryKey): QueryRecord<any> => {
+  const cacheId = queryKeyToCacheId(key);
+  const existing = queryCache.get(cacheId);
+  if (existing) return existing;
+
+  const record: QueryRecord<any> = {
+    key: normalizeQueryKey(key),
+    status: "pending",
+    isFetching: false,
+    updatedAt: 0,
+    listeners: new Set(),
+  };
+  queryCache.set(cacheId, record);
+  return record;
+};
+
+const notifyQueryRecord = (record: QueryRecord<any>) => {
+  record.listeners.forEach((listener) => {
+    try {
+      listener();
+    } catch (error) {
+      console.error("Error notifying query listener:", error);
+    }
+  });
+};
+
+const snapshotFromQueryRecord = (record: QueryRecord<any>) => {
+  const hasData = record.data !== undefined;
+  const isSuccess = record.status === "success" && hasData;
+  const isError = record.status === "error";
+  const isPending = record.status === "pending" && !hasData;
+
+  return {
+    data: record.data,
+    error: record.error,
+    status: record.status,
+    isPending,
+    isFetching: record.isFetching,
+    isLoading: record.isFetching,
+    isError,
+    isSuccess,
+  };
+};
+
+const fetchQueryRecord = async <T,>(
+  record: QueryRecord<T>,
+  queryFn: () => Promise<T>,
+  options?: { force?: boolean; staleTime?: number }
+): Promise<T> => {
+  const staleTime = Number(options?.staleTime ?? 0);
+  const isFresh = record.data !== undefined && staleTime > 0 && Date.now() - record.updatedAt < staleTime;
+  if (!options?.force && isFresh) {
+    return Promise.resolve(record.data as T);
+  }
+
+  if (record.promise) {
+    return record.promise;
+  }
+
+  record.queryFn = queryFn;
+  record.error = undefined;
+  record.status = record.data === undefined ? "pending" : "success";
+  record.isFetching = true;
+  notifyQueryRecord(record);
+
+  const promise = Promise.resolve()
+    .then(() => queryFn())
+    .then((data) => {
+      record.data = data;
+      record.error = undefined;
+      record.status = "success";
+      record.isFetching = false;
+      record.updatedAt = Date.now();
+      record.promise = undefined;
+      notifyQueryRecord(record);
+      return data;
+    })
+    .catch((error) => {
+      record.error = error;
+      record.status = "error";
+      record.isFetching = false;
+      record.promise = undefined;
+      notifyQueryRecord(record);
+      throw error;
+    });
+
+  record.promise = promise;
+  return promise;
+};
+
+export const keepPreviousData = Symbol("keepPreviousData");
+
+export type QueryClient = {
+  getQueriesData<T = any>(filters?: { queryKey?: QueryKey }): Array<[readonly unknown[], T | undefined]>;
+  setQueryData<T = any>(queryKey: QueryKey, updater: T | ((previousData: T | undefined) => T)): T;
+  removeQueries(filters?: { queryKey?: QueryKey }): void;
+  invalidateQueries(filters?: { queryKey?: QueryKey }): Promise<void>;
+  prefetchQuery<T = any>(options: { queryKey: QueryKey; queryFn: () => Promise<T>; staleTime?: number }): Promise<T>;
+  fetchQuery<T = any>(options: { queryKey: QueryKey; queryFn: () => Promise<T>; staleTime?: number }): Promise<T>;
+};
+
+const queryClient: QueryClient = {
+  getQueriesData<T = any>(filters?: { queryKey?: QueryKey }) {
+    return Array.from(queryCache.values())
+      .filter((record) => isPrefixMatch(record.key, filters?.queryKey))
+      .map((record) => [record.key, record.data as T | undefined]);
+  },
+  setQueryData<T = any>(queryKey: QueryKey, updater: T | ((previousData: T | undefined) => T)) {
+    const record = getOrCreateQueryRecord(queryKey) as QueryRecord<T>;
+    const previousData = record.data as T | undefined;
+    const nextValue =
+      typeof updater === "function"
+        ? (updater as (previousData: T | undefined) => T)(previousData)
+        : updater;
+
+    if (previousData === nextValue || stableStringify(previousData) === stableStringify(nextValue)) {
+      return previousData as T;
+    }
+
+    record.data = nextValue;
+    record.error = undefined;
+    record.status = "success";
+    record.isFetching = false;
+    record.updatedAt = Date.now();
+    notifyQueryRecord(record);
+    return nextValue;
+  },
+  removeQueries(filters?: { queryKey?: QueryKey }) {
+    Array.from(queryCache.entries()).forEach(([cacheId, record]) => {
+      if (isPrefixMatch(record.key, filters?.queryKey)) {
+        queryCache.delete(cacheId);
+      }
+    });
+  },
+  async invalidateQueries(filters?: { queryKey?: QueryKey }) {
+    const matches = Array.from(queryCache.values()).filter((record) => isPrefixMatch(record.key, filters?.queryKey));
+    await Promise.all(
+      matches.map((record) => {
+        if (!record.queryFn) return Promise.resolve();
+        return fetchQueryRecord(record, record.queryFn, { force: true });
+      })
+    );
+  },
+  prefetchQuery<T = any>(options: { queryKey: QueryKey; queryFn: () => Promise<T>; staleTime?: number }) {
+    const record = getOrCreateQueryRecord(options.queryKey) as QueryRecord<T>;
+    return fetchQueryRecord(record, options.queryFn, { staleTime: options.staleTime });
+  },
+  fetchQuery<T = any>(options: { queryKey: QueryKey; queryFn: () => Promise<T>; staleTime?: number }) {
+    const record = getOrCreateQueryRecord(options.queryKey) as QueryRecord<T>;
+    return fetchQueryRecord(record, options.queryFn, { force: true, staleTime: options.staleTime });
+  },
+};
+
+export const useQueryClient = (): QueryClient => queryClient;
+
+type UseQueryOptions<TData = any> = {
+  queryKey: QueryKey;
+  queryFn: () => Promise<TData>;
+  enabled?: boolean;
+  staleTime?: number;
+  placeholderData?: unknown;
+  initialData?: TData;
+};
+
+type UseQueryResult<TData = any> = {
+  data?: TData;
+  error?: unknown;
+  status: QueryStatus;
+  isPending: boolean;
+  isFetching: boolean;
+  isLoading: boolean;
+  isError: boolean;
+  isSuccess: boolean;
+  refetch: () => Promise<{ data?: TData; error?: unknown }>;
+};
+
+type UseMutationOptions<TData = any, TVariables = void> = {
+  mutationKey?: QueryKey;
+  mutationFn: (variables: TVariables) => Promise<TData>;
+  onSuccess?: (data: TData, variables: TVariables) => void | Promise<void>;
+  onError?: (error: unknown, variables: TVariables) => void | Promise<void>;
+};
+
+type UseMutationResult<TData = any, TVariables = void> = {
+  data?: TData;
+  error?: unknown;
+  status: QueryStatus;
+  isPending: boolean;
+  isLoading: boolean;
+  isError: boolean;
+  isSuccess: boolean;
+  mutate: (variables: TVariables) => void;
+  mutateAsync: (variables: TVariables) => Promise<TData>;
+  reset: () => void;
+};
+
+const readQuerySnapshot = <TData,>(record: QueryRecord<TData>, fallbackData?: TData): UseQueryResult<TData> => {
+  const snapshot = snapshotFromQueryRecord(record);
+  const data = record.data !== undefined ? record.data : fallbackData;
+
+  return {
+    data,
+    error: snapshot.error,
+    status: snapshot.status,
+    isPending: snapshot.isPending && data === undefined,
+    isFetching: snapshot.isFetching,
+    isLoading: snapshot.isFetching,
+    isError: snapshot.isError,
+    isSuccess: snapshot.isSuccess,
+    refetch: async () => {
+      if (!record.queryFn) {
+        return { data: record.data, error: record.error };
+      }
+      const nextData = await fetchQueryRecord(record, record.queryFn, { force: true });
+      return { data: nextData, error: undefined };
+    },
+  };
+};
+
+export const useQuery = <TData = any>(options: UseQueryOptions<TData>): UseQueryResult<TData> => {
+  const queryFnRef = useRef(options.queryFn);
+  queryFnRef.current = options.queryFn;
+  const placeholderDataRef = useRef(options.placeholderData);
+  placeholderDataRef.current = options.placeholderData;
+  const initialDataRef = useRef(options.initialData);
+  initialDataRef.current = options.initialData;
+  const cacheId = queryKeyToCacheId(options.queryKey);
+  const record = getOrCreateQueryRecord(options.queryKey) as QueryRecord<TData>;
+
+  if (options.initialData !== undefined && record.data === undefined) {
+    record.data = options.initialData;
+    record.status = "success";
+    record.updatedAt = Date.now();
+  }
+
+  const [snapshot, setSnapshot] = useState<UseQueryResult<TData>>(() => readQuerySnapshot(record, options.initialData));
+  const snapshotRef = useRef(snapshot);
+  snapshotRef.current = snapshot;
+
+  useEffect(() => {
+    let active = true;
+    const syncSnapshot = () => {
+      if (!active) return;
+      const nextSnapshot = readQuerySnapshot(
+        record,
+        placeholderDataRef.current === keepPreviousData ? snapshotRef.current.data : initialDataRef.current
+      );
+      const currentSnapshot = snapshotRef.current;
+      if (
+        currentSnapshot.data === nextSnapshot.data &&
+        currentSnapshot.error === nextSnapshot.error &&
+        currentSnapshot.status === nextSnapshot.status &&
+        currentSnapshot.isPending === nextSnapshot.isPending &&
+        currentSnapshot.isFetching === nextSnapshot.isFetching &&
+        currentSnapshot.isLoading === nextSnapshot.isLoading &&
+        currentSnapshot.isError === nextSnapshot.isError &&
+        currentSnapshot.isSuccess === nextSnapshot.isSuccess
+      ) {
+        return;
+      }
+      setSnapshot(nextSnapshot);
+    };
+
+    record.queryFn = () => queryFnRef.current();
+    record.listeners.add(syncSnapshot);
+    syncSnapshot();
+
+    if (options.enabled !== false) {
+      void fetchQueryRecord(record, () => queryFnRef.current(), { staleTime: options.staleTime });
+    }
+
+    return () => {
+      active = false;
+      record.listeners.delete(syncSnapshot);
+    };
+  }, [cacheId, options.enabled, options.staleTime, record]);
+
+  return snapshot;
+};
+
+export const useMutation = <TData = any, TVariables = void>(
+  options: UseMutationOptions<TData, TVariables>
+): UseMutationResult<TData, TVariables> => {
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+
+  const [data, setData] = useState<TData | undefined>(undefined);
+  const [error, setError] = useState<unknown>(undefined);
+  const [status, setStatus] = useState<QueryStatus>("pending");
+
+  const mutateAsync = async (variables: TVariables): Promise<TData> => {
+    setStatus("pending");
+    setError(undefined);
+
+    try {
+      const result = await optionsRef.current.mutationFn(variables);
+      setData(result);
+      setStatus("success");
+      await optionsRef.current.onSuccess?.(result, variables);
+      return result;
+    } catch (mutationError) {
+      setError(mutationError);
+      setStatus("error");
+      await optionsRef.current.onError?.(mutationError, variables);
+      throw mutationError;
+    }
+  };
+
+  const mutate = (variables: TVariables) => {
+    void mutateAsync(variables);
+  };
+
+  const reset = () => {
+    setData(undefined);
+    setError(undefined);
+    setStatus("pending");
+  };
+
+  return {
+    data,
+    error,
+    status,
+    isPending: status === "pending",
+    isLoading: status === "pending",
+    isError: status === "error",
+    isSuccess: status === "success",
+    mutate,
+    mutateAsync,
+    reset,
+  };
 };

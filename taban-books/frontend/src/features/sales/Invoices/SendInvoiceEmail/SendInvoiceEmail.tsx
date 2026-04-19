@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   X,
@@ -20,25 +20,99 @@ import {
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { getInvoiceById, getInvoices } from "../../salesModel";
-import { emailTemplatesAPI, invoicesAPI, senderEmailsAPI } from "../../../../services/api";
-import { API_BASE_URL, getToken } from "../../../../services/auth";
+import { debitNotesAPI, invoicesAPI, senderEmailsAPI } from "../../../../services/api";
 import { applyEmailTemplate } from "../../../settings/emailTemplateUtils";
+
+const normalizeInvoiceItems = (sourceInvoice: any) => {
+  const coerceItems = (value: any) => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === "object") {
+      if (Array.isArray((value as any).data)) return (value as any).data;
+      if (Array.isArray((value as any).items)) return (value as any).items;
+    }
+    if (typeof value === "string") {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed;
+        if (parsed && typeof parsed === "object") {
+          if (Array.isArray((parsed as any).data)) return (parsed as any).data;
+          if (Array.isArray((parsed as any).items)) return (parsed as any).items;
+          return Object.values(parsed);
+        }
+      } catch {
+        return [];
+      }
+      return [];
+    }
+    if (typeof value === "object") return Object.values(value);
+    return [];
+  };
+
+  const rawItems = [
+    ...coerceItems(sourceInvoice?.items),
+    ...coerceItems(sourceInvoice?.lineItems),
+    ...coerceItems(sourceInvoice?.line_items),
+    ...coerceItems(sourceInvoice?.itemDetails),
+    ...coerceItems(sourceInvoice?.projectDetails),
+    ...coerceItems(sourceInvoice?.invoiceItems),
+    ...coerceItems(sourceInvoice?.itemsList)
+  ];
+
+  return rawItems.map((item: any) => {
+    const quantity = Number(item?.quantity ?? item?.qty ?? item?.q ?? 0) || 0;
+    const rate = Number(item?.unitPrice ?? item?.rate ?? item?.price ?? item?.unit_price ?? item?.unitRate ?? 0) || 0;
+    const amountRaw = item?.amount ?? item?.total ?? item?.lineTotal ?? item?.line_total;
+    const amount = Number(amountRaw ?? quantity * rate) || 0;
+    const unit = String(item?.unit ?? item?.unitName ?? item?.uom ?? "pcs");
+    const projectName =
+      item?.projectName ||
+      (typeof item?.project === "object" ? item?.project?.name || item?.project?.projectName : "") ||
+      "";
+    const displayName = String(
+      item?.itemDetails ||
+      item?.name ||
+      item?.description ||
+      item?.item?.name ||
+      item?.itemName ||
+      projectName ||
+      "Item"
+    );
+
+    return {
+      ...item,
+      displayName,
+      displayQuantity: quantity,
+      displayRate: rate,
+      displayAmount: amount,
+      displayUnit: unit,
+      projectName
+    };
+  });
+};
 
 export default function SendInvoiceEmail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isDebitNoteRoute = location.pathname.includes("/sales/debit-notes/");
   const [invoice, setInvoice] = useState(null);
   const [loading, setLoading] = useState(false);
   const [sendingStage, setSendingStage] = useState("");
-  const [senderName, setSenderName] = useState("JIRDE HUSSEIN KHALIF");
+  const [senderName, setSenderName] = useState("Team");
   const [emailData, setEmailData] = useState({
-    from: "\"JIRDE HUSSEIN KHALIF\" <jirdehusseinkhalif@gmail.com>",
+    from: "",
     sendTo: "",
     cc: "",
     bcc: "",
     subject: "",
     body: "",
   });
+  const prefilledRecipientFromState = String(
+    (location.state as any)?.sendTo || (location.state as any)?.customerEmail || ""
+  ).trim();
+  const autoSendRequested = Boolean((location.state as any)?.autoSend);
+  const hasAutoSentRef = useRef(false);
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
   const [attachments, setAttachments] = useState([]);
@@ -53,6 +127,52 @@ export default function SendInvoiceEmail() {
   const bodyEditorRef = useRef<HTMLDivElement>(null);
   const [isBodyDirty, setIsBodyDirty] = useState(false);
   const containsHtmlMarkup = (value: string) => /<\/?[a-z][\s\S]*>/i.test(value || "");
+  const readLocalJson = (key: string) => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+  const getOrganizationName = () => {
+    const orgProfile = readLocalJson("organization_profile") || readLocalJson("org_profile") || {};
+    const user = readLocalJson("user") || {};
+    return String(orgProfile?.organizationName || user?.name || "Taban Enterprise").trim() || "Taban Enterprise";
+  };
+  const getLocalEmailTemplateByKey = (templateKey: string) => {
+    const templateKeys = [
+      "taban_books_email_templates",
+      "taban_email_templates",
+      "email_templates",
+      "taban_books_settings_email_templates",
+    ];
+    const normalizedKey = String(templateKey || "").toLowerCase().trim();
+    for (const key of templateKeys) {
+      const parsed = readLocalJson(key);
+      if (!parsed) continue;
+
+      if (Array.isArray(parsed)) {
+        const found = parsed.find((row: any) =>
+          [row?.key, row?.templateKey, row?.name, row?.id]
+            .map((value) => String(value || "").toLowerCase().trim())
+            .includes(normalizedKey)
+        );
+        if (found) return found;
+      } else if (typeof parsed === "object") {
+        if (parsed[templateKey]) return parsed[templateKey];
+        const foundEntry = Object.entries(parsed).find(([entryKey]) => String(entryKey || "").toLowerCase().trim() === normalizedKey);
+        if (foundEntry) return foundEntry[1];
+      }
+    }
+    return null;
+  };
+  const getLocalAttachPdfSetting = () => {
+    const general = readLocalJson("taban_books_settings_general");
+    const raw = general?.pdfSettings?.attachPDFInvoice
+      ?? general?.settings?.pdfSettings?.attachPDFInvoice;
+    return raw === undefined ? true : Boolean(raw);
+  };
 
   const getCustomerDisplayName = (invoiceData: any) => {
     if (!invoiceData) return "Customer";
@@ -97,72 +217,75 @@ export default function SendInvoiceEmail() {
     const fetchInvoice = async () => {
       if (id) {
         try {
-          const invoiceData = await getInvoiceById(id);
-          if (invoiceData) {
+          const response = isDebitNoteRoute ? await debitNotesAPI.getById(id) : await getInvoiceById(id);
+          const documentData = (response as any)?.data || response;
+          if (documentData) {
+            const invoiceData = {
+              ...documentData,
+              debitNote: isDebitNoteRoute || Boolean((documentData as any)?.debitNote),
+            };
             setInvoice(invoiceData);
             const customerDisplayName = getCustomerDisplayName(invoiceData);
             const customerEmail = getCustomerEmail(invoiceData);
 
             // Fetch primary sender
-            let sName = import.meta.env.VITE_EMAIL_SENDER_NAME || "JIRDE HUSSEIN KHALIF";
-            let sEmail = import.meta.env.VITE_EMAIL_FROM || "jirdehusseinkhalif@gmail.com";
+            let sName = import.meta.env.VITE_EMAIL_SENDER_NAME || getOrganizationName() || "Team";
+            let sEmail = import.meta.env.VITE_EMAIL_FROM || "";
 
             try {
-              const primaryRes = await senderEmailsAPI.getPrimary();
-              if (primaryRes && primaryRes.success && primaryRes.data) {
-                sName = primaryRes.data.name;
-                sEmail = primaryRes.data.email;
+              const primarySenderRes = await senderEmailsAPI.getPrimary();
+              if (primarySenderRes?.success && primarySenderRes.data?.isVerified) {
+                sName = primarySenderRes.data.name || sName;
+                sEmail = primarySenderRes.data.email || sEmail;
               }
-            } catch (err) {
-              console.error("Error fetching primary sender:", err);
+            } catch (error) {
+              console.error("Error fetching primary sender:", error);
             }
 
             setSenderName(sName);
 
-            const iNumber = invoiceData.invoiceNumber || invoiceData.id;
+            const iNumber = invoiceData.invoiceNumber || invoiceData.debitNoteNumber || invoiceData.id;
             const iDate = formatDate(invoiceData.invoiceDate || invoiceData.date);
             const rawBalance = Number(invoiceData?.balance ?? invoiceData?.balanceDue);
-            const paidAmount = Number(invoiceData?.amountPaid ?? invoiceData?.paidAmount ?? 0);
+            const paidAmount = Number(invoiceData?.amountPaid ?? 0);
             const totalAmount = Number(invoiceData?.total ?? invoiceData?.amount ?? 0);
             const balanceDueAmount = Number.isFinite(rawBalance) ? rawBalance : Math.max(0, totalAmount - paidAmount);
+            const isDebitNote = !!invoiceData.debitNote;
+            const docLabel = isDebitNote ? "Debit Note" : "Invoice";
             const iBalance = formatCurrency(balanceDueAmount, invoiceData.currency);
-            const defaultBody = buildInvoiceEmailHtml(invoiceData, customerDisplayName, sName);
-            let templateSubject = `Invoice - ${iNumber} from Taban Enterprise`;
+            const organizationName = getOrganizationName();
+            const defaultBody = buildInvoiceEmailHtml(invoiceData, customerDisplayName, organizationName);
+            let templateSubject = `${docLabel} - ${iNumber} from ${organizationName}`;
             let templateBody = defaultBody;
 
-            try {
-              const templateRes = await emailTemplatesAPI.getByKey("invoice_notification");
-              const template = templateRes?.data;
-              if (template) {
-                templateSubject = applyEmailTemplate(template.subject || templateSubject, {
+            const template = getLocalEmailTemplateByKey("invoice_notification");
+            if (template) {
+              templateSubject = applyEmailTemplate(template.subject || templateSubject, {
+                InvoiceNumber: iNumber,
+                CompanyName: organizationName,
+                CustomerName: customerDisplayName,
+                InvoiceDate: iDate,
+                Amount: iBalance,
+                BalanceDue: iBalance,
+                SenderName: sName,
+              });
+              const templateBodySource = String(template.emailBody || template.body || "").trim();
+              if (templateBodySource && containsHtmlMarkup(templateBodySource)) {
+                templateBody = applyEmailTemplate(templateBodySource, {
                   InvoiceNumber: iNumber,
-                  CompanyName: "Taban Enterprise",
+                  CompanyName: organizationName,
                   CustomerName: customerDisplayName,
                   InvoiceDate: iDate,
                   Amount: iBalance,
                   BalanceDue: iBalance,
                   SenderName: sName,
                 });
-                const templateBodySource = String(template.emailBody || template.body || "").trim();
-                if (templateBodySource && containsHtmlMarkup(templateBodySource)) {
-                  templateBody = applyEmailTemplate(templateBodySource, {
-                    InvoiceNumber: iNumber,
-                    CompanyName: "Taban Enterprise",
-                    CustomerName: customerDisplayName,
-                    InvoiceDate: iDate,
-                    Amount: iBalance,
-                    BalanceDue: iBalance,
-                    SenderName: sName,
-                  });
-                }
               }
-            } catch (templateError) {
-              console.error("Error loading invoice email template:", templateError);
             }
 
             setEmailData({
               from: `"${sName}" <${sEmail}>`,
-              sendTo: customerEmail,
+              sendTo: prefilledRecipientFromState || customerEmail,
               cc: "",
               bcc: "",
               subject: templateSubject,
@@ -170,30 +293,18 @@ export default function SendInvoiceEmail() {
             });
             setIsBodyDirty(false);
 
-            try {
-              const settingsResponse = await fetch(`${API_BASE_URL}/settings/general`, {
-                headers: { Authorization: `Bearer ${getToken()}` },
-              });
-              if (settingsResponse.ok) {
-                const settingsJson = await settingsResponse.json();
-                const attachByDefault =
-                  settingsJson?.data?.settings?.pdfSettings?.attachPDFInvoice ?? true;
-                setAttachInvoicePDF(Boolean(attachByDefault));
-              }
-            } catch (settingsError) {
-              console.error("Error loading general settings for email:", settingsError);
-            }
+            setAttachInvoicePDF(getLocalAttachPdfSetting());
           } else {
-            navigate("/sales/invoices");
+            navigate(isDebitNoteRoute && id ? `/sales/debit-notes/${id}` : "/sales/invoices");
           }
         } catch (error) {
           console.error("Error fetching invoice:", error);
-          navigate("/sales/invoices");
+          navigate(isDebitNoteRoute && id ? `/sales/debit-notes/${id}` : "/sales/invoices");
         }
       }
     };
     fetchInvoice();
-  }, [id, navigate]);
+  }, [id, navigate, isDebitNoteRoute, prefilledRecipientFromState]);
 
   useEffect(() => {
     if (!bodyEditorRef.current || isBodyDirty) return;
@@ -201,6 +312,15 @@ export default function SendInvoiceEmail() {
       bodyEditorRef.current.innerHTML = emailData.body;
     }
   }, [emailData.body, isBodyDirty]);
+
+  useEffect(() => {
+    if (!autoSendRequested || hasAutoSentRef.current) return;
+    if (!invoice || !emailData.sendTo) return;
+    hasAutoSentRef.current = true;
+    setTimeout(() => {
+      handleSend();
+    }, 0);
+  }, [autoSendRequested, emailData.sendTo, invoice]);
 
   const formatDate = (dateString) => {
     if (!dateString) return "-";
@@ -219,26 +339,32 @@ export default function SendInvoiceEmail() {
     })}`;
   };
 
-  const buildInvoiceEmailHtml = (invoiceData: any, customerName: string, fromName: string) => {
-    const invoiceNumber = String(invoiceData?.invoiceNumber || invoiceData?.id || "-");
+  const buildInvoiceEmailHtml = (invoiceData: any, customerName: string, organizationName: string) => {
+    const invoiceNumber = String(invoiceData?.invoiceNumber || invoiceData?.debitNoteNumber || invoiceData?.id || "-");
     const invoiceDate = formatDate(invoiceData?.invoiceDate || invoiceData?.date);
     const dueDate = invoiceData?.dueDate ? formatDate(invoiceData.dueDate) : "";
     const rawBalance = Number(invoiceData?.balance ?? invoiceData?.balanceDue);
-    const paidAmount = Number(invoiceData?.amountPaid ?? invoiceData?.paidAmount ?? 0);
+    const paidAmount = Number(invoiceData?.amountPaid ?? 0);
     const totalAmount = Number(invoiceData?.total ?? invoiceData?.amount ?? 0);
     const balanceDueAmount = Number.isFinite(rawBalance) ? rawBalance : Math.max(0, totalAmount - paidAmount);
     const amount = formatCurrency(balanceDueAmount, invoiceData?.currency);
-    const viewUrl = `${window.location.origin}/portal/invoices/${invoiceData?.id || invoiceData?._id || ""}`;
+    const documentId = invoiceData?.id || invoiceData?._id || "";
+    const viewUrl = invoiceData?.debitNote
+      ? `${window.location.origin}/portal/debit-notes/${documentId}`
+      : `${window.location.origin}/portal/invoices/${documentId}`;
+
+    const isDebitNote = !!invoiceData.debitNote;
+    const docLabel = isDebitNote ? "Debit Note" : "Invoice";
 
     return `
 <div style="font-family: Arial, sans-serif; color: #333; max-width: 700px; margin: 0 auto;">
   <div style="background-color: #3b82f6; color: white; padding: 20px; text-align: center; border-radius: 4px 4px 0 0;">
-    <h1 style="margin: 0; font-size: 32px; font-weight: 500;">Invoice #${escapeHtml(invoiceNumber)}</h1>
+    <h1 style="margin: 0; font-size: 32px; font-weight: 500;">${docLabel} #${escapeHtml(invoiceNumber)}</h1>
   </div>
 
   <div style="padding: 20px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 4px 4px;">
     <p>Dear ${escapeHtml(customerName)},</p>
-    <p>Thank you for your business. Your invoice can be viewed, printed and downloaded as PDF from the link below.</p>
+    <p>Thank you for your business. Your ${docLabel.toLowerCase()} can be viewed, printed and downloaded as PDF from the link below.</p>
 
     <div style="background-color: #fefce8; border: 1px solid #fef9c3; padding: 20px; text-align: center; margin: 20px 0; border-radius: 4px;">
       <div style="font-size: 30px; color: #111827; font-weight: 700; margin-bottom: 6px;">BALANCE DUE</div>
@@ -246,11 +372,11 @@ export default function SendInvoiceEmail() {
 
       <div style="text-align: left; max-width: 280px; margin: 0 auto; border-top: 1px solid #e5e7eb; padding-top: 10px;">
         <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-          <span style="font-size: 12px; color: #6b7280;">Invoice No</span>
+          <span style="font-size: 12px; color: #6b7280;">${docLabel} No</span>
           <span style="font-size: 12px; font-weight: bold;">${escapeHtml(invoiceNumber)}</span>
         </div>
         <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-          <span style="font-size: 12px; color: #6b7280;">Invoice Date</span>
+          <span style="font-size: 12px; color: #6b7280;">${docLabel} Date</span>
           <span style="font-size: 12px; font-weight: bold;">${escapeHtml(invoiceDate)}</span>
         </div>
         ${dueDate ? `
@@ -261,13 +387,13 @@ export default function SendInvoiceEmail() {
       </div>
 
       <div style="margin-top: 20px;">
-        <a href="${escapeHtml(viewUrl)}" style="background-color: #22c55e; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 14px; display: inline-block;">VIEW INVOICE</a>
+        <a href="${escapeHtml(viewUrl)}" style="background-color: #22c55e; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 14px; display: inline-block;">VIEW ${docLabel.toUpperCase()}</a>
       </div>
     </div>
 
     <div style="margin-top: 30px; padding-top: 20px;">
       <p style="margin: 0; color: #6b7280; font-size: 14px;">Regards,</p>
-      <p style="margin: 5px 0 0 0; font-weight: bold; font-size: 14px;">${escapeHtml(fromName)}</p>
+      <p style="margin: 5px 0 0 0; font-weight: bold; font-size: 14px;">${escapeHtml(organizationName)}</p>
     </div>
   </div>
 </div>`;
@@ -334,7 +460,7 @@ export default function SendInvoiceEmail() {
     const adjustment = toNumber(invoiceData?.adjustment);
     const roundOff = toNumber(invoiceData?.roundOff);
     const total = getInvoiceDisplayTotal(invoiceData);
-    const paidAmount = toNumber(invoiceData?.amountPaid ?? invoiceData?.paidAmount);
+    const paidAmount = toNumber(invoiceData?.amountPaid);
     const balance = invoiceData?.balance !== undefined
       ? toNumber(invoiceData?.balance)
       : invoiceData?.balanceDue !== undefined
@@ -388,15 +514,15 @@ export default function SendInvoiceEmail() {
       "N/A";
     const totalsMeta = getInvoiceTotalsMeta(invoiceData);
     const notes = invoiceData.customerNotes || invoiceData.notes || "";
-    const items = Array.isArray(invoiceData.items) ? invoiceData.items : [];
+    const items = normalizeInvoiceItems(invoiceData);
 
     const itemsHTML = items.length
       ? items.map((item: any, index: number) => {
-        const quantity = toNumber(item.quantity);
-        const rate = toNumber(item.rate ?? item.unitPrice ?? item.price);
-        const amount = toNumber(item.amount ?? item.total ?? (quantity * rate));
-        const unit = item.unit || item.unitName || "pcs";
-        const itemName = item.itemDetails || item.name || item.description || item.item?.name || item.itemName || "N/A";
+        const quantity = toNumber(item.displayQuantity ?? item.quantity);
+        const rate = toNumber(item.displayRate ?? item.rate ?? item.unitPrice ?? item.price);
+        const amount = toNumber(item.displayAmount ?? item.amount ?? item.total ?? (quantity * rate));
+        const unit = item.displayUnit || item.unit || item.unitName || "pcs";
+        const itemName = item.displayName || "N/A";
 
         return `
           <tr>
@@ -463,7 +589,7 @@ export default function SendInvoiceEmail() {
             <p>mogadishu 00252</p>
           </div>
           <div class="invoice-info">
-            <h2>INVOICE</h2>
+            <h2>${invoiceData.debitNote ? "DEBIT NOTE" : "INVOICE"}</h2>
             <div class="invoice-number"># ${escapeHtml(invoiceData.invoiceNumber || invoiceData.id)}</div>
             <div class="balance-due-label">Balance Due</div>
             <div class="balance-due">${escapeHtml(formatCurrency(totalsMeta.balance, invoiceData.currency))}</div>
@@ -476,7 +602,7 @@ export default function SendInvoiceEmail() {
             <p>${escapeHtml(customerName)}</p>
           </div>
           <div class="invoice-details">
-            <p><span>Invoice Date :</span> <strong>${escapeHtml(formattedDate)}</strong></p>
+            <p><span>${invoiceData.debitNote ? "Debit Note Date" : "Invoice Date"} :</span> <strong>${escapeHtml(formattedDate)}</strong></p>
             <p><span>Terms :</span> <strong>${escapeHtml(invoiceData.paymentTerms || "Due on Receipt")}</strong></p>
             <p><span>Due Date :</span> <strong>${escapeHtml(dueDate)}</strong></p>
             ${invoiceData.orderNumber ? `<p><span>P.O.# :</span> <strong>${escapeHtml(invoiceData.orderNumber)}</strong></p>` : ""}
@@ -626,7 +752,7 @@ export default function SendInvoiceEmail() {
       <div style="padding: 15mm; background: white; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1a202c; line-height: 1.6; min-height: 297mm; box-sizing: border-box;">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px;">
           <div>
-            <h1 style="margin: 0; font-size: 28px; font-weight: 800; color: #156372; text-transform: uppercase;">TABAN BOOKS</h1>
+            <h1 style="margin: 0; font-size: 28px; font-weight: 800; color: #156372; text-transform: uppercase;">${escapeHtml(organizationName)}</h1>
             <div style="margin-top: 8px; font-size: 13px; color: #4a5568;">Customer Statement</div>
           </div>
           <div style="text-align: right;">
@@ -750,7 +876,8 @@ export default function SendInvoiceEmail() {
       }
 
       setSendingStage("Sending email...");
-      await invoicesAPI.sendEmail(id, {
+      const sendApi = isDebitNoteRoute ? debitNotesAPI : invoicesAPI;
+      await sendApi.sendEmail(id, {
         to: emailData.sendTo,
         subject: emailData.subject,
         body: htmlBody,
@@ -762,7 +889,7 @@ export default function SendInvoiceEmail() {
       });
 
       toast.success("Email sent successfully!");
-      navigate(`/sales/invoices/${id}`);
+      navigate(isDebitNoteRoute ? `/sales/debit-notes/${id}` : `/sales/invoices/${id}`);
     } catch (error: any) {
       console.error("Error sending invoice email:", error);
       toast.error(error.message || "Failed to send email. Please try again.");
@@ -773,7 +900,7 @@ export default function SendInvoiceEmail() {
   };
 
   const handleCancel = () => {
-    navigate(`/sales/invoices`);
+    navigate(isDebitNoteRoute && id ? `/sales/debit-notes/${id}` : `/sales/invoices`);
   };
 
   if (!invoice) {
@@ -994,7 +1121,7 @@ export default function SendInvoiceEmail() {
                   onChange={(e) => setAttachInvoicePDF(e.target.checked)}
                   className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                 />
-                <span className="text-sm text-gray-700">Attach Invoice PDF</span>
+                <span className="text-sm text-gray-700">Attach {invoice.debitNote ? "Debit Note" : "Invoice"} PDF</span>
               </label>
               {attachInvoicePDF && (
                 <div className="mt-2 flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-white">

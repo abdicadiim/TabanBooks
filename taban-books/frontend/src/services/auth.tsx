@@ -18,6 +18,7 @@ const getApiBaseUrl = (): string => {
 };
 
 export const API_BASE_URL = getApiBaseUrl();
+export const AUTH_USER_UPDATED_EVENT = 'taban:session-changed';
 const LOCAL_AUTH_MODE_KEY = 'taban_auth_mode';
 const LOCAL_AUTH_MODE_VALUE = 'local';
 const ME_CACHE_DURATION_MS = 10 * 1000;
@@ -26,7 +27,7 @@ const BOOTSTRAP_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 const dispatchSessionChanged = (): void => {
   if (typeof window === 'undefined') return;
-  window.dispatchEvent(new Event('taban:session-changed'));
+  window.dispatchEvent(new Event(AUTH_USER_UPDATED_EVENT));
 };
 
 // Type definitions

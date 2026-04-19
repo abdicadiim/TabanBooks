@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { toast } from "react-hot-toast";
 import { X, FileText, CheckCircle, Info } from "lucide-react";
 import { invoicesAPI } from "../../../../services/api";
 import { Invoice } from "../../salesModel";
@@ -164,7 +165,7 @@ const ApplyToInvoices: React.FC<ApplyToInvoicesProps> = ({ isOpen, onClose, cred
     const handleSave = async () => {
         // Validate
         if (totalApplied > availableCredits) {
-            alert("Amount applied exceeds available credits.");
+            toast("Amount applied exceeds available credits.");
             return;
         }
 
@@ -183,7 +184,7 @@ const ApplyToInvoices: React.FC<ApplyToInvoicesProps> = ({ isOpen, onClose, cred
             onClose();
         } catch (error) {
             console.error("Error applying credits:", error);
-            alert("Failed to apply credits. Please try again.");
+            toast("Failed to apply credits. Please try again.");
         } finally {
             setSaving(false);
         }
@@ -204,14 +205,12 @@ const ApplyToInvoices: React.FC<ApplyToInvoicesProps> = ({ isOpen, onClose, cred
 
     return (
         <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="flex min-h-full items-start justify-center px-4 pt-8 pb-6 text-center sm:px-6 lg:px-8">
                 <div className="fixed inset-0 transition-opacity" aria-hidden="true">
                     <div className="absolute inset-0 bg-gray-500 opacity-75" onClick={onClose}></div>
                 </div>
 
-                <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-
-                <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-5xl sm:w-full">
+                <div className="relative z-10 w-full max-w-4xl rounded-lg bg-white text-left overflow-hidden shadow-xl transform transition-all">
                     {/* Header */}
                     <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4 border-b border-gray-200">
                         <div className="flex justify-between items-center">
@@ -418,3 +417,4 @@ const ApplyToInvoices: React.FC<ApplyToInvoicesProps> = ({ isOpen, onClose, cred
 };
 
 export default ApplyToInvoices;
+

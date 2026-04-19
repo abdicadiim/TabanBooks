@@ -2,13 +2,12 @@ import { documentsAPI } from "../services/api";
 import { API_BASE_URL } from "../services/auth";
 import {
   SyncEngine,
-  createVersionStamp,
   isSyncAuthTokenValid,
   type SyncManifestEntry,
   type SyncResourcePayload,
 } from "../sync/SyncEngine";
 import {
-  createIndexedDbAdapter,
+  createAdaptiveStorageAdapter,
   deleteBinaryAsset,
   deletePendingOperation,
   listBinaryAssets,
@@ -18,6 +17,7 @@ import {
   upsertBinaryAsset,
   upsertPendingOperation,
 } from "../sync/persistence";
+import { createVersionStamp } from "../sync/versioning";
 
 type DocumentRecord = {
   id: string;
@@ -32,6 +32,7 @@ type DocumentRecord = {
   fileName?: string;
   filePath?: string;
   file_hash?: string;
+  file_hash_algorithm?: string;
   download_url?: string;
   mimeType?: string;
   mime_type?: string;
@@ -129,6 +130,7 @@ const buildManifestEntryFromDocument = (document: DocumentRecord): SyncManifestE
   version_id: document.version_id,
   last_updated: document.last_updated,
   file_hash: document.file_hash,
+  file_hash_algorithm: String(document.file_hash_algorithm || "sha256"),
   file_size: document.size,
   mime_type: String(document.mimeType || document.mime_type || ""),
   download_url: document.download_url,
@@ -152,6 +154,7 @@ const normalizeManifestEntry = (entry: any): SyncManifestEntry => ({
   version_id: String(entry?.version_id || createVersionStamp().version_id),
   last_updated: String(entry?.last_updated || new Date().toISOString()),
   file_hash: entry?.file_hash ? String(entry.file_hash) : undefined,
+  file_hash_algorithm: entry?.file_hash_algorithm ? String(entry.file_hash_algorithm) : undefined,
   file_size: typeof entry?.file_size === "number" ? entry.file_size : undefined,
   mime_type: entry?.mime_type ? String(entry.mime_type) : undefined,
   download_url: entry?.download_url ? String(entry.download_url) : undefined,
@@ -186,6 +189,7 @@ const normalizeDocument = (raw: any): DocumentRecord => {
           ? raw.size
           : undefined,
     file_hash: raw?.file_hash ? String(raw.file_hash) : undefined,
+    file_hash_algorithm: raw?.file_hash_algorithm ? String(raw.file_hash_algorithm) : undefined,
     download_url:
       raw?.download_url ||
       (id ? `${API_BASE_URL}/documents/${encodeURIComponent(id)}/download` : undefined),
@@ -274,7 +278,12 @@ const fetchDocumentSyncEnvelope = async ({
   ifModifiedSince?: string;
   signal: AbortSignal;
 }) => {
-  const response = await fetch(`${API_BASE_URL}/documents/sync`, {
+  const syncUrl = new URL(`${API_BASE_URL}/documents/sync`, window.location.origin);
+  if (ifModifiedSince) {
+    syncUrl.searchParams.set("last_updated", ifModifiedSince);
+  }
+
+  const response = await fetch(syncUrl.toString(), {
     method: "GET",
     headers: buildAuthHeaders(
       ifModifiedSince
@@ -326,7 +335,9 @@ const reconcileBinaryManifest = async (manifest: SyncManifestEntry[]) => {
         continue;
       }
 
-      if (existingAsset?.fileHash === entry.file_hash) {
+      const sameAlgorithm =
+        !entry.file_hash_algorithm || existingAsset?.fileHashAlgorithm === entry.file_hash_algorithm;
+      if (existingAsset?.fileHash === entry.file_hash && sameAlgorithm) {
         continue;
       }
 
@@ -344,6 +355,7 @@ const reconcileBinaryManifest = async (manifest: SyncManifestEntry[]) => {
           resource: DOCUMENT_SYNC_RESOURCE,
           itemId: entryId,
           fileHash: String(entry.file_hash),
+          fileHashAlgorithm: String(entry.file_hash_algorithm || "sha256"),
           blob,
           mimeType: response.headers.get("content-type") || entry.mime_type?.toString(),
           updatedAt: String(entry.last_updated),
@@ -359,7 +371,10 @@ const reconcileBinaryManifest = async (manifest: SyncManifestEntry[]) => {
 
 const documentsSyncEngine = new SyncEngine<DocumentRecord>({
   resource: DOCUMENT_SYNC_RESOURCE,
-  storage: createIndexedDbAdapter<DocumentSyncPayload>(DOCUMENT_SYNC_CACHE_KEY),
+  storage: createAdaptiveStorageAdapter<DocumentSyncPayload>({
+    key: DOCUMENT_SYNC_CACHE_KEY,
+    maxLocalStorageBytes: 48 * 1024,
+  }),
   fetchRemote: fetchDocumentSyncEnvelope,
   validateAuth: isSyncAuthTokenValid,
   binaryHandler: {
@@ -537,6 +552,7 @@ const createOptimisticDocument = async (file: File, metadata: Record<string, unk
     fileName: file.name,
     size: file.size,
     file_hash: fileHash || undefined,
+    file_hash_algorithm: fileHash ? "sha256" : undefined,
     mimeType: file.type || "application/octet-stream",
     mime_type: file.type || "application/octet-stream",
     createdAt: stamp.last_updated,

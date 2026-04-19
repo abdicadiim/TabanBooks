@@ -1,3 +1,5 @@
+import { attachVersionStamp, createVersionStamp, isPlainObject, type SyncVersionStamp } from "./versioning";
+
 export interface SyncStorageAdapter<TValue> {
   read: () => Promise<TValue | null>;
   write: (value: TValue) => Promise<void>;
@@ -7,6 +9,8 @@ export interface SyncStorageAdapter<TValue> {
 type SyncCacheRecord<TValue> = {
   key: string;
   value: TValue;
+  version_id: string;
+  last_updated: string;
   updatedAt: number;
 };
 
@@ -19,6 +23,8 @@ export type SyncPendingOperationRecord<TPayload = unknown> = {
   file?: Blob | null;
   createdAt: string;
   retryCount: number;
+  version_id?: string;
+  last_updated?: string;
 };
 
 export type SyncBinaryAssetRecord = {
@@ -26,9 +32,12 @@ export type SyncBinaryAssetRecord = {
   resource: string;
   itemId: string;
   fileHash: string;
+  fileHashAlgorithm?: string;
   blob: Blob;
   mimeType?: string;
   updatedAt: string;
+  version_id?: string;
+  last_updated?: string;
 };
 
 const SYNC_DB_NAME = "taban-sync-engine";
@@ -42,6 +51,23 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+
+const DEFAULT_LOCAL_STORAGE_MAX_BYTES = 64 * 1024;
+
+function createLocalStorageEnvelope<TValue>(value: TValue): TValue & SyncVersionStamp {
+  return attachVersionStamp(value) as TValue & SyncVersionStamp;
+}
+
+function serializeEnvelope<TValue>(value: TValue, sensitive: boolean, namespace: string) {
+  const payload = JSON.stringify(createLocalStorageEnvelope(value));
+  return sensitive ? encryptString(namespace, payload) : Promise.resolve(payload);
+}
+
+async function parseEnvelope<TValue>(namespace: string, raw: string, sensitive: boolean) {
+  const payload = sensitive ? await decryptString(namespace, raw) : raw;
+  const parsed = JSON.parse(payload) as TValue | Record<string, unknown>;
+  return isPlainObject(parsed) ? (attachVersionStamp(parsed) as TValue) : parsed;
+}
 
 function canUseWindow() {
   return typeof window !== "undefined";
@@ -191,19 +217,65 @@ function wrapRequest<TValue>(request: IDBRequest<TValue>) {
   });
 }
 
+function normalizeVersionedValue<TValue>(value: TValue) {
+  return isPlainObject(value) ? (attachVersionStamp(value) as TValue) : value;
+}
+
+async function readLocalStorageValue<TValue>(storageKey: string, sensitive: boolean) {
+  if (!canUseWindow()) return null;
+
+  const primaryValue = localStorage.getItem(storageKey);
+  const tempKey = `${storageKey}:tmp`;
+  const rawValue = primaryValue || localStorage.getItem(tempKey);
+  if (!rawValue) return null;
+
+  try {
+    const parsedValue = (await parseEnvelope<TValue>(storageKey, rawValue, sensitive)) as TValue;
+    if (!primaryValue) {
+      localStorage.setItem(storageKey, rawValue);
+      localStorage.removeItem(tempKey);
+    }
+    return parsedValue;
+  } catch (error) {
+    console.error(`Failed to read sync cache for ${storageKey}`, error);
+    localStorage.removeItem(storageKey);
+    localStorage.removeItem(tempKey);
+    return null;
+  }
+}
+
+async function writeLocalStorageValue<TValue>(storageKey: string, value: TValue, sensitive: boolean) {
+  if (!canUseWindow()) return;
+
+  const tempKey = `${storageKey}:tmp`;
+  const serialized = await serializeEnvelope(value, sensitive, storageKey);
+  localStorage.setItem(tempKey, serialized);
+  localStorage.setItem(storageKey, serialized);
+  localStorage.removeItem(tempKey);
+}
+
+function getSerializedSize(value: string) {
+  return typeof Blob !== "undefined" ? new Blob([value]).size : value.length;
+}
+
 export async function readCacheValue<TValue>(key: string) {
   const record = await withStore<SyncCacheRecord<TValue> | undefined>(CACHE_STORE, "readonly", (store) =>
     wrapRequest(store.get(key)),
   );
-  return record?.value ?? null;
+  if (!record) return null;
+  return normalizeVersionedValue(record.value);
 }
 
 export async function writeCacheValue<TValue>(key: string, value: TValue) {
+  const nextValue = normalizeVersionedValue(value);
+  const stamp = createVersionStamp();
   await withStore<void>(CACHE_STORE, "readwrite", (store) =>
     wrapRequest(
       store.put({
         key,
-        value,
+        value: nextValue,
+        version_id: String((nextValue as Record<string, unknown>)?.version_id || stamp.version_id),
+        last_updated: String((nextValue as Record<string, unknown>)?.last_updated || stamp.last_updated),
         updatedAt: Date.now(),
       } satisfies SyncCacheRecord<TValue>),
     ).then(() => undefined),
@@ -218,11 +290,27 @@ export async function listPendingOperations<TPayload = unknown>(resource: string
   const operations = await withStore<SyncPendingOperationRecord<TPayload>[]>(PENDING_STORE, "readonly", (store) =>
     wrapRequest(store.index(BINARY_RESOURCE_INDEX).getAll(resource)),
   );
-  return operations.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const fallbackStamp = createVersionStamp();
+  return operations
+    .map((operation) => ({
+      ...operation,
+      version_id: operation.version_id || fallbackStamp.version_id,
+      last_updated: operation.last_updated || fallbackStamp.last_updated,
+    }))
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
 }
 
 export async function upsertPendingOperation<TPayload = unknown>(operation: SyncPendingOperationRecord<TPayload>) {
-  await withStore<void>(PENDING_STORE, "readwrite", (store) => wrapRequest(store.put(operation)).then(() => undefined));
+  const stamp = createVersionStamp();
+  await withStore<void>(PENDING_STORE, "readwrite", (store) =>
+    wrapRequest(
+      store.put({
+        ...operation,
+        version_id: operation.version_id || stamp.version_id,
+        last_updated: operation.last_updated || stamp.last_updated,
+      }),
+    ).then(() => undefined),
+  );
 }
 
 export async function deletePendingOperation(operationId: string) {
@@ -240,7 +328,16 @@ export async function listBinaryAssets(resource: string) {
 }
 
 export async function upsertBinaryAsset(record: SyncBinaryAssetRecord) {
-  await withStore<void>(BINARY_STORE, "readwrite", (store) => wrapRequest(store.put(record)).then(() => undefined));
+  const stamp = createVersionStamp();
+  await withStore<void>(BINARY_STORE, "readwrite", (store) =>
+    wrapRequest(
+      store.put({
+        ...record,
+        version_id: record.version_id || stamp.version_id,
+        last_updated: record.last_updated || stamp.last_updated,
+      }),
+    ).then(() => undefined),
+  );
 }
 
 export async function deleteBinaryAsset(key: string) {
@@ -252,50 +349,19 @@ export function createSecureLocalStorageAdapter<TValue>(options: {
   sensitive?: boolean;
 }): SyncStorageAdapter<TValue> {
   const storageKey = options.key;
-  const tempKey = `${storageKey}:tmp`;
   const isSensitive = Boolean(options.sensitive);
-
-  const parse = async (raw: string | null) => {
-    if (!raw) return null;
-    const value = isSensitive ? await decryptString(storageKey, raw) : raw;
-    return JSON.parse(value) as TValue;
-  };
 
   return {
     async read() {
-      if (!canUseWindow()) return null;
-      try {
-        const primaryValue = localStorage.getItem(storageKey);
-        if (primaryValue) {
-          return await parse(primaryValue);
-        }
-
-        const tempValue = localStorage.getItem(tempKey);
-        if (!tempValue) return null;
-        const recovered = await parse(tempValue);
-        localStorage.setItem(storageKey, tempValue);
-        localStorage.removeItem(tempKey);
-        return recovered;
-      } catch (error) {
-        console.error(`Failed to read sync cache for ${storageKey}`, error);
-        localStorage.removeItem(storageKey);
-        localStorage.removeItem(tempKey);
-        return null;
-      }
+      return readLocalStorageValue<TValue>(storageKey, isSensitive);
     },
     async write(value) {
-      if (!canUseWindow()) return;
-      const serialized = JSON.stringify(value);
-      const storageValue = isSensitive ? await encryptString(storageKey, serialized) : serialized;
-
-      localStorage.setItem(tempKey, storageValue);
-      localStorage.setItem(storageKey, storageValue);
-      localStorage.removeItem(tempKey);
+      await writeLocalStorageValue(storageKey, value, isSensitive);
     },
     async clear() {
       if (!canUseWindow()) return;
       localStorage.removeItem(storageKey);
-      localStorage.removeItem(tempKey);
+      localStorage.removeItem(`${storageKey}:tmp`);
     },
   };
 }
@@ -305,5 +371,69 @@ export function createIndexedDbAdapter<TValue>(key: string): SyncStorageAdapter<
     read: () => readCacheValue<TValue>(key),
     write: (value) => writeCacheValue(key, value),
     clear: () => clearCacheValue(key),
+  };
+}
+
+export function createVersionedLocalStorageAdapter<TValue>(options: {
+  key: string;
+  sensitive?: boolean;
+}): SyncStorageAdapter<TValue> {
+  const storageKey = options.key;
+  const isSensitive = Boolean(options.sensitive);
+
+  return {
+    async read() {
+      return readLocalStorageValue<TValue>(storageKey, isSensitive);
+    },
+    async write(value) {
+      await writeLocalStorageValue(storageKey, value, isSensitive);
+    },
+    async clear() {
+      if (!canUseWindow()) return;
+      localStorage.removeItem(storageKey);
+      localStorage.removeItem(`${storageKey}:tmp`);
+    },
+  };
+}
+
+export function createAdaptiveStorageAdapter<TValue>(options: {
+  key: string;
+  sensitive?: boolean;
+  maxLocalStorageBytes?: number;
+}): SyncStorageAdapter<TValue> {
+  const localStorageAdapter = createVersionedLocalStorageAdapter<TValue>({
+    key: options.key,
+    sensitive: options.sensitive,
+  });
+  const indexedDbAdapter = createIndexedDbAdapter<TValue>(options.key);
+  const maxLocalStorageBytes = options.maxLocalStorageBytes ?? DEFAULT_LOCAL_STORAGE_MAX_BYTES;
+
+  return {
+    async read() {
+      const localValue = await localStorageAdapter.read();
+      if (localValue !== null) {
+        return localValue;
+      }
+      return indexedDbAdapter.read();
+    },
+    async write(value) {
+      const normalizedValue = normalizeVersionedValue(value);
+      const serialized = JSON.stringify(normalizedValue);
+      if (getSerializedSize(serialized) <= maxLocalStorageBytes) {
+        try {
+          await localStorageAdapter.write(normalizedValue);
+          await indexedDbAdapter.clear();
+          return;
+        } catch (error) {
+          console.warn(`LocalStorage write failed for ${options.key}, falling back to IndexedDB.`, error);
+        }
+      }
+
+      await indexedDbAdapter.write(normalizedValue);
+      await localStorageAdapter.clear();
+    },
+    async clear() {
+      await Promise.all([localStorageAdapter.clear(), indexedDbAdapter.clear()]);
+    },
   };
 }

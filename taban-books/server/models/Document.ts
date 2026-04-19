@@ -15,6 +15,7 @@ export interface IDocument extends MongooseDocument {
   fileSize: number;
   mimeType: string;
   file_hash?: string;
+  file_hash_algorithm?: string;
   version_id: string;
   last_updated: Date;
   type?: 'invoice' | 'bill' | 'quote' | 'receipt' | 'expense' | 'payment' | 'contract' | 'other';
@@ -66,6 +67,11 @@ const documentSchema = new Schema<IDocument>(
     },
     file_hash: {
       type: String,
+      trim: true,
+    },
+    file_hash_algorithm: {
+      type: String,
+      default: "sha256",
       trim: true,
     },
     version_id: {

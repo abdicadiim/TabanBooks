@@ -9,6 +9,11 @@ import { Request, Response } from "express";
 import Document from "../models/Document.js";
 import { hashFile } from "../utils/fileHash.js";
 import { ensureSyncState, touchSyncState } from "../utils/syncState.js";
+import {
+  applyResourceVersionHeaders,
+  buildResourceVersion,
+  requestMatchesResourceVersion,
+} from "../utils/resourceVersion.js";
 
 const DOCUMENT_SYNC_RESOURCE = "documents";
 
@@ -76,6 +81,9 @@ const serializeDocument = (document: any) => {
       ? new Date(rawDocument.last_updated).toISOString()
       : new Date(rawDocument?.updatedAt || rawDocument?.createdAt || Date.now()).toISOString(),
     file_hash: rawDocument?.file_hash ? String(rawDocument.file_hash) : undefined,
+    file_hash_algorithm: rawDocument?.file_hash_algorithm
+      ? String(rawDocument.file_hash_algorithm)
+      : "sha256",
     createdAt: rawDocument?.createdAt ? new Date(rawDocument.createdAt).toISOString() : undefined,
     updatedAt: rawDocument?.updatedAt ? new Date(rawDocument.updatedAt).toISOString() : undefined,
     download_url: id ? `/api/documents/${encodeURIComponent(id)}/download` : undefined,
@@ -86,13 +94,18 @@ const serializeDocument = (document: any) => {
   };
 };
 
-const buildSyncPayload = (documents: any[], syncState: { version_id?: string; last_updated?: Date | string } | null) => {
+const buildSyncPayload = (
+  documents: any[],
+  syncState: { version_id?: string; last_updated?: Date | string } | null,
+  versionState?: { version_id: string; last_updated: string },
+) => {
   const items = documents.map((document) => serializeDocument(document));
   const manifest = items.map((document) => ({
     id: document.id,
     version_id: document.version_id,
     last_updated: document.last_updated,
     file_hash: document.file_hash,
+    file_hash_algorithm: document.file_hash_algorithm || "sha256",
     file_size: document.fileSize,
     mime_type: document.mimeType,
     download_url: document.download_url,
@@ -100,10 +113,12 @@ const buildSyncPayload = (documents: any[], syncState: { version_id?: string; la
 
   return {
     resource: DOCUMENT_SYNC_RESOURCE,
-    version_id: String(syncState?.version_id || ""),
-    last_updated: syncState?.last_updated
-      ? new Date(syncState.last_updated).toISOString()
-      : new Date().toISOString(),
+    version_id: String(versionState?.version_id || syncState?.version_id || ""),
+    last_updated:
+      versionState?.last_updated ||
+      (syncState?.last_updated
+        ? new Date(syncState.last_updated).toISOString()
+        : new Date().toISOString()),
     items,
     manifest,
     pending_operations: 0,
@@ -145,28 +160,30 @@ export const getDocumentsSync = async (req: AuthRequest, res: Response): Promise
       lastUpdated: latestDocumentUpdate || new Date(),
     });
 
-    const clientLastUpdated = req.get("If-Modified-Since") || String(req.query.last_updated || "");
-    const clientTimestamp = clientLastUpdated ? new Date(clientLastUpdated) : null;
-    const serverTimestamp = syncState?.last_updated ? new Date(syncState.last_updated) : null;
+    const versionState = buildResourceVersion(DOCUMENT_SYNC_RESOURCE, [
+      {
+        key: "documents",
+        id: documents.map((document) => String(document._id || document.id || "")).join(","),
+        updatedAt: syncState?.last_updated || latestDocumentUpdate || new Date(),
+        count: documents.length,
+        extra: documents
+          .map((document) => `${String(document._id || document.id || "")}:${String(document.version_id || "")}`)
+          .join("|"),
+      },
+    ]);
 
-    if (
-      clientTimestamp &&
-      !Number.isNaN(clientTimestamp.getTime()) &&
-      serverTimestamp &&
-      clientTimestamp.getTime() >= serverTimestamp.getTime()
-    ) {
+    applyResourceVersionHeaders(res, versionState);
+
+    if (requestMatchesResourceVersion(req, versionState)) {
       res.status(304).end();
       return;
     }
 
     res.setHeader("Cache-Control", "private, no-cache");
-    if (serverTimestamp) {
-      res.setHeader("Last-Modified", serverTimestamp.toUTCString());
-    }
 
     res.json({
       success: true,
-      data: buildSyncPayload(documents, syncState),
+      data: buildSyncPayload(documents, syncState, versionState),
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -219,6 +236,7 @@ export const downloadDocument = async (req: AuthRequest, res: Response): Promise
     res.setHeader("Content-Disposition", `inline; filename="${document.fileName}"`);
     res.setHeader("X-Document-Version", document.version_id);
     res.setHeader("X-Document-Last-Updated", document.last_updated.toISOString());
+    res.setHeader("X-File-Hash-Algorithm", document.file_hash_algorithm || "sha256");
     if (document.file_hash) {
       res.setHeader("ETag", document.file_hash);
     }

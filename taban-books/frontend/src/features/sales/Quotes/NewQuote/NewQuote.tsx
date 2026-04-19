@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import {
@@ -6,15 +6,20 @@ import {
   MessageSquare, Briefcase, User, Calendar, Plus, Paperclip, Minus, Check,
   Trash2, MoreVertical, Edit2, Edit3, Settings, Info, Tag, HelpCircle, HardDrive,
   Layers, Box, Folder, Cloud, CheckCircle, Calculator, Image as ImageIcon, GripVertical,
-  FileText, CreditCard, Square, Upload, Loader2, LayoutGrid, PlusCircle
+  FileText, CreditCard, Square, Upload, Loader2, LayoutGrid, PlusCircle, Mail, Building2, AlertTriangle,
+  Package, Layout
 } from "lucide-react";
-import { getCustomers, saveQuote, getQuotes, getQuoteById, updateQuote, getProjects, getSalespersonsFromAPI, updateSalesperson, getItemsFromAPI, getTaxes, Customer, Tax, Salesperson, Quote, ContactPerson, Project } from "../../salesModel";
+import { getCustomers, saveQuote, saveSalesperson, getQuotes, getQuoteById, updateQuote, getProjects, getSalespersonsFromAPI, updateSalesperson, getItemsFromAPI, getTaxes, Customer, Tax, Salesperson, Quote, ContactPerson, Project, buildTaxOptionGroups, taxLabel, normalizeCreatedTaxPayload, isTaxActive, readTaxesLocal, writeTaxesLocal } from "../../salesModel.ts";
+
 import { getAllDocuments } from "../../../../utils/documentStorage";
-import { customersAPI, projectsAPI, salespersonsAPI, quotesAPI, itemsAPI, currenciesAPI, contactPersonsAPI, vendorsAPI, settingsAPI, chartOfAccountsAPI, documentsAPI } from "../../../../services/api";
+import { customersAPI, projectsAPI, salespersonsAPI, quotesAPI, itemsAPI, currenciesAPI, contactPersonsAPI, vendorsAPI, settingsAPI, chartOfAccountsAPI, documentsAPI, reportingTagsAPI, priceListsAPI, plansAPI, transactionNumberSeriesAPI } from "../../../../services/api.ts";
 import { useAccountSelect } from "../../../../hooks/useAccountSelect";
 import { useCurrency } from "../../../../hooks/useCurrency";
 import { API_BASE_URL, getToken } from "../../../../services/auth";
-import toast from "react-hot-toast";
+import { toast } from "react-hot-toast";
+import NewTaxModal from "../../../../components/modals/NewTaxModal";
+import NewItemForm from "../../../items/components/NewItemForm";
+import { COUNTRY_PHONE_CODES, WORLD_COUNTRIES, getStatesByCountry } from "../../../../constants/locationData";
 
 // taxOptions REMOVED: Now fetching from backend API
 
@@ -29,28 +34,149 @@ const defaultSampleItems = [
   { id: "5", name: "monitor", sku: "Mn055", rate: 300.00, stockOnHand: 3.00, unit: "piece" },
 ];
 
+const PRICE_LISTS_STORAGE_KEY = "inv_price_lists_v1";
+  const PLANS_STORAGE_KEY = "inv_plans_v1";
+  const PLANS_STORAGE_KEYS = [PLANS_STORAGE_KEY, "taban_plans"];
+  const LS_LOCATIONS_ENABLED_KEY = "taban_locations_enabled";
+  const LS_LOCATIONS_CACHE_KEY = "taban_locations_cache";
+
+type CatalogPriceListOption = {
+  id: string;
+  name: string;
+  pricingScheme: string;
+  currency: string;
+  status: string;
+  displayLabel: string;
+};
+
+type PriceListSwitchDialogState = {
+  customerName: string;
+  currentPriceListName: string;
+  nextPriceListName: string;
+  customerCurrency: string;
+  nextPriceListCurrency: string;
+};
+
 const NewQuote = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { baseCurrencyCode } = useCurrency();
   const { quoteId } = useParams();
   const isEditMode = !!quoteId;
+  const isSubscriptionMode = location.pathname.includes("/sales/quotes/subscription/new");
   const clonedDataFromState = location.state?.clonedData || null;
+  const readPersistedEditQuote = () => {
+    if (!isEditMode || !quoteId || typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem(`quote_edit_${quoteId}`) || localStorage.getItem(`quote_detail_${quoteId}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+  const initialQuoteSource =
+    (location.state as any)?.preloadedQuote ||
+    clonedDataFromState ||
+    readPersistedEditQuote() ||
+    null;
+  const cachedGeneralSettings = settingsAPI.getCachedGeneralSettings?.() || {};
+  const cachedTaxModeSetting = String(
+    cachedGeneralSettings?.taxSettings?.taxInclusive ??
+    cachedGeneralSettings?.taxSettings?.taxBasis ??
+    cachedGeneralSettings?.taxSettings?.taxMode ??
+    "both"
+  ).trim().toLowerCase();
+  const initialTaxExclusiveValue = (() => {
+    if (
+      cachedTaxModeSetting.includes("both") ||
+      (cachedTaxModeSetting.includes("inclusive") && cachedTaxModeSetting.includes("exclusive"))
+    ) {
+      return "Tax Exclusive";
+    }
+    if (cachedTaxModeSetting === "inclusive" || cachedTaxModeSetting === "tax inclusive" || cachedTaxModeSetting.includes("tax inclusive")) {
+      return "Tax Inclusive";
+    }
+    if (cachedTaxModeSetting === "exclusive" || cachedTaxModeSetting === "tax exclusive" || cachedTaxModeSetting.includes("tax exclusive")) {
+      return "Tax Exclusive";
+    }
+    return "Tax Exclusive";
+  })();
+  const formatInitialQuoteDate = (value: any) => {
+    if (!value) return "";
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return "";
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) return trimmed;
+      const parts = trimmed.split("/");
+      if (parts.length === 3) {
+        const [day, month, year] = parts.map((part) => part.trim());
+        if (day.length === 2 && month.length === 2 && year.length === 4) {
+          return trimmed;
+        }
+      }
+      const parsed = new Date(trimmed);
+      if (!Number.isNaN(parsed.getTime())) {
+        const day = String(parsed.getDate()).padStart(2, "0");
+        const month = String(parsed.getMonth() + 1).padStart(2, "0");
+        const year = parsed.getFullYear();
+        return `${day}/${month}/${year}`;
+      }
+      return trimmed;
+    }
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      const day = String(parsed.getDate()).padStart(2, "0");
+      const month = String(parsed.getMonth() + 1).padStart(2, "0");
+      const year = parsed.getFullYear();
+      return `${day}/${month}/${year}`;
+    }
+    return String(value || "");
+  };
+  const initialQuoteNumber = (() => {
+    const source = initialQuoteSource as any;
+    const numberValue =
+      source?.quoteNumber ||
+      source?.quoteNo ||
+      source?.quote_no ||
+      source?.number ||
+      source?.estimateNumber ||
+      source?.estimateNo ||
+      source?.estimate_no ||
+      source?.id ||
+      source?._id ||
+      "";
+    return String(numberValue || transactionNumberSeriesAPI.getCachedNextNumber({
+      module: "Quote",
+      locationName: "Head Office",
+    }) || "").trim();
+  })();
+  const initialQuoteDate = (() => {
+    const source = initialQuoteSource as any;
+    return formatInitialQuoteDate(source?.quoteDate || source?.date || source?.createdAt) || new Date().toLocaleDateString("en-GB");
+  })();
+  const initialExpiryDate = (() => {
+    const source = initialQuoteSource as any;
+    return formatInitialQuoteDate(source?.expiryDate || source?.expiry || source?.validUntil);
+  })();
+  const [isLoading, setIsLoading] = useState(true);
   const [saveLoading, setSaveLoading] = useState<null | "draft" | "send">(null);
   const [taxes, setTaxes] = useState<Tax[]>([]);
-  const [enabledSettings, setEnabledSettings] = useState<any>(null);
-  const [formData, setFormData] = useState({
+  const [enabledSettings, setEnabledSettings] = useState<any>(cachedGeneralSettings);
+  const [formData, setFormData] = useState<any>({
     customerName: "",
-    quoteNumber: "QT-000002",
+    selectedLocation: "Head Office",
+    selectedPriceList: "Select Price List",
+    quoteNumber: initialQuoteNumber,
     referenceNumber: "",
-    quoteDate: new Date().toLocaleDateString("en-GB"), // DD/MM/YYYY format which our salesModel now handles
-    expiryDate: "",
+    quoteDate: initialQuoteDate, // DD/MM/YYYY format which our salesModel now handles
+    expiryDate: initialExpiryDate,
     salesperson: "",
+    salespersonId: "",
     projectName: "",
     subject: "",
-    taxExclusive: "Tax Exclusive",
+    taxExclusive: initialTaxExclusiveValue,
     items: [
-      { id: 1, itemType: "item", itemDetails: "", quantity: 1, rate: 0, tax: "", amount: 0 }
+      { id: 1, itemType: "item", itemDetails: "", quantity: 1, rate: 0, tax: "", taxRate: 0, amount: 0, description: "", stockOnHand: 0, reportingTags: [] }
     ],
     subTotal: 0,
     totalTax: 0,
@@ -65,14 +191,47 @@ const NewQuote = () => {
     currency: baseCurrencyCode || "USD",
     customerNotes: "Looking forward for your business.",
     termsAndConditions: "",
-    attachedFiles: []
+    attachedFiles: [],
+
+    reportingTags: [] as any[],
+    contactPersons: []
   });
   const hasAppliedCloneRef = useRef(false);
+  const prefillFromProjectRef = useRef(false);
   const discountMode = enabledSettings?.discountSettings?.discountType ?? "transaction";
   const showTransactionDiscount = discountMode === "transaction";
   const showShippingCharges = enabledSettings?.chargeSettings?.shippingCharges !== false;
   const showAdjustment = enabledSettings?.chargeSettings?.adjustments !== false;
-  const taxMode = enabledSettings?.taxSettings?.taxInclusive ?? "inclusive";
+  const rawTaxModeSetting = String(
+    enabledSettings?.taxSettings?.taxInclusive ??
+    enabledSettings?.taxSettings?.taxBasis ??
+    enabledSettings?.taxSettings?.taxMode ??
+    "both"
+  ).trim().toLowerCase();
+  const taxMode = (() => {
+    if (!rawTaxModeSetting) return "both";
+    if (
+      rawTaxModeSetting.includes("both") ||
+      (rawTaxModeSetting.includes("inclusive") && rawTaxModeSetting.includes("exclusive"))
+    ) {
+      return "both";
+    }
+    if (rawTaxModeSetting === "inclusive" || rawTaxModeSetting === "tax inclusive" || rawTaxModeSetting.includes("tax inclusive")) {
+      return "inclusive";
+    }
+    if (rawTaxModeSetting === "exclusive" || rawTaxModeSetting === "tax exclusive" || rawTaxModeSetting.includes("tax exclusive")) {
+      return "exclusive";
+    }
+    if (rawTaxModeSetting.includes("inclusive")) return "inclusive";
+    if (rawTaxModeSetting.includes("exclusive")) return "exclusive";
+    return "both";
+  })();
+  const isTaxPreferenceLocked = taxMode === "inclusive" || taxMode === "exclusive";
+  const resolvedTaxPreference = taxMode === "inclusive"
+    ? "Tax Inclusive"
+    : taxMode === "exclusive"
+      ? "Tax Exclusive"
+      : formData.taxExclusive || "Tax Exclusive";
 
   const toNumberSafe = (value: any) => {
     const parsed = Number(value);
@@ -202,7 +361,8 @@ const NewQuote = () => {
           rate,
           tax: String(resolvedTaxId || normalizedRawTax || (resolvedTaxRate > 0 ? resolvedTaxRate : "")),
           taxRate: resolvedTaxRate,
-          amount
+          amount,
+          reportingTags: Array.isArray(item.reportingTags) ? item.reportingTags : []
         };
       })
       : undefined;
@@ -214,6 +374,9 @@ const NewQuote = () => {
     setFormData(prev => ({
       ...prev,
       customerName: cloned.customerName || cloned.customer?.displayName || cloned.customer?.name || prev.customerName,
+      selectedPriceList: cloned.selectedPriceList || cloned.priceList || cloned.priceListName || prev.selectedPriceList,
+      createRetainerInvoice: Boolean(cloned.createRetainerInvoice ?? prev.createRetainerInvoice),
+      retainerPercentage: String(cloned.retainerPercentage ?? prev.retainerPercentage ?? ""),
       referenceNumber: cloned.referenceNumber || prev.referenceNumber,
       quoteDate: toDisplayDate(cloned.quoteDate || cloned.date, prev.quoteDate),
       expiryDate: toDisplayDate(cloned.expiryDate, prev.expiryDate),
@@ -236,7 +399,8 @@ const NewQuote = () => {
       currency: cloned.currency || prev.currency,
       customerNotes: cloned.customerNotes || cloned.notes || prev.customerNotes,
       termsAndConditions: cloned.termsAndConditions || cloned.terms || prev.termsAndConditions,
-      attachedFiles: []
+      attachedFiles: [],
+      reportingTags: Array.isArray(cloned.reportingTags) ? cloned.reportingTags : []
     }));
   }, [clonedDataFromState, isEditMode]);
 
@@ -255,6 +419,27 @@ const NewQuote = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [billingAddress, setBillingAddress] = useState<any | null>(null);
   const [shippingAddress, setShippingAddress] = useState<any | null>(null);
+  const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
+  const [addressModalType, setAddressModalType] = useState<"billing" | "shipping">("billing");
+  const [isAddressSaving, setIsAddressSaving] = useState(false);
+  const [isPhoneCodeDropdownOpen, setIsPhoneCodeDropdownOpen] = useState(false);
+  const [phoneCodeSearch, setPhoneCodeSearch] = useState("");
+  const phoneCodeDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [isCountryDropdownOpen, setIsCountryDropdownOpen] = useState(false);
+  const [countrySearch, setCountrySearch] = useState("");
+  const countryDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [addressFormData, setAddressFormData] = useState({
+    attention: "",
+    country: "",
+    street1: "",
+    street2: "",
+    city: "",
+    state: "",
+    zipCode: "",
+    phoneCountryCode: "",
+    phone: "",
+    fax: ""
+  });
 
   // Customer search modal state
   const [customerSearchModalOpen, setCustomerSearchModalOpen] = useState(false);
@@ -277,13 +462,14 @@ const NewQuote = () => {
   const [isAutoSelectingProjectFromQuickAction, setIsAutoSelectingProjectFromQuickAction] = useState(false);
   const [isSalespersonDropdownOpen, setIsSalespersonDropdownOpen] = useState(false);
   const [salespersonSearch, setSalespersonSearch] = useState("");
-  const [selectedSalesperson, setSelectedSalesperson] = useState<Salesperson | null>(null);
+  const [selectedSalesperson, setSelectedSalesperson] = useState<any>(null);
   const [isManageSalespersonsOpen, setIsManageSalespersonsOpen] = useState(false);
   const [manageSalespersonSearch, setManageSalespersonSearch] = useState("");
   const [manageSalespersonMenuOpen, setManageSalespersonMenuOpen] = useState<string | null>(null);
   const [selectedSalespersonIds, setSelectedSalespersonIds] = useState<string[]>([]);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [isNewSalespersonFormOpen, setIsNewSalespersonFormOpen] = useState(false);
+  const [editingSalespersonId, setEditingSalespersonId] = useState<string | null>(null);
   const [isAddContactPersonModalOpen, setIsAddContactPersonModalOpen] = useState(false);
   const [contactPersonData, setContactPersonData] = useState({
     salutation: "",
@@ -305,10 +491,25 @@ const NewQuote = () => {
   const [openItemDropdowns, setOpenItemDropdowns] = useState<Record<string, boolean>>({});
   const [itemSearches, setItemSearches] = useState<Record<string, string>>({});
   const [openTaxDropdowns, setOpenTaxDropdowns] = useState<Record<string, boolean>>({});
+  const [isNewTaxQuickModalOpen, setIsNewTaxQuickModalOpen] = useState(false);
+  const [newTaxTargetItemId, setNewTaxTargetItemId] = useState<string | number | null>(null);
   const [taxSearches, setTaxSearches] = useState<Record<string, string>>({});
   const [selectedItemIds, setSelectedItemIds] = useState<Record<string, boolean>>({});
   const itemDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const taxDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const taxOptionGroups = useMemo(() => buildTaxOptionGroups(taxes as any[]), [taxes]);
+  const getFilteredTaxGroups = (search: string) => {
+    const keyword = (search || "").trim().toLowerCase();
+    if (!keyword) return taxOptionGroups;
+    return taxOptionGroups
+      .map((group) => ({
+        ...group,
+        options: group.options.filter((tax) =>
+          taxLabel(tax.raw ?? tax).toLowerCase().includes(keyword)
+        ),
+      }))
+      .filter((group) => group.options.length > 0);
+  };
   const [openItemMenuId, setOpenItemMenuId] = useState<string | number | null>(null);
   const itemMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [isBulkAddModalOpen, setIsBulkAddModalOpen] = useState(false);
@@ -320,8 +521,13 @@ const NewQuote = () => {
   const bulkActionsRef = useRef(null);
   const [isTheseDropdownOpen, setIsTheseDropdownOpen] = useState(false);
   const [showAdditionalInformation, setShowAdditionalInformation] = useState(false);
+  const [additionalInfoItemIds, setAdditionalInfoItemIds] = useState<string[]>([]);
   const [isNewItemModalOpen, setIsNewItemModalOpen] = useState(false);
+  const [newItemTargetRowId, setNewItemTargetRowId] = useState<string | number | null>(null);
   const [isReportingTagsModalOpen, setIsReportingTagsModalOpen] = useState(false);
+  const [availableReportingTags, setAvailableReportingTags] = useState<any[]>([]);
+  const [reportingTagSelections, setReportingTagSelections] = useState<Record<string, string>>({});
+  const [currentReportingTagsItemId, setCurrentReportingTagsItemId] = useState<string | number | null>(null);
   const [isAddNewRowDropdownOpen, setIsAddNewRowDropdownOpen] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
@@ -386,10 +592,11 @@ const NewQuote = () => {
   const [selectedDocuments, setSelectedDocuments] = useState<any[]>([]);
   const [availableDocuments, setAvailableDocuments] = useState<any[]>([]);
   const [isCloudPickerOpen, setIsCloudPickerOpen] = useState(false);
-  const [selectedCloudProvider, setSelectedCloudProvider] = useState("taban");
+  const [selectedCloudProvider, setSelectedCloudProvider] = useState("zoho");
 
   // Load customers from localStorage
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [isCustomersLoading, setIsCustomersLoading] = useState(true);
 
   const isCustomerActive = (customer: any) => {
     const status = String(customer?.status || "").toLowerCase();
@@ -399,13 +606,54 @@ const NewQuote = () => {
   };
 
   // Load items from localStorage
-  const [availableItems, setAvailableItems] = useState(defaultSampleItems);
+  const [availableItems, setAvailableItems] = useState<any[]>(defaultSampleItems as any[]);
+
+  const loadCustomersForDropdown = async () => {
+    try {
+      setIsCustomersLoading(true);
+      let rows = await getCustomers();
+      if (!Array.isArray(rows) || rows.length === 0) {
+        const response: any = await customersAPI.getAll({ limit: 2000 });
+        rows = Array.isArray(response?.data) ? response.data : [];
+      }
+      const normalizedCustomers = (rows || []).map((c: any) => ({
+        ...c,
+        id: c._id || c.id,
+        name: c.displayName || c.companyName || `${c.firstName || ''} ${c.lastName || ''}`.trim() || "Unknown"
+      }));
+      setCustomers(normalizedCustomers.filter(isCustomerActive));
+    } catch (error) {
+      console.error("Error loading customers:", error);
+      setCustomers([]);
+    } finally {
+      setIsCustomersLoading(false);
+    }
+  };
 
   // Quote number configuration state
   const [isQuoteNumberModalOpen, setIsQuoteNumberModalOpen] = useState(false);
   const [quoteNumberMode, setQuoteNumberMode] = useState("auto"); // "auto" or "manual"
-  const [quotePrefix, setQuotePrefix] = useState("QT-");
-  const [quoteNextNumber, setQuoteNextNumber] = useState("000002");
+
+  useEffect(() => {
+    void loadCustomersForDropdown();
+  }, []);
+  const [quotePrefix, setQuotePrefix] = useState("");
+  const [quoteNextNumber, setQuoteNextNumber] = useState("");
+  const quoteSeriesSyncRef = useRef(false);
+  const [quoteSeriesRow, setQuoteSeriesRow] = useState<any | null>(null);
+  const [quoteSeriesRows, setQuoteSeriesRows] = useState<any[]>([]);
+  const [isTaxPreferenceDropdownOpen, setIsTaxPreferenceDropdownOpen] = useState(false);
+  const [taxPreferenceSearch, setTaxPreferenceSearch] = useState("");
+  const [isPriceListDropdownOpen, setIsPriceListDropdownOpen] = useState(false);
+  const [priceListSearch, setPriceListSearch] = useState("");
+  const [catalogPriceListsRaw, setCatalogPriceListsRaw] = useState<any[]>([]);
+  const [catalogPriceLists, setCatalogPriceLists] = useState<CatalogPriceListOption[]>([]);
+  const [priceListSwitchDialog, setPriceListSwitchDialog] = useState<PriceListSwitchDialogState | null>(null);
+  const [isLocationFeatureEnabled, setIsLocationFeatureEnabled] = useState(false);
+  const [locationOptions, setLocationOptions] = useState<string[]>(["Head Office"]);
+  const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
+  const taxPreferenceDropdownRef = useRef<HTMLDivElement | null>(null);
+  const priceListDropdownRef = useRef<HTMLDivElement | null>(null);
 
   // Currency Mapping state
   const [currencyMap, setCurrencyMap] = useState<Record<string, string>>({});
@@ -415,6 +663,21 @@ const NewQuote = () => {
   const [vendorContactPersons, setVendorContactPersons] = useState([]);
   const [selectedContactPersons, setSelectedContactPersons] = useState<ContactPerson[]>([]);
   const [isEmailCommunicationsOpen, setIsEmailCommunicationsOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof document === "undefined" || !isNewCustomerQuickActionOpen) return;
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [isNewCustomerQuickActionOpen]);
 
   const getCurrencySymbol = (currencyCode?: string | null): string => {
     if (!currencyCode) return "";
@@ -434,6 +697,422 @@ const NewQuote = () => {
   // Define months array before use
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const taxPreferenceOptions = ["Tax Exclusive", "Tax Inclusive"];
+  const filteredTaxPreferenceOptions = taxPreferenceOptions.filter((option) =>
+    option.toLowerCase().includes(taxPreferenceSearch.toLowerCase())
+  );
+  const sanitizeQuotePrefix = (value: any) => String(value || "QT-").trim() || "QT-";
+  const extractQuoteDigits = (value: any) => {
+    const raw = String(value || "").trim();
+    const matches = raw.match(/(\d+)\s*$/);
+    return matches ? matches[1] : "";
+  };
+  const deriveQuotePrefixFromNumber = (value: any, fallbackPrefix = "QT-") => {
+    const raw = String(value || "").trim();
+    const match = raw.match(/^(.*?)(\d+)\s*$/);
+    if (match && String(match[1] || "").trim()) {
+      return String(match[1]);
+    }
+    return sanitizeQuotePrefix(fallbackPrefix);
+  };
+  const buildQuoteNumber = (prefixValue: any, numberValue: any) => {
+    const safePrefix = sanitizeQuotePrefix(prefixValue);
+    const rawDigits = extractQuoteDigits(numberValue);
+    const safeDigits = rawDigits ? rawDigits.padStart(6, "0") : "000001";
+    return `${safePrefix}${safeDigits}`;
+  };
+  const normalizeSeriesName = (value: any) => String(value || "").trim().toLowerCase();
+  const getLocationIdsForLocationName = (locationName: string) => {
+    if (typeof window === "undefined") return [];
+    const targetName = String(locationName || "").trim().toLowerCase();
+    if (!targetName) return [];
+
+    try {
+      const raw = localStorage.getItem(LS_LOCATIONS_CACHE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) return [];
+
+      return Array.from(
+        new Set(
+          parsed
+            .filter((row: any) => {
+              const rowName = String(row?.name || row?.locationName || "").trim().toLowerCase();
+              return rowName === targetName;
+            })
+            .map((row: any) => String(row?._id || row?.id || "").trim())
+            .filter(Boolean)
+        )
+      );
+    } catch {
+      return [];
+    }
+  };
+  const isQuoteSeriesRow = (row: any) => {
+    const moduleValue = String(row?.module || row?.name || row?.moduleKey || "").toLowerCase();
+    return moduleValue === "quote" || moduleValue === "quotes" || moduleValue.includes("quote");
+  };
+  const resolveQuoteSeriesRow = (rows: any[], selectedLocationName = "") => {
+    const quoteRows = (rows || []).filter((row: any) => isQuoteSeriesRow(row) && String(row?.status || "Active").toLowerCase() !== "inactive");
+    if (!quoteRows.length) return null;
+
+    const locationIds = getLocationIdsForLocationName(selectedLocationName);
+    const scoreRow = (row: any) => {
+      const seriesName = normalizeSeriesName(row?.seriesName || "");
+      const rowLocationIds = Array.isArray(row?.locationIds)
+        ? row.locationIds.map((id: any) => String(id || "").trim()).filter(Boolean)
+        : [];
+      const createdAt = new Date(String(row?.updatedAt || row?.createdAt || 0)).getTime();
+
+      let score = 0;
+      if (locationIds.length) {
+        const matchesLocation = rowLocationIds.some((id) => locationIds.includes(id));
+        if (matchesLocation) score += 100;
+        else if (!rowLocationIds.length) score += 10;
+      }
+
+      if (!Boolean(row?.isDefault)) score += 25;
+      if (seriesName !== "default transaction series") score += 15;
+      if (rowLocationIds.length) score += 5;
+      if (Number.isFinite(createdAt) && createdAt > 0) score += Math.min(createdAt / 1e11, 10);
+
+      return score;
+    };
+
+    return (
+      quoteRows
+        .slice()
+        .sort((a: any, b: any) => {
+          const scoreDiff = scoreRow(b) - scoreRow(a);
+          if (scoreDiff !== 0) return scoreDiff;
+          const timeB = new Date(String(b?.updatedAt || b?.createdAt || 0)).getTime();
+          const timeA = new Date(String(a?.updatedAt || a?.createdAt || 0)).getTime();
+          return timeB - timeA;
+        })[0] || null
+    );
+  };
+  const resolveSeriesNextDigits = (row: any) => {
+    const starting = String(row?.startingNumber ?? row?.nextNumber ?? "1").trim() || "1";
+    const width = /^\d+$/.test(starting) ? starting.length : 6;
+    const parsed = parseInt(starting, 10);
+    const nextValue = Number(row?.nextNumber) > 0 ? Number(row?.nextNumber) : Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    return String(nextValue).padStart(width, "0");
+  };
+
+  // NOTE: We only reserve (increment) the series when saving, not on load.
+
+  const formatPriceListDisplayLabel = (row: any) => {
+    const name = String(row?.name || "").trim();
+    if (!name) return "";
+
+    const pricingScheme = String(row?.pricingScheme || "").trim();
+    const rawMarkup = String(row?.markup ?? "").trim();
+    const markupType = String(row?.markupType || "").trim();
+    const normalizedMarkup = rawMarkup
+      ? (rawMarkup.includes("%") ? rawMarkup : `${rawMarkup}%`)
+      : "";
+    const detail = normalizedMarkup
+      ? `${normalizedMarkup} ${markupType || "Markup"}`.trim()
+      : pricingScheme;
+
+    return detail ? `${name} [ ${detail} ]` : name;
+  };
+
+  const normalizeCatalogPriceLists = (rows: any[]) => {
+    const parsed = Array.isArray(rows) ? rows : [];
+    setCatalogPriceListsRaw(parsed);
+
+    const normalized: CatalogPriceListOption[] = parsed
+      .map((row: any) => ({
+        id: String(row?.id || row?._id || ""),
+        name: String(row?.name || "").trim(),
+        pricingScheme: String(row?.pricingScheme || "").trim(),
+        currency: String(row?.currency || "").trim(),
+        status: String(row?.status || "Active").trim(),
+        displayLabel: formatPriceListDisplayLabel(row),
+      }))
+      .filter((row: CatalogPriceListOption) => row.name)
+      .filter((row: CatalogPriceListOption) => row.status.toLowerCase() !== "inactive");
+
+    setCatalogPriceLists(normalized);
+  };
+
+  const loadCatalogPriceLists = async () => {
+    // 1) Instant local fallback (for offline + faster UI)
+    try {
+      const raw = localStorage.getItem(PRICE_LISTS_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      normalizeCatalogPriceLists(Array.isArray(parsed) ? parsed : []);
+    } catch (error) {
+      console.error("Error reading cached price lists for quote:", error);
+      normalizeCatalogPriceLists([]);
+    }
+
+    // 2) Refresh from backend and keep localStorage in sync
+    try {
+      const response: any = await priceListsAPI.list({ limit: 5000 });
+      const rows = response?.success ? response?.data : null;
+      if (Array.isArray(rows)) {
+        localStorage.setItem(PRICE_LISTS_STORAGE_KEY, JSON.stringify(rows));
+        normalizeCatalogPriceLists(rows);
+      }
+    } catch (error) {
+      console.error("Error loading price lists from API for quote:", error);
+    }
+  };
+
+  useEffect(() => {
+    try {
+      const enabled = localStorage.getItem(LS_LOCATIONS_ENABLED_KEY) === "true";
+      setIsLocationFeatureEnabled(enabled);
+
+      const raw = localStorage.getItem(LS_LOCATIONS_CACHE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      const names = Array.isArray(parsed)
+        ? parsed
+          .map((row: any) => String(row?.name || "").trim())
+          .filter((name: string) => name.length > 0)
+        : [];
+      const uniqueNames = Array.from(new Set(names));
+      const nextOptions = uniqueNames.length > 0 ? uniqueNames : ["Head Office"];
+      setLocationOptions(nextOptions);
+
+      setFormData(prev => ({
+        ...prev,
+        selectedLocation: nextOptions.includes(prev.selectedLocation) ? prev.selectedLocation : nextOptions[0]
+      }));
+    } catch {
+      setIsLocationFeatureEnabled(false);
+      setLocationOptions(["Head Office"]);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCatalogPriceLists();
+
+    const onStorageChange = (event: StorageEvent) => {
+      if (!event.key || event.key === PRICE_LISTS_STORAGE_KEY) {
+        loadCatalogPriceLists();
+      }
+    };
+    const onWindowFocus = () => loadCatalogPriceLists();
+
+    window.addEventListener("storage", onStorageChange);
+    window.addEventListener("focus", onWindowFocus);
+    return () => {
+      window.removeEventListener("storage", onStorageChange);
+      window.removeEventListener("focus", onWindowFocus);
+    };
+  }, []);
+
+  const selectedPriceListOption = catalogPriceLists.find(
+    (option) => option.name === formData.selectedPriceList
+  );
+  const normalizeSelectedPriceListName = (value: any) => {
+    const normalized = String(value || "").trim();
+    if (!normalized || normalized.toLowerCase() === "select price list") return "";
+    return normalized;
+  };
+  const selectedPriceListDisplay =
+    selectedPriceListOption?.displayLabel ||
+    formData.selectedPriceList ||
+    "Select Price List";
+
+  const filteredPriceListOptions = catalogPriceLists.filter((option) => {
+    const search = priceListSearch.toLowerCase().trim();
+    if (!search) return true;
+    return (
+      option.name.toLowerCase().includes(search) ||
+      option.displayLabel.toLowerCase().includes(search) ||
+      option.pricingScheme.toLowerCase().includes(search) ||
+      option.currency.toLowerCase().includes(search)
+    );
+  });
+
+  const selectedPriceList = useMemo(() => {
+    const selected = normalizeSelectedPriceListName(formData.selectedPriceList);
+    if (!selected) return null;
+    return (
+      catalogPriceListsRaw.find((row: any) => String(row?.name || "").trim() === selected) ||
+      catalogPriceListsRaw.find((row: any) => String(row?.id || row?._id || "").trim() === selected) ||
+      null
+    );
+  }, [catalogPriceListsRaw, formData.selectedPriceList]);
+
+  const resolveCustomerPriceListDefault = (customer: any) => {
+    const customerPriceListId = String(customer?.priceListId || customer?.priceListID || customer?.price_list_id || "").trim();
+    const customerPriceListNameRaw = String(customer?.priceListName || customer?.priceList || customer?.price_list || "").trim();
+    const resolvedPriceList =
+      (customerPriceListId
+        ? catalogPriceListsRaw.find((row: any) => String(row?.id || row?._id || "").trim() === customerPriceListId)
+        : null) ||
+      (customerPriceListNameRaw
+        ? catalogPriceListsRaw.find((row: any) => String(row?.name || "").trim() === customerPriceListNameRaw)
+        : null) ||
+      null;
+
+    return {
+      id: resolvedPriceList ? String(resolvedPriceList?.id || resolvedPriceList?._id || customerPriceListId || "").trim() : customerPriceListId,
+      name: resolvedPriceList ? String(resolvedPriceList?.name || "").trim() : customerPriceListNameRaw,
+      currency: resolvedPriceList ? String(resolvedPriceList?.currency || "").trim() : "",
+    };
+  };
+
+  const applyResolvedPriceListChoice = (nextPriceListName: string, nextCurrency = "") => {
+    setFormData((prev) => ({
+      ...prev,
+      selectedPriceList: nextPriceListName || "Select Price List",
+      currency: nextCurrency || prev.currency,
+    }));
+    setPriceListSwitchDialog(null);
+  };
+
+  const parsePercentage = (value: any) => {
+    const raw = String(value || "").replace(/[^0-9.-]/g, "");
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : 0;
+  };
+
+  const applyRounding = (value: number, roundOffTo: string) => {
+    const label = String(roundOffTo || "").toLowerCase();
+    if (label.includes("decimal places")) {
+      const digits = Number(label.split(" ")[0]);
+      if (Number.isFinite(digits)) return Number(value.toFixed(digits));
+    }
+    if (label.includes("nearest whole")) return Math.round(value);
+    if (label.includes("0.99")) return Math.floor(value) + 0.99;
+    if (label.includes("0.50")) return Math.floor(value) + 0.5;
+    if (label.includes("0.49")) return Math.floor(value) + 0.49;
+    return value;
+  };
+
+  const getIndividualPriceListRate = (priceList: any, entity: any) => {
+    if (!priceList) return null;
+    if (String(priceList.priceListType || "").toLowerCase() !== "individual") return null;
+
+    const entityType = String(entity?.entityType || entity?.itemEntityType || "item").toLowerCase();
+    const entityId = String(entity?.sourceId || entity?.itemId || entity?.id || "").trim();
+    const entityName = String(entity?.name || "").trim();
+
+    if (entityType === "item") {
+      const itemRates = Array.isArray(priceList.itemRates) ? priceList.itemRates : [];
+      const match = itemRates.find((row: any) => {
+        const rowId = String(row?.itemId || "").trim();
+        const rowName = String(row?.itemName || "").trim();
+        return (rowId && rowId === entityId) || (rowName && entityName && rowName === entityName);
+      });
+      const rate = match ? Number(match.rate ?? match.price) : null;
+      return Number.isFinite(rate as any) ? (rate as number) : null;
+    }
+
+    // plan/addon from Product Catalog
+    const productRates = Array.isArray(priceList.productRates) ? priceList.productRates : [];
+    for (const productRow of productRates) {
+      const plans = Array.isArray(productRow?.plans) ? productRow.plans : [];
+      const addons = Array.isArray(productRow?.addons) ? productRow.addons : [];
+
+      const planMatch = plans.find((row: any) => String(row?.planId || "").trim() === entityId || String(row?.name || "").trim() === entityName);
+      if (planMatch) {
+        const rate = Number(planMatch.rate ?? planMatch.price);
+        return Number.isFinite(rate) ? rate : null;
+      }
+
+      const addonMatch = addons.find((row: any) => String(row?.addonId || "").trim() === entityId || String(row?.name || "").trim() === entityName);
+      if (addonMatch) {
+        const rate = Number(addonMatch.rate ?? addonMatch.price);
+        return Number.isFinite(rate) ? rate : null;
+      }
+    }
+
+    return null;
+  };
+
+  const applyPriceListToBaseRate = (baseRate: number, priceList: any, entity: any) => {
+    if (!priceList) return baseRate;
+
+    const override = getIndividualPriceListRate(priceList, entity);
+    if (override !== null) return override;
+
+    // Sales list -> markup/markdown against base rate
+    if (String(priceList.priceListType || "").toLowerCase() === "individual") return baseRate;
+    const pct = parsePercentage(priceList.markup);
+    if (!pct) return baseRate;
+
+    const type = String(priceList.markupType || "").toLowerCase();
+    const next = type === "markdown" ? baseRate * (1 - pct / 100) : baseRate * (1 + pct / 100);
+    return applyRounding(next, priceList.roundOffTo || "Never mind");
+  };
+
+  const normalizeReportingTagOptions = (tag: any): string[] => {
+    const candidates = Array.isArray(tag?.options)
+      ? tag.options
+      : Array.isArray(tag?.values)
+        ? tag.values
+        : [];
+
+    return candidates
+      .map((option: any) => {
+        if (typeof option === "string") return option.trim();
+        if (option && typeof option === "object") {
+          return String(
+            option.value ??
+            option.label ??
+            option.name ??
+            option.option ??
+            option.title ??
+            ""
+          ).trim();
+        }
+        return "";
+      })
+      .filter((value: string) => Boolean(value));
+  };
+
+  const normalizeReportingTagAppliesTo = (tag: any): string[] => {
+    const direct = Array.isArray(tag?.appliesTo) ? tag.appliesTo : [];
+    const fromModulesObject = tag?.modules && typeof tag.modules === "object"
+      ? Object.keys(tag.modules).filter((key) => Boolean(tag.modules[key]))
+      : [];
+    const fromModuleSettings = tag?.moduleSettings && typeof tag.moduleSettings === "object"
+      ? Object.keys(tag.moduleSettings).filter((key) => Boolean(tag.moduleSettings[key]))
+      : [];
+    const fromAssociations = Array.isArray(tag?.associations) ? tag.associations : [];
+    const fromModulesList = Array.isArray(tag?.modulesList) ? tag.modulesList : [];
+
+    return [...direct, ...fromModulesObject, ...fromModuleSettings, ...fromAssociations, ...fromModulesList]
+      .map((value: any) => String(value || "").toLowerCase().trim())
+      .filter(Boolean);
+  };
+
+  const loadReportingTags = async () => {
+    try {
+      const response = await reportingTagsAPI.getAll();
+      const rows = Array.isArray(response) ? response : (response?.data || []);
+      if (!Array.isArray(rows)) {
+        setAvailableReportingTags([]);
+        return;
+      }
+
+      const activeRows = rows.filter((tag: any) => String(tag?.status || "active").toLowerCase() !== "inactive");
+      const quoteScoped = activeRows.filter((tag: any) => {
+        const appliesTo = normalizeReportingTagAppliesTo(tag);
+        return appliesTo.some((entry) => entry.includes("quote") || entry.includes("sales"));
+      });
+
+      const tagsToUse = (quoteScoped.length > 0 ? quoteScoped : activeRows).map((tag: any) => ({
+        ...tag,
+        options: normalizeReportingTagOptions(tag),
+      }));
+
+      setAvailableReportingTags(tagsToUse);
+    } catch (error) {
+      console.error("Error loading reporting tags:", error);
+      setAvailableReportingTags([]);
+    }
+  };
+
+  useEffect(() => {
+    loadReportingTags();
+  }, []);
 
   const handleCustomerSearch = () => {
     const searchTerm = customerSearchTerm.toLowerCase();
@@ -481,45 +1160,70 @@ const NewQuote = () => {
 
   useEffect(() => {
     const loadData = async () => {
+      setIsLoading(true);
       try {
+        void Promise.allSettled([getSalespersonsFromAPI(), getTaxes()]).then(([salespersonsResult, taxesResult]) => {
+          if (salespersonsResult.status === "fulfilled") {
+            const normalizedSalespersons = (salespersonsResult.value || []).map((s: any) => ({
+              ...s,
+              id: s._id || s.id,
+              name: s.name || s.displayName || "Unknown"
+            }));
+            setSalespersons(normalizedSalespersons);
+          }
+
+          if (taxesResult.status === "fulfilled") {
+            const fetchedTaxes = (taxesResult.value || []).map((t: any) => ({
+              ...t,
+              id: t._id || t.id
+            }));
+            const cachedTaxes = readTaxesLocal();
+            const combinedTaxes = [...fetchedTaxes, ...cachedTaxes];
+            const dedupedTaxes = Array.from(
+              new Map(
+                combinedTaxes
+                  .map((tax: any): [string, any] => {
+                    const id = String(tax?._id || tax?.id || tax?.tax_id || tax?.taxId || tax?.name || tax?.taxName || tax?.tax_name || "").trim();
+                    return [id.toLowerCase(), tax];
+                  })
+                  .filter(([id]) => Boolean(id))
+              ).values()
+            );
+            const normalizedTaxes = dedupedTaxes.filter((tax: any) => {
+              const name = String(tax?.name || tax?.taxName || tax?.tax_name || tax?.displayName || tax?.title || "").trim();
+              return name.length > 0;
+            });
+            const activeTaxes = normalizedTaxes.filter((tax: any) => isTaxActive(tax));
+            setTaxes(activeTaxes);
+          }
+        });
+
         // Load heavy dropdown data in parallel.
         const [
-          customersResult,
           projectsResult,
           salespersonsResult,
           itemsResult,
-          quoteNumberResult,
-          currenciesResult,
-          baseCurrencyResult,
-          settingsResult,
-          taxesResult,
-          generalSettingsResult
+            plansResult,
+            txSeriesResult,
+            quoteListResult,
+            currenciesResult,
+            baseCurrencyResult,
+            settingsResult,
+            taxesResult,
+            generalSettingsResult
         ] = await Promise.allSettled([
-          getCustomers(),
-          getProjects(),
-          getSalespersonsFromAPI(),
-          getItemsFromAPI(),
-          quotesAPI.getNextNumber('QT-'),
-          currenciesAPI.getAll(),
-          isEditMode ? Promise.resolve(null) : currenciesAPI.getBaseCurrency(),
-          isEditMode ? Promise.resolve(null) : settingsAPI.getQuotesSettings(),
-          getTaxes(),
-          fetch(`${API_BASE_URL}/settings/general`, {
-            headers: { Authorization: `Bearer ${getToken()}` },
-          })
-        ]);
-
-        if (customersResult.status === "fulfilled") {
-          const normalizedCustomers = (customersResult.value || []).map((c: any) => ({
-            ...c,
-            id: c._id || c.id,
-            name: c.displayName || c.companyName || `${c.firstName || ''} ${c.lastName || ''}`.trim() || "Unknown"
-          }));
-          setCustomers(normalizedCustomers.filter(isCustomerActive));
-        } else {
-          console.error("Error loading customers:", customersResult.reason);
-          setCustomers([]);
-        }
+            getProjects(),
+            getSalespersonsFromAPI(),
+            getItemsFromAPI(),
+            plansAPI.getAll({ limit: 5000 }),
+            transactionNumberSeriesAPI.getAll({ limit: 10000 }),
+            quotesAPI.getAll({ limit: 1 }),
+            currenciesAPI.getAll(),
+            isEditMode ? Promise.resolve(null) : currenciesAPI.getBaseCurrency(),
+            isEditMode ? Promise.resolve(null) : settingsAPI.getQuotesSettings(),
+            getTaxes(),
+            settingsAPI.getGeneralSettings()
+          ]);
 
         if (projectsResult.status === "fulfilled") {
           setProjects(Array.isArray(projectsResult.value) ? projectsResult.value : []);
@@ -540,41 +1244,181 @@ const NewQuote = () => {
           setSalespersons([]);
         }
 
-        if (itemsResult.status === "fulfilled") {
-          const transformedItems = (itemsResult.value || []).map((item: any) => ({
+        const transformedItems = itemsResult.status === "fulfilled"
+          ? (itemsResult.value || []).map((item: any) => ({
             ...item,
-            id: item._id || item.id,
-            name: item.name || "",
-            sku: item.sku || "",
-            rate: item.sellingPrice || item.costPrice || item.rate || 0,
-            stockOnHand: item.stockOnHand || item.quantityOnHand || item.stockQuantity || 0,
-            unit: item.unit || item.unitOfMeasure || "pcs"
-          }));
-          setAvailableItems(transformedItems);
-        } else {
+            entityType: "item",
+            id: String(item._id || item.id || ""),
+            sourceId: String(item._id || item.id || ""),
+            name: String(item.name || "").trim(),
+            sku: String(item.sku || item.itemCode || "").trim(),
+            code: String(item.sku || item.itemCode || "").trim(),
+            rate: Number(item.sellingPrice || item.costPrice || item.rate || 0) || 0,
+            stockOnHand: Number(item.stockOnHand || item.quantityOnHand || item.stockQuantity || 0) || 0,
+            unit: item.unit || item.unitOfMeasure || "pcs",
+            description: item.salesDescription || item.description || ""
+          }))
+          : [];
+        if (itemsResult.status !== "fulfilled") {
           console.error("Error loading items:", itemsResult.reason);
-          setAvailableItems([]);
         }
+
+        const normalizePlanRow = (plan: any, index: number) => {
+          const sourceId = String(plan?.id || plan?._id || plan?.planId || `plan-${index}`);
+          return {
+            ...plan,
+            entityType: "plan",
+            id: `plan:${sourceId}`,
+            sourceId,
+            name: String(plan?.planName || plan?.name || plan?.plan || "").trim(),
+            sku: String(plan?.planCode || plan?.code || plan?.sku || "").trim(),
+            code: String(plan?.planCode || plan?.code || plan?.sku || "").trim(),
+            rate: Number(plan?.price ?? plan?.rate ?? plan?.amount ?? 0) || 0,
+            stockOnHand: 0,
+            unit: String(plan?.billingFrequencyUnit || plan?.billingFrequency || plan?.unit || "plan"),
+            description: String(plan?.planDescription || plan?.description || ""),
+          };
+        };
+
+        let transformedPlans: any[] = [];
+        try {
+          if (plansResult.status === "fulfilled") {
+            const response: any = plansResult.value;
+            const rows =
+              response?.success && Array.isArray(response?.data)
+                ? response.data
+                : Array.isArray((response as any)?.data)
+                  ? (response as any).data
+                  : Array.isArray(response)
+                    ? response
+                    : [];
+            transformedPlans.push(
+              ...(Array.isArray(rows) ? rows.map(normalizePlanRow).filter((plan: any) => plan.name) : [])
+            );
+          } else {
+            console.error("Error loading plans from API:", plansResult.reason);
+          }
+        } catch (error) {
+          console.error("Error parsing plans from API response:", error);
+        }
+
+        // Also load plans from localStorage caches (supports legacy keys)
+        try {
+          const mergedLocal: any[] = [];
+          PLANS_STORAGE_KEYS.forEach((key) => {
+            try {
+              const raw = localStorage.getItem(key);
+              const parsed = raw ? JSON.parse(raw) : [];
+              if (Array.isArray(parsed)) mergedLocal.push(...parsed);
+            } catch {
+              // ignore invalid key and continue
+            }
+          });
+          if (mergedLocal.length) {
+            transformedPlans.push(
+              ...mergedLocal.map(normalizePlanRow).filter((plan: any) => plan.name)
+            );
+          }
+        } catch (error) {
+          console.error("Error loading plans from localStorage:", error);
+        }
+
+        transformedPlans = transformedPlans
+          .filter((plan: any) => String(plan?.status || "active").toLowerCase() !== "inactive")
+          .filter((plan: any) => String(plan?.name || "").trim().length > 0);
+
+        const combinedItemsAndPlans = [...transformedItems, ...transformedPlans];
+        const uniqueByEntityAndId = new Map<string, any>();
+        combinedItemsAndPlans.forEach((entry: any) => {
+          const key = `${String(entry.entityType || "item")}:${String(entry.id || entry.name || "")}`;
+          if (!key.endsWith(":")) {
+            uniqueByEntityAndId.set(key, entry);
+          }
+        });
+        setAvailableItems(Array.from(uniqueByEntityAndId.values()));
 
         if (taxesResult.status === "fulfilled") {
           const fetchedTaxes = (taxesResult.value || []).map((t: any) => ({
             ...t,
             id: t._id || t.id
           }));
-          setTaxes(fetchedTaxes);
+          const cachedTaxes = readTaxesLocal();
+          const combinedTaxes = [...fetchedTaxes, ...cachedTaxes];
+          const dedupedTaxes = Array.from(
+            new Map(
+              combinedTaxes
+                .map((tax: any): [string, any] => {
+                  const id = String(tax?._id || tax?.id || tax?.tax_id || tax?.taxId || tax?.name || tax?.taxName || tax?.tax_name || "").trim();
+                  return [id.toLowerCase(), tax];
+                })
+                .filter(([id]) => Boolean(id))
+            ).values()
+          );
+          const normalizedTaxes = dedupedTaxes.filter((tax: any) => {
+            const name = String(tax?.name || tax?.taxName || tax?.tax_name || tax?.displayName || tax?.title || "").trim();
+            return name.length > 0;
+          });
+          const activeTaxes = normalizedTaxes.filter((tax: any) => isTaxActive(tax));
+          setTaxes(activeTaxes);
         } else {
           console.error("Error loading taxes:", taxesResult.reason);
           setTaxes([]);
         }
 
-        if (quoteNumberResult.status === "fulfilled") {
-          const quoteNumberResponse: any = quoteNumberResult.value;
-          if (quoteNumberResponse && quoteNumberResponse.success && quoteNumberResponse.data) {
-            setFormData(prev => ({ ...prev, quoteNumber: quoteNumberResponse.data.quoteNumber }));
-            setQuoteNextNumber(String(quoteNumberResponse.data.nextNumber).padStart(6, '0'));
+        let resolvedSeriesRow: any = null;
+        if (txSeriesResult.status === "fulfilled") {
+          const txSeriesResponse: any = txSeriesResult.value;
+          const rows = Array.isArray(txSeriesResponse?.data)
+            ? txSeriesResponse.data
+            : Array.isArray(txSeriesResponse?.data?.data)
+              ? txSeriesResponse.data.data
+              : Array.isArray(txSeriesResponse)
+                ? txSeriesResponse
+                : [];
+          setQuoteSeriesRows(rows);
+          resolvedSeriesRow = resolveQuoteSeriesRow(rows, formData.selectedLocation);
+          if (resolvedSeriesRow) {
+            setQuoteSeriesRow(resolvedSeriesRow);
+            const resolvedPrefix = sanitizeQuotePrefix(resolvedSeriesRow?.prefix || "QT-");
+            const resolvedNextDigits = resolveSeriesNextDigits(resolvedSeriesRow);
+            setQuotePrefix(resolvedPrefix);
+            setQuoteNextNumber(resolvedNextDigits);
+            if (!isEditMode) {
+              setFormData(prev => ({ ...prev, quoteNumber: buildQuoteNumber(resolvedPrefix, resolvedNextDigits) }));
+            }
           }
         } else {
-          console.error("Error loading next quote number:", quoteNumberResult.reason);
+          console.error("Error loading transaction number series:", txSeriesResult.reason);
+        }
+
+        if (!resolvedSeriesRow) {
+          setQuotePrefix("");
+          setQuoteNextNumber("");
+          if (!isEditMode) {
+            setFormData(prev => ({ ...prev, quoteNumber: "" }));
+          }
+        }
+
+        if (!isEditMode && resolvedSeriesRow && !quoteSeriesSyncRef.current) {
+          const listResponse: any = quoteListResult.status === "fulfilled" ? quoteListResult.value : null;
+          const totalQuotes =
+            Number(listResponse?.pagination?.total ?? listResponse?.data?.pagination?.total ?? 0) ||
+            Number(listResponse?.data?.length ?? 0) ||
+            0;
+          const needsReset = totalQuotes === 0 && Number(resolvedSeriesRow?.nextNumber || 0) > 1;
+          if (needsReset) {
+            quoteSeriesSyncRef.current = true;
+            const desiredPrefix = sanitizeQuotePrefix(resolvedSeriesRow?.prefix || "QT-");
+            const desiredDigits = needsReset ? "000001" : resolveSeriesNextDigits(resolvedSeriesRow);
+            setQuotePrefix(desiredPrefix);
+            setQuoteNextNumber(desiredDigits);
+            setFormData(prev => ({ ...prev, quoteNumber: buildQuoteNumber(desiredPrefix, desiredDigits) }));
+            try {
+              await persistQuoteSeriesPreferences({ prefix: desiredPrefix, nextDigits: desiredDigits });
+            } catch (error) {
+              console.error("Failed to sync quote number series:", error);
+            }
+          }
         }
 
         if (currenciesResult.status === "fulfilled") {
@@ -612,35 +1456,82 @@ const NewQuote = () => {
 
         if (generalSettingsResult.status === "fulfilled") {
           const response: any = generalSettingsResult.value;
-          if (response?.ok) {
-            const generalSettingsJson = await response.json();
-            const s = generalSettingsJson?.data?.settings;
-            if (s) {
-              setEnabledSettings(s);
-            }
+          if (response?.success && response?.data) {
+            setEnabledSettings(response.data?.settings || response.data || {});
           }
         }
 
         // Load all vendors for contact persons (not blocking initial render)
         loadVendorContactPersons();
 
-        // Initialize calendar date for default quote date
-        const defaultDate = "22/12/2025";
-        const dateParts = defaultDate.split('/');
-        if (dateParts.length === 3) {
-          const day = parseInt(dateParts[0], 10);
-          const month = parseInt(dateParts[1], 10) - 1; // Month is 0-indexed
-          const year = parseInt(dateParts[2], 10);
-          setQuoteDateCalendar(new Date(year, month, day));
+        if (!isEditMode) {
+          const today = new Date();
+          const todayStr = today.toLocaleDateString("en-GB");
+          setQuoteDateCalendar(today);
+          setFormData(prev => ({
+            ...prev,
+            quoteDate: prev.quoteDate || todayStr
+          }));
         }
 
+        if (!isEditMode) {
+          setIsLoading(false);
+        }
       } catch (error) {
         console.error('Error loading data:', error);
+        setIsLoading(false);
       }
     };
 
     loadData();
+  }, [isEditMode]);
+
+  useEffect(() => {
+    const handleGeneralSettingsUpdate = (event: any) => {
+      const detail = event?.detail;
+      if (!detail) return;
+      setEnabledSettings(detail?.settings || detail || {});
+    };
+
+    window.addEventListener("generalSettingsUpdated", handleGeneralSettingsUpdate as EventListener);
+    return () => window.removeEventListener("generalSettingsUpdated", handleGeneralSettingsUpdate as EventListener);
   }, []);
+
+  useEffect(() => {
+    if (isEditMode || quoteNumberMode !== "auto" || !quoteSeriesRows.length) return;
+
+    const resolvedSeriesRow = resolveQuoteSeriesRow(quoteSeriesRows, formData.selectedLocation);
+    if (!resolvedSeriesRow) return;
+
+    const resolvedPrefix = sanitizeQuotePrefix(resolvedSeriesRow?.prefix || "QT-");
+    const resolvedNextDigits = resolveSeriesNextDigits(resolvedSeriesRow);
+    const resolvedSeriesId = String(resolvedSeriesRow?.id || resolvedSeriesRow?._id || "").trim();
+    const currentSeriesId = String(quoteSeriesRow?.id || quoteSeriesRow?._id || "").trim();
+    const nextQuoteNumber = buildQuoteNumber(resolvedPrefix, resolvedNextDigits);
+
+    if (
+      currentSeriesId === resolvedSeriesId &&
+      quotePrefix === resolvedPrefix &&
+      quoteNextNumber === resolvedNextDigits &&
+      formData.quoteNumber === nextQuoteNumber
+    ) {
+      return;
+    }
+
+    setQuoteSeriesRow(resolvedSeriesRow);
+    setQuotePrefix(resolvedPrefix);
+    setQuoteNextNumber(resolvedNextDigits);
+    setFormData((prev) => ({ ...prev, quoteNumber: nextQuoteNumber }));
+  }, [
+    isEditMode,
+    quoteNumberMode,
+    quoteSeriesRows,
+    formData.selectedLocation,
+    quoteSeriesRow,
+    quotePrefix,
+    quoteNextNumber,
+    formData.quoteNumber,
+  ]);
 
   // Centralized totals calculation
   useEffect(() => {
@@ -667,15 +1558,15 @@ const NewQuote = () => {
   useEffect(() => {
     setFormData(prev => {
       const next = { ...prev };
-      if (!showTransactionDiscount) {
+      if (!showTransactionDiscount && !isEditMode) {
         next.discount = 0;
         next.discountType = "percent";
       }
-      if (!showShippingCharges) {
+      if (!showShippingCharges && !isEditMode) {
         next.shippingCharges = 0;
         next.shippingChargeTax = "";
       }
-      if (!showAdjustment) {
+      if (!showAdjustment && !isEditMode) {
         next.adjustment = 0;
       }
       if (taxMode === "inclusive") {
@@ -685,18 +1576,97 @@ const NewQuote = () => {
       }
       return next;
     });
-  }, [showTransactionDiscount, showShippingCharges, showAdjustment, taxMode]);
+  }, [showTransactionDiscount, showShippingCharges, showAdjustment, taxMode, isEditMode]);
+
+  useEffect(() => {
+    if (!isTaxPreferenceLocked) return;
+    setIsTaxPreferenceDropdownOpen(false);
+    setTaxPreferenceSearch("");
+    setFormData(prev => {
+      if (prev.taxExclusive === resolvedTaxPreference) return prev;
+      return { ...prev, taxExclusive: resolvedTaxPreference };
+    });
+  }, [isTaxPreferenceLocked, resolvedTaxPreference]);
 
   // Load quote data when in edit mode (after salespersons are loaded)
   useEffect(() => {
     const loadQuote = async () => {
       if (isEditMode && quoteId && salespersons.length >= 0) {
+        setIsLoading(true);
         try {
+          const pickText = (...values: any[]) => {
+            for (const value of values) {
+              if (value === null || value === undefined) continue;
+              const text = String(value).trim();
+              if (text) return text;
+            }
+            return "";
+          };
+          const resolveDateText = (value: any): string => {
+            if (!value) return "";
+            if (typeof value === "string") {
+              const trimmed = value.trim();
+              if (!trimmed) return "";
+              if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) return trimmed;
+              const parts = trimmed.split("/");
+              if (parts.length === 3) {
+                const parsed = new Date(trimmed);
+                if (!Number.isNaN(parsed.getTime())) {
+                  const day = String(parsed.getDate()).padStart(2, "0");
+                  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+                  const year = parsed.getFullYear();
+                  return `${day}/${month}/${year}`;
+                }
+              }
+            }
+            const parsed = new Date(value);
+            if (!Number.isNaN(parsed.getTime())) {
+              const day = String(parsed.getDate()).padStart(2, "0");
+              const month = String(parsed.getMonth() + 1).padStart(2, "0");
+              const year = parsed.getFullYear();
+              return `${day}/${month}/${year}`;
+            }
+            return String(value || "");
+          };
+
+          const cachedQuote = initialQuoteSource;
+          const cachedQuoteNumber = pickText(
+            (cachedQuote as any)?.quoteNumber,
+            (cachedQuote as any)?.quoteNo,
+            (cachedQuote as any)?.quote_no,
+            (cachedQuote as any)?.number,
+            (cachedQuote as any)?.estimateNumber,
+            (cachedQuote as any)?.estimateNo,
+            (cachedQuote as any)?.estimate_no,
+            (cachedQuote as any)?.id,
+            (cachedQuote as any)?._id
+          );
+          const cachedQuoteDate = pickText(
+            resolveDateText((cachedQuote as any)?.quoteDate || (cachedQuote as any)?.date || (cachedQuote as any)?.createdAt),
+            (cachedQuote as any)?.quoteDate,
+            (cachedQuote as any)?.date,
+            (cachedQuote as any)?.createdAt
+          );
+          const cachedExpiryDate = pickText(
+            resolveDateText((cachedQuote as any)?.expiryDate || (cachedQuote as any)?.expiry || (cachedQuote as any)?.validUntil),
+            (cachedQuote as any)?.expiryDate,
+            (cachedQuote as any)?.expiry,
+            (cachedQuote as any)?.validUntil
+          );
+          if (cachedQuote) {
+            setFormData((prev: any) => ({
+              ...prev,
+              quoteNumber: cachedQuoteNumber || prev.quoteNumber,
+              quoteDate: cachedQuoteDate || prev.quoteDate,
+              expiryDate: cachedExpiryDate || prev.expiryDate,
+            }));
+          }
+
           let quote = await getQuoteById(quoteId);
 
           // Try numeric ID if not found
           if (!quote && !isNaN(parseInt(quoteId))) {
-            quote = await getQuoteById(parseInt(quoteId));
+            quote = await getQuoteById(String(parseInt(quoteId)));
           }
 
           // Fallback: if not found, try matching by quoteNumber
@@ -705,26 +1675,15 @@ const NewQuote = () => {
             quote = quotes.find(q => q.quoteNumber === quoteId);
           }
 
-          if (quote) {
+          const loadedQuote = quote || cachedQuote;
+
+          if (loadedQuote) {
             // Format dates for display
-            const formatDateForInput = (dateString) => {
-              if (!dateString) return "";
-              try {
-                const date = new Date(dateString);
-                if (isNaN(date.getTime())) return "";
-                const day = String(date.getDate()).padStart(2, "0");
-                const month = String(date.getMonth() + 1).padStart(2, "0");
-                const year = date.getFullYear();
-                return `${day}/${month}/${year}`;
-              } catch (error) {
-                console.error("Error formatting date:", error);
-                return "";
-              }
-            };
+            const formatDateForInput = resolveDateText;
 
             // Map quote items to form items format
             // Map quote items to form items format
-            const mappedItems = (quote.items || []).map((item, index) => {
+            const mappedItems = (loadedQuote.items || []).map((item: any, index: number) => {
               const quantity = parseFloat(item.quantity) || 1;
               const rate = parseFloat(item.unitPrice || item.rate || item.price) || 0;
               const amount = parseFloat(item.total || item.amount || (quantity * rate)) || 0;
@@ -774,56 +1733,106 @@ const NewQuote = () => {
               const resolvedTaxRate = matchedTax ? (Number((matchedTax as any).rate) || derivedTaxRate) : derivedTaxRate;
 
               return {
-                id: item.item?._id || item.item || item._id || item.id || index + 1, // Map product ID if available
-                itemDetails: item.name || item.itemName || item.itemDetails || "",
-                name: item.name || item.itemName || "",
+                id: item.item?._id || item.item?.id || item.item || item._id || item.id || index + 1, // Map product ID if available
+                itemType: item.itemType || "item",
+                itemDetails: item.item?.name || item.item?.itemName || item.name || item.itemName || item.itemDetails || "",
+                name: item.item?.name || item.item?.itemName || item.name || item.itemName || "",
                 quantity,
                 rate,
                 tax: String(resolvedTaxId || normalizedRawTax || (resolvedTaxRate > 0 ? resolvedTaxRate : "")),
                 taxRate: resolvedTaxRate,
                 amount,
-                description: item.description || ""
+                description: item.description || "",
+                reportingTags: Array.isArray((item as any).reportingTags) ? (item as any).reportingTags : []
               };
             });
 
-            const subTotalValue = resolveSubtotalFromQuoteLike(quote, mappedItems);
-            const totalTaxValue = toNumberSafe(quote.taxAmount ?? quote.tax);
-            const normalizedDiscount = normalizeDiscountForForm(quote, subTotalValue, totalTaxValue);
+            const subTotalValue = resolveSubtotalFromQuoteLike(loadedQuote, mappedItems);
+            const totalTaxValue = toNumberSafe(loadedQuote?.totalTax ?? loadedQuote?.taxAmount ?? loadedQuote?.tax);
+            const normalizedDiscount = normalizeDiscountForForm(loadedQuote, subTotalValue, totalTaxValue);
 
             // Get customer name - check both customer and customerName fields
-            const customerName = quote.customerName || quote.customer || "";
+            const customerName = pickText(loadedQuote?.customerName, loadedQuote?.customer?.displayName, loadedQuote?.customer?.name, loadedQuote?.customer);
+            const quoteNumberValue = String(
+              pickText(
+                loadedQuote?.quoteNumber,
+                (loadedQuote as any)?.quoteNo,
+                (loadedQuote as any)?.quote_no,
+                (loadedQuote as any)?.number,
+                (loadedQuote as any)?.estimateNumber,
+                (loadedQuote as any)?.estimateNo,
+                (loadedQuote as any)?.estimate_no,
+                loadedQuote?.id,
+                (loadedQuote as any)?._id,
+                cachedQuoteNumber
+              )
+            ).trim();
+            const quoteDateValue = pickText(
+              formatDateForInput(loadedQuote?.quoteDate || loadedQuote?.date || loadedQuote?.createdAt),
+              cachedQuoteDate,
+              formatDateForInput((loadedQuote as any)?.quoteDate),
+              formatDateForInput((loadedQuote as any)?.date),
+              formatDateForInput((loadedQuote as any)?.createdAt)
+            );
+            const expiryDateValue = pickText(
+              formatDateForInput((loadedQuote as any)?.expiryDate || (loadedQuote as any)?.expiry || (loadedQuote as any)?.validUntil),
+              cachedExpiryDate,
+              formatDateForInput((loadedQuote as any)?.expiryDate),
+              formatDateForInput((loadedQuote as any)?.expiry),
+              formatDateForInput((loadedQuote as any)?.validUntil)
+            );
 
-            setFormData({
+            setFormData(prev => ({
+              ...prev,
               customerName: customerName,
-              quoteNumber: quote.quoteNumber || quote.id || "",
-              referenceNumber: quote.referenceNumber || "",
-              quoteDate: formatDateForInput(quote.quoteDate || quote.date),
-              expiryDate: formatDateForInput(quote.expiryDate),
-              salesperson: quote.salesperson || "",
-              projectName: quote.projectName || "",
-              subject: quote.subject || "",
-              taxExclusive: quote.taxExclusive || "Tax Exclusive",
-              items: mappedItems.length > 0 ? mappedItems : [{ id: 1, itemDetails: "", quantity: 1, rate: 0, tax: "", amount: 0 }],
+              selectedLocation: pickText((loadedQuote as any).selectedLocation, (loadedQuote as any).location, prev.selectedLocation),
+              selectedPriceList: pickText((loadedQuote as any).selectedPriceList, (loadedQuote as any).priceList, (loadedQuote as any).priceListName, prev.selectedPriceList),
+              quoteNumber: quoteNumberValue || prev.quoteNumber,
+              referenceNumber: pickText((loadedQuote as any).referenceNumber, prev.referenceNumber),
+              quoteDate: quoteDateValue || prev.quoteDate,
+              expiryDate: expiryDateValue || prev.expiryDate,
+              salesperson: pickText((loadedQuote as any).salesperson, prev.salesperson),
+              salespersonId: pickText((loadedQuote as any).salespersonId, prev.salespersonId),
+              projectName: pickText((loadedQuote as any).projectName, prev.projectName),
+              subject: pickText((loadedQuote as any).subject, prev.subject),
+              taxExclusive: pickText((loadedQuote as any).taxExclusive, prev.taxExclusive),
+              items: mappedItems.length > 0 ? mappedItems : [{ id: 1, itemType: "item", itemDetails: "", quantity: 1, rate: 0, tax: "", amount: 0, reportingTags: [] }],
               subTotal: subTotalValue,
               totalTax: totalTaxValue,
               discount: normalizedDiscount.discountValue,
               discountType: normalizedDiscount.discountTypeValue,
-              shippingCharges: parseFloat(quote.shippingCharges || 0),
-              shippingChargeTax: String((quote as any).shippingChargeTax || (quote as any).shippingTax || ""),
-              adjustment: parseFloat(quote.adjustment || 0),
-              roundOff: parseFloat(quote.roundOff || 0),
-              total: parseFloat(quote.total || quote.amount || 0),
-              currency: quote.currency || "AMD",
-              customerNotes: quote.customerNotes || "Looking forward for your business.",
-              termsAndConditions: quote.termsAndConditions || "",
-              attachedFiles: quote.attachedFiles || []
-            });
+              shippingCharges: Number((loadedQuote as any).shippingCharges || 0),
+              shippingChargeTax: String((loadedQuote as any).shippingChargeTax || (loadedQuote as any).shippingTax || ""),
+              adjustment: Number((loadedQuote as any).adjustment || 0),
+              roundOff: Number((loadedQuote as any).roundOff || 0),
+              total: Number((loadedQuote as any).total || (loadedQuote as any).amount || 0),
+              currency: pickText((loadedQuote as any).currency, prev.currency),
+              customerNotes: pickText((loadedQuote as any).customerNotes, (loadedQuote as any).notes, prev.customerNotes),
+              termsAndConditions: pickText((loadedQuote as any).termsAndConditions, (loadedQuote as any).terms, prev.termsAndConditions),
+              attachedFiles: (loadedQuote as any).attachedFiles || prev.attachedFiles,
+              reportingTags: Array.isArray((loadedQuote as any).reportingTags) ? (loadedQuote as any).reportingTags : prev.reportingTags
+            }));
+            setFormErrors((prev: any) => ({
+              ...prev,
+              quoteNumber: "",
+              quoteDate: "",
+              expiryDate: ""
+            }));
+
+            // Sync calendar state with the loaded dates
+            const parsedQuoteDate = new Date(loadedQuote?.quoteDate || loadedQuote?.date || loadedQuote?.createdAt);
+            if (!isNaN(parsedQuoteDate.getTime())) setQuoteDateCalendar(parsedQuoteDate);
+
+            if (loadedQuote?.expiryDate || (loadedQuote as any)?.expiry || (loadedQuote as any)?.validUntil) {
+              const parsedExpiryDate = new Date(loadedQuote?.expiryDate || (loadedQuote as any)?.expiry || (loadedQuote as any)?.validUntil);
+              if (!isNaN(parsedExpiryDate.getTime())) setExpiryDateCalendar(parsedExpiryDate);
+            }
 
             // Set selected customer if exists - check both customer and customerName
             if (customerName) {
               const loadedCustomers = await getCustomers();
-              const customer = loadedCustomers.find(c =>
-                c.name === customerName || c.name === quote.customer || c.name === quote.customerName
+            const customer = loadedCustomers.find(c =>
+                c.name === customerName || c.name === loadedQuote?.customer || c.name === loadedQuote?.customerName
               );
               if (customer) {
                 setSelectedCustomer(customer);
@@ -911,6 +1920,8 @@ const NewQuote = () => {
           }
         } catch (error) {
           console.error("Error loading quote for edit:", error);
+        } finally {
+          setIsLoading(false);
         }
       }
     };
@@ -948,6 +1959,150 @@ const NewQuote = () => {
     fetchAndSetProject();
   }, [location.state?.selectedProject, navigate, location.pathname]);
 
+  useEffect(() => {
+    if (prefillFromProjectRef.current) return;
+    if (isEditMode) return;
+    const state = location.state as any;
+    if (!state || state.source !== "timeTrackingProjects") return;
+
+    const customerId = String(state.customerId || state.project?.customerId || "").trim();
+    const customerName = String(state.customerName || state.project?.customerName || "").trim();
+    const projectId = String(state.projectId || state.project?.id || state.project?.projectId || "").trim();
+    const projectName = String(state.projectName || state.project?.projectName || state.project?.name || "").trim();
+    const currency = String(state.currency || "").trim();
+    const rawProjects = Array.isArray(state.projects) ? state.projects : [];
+
+    if (customerId || customerName) {
+      const matchedCustomer =
+        customers.find((c: any) => String(c?.id || c?._id || "") === customerId) ||
+        customers.find(
+          (c: any) =>
+            String(c?.name || c?.displayName || "").trim().toLowerCase() ===
+            customerName.toLowerCase()
+        );
+      if (matchedCustomer) {
+        setSelectedCustomer(matchedCustomer);
+      } else if (customerName) {
+        setSelectedCustomer({ id: customerId || undefined, name: customerName, displayName: customerName } as any);
+      }
+
+      if (customerId) {
+        setSelectedCustomerIdForProjects(customerId);
+      }
+
+      setFormData((prev: any) => ({
+        ...prev,
+        customerName: customerName || prev.customerName,
+        currency: currency || prev.currency,
+      }));
+    }
+
+    if (projectName) {
+      setFormData((prev: any) => ({
+        ...prev,
+        projectName: projectName || prev.projectName,
+      }));
+    }
+
+    if (rawProjects.length > 0) {
+      const mappedItems = rawProjects.map((project: any, index: number) => {
+        const method = String(project?.billingMethod || "").toLowerCase();
+        const rateSource =
+          method === "fixed"
+            ? project?.totalProjectCost ?? project?.billingRate ?? project?.rate ?? 0
+            : project?.billingRate ?? project?.rate ?? 0;
+        const rate = Number(rateSource) || 0;
+        const quantity = 1;
+        const projectRef = project?.id || project?.projectId || project?.project || "";
+        return {
+          id: Date.now() + index,
+          itemType: "item",
+          itemDetails: project?.projectName || project?.name || "Project",
+          quantity,
+          rate,
+          tax: "",
+          taxRate: 0,
+          amount: rate * quantity,
+          description: project?.description || "",
+          stockOnHand: 0,
+          reportingTags: [],
+          projectId: projectRef,
+          project: projectRef,
+          projectName: project?.projectName || project?.name || "",
+        };
+      });
+
+      setFormData((prev: any) => ({
+        ...prev,
+        items: mappedItems.length > 0 ? mappedItems : prev.items,
+        currency: currency || prev.currency,
+      }));
+    }
+
+    if (projectId || projectName) {
+      const matchedProject =
+        projects.find((p: any) => (projectId && String(p?._id || p?.id || "") === projectId)) ||
+        projects.find(
+          (p: any) =>
+            String(p?.projectName || p?.name || "").trim().toLowerCase() === projectName.toLowerCase()
+        );
+      if (matchedProject) {
+        setSelectedProject(matchedProject);
+      }
+    }
+
+    prefillFromProjectRef.current = true;
+  }, [location.state, customers, projects, isEditMode]);
+
+  useEffect(() => {
+    if (prefillFromProjectRef.current) return;
+    if (isEditMode) return;
+
+    const state = location.state as any;
+    if (!state || state.source) return;
+
+    const customerId = String(state.customerId || state.customer?._id || state.customer?.id || "").trim();
+    const customerName = String(
+      state.customerName ||
+        state.customer?.displayName ||
+        state.customer?.companyName ||
+        state.customer?.name ||
+        ""
+    ).trim();
+
+    if (!customerId && !customerName) return;
+
+    const matchedCustomer =
+      (customerId
+        ? customers.find((c: any) => String(c?.id || c?._id || "") === customerId)
+        : null) ||
+      customers.find(
+        (c: any) =>
+          String(c?.name || c?.displayName || c?.companyName || "")
+            .trim()
+            .toLowerCase() === customerName.toLowerCase()
+      );
+
+    if (matchedCustomer) {
+      setSelectedCustomer(matchedCustomer);
+    } else {
+      setSelectedCustomer({
+        id: customerId || undefined,
+        _id: customerId || undefined,
+        name: customerName,
+        displayName: customerName,
+        companyName: customerName,
+      } as any);
+    }
+
+    if (customerName) {
+      setFormData((prev: any) => ({
+        ...prev,
+        customerName: prev.customerName || customerName,
+      }));
+    }
+  }, [location.state, customers, isEditMode]);
+
   const formatDate = (date) => {
     if (!date) return "";
     const d = new Date(date);
@@ -955,6 +2110,17 @@ const NewQuote = () => {
     const month = String(d.getMonth() + 1).padStart(2, "0");
     const year = d.getFullYear();
     return `${day}/${month}/${year}`;
+  };
+
+  const getDateOnly = (value: Date) => {
+    const date = new Date(value);
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  };
+
+  const isPastDate = (value: Date) => {
+    const today = getDateOnly(new Date());
+    const selected = getDateOnly(value);
+    return selected.getTime() < today.getTime();
   };
 
   // Format date for display in input field (e.g., "28 Dec 2025")
@@ -1035,6 +2201,7 @@ const NewQuote = () => {
   };
 
   const handleDateSelect = (date, type) => {
+
     const formatted = formatDate(date);
     setFormData(prev => ({
       ...prev,
@@ -1089,6 +2256,12 @@ const NewQuote = () => {
       if (projectDropdownRef.current && !projectDropdownRef.current.contains(event.target as Node)) {
         setIsProjectDropdownOpen(false);
       }
+      if (taxPreferenceDropdownRef.current && !taxPreferenceDropdownRef.current.contains(event.target as Node)) {
+        setIsTaxPreferenceDropdownOpen(false);
+      }
+      if (priceListDropdownRef.current && !priceListDropdownRef.current.contains(event.target as Node)) {
+        setIsPriceListDropdownOpen(false);
+      }
 
       // Handle item dropdowns
       Object.keys(openItemDropdowns).forEach(itemId => {
@@ -1129,6 +2302,7 @@ const NewQuote = () => {
 
     const hasOpenDropdown = isCustomerDropdownOpen || isSalespersonDropdownOpen ||
       isQuoteDatePickerOpen || isExpiryDatePickerOpen || isProjectDropdownOpen ||
+      isTaxPreferenceDropdownOpen || isPriceListDropdownOpen ||
       Object.values(openItemDropdowns).some(Boolean) || Object.values(openTaxDropdowns).some(Boolean) || openItemMenuId !== null || isBulkActionsOpen || isUploadDropdownOpen;
 
     if (hasOpenDropdown) {
@@ -1138,14 +2312,14 @@ const NewQuote = () => {
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isCustomerDropdownOpen, isSalespersonDropdownOpen, isQuoteDatePickerOpen, isExpiryDatePickerOpen, isProjectDropdownOpen, openItemDropdowns, openTaxDropdowns, openItemMenuId, isBulkActionsOpen, isUploadDropdownOpen]);
+  }, [isCustomerDropdownOpen, isSalespersonDropdownOpen, isQuoteDatePickerOpen, isExpiryDatePickerOpen, isProjectDropdownOpen, isTaxPreferenceDropdownOpen, isPriceListDropdownOpen, openItemDropdowns, openTaxDropdowns, openItemMenuId, isBulkActionsOpen, isUploadDropdownOpen]);
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
+    const { name, value, type, checked } = e.target;
     setFormData(prev => {
       const updated = {
         ...prev,
-        [name]: value
+        [name]: type === "checkbox" ? checked : value
       };
 
       // Recalculate totals
@@ -1161,16 +2335,71 @@ const NewQuote = () => {
   const handleCustomerSelect = (customer) => {
     const customerId = customer.id || customer._id;
     const customerName = customer.name || customer.displayName || customer.companyName;
+    const currentPriceListName = normalizeSelectedPriceListName(formData.selectedPriceList);
+    const customerPriceListDefault = resolveCustomerPriceListDefault(customer);
+    const nextCustomerPriceListName = normalizeSelectedPriceListName(customerPriceListDefault.name);
+    const hadExistingCustomerOrPriceList = Boolean(selectedCustomer) || Boolean(currentPriceListName);
+    const shouldPromptForPriceListChange =
+      hadExistingCustomerOrPriceList &&
+      Boolean(currentPriceListName || nextCustomerPriceListName) &&
+      currentPriceListName !== nextCustomerPriceListName;
+
     setSelectedCustomer(customer);
+    const customerTaxMeta = getCustomerTaxMeta(customer);
 
     setFormData(prev => {
-      const currency = (customer.currency || prev.currency || "USD").split(' - ')[0];
-      return {
+      const customerCurrency = (customer.currency || prev.currency || "USD").split(' - ')[0];
+      const nextPriceListName = shouldPromptForPriceListChange
+        ? normalizeSelectedPriceListName(prev.selectedPriceList)
+        : (nextCustomerPriceListName || normalizeSelectedPriceListName(prev.selectedPriceList));
+      const nextCurrency = shouldPromptForPriceListChange
+        ? prev.currency
+        : (customerPriceListDefault.currency || customerCurrency);
+
+      // Tax auto-select rules:
+      // - If customer has a tax configured -> override item tax with customer's tax.
+      // - Else -> keep whatever the user already selected.
+      // - If nothing selected -> apply a default tax (first active from Taxes list).
+      const fallbackDefaultTax = defaultTaxId ? getTaxMetaById(defaultTaxId) : { taxId: "", taxRate: 0 };
+      const updatedItems = (prev.items || []).map((row: any) => {
+        if (row?.itemType === "header") return row;
+
+        if (customerTaxMeta.taxId) {
+          return { ...row, tax: customerTaxMeta.taxId, taxRate: customerTaxMeta.taxRate };
+        }
+
+        const hasUserTax = Boolean(String(row?.tax || "").trim()) || parseTaxRate(row?.taxRate) > 0;
+        if (hasUserTax) return row;
+
+        if (fallbackDefaultTax.taxId) {
+          return { ...row, tax: fallbackDefaultTax.taxId, taxRate: fallbackDefaultTax.taxRate };
+        }
+
+        return row;
+      });
+
+      const nextState = {
         ...prev,
         customerName: customerName,
-        currency: currency
+        selectedPriceList: nextPriceListName || "Select Price List",
+        currency: nextCurrency,
+        items: updatedItems,
       };
+      const totals = calculateAllTotals(updatedItems, nextState);
+      return { ...nextState, ...totals };
     });
+
+    if (shouldPromptForPriceListChange) {
+      setPriceListSwitchDialog({
+        customerName,
+        currentPriceListName,
+        nextPriceListName: nextCustomerPriceListName,
+        customerCurrency: String(customer?.currency || formData.currency || "USD").split(" - ")[0],
+        nextPriceListCurrency: customerPriceListDefault.currency || "",
+      });
+    } else {
+      setPriceListSwitchDialog(null);
+    }
 
     setIsCustomerDropdownOpen(false);
     setCustomerSearch("");
@@ -1258,6 +2487,228 @@ const NewQuote = () => {
     }
   };
 
+  const customerDefaultsAppliedRef = useRef<{
+    customerId: string;
+    taxApplied: boolean;
+    priceListFetchTriggered: boolean;
+  }>({ customerId: "", taxApplied: false, priceListFetchTriggered: false });
+
+  useEffect(() => {
+    if (!selectedCustomer) {
+      customerDefaultsAppliedRef.current = { customerId: "", taxApplied: false, priceListFetchTriggered: false };
+      return;
+    }
+
+    const selectedCustomerId = String((selectedCustomer as any)?.id || (selectedCustomer as any)?._id || "").trim();
+    if (!selectedCustomerId) return;
+
+    if (customerDefaultsAppliedRef.current.customerId !== selectedCustomerId) {
+      customerDefaultsAppliedRef.current = { customerId: selectedCustomerId, taxApplied: false, priceListFetchTriggered: false };
+    }
+
+    const customerPriceListId = String((selectedCustomer as any)?.priceListId || (selectedCustomer as any)?.priceListID || (selectedCustomer as any)?.price_list_id || "").trim();
+    const customerPriceListNameRaw = String((selectedCustomer as any)?.priceListName || (selectedCustomer as any)?.priceList || (selectedCustomer as any)?.price_list || "").trim();
+
+    if ((customerPriceListId || customerPriceListNameRaw) && catalogPriceListsRaw.length === 0 && !customerDefaultsAppliedRef.current.priceListFetchTriggered) {
+      customerDefaultsAppliedRef.current.priceListFetchTriggered = true;
+      try {
+        loadCatalogPriceLists();
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!customerDefaultsAppliedRef.current.taxApplied) {
+      const customerTaxMeta = getCustomerTaxMeta(selectedCustomer);
+      if (customerTaxMeta.taxId) {
+        setFormData((prev) => {
+          const updatedItems = (prev.items || []).map((row: any) => {
+            if (row?.itemType === "header") return row;
+            const currentTaxId = String(row?.tax || "").trim();
+            const currentTaxRate = parseTaxRate(row?.taxRate);
+            if (currentTaxId === customerTaxMeta.taxId && currentTaxRate === customerTaxMeta.taxRate) return row;
+            return { ...row, tax: customerTaxMeta.taxId, taxRate: customerTaxMeta.taxRate };
+          });
+
+          const totals = calculateAllTotals(updatedItems, prev);
+          return { ...prev, items: updatedItems, ...totals };
+        });
+        customerDefaultsAppliedRef.current.taxApplied = true;
+      }
+    }
+  }, [selectedCustomer, catalogPriceListsRaw, taxes]);
+
+  const openAddressModal = (type: "billing" | "shipping") => {
+    const source = type === "billing" ? billingAddress : shippingAddress;
+    setAddressModalType(type);
+    setAddressFormData({
+      attention: source?.attention || "",
+      country: source?.country || "",
+      street1: source?.street1 || "",
+      street2: source?.street2 || "",
+      city: source?.city || "",
+      state: source?.state || "",
+      zipCode: source?.zipCode || "",
+      phoneCountryCode: source?.phoneCountryCode || "",
+      phone: source?.phone || "",
+      fax: source?.fax || ""
+    });
+    setIsPhoneCodeDropdownOpen(false);
+    setPhoneCodeSearch("");
+    setIsCountryDropdownOpen(false);
+    setCountrySearch("");
+    setIsAddressModalOpen(true);
+  };
+
+  const handleAddressFieldChange = (e: any) => {
+    const { name, value } = e.target;
+    setAddressFormData((prev: any) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSaveAddress = async () => {
+    if (!selectedCustomer) return;
+    const customerId = String((selectedCustomer as any).id || (selectedCustomer as any)._id || "");
+    if (!customerId) return;
+
+    const addressPayload = {
+      attention: String(addressFormData.attention || "").trim(),
+      country: String(addressFormData.country || "").trim(),
+      street1: String(addressFormData.street1 || "").trim(),
+      street2: String(addressFormData.street2 || "").trim(),
+      city: String(addressFormData.city || "").trim(),
+      state: String(addressFormData.state || "").trim(),
+      zipCode: String(addressFormData.zipCode || "").trim(),
+      phone: `${String(addressFormData.phoneCountryCode || "").trim()} ${String(addressFormData.phone || "").trim()}`.trim(),
+      fax: String(addressFormData.fax || "").trim(),
+      phoneCountryCode: String(addressFormData.phoneCountryCode || "").trim()
+    };
+
+    setIsAddressSaving(true);
+    try {
+      const patch =
+        addressModalType === "billing"
+          ? { billingAddress: addressPayload }
+          : { shippingAddress: addressPayload };
+
+      await customersAPI.update(customerId, patch);
+
+      setCustomers((prev: any[]) =>
+        prev.map((customer: any) => {
+          const id = String(customer.id || customer._id || "");
+          if (id !== customerId) return customer;
+          return {
+            ...customer,
+            ...(addressModalType === "billing"
+              ? { billingAddress: addressPayload }
+              : { shippingAddress: addressPayload })
+          };
+        })
+      );
+
+      setSelectedCustomer((prev: any) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          ...(addressModalType === "billing"
+            ? { billingAddress: addressPayload }
+            : { shippingAddress: addressPayload })
+        };
+      });
+
+      if (addressModalType === "billing") setBillingAddress(addressPayload);
+      else setShippingAddress(addressPayload);
+
+      setIsAddressModalOpen(false);
+    } catch (error) {
+      console.error(`Failed to save ${addressModalType} address:`, error);
+      alert("Failed to save address. Please try again.");
+    } finally {
+      setIsAddressSaving(false);
+    }
+  };
+
+  const countryOptions = useMemo(
+    () =>
+      WORLD_COUNTRIES.map((name) => ({
+        name,
+        isoCode: name,
+        phonecode: String(COUNTRY_PHONE_CODES[name] || "").replace(/^\+/, ""),
+      })),
+    []
+  );
+  const filteredCountryOptions = useMemo(() => {
+    const query = String(countrySearch || "").trim().toLowerCase();
+    if (!query) return countryOptions;
+    return countryOptions.filter((country: any) =>
+      String(country.name || "").toLowerCase().includes(query) ||
+      String(country.isoCode || "").toLowerCase().includes(query)
+    );
+  }, [countryOptions, countrySearch]);
+  const phoneCountryOptions = useMemo(
+    () =>
+      countryOptions
+        .filter((country: any) => String(country.phonecode || "").trim().length > 0)
+        .map((country: any) => ({
+          name: String(country.name || ""),
+          isoCode: String(country.isoCode || ""),
+          phoneCode: `+${String(country.phonecode || "").trim()}`
+        })),
+    [countryOptions]
+  );
+  const filteredPhoneCountryOptions = useMemo(() => {
+    const query = String(phoneCodeSearch || "").trim().toLowerCase();
+    if (!query) return phoneCountryOptions;
+    return phoneCountryOptions.filter((country: any) =>
+      country.name.toLowerCase().includes(query) ||
+      country.phoneCode.toLowerCase().includes(query) ||
+      country.isoCode.toLowerCase().includes(query)
+    );
+  }, [phoneCodeSearch, phoneCountryOptions]);
+  const stateOptions = useMemo(() => {
+    return getStatesByCountry(addressFormData.country || "");
+  }, [addressFormData.country]);
+
+  useEffect(() => {
+    if (!addressFormData.state) return;
+    if (stateOptions.length === 0) return;
+    const exists = stateOptions.some((state: any) => String(state || "").toLowerCase() === String(addressFormData.state || "").toLowerCase());
+    if (!exists) {
+      setAddressFormData((prev: any) => ({ ...prev, state: "" }));
+    }
+  }, [addressFormData.state, stateOptions]);
+
+  useEffect(() => {
+    if (!isPhoneCodeDropdownOpen) return;
+    const handleOutsideClick = (event: any) => {
+      if (phoneCodeDropdownRef.current && !phoneCodeDropdownRef.current.contains(event.target)) {
+        setIsPhoneCodeDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [isPhoneCodeDropdownOpen]);
+
+  useEffect(() => {
+    if (!isCountryDropdownOpen) return;
+    const handleOutsideClick = (event: any) => {
+      if (countryDropdownRef.current && !countryDropdownRef.current.contains(event.target)) {
+        setIsCountryDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [isCountryDropdownOpen]);
+
+  useEffect(() => {
+    if (addressFormData.phoneCountryCode) return;
+    const country = countryOptions.find(
+      (entry: any) => String(entry.name || "").toLowerCase() === String(addressFormData.country || "").toLowerCase()
+    );
+    if (country?.phonecode) {
+      setAddressFormData((prev: any) => ({ ...prev, phoneCountryCode: `+${country.phonecode}` }));
+    }
+  }, [addressFormData.country, addressFormData.phoneCountryCode, countryOptions]);
+
   const reloadCustomersForQuote = async () => {
     try {
       const list = await getCustomers();
@@ -1320,6 +2771,11 @@ const NewQuote = () => {
     setCustomerQuickActionBaseIds(latestCustomers.map((c: any) => getEntityId(c)).filter(Boolean));
     setIsRefreshingCustomersQuickAction(false);
     setIsNewCustomerQuickActionOpen(true);
+  };
+
+  const closeCustomerQuickAction = () => {
+    setIsNewCustomerQuickActionOpen(false);
+    reloadCustomersForQuote();
   };
 
   const openProjectQuickAction = async () => {
@@ -1424,7 +2880,19 @@ const NewQuote = () => {
     const handleQuickActionCreatedMessage = async (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       const payload = event.data;
-      if (!payload || payload.type !== "quick-action-created") return;
+      if (!payload) return;
+
+      if (payload.type === "quick-action-cancel") {
+        if (payload.entity === "customer") {
+          setIsNewCustomerQuickActionOpen(false);
+        }
+        if (payload.entity === "project") {
+          setIsNewProjectQuickActionOpen(false);
+        }
+        return;
+      }
+
+      if (payload.type !== "quick-action-created") return;
 
       if (payload.entity === "customer" && isNewCustomerQuickActionOpen) {
         if (payload.data) {
@@ -1551,16 +3019,72 @@ const NewQuote = () => {
       email.toLowerCase().includes(customerSearch.toLowerCase());
   });
 
-  const filteredSalespersons = salespersons.filter(salesperson =>
-    salesperson.name.toLowerCase().includes(salespersonSearch.toLowerCase())
+  const isSalespersonActive = (salesperson: any) => {
+    const status = String(salesperson?.status || "").toLowerCase();
+    if (status) return status !== "inactive";
+    if (typeof salesperson?.active === "boolean") return salesperson.active;
+    if (typeof salesperson?.isActive === "boolean") return salesperson.isActive;
+    return true;
+  };
+
+  const filteredSalespersons = salespersons.filter((salesperson: any) =>
+    isSalespersonActive(salesperson) &&
+    String(salesperson.name || salesperson.displayName || "").toLowerCase().includes(salespersonSearch.toLowerCase())
   );
 
-  const filteredManageSalespersons = salespersons.filter(salesperson =>
-    salesperson.name.toLowerCase().includes(manageSalespersonSearch.toLowerCase()) ||
-    (salesperson.email && salesperson.email.toLowerCase().includes(manageSalespersonSearch.toLowerCase()))
-  );
+  useEffect(() => {
+    const currentName = String(formData.salesperson || "").trim().toLowerCase();
+    if (!currentName) return;
 
-  const handleNewSalespersonChange = (e) => {
+    const matched = salespersons.find((salesperson: any) => {
+      const salespersonName = String(salesperson.name || salesperson.displayName || "").trim().toLowerCase();
+      return salespersonName === currentName;
+    });
+
+    if (!matched || !isSalespersonActive(matched)) {
+      setSelectedSalesperson(null);
+      setFormData((prev: any) => ({
+        ...prev,
+        salesperson: "",
+        salespersonId: "",
+      }));
+    }
+  }, [salespersons, formData.salesperson]);
+
+  const filteredManageSalespersons = salespersons.filter((salesperson: any) => {
+    const term = manageSalespersonSearch.toLowerCase().trim();
+    if (!term) return true;
+    const name = String(salesperson?.name || salesperson?.displayName || "").toLowerCase();
+    const email = String(salesperson?.email || "").toLowerCase();
+    return name.includes(term) || email.includes(term);
+  });
+  const manageSalespersonsPageSize = 3;
+  const [manageSalespersonsPage, setManageSalespersonsPage] = useState(1);
+  const manageSalespersonsTotalPages = Math.max(1, Math.ceil(filteredManageSalespersons.length / manageSalespersonsPageSize));
+  const manageSalespersonsCurrentPage = Math.min(manageSalespersonsPage, manageSalespersonsTotalPages);
+  const paginatedManageSalespersons = useMemo(() => {
+    const startIndex = (manageSalespersonsCurrentPage - 1) * manageSalespersonsPageSize;
+    return filteredManageSalespersons.slice(startIndex, startIndex + manageSalespersonsPageSize);
+  }, [filteredManageSalespersons, manageSalespersonsCurrentPage]);
+
+  const handleStartNewSalesperson = () => {
+    setEditingSalespersonId(null);
+    setNewSalespersonData({ name: "", email: "" });
+    setManageSalespersonMenuOpen(null);
+    setIsNewSalespersonFormOpen(true);
+  };
+
+  const handleStartEditSalesperson = (salesperson: any) => {
+    const salespersonId = String(salesperson?.id || salesperson?._id || "").trim();
+    setEditingSalespersonId(salespersonId || null);
+    setNewSalespersonData({
+      name: String(salesperson?.name || salesperson?.displayName || ""),
+      email: String(salesperson?.email || "")
+    });
+    setIsNewSalespersonFormOpen(true);
+  };
+
+  const handleNewSalespersonChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setNewSalespersonData(prev => ({
       ...prev,
@@ -1568,109 +3092,499 @@ const NewQuote = () => {
     }));
   };
 
-  const handleSaveAndSelectSalesperson = async () => {
-    if (!newSalespersonData.name.trim()) {
-      alert("Please enter a name for the salesperson");
+  const handleSaveNewSalesperson = async () => {
+    const trimmedName = String(newSalespersonData.name || "").trim();
+    const trimmedEmail = String(newSalespersonData.email || "").trim();
+    const normalizedName = trimmedName.toLowerCase();
+    const normalizedEmail = trimmedEmail.toLowerCase();
+    const editingId = String(editingSalespersonId || "").trim();
+
+    if (!trimmedName) {
+      toast.error("Please enter a name for the salesperson");
       return;
     }
 
     try {
-      // Save the new salesperson to backend
-      const response = await salespersonsAPI.create({
-        name: newSalespersonData.name.trim(),
-        email: newSalespersonData.email.trim() || "",
-        phone: ""
+      const duplicateSalesperson: any = (salespersons as any[]).find((sp: any) => {
+        const spId = String(sp.id || sp._id || "").trim();
+        if (editingId && spId === editingId) return false;
+        const existingName = String(sp.name || sp.displayName || "").trim().toLowerCase();
+        const existingEmail = String(sp.email || "").trim().toLowerCase();
+        return (
+          (existingName && existingName === normalizedName) ||
+          (normalizedEmail && existingEmail && existingEmail === normalizedEmail)
+        );
       });
 
-      if (response && response.success && response.data) {
-        const savedSalesperson = response.data;
-
-        // Reload salespersons from backend to get updated list
-        try {
-          const salespersonsResponse = await salespersonsAPI.getAll();
-          if (salespersonsResponse && salespersonsResponse.success && salespersonsResponse.data) {
-            setSalespersons(salespersonsResponse.data);
-          } else {
-            // Fallback: add to existing list
-            setSalespersons(prev => [...prev, savedSalesperson]);
-          }
-        } catch (error) {
-          console.error('Error reloading salespersons:', error);
-          // Fallback: add to existing list
-          setSalespersons(prev => [...prev, savedSalesperson]);
+      if (duplicateSalesperson) {
+        const existingName = String(duplicateSalesperson.name || duplicateSalesperson.displayName || "").trim();
+        const existingEmail = String(duplicateSalesperson.email || "").trim();
+        if (existingName.toLowerCase() === normalizedName && normalizedName) {
+          toast.error(`A salesperson named "${trimmedName}" already exists.`);
+        } else if (normalizedEmail && existingEmail.toLowerCase() === normalizedEmail) {
+          toast.error(`A salesperson with email "${trimmedEmail}" already exists.`);
+        } else {
+          toast.error("This salesperson already exists.");
         }
-
-        // Select the new salesperson
-        setSelectedSalesperson(savedSalesperson);
-        setFormData(prev => ({
-          ...prev,
-          salesperson: savedSalesperson.name
-        }));
-
-        // Reset form and close
-        setNewSalespersonData({ name: "", email: "" });
-        setIsNewSalespersonFormOpen(false);
-        setIsManageSalespersonsOpen(false);
-        setIsSalespersonDropdownOpen(false);
-      } else {
-        alert("Failed to save salesperson: " + (response?.message || "Unknown error"));
+        return;
       }
+
+      const payload: any = {
+        name: trimmedName,
+        email: trimmedEmail,
+        status: "active",
+      };
+
+      const isEditing = Boolean(editingId);
+      const saved = isEditing
+        ? await updateSalesperson(editingId, payload)
+        : await saveSalesperson({
+            ...payload,
+            phone: "",
+          });
+
+      try {
+        const salespersonsResponse = await salespersonsAPI.getAll();
+        const refreshed = Array.isArray((salespersonsResponse as any)?.data)
+          ? (salespersonsResponse as any).data
+          : Array.isArray(salespersonsResponse)
+            ? salespersonsResponse
+            : [];
+        setSalespersons(refreshed);
+      } catch {
+        setSalespersons((prev) => {
+          if (!saved) return prev;
+          if (!isEditing) return [saved as any, ...prev];
+          return prev.map((sp: any) => {
+            const spId = String(sp.id || sp._id || "").trim();
+            return spId === editingId ? (saved as any) : sp;
+          });
+        });
+      }
+
+      if (saved) {
+        handleSalespersonSelect(saved);
+      }
+      setNewSalespersonData({ name: "", email: "" });
+      setEditingSalespersonId(null);
+      setIsNewSalespersonFormOpen(false);
+      setIsManageSalespersonsOpen(false);
+      toast.success(isEditing ? "Salesperson updated successfully" : "Salesperson added successfully");
     } catch (error) {
       console.error("Error saving salesperson:", error);
-      alert("Error saving salesperson: " + (error.message || "Unknown error"));
-    }
-  };
-
-  const handleDeleteSalesperson = async (salespersonId) => {
-    if (!window.confirm("Are you sure you want to delete this salesperson?")) {
-      return;
-    }
-
-    try {
-      const response = await salespersonsAPI.delete(salespersonId);
-      if (response && response.success) {
-        // Reload salespersons from backend to get updated list
-        try {
-          const salespersonsResponse = await salespersonsAPI.getAll();
-          if (salespersonsResponse && salespersonsResponse.success && salespersonsResponse.data) {
-            setSalespersons(salespersonsResponse.data);
-          } else {
-            // Fallback: remove from list
-            setSalespersons(prev => prev.filter(sp => (sp.id || sp._id) !== salespersonId));
-          }
-        } catch (error) {
-          console.error('Error reloading salespersons:', error);
-          // Fallback: remove from list
-          setSalespersons(prev => prev.filter(sp => (sp.id || sp._id) !== salespersonId));
-        }
-
-        // If deleted salesperson was selected, clear selection
-        if (selectedSalesperson && (selectedSalesperson.id || selectedSalesperson._id) === salespersonId) {
-          setSelectedSalesperson(null);
-          setFormData(prev => ({
-            ...prev,
-            salesperson: ""
-          }));
-        }
-      } else {
-        alert("Failed to delete salesperson: " + (response?.message || "Unknown error"));
-      }
-    } catch (error) {
-      console.error("Error deleting salesperson:", error);
-      alert("Error deleting salesperson: " + (error.message || "Unknown error"));
+      toast.error("Error saving salesperson: " + ((error as any)?.message || "Unknown error"));
     }
   };
 
   const handleCancelNewSalesperson = () => {
     setNewSalespersonData({ name: "", email: "" });
+    setEditingSalespersonId(null);
+    setManageSalespersonMenuOpen(null);
     setIsNewSalespersonFormOpen(false);
   };
 
+  const handleDeleteSalesperson = async (salespersonId: string) => {
+    const normalizedId = String(salespersonId || "").trim();
+    if (!normalizedId) return;
+
+    if (!window.confirm("Are you sure you want to delete this salesperson?")) {
+      return;
+    }
+
+    try {
+      await salespersonsAPI.delete(normalizedId);
+      try {
+        const salespersonsResponse = await salespersonsAPI.getAll();
+        const refreshed = Array.isArray((salespersonsResponse as any)?.data)
+          ? (salespersonsResponse as any).data
+          : Array.isArray(salespersonsResponse)
+            ? salespersonsResponse
+            : [];
+        setSalespersons(refreshed);
+      } catch {
+        setSalespersons(prev => prev.filter(sp => String(sp.id || sp._id || "") !== normalizedId));
+      }
+
+      if (selectedSalesperson && String(selectedSalesperson.id || selectedSalesperson._id || "") === normalizedId) {
+        setSelectedSalesperson(null);
+        setFormData(prev => ({
+          ...prev,
+          salesperson: "",
+          salespersonId: ""
+        }));
+      }
+
+      if (editingSalespersonId === normalizedId) {
+        handleCancelNewSalesperson();
+      }
+
+      toast.success("Salesperson deleted successfully");
+    } catch (error) {
+      console.error("Error deleting salesperson:", error);
+      toast.error("Error deleting salesperson: " + ((error as any)?.message || "Unknown error"));
+    }
+  };
+
+  const handleSetSalespersonStatus = async (salespersonId: string, nextStatus: "active" | "inactive") => {
+    const normalizedId = String(salespersonId || "").trim();
+    if (!normalizedId) return;
+
+    const salesperson: any = (salespersons as any[]).find((sp: any) => String(sp.id || sp._id || "") === normalizedId);
+    if (!salesperson) {
+      toast.error("Salesperson not found");
+      return;
+    }
+
+    const previousSalespersons = salespersons;
+    const previousSalespersonName = formData.salesperson;
+    const previousSalespersonId = formData.salespersonId;
+    const nextIsActive = nextStatus === "active";
+
+    setSalespersons((prev) =>
+      prev.map((sp: any) => {
+        const spId = String(sp.id || sp._id || "");
+        if (spId !== normalizedId) return sp;
+        return {
+          ...sp,
+          status: nextStatus,
+          active: nextIsActive,
+          isActive: nextIsActive,
+        };
+      })
+    );
+
+    setManageSalespersonMenuOpen(null);
+    toast.success(nextStatus === "inactive" ? "Salesperson marked inactive" : "Salesperson marked active");
+
+    try {
+      const response = await updateSalesperson(normalizedId, {
+        name: String(salesperson.name || salesperson.displayName || "").trim(),
+        email: String(salesperson.email || "").trim(),
+        status: nextStatus,
+        active: nextIsActive,
+        isActive: nextIsActive,
+      } as any);
+
+      if (response) {
+        const updatedSalesperson = {
+          ...salesperson,
+          ...response,
+          status: nextStatus,
+        };
+
+        if (String(formData.salespersonId || "") === normalizedId) {
+          if (nextStatus === "inactive") {
+            setSelectedSalesperson(null);
+            setFormData((prev) => ({ ...prev, salesperson: "", salespersonId: "" }));
+          } else {
+            setSelectedSalesperson(updatedSalesperson);
+            setFormData((prev) => ({
+              ...prev,
+              salesperson: String(updatedSalesperson.name || previousSalespersonName || ""),
+              salespersonId: String(updatedSalesperson.id || updatedSalesperson._id || previousSalespersonId || ""),
+            }));
+          }
+        }
+
+        try {
+          const refreshed = await salespersonsAPI.getAll();
+          const rows = Array.isArray((refreshed as any)?.data)
+            ? (refreshed as any).data
+            : Array.isArray(refreshed)
+              ? refreshed
+              : [];
+          setSalespersons(rows);
+        } catch {
+          const refreshed = await getSalespersonsFromAPI();
+          setSalespersons(Array.isArray(refreshed) ? refreshed : []);
+        }
+        return;
+      }
+
+      setSalespersons(previousSalespersons);
+      setFormData((prev) => ({
+        ...prev,
+        salesperson: previousSalespersonName,
+        salespersonId: previousSalespersonId,
+      }));
+      toast.error("Failed to update salesperson status");
+    } catch (error: any) {
+      console.error("Error updating salesperson status:", error);
+      setSalespersons(previousSalespersons);
+      setFormData((prev) => ({
+        ...prev,
+        salesperson: previousSalespersonName,
+        salespersonId: previousSalespersonId,
+      }));
+      toast.error("Error updating salesperson: " + ((error as any)?.message || "Unknown error"));
+    }
+  };
+
+  const applySalespersonStatusLocally = (ids: string[], nextStatus: "active" | "inactive") => {
+    const normalizedIds = new Set(ids.map((id) => String(id || "").trim()).filter(Boolean));
+    const isActive = nextStatus === "active";
+    setSalespersons((prev) =>
+      prev.map((sp: any) => {
+        const spId = String(sp.id || sp._id || "").trim();
+        if (!normalizedIds.has(spId)) return sp;
+        return {
+          ...sp,
+          status: nextStatus,
+          active: isActive,
+          isActive,
+        };
+      })
+    );
+  };
+
+  const handleBulkSalespersonStatusChange = async (nextStatus: "active" | "inactive") => {
+    const ids = Array.from(
+      new Set(
+        selectedSalespersonIds
+          .map((id: any) => String(id || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    if (ids.length === 0) {
+      toast.error("Please select at least one salesperson");
+      return;
+    }
+
+    const previousSalespersons = salespersons;
+    applySalespersonStatusLocally(ids, nextStatus);
+    setSelectedSalespersonIds([]);
+    setManageSalespersonMenuOpen(null);
+    toast.success(
+      nextStatus === "inactive"
+        ? `${ids.length} salesperson${ids.length === 1 ? "" : "s"} marked inactive`
+        : `${ids.length} salesperson${ids.length === 1 ? "" : "s"} marked active`
+    );
+
+    try {
+      await Promise.all(
+        ids.map(async (salespersonId) => {
+          const salesperson: any = (salespersons as any[]).find((sp: any) => String(sp.id || sp._id || "") === salespersonId);
+          if (!salesperson) return;
+          await updateSalesperson(salespersonId, {
+            name: String(salesperson.name || salesperson.displayName || "").trim(),
+            email: String(salesperson.email || "").trim(),
+            status: nextStatus,
+            active: nextStatus === "active",
+            isActive: nextStatus === "active",
+          } as any);
+        })
+      );
+
+      try {
+        const refreshed = await salespersonsAPI.getAll();
+        const rows = Array.isArray((refreshed as any)?.data)
+          ? (refreshed as any).data
+          : Array.isArray(refreshed)
+            ? refreshed
+            : [];
+        setSalespersons(rows);
+      } catch {
+        const refreshed = await getSalespersonsFromAPI();
+        setSalespersons(Array.isArray(refreshed) ? refreshed : []);
+      }
+    } catch (error: any) {
+      console.error("Error updating salesperson statuses:", error);
+      setSalespersons(previousSalespersons);
+      try {
+        const refreshed = await getSalespersonsFromAPI();
+        setSalespersons(Array.isArray(refreshed) ? refreshed : []);
+      } catch {
+        setSalespersons(previousSalespersons);
+      }
+      toast.error("Error updating salespersons: " + ((error as any)?.message || "Unknown error"));
+    }
+  };
+
+  const handleBulkDeleteSalespersons = async () => {
+    const ids = Array.from(
+      new Set(
+        selectedSalespersonIds
+          .map((id: any) => String(id || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    if (ids.length === 0) {
+      toast.error("Please select at least one salesperson");
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to delete ${ids.length} salesperson${ids.length === 1 ? "" : "s"}?`)) {
+      return;
+    }
+
+    try {
+      await Promise.all(ids.map(async (salespersonId) => salespersonsAPI.delete(salespersonId)));
+      try {
+        const refreshed = await salespersonsAPI.getAll();
+        const rows = Array.isArray((refreshed as any)?.data)
+          ? (refreshed as any).data
+          : Array.isArray(refreshed)
+            ? refreshed
+            : [];
+        setSalespersons(rows);
+      } catch {
+        const refreshed = await getSalespersonsFromAPI();
+        setSalespersons(Array.isArray(refreshed) ? refreshed : []);
+      }
+      setSelectedSalespersonIds([]);
+      setManageSalespersonMenuOpen(null);
+
+      if (ids.includes(String(formData.salespersonId || ""))) {
+        setSelectedSalesperson(null);
+        setFormData((prev) => ({ ...prev, salesperson: "", salespersonId: "" }));
+      }
+
+      toast.success(`${ids.length} salesperson${ids.length === 1 ? "" : "s"} deleted`);
+    } catch (error: any) {
+      console.error("Error deleting salespersons:", error);
+      toast.error("Error deleting salespersons: " + ((error as any)?.message || "Unknown error"));
+    }
+  };
+
+  const handleOpenReportingTagsModal = (itemId: string | number) => {
+    const row = formData.items.find((item: any) => item.id === itemId);
+    const existingSelections: Record<string, string> = {};
+    (row?.reportingTags || []).forEach((tag: any) => {
+      const tagId = String(tag?.tagId || tag?.id || "");
+      if (tagId) {
+        existingSelections[tagId] = String(tag?.value || "");
+      }
+    });
+    setCurrentReportingTagsItemId(itemId);
+    setReportingTagSelections(existingSelections);
+    setIsReportingTagsModalOpen(true);
+  };
+
+  const handleSaveReportingTags = () => {
+    if (currentReportingTagsItemId === null) {
+      setIsReportingTagsModalOpen(false);
+      return;
+    }
+
+    const selectedTags = availableReportingTags
+      .map((tag: any) => {
+        const tagId = String(tag?._id || tag?.id || "");
+        const value = String(reportingTagSelections[tagId] || "").trim();
+        if (!tagId || !value) return null;
+        return {
+          tagId,
+          id: tagId,
+          name: String(tag?.name || ""),
+          value
+        };
+      })
+      .filter(Boolean);
+
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.map((item: any) =>
+        item.id === currentReportingTagsItemId
+          ? { ...item, reportingTags: selectedTags }
+          : item
+      ),
+      reportingTags: prev.items
+        .map((item: any) => (
+          item.id === currentReportingTagsItemId
+            ? selectedTags
+            : (Array.isArray(item.reportingTags) ? item.reportingTags : [])
+        ))
+        .flat()
+    }));
+    setCurrentReportingTagsItemId(null);
+    setIsReportingTagsModalOpen(false);
+  };
+
+  const getItemReportingTagsSummaryLabel = (item: any) => {
+    const selectedCount = (item?.reportingTags || []).filter((tag: any) => String(tag?.value || "").trim()).length;
+    const totalCount = availableReportingTags.length;
+    if (selectedCount > 0) {
+      return `Reporting Tags : ${selectedCount} out of ${totalCount} selected.`;
+    }
+    return "Reporting Tags";
+  };
+
+  const renderReportingTagsInlinePanel = (item: any) => {
+    if (!isReportingTagsModalOpen || currentReportingTagsItemId !== item.id) return null;
+
+    return (
+      <div className="mt-2 rounded-md border border-gray-200 bg-white shadow-sm">
+        <div className="px-4 py-2 border-b border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-900">Reporting Tags</h3>
+        </div>
+        <div className="p-4">
+          {availableReportingTags.length === 0 ? (
+            <p className="text-sm text-gray-700">
+              There are no active reporting tags or you haven't created a reporting tag yet. You can create/edit reporting tags under settings.
+            </p>
+          ) : (
+            <div className="space-y-4 max-h-[50vh] overflow-y-auto">
+              {availableReportingTags.map((tag: any) => {
+                const tagId = String(tag?._id || tag?.id || "");
+                const tagName = String(tag?.name || "Tag");
+                const tagOptions = Array.isArray(tag?.options) ? tag.options : [];
+                return (
+                  <div key={tagId} className="space-y-1">
+                    <label className="text-sm text-gray-700">
+                      {tagName}
+                      {Boolean(tag?.isMandatory) ? <span className="text-red-500 ml-1">*</span> : null}
+                    </label>
+                    <select
+                      className="w-full h-10 px-3 border border-gray-300 rounded text-sm text-gray-700 bg-white focus:outline-none focus:border-[#156372]"
+                      value={reportingTagSelections[tagId] || ""}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setReportingTagSelections(prev => ({ ...prev, [tagId]: value }));
+                      }}
+                    >
+                      <option value="">None</option>
+                      {tagOptions.map((option: string) => (
+                        <option key={`${tagId}-${option}`} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200">
+          <button
+            className="px-4 py-2 bg-white text-gray-700 rounded-md text-sm font-medium border border-gray-300"
+            onClick={() => {
+              setCurrentReportingTagsItemId(null);
+              setIsReportingTagsModalOpen(false);
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            className="px-4 py-2 bg-[#156372] text-white rounded-md text-sm font-medium border border-[#156372]"
+            onClick={handleSaveReportingTags}
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const getFilteredItems = (itemId) => {
-    const search = itemSearches[itemId] || "";
+    const search = (itemSearches[itemId] || "").toLowerCase().trim();
+    if (!search) return availableItems;
     return availableItems.filter(item =>
-      item.name.toLowerCase().includes(search.toLowerCase()) ||
-      item.sku.toLowerCase().includes(search.toLowerCase())
+      String(item.name || "").toLowerCase().includes(search) ||
+      String(item.sku || "").toLowerCase().includes(search) ||
+      String(item.code || "").toLowerCase().includes(search) ||
+      String(item.entityType || "").toLowerCase().includes(search)
     );
   };
 
@@ -1744,6 +3658,47 @@ const NewQuote = () => {
     return null;
   };
 
+  const getNormalizedTaxId = (taxObj: any): string => {
+    if (!taxObj) return "";
+    return String(taxObj?.id || taxObj?._id || taxObj?.taxId || "").trim();
+  };
+
+  const defaultTaxId = useMemo(() => {
+    const activeRows = (taxes || []).filter((tax: any) => {
+      if (!tax) return false;
+      const status = String(tax?.status || "").toLowerCase();
+      const active = tax?.active;
+      const isActive = tax?.isActive;
+      if (status === "inactive") return false;
+      if (active === false) return false;
+      if (isActive === false) return false;
+      const name = String(tax?.name || tax?.taxName || "").trim();
+      return Boolean(name);
+    });
+
+    const preferred =
+      activeRows.find((tax: any) => Boolean(tax?.isDefault || tax?.default)) ||
+      activeRows[0] ||
+      taxes?.[0] ||
+      null;
+
+    return preferred ? getNormalizedTaxId(preferred) : "";
+  }, [taxes]);
+
+  const getCustomerTaxMeta = (customer: any) => {
+    const raw = String(customer?.taxRate || customer?.taxId || customer?.tax || "").trim();
+    if (!raw) return { taxId: "", taxRate: 0 };
+    const taxObj = getTaxBySelection(raw);
+    if (!taxObj) return { taxId: "", taxRate: 0 };
+    return { taxId: getNormalizedTaxId(taxObj), taxRate: parseTaxRate(taxObj.rate) };
+  };
+
+  const getTaxMetaById = (taxId: string) => {
+    const taxObj = getTaxBySelection(taxId);
+    if (!taxObj) return { taxId: "", taxRate: 0 };
+    return { taxId: getNormalizedTaxId(taxObj), taxRate: parseTaxRate(taxObj.rate) };
+  };
+
   const getTaxMetaFromItem = (item: any) => {
     const taxObj = getTaxBySelection(item?.tax);
     if (taxObj) {
@@ -1777,11 +3732,31 @@ const NewQuote = () => {
     return (lineAmount * taxRate) / 100;
   };
 
+  const computeDiscountAmount = (subTotal: number, discountValue: any, discountTypeValue: string) => {
+    if (!showTransactionDiscount) return 0;
+    const rawValue = parseFloat(String(discountValue)) || 0;
+    if (subTotal <= 0 || rawValue <= 0) return 0;
+    const calculated = discountTypeValue === "percent" ? (subTotal * rawValue) / 100 : rawValue;
+    return Math.min(calculated, subTotal);
+  };
+
+  const applyDiscountShare = (amount: number, subTotal: number, discountAmount: number) => {
+    if (subTotal <= 0 || discountAmount <= 0) return amount;
+    const share = (amount / subTotal) * discountAmount;
+    return Math.max(0, amount - share);
+  };
+
   const taxBreakdown = useMemo(() => {
     const breakdown: Record<string, { label: string; amount: number }> = {};
     const isInclusive = isTaxInclusiveMode(formData);
 
-    formData.items
+    const itemRows = formData.items.filter((i: any) => i.itemType !== "header");
+    const subTotal = itemRows.reduce((sum: number, item: any) => {
+      return sum + (parseFloat(item.quantity) || 0) * (parseFloat(item.rate) || 0);
+    }, 0);
+    const discountAmount = computeDiscountAmount(subTotal, formData.discount, formData.discountType);
+
+    itemRows
       .filter((i: any) => i.itemType !== "header")
       .forEach((item: any) => {
         const taxMeta = getTaxMetaFromItem(item);
@@ -1789,7 +3764,8 @@ const NewQuote = () => {
         const quantity = parseFloat(item.quantity) || 0;
         const rate = parseFloat(item.rate) || 0;
         const lineAmount = quantity * rate;
-        const taxAmount = calculateLineTaxAmount(lineAmount, taxMeta.rate, isInclusive);
+        const discountedLineAmount = applyDiscountShare(lineAmount, subTotal, discountAmount);
+        const taxAmount = calculateLineTaxAmount(discountedLineAmount, taxMeta.rate, isInclusive);
         const key = taxMeta.id || `${taxMeta.name}-${taxMeta.rate}`;
         const label = `${taxMeta.name} [${taxMeta.rate}%]${isInclusive ? " (Included)" : ""}`;
         if (!breakdown[key]) breakdown[key] = { label, amount: 0 };
@@ -1815,27 +3791,45 @@ const NewQuote = () => {
   }, [formData.items, formData.taxExclusive, formData.shippingCharges, formData.shippingChargeTax, taxes, taxMode, showShippingCharges]);
 
   const handleItemSelect = (itemId, selectedItem) => {
+    const selectedEntityId = selectedItem.sourceId || selectedItem.id;
+    const baseRate = Number(selectedItem?.rate ?? 0) || 0;
+    const nextRate = selectedPriceList ? applyPriceListToBaseRate(baseRate, selectedPriceList, selectedItem) : baseRate;
+
+    const row = (formData.items || []).find((r: any) => String(r?.id) === String(itemId));
+    const existingRowTaxId = String(row?.tax || "").trim();
+    const customerTaxMeta = selectedCustomer ? getCustomerTaxMeta(selectedCustomer) : { taxId: "", taxRate: 0 };
+    const itemTaxId = resolveItemTaxId(selectedItem);
+    const fallbackDefaultTax = defaultTaxId ? getTaxMetaById(defaultTaxId) : { taxId: "", taxRate: 0 };
+    const resolvedTaxId =
+      customerTaxMeta.taxId ||
+      existingRowTaxId ||
+      itemTaxId ||
+      fallbackDefaultTax.taxId ||
+      "";
+    const resolvedTaxRate =
+      (customerTaxMeta.taxId ? customerTaxMeta.taxRate : 0) ||
+      (resolvedTaxId ? getTaxMetaById(resolvedTaxId).taxRate : 0) ||
+      parseTaxRate(selectedItem?.taxInfo?.taxRate ?? selectedItem?.taxRate ?? selectedItem?.salesTaxRate) ||
+      0;
+
     setSelectedItemIds(prev => ({ ...prev, [itemId]: selectedItem.id }));
-    handleItemChange(itemId, 'itemId', selectedItem.id); // Store the actual Product ID
+    handleItemChange(itemId, 'itemId', selectedEntityId); // Store the actual Product/Plan ID
+    handleItemChange(itemId, 'itemEntityType', selectedItem.entityType || selectedItem.itemEntityType || "item");
+    handleItemChange(itemId, 'catalogRate', baseRate);
     handleItemChange(itemId, 'itemDetails', selectedItem.name);
-    handleItemChange(itemId, 'rate', selectedItem.rate);
+    handleItemChange(itemId, 'rate', nextRate);
     handleItemChange(itemId, 'stockOnHand', selectedItem.stockOnHand);
     handleItemChange(itemId, 'unit', selectedItem.unit);
     handleItemChange(itemId, 'description', selectedItem.salesDescription || selectedItem.description || "");
 
-    // Automatically apply the item's tax if it exists (supports id/name/rate formats)
-    const resolvedTaxId = resolveItemTaxId(selectedItem);
     if (resolvedTaxId) {
       handleItemChange(itemId, 'tax', resolvedTaxId);
-      const selectedTax = taxes.find((tax: any) => String(tax.id || tax._id) === String(resolvedTaxId));
-      if (selectedTax) {
-        handleItemChange(itemId, 'taxRate', parseTaxRate(selectedTax.rate));
+      if (resolvedTaxRate > 0) {
+        handleItemChange(itemId, 'taxRate', resolvedTaxRate);
       }
-    } else {
-      const fallbackRate = parseTaxRate(selectedItem?.taxInfo?.taxRate ?? selectedItem?.taxRate ?? selectedItem?.salesTaxRate);
-      if (fallbackRate > 0) {
-        handleItemChange(itemId, 'taxRate', fallbackRate);
-      }
+    } else if (resolvedTaxRate > 0) {
+      // Support rate-only taxes (no id match) as a last resort
+      handleItemChange(itemId, 'taxRate', resolvedTaxRate);
     }
 
     setOpenItemDropdowns(prev => ({ ...prev, [itemId]: false }));
@@ -1847,9 +3841,7 @@ const NewQuote = () => {
       ...prev,
       [itemId]: !prev[itemId]
     }));
-    if (!itemDropdownRefs.current[itemId]) {
-      itemDropdownRefs.current[itemId] = { current: null };
-    }
+    if (!itemDropdownRefs.current[itemId]) itemDropdownRefs.current[itemId] = null;
   };
 
   const calculateAllTotals = (items, currentFormData) => {
@@ -1860,19 +3852,17 @@ const NewQuote = () => {
       return sum + (parseFloat(item.quantity) || 0) * (parseFloat(item.rate) || 0);
     }, 0);
 
+    const discountAmount = computeDiscountAmount(subTotal, currentFormData.discount, currentFormData.discountType);
+
     const itemsTax = itemRows.reduce((sum, item) => {
       const quantity = parseFloat(item.quantity) || 0;
       const rate = parseFloat(item.rate) || 0;
       const lineAmount = quantity * rate;
+      const discountedLineAmount = applyDiscountShare(lineAmount, subTotal, discountAmount);
       const taxMeta = getTaxMetaFromItem(item);
-      return sum + calculateLineTaxAmount(lineAmount, taxMeta.rate, isInclusive);
+      return sum + calculateLineTaxAmount(discountedLineAmount, taxMeta.rate, isInclusive);
     }, 0);
 
-    const discountAmount = showTransactionDiscount
-      ? (currentFormData.discountType === "percent"
-        ? (subTotal * (parseFloat(currentFormData.discount) || 0) / 100)
-        : (parseFloat(currentFormData.discount) || 0))
-      : 0;
     const shipping = showShippingCharges ? (parseFloat(currentFormData.shippingCharges) || 0) : 0;
     const shippingTaxObj = (showShippingCharges && shipping > 0 && currentFormData.shippingChargeTax)
       ? getTaxBySelection(currentFormData.shippingChargeTax)
@@ -1884,8 +3874,9 @@ const NewQuote = () => {
     const totalTax = itemsTax + shippingTaxAmount;
     const adjustment = showAdjustment ? (parseFloat(currentFormData.adjustment) || 0) : 0;
     const totalBeforeRound = subTotal + (isInclusive ? 0 : totalTax) - discountAmount + shipping + adjustment;
-    const roundOff = Math.round(totalBeforeRound) - totalBeforeRound;
-    const total = totalBeforeRound + roundOff;
+    const roundedTotal = Number(totalBeforeRound.toFixed(2));
+    const roundOff = Number((roundedTotal - totalBeforeRound).toFixed(2));
+    const total = roundedTotal;
 
     return {
       subTotal,
@@ -1894,6 +3885,51 @@ const NewQuote = () => {
       total
     };
   };
+
+  const recalculateLineAmount = (row: any, nextRate: number, nextQuantity?: number) => {
+    if (row?.itemType === "header") return row;
+    const quantity = nextQuantity ?? (parseFloat(String(row?.quantity)) || 0);
+    return {
+      ...row,
+      rate: nextRate,
+      amount: quantity * nextRate,
+    };
+  };
+
+  useEffect(() => {
+    // Re-apply selected price list to all selected lines (keeps rates consistent)
+    const list = selectedPriceList;
+    setFormData((prev) => {
+      const nextCurrency = list?.currency ? String(list.currency).trim() : prev.currency;
+      const updatedItems = prev.items.map((row: any) => {
+        if (row.itemType === "header") return row;
+        const selectedUiId = selectedItemIds?.[row.id];
+        if (!selectedUiId) return row;
+        const selectedEntity = availableItems.find((item: any) => String(item.id) === String(selectedUiId));
+        if (!selectedEntity) return row;
+
+        const baseRate = Number(selectedEntity?.rate ?? row.catalogRate ?? row.rate ?? 0) || 0;
+        const nextRate = list ? applyPriceListToBaseRate(baseRate, list, selectedEntity) : baseRate;
+        const nextAmount = (parseFloat(String(row?.quantity)) || 0) * nextRate;
+        if (
+          Number(row.rate ?? 0) === nextRate &&
+          Number(row.amount ?? 0) === nextAmount &&
+          row.itemEntityType === (selectedEntity.entityType || row.itemEntityType) &&
+          prev.currency === nextCurrency
+        ) {
+          return row;
+        }
+        return {
+          ...recalculateLineAmount(row, nextRate),
+          itemEntityType: selectedEntity.entityType || row.itemEntityType || "item",
+          catalogRate: baseRate,
+        };
+      });
+
+      const totals = calculateAllTotals(updatedItems, { ...prev, currency: nextCurrency });
+      return { ...prev, currency: nextCurrency, items: updatedItems, ...totals };
+    });
+  }, [selectedPriceList, availableItems, selectedItemIds]);
 
   const handleItemChange = (id, field, value) => {
     setFormData(prev => {
@@ -1927,12 +3963,82 @@ const NewQuote = () => {
     });
   };
 
-  const handleAddItem = () => {
+  const handleTaxCreatedFromModal = (payload: any) => {
+    const normalizedInput = normalizeCreatedTaxPayload(payload);
+    let createdTax = normalizedInput.raw;
+    const inputName = normalizedInput.name;
+    const inputRate = normalizedInput.rate;
+    const inputIsCompound = normalizedInput.isCompound;
+
+    if (!inputName) {
+      setIsNewTaxQuickModalOpen(false);
+      setNewTaxTargetItemId(null);
+      return;
+    }
+
+    try {
+      const nextTaxId = String(createdTax?._id || createdTax?.id || inputName).trim() || inputName;
+      const nextRow = {
+        _id: nextTaxId,
+        id: nextTaxId,
+        name: inputName,
+        rate: Number.isFinite(inputRate) ? inputRate : 0,
+        type: "both",
+        isActive: true,
+        isCompound: inputIsCompound,
+      };
+      const existing = readTaxesLocal();
+      const alreadyExists = existing.some((row: any) => {
+        const rowId = String(row?._id || row?.id || "").trim();
+        return rowId === nextTaxId;
+      });
+      const nextRows = alreadyExists
+        ? existing.map((row: any) => {
+            const rowId = String(row?._id || row?.id || "").trim();
+            return rowId === nextTaxId ? { ...row, ...nextRow } : row;
+          })
+        : [nextRow, ...existing];
+      writeTaxesLocal(nextRows as any);
+      createdTax = { ...nextRow, ...createdTax };
+    } catch (error) {
+      console.error("Error creating tax in local settings storage:", error);
+    }
+
+    const option: any = {
+      ...createdTax,
+      id: createdTax?._id || createdTax?.id || inputName,
+      _id: createdTax?._id || createdTax?.id || inputName,
+      name: createdTax?.name || inputName,
+      rate: Number(createdTax?.rate ?? inputRate) || 0,
+      isActive: createdTax?.isActive !== false && createdTax?.is_active !== false,
+      isCompound: createdTax?.isCompound === true || createdTax?.is_compound === true,
+      type: createdTax?.type || "tax",
+    };
+
+    setTaxes((prev: any) => {
+      const exists = prev.some((tax: any) => String(tax.id || tax._id) === String(option.id || option._id));
+      return exists ? prev : [option, ...prev];
+    });
+
+    if (newTaxTargetItemId !== null && newTaxTargetItemId !== undefined) {
+      handleItemChange(newTaxTargetItemId, "tax", String(option.id || option._id || ""));
+    }
+
+    setIsNewTaxQuickModalOpen(false);
+    setNewTaxTargetItemId(null);
+  };
+
+  const handleAddItem = (insertAfterIndex?: number) => {
     setFormData(prev => {
+      const newItem = { id: Date.now(), itemType: "item", itemDetails: "", quantity: 1, rate: 0, tax: "", amount: 0, description: "", stockOnHand: 0, reportingTags: [] };
       const newItems = [
-        ...prev.items,
-        { id: Date.now(), itemType: "item", itemDetails: "", quantity: 1, rate: 0, tax: "", amount: 0, description: "", stockOnHand: 0 }
+        ...prev.items
       ];
+      if (typeof insertAfterIndex === "number" && insertAfterIndex >= 0 && insertAfterIndex <= newItems.length) {
+        newItems.splice(insertAfterIndex, 0, newItem);
+      } else {
+        newItems.push(newItem);
+      }
       const totals = calculateAllTotals(newItems, prev);
       return {
         ...prev,
@@ -1945,7 +4051,7 @@ const NewQuote = () => {
   const handleInsertHeader = (index) => {
     setFormData(prev => {
       const newItems = [...prev.items];
-      newItems.splice(index + 1, 0, { id: Date.now(), itemType: "header", itemDetails: "", quantity: 0, rate: 0, tax: "", amount: 0, description: "", stockOnHand: 0 });
+      newItems.splice(index + 1, 0, { id: Date.now(), itemType: "header", itemDetails: "", quantity: 0, rate: 0, tax: "", amount: 0, description: "", stockOnHand: 0, reportingTags: [] });
       return { ...prev, items: newItems };
     });
   };
@@ -1985,9 +4091,12 @@ const NewQuote = () => {
     if (!bulkAddSearch.trim()) {
       return availableItems;
     }
+    const search = bulkAddSearch.toLowerCase().trim();
     return availableItems.filter(item =>
-      item.name.toLowerCase().includes(bulkAddSearch.toLowerCase()) ||
-      (item.sku && item.sku.toLowerCase().includes(bulkAddSearch.toLowerCase()))
+      String(item.name || "").toLowerCase().includes(search) ||
+      String(item.sku || "").toLowerCase().includes(search) ||
+      String(item.code || "").toLowerCase().includes(search) ||
+      String(item.entityType || "").toLowerCase().includes(search)
     );
   };
 
@@ -2093,8 +4202,8 @@ const NewQuote = () => {
     }
   };
 
-  const handleFileUpload = (e) => {
-    const files = Array.from(e.target.files);
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
 
     // Validate file count
     if (formData.attachedFiles.length + files.length > 5) {
@@ -2201,6 +4310,65 @@ const NewQuote = () => {
     }
   };
 
+  const normalizeItemForQuote = (item: any) => ({
+    ...item,
+    entityType: "item",
+    id: String(item?._id || item?.id || ""),
+    sourceId: String(item?._id || item?.id || ""),
+    name: String(item?.name || "").trim(),
+    sku: String(item?.sku || item?.itemCode || "").trim(),
+    code: String(item?.sku || item?.itemCode || "").trim(),
+    rate: Number(item?.sellingPrice || item?.costPrice || item?.rate || 0) || 0,
+    stockOnHand: Number(item?.stockOnHand || item?.quantityOnHand || item?.stockQuantity || 0) || 0,
+    unit: item?.unit || item?.unitOfMeasure || "pcs",
+    description: item?.salesDescription || item?.description || ""
+  });
+
+  const handleCreateItemFromModal = async (data: any, tagIds: string[] = []) => {
+    try {
+      const response: any = await itemsAPI.create(data);
+      if (response?.success === false) {
+        throw new Error(response?.message || "Failed to save item");
+      }
+      const savedItem = response?.data || response;
+      if (!savedItem) {
+        throw new Error("Item saved without data");
+      }
+
+      const normalizedItem = normalizeItemForQuote(savedItem);
+      setAvailableItems(prev => [...prev, normalizedItem]);
+
+      // Keep local cache in sync for immediate dropdown availability
+      try {
+        const savedItems = JSON.parse(localStorage.getItem("inv_items_v1") || "[]");
+        savedItems.push({
+          id: savedItem._id || savedItem.id,
+          name: savedItem.name,
+          sku: savedItem.sku || savedItem.itemCode,
+          sellingPrice: savedItem.sellingPrice ?? savedItem.rate ?? normalizedItem.rate,
+          costPrice: savedItem.costPrice ?? 0,
+          stockOnHand: savedItem.stockOnHand ?? 0,
+          unit: savedItem.unit || savedItem.unitOfMeasure || "pcs",
+          type: savedItem.type || "Goods"
+        });
+        localStorage.setItem("inv_items_v1", JSON.stringify(savedItems));
+      } catch {
+        // ignore local cache write errors
+      }
+
+      if (newItemTargetRowId !== null && newItemTargetRowId !== undefined) {
+        handleItemSelect(newItemTargetRowId, normalizedItem);
+      }
+
+      setNewItemTargetRowId(null);
+      setIsNewItemModalOpen(false);
+      toast.success("Item created successfully");
+    } catch (error: any) {
+      console.error("Failed to create item from modal:", error);
+      throw error;
+    }
+  };
+
   const handleSaveNewItem = () => {
     if (!newItemData.name.trim()) {
       alert("Please enter item name");
@@ -2214,8 +4382,10 @@ const NewQuote = () => {
     // Create new item
     const newItem = {
       id: `ITEM-${Date.now()}`,
+      entityType: "item",
       name: newItemData.name,
       sku: newItemData.sku,
+      code: newItemData.sku,
       rate: parseFloat(newItemData.sellingPrice) || 0,
       stockOnHand: 0,
       unit: newItemData.unit || "pcs",
@@ -2225,7 +4395,8 @@ const NewQuote = () => {
       purchaseAccount: newItemData.purchaseAccount,
       sellable: newItemData.sellable,
       purchasable: newItemData.purchasable,
-      trackInventory: newItemData.trackInventory
+      trackInventory: newItemData.trackInventory,
+      description: newItemData.salesDescription || ""
     };
 
     // Add to availableItems
@@ -2411,8 +4582,11 @@ const NewQuote = () => {
       createdAt: new Date().toISOString()
     };
 
-    // Save project to localStorage
-    const savedProject = saveProject(newProject);
+    // Persist project locally for immediate UX; project list is refreshed from API elsewhere.
+    const savedProject = {
+      ...newProject,
+      id: String(Date.now())
+    };
 
     // Add to local state
     setProjects(prev => [...prev, savedProject]);
@@ -2605,7 +4779,6 @@ const NewQuote = () => {
         const lineSubtotal = quantity * rate;
         const taxMeta = getTaxMetaFromItem(item);
         const taxRate = taxMeta.rate;
-        const taxAmount = calculateLineTaxAmount(lineSubtotal, taxRate, isInclusive);
 
         return {
           id: item._id || item.id,
@@ -2614,24 +4787,30 @@ const NewQuote = () => {
           name: item.itemDetails || item.name || "Item",
           itemDetails: item.itemDetails || item.name || "Item",
           description: item.description || item.itemDetails || "",
+          reportingTags: Array.isArray(item.reportingTags) ? item.reportingTags : [],
           quantity,
           rate,
           unitPrice: rate,
           tax: item.tax || "",
           taxRate,
-          taxAmount,
+          taxAmount: 0,
           amount: lineSubtotal,
-          total: lineSubtotal
+          total: lineSubtotal,
+          lineSubtotal
         };
       });
 
     const subTotal = validItems.reduce((sum, item) => sum + (item.total || 0), 0);
-    const itemsTax = validItems.reduce((sum, item) => sum + (item.taxAmount || 0), 0);
-    const discountAmount = showTransactionDiscount
-      ? (formData.discountType === "percent"
-        ? (subTotal * (parseFloat(formData.discount || 0) / 100))
-        : (parseFloat(formData.discount || 0)))
-      : 0;
+    const discountAmount = computeDiscountAmount(subTotal, formData.discount, formData.discountType);
+
+    const normalizedItems = validItems.map((item) => {
+      const lineAmount = Number(item.lineSubtotal || 0);
+      const discountedLineAmount = applyDiscountShare(lineAmount, subTotal, discountAmount);
+      const taxAmount = calculateLineTaxAmount(discountedLineAmount, Number(item.taxRate || 0), isInclusive);
+      return { ...item, taxAmount };
+    });
+
+    const itemsTax = normalizedItems.reduce((sum, item) => sum + (item.taxAmount || 0), 0);
     const shipping = showShippingCharges ? (parseFloat(formData.shippingCharges) || 0) : 0;
     const shippingTaxObj = (showShippingCharges && shipping > 0 && formData.shippingChargeTax)
       ? getTaxBySelection(formData.shippingChargeTax)
@@ -2642,22 +4821,212 @@ const NewQuote = () => {
       : 0;
     const totalTax = itemsTax + shippingTaxAmount;
     const adjustment = showAdjustment ? (parseFloat(formData.adjustment) || 0) : 0;
-    const roundOff = parseFloat(formData.roundOff) || 0;
     const totalBeforeRound = isInclusive
       ? (subTotal - discountAmount + shipping + adjustment)
       : (subTotal + totalTax - discountAmount + shipping + adjustment);
-    const finalTotal = totalBeforeRound + roundOff;
+    const roundedTotal = Number(totalBeforeRound.toFixed(2));
+    const roundOff = Number((roundedTotal - totalBeforeRound).toFixed(2));
+    const finalTotal = roundedTotal;
 
     return {
-      validItems,
+      validItems: normalizedItems,
       subTotal,
       totalTax,
       discountAmount,
       shipping,
+      shippingTaxAmount,
       adjustment,
       roundOff,
       finalTotal
     };
+  };
+
+  const persistQuoteSeriesPreferences = async (options?: { prefix?: string; nextDigits?: string }) => {
+    const nextDigitsValue = options?.nextDigits ?? quoteNextNumber;
+    const prefixValue = options?.prefix ?? quotePrefix;
+    const rawDigits = extractQuoteDigits(nextDigitsValue) || "1";
+    const width = rawDigits.length >= 2 ? rawDigits.length : 6;
+    const normalizedNextDigits = rawDigits.padStart(width, "0");
+    const normalizedPrefix = sanitizeQuotePrefix(prefixValue);
+    const normalizedNextNumberValue = parseInt(normalizedNextDigits, 10) || 1;
+
+    if (!quoteSeriesRow) {
+      try {
+        const createdResponse: any = await transactionNumberSeriesAPI.createMultiple({
+          seriesName: "Default Transaction Series",
+          locationIds: [],
+          modules: [
+            {
+              module: "Quote",
+              prefix: normalizedPrefix,
+              startingNumber: normalizedNextDigits,
+              restartNumbering: "none",
+              isDefault: true,
+              status: "Active"
+            }
+          ]
+        });
+        const createdRows = Array.isArray(createdResponse?.data) ? createdResponse.data : [];
+        if (createdRows.length) {
+          setQuoteSeriesRows(createdRows);
+          const resolved = resolveQuoteSeriesRow(createdRows);
+          if (resolved) setQuoteSeriesRow(resolved);
+        }
+      } catch (error) {
+        console.error("Failed to create transaction number series:", error);
+        throw error;
+      }
+      return;
+    }
+
+    const seriesName = String(quoteSeriesRow?.seriesName || "Default Transaction Series").trim() || "Default Transaction Series";
+    const matchingRows = (quoteSeriesRows || []).filter(
+      (row) => String(row?.seriesName || "").toLowerCase() === seriesName.toLowerCase()
+    );
+    const rowsToUpdate = matchingRows.length ? matchingRows : [quoteSeriesRow];
+    const locationIds = Array.isArray(quoteSeriesRow?.locationIds) ? quoteSeriesRow.locationIds : [];
+
+    const modules = rowsToUpdate.map((row) => {
+      const isQuoteRow = isQuoteSeriesRow(row);
+      return {
+        module: String(row?.module || row?.name || "Quote"),
+        prefix: isQuoteRow ? normalizedPrefix : String(row?.prefix || ""),
+        startingNumber: isQuoteRow ? normalizedNextDigits : String(row?.startingNumber ?? row?.nextNumber ?? "1"),
+        restartNumbering: String(row?.restartNumbering || "none").toLowerCase() || "none",
+        isDefault: Boolean(row?.isDefault),
+        status: String(row?.status || "Active")
+      };
+    });
+
+    await transactionNumberSeriesAPI.updateMultiple({
+      seriesName,
+      originalName: seriesName,
+      locationIds,
+      modules
+    });
+
+    setQuoteSeriesRows((prev) =>
+      (prev || []).map((row) => {
+        if (
+          String(row?.seriesName || "").toLowerCase() === seriesName.toLowerCase() &&
+          isQuoteSeriesRow(row)
+        ) {
+          return {
+            ...row,
+            prefix: normalizedPrefix,
+            startingNumber: normalizedNextDigits,
+            nextNumber: normalizedNextNumberValue
+          };
+        }
+        return row;
+      })
+    );
+    setQuoteSeriesRow((prev) =>
+      prev
+        ? {
+          ...prev,
+          prefix: normalizedPrefix,
+          startingNumber: normalizedNextDigits,
+          nextNumber: normalizedNextNumberValue
+        }
+        : prev
+    );
+  };
+
+  const getNextQuoteNumberForSave = async () => {
+    let quoteNumber = formData.quoteNumber;
+    if (quoteNumberMode !== "auto") return quoteNumber;
+
+    const seriesId = String(quoteSeriesRow?.id || quoteSeriesRow?._id || "").trim();
+    if (seriesId) {
+      try {
+        const seriesResponse: any = await transactionNumberSeriesAPI.getNextNumber(seriesId);
+        if (seriesResponse && seriesResponse.success && seriesResponse.data) {
+          const serverQuoteNumber = String(seriesResponse.data.nextNumber || seriesResponse.data.next_number || "").trim();
+          if (serverQuoteNumber) return serverQuoteNumber;
+        }
+      } catch (error) {
+        console.error("Error getting next quote number from series:", error);
+      }
+    }
+
+    try {
+      const quoteNumberResponse = await quotesAPI.getNextNumber(quotePrefix);
+      if (quoteNumberResponse && quoteNumberResponse.success && quoteNumberResponse.data) {
+        const quoteNumberData: any = quoteNumberResponse.data || {};
+        const serverQuoteNumber = String(quoteNumberData.quoteNumber || quoteNumberData.nextNumber || "").trim();
+        const resolvedPrefix = deriveQuotePrefixFromNumber(serverQuoteNumber, quotePrefix);
+        const resolvedNextDigits = extractQuoteDigits(quoteNumberData.nextNumber || serverQuoteNumber) || quoteNextNumber;
+        quoteNumber = buildQuoteNumber(resolvedPrefix, resolvedNextDigits);
+      }
+    } catch (error) {
+      console.error("Error getting next quote number:", error);
+      const existingQuotes = await getQuotes();
+      quoteNumber = buildQuoteNumber(quotePrefix, String(existingQuotes.length + 1));
+    }
+
+    return quoteNumber;
+  };
+
+  const extractSavedQuoteId = (savedQuote: any) => {
+    if (!savedQuote) return "";
+
+    const directId = savedQuote._id || savedQuote.id || savedQuote.quoteId;
+    if (directId) return String(directId);
+
+    const nested = savedQuote.data || savedQuote.quote || savedQuote.result;
+    if (nested) {
+      const nestedId = nested._id || nested.id || nested.quoteId;
+      if (nestedId) return String(nestedId);
+    }
+
+    return "";
+  };
+
+  const hasCustomerAddress = () => {
+    const sources = [
+      billingAddress,
+      shippingAddress,
+      (selectedCustomer as any)?.billingAddress,
+      (selectedCustomer as any)?.shippingAddress,
+      (selectedCustomer as any)?.billing_address,
+      (selectedCustomer as any)?.shipping_address
+    ];
+    return sources.some((addr: any) => {
+      if (!addr) return false;
+      const values = Object.values(addr).map((v) => String(v ?? "").trim());
+      return values.some((v) => v.length > 0);
+    });
+  };
+
+  const ensureCustomerHasAddress = async () => {
+    if (hasCustomerAddress()) return true;
+    const customerId = String((selectedCustomer as any)?.id || (selectedCustomer as any)?._id || "");
+    if (!customerId) return false;
+
+    const trimmed = (value: any) => String(value ?? "").trim();
+    const addressPayload = {
+      attention: trimmed(addressFormData.attention),
+      country: trimmed(addressFormData.country) || "N/A",
+      street1: trimmed(addressFormData.street1) || "N/A",
+      street2: trimmed(addressFormData.street2),
+      city: trimmed(addressFormData.city),
+      state: trimmed(addressFormData.state),
+      zipCode: trimmed(addressFormData.zipCode),
+      phone: `${trimmed(addressFormData.phoneCountryCode)} ${trimmed(addressFormData.phone)}`.trim(),
+      fax: trimmed(addressFormData.fax),
+      phoneCountryCode: trimmed(addressFormData.phoneCountryCode),
+    };
+
+    try {
+      await customersAPI.update(customerId, { billingAddress: addressPayload });
+      setBillingAddress(addressPayload);
+      setSelectedCustomer((prev: any) => prev ? { ...prev, billingAddress: addressPayload } : prev);
+      return true;
+    } catch (error) {
+      console.error("Failed to auto-create customer address:", error);
+      return false;
+    }
   };
 
   const handleSaveDraft = async () => {
@@ -2672,6 +5041,7 @@ const NewQuote = () => {
     setSaveLoading("draft");
 
     try {
+      await ensureCustomerHasAddress();
       // Upload files first
 
       const finalAttachedFiles = await uploadQuoteFiles(formData.attachedFiles);
@@ -2682,6 +5052,7 @@ const NewQuote = () => {
         totalTax,
         discountAmount,
         shipping,
+        shippingTaxAmount,
         adjustment,
         roundOff,
         finalTotal
@@ -2689,38 +5060,35 @@ const NewQuote = () => {
 
       // Get quote number from backend (only for new quotes)
       let quoteNumber = formData.quoteNumber;
-      if (!isEditMode && quoteNumberMode === "auto") {
-        try {
-          const quoteNumberResponse = await quotesAPI.getNextNumber(quotePrefix);
-          if (quoteNumberResponse && quoteNumberResponse.success && quoteNumberResponse.data) {
-            quoteNumber = quoteNumberResponse.data.quoteNumber;
-          }
-        } catch (error) {
-          console.error('Error getting next quote number:', error);
-          // Fallback to local generation - await getQuotes()
-          const existingQuotes = await getQuotes();
-          quoteNumber = `${quotePrefix}${String(existingQuotes.length + 1).padStart(6, '0')}`;
-        }
+      if (!isEditMode) {
+        quoteNumber = await getNextQuoteNumberForSave();
       }
 
       // Prepare quote data
       const quoteData = {
         quoteNumber: quoteNumber,
         referenceNumber: formData.referenceNumber,
+        customerName: formData.customerName,
         customer: selectedCustomer?.id || selectedCustomer?._id || formData.customerName,
         customerId: selectedCustomer?.id || selectedCustomer?._id || null,
+        customerEmail: String((selectedCustomer as any)?.email || (selectedCustomer as any)?.primaryEmail || "").trim(),
         quoteDate: convertToISODate(formData.quoteDate),
         expiryDate: convertToISODate(formData.expiryDate),
         salesperson: formData.salesperson,
         salespersonId: formData.salespersonId,
         projectName: formData.projectName,
         subject: formData.subject,
+        priceListId: String(selectedPriceList?.id || selectedPriceList?._id || ""),
+        priceListName: String(selectedPriceList?.name || ""),
+        taxPreference: formData.taxExclusive,
         taxExclusive: formData.taxExclusive,
 
         // Items array - filter out empty rows and ensure valid data
         items: validItems,
 
         // Summary
+        subTotal: subTotal,
+        totalTax: totalTax,
         subtotal: subTotal,
         tax: totalTax,
         taxAmount: totalTax,
@@ -2730,14 +5098,17 @@ const NewQuote = () => {
         discountAccount: formData.discountAccount,
         shippingCharges: shipping,
         shippingChargeTax: String(formData.shippingChargeTax || ""),
+        shippingTaxAmount: shippingTaxAmount,
         adjustment: adjustment,
         roundOff: roundOff,
         total: finalTotal,
+
 
         // Other fields
         currency: formData.currency,
         customerNotes: formData.customerNotes,
         termsAndConditions: formData.termsAndConditions,
+        reportingTags: formData.reportingTags || [],
         attachedFiles: finalAttachedFiles.map(file => ({
           id: file.id,
           name: file.name,
@@ -2746,36 +5117,33 @@ const NewQuote = () => {
         })) || [],
 
         // Status
-        status: "draft"
+        status: "Draft"
       };
 
       // Save or update quote
       let savedQuote;
       if (isEditMode && quoteId) {
         savedQuote = await updateQuote(quoteId, quoteData);
-        console.log("Quote updated as draft:", savedQuote);
       } else {
         savedQuote = await saveQuote(quoteData);
-        console.log("Quote saved as draft:", savedQuote);
       }
 
       // Handle URL change to detect if we should show a specific modal
       // Navigate back to quotes page or quote detail
       if (savedQuote) {
-        // If it was an update or create, we should have an ID.
-        // Backend returns _id or id.
-        const id = savedQuote._id || savedQuote.id || quoteId;
+        const id = extractSavedQuoteId(savedQuote) || quoteId || "";
         if (id) {
-          navigate(`/sales/quotes/${id}`);
-        } else {
-          navigate("/sales/quotes");
+          navigate(`/sales/quotes/${id}`, { replace: true });
+          return;
         }
-      } else {
-        navigate("/sales/quotes");
       }
+      navigate("/sales/quotes", { replace: true });
     } catch (error) {
       console.error("Error saving quote as draft:", error);
-      alert("Failed to save quote. Please try again.");
+      const message = String((error as any)?.message || "");
+      if (!message.toLowerCase().includes("must have at least one address")) {
+        toast.error("Failed to save quote. Please try again.");
+      }
     } finally {
       setSaveLoading(null);
     }
@@ -2786,12 +5154,13 @@ const NewQuote = () => {
 
     if (!validateForm()) {
       const firstError = Object.values(formErrors)[0] || "Please fill in all required fields marked with *";
-      alert(firstError);
+      toast.error(String(firstError));
       return;
     }
 
     setSaveLoading("send");
     try {
+      await ensureCustomerHasAddress();
 
 
       // Upload files first
@@ -2804,23 +5173,15 @@ const NewQuote = () => {
         totalTax,
         discountAmount,
         shipping,
+        shippingTaxAmount,
         adjustment,
         roundOff,
         finalTotal
       } = buildQuoteFinancialsAndItems();
 
       let quoteNumber = formData.quoteNumber;
-      if (!isEditMode && quoteNumberMode === "auto") {
-        try {
-          const quoteNumberResponse = await quotesAPI.getNextNumber(quotePrefix);
-          if (quoteNumberResponse && quoteNumberResponse.success && quoteNumberResponse.data) {
-            quoteNumber = quoteNumberResponse.data.quoteNumber;
-          }
-        } catch (error) {
-          console.error('Error getting next quote number:', error);
-          const existingQuotes = await getQuotes();
-          quoteNumber = `${quotePrefix}${String(existingQuotes.length + 1).padStart(6, '0')}`;
-        }
+      if (!isEditMode) {
+        quoteNumber = await getNextQuoteNumberForSave();
       }
 
       const quoteData = {
@@ -2829,14 +5190,20 @@ const NewQuote = () => {
         customerName: formData.customerName,
         customer: selectedCustomer?.id || selectedCustomer?._id || formData.customerName,
         customerId: selectedCustomer?.id || selectedCustomer?._id || null,
+        customerEmail: String((selectedCustomer as any)?.email || (selectedCustomer as any)?.primaryEmail || "").trim(),
         quoteDate: convertToISODate(formData.quoteDate),
         expiryDate: convertToISODate(formData.expiryDate),
         salesperson: formData.salesperson,
         salespersonId: formData.salespersonId,
         projectName: formData.projectName,
         subject: formData.subject,
+        priceListId: String(selectedPriceList?.id || selectedPriceList?._id || ""),
+        priceListName: String(selectedPriceList?.name || ""),
+        taxPreference: formData.taxExclusive,
         taxExclusive: formData.taxExclusive,
         items: validItems,
+        subTotal: subTotal,
+        totalTax: totalTax,
         subtotal: subTotal,
         tax: totalTax,
         taxAmount: totalTax,
@@ -2846,19 +5213,22 @@ const NewQuote = () => {
         discountAccount: formData.discountAccount,
         shippingCharges: shipping,
         shippingChargeTax: String(formData.shippingChargeTax || ""),
+        shippingTaxAmount: shippingTaxAmount,
         adjustment: adjustment,
         roundOff: roundOff,
         total: finalTotal,
+
         currency: formData.currency,
         customerNotes: formData.customerNotes,
         termsAndConditions: formData.termsAndConditions,
+        reportingTags: formData.reportingTags || [],
         attachedFiles: finalAttachedFiles.map(file => ({
           id: file.id,
           name: file.name,
           size: file.size,
           url: file.url
         })) || [],
-        status: "draft", // Save as draft first
+        status: "Draft", // Save as draft first
         date: formData.quoteDate
       };
 
@@ -2872,14 +5242,21 @@ const NewQuote = () => {
       // Step 2: Navigate to email page
       if (savedQuote) {
         const id = savedQuote._id || savedQuote.id || quoteId;
-        console.log("Quote saved as draft, navigating to email:", id);
-        navigate(`/sales/quotes/${id}/email`, { state: { preloadedQuote: savedQuote } });
+        navigate(`/sales/quotes/${id}/email`, {
+          state: {
+            preloadedQuote: savedQuote,
+            customerEmail: String((selectedCustomer as any)?.email || (selectedCustomer as any)?.primaryEmail || "").trim(),
+          },
+        });
       } else {
         throw new Error("Failed to save quote before sending.");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error in handleSaveAndSend:", error);
-      alert("Failed to save quote. Please try again.");
+      const message = String(error?.message || "");
+      if (!message.toLowerCase().includes("must have at least one address")) {
+        toast.error(message || "Failed to save quote. Please try again.");
+      }
     } finally {
       setSaveLoading(null);
     }
@@ -2891,61 +5268,110 @@ const NewQuote = () => {
 
   const handleOtherAction = () => {
     // Handle "Other" action - can be customized based on requirements
-    console.log("Other action clicked");
     // You can add custom logic here for what "Other" should do
     // For example: open a modal with more options, or perform a specific action
   };
 
+  const closeOpenDropdowns = () => {
+    setIsCustomerDropdownOpen(false);
+    setIsSalespersonDropdownOpen(false);
+    setIsProjectDropdownOpen(false);
+    setIsTaxPreferenceDropdownOpen(false);
+    setIsLocationDropdownOpen(false);
+    setIsPhoneCodeDropdownOpen(false);
+    setIsCountryDropdownOpen(false);
+    setIsUploadDropdownOpen(false);
+    setIsAddNewRowDropdownOpen(false);
+    setIsBulkActionsOpen(false);
+    setIsQuoteDatePickerOpen(false);
+    setIsExpiryDatePickerOpen(false);
+  };
+
+  const openExclusiveDropdown = (
+    isOpen: boolean,
+    setOpen: React.Dispatch<React.SetStateAction<boolean>>
+  ) => {
+    if (isOpen) {
+      setOpen(false);
+      return;
+    }
+    closeOpenDropdowns();
+    setOpen(true);
+  };
+
   return (
     <>
-      <div className="w-full min-h-screen bg-white">
+      <div className="w-full min-h-full bg-white flex flex-col">
         {/* Header */}
-        <div className="border-b border-gray-200 bg-white">
-          <div className="w-full px-6 py-4 flex justify-between items-center">
-            <h2 className="text-lg font-normal text-gray-900 m-0">
-              New Quote
-            </h2>
-            <button
-              onClick={() => navigate("/sales/quotes")}
-              className="text-red-500 hover:text-red-600 transition-colors"
-            >
-              <X size={20} />
-            </button>
+        <div className="sticky top-0 z-40 bg-white">
+          <div className="w-full px-8 h-16 flex justify-between items-center">
+            <div className="h-full flex items-end gap-8">
+              <button
+                type="button"
+                className={`h-full border-b-2 text-[18px] leading-none pb-3 font-medium transition-colors ${isSubscriptionMode ? "border-transparent text-gray-500 hover:text-gray-700" : "border-[#156372] text-gray-900"}`}
+                onClick={() => navigate("/sales/quotes/new")}
+              >
+                Quote
+              </button>
+              <button
+                type="button"
+                className={`h-full border-b-2 text-[18px] leading-none pb-3 font-medium transition-colors ${isSubscriptionMode ? "border-[#156372] text-gray-900" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+                onClick={() => navigate("/sales/quotes/subscription/new")}
+              >
+                Subscription Quote
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => navigate("/sales/quotes")}
+                className="text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Content */}
-        <div className="w-full py-6 pb-28">
+        <div className="w-full pb-28">
           {/* Form Fields Section */}
           <div className="bg-white overflow-visible">
-            <div className="px-6 py-5 border-b border-gray-100 bg-[#fafafa]">
+            <div className="px-6 py-6 border-b border-gray-200 bg-[#f5f6f8]">
               {/* Customer Name */}
               <div className="flex items-start gap-4">
-                <label className="text-sm text-red-600 w-40 pt-2 flex-shrink-0">
+                <label className="text-sm text-red-600 w-44 pt-2 flex-shrink-0">
                   Customer Name*
                 </label>
-                <div className="flex-1 relative" ref={customerDropdownRef}>
+                <div className="w-full max-w-[540px] relative" ref={customerDropdownRef}>
                   <div className="relative flex items-stretch">
                     <input
                       type="text"
-                      className={`flex-1 px-3 py-2 pr-10 border ${formErrors.customerName ? 'border-red-500' : 'border-gray-300'} rounded-l text-sm text-gray-700 focus:outline-none focus:border-[#156372] bg-white`}
+                      className={`flex-1 h-10 px-3 py-2 pr-10 border ${formErrors.customerName ? 'border-red-500' : isCustomerDropdownOpen ? 'border-[#156372]' : 'border-gray-300'} rounded-l text-sm text-gray-700 focus:outline-none focus:border-[#156372] bg-white`}
                       placeholder="Select or add a customer"
                       value={formData.customerName}
                       readOnly
-                      onClick={() => setIsCustomerDropdownOpen(!isCustomerDropdownOpen)}
+                      onClick={() => {
+                        if (!customers.length && !isCustomersLoading) {
+                          void loadCustomersForDropdown();
+                        }
+                        openExclusiveDropdown(isCustomerDropdownOpen, setIsCustomerDropdownOpen);
+                      }}
                     />
                     <div
                       className="absolute right-10 top-0 bottom-0 flex items-center px-2 cursor-pointer"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setIsCustomerDropdownOpen(!isCustomerDropdownOpen);
+                        if (!customers.length && !isCustomersLoading) {
+                          void loadCustomersForDropdown();
+                        }
+                        openExclusiveDropdown(isCustomerDropdownOpen, setIsCustomerDropdownOpen);
                       }}
                     >
-                      <ChevronDown size={14} className="text-gray-400" />
+                      {isCustomerDropdownOpen ? <ChevronUp size={14} className="text-[#156372]" /> : <ChevronDown size={14} className="text-gray-400" />}
                     </div>
                     <button
                       type="button"
-                      className="w-10 bg-[#156372] text-white rounded-r hover:bg-[#0D4A52] flex items-center justify-center border border-[#156372]"
+                      className="w-10 h-10 bg-[#156372] text-white rounded-r hover:bg-[#0D4A52] flex items-center justify-center border border-[#156372]"
                       onClick={(e) => {
                         e.stopPropagation();
                         setCustomerSearchModalOpen(true);
@@ -2953,73 +5379,180 @@ const NewQuote = () => {
                     >
                       <Search size={16} />
                     </button>
+                    {selectedCustomer && (
+                      <button
+                        type="button"
+                        className="ml-3 inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1 text-[13px] font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                        {(selectedCustomer as any)?.currency || formData.currency || "AMD"}
+                      </button>
+                    )}
                   </div>
 
                   {isCustomerDropdownOpen && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-80 overflow-y-auto">
-                      <div className="flex items-center gap-2 p-2 border-b border-gray-200 sticky top-0 bg-white">
-                        <Search size={14} className="text-gray-400" />
-                        <input
-                          type="text"
-                          placeholder="Search"
-                          value={customerSearch}
-                          onChange={(e) => setCustomerSearch(e.target.value)}
-                          className="flex-1 text-sm focus:outline-none"
-                          autoFocus
-                        />
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 overflow-hidden">
+                      <div className="p-2 border-b border-gray-200 bg-white">
+                        <div className="relative">
+                          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Search"
+                            value={customerSearch}
+                            onChange={(e) => setCustomerSearch(e.target.value)}
+                            className="w-full h-9 pl-9 pr-2 text-sm border border-[#156372] rounded-md focus:outline-none"
+                            autoFocus
+                          />
+                        </div>
                       </div>
-                      <div className="max-h-60 overflow-y-auto">
-                        {filteredCustomers.length > 0 ? (
+                      <div className="max-h-60 overflow-y-auto p-2 space-y-1">
+                        {isCustomersLoading ? (
+                          <div className="p-3 text-center text-sm text-gray-500 flex items-center justify-center gap-2">
+                            <Loader2 size={14} className="animate-spin" />
+                            Loading customers...
+                          </div>
+                        ) : filteredCustomers.length > 0 ? (
                           filteredCustomers.map(customer => {
                             const customerId = customer.id || customer._id;
                             const customerName = customer.name || customer.displayName || customer.companyName || "";
                             const customerEmail = customer.email || "";
-                            const isSelected = selectedCustomer && (
-                              (selectedCustomer.id && selectedCustomer.id === customerId) ||
-                              (selectedCustomer._id && selectedCustomer._id === customerId) ||
-                              (selectedCustomer.name === customerName)
-                            );
-
+                            const customerCode = (customer as any).customerCode || (customer as any).code || (customer as any).customerNumber || "";
+                            const customerCompany = customer.companyName || customerName;
                             return (
                               <div
                                 key={customerId}
-                                className={`p-2 cursor-pointer flex items-center gap-3 ${isSelected ? "bg-blue-50" : "hover:bg-gray-50"}`}
+                                className="p-2 cursor-pointer rounded-md flex items-center gap-3 hover:bg-[#f4f8f7]"
                                 onClick={() => handleCustomerSelect(customer)}
                               >
+                                <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold bg-gray-100 text-gray-600">
+                                  {(customerName || "C").charAt(0).toUpperCase()}
+                                </div>
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium truncate text-gray-900">
+                                  <div className="text-sm font-semibold truncate text-gray-900">
                                     {customerName}
+                                    {customerCode ? <span className="ml-2 font-medium text-gray-500">{customerCode}</span> : null}
+                                  </div>
+                                  <div className="mt-0.5 flex items-center gap-3 text-xs text-gray-500">
+                                    <span className="inline-flex items-center gap-1 truncate">
+                                      <Mail size={12} />
+                                      {customerEmail || "-"}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 truncate">
+                                      <Building2 size={12} />
+                                      {customerCompany}
+                                    </span>
                                   </div>
                                 </div>
                               </div>
                             );
                           })
                         ) : (
-                          <div className="p-4 text-center text-sm text-gray-500">
+                          <div className="p-3 text-center text-sm text-gray-500">
                             No customers found
                           </div>
                         )}
                       </div>
                       <button
-                        className="flex items-center gap-2 px-3 py-2 border-t border-gray-200 bg-gray-50 text-sm font-medium text-[#156372] w-full"
+                        className="flex items-center gap-2 px-3 py-2 border-t border-gray-200 bg-white text-sm font-medium text-[#156372] w-full hover:bg-[#f4f8f7]"
                         onClick={async (e) => {
                           e.stopPropagation();
+                          setIsCustomerDropdownOpen(false);
                           await openCustomerQuickAction();
                         }}
                       >
-                        <Plus size={14} />
+                        <PlusCircle size={14} />
                         New Customer
                       </button>
                     </div>
                   )}
+
+                  {selectedCustomer && (
+                    <div className="mt-4 flex gap-20">
+                      <div className="flex flex-col">
+                        <span className="text-[12px] font-semibold tracking-wide text-gray-500">BILLING ADDRESS</span>
+                        <div className="mt-2 text-[13px] text-gray-600">
+                          {billingAddress?.street1 ? (
+                            <div className="flex flex-col space-y-0.5 leading-relaxed">
+                              <span className="font-medium text-gray-700">{billingAddress.attention}</span>
+                              <span>{billingAddress.street1}</span>
+                              <span>{billingAddress.city}, {billingAddress.state} {billingAddress.zipCode}</span>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-[#156372] hover:text-[#0D4A52] font-medium text-[13px]"
+                              onClick={() => openAddressModal("billing")}
+                            >
+                              New Address
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[12px] font-semibold tracking-wide text-gray-500">SHIPPING ADDRESS</span>
+                        <div className="mt-2 text-[13px] text-gray-600">
+                          {shippingAddress?.street1 ? (
+                            <div className="flex flex-col space-y-0.5 leading-relaxed">
+                              <span className="font-medium text-gray-700">{shippingAddress.attention}</span>
+                              <span>{shippingAddress.street1}</span>
+                              <span>{shippingAddress.city}, {shippingAddress.state} {shippingAddress.zipCode}</span>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-[#156372] hover:text-[#0D4A52] font-medium text-[13px]"
+                              onClick={() => openAddressModal("shipping")}
+                            >
+                              New Address
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
+
+              {isLocationFeatureEnabled && (
+                <div className="flex items-start gap-4 mt-3">
+                  <label className="text-sm text-gray-700 w-44 pt-2 flex-shrink-0">
+                    Location
+                  </label>
+                  <div className="w-full max-w-[300px] relative">
+                    <button
+                      type="button"
+                      className="w-full h-10 px-3 pr-8 border border-gray-300 rounded text-sm text-gray-700 bg-white flex items-center justify-between focus:outline-none focus:border-[#156372]"
+                      onClick={() => openExclusiveDropdown(isLocationDropdownOpen, setIsLocationDropdownOpen)}
+                    >
+                      <span className="truncate">{formData.selectedLocation || "Head Office"}</span>
+                      <ChevronDown size={14} className="text-gray-400" />
+                    </button>
+                    {isLocationDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg z-50 overflow-hidden">
+                        {locationOptions.map((loc) => (
+                          <button
+                            type="button"
+                            key={loc}
+                            className={`w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 ${formData.selectedLocation === loc ? "bg-gray-100 font-medium" : ""}`}
+                            onClick={() => {
+                              setFormData((prev: any) => ({ ...prev, selectedLocation: loc }));
+                              setIsLocationDropdownOpen(false);
+                            }}
+                          >
+                            {loc}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="px-6 py-5">
               {/* Quote# */}
               <div className="flex items-start gap-4 mb-4">
-                <label className="text-sm text-red-600 w-40 pt-2 flex-shrink-0">
+                <label className="text-sm text-red-600 w-44 pt-2 flex-shrink-0">
                   Quote#*
                 </label>
                 <div className="flex-1 max-w-xs relative">
@@ -3042,7 +5575,7 @@ const NewQuote = () => {
 
               {/* Reference# */}
               <div className="flex items-start gap-4 mb-4">
-                <label className="text-sm text-gray-700 w-40 pt-2 flex-shrink-0">
+                <label className="text-sm text-gray-700 w-44 pt-2 flex-shrink-0">
                   Reference#
                 </label>
                 <div className="flex-1 max-w-xs">
@@ -3058,7 +5591,7 @@ const NewQuote = () => {
 
               {/* Dates */}
               <div className="flex items-start gap-4 mb-4">
-                <label className="text-sm text-red-600 w-40 pt-2 flex-shrink-0">
+                <label className="text-sm text-red-600 w-44 pt-2 flex-shrink-0">
                   Quote Date*
                 </label>
                 <div className="flex-1 flex items-center gap-8">
@@ -3068,7 +5601,7 @@ const NewQuote = () => {
                       className={`w-full px-3 py-2 border ${formErrors.quoteDate ? 'border-red-500' : 'border-gray-300'} rounded text-sm text-gray-700 focus:outline-none`}
                       value={formatDateForDisplay(formData.quoteDate)}
                       readOnly
-                      onClick={() => setIsQuoteDatePickerOpen(!isQuoteDatePickerOpen)}
+                      onClick={() => openExclusiveDropdown(isQuoteDatePickerOpen, setIsQuoteDatePickerOpen)}
                     />
                     {isQuoteDatePickerOpen && (
                       <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 w-64 p-4">
@@ -3094,7 +5627,7 @@ const NewQuote = () => {
                         </div>
                         <div className="grid grid-cols-7 gap-1 mb-2">
                           {daysOfWeek.map((day) => (
-                            <div key={day} className={`text-center text-xs font-medium py-1 ${day === "Sun" || day === "Sat" ? "text-red-600" : "text-gray-700"}`}>
+                            <div key={day} className="text-center text-xs font-medium py-1 text-gray-700">
                               {day}
                             </div>
                           ))}
@@ -3108,7 +5641,7 @@ const NewQuote = () => {
                                 key={index}
                                 onClick={() => handleDateSelect(day.fullDate, "quoteDate")}
                                 type="button"
-                                className={`p-2 text-sm rounded cursor-pointer ${isSelected ? "bg-red-600 text-white font-semibold" : isCurrentMonth ? "text-gray-900 " : "text-gray-400 "}`}
+                                className={`p-2 text-sm rounded cursor-pointer ${isSelected ? "bg-[#156372] text-white font-semibold" : isCurrentMonth ? "text-gray-900 " : "text-gray-400 "}`}
                               >
                                 {day.date}
                               </button>
@@ -3128,7 +5661,7 @@ const NewQuote = () => {
                         placeholder="dd/MM/yyyy"
                         value={formatDateForDisplay(formData.expiryDate)}
                         readOnly
-                        onClick={() => setIsExpiryDatePickerOpen(!isExpiryDatePickerOpen)}
+                        onClick={() => openExclusiveDropdown(isExpiryDatePickerOpen, setIsExpiryDatePickerOpen)}
                       />
                       {isExpiryDatePickerOpen && (
                         <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 w-64 p-4">
@@ -3145,7 +5678,7 @@ const NewQuote = () => {
                           </div>
                           <div className="grid grid-cols-7 gap-1 mb-2">
                             {daysOfWeek.map((day) => (
-                              <div key={day} className={`text-center text-xs font-medium py-1 ${day === "Sun" || day === "Sat" ? "text-red-600" : "text-gray-700"}`}>
+                              <div key={day} className="text-center text-xs font-medium py-1 text-gray-700">
                                 {day}
                               </div>
                             ))}
@@ -3154,8 +5687,15 @@ const NewQuote = () => {
                             {getDaysInMonth(expiryDateCalendar).map((day, index) => {
                               const isSelected = formData.expiryDate && formatDate(day.fullDate) === formData.expiryDate;
                               const isCurrentMonth = day.month === "current";
+                              const isDisabled = false;
                               return (
-                                <button key={index} onClick={() => handleDateSelect(day.fullDate, "expiryDate")} type="button" className={`p-2 text-sm rounded cursor-pointer ${isSelected ? "bg-red-600 text-white font-semibold" : isCurrentMonth ? "text-gray-900 " : "text-gray-400 "}`}>
+                                <button
+                                  key={index}
+                                  onClick={() => handleDateSelect(day.fullDate, "expiryDate")}
+                                  type="button"
+                                  disabled={isDisabled}
+                                  className={`p-2 text-sm rounded ${isDisabled ? "text-gray-300 cursor-not-allowed opacity-70" : "cursor-pointer"} ${!isDisabled && isSelected ? "bg-[#156372] text-white font-semibold" : isCurrentMonth ? "text-gray-900 " : "text-gray-400 "}`}
+                                >
                                   {day.date}
                                 </button>
                               );
@@ -3170,13 +5710,13 @@ const NewQuote = () => {
 
               {/* Salesperson */}
               <div className="flex items-start gap-4 mb-4">
-                <label className="text-sm text-gray-700 w-40 pt-2 flex-shrink-0">
+                <label className="text-sm text-gray-700 w-44 pt-2 flex-shrink-0">
                   Salesperson
                 </label>
                 <div className="flex-1 max-w-xs relative" ref={salespersonDropdownRef}>
                   <div
                     className="w-full px-3 py-2 border border-gray-300 rounded text-sm text-gray-700 flex justify-between items-center bg-white cursor-pointer"
-                    onClick={() => setIsSalespersonDropdownOpen(!isSalespersonDropdownOpen)}
+                    onClick={() => openExclusiveDropdown(isSalespersonDropdownOpen, setIsSalespersonDropdownOpen)}
                   >
                     <span className={formData.salesperson ? "text-gray-900" : "text-gray-400"}>
                       {formData.salesperson || "Select or Add Salesperson"}
@@ -3202,7 +5742,7 @@ const NewQuote = () => {
                           filteredSalespersons.map(salesperson => (
                             <div
                               key={salesperson.id || salesperson._id}
-                              className="px-4 py-2 text-sm text-gray-700 hover:bg-[#156372] hover:text-white cursor-pointer truncate"
+                              className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 cursor-pointer truncate"
                               onClick={() => handleSalespersonSelect(salesperson)}
                             >
                               {salesperson.name}
@@ -3229,7 +5769,7 @@ const NewQuote = () => {
 
               {/* Project Name */}
               <div className="flex items-start gap-4 mb-4">
-                <label className="text-sm text-gray-700 w-40 pt-2 flex-shrink-0">
+                <label className="text-sm text-gray-700 w-44 pt-2 flex-shrink-0">
                   Project Name
                 </label>
                 <div className="flex-1 max-w-xs relative" ref={projectDropdownRef}>
@@ -3240,7 +5780,7 @@ const NewQuote = () => {
                       }`}
                     onClick={() => {
                       if (selectedCustomer) {
-                        setIsProjectDropdownOpen(!isProjectDropdownOpen);
+                        openExclusiveDropdown(isProjectDropdownOpen, setIsProjectDropdownOpen);
                       }
                     }}
                   >
@@ -3248,7 +5788,7 @@ const NewQuote = () => {
                       {formData.projectName || "Select a project"}
                     </span>
                     {isProjectDropdownOpen ? (
-                      <ChevronUp size={14} className="text-[#3b82f6]" />
+                      <ChevronUp size={14} className="text-[#156372]" />
                     ) : (
                       <ChevronDown size={14} className="text-gray-400" />
                     )}
@@ -3288,7 +5828,7 @@ const NewQuote = () => {
 
               {/* Subject */}
               <div className="flex items-start gap-4 mb-8">
-                <label className="text-sm text-gray-700 w-40 pt-2 flex-shrink-0">
+                <label className="text-sm text-gray-700 w-44 pt-2 flex-shrink-0">
                   Subject
                 </label>
                 <div className="flex-1 max-w-2xl">
@@ -3302,1027 +5842,1016 @@ const NewQuote = () => {
                   />
                 </div>
               </div>
-            </div>
 
-
-            {/* Item Table Section */}
-            <div className="mt-6 bg-white border border-gray-200 rounded-md overflow-visible">
-              <div className="flex items-center justify-between px-6 py-3 border-b border-gray-100">
-                <h2 className="text-[13px] font-semibold text-gray-800">Item Table</h2>
-                <div className="relative" ref={bulkActionsRef}>
-                  <div
-                    className="flex items-center gap-1 text-[#156372] cursor-pointer hover:text-[#0D4A52] text-sm font-medium"
-                    onClick={() => setIsBulkActionsOpen(!isBulkActionsOpen)}
-                  >
-                    <CheckCircle size={14} />
-                    <span>Bulk Actions</span>
-                  </div>
-                  {isBulkActionsOpen && (
-                    <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[220px]">
+              <div className="border-t border-gray-200 pt-4 mb-3 max-w-[980px]">
+                <div className="flex flex-wrap items-center gap-4 text-sm">
+                  {isTaxPreferenceLocked ? (
+                    <div className="inline-flex items-center gap-2 text-sm text-gray-700">
+                      <Briefcase size={14} className="text-gray-400" />
+                      <span>{resolvedTaxPreference}</span>
+                    </div>
+                  ) : (
+                    <div className="relative" ref={taxPreferenceDropdownRef}>
                       <button
+                        type="button"
+                        className="inline-flex items-center gap-2 text-sm text-gray-700 hover:text-[#156372] transition-colors"
                         onClick={() => {
-                          setShowAdditionalInformation(!showAdditionalInformation);
-                          setIsBulkActionsOpen(false);
+                          openExclusiveDropdown(isTaxPreferenceDropdownOpen, setIsTaxPreferenceDropdownOpen);
                         }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-[#156372] hover:text-white transition-colors"
                       >
-                        {showAdditionalInformation ? "Hide All Additional Information" : "Show All Additional Information"}
+                        <Briefcase size={14} className="text-gray-400" />
+                        <span>{formData.taxExclusive}</span>
+                        {isTaxPreferenceDropdownOpen ? <ChevronUp size={14} className="text-[#156372]" /> : <ChevronDown size={14} className="text-gray-400" />}
                       </button>
-                    </div>
-                  )}
-                </div>
-              </div>
 
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="text-left py-2 px-3 text-[11px] font-semibold text-gray-500 uppercase">Item Details</th>
-                    <th className="text-center py-2 px-3 text-[11px] font-semibold text-gray-500 uppercase w-24">Quantity</th>
-                    <th className="text-center py-2 px-3 text-[11px] font-semibold text-gray-500 uppercase w-32">Rate</th>
-                    <th className="text-left py-2 px-3 text-[11px] font-semibold text-gray-500 uppercase w-40">Tax</th>
-                    <th className="text-right py-2 px-3 text-[11px] font-semibold text-gray-500 uppercase w-32">Amount</th>
-                    <th className="w-10"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {formData.items.map((item) => (
-                    <tr key={item.id} className="border-b border-gray-100 group">
-                      <td className="py-2 px-3">
-                        {item.itemType === "header" ? (
-                          <input
-                            type="text"
-                            value={item.itemDetails}
-                            onChange={(e) => handleItemChange(item.id, 'itemDetails', e.target.value)}
-                            placeholder="Header Title"
-                            className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-sm font-bold bg-gray-50"
-                          />
-                        ) : (
-
-                          <div className="flex gap-3 items-start">
-                            {/* Image Placeholder */}
-                            <div className="w-9 h-9 bg-gray-100 rounded border border-gray-200 flex items-center justify-center text-gray-400 mt-1 flex-shrink-0">
-                              <ImageIcon size={18} />
-                            </div>
-
-                            <div className="flex-1 space-y-2 min-w-[200px]">
-                              <div className="relative" ref={itemDropdownRefs.current[item.id]}>
-                                <input
-                                  type="text"
-                                  value={item.itemDetails}
-                                  onChange={(e) => {
-                                    handleItemChange(item.id, 'itemDetails', e.target.value);
-                                    setItemSearches(prev => ({ ...prev, [item.id]: e.target.value }));
-                                    if (!openItemDropdowns[item.id]) {
-                                      setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }));
-                                    }
-                                  }}
-                                  onFocus={() => {
-                                    if (!openItemDropdowns[item.id]) {
-                                      setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }));
-                                    }
-                                  }}
-                                  placeholder="Select or type an item"
-                                  className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-sm bg-transparent font-medium text-gray-900"
-                                />
-                                {openItemDropdowns[item.id] && (
-                                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg z-[60] max-h-60 overflow-y-auto w-[400px]">
-                                    <div className="p-2 border-b border-gray-100 sticky top-0 bg-white">
-                                      <div className="flex items-center gap-2 px-2 py-1.5 bg-gray-50 rounded">
-                                        <Search size={14} className="text-gray-400" />
-                                        <input
-                                          type="text"
-                                          placeholder="Search items..."
-                                          className="flex-1 bg-transparent text-sm outline-none"
-                                          value={itemSearches[item.id] || ""}
-                                          onChange={(e) => setItemSearches(prev => ({ ...prev, [item.id]: e.target.value }))}
-                                          autoFocus
-                                        />
-                                      </div>
-                                    </div>
-                                    {getFilteredItems(item.id).map((availItem) => (
-                                      <div
-                                        key={availItem.id}
-                                        className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
-                                        onClick={() => handleItemSelect(item.id, availItem)}
-                                      >
-                                        <div className="font-medium">{availItem.name}</div>
-                                        <div className="text-[11px] text-gray-500">SKU: {availItem.sku} | Rate: {availItem.rate} | Stock: {availItem.stockOnHand}</div>
-                                      </div>
-                                    ))}
-                                    <div
-                                      className="px-4 py-2 text-sm text-[#156372] hover:bg-gray-50 cursor-pointer font-medium border-t border-gray-100"
-                                      onClick={() => {
-                                        setIsNewItemModalOpen(true);
-                                        setOpenItemDropdowns(prev => ({ ...prev, [item.id]: false }));
-                                      }}
-                                    >
-                                      + New Item
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                              {showAdditionalInformation && (
-                                <textarea
-                                  value={item.description || ""}
-                                  onChange={(e) => handleItemChange(item.id, 'description', e.target.value)}
-                                  placeholder="Add a description to your item"
-                                  className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-xs text-gray-500 resize-none bg-transparent"
-                                  rows={2}
-                                />
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-2 px-3 align-top">
-                        {item.itemType !== "header" && (
-                          <div className="flex flex-col items-center gap-1">
-                            <input
-                              type="number"
-                              value={item.quantity}
-                              onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)}
-                              className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-sm text-center bg-transparent"
-                              step="0.01"
-                            />
-                            <div className="text-[10px] text-gray-500 text-center leading-tight">
-                              Stock on Hand:<br />
-                              <span className="font-medium text-gray-700">{item.stockOnHand || 0}</span>
-                            </div>
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-2 px-3 align-top">
-                        {item.itemType !== "header" && (
-                          <div className="flex flex-col items-center gap-1">
-                            <input
-                              type="number"
-                              value={item.rate}
-                              onChange={(e) => handleItemChange(item.id, 'rate', e.target.value)}
-                              className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-sm text-center bg-transparent"
-                              step="0.01"
-                            />
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-2 px-3 align-top">
-                        {item.itemType !== "header" && (
-                          <div className="relative" ref={(el) => { taxDropdownRefs.current[String(item.id)] = el; }}>
-                            <button
-                              type="button"
-                              className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 rounded outline-none text-sm bg-transparent text-gray-700 cursor-pointer flex items-center justify-between"
-                              onClick={() => setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
-                            >
-                              <span className={(item.tax || parseTaxRate(item.taxRate) > 0) ? "text-[#156372]" : "text-gray-500"}>
-                                {(item.tax || parseTaxRate(item.taxRate) > 0)
-                                  ? (() => {
-                                    const taxObj: any = getTaxBySelection(item.tax);
-                                    if (!taxObj) {
-                                      const fallbackRate = parseTaxRate(item.taxRate);
-                                      return fallbackRate > 0 ? `Tax [${fallbackRate}%]` : "Select a Tax";
-                                    }
-                                    const nm = taxObj.name || taxObj.taxName || "Tax";
-                                    const rt = Number(taxObj.rate || 0);
-                                    return `${nm} [${rt}%]`;
-                                  })()
-                                  : "Select a Tax"}
-                              </span>
-                              {openTaxDropdowns[item.id] ? <ChevronUp size={14} className="text-[#3b82f6]" /> : <ChevronDown size={14} className="text-gray-400" />}
-                            </button>
-
-                            {openTaxDropdowns[item.id] && (
-                              <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-md shadow-lg z-[90] overflow-hidden">
-                                <div className="p-2 border-b border-gray-200 bg-white">
-                                  <div className="flex items-center gap-2 px-2 py-1.5 border border-gray-200 rounded">
-                                    <Search size={14} className="text-gray-400" />
-                                    <input
-                                      type="text"
-                                      placeholder="Search"
-                                      value={taxSearches[item.id] || ""}
-                                      onChange={(e) => setTaxSearches(prev => ({ ...prev, [item.id]: e.target.value }))}
-                                      className="flex-1 text-sm focus:outline-none"
-                                    />
-                                  </div>
-                                </div>
-                                <div className="max-h-52 overflow-y-auto">
-                                  <div className="px-3 py-2 text-xs font-semibold text-gray-500 border-b border-gray-100">Tax</div>
-                                  {getFilteredTaxes(item.id).map((tax: any) => {
-                                    const taxId = String(tax.id || tax._id);
-                                    const taxName = tax.name || tax.taxName || "Tax";
-                                    const rate = Number(tax.rate || 0);
-                                    const selected = String(item.tax || "") === taxId || Number(item.taxRate || 0) === rate;
-                                    return (
-                                      <button
-                                        key={taxId}
-                                        type="button"
-                                        className={`w-full px-3 py-2 text-left text-sm ${selected ? "bg-[#3b82f6] text-white" : "text-gray-700 hover:bg-gray-50"}`}
-                                        onClick={() => {
-                                          handleItemChange(item.id, "tax", taxId);
-                                          setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: false }));
-                                        }}
-                                      >
-                                        {taxName} [{rate}%]
-                                      </button>
-                                    );
-                                  })}
-                                  {getFilteredTaxes(item.id).length === 0 && (
-                                    <div className="px-3 py-3 text-sm text-gray-500">No taxes found</div>
-                                  )}
-                                </div>
-                                <button
-                                  type="button"
-                                  className="w-full border-t border-gray-200 px-3 py-2 text-left text-[#3b82f6] text-sm font-medium flex items-center gap-2 hover:bg-gray-50"
-                                  onClick={() => {
-                                    setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: false }));
-                                    navigate("/settings/taxes/new");
-                                  }}
-                                >
-                                  <PlusCircle size={14} />
-                                  New Tax
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-2 px-3 text-right align-top">
-                        {item.itemType !== "header" && (
-                          <span className="text-sm font-medium text-gray-900 block py-1.5">
-                            {item.amount.toFixed(2)}
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-2 px-3 text-center align-top">
-                        <div
-                          className="relative inline-flex items-center gap-2 py-1.5"
-                          ref={(el) => {
-                            itemMenuRefs.current[String(item.id)] = el;
-                          }}
-                        >
-                          <button
-                            type="button"
-                            className="text-gray-400 hover:text-gray-600 transition-colors"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setOpenItemMenuId(openItemMenuId === item.id ? null : item.id);
-                            }}
-                          >
-                            <MoreVertical size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            className="text-red-500 hover:text-red-600 transition-colors"
-                            onClick={() => handleRemoveItem(item.id)}
-                          >
-                            <X size={16} />
-                          </button>
-
-                          {openItemMenuId === item.id && (
-                            <div className="absolute top-full right-0 mt-0 min-w-[200px] bg-white border border-gray-200 rounded shadow-lg z-[80] overflow-hidden">
-                              <button
-                                type="button"
-                                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-[#156372] hover:text-white transition-colors"
-                                onClick={() => {
-                                  setShowAdditionalInformation(false);
-                                  setOpenItemMenuId(null);
-                                }}
-                              >
-                                Hide Additional Information
-                              </button>
-                              <button
-                                type="button"
-                                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-[#156372] hover:text-white transition-colors"
-                                onClick={() => {
-                                  handleDuplicateItem(item.id);
-                                  setOpenItemMenuId(null);
-                                }}
-                              >
-                                Clone
-                              </button>
-                              <button
-                                type="button"
-                                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-[#156372] hover:text-white transition-colors"
-                                onClick={() => {
-                                  const index = formData.items.findIndex((i: any) => i.id === item.id);
-                                  if (index >= 0) {
-                                    handleAddItem(index + 1);
-                                  }
-                                  setOpenItemMenuId(null);
-                                }}
-                              >
-                                Insert New Row
-                              </button>
-                              <button
-                                type="button"
-                                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-[#156372] hover:text-white transition-colors"
-                                onClick={() => {
-                                  const index = formData.items.findIndex((i: any) => i.id === item.id);
-                                  if (index >= 0) {
-                                    setBulkAddInsertIndex(index);
-                                    setIsBulkAddModalOpen(true);
-                                  }
-                                  setOpenItemMenuId(null);
-                                }}
-                              >
-                                Insert Items in Bulk
-                              </button>
-                              <button
-                                type="button"
-                                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-[#156372] hover:text-white transition-colors"
-                                onClick={() => {
-                                  const index = formData.items.findIndex((i: any) => i.id === item.id);
-                                  if (index >= 0) {
-                                    handleInsertHeader(index);
-                                  }
-                                  setOpenItemMenuId(null);
-                                }}
-                              >
-                                Insert New Header
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Add Row Buttons */}
-            <div className="flex items-center gap-3 mt-4">
-              <div className="relative">
-                <button
-                  className="flex items-center gap-2 px-4 py-2 bg-[#e6f2f0] border border-[#b9d9d4] text-[#156372] rounded-md text-sm font-medium hover:bg-[#d6ece8] transition-colors"
-                  onClick={() => setIsAddNewRowDropdownOpen(!isAddNewRowDropdownOpen)}
-                >
-                  <Plus size={16} />
-                  Add New Row
-                  <ChevronDown size={14} />
-                </button>
-                {isAddNewRowDropdownOpen && (
-                  <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[160px]">
-                    <div
-                      className="px-4 py-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 transition-colors"
-                      onClick={() => {
-                        handleAddItem();
-                        setIsAddNewRowDropdownOpen(false);
-                      }}
-                    >
-                      Default Row
-                    </div>
-                  </div>
-                )}
-              </div>
-              <button
-                className="flex items-center gap-2 px-4 py-2 bg-[#e6f2f0] border border-[#b9d9d4] text-[#156372] rounded-md text-sm font-medium hover:bg-[#d6ece8] transition-colors"
-                onClick={() => setIsBulkAddModalOpen(true)}
-              >
-                <Plus size={16} />
-                Add Items in Bulk
-              </button>
-              {!showAdditionalInformation && (
-                <button
-                  className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
-                  onClick={() => setIsReportingTagsModalOpen(true)}
-                >
-                  <Tag size={16} />
-                  Reporting Tags
-                  <ChevronDown size={14} />
-                </button>
-              )}
-            </div>
-
-
-
-            {/* Summary and Notes Section */}
-            <div className="mt-12 flex flex-col md:flex-row justify-between items-start gap-12 pb-32">
-              {/* Left Column: Notes & Terms */}
-              <div className="flex-1 w-full max-w-xl space-y-6">
-                <div>
-                  <label className="block text-sm text-gray-700 mb-1.5 font-medium">Customer Notes</label>
-                  <textarea
-                    name="customerNotes"
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm text-gray-700 focus:outline-none focus:border-[#156372] resize-none h-24"
-                    placeholder="Will be displayed on the quote"
-                    value={formData.customerNotes}
-                    onChange={handleChange}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-700 mb-1.5 font-medium">Terms & Conditions</label>
-                  <textarea
-                    name="termsAndConditions"
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm text-gray-700 focus:outline-none focus:border-[#156372] resize-none h-24"
-                    placeholder="Enter terms and conditions"
-                    value={formData.termsAndConditions}
-                    onChange={handleChange}
-                  />
-                </div>
-
-                {/* File Upload */}
-                <div>
-                  <label className="block text-sm text-gray-700 mb-2 font-medium flex items-center gap-2">
-                    <Paperclip size={16} className="text-gray-400" />
-                    Attach File(s)
-                  </label>
-                  <div
-                    className="border border-dashed border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer hover:border-[#156372] transition-colors bg-gray-50/50"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Upload size={24} className="text-gray-400 mb-2" />
-                    <p className="text-sm text-gray-500">Click to upload files</p>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileUpload}
-                      multiple
-                      className="hidden"
-                      accept="*/*"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Right: Summary */}
-              <div className="w-full md:w-[540px] bg-[#f7f8fc] rounded-xl p-6 space-y-4 border border-gray-100" >
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">
-                    Sub Total
-                    <span className="ml-1 text-xs text-gray-500">
-                      ({formData.taxExclusive === "Tax Inclusive" ? "Tax Inclusive" : "Tax Exclusive"})
-                    </span>
-                  </span>
-                  <span className="text-gray-900 font-medium">{formData.subTotal.toFixed(2)}</span>
-                </div>
-
-                {showTransactionDiscount && (
-                  <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-600">Discount</span>
-                      <div className="flex items-center border border-gray-300 rounded bg-white px-1">
-                        <input
-                          type="number"
-                          className="w-12 py-0.5 text-right text-xs outline-none bg-transparent"
-                          value={formData.discount}
-                          onChange={(e) => setFormData(prev => ({ ...prev, discount: parseFloat(e.target.value) || 0 }))}
-                        />
-                        <select
-                          className="text-[10px] text-gray-500 bg-transparent border-0 truncate outline-none cursor-pointer"
-                          value={formData.discountType}
-                          onChange={(e) => setFormData(prev => ({ ...prev, discountType: e.target.value }))}
-                        >
-                          <option value="percent">%</option>
-                          <option value="amount">{formData.currency}</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div></div>
-                    <span className="text-gray-900 font-medium">
-                      {(formData.discountType === 'percent' ? (formData.subTotal * formData.discount / 100) : formData.discount).toFixed(2)}
-                    </span>
-                  </div>
-                )}
-
-                {/* Discount Account Selection - Only shows if discount > 0 */}
-                {showTransactionDiscount && (formData.discount > 0) && (
-                  <div className="flex flex-col gap-1 text-sm border-t border-gray-100 pt-2 pb-2">
-                    <span className="text-gray-600 text-[11px] uppercase font-semibold">Discount Account</span>
-                    <div className="relative" ref={discountAccountDropdownRef}>
-                      <div
-                        className="flex items-center justify-between border border-gray-300 rounded bg-white px-2 py-1.5 cursor-pointer hover:border-gray-400 transition-colors"
-                        onClick={() => setIsDiscountAccountOpen(!isDiscountAccountOpen)}
-                      >
-                        <span className="text-xs text-gray-700 truncate max-w-[180px]">
-                          {formData.discountAccount || "Select Account"}
-                        </span>
-                        <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />
-                      </div>
-
-                      {isDiscountAccountOpen && (
-                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-xl z-[70] max-h-60 overflow-y-auto">
-                          <div className="sticky top-0 bg-white p-2 border-b border-gray-100 z-10">
+                      {isTaxPreferenceDropdownOpen && (
+                        <div className="absolute left-0 top-full mt-2 w-[220px] rounded-md border border-gray-200 bg-white shadow-lg z-[90] overflow-hidden">
+                          <div className="p-2 border-b border-gray-100">
                             <div className="relative">
-                              <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" size={12} />
+                              <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
                               <input
                                 type="text"
-                                className="w-full pl-7 pr-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:border-[#156372]"
-                                placeholder="Search accounts..."
-                                value={discountAccountSearch}
-                                onChange={(e) => setDiscountAccountSearch(e.target.value)}
-                                onClick={(e) => e.stopPropagation()}
+                                value={taxPreferenceSearch}
+                                onChange={(e) => setTaxPreferenceSearch(e.target.value)}
+                                placeholder="Search"
+                                className="w-full h-8 pl-7 pr-2 text-sm border border-[#3b82f6] rounded-md outline-none"
                               />
                             </div>
                           </div>
+                          <div className="px-3 py-2 text-xs font-semibold text-gray-500 border-b border-gray-100">Item Tax Preference</div>
                           <div className="py-1">
-                            {Object.entries(groupedDiscountAccounts).length > 0 ? (
-                              Object.entries(groupedDiscountAccounts).map(([type, accounts]) => (
-                                <div key={type} className="mb-2">
-                                  <div className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50/50">{type}</div>
-                                  {accounts.map((account) => (
-                                    <div
-                                      key={account.id}
-                                      className="px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer flex flex-col gap-0.5"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setFormData(prev => ({ ...prev, discountAccount: account.name }));
-                                        setIsDiscountAccountOpen(false);
-                                      }}
-                                    >
-                                      <div className="font-medium">{account.name}</div>
-                                      <div className="text-[10px] text-gray-400">{account.accountCode}</div>
-                                    </div>
-                                  ))}
-                                </div>
-                              ))
-                            ) : (
-                              <div className="p-4 text-center text-xs text-gray-500 italic">No matching accounts found</div>
+                            {filteredTaxPreferenceOptions.length > 0 ? filteredTaxPreferenceOptions.map((option) => {
+                              const selected = formData.taxExclusive === option;
+                              return (
+                                <button
+                                  key={option}
+                                  type="button"
+                                  className={`w-full px-3 py-2 text-sm text-left flex items-center justify-between ${selected ? "bg-gray-100 text-gray-900" : "text-gray-700 hover:bg-white"}`}
+                                  onClick={() => {
+                                    setFormData(prev => ({ ...prev, taxExclusive: option }));
+                                    setIsTaxPreferenceDropdownOpen(false);
+                                    setTaxPreferenceSearch("");
+                                  }}
+                                >
+                                  <span>{option}</span>
+                                  {selected ? <Check size={14} className="text-gray-700" /> : null}
+                                </button>
+                              );
+                            }) : (
+                              <div className="px-3 py-2 text-sm text-gray-500">No options found</div>
                             )}
                           </div>
                         </div>
                       )}
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
+              </div>
+            </div>
 
-                {showShippingCharges && (
-                  <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 text-sm">
-                    <span className="text-gray-600">Shipping Charges</span>
-                    <input
-                      type="number"
-                      className="w-20 px-2 py-0.5 text-right border border-gray-300 rounded text-xs outline-none focus:border-[#156372] bg-white"
-                      value={formData.shippingCharges}
-                      onChange={(e) => setFormData(prev => ({ ...prev, shippingCharges: parseFloat(e.target.value) || 0 }))}
-                    />
-                    <span className="text-gray-900 font-medium text-right">{(parseFloat(String(formData.shippingCharges)) || 0).toFixed(2)}</span>
-                  </div>
-                )}
 
-                {showShippingCharges && (parseFloat(String(formData.shippingCharges)) || 0) > 0 && (
-                  <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 text-sm">
-                    <span className="text-gray-600">Shipping Charge Tax</span>
-                    <select
-                      value={String(formData.shippingChargeTax || "")}
-                      onChange={(e) => setFormData(prev => ({ ...prev, shippingChargeTax: e.target.value }))}
-                      className="w-56 px-2 py-0.5 border border-gray-300 rounded text-xs outline-none focus:border-[#156372] bg-white text-gray-700"
+            {/* Item Table Section */}
+            <div className="max-w-[980px]">
+              <div className="mt-3 bg-white border border-gray-200 rounded-md overflow-visible">
+                <div className="flex items-center justify-between px-3 py-3 border-b border-gray-200 bg-[#f8f9fb] rounded-t-md">
+                  <h2 className="text-[13px] font-semibold text-gray-800">Item Table</h2>
+                  <div className="relative" ref={bulkActionsRef}>
+                    <div
+                      className="flex items-center gap-1 text-[#156372] cursor-pointer hover:text-[#0D4A52] text-sm font-medium"
+                      onClick={() => openExclusiveDropdown(isBulkActionsOpen, setIsBulkActionsOpen)}
                     >
-                      <option value="">Select a Tax</option>
-                      {taxes.map((tax: any) => {
-                        const taxId = String(tax.id || tax._id || "");
-                        const taxName = tax.name || tax.taxName || "Tax";
-                        const rate = Number(tax.rate || 0);
-                        return (
-                          <option key={taxId} value={taxId}>
-                            {taxName} [{rate}%]
-                          </option>
-                        );
-                      })}
-                    </select>
-                    <span></span>
-                  </div>
-                )}
-
-                <div className="border-t border-gray-200 my-2"></div>
-
-                {taxBreakdown.map((tx) => (
-                  <div key={tx.label} className="grid grid-cols-[1fr_auto] items-center text-sm">
-                    <span className="text-gray-700">{tx.label}</span>
-                    <span className="text-gray-900 font-medium">{tx.amount.toFixed(2)}</span>
-                  </div>
-                ))}
-
-                {showAdjustment && (
-                  <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 text-sm">
-                    <div className="flex items-center gap-1">
-                      <span className="text-gray-600">Adjustment</span>
-                      <HelpCircle size={14} className="text-gray-300" />
+                      <CheckCircle size={14} />
+                      <span>Bulk Actions</span>
                     </div>
-                    <input
-                      type="number"
-                      className="w-20 px-2 py-0.5 text-right border border-gray-300 rounded text-xs outline-none focus:border-[#156372] bg-white"
-                      value={formData.adjustment}
-                      onChange={(e) => setFormData(prev => ({ ...prev, adjustment: parseFloat(e.target.value) || 0 }))}
-                    />
-                    <span className="text-gray-900 font-medium text-right">{(parseFloat(String(formData.adjustment)) || 0).toFixed(2)}</span>
-                  </div>
-                )}
-
-                <div className="pt-4 border-t border-gray-200 mt-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[28px] leading-none font-semibold text-gray-900">Total ({formData.currency})</span>
-                    <span className="text-2xl font-bold text-gray-900">{formData.total.toFixed(2)}</span>
+                    {isBulkActionsOpen && (
+                      <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[220px]">
+                        <button
+                          onClick={() => {
+                            setShowAdditionalInformation(!showAdditionalInformation);
+                            setIsBulkActionsOpen(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                        >
+                          {showAdditionalInformation ? "Hide All Additional Information" : "Show All Additional Information"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
+
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-white border-b border-gray-200">
+                      <th className="text-left py-2 px-3 text-[11px] font-semibold text-gray-500 uppercase">Item Details</th>
+                      <th className="text-center py-2 px-3 text-[11px] font-semibold text-gray-500 uppercase w-24">Quantity</th>
+                      <th className="text-center py-2 px-3 text-[11px] font-semibold text-gray-500 uppercase w-32">Rate</th>
+                      <th className="text-left py-2 px-3 text-[11px] font-semibold text-gray-500 uppercase w-40">Tax</th>
+                      <th className="text-right py-2 px-3 text-[11px] font-semibold text-gray-500 uppercase w-32">Amount</th>
+                      <th className="w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {formData.items.map((item) => (
+                      <tr key={item.id} className="border-b border-gray-200 group">
+                        <td className="py-2 px-3">
+                          {item.itemType === "header" ? (
+                            <input
+                              type="text"
+                              value={item.itemDetails}
+                              onChange={(e) => handleItemChange(item.id, 'itemDetails', e.target.value)}
+                              placeholder="Header Title"
+                              className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-sm font-bold bg-gray-50"
+                            />
+                          ) : (
+
+                            <div className="flex gap-3 items-start">
+                              <div className="pt-2 text-gray-300">
+                                <GripVertical size={14} />
+                              </div>
+                              {/* Image Placeholder */}
+                              <div className="w-9 h-9 bg-gray-100 rounded border border-gray-200 flex items-center justify-center text-gray-400 mt-1 flex-shrink-0">
+                                <ImageIcon size={18} />
+                              </div>
+
+                              <div className="flex-1 space-y-2 min-w-[200px]">
+                                <div
+                                  className="relative"
+                                  ref={(el) => { itemDropdownRefs.current[String(item.id)] = el; }}
+                                >
+                                  <input
+                                    type="text"
+                                    value={item.itemDetails}
+                                    onChange={(e) => {
+                                      handleItemChange(item.id, 'itemDetails', e.target.value);
+                                      setItemSearches(prev => ({ ...prev, [item.id]: e.target.value }));
+                                      if (!openItemDropdowns[item.id]) {
+                                        setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }));
+                                      }
+                                    }}
+                                    onFocus={() => {
+                                      if (!openItemDropdowns[item.id]) {
+                                        setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }));
+                                      }
+                                    }}
+                                    placeholder="Type or click to select an item."
+                                    className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-sm bg-transparent font-medium text-gray-900"
+                                  />
+                                  {openItemDropdowns[item.id] && (
+                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg z-[60] max-h-60 overflow-y-auto w-[400px]">
+                                      <div className="p-2 border-b border-gray-100 sticky top-0 bg-white">
+                                        <div className="flex items-center gap-2 px-2 py-1.5 bg-gray-50 rounded">
+                                          <Search size={14} className="text-gray-400" />
+                                          <input
+                                            type="text"
+                                            placeholder="Search items or plans..."
+                                            className="flex-1 bg-transparent text-sm outline-none"
+                                            value={itemSearches[item.id] || ""}
+                                            onChange={(e) => setItemSearches(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                            autoFocus
+                                          />
+                                        </div>
+                                      </div>
+                                      {getFilteredItems(item.id).map((availItem) => (
+                                        <div
+                                          key={availItem.id}
+                                          className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
+                                          onClick={() => handleItemSelect(item.id, availItem)}
+                                        >
+                                          <div className="font-medium flex items-center gap-2">
+                                            <span>{availItem.name}</span>
+                                            {availItem.entityType === "plan" ? (
+                                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#e6f4f7] text-[#156372]">Plan</span>
+                                            ) : null}
+                                          </div>
+                                          <div className="text-[11px] text-gray-500">
+                                            {availItem.entityType === "plan" ? "Code" : "SKU"}: {availItem.code || availItem.sku || "-"}
+                                          </div>
+                                        </div>
+                                      ))}
+                                      <div
+                                        className="px-4 py-2 text-sm text-[#156372] hover:bg-gray-50 cursor-pointer font-medium border-t border-gray-100"
+                                        onClick={() => {
+                                          setNewItemTargetRowId(item.id);
+                                          setIsNewItemModalOpen(true);
+                                          setOpenItemDropdowns(prev => ({ ...prev, [item.id]: false }));
+                                        }}
+                                      >
+                                        + New Item
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                                {(showAdditionalInformation || additionalInfoItemIds.includes(String(item.id))) && (
+                                  <>
+                                    <textarea
+                                      value={item.description || ""}
+                                      onChange={(e) => handleItemChange(item.id, 'description', e.target.value)}
+                                      placeholder="Add a description to your item"
+                                      className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-xs text-gray-500 resize-none bg-transparent"
+                                      rows={2}
+                                    />
+                                    <button
+                                      type="button"
+                                      className="mt-1 inline-flex items-center gap-2 text-xs text-gray-700 hover:text-[#156372]"
+                                      onClick={() => {
+                                        const isCurrentOpen = isReportingTagsModalOpen && currentReportingTagsItemId === item.id;
+                                        if (isCurrentOpen) {
+                                          setCurrentReportingTagsItemId(null);
+                                          setIsReportingTagsModalOpen(false);
+                                          return;
+                                        }
+                                        handleOpenReportingTagsModal(item.id);
+                                      }}
+                                    >
+                                      <Tag size={12} className="text-gray-500" />
+                                      <span>{getItemReportingTagsSummaryLabel(item)}</span>
+                                      <ChevronDown size={12} className="text-gray-500" />
+                                    </button>
+                                    {renderReportingTagsInlinePanel(item)}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 align-top">
+                          {item.itemType !== "header" && (
+                            <div className="flex flex-col items-center gap-1">
+                              <input
+                                type="number"
+                                value={item.quantity}
+                                onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)}
+                                className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-sm text-center bg-transparent"
+                                step="0.01"
+                              />
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 align-top">
+                          {item.itemType !== "header" && (
+                            <div className="flex flex-col items-center gap-1">
+                              <input
+                                type="number"
+                                value={item.rate}
+                                onChange={(e) => handleItemChange(item.id, 'rate', e.target.value)}
+                                className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-sm text-center bg-transparent"
+                                step="0.01"
+                              />
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 align-top">
+                          {item.itemType !== "header" && (
+                            <div className="relative" ref={(el) => { taxDropdownRefs.current[String(item.id)] = el; }}>
+                              {(() => {
+                                const selectedTaxObj: any = getTaxBySelection(item.tax);
+                                const fallbackRate = parseTaxRate(item.taxRate);
+                                const displayLabel = selectedTaxObj
+                                  ? taxLabel(selectedTaxObj)
+                                  : (fallbackRate > 0 ? `Tax [${fallbackRate}%]` : "Select a Tax");
+                                const searchValue = taxSearches[item.id] || "";
+                                const filteredGroups = getFilteredTaxGroups(searchValue);
+                                const hasTaxes = filteredGroups.length > 0;
+
+                                return (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="w-full px-2 py-1.5 border border-gray-300 bg-white rounded outline-none text-sm text-left flex items-center justify-between hover:border-gray-400 transition-colors"
+                                      onClick={() => setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                                    >
+                                      <span className={displayLabel === "Select a Tax" ? "text-gray-500" : "text-gray-900"}>
+                                        {displayLabel}
+                                      </span>
+                                      <ChevronDown
+                                        size={14}
+                                        className={`transition-transform ${openTaxDropdowns[item.id] ? "rotate-180" : ""}`}
+                                        style={{ color: "#156372" }}
+                                      />
+                                    </button>
+
+                                    {openTaxDropdowns[item.id] && (
+                                      <div className="absolute left-0 top-full z-[9999] mt-1 w-72 rounded-xl border border-[#d6dbe8] bg-white p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
+                                        <div className="p-2">
+                                          <div className="flex items-center gap-2 rounded-lg border bg-slate-50/50 px-3 py-1.5 transition-all focus-within:bg-white" style={{ borderColor: "#156372" }}>
+                                            <Search size={14} className="text-slate-400" />
+                                            <input
+                                              type="text"
+                                              value={searchValue}
+                                              onChange={(e) => setTaxSearches(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                              placeholder="Search..."
+                                              className="w-full border-none bg-transparent text-[13px] text-slate-700 outline-none placeholder:text-slate-400"
+                                              autoFocus
+                                            />
+                                          </div>
+                                        </div>
+                                        <div className="max-h-64 overflow-y-auto py-1 custom-scrollbar">
+                                          {!hasTaxes ? (
+                                            <div className="px-4 py-3 text-center text-[13px] text-slate-400">No taxes found</div>
+                                          ) : (
+                                            filteredGroups.map((group) => (
+                                              <div key={group.label}>
+                                                <div className="px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-widest text-slate-700">
+                                                  {group.label}
+                                                </div>
+                                                {group.options.map((tax) => {
+                                                  const taxId = tax.id;
+                                                  const label = taxLabel(tax.raw ?? tax);
+                                                  const selected = String(item.tax || "") === taxId || Number(item.taxRate || 0) === tax.rate;
+                                                  return (
+                                                    <button
+                                                      key={taxId}
+                                                      type="button"
+                                                      onClick={() => {
+                                                        handleItemChange(item.id, "tax", taxId);
+                                                        setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: false }));
+                                                        setTaxSearches(prev => ({ ...prev, [item.id]: "" }));
+                                                      }}
+                                                      className={`w-full px-4 py-2 text-left text-[13px] ${selected
+                                                        ? "text-[#156372] font-medium hover:bg-gray-50 hover:text-gray-900"
+                                                        : "text-slate-700 hover:bg-gray-50 hover:text-gray-900"
+                                                        }`}
+                                                    >
+                                                      {label}
+                                                    </button>
+                                                  );
+                                                })}
+                                              </div>
+                                            ))
+                                          )}
+                                        </div>
+                                        <button
+                                          type="button"
+                                          className="w-full border-t border-gray-200 px-4 py-2 text-left text-[#156372] text-[13px] font-medium flex items-center gap-2 hover:bg-gray-50"
+                                          onClick={() => {
+                                            setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: false }));
+                                            setNewTaxTargetItemId(item.id);
+                                            setIsNewTaxQuickModalOpen(true);
+                                          }}
+                                        >
+                                          <PlusCircle size={14} />
+                                          New Tax
+                                        </button>
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 text-right align-top">
+                          {item.itemType !== "header" && (
+                            <span className="text-sm font-medium text-gray-900 block py-1.5">
+                              {item.amount.toFixed(2)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 text-center align-top">
+                          <div
+                            className="relative inline-flex items-center gap-2 py-1.5"
+                            ref={(el) => {
+                              itemMenuRefs.current[String(item.id)] = el;
+                            }}
+                          >
+                            <button
+                              type="button"
+                              className="text-gray-400 hover:text-gray-600 transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenItemMenuId(openItemMenuId === item.id ? null : item.id);
+                              }}
+                            >
+                              <MoreVertical size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              className="text-red-500 hover:text-red-600 transition-colors"
+                              onClick={() => handleRemoveItem(item.id)}
+                            >
+                              <X size={16} />
+                            </button>
+
+                            {openItemMenuId === item.id && (
+                              <div className="absolute top-full right-0 mt-0 min-w-[200px] bg-white border border-gray-200 rounded shadow-lg z-[80] overflow-hidden">
+                                <button
+                                  type="button"
+                                  className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                                  onClick={() => {
+                                    setShowAdditionalInformation((prev) => !prev);
+                                    setAdditionalInfoItemIds([]);
+                                    setOpenItemMenuId(null);
+                                  }}
+                                >
+                                  {showAdditionalInformation
+                                    ? "Hide Additional Information"
+                                    : "Show Additional Information"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                                  onClick={() => {
+                                    handleDuplicateItem(item.id);
+                                    setOpenItemMenuId(null);
+                                  }}
+                                >
+                                  Clone
+                                </button>
+                                <button
+                                  type="button"
+                                  className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                                  onClick={() => {
+                                    const index = formData.items.findIndex((i: any) => i.id === item.id);
+                                    if (index >= 0) {
+                                      handleAddItem(index + 1);
+                                    }
+                                    setOpenItemMenuId(null);
+                                  }}
+                                >
+                                  Insert New Row
+                                </button>
+                                <button
+                                  type="button"
+                                  className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                                  onClick={() => {
+                                    const index = formData.items.findIndex((i: any) => i.id === item.id);
+                                    if (index >= 0) {
+                                      setBulkAddInsertIndex(index);
+                                      setIsBulkAddModalOpen(true);
+                                    }
+                                    setOpenItemMenuId(null);
+                                  }}
+                                >
+                                  Insert Items in Bulk
+                                </button>
+                                <button
+                                  type="button"
+                                  className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                                  onClick={() => {
+                                    const index = formData.items.findIndex((i: any) => i.id === item.id);
+                                    if (index >= 0) {
+                                      handleInsertHeader(index);
+                                    }
+                                    setOpenItemMenuId(null);
+                                  }}
+                                >
+                                  Insert New Header
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Add Row Buttons */}
+              <div className="mt-4 flex items-center gap-3 w-full justify-start self-start">
+                <div className="relative">
+                  <button
+                    className="flex items-center gap-2 px-4 py-2 bg-[#eef3ff] border border-[#d7deef] text-[#1f3f79] rounded-md text-sm font-medium hover:bg-[#e7eefb] transition-colors"
+                    onClick={() => openExclusiveDropdown(isAddNewRowDropdownOpen, setIsAddNewRowDropdownOpen)}
+                  >
+                    <Plus size={16} />
+                    Add New Row
+                    <ChevronDown size={14} />
+                  </button>
+                  {isAddNewRowDropdownOpen && (
+                    <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[160px]">
+                      <div
+                        className="px-4 py-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 transition-colors"
+                        onClick={() => {
+                          handleAddItem();
+                          setIsAddNewRowDropdownOpen(false);
+                        }}
+                      >
+                        Default Row
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <button
+                  className="flex items-center gap-2 px-4 py-2 bg-[#eef3ff] border border-[#d7deef] text-[#1f3f79] rounded-md text-sm font-medium hover:bg-[#e7eefb] transition-colors"
+                  onClick={() => setIsBulkAddModalOpen(true)}
+                >
+                  <Plus size={16} />
+                  Add Items in Bulk
+                </button>
+              </div>
+
+
+
+              {/* Summary and Notes Section */}
+              <div className="mt-5 pb-16 space-y-6">
+                <div className="grid grid-cols-1 xl:grid-cols-[1fr_500px] gap-8 items-start">
+                  <div className="flex-1 w-full max-w-[520px]">
+                    <label className="block text-sm text-gray-700 mb-2 font-medium">Customer Notes</label>
+                    <textarea
+                      name="customerNotes"
+                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm text-gray-700 focus:outline-none focus:border-[#156372] resize-none h-24"
+                      placeholder="Will be displayed on the quote"
+                      value={formData.customerNotes}
+                      onChange={handleChange}
+                    />
+                  </div>
+
+                  <div className="w-full max-w-[520px] bg-[#f3f5f8] rounded-lg p-5 space-y-4 border border-gray-200">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-700 font-medium">Sub Total</span>
+                      <span className="text-gray-900 font-semibold">{formData.subTotal.toFixed(2)}</span>
+                    </div>
+
+                    {showTransactionDiscount && (
+                      <div className="grid grid-cols-[1fr_140px_72px] items-center gap-3 text-sm">
+                        <span className="text-gray-700">Discount</span>
+                        <div className="h-8 flex items-center border border-gray-300 rounded bg-white overflow-hidden">
+                          <input
+                            type="number"
+                            className="w-full h-full px-2 text-right text-xs outline-none bg-transparent"
+                            value={formData.discount}
+                            onChange={(e) => setFormData(prev => ({ ...prev, discount: parseFloat(e.target.value) || 0 }))}
+                          />
+                          <select
+                            className="h-full min-w-[46px] px-1 text-[11px] text-gray-500 bg-[#f8fafc] border-l border-gray-300 outline-none cursor-pointer"
+                            value={formData.discountType}
+                            onChange={(e) => setFormData(prev => ({ ...prev, discountType: e.target.value }))}
+                          >
+                            <option value="percent">%</option>
+                            <option value="amount">{formData.currency}</option>
+                          </select>
+                        </div>
+                        <span className="text-gray-900 font-medium text-right">
+                          {(formData.discountType === "percent" ? (formData.subTotal * formData.discount / 100) : formData.discount).toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+
+
+
+                    {showShippingCharges && (
+                      <div className="grid grid-cols-[1fr_140px_72px] items-center gap-3 text-sm">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-gray-700">Shipping Charges</span>
+                          <HelpCircle size={14} className="text-gray-400" />
+                        </div>
+                        <input
+                          type="number"
+                          className="w-full h-8 px-2 text-right border border-gray-300 rounded text-xs outline-none focus:border-[#156372] bg-white"
+                          value={formData.shippingCharges}
+                          onChange={(e) => setFormData(prev => ({ ...prev, shippingCharges: parseFloat(e.target.value) || 0 }))}
+                        />
+                        <span className="text-gray-900 font-medium text-right">{(parseFloat(String(formData.shippingCharges)) || 0).toFixed(2)}</span>
+                      </div>
+                    )}
+
+                    {showShippingCharges && (parseFloat(String(formData.shippingCharges)) || 0) > 0 && (
+                      <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 text-sm">
+                        <span className="text-gray-700">Shipping Charge Tax</span>
+                        <select
+                          value={String(formData.shippingChargeTax || "")}
+                          onChange={(e) => setFormData(prev => ({ ...prev, shippingChargeTax: e.target.value }))}
+                          className="w-56 h-8 px-2 border border-gray-300 rounded text-xs outline-none focus:border-[#156372] bg-white text-gray-700"
+                        >
+                          <option value="">Select a Tax</option>
+                          {taxes.map((tax: any) => {
+                            const taxId = String(tax.id || tax._id || "");
+                            const taxName = tax.name || tax.taxName || "Tax";
+                            const rate = Number(tax.rate || 0);
+                            return (
+                              <option key={taxId} value={taxId}>
+                                {taxName} [{rate}%]
+                              </option>
+                            );
+                          })}
+                        </select>
+                        <span></span>
+                      </div>
+                    )}
+
+                    <div className="border-t border-gray-200 my-2"></div>
+
+                    {taxBreakdown.map((tx) => (
+                      <div key={tx.label} className="grid grid-cols-[1fr_auto] items-center text-sm">
+                        <span className="text-gray-700">{tx.label}</span>
+                        <span className="text-gray-900 font-medium">{tx.amount.toFixed(2)}</span>
+                      </div>
+                    ))}
+
+                    {showAdjustment && (
+                      <div className="grid grid-cols-[1fr_140px_72px] items-center gap-3 text-sm">
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-700">Adjustment</span>
+                          <HelpCircle size={14} className="text-gray-400" />
+                        </div>
+                        <input
+                          type="number"
+                          className="w-full h-8 px-2 text-right border border-gray-300 rounded text-xs outline-none focus:border-[#156372] bg-white"
+                          value={formData.adjustment}
+                          onChange={(e) => setFormData(prev => ({ ...prev, adjustment: parseFloat(e.target.value) || 0 }))}
+                        />
+                        <span className="text-gray-900 font-medium text-right">{(parseFloat(String(formData.adjustment)) || 0).toFixed(2)}</span>
+                      </div>
+                    )}
+
+                    <div className="pt-4 border-t border-gray-200 mt-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[30px] leading-none font-semibold text-gray-900">Total ({formData.currency})</span>
+                        <span className="text-[30px] leading-none font-bold text-gray-900">{formData.total.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border border-gray-200 rounded-md bg-[#f5f6f8] p-4 grid grid-cols-1 xl:grid-cols-[1fr_330px] gap-8">
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-2 font-medium">Terms & Conditions</label>
+                    <textarea
+                      name="termsAndConditions"
+                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm text-gray-700 focus:outline-none focus:border-[#156372] resize-none h-24"
+                      placeholder="Enter the terms and conditions of your business to be displayed in your transaction"
+                      value={formData.termsAndConditions}
+                      onChange={handleChange}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-2 font-medium">Attach File(s) to Quote</label>
+                    <div className="relative flex items-center gap-2" ref={uploadDropdownRef}>
+                      <button
+                        type="button"
+                        className="h-10 px-4 border border-dashed border-gray-300 rounded-md bg-white text-sm text-[#156372] hover:bg-[#f4f8f7] transition-colors inline-flex items-center gap-2"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <Upload size={15} />
+                        Upload File
+                        <ChevronDown size={14} className="text-gray-400" />
+                      </button>
+                      {formData.attachedFiles.length > 0 && (
+                        <button
+                          type="button"
+                          className="h-10 min-w-[40px] px-3 rounded-md bg-[#156372] text-white text-sm font-semibold hover:bg-[#0f5661] transition-colors inline-flex items-center justify-center"
+                          onClick={() => openExclusiveDropdown(isUploadDropdownOpen, setIsUploadDropdownOpen)}
+                        >
+                          <Paperclip size={14} className="mr-1" />
+                          {formData.attachedFiles.length}
+                        </button>
+                      )}
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileUpload}
+                        multiple
+                        className="hidden"
+                        accept="*/*"
+                      />
+                      {isUploadDropdownOpen && (
+                        <div className="absolute left-0 mt-2 translate-y-[44px] w-[320px] bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                          <div className="p-2 space-y-2">
+                            {formData.attachedFiles.length > 0 ? (
+                              formData.attachedFiles.map((file: any) => (
+                                <div key={file.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-medium text-gray-800">{file.name}</p>
+                                    <p className="text-xs text-gray-500">File Size: {(Number(file.size || 0) / 1024).toFixed(1)} KB</p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="shrink-0 rounded-md p-2 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                    onClick={() => handleRemoveFile(file.id)}
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="px-3 py-2 text-sm text-gray-500">No files uploaded</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">You can upload a maximum of 5 files, 10MB each</p>
+                  </div>
+                </div>
+
               </div>
             </div>
           </div>
         </div>
       </div>
-
-      {/* Sticky Footer */}
-      <div className="fixed bottom-0 left-[260px] right-0 bg-white border-t border-gray-200 px-8 py-4 flex justify-start gap-4 z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-        <button
-          onClick={handleSaveDraft}
-          disabled={saveLoading !== null}
-          className={`px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded text-sm font-semibold hover:bg-gray-50 transition-colors flex items-center gap-2 ${saveLoading !== null ? "opacity-70 cursor-not-allowed" : ""}`}
-        >
-          {saveLoading === "draft" ? <Loader2 size={16} className="animate-spin" /> : null}
-          {saveLoading === "draft" ? "Saving..." : "Save as Draft"}
-        </button>
-        <button
-          onClick={handleSaveAndSend}
-          disabled={saveLoading !== null}
-          className={`px-6 py-2 bg-[#156372] text-white rounded text-sm font-semibold hover:bg-[#0D4A52] transition-colors flex items-center gap-2 ${saveLoading !== null ? "opacity-70 cursor-not-allowed" : ""}`}
-        >
-          {saveLoading === "send" ? <Loader2 size={16} className="animate-spin" /> : null}
-          {saveLoading === "send" ? "Saving..." : "Save and Send"}
-        </button>
-        <button
-          onClick={handleCancel}
-          className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded text-sm font-semibold hover:bg-gray-50 transition-colors"
-        >
-          Cancel
-        </button>
-      </div>
-
-      {/* New Item Modal */}
-      {
-        isNewItemModalOpen && (
-          <div className="new-invoice-modal-overlay" onClick={handleCancelNewItem}>
-            <div className="new-item-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="new-item-modal-header">
-                <h2 className="new-item-modal-title">New Item</h2>
+      {priceListSwitchDialog && typeof document !== "undefined" && document.body && createPortal(
+        <div className="fixed inset-0 z-[12100] bg-slate-900/35">
+          <div className="flex min-h-full items-start justify-center px-4 pt-6">
+            <div className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="flex items-start gap-4 border-b border-slate-200 px-5 py-6">
+                <div className="mt-0.5 rounded-full bg-amber-100 p-2 text-amber-600">
+                  <AlertTriangle size={20} />
+                </div>
+                <div className="flex-1 pr-6">
+                  <p className="text-base font-semibold text-slate-900">
+                    {priceListSwitchDialog.nextPriceListName
+                      ? "You have selected a customer with a different price list."
+                      : "You have selected a customer without a price list."}
+                  </p>
+                  <p className="mt-2 text-sm leading-7 text-slate-700">
+                    {priceListSwitchDialog.nextPriceListName
+                      ? `${priceListSwitchDialog.customerName} uses "${priceListSwitchDialog.nextPriceListName}". You can apply this new price list to update item rates and discounts on the quote, or keep the existing price list "${priceListSwitchDialog.currentPriceListName}".`
+                      : `${priceListSwitchDialog.customerName} does not have a saved price list. You can clear the current quote price list "${priceListSwitchDialog.currentPriceListName}" and use the standard item rates, or keep the existing price list.`}
+                  </p>
+                </div>
                 <button
-                  className="new-item-modal-close"
-                  onClick={handleCancelNewItem}
+                  type="button"
+                  className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                  onClick={() => setPriceListSwitchDialog(null)}
                 >
-                  <X size={20} />
+                  <X size={18} />
                 </button>
               </div>
+              <div className="flex flex-wrap items-center gap-3 px-5 py-5">
+                <button
+                  type="button"
+                  className="rounded-md bg-[#156372] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#0f4f5b]"
+                  onClick={() => applyResolvedPriceListChoice(
+                    priceListSwitchDialog.nextPriceListName,
+                    priceListSwitchDialog.nextPriceListName
+                      ? (priceListSwitchDialog.nextPriceListCurrency || priceListSwitchDialog.customerCurrency)
+                      : priceListSwitchDialog.customerCurrency
+                  )}
+                >
+                  {priceListSwitchDialog.nextPriceListName ? "Apply New Price List" : "Clear Price List"}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  onClick={() => setPriceListSwitchDialog(null)}
+                >
+                  Keep Existing Price List
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
-              <div className="new-item-modal-body">
-                {/* Top Section - Type, Name, SKU, Unit, and Image */}
-                <div className="new-item-top-section">
-                  <div className="new-item-form-left">
-                    {/* Type */}
-                    <div className="new-item-field-group">
-                      <label className="new-item-label">
-                        Type
-                        <Info size={14} className="new-item-info-icon" />
-                      </label>
-                      <div className="new-item-radio-group">
-                        <label className="new-item-radio-label">
-                          <input
-                            type="radio"
-                            name="type"
-                            value="Goods"
-                            checked={newItemData.type === "Goods"}
-                            onChange={handleNewItemChange}
-                            className="new-item-radio"
-                          />
-                          <span className="new-item-radio-dot"></span>
-                          Goods
-                        </label>
-                        <label className="new-item-radio-label">
-                          <input
-                            type="radio"
-                            name="type"
-                            value="Service"
-                            checked={newItemData.type === "Service"}
-                            onChange={handleNewItemChange}
-                            className="new-item-radio"
-                          />
-                          <span className="new-item-radio-dot"></span>
-                          Service
-                        </label>
-                      </div>
-                    </div>
+      {/* Address Modal */}
+      {isAddressModalOpen && (
+        <div className="fixed inset-0 z-[12000] bg-black/45 flex items-start justify-center pt-3 pb-4 px-4" onClick={() => !isAddressSaving && setIsAddressModalOpen(false)}>
+          <div className="w-full max-w-[620px] rounded-lg bg-white shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200">
+              <h3 className="text-[28px] leading-none font-medium text-gray-800">
+                {addressModalType === "billing" ? "Billing Address" : "Shipping Address"}
+              </h3>
+              <button
+                type="button"
+                className="w-7 h-7 rounded-md border border-[#2f80ed] text-red-500 flex items-center justify-center hover:bg-blue-50"
+                onClick={() => setIsAddressModalOpen(false)}
+                disabled={isAddressSaving}
+              >
+                <X size={16} />
+              </button>
+            </div>
 
-                    {/* Name */}
-                    <div className="new-item-field-group">
-                      <label className="new-item-label">
-                        Name<span className="new-item-required">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        name="name"
-                        className="new-item-input"
-                        value={newItemData.name}
-                        onChange={handleNewItemChange}
-                      />
-                    </div>
+            <div className="px-5 py-3.5 space-y-3.5 max-h-[70vh] overflow-y-auto">
+              <div>
+                <label className="block text-[12px] text-gray-700 mb-1">Attention</label>
+                <input className="w-full h-9 rounded border border-gray-300 px-3 text-[12px] text-gray-700 outline-none focus:border-[#156372]" name="attention" value={addressFormData.attention} onChange={handleAddressFieldChange} autoFocus />
+              </div>
 
-                    {/* SKU */}
-                    <div className="new-item-field-group">
-                      <label className="new-item-label">
-                        SKU
-                        <Info size={14} className="new-item-info-icon" />
-                      </label>
-                      <input
-                        type="text"
-                        name="sku"
-                        className="new-item-input"
-                        value={newItemData.sku}
-                        onChange={handleNewItemChange}
-                      />
-                    </div>
-
-                    {/* Unit */}
-                    <div className="new-item-field-group">
-                      <label className="new-item-label">
-                        Unit
-                        <Info size={14} className="new-item-info-icon" />
-                      </label>
-                      <div className="new-item-select-wrapper">
-                        <select
-                          name="unit"
-                          className="new-item-select"
-                          value={newItemData.unit}
-                          onChange={handleNewItemChange}
-                        >
-                          <option value="">Select or type to add</option>
-                          <option value="pcs">pcs</option>
-                          <option value="box">box</option>
-                          <option value="kg">kg</option>
-                          <option value="ltr">ltr</option>
-                          <option value="m">m</option>
-                        </select>
-                        <ChevronDown size={16} className="new-item-select-icon" />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Image Upload */}
-                  <div className="new-item-image-section">
-                    <div
-                      className="new-item-image-upload"
-                      onClick={() => newItemImageRef.current?.click()}
-                    >
-                      {newItemImage ? (
-                        <img src={newItemImage} alt="Item" className="new-item-image-preview" />
-                      ) : (
-                        <>
-                          <ImageIcon size={48} className="new-item-image-icon" />
-                          <p className="new-item-image-text">Drag image(s) here or</p>
-                          <button type="button" className="new-item-browse-button">
-                            Browse images
-                          </button>
-                        </>
-                      )}
-                    </div>
-                    <input
-                      ref={newItemImageRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleNewItemImageUpload}
-                      style={{ display: "none" }}
-                    />
-                  </div>
-                </div>
-
-                {/* Sales and Purchase Information */}
-                <div className="new-item-info-section">
-                  {/* Sales Information */}
-                  <div className="new-item-info-column">
-                    <div className="new-item-info-header">
-                      <h3 className="new-item-info-title">Sales Information</h3>
-                      <label className="new-item-checkbox-label">
-                        <input
-                          type="checkbox"
-                          name="sellable"
-                          checked={newItemData.sellable}
-                          onChange={handleNewItemChange}
-                          className="new-item-checkbox"
-                        />
-                        Sellable
-                      </label>
-                    </div>
-
-                    {/* Selling Price */}
-                    <div className="new-item-field-group">
-                      <label className="new-item-label new-item-label-red">
-                        Selling Price<span className="new-item-required">*</span>
-                      </label>
-                      <div className="new-item-price-input">
-                        <span className="new-item-currency-prefix">{formData.currency}</span>
-                        <input
-                          type="number"
-                          name="sellingPrice"
-                          className="new-item-input new-item-input-with-prefix"
-                          value={newItemData.sellingPrice}
-                          onChange={handleNewItemChange}
-                          step="0.01"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Sales Account */}
-                    <div className="new-item-field-group">
-                      <label className="new-item-label new-item-label-red">
-                        Account<span className="new-item-required">*</span>
-                      </label>
-                      <div className="new-item-select-wrapper">
-                        <select
-                          name="salesAccount"
-                          className="new-item-select"
-                          value={newItemData.salesAccount}
-                          onChange={handleNewItemChange}
-                        >
-                          <option value="Sales">Sales</option>
-                          <option value="Service Income">Service Income</option>
-                          <option value="Other Income">Other Income</option>
-                        </select>
-                        <ChevronDown size={16} className="new-item-select-icon" />
-                      </div>
-                    </div>
-
-                    {/* Sales Description */}
-                    <div className="new-item-field-group">
-                      <label className="new-item-label">Description</label>
-                      <textarea
-                        name="salesDescription"
-                        className="new-item-textarea"
-                        value={newItemData.salesDescription}
-                        onChange={handleNewItemChange}
-                        rows={3}
-                      />
-                    </div>
-
-                    {/* Sales Tax */}
-                    <div className="new-item-field-group">
-                      <label className="new-item-label">
-                        Tax
-                        <Info size={14} className="new-item-info-icon" />
-                      </label>
-                      <div className="new-item-select-wrapper">
-                        <select
-                          name="salesTax"
-                          className="new-item-select"
-                          value={newItemData.salesTax}
-                          onChange={handleNewItemChange}
-                        >
-                          <option value="">Select a Tax</option>
-                          {taxes.map(tax => (
-                            <option key={tax.id} value={tax.id}>{tax.name}</option>
-                          ))}
-                        </select>
-                        <ChevronDown size={16} className="new-item-select-icon" />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Purchase Information */}
-                  <div className="new-item-info-column">
-                    <div className="new-item-info-header">
-                      <h3 className="new-item-info-title">Purchase Information</h3>
-                      <label className="new-item-checkbox-label">
-                        <input
-                          type="checkbox"
-                          name="purchasable"
-                          checked={newItemData.purchasable}
-                          onChange={handleNewItemChange}
-                          className="new-item-checkbox"
-                        />
-                        Purchasable
-                      </label>
-                    </div>
-
-                    {/* Cost Price */}
-                    <div className="new-item-field-group">
-                      <label className="new-item-label new-item-label-red">
-                        Cost Price<span className="new-item-required">*</span>
-                      </label>
-                      <div className="new-item-price-input">
-                        <span className="new-item-currency-prefix">{formData.currency}</span>
-                        <input
-                          type="number"
-                          name="costPrice"
-                          className="new-item-input new-item-input-with-prefix"
-                          value={newItemData.costPrice}
-                          onChange={handleNewItemChange}
-                          step="0.01"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Purchase Account */}
-                    <div className="new-item-field-group">
-                      <label className="new-item-label new-item-label-red">
-                        Account<span className="new-item-required">*</span>
-                      </label>
-                      <div className="new-item-select-wrapper">
-                        <select
-                          name="purchaseAccount"
-                          className="new-item-select"
-                          value={newItemData.purchaseAccount}
-                          onChange={handleNewItemChange}
-                        >
-                          <option value="Cost of Goods Sold">Cost of Goods Sold</option>
-                          <option value="Purchases">Purchases</option>
-                          <option value="Expenses">Expenses</option>
-                        </select>
-                        <ChevronDown size={16} className="new-item-select-icon" />
-                      </div>
-                    </div>
-
-                    {/* Purchase Description */}
-                    <div className="new-item-field-group">
-                      <label className="new-item-label">Description</label>
-                      <textarea
-                        name="purchaseDescription"
-                        className="new-item-textarea"
-                        value={newItemData.purchaseDescription}
-                        onChange={handleNewItemChange}
-                        rows={3}
-                      />
-                    </div>
-
-                    {/* Purchase Tax */}
-                    <div className="new-item-field-group">
-                      <label className="new-item-label">
-                        Tax
-                        <Info size={14} className="new-item-info-icon" />
-                      </label>
-                      <div className="new-item-select-wrapper">
-                        <select
-                          name="purchaseTax"
-                          className="new-item-select"
-                          value={newItemData.purchaseTax}
-                          onChange={handleNewItemChange}
-                        >
-                          <option value="">Select a Tax</option>
-                          {taxes.map(tax => (
-                            <option key={tax.id} value={tax.id}>{tax.name}</option>
-                          ))}
-                        </select>
-                        <ChevronDown size={16} className="new-item-select-icon" />
-                      </div>
-                    </div>
-
-                    {/* Preferred Vendor */}
-                    <div className="new-item-field-group">
-                      <label className="new-item-label">Preferred Vendor</label>
-                      <div className="new-item-select-wrapper">
-                        <select
-                          name="preferredVendor"
-                          className="new-item-select"
-                          value={newItemData.preferredVendor}
-                          onChange={handleNewItemChange}
-                        >
-                          <option value=""></option>
-                        </select>
-                        <ChevronDown size={16} className="new-item-select-icon" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Track Inventory Section */}
-                <div className="new-item-inventory-section">
-                  <label className="new-item-inventory-checkbox">
-                    <input
-                      type="checkbox"
-                      name="trackInventory"
-                      checked={newItemData.trackInventory}
-                      onChange={handleNewItemChange}
-                      className="new-item-checkbox"
-                    />
-                    <span className="new-item-inventory-label">
-                      Track Inventory for this item
-                      <Info size={14} className="new-item-info-icon" />
+              <div>
+                <label className="block text-[12px] text-gray-700 mb-1">Country/Region</label>
+                <div className="relative" ref={countryDropdownRef}>
+                  <button
+                    type="button"
+                    className="w-full h-9 rounded border border-gray-300 px-3 text-[12px] text-gray-700 outline-none focus:border-[#156372] bg-white flex items-center justify-between"
+                    onClick={() => {
+                      openExclusiveDropdown(isCountryDropdownOpen, setIsCountryDropdownOpen);
+                      setCountrySearch("");
+                    }}
+                  >
+                    <span className={addressFormData.country ? "text-gray-700" : "text-gray-400"}>
+                      {addressFormData.country || "Select or type to add"}
                     </span>
-                  </label>
-                  <p className="new-item-inventory-note">
-                    You cannot enable/disable inventory tracking once you've created transactions for this item
-                  </p>
-
-                  {newItemData.trackInventory && (
-                    <div className="new-item-inventory-info">
-                      <Info size={16} className="new-item-inventory-info-icon" />
-                      <span>Note: You can configure the opening stock and stock tracking for this item under the Items module</span>
+                    {isCountryDropdownOpen ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+                  </button>
+                  {isCountryDropdownOpen && (
+                    <div className="absolute left-0 top-full z-[13000] mt-1 w-full rounded-md border border-gray-200 bg-white shadow-xl overflow-hidden">
+                      <div className="p-2 border-b border-gray-100">
+                        <div className="relative">
+                          <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="text"
+                            value={countrySearch}
+                            onChange={(e) => setCountrySearch(e.target.value)}
+                            placeholder="Search"
+                            className="h-9 w-full rounded border border-gray-300 pl-7 pr-2 text-[12px] text-gray-700 outline-none focus:border-[#156372]"
+                            autoFocus
+                          />
+                        </div>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto">
+                        {filteredCountryOptions.length === 0 ? (
+                          <div className="px-3 py-2 text-[12px] text-gray-500">No matching country</div>
+                        ) : (
+                          filteredCountryOptions.map((country: any) => (
+                            <button
+                              key={country.isoCode}
+                              type="button"
+                              className={`w-full px-3 py-2 text-left text-[12px] hover:bg-[#f4f8f7] ${String(addressFormData.country || "").toLowerCase() === String(country.name || "").toLowerCase() ? "bg-[#e6f4f7] text-[#156372]" : "text-gray-700"}`}
+                              onClick={() => {
+                                setAddressFormData((prev: any) => ({ ...prev, country: String(country.name || "") }));
+                                setIsCountryDropdownOpen(false);
+                                setCountrySearch("");
+                              }}
+                            >
+                              {country.name}
+                            </button>
+                          ))
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="new-item-modal-footer">
-                <button
-                  className="new-item-button new-item-button-primary"
-                  style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                  onClick={handleSaveNewItem}
-                >
-                  Save
-                </button>
-                <button
-                  className="new-item-button new-item-button-cancel"
-                  onClick={handleCancelNewItem}
-                >
-                  Cancel
-                </button>
+              <div>
+                <label className="block text-[12px] text-gray-700 mb-1">Address</label>
+                <textarea className="w-full min-h-[50px] rounded border border-gray-300 px-3 py-2 text-[12px] text-gray-700 outline-none focus:border-[#156372]" name="street1" value={addressFormData.street1} onChange={handleAddressFieldChange} placeholder="Street 1" />
+                <textarea className="mt-2 w-full min-h-[50px] rounded border border-gray-300 px-3 py-2 text-[12px] text-gray-700 outline-none focus:border-[#156372]" name="street2" value={addressFormData.street2} onChange={handleAddressFieldChange} placeholder="Street 2" />
               </div>
+
+              <div>
+                <label className="block text-[12px] text-gray-700 mb-1">City</label>
+                <input className="w-full h-9 rounded border border-gray-300 px-3 text-[12px] text-gray-700 outline-none focus:border-[#156372]" name="city" value={addressFormData.city} onChange={handleAddressFieldChange} />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[12px] text-gray-700 mb-1">State</label>
+                  <input className="w-full h-9 rounded border border-gray-300 px-3 text-[12px] text-gray-700 outline-none focus:border-[#156372]" name="state" value={addressFormData.state} onChange={handleAddressFieldChange} placeholder="Select or type to add" list="state-list" />
+                  <datalist id="state-list">
+                    {stateOptions.map((state: any) => (
+                      <option key={state} value={state} />
+                    ))}
+                  </datalist>
+                </div>
+                <div>
+                  <label className="block text-[12px] text-gray-700 mb-1">ZIP Code</label>
+                  <input className="w-full h-9 rounded border border-gray-300 px-3 text-[12px] text-gray-700 outline-none focus:border-[#156372]" name="zipCode" value={addressFormData.zipCode} onChange={handleAddressFieldChange} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[12px] text-gray-700 mb-1">Phone</label>
+                  <div className="grid grid-cols-[88px_1fr] gap-0">
+                    <div className="relative" ref={phoneCodeDropdownRef}>
+                      <button
+                        type="button"
+                        className="h-9 w-full rounded-l border border-gray-300 px-2 text-[12px] text-gray-700 bg-white flex items-center justify-between outline-none focus:border-[#156372]"
+                        onClick={() => {
+                          openExclusiveDropdown(isPhoneCodeDropdownOpen, setIsPhoneCodeDropdownOpen);
+                          setPhoneCodeSearch("");
+                        }}
+                      >
+                        <span>{addressFormData.phoneCountryCode || "+"}</span>
+                        {isPhoneCodeDropdownOpen ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+                      </button>
+
+                      {isPhoneCodeDropdownOpen && (
+                        <div className="absolute left-0 top-full z-[13000] mt-1 w-[320px] rounded-md border border-gray-200 bg-white shadow-xl overflow-hidden">
+                          <div className="p-2 border-b border-gray-100">
+                            <div className="relative">
+                              <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                              <input
+                                type="text"
+                                value={phoneCodeSearch}
+                                onChange={(e) => setPhoneCodeSearch(e.target.value)}
+                                placeholder="Search"
+                                className="h-9 w-full rounded border border-gray-300 pl-7 pr-2 text-[12px] text-gray-700 outline-none focus:border-[#156372]"
+                                autoFocus
+                              />
+                            </div>
+                          </div>
+                          <div className="max-h-64 overflow-y-auto">
+                            {filteredPhoneCountryOptions.length === 0 ? (
+                              <div className="px-3 py-2 text-[12px] text-gray-500">No matching country code</div>
+                            ) : (
+                              filteredPhoneCountryOptions.map((country: any) => (
+                                <button
+                                  key={`${country.isoCode}-${country.phoneCode}`}
+                                  type="button"
+                                  className={`w-full px-3 py-2 text-left text-[12px] hover:bg-[#3b82f6] hover:text-white ${addressFormData.phoneCountryCode === country.phoneCode ? "bg-[#3b82f6] text-white" : "text-gray-700"}`}
+                                  onClick={() => {
+                                    setAddressFormData((prev: any) => ({ ...prev, phoneCountryCode: country.phoneCode }));
+                                    setIsPhoneCodeDropdownOpen(false);
+                                  }}
+                                >
+                                  <span className="inline-block w-14">{country.phoneCode}</span>
+                                  <span>{country.name}</span>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <input className="h-9 rounded-r border border-l-0 border-gray-300 px-3 text-[12px] text-gray-700 outline-none focus:border-[#156372]" name="phone" value={addressFormData.phone} onChange={handleAddressFieldChange} />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[12px] text-gray-700 mb-1">Fax Number</label>
+                  <input className="w-full h-9 rounded border border-gray-300 px-3 text-[12px] text-gray-700 outline-none focus:border-[#156372]" name="fax" value={addressFormData.fax} onChange={handleAddressFieldChange} />
+                </div>
+              </div>
+
+              <p className="text-[12px] text-gray-500">
+                <span className="font-semibold">Note:</span> Changes made here will be updated for this customer.
+              </p>
+            </div>
+
+            <div className="px-5 py-3.5 border-t border-gray-200 flex items-center gap-3">
+              <button
+                type="button"
+                className="px-5 h-9 rounded-md bg-[#15803d] text-white text-sm font-semibold hover:bg-[#166534] disabled:opacity-70"
+                onClick={handleSaveAddress}
+                disabled={isAddressSaving}
+              >
+                {isAddressSaving ? "Saving..." : "Save"}
+              </button>
+              <button
+                type="button"
+                className="px-5 h-9 rounded-md border border-gray-300 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-70"
+                onClick={() => setIsAddressModalOpen(false)}
+                disabled={isAddressSaving}
+              >
+                Cancel
+              </button>
             </div>
           </div>
-        )
-      }
+        </div>
+      )}
+
+      {/* Sticky Footer */}
+      <div className="fixed bottom-0 left-0 right-0 lg:left-[240px] bg-white py-4 z-50">
+        <div className="px-8">
+          <div className="flex items-center gap-3">
+          <button
+            onClick={handleSaveDraft}
+            disabled={saveLoading !== null}
+            className={`px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded text-sm font-semibold hover:bg-gray-50 transition-colors flex items-center gap-2 ${saveLoading !== null ? "opacity-70 cursor-not-allowed" : ""}`}
+          >
+            {saveLoading === "draft" ? <Loader2 size={16} className="animate-spin" /> : null}
+            {saveLoading === "draft" ? "Saving..." : "Save as Draft"}
+          </button>
+          <button
+            onClick={handleSaveAndSend}
+            disabled={saveLoading !== null}
+            className={`px-6 py-2 bg-[#156372] text-white rounded text-sm font-semibold hover:bg-[#0D4A52] transition-colors flex items-center gap-2 ${saveLoading !== null ? "opacity-70 cursor-not-allowed" : ""}`}
+          >
+            {saveLoading === "send" ? <Loader2 size={16} className="animate-spin" /> : null}
+            {saveLoading === "send" ? "Saving..." : "Save and Send"}
+          </button>
+          <button
+            onClick={handleCancel}
+            className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded text-sm font-semibold hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          </div>
+        </div>
+      </div>
+
+      {/* New Item Modal */}
+      {isNewItemModalOpen && createPortal(
+        <div
+          className="fixed inset-0 z-[12000] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => {
+            setIsNewItemModalOpen(false);
+            setNewItemTargetRowId(null);
+          }}
+        >
+          <div
+            className="w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="max-h-[90vh] overflow-y-auto bg-gray-50">
+              <NewItemForm
+                onCancel={() => {
+                  setIsNewItemModalOpen(false);
+                  setNewItemTargetRowId(null);
+                }}
+                onCreate={handleCreateItemFromModal}
+                baseCurrency={baseCurrencyCode ? { code: baseCurrencyCode } : undefined}
+                formTitle="New Item"
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* New Project Modal */}
       {
@@ -4627,125 +7156,121 @@ const NewQuote = () => {
       {
         isQuoteNumberModalOpen && (
           <div
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center pt-4 z-50"
             onClick={() => setIsQuoteNumberModalOpen(false)}
           >
             <div
-              className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto"
+              className="bg-white rounded-lg shadow-xl w-full max-w-[520px] mx-4"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Modal Header */}
-              <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                <h2 className="text-xl font-bold text-gray-900">Configure Quote Number Preferences</h2>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                <h2 className="text-[18px] leading-none font-medium text-gray-800">Configure Quote Number Preferences</h2>
                 <button
                   onClick={() => setIsQuoteNumberModalOpen(false)}
-                  className="p-2  rounded-lg text-gray-400 "
+                  className="w-7 h-7 rounded-md border border-[#2f80ed] text-red-500 flex items-center justify-center hover:bg-blue-50"
                 >
-                  <X size={20} />
+                  <X size={16} />
                 </button>
               </div>
 
-              {/* Modal Body */}
-              <div className="p-6">
-                {/* Transaction Number Series Configuration Section */}
-                <div className="bg-gray-50 rounded-lg p-4 mb-6 flex items-start gap-4">
-                  <Settings size={20} className="text-gray-500 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <p className="text-sm text-gray-700 mb-2">
-                      Configure multiple transaction number series to auto-generate transaction numbers with unique prefixes according to your business needs.
+              <div className="px-4 py-4">
+                <div className="grid grid-cols-[1fr_1fr] gap-x-5 gap-y-1 pb-4 border-b border-gray-200">
+                  <div>
+                    <p className="text-[13px] leading-none font-semibold text-gray-800 mb-2">Location</p>
+                    <p className="text-[14px] leading-none text-gray-700">{formData.selectedLocation || "Head Office"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[13px] leading-none font-semibold text-gray-800 mb-2">Associated Series</p>
+                    <p className="text-[14px] leading-none text-gray-700">
+                      {quoteSeriesRow?.seriesName || "Default Transaction Series"}
                     </p>
-                    <button className="text-[#156372]  text-sm font-medium">
-                      Configure â†’
-                    </button>
                   </div>
                 </div>
 
-                {/* Quote Numbering Preference Section */}
-                <div className="mb-6">
+                <div className="pt-4">
                   {quoteNumberMode === "auto" ? (
-                    <p className="text-sm text-gray-700 mb-4">
+                    <p className="text-[12px] leading-[1.45] text-gray-700 mb-3 max-w-[96%]">
                       Your quote numbers are set on auto-generate mode to save your time. Are you sure about changing this setting?
                     </p>
                   ) : (
-                    <p className="text-sm text-gray-700 mb-4">
+                    <p className="text-[12px] leading-[1.45] text-gray-700 mb-3 max-w-[96%]">
                       You have selected manual quote numbering. Do you want us to auto-generate it for you?
                     </p>
                   )}
 
-                  {/* Radio Button Options */}
                   <div className="space-y-4">
-                    {/* Auto-generate option */}
-                    <label className="flex items-start gap-3 cursor-pointer group">
-                      <div className="relative mt-0.5">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <div className="pt-1">
                         <input
                           type="radio"
                           name="quoteNumberMode"
                           value="auto"
                           checked={quoteNumberMode === "auto"}
-                          onChange={(e) => setQuoteNumberMode(e.target.value)}
-                          className="w-4 h-4 text-[#156372] border-gray-300 focus:ring-[#156372] cursor-pointer"
+                          onChange={() => setQuoteNumberMode("auto")}
+                          className="w-4 h-4 text-[#2f80ed] border-gray-300 focus:ring-[#2f80ed] cursor-pointer"
                         />
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-gray-900">
+                          <span className="text-[13px] leading-none font-semibold text-gray-800">
                             Continue auto-generating quote numbers
                           </span>
-                          <Info size={14} className="text-gray-400" />
+                          <Info size={11} className="text-gray-400" />
                         </div>
                         {quoteNumberMode === "auto" && (
-                          <div className="mt-3 space-y-3 pl-6">
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">Prefix</label>
-                              <input
-                                type="text"
-                                value={quotePrefix}
-                                onChange={(e) => {
-                                  setQuotePrefix(e.target.value);
-                                  // Update quote number in real-time
-                                  setFormData(prev => ({
-                                    ...prev,
-                                    quoteNumber: `${e.target.value}${quoteNextNumber}`
-                                  }));
-                                }}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372]"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">Next Number</label>
-                              <input
-                                type="text"
-                                value={quoteNextNumber}
-                                onChange={(e) => {
-                                  setQuoteNextNumber(e.target.value);
-                                  // Update quote number in real-time
-                                  setFormData(prev => ({
-                                    ...prev,
-                                    quoteNumber: `${quotePrefix}${e.target.value}`
-                                  }));
-                                }}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372]"
-                              />
+                          <div className="mt-3 pl-4">
+                            <div className="grid grid-cols-[95px_1fr] gap-3">
+                              <div>
+                                <label className="block text-[11px] text-gray-700 mb-1">Prefix</label>
+                                <input
+                                  type="text"
+                                  value={quotePrefix}
+                                  onChange={(e) => {
+                                    const nextPrefix = sanitizeQuotePrefix(e.target.value);
+                                    setQuotePrefix(nextPrefix);
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      quoteNumber: buildQuoteNumber(nextPrefix, quoteNextNumber)
+                                    }));
+                                  }}
+                                  className="w-full h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 focus:outline-none focus:border-[#156372]"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] text-gray-700 mb-1">Next Number</label>
+                                <input
+                                  type="text"
+                                  value={quoteNextNumber}
+                                  onChange={(e) => {
+                                    const nextDigits = extractQuoteDigits(e.target.value) || "";
+                                    setQuoteNextNumber(nextDigits);
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      quoteNumber: buildQuoteNumber(quotePrefix, nextDigits)
+                                    }));
+                                  }}
+                                  className="w-full h-8 px-2.5 border border-gray-300 rounded-md text-[12px] text-gray-700 focus:outline-none focus:border-[#156372]"
+                                />
+                              </div>
                             </div>
                           </div>
                         )}
                       </div>
                     </label>
 
-                    {/* Manual option */}
-                    <label className="flex items-start gap-3 cursor-pointer group">
-                      <div className="relative mt-0.5">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <div className="pt-1">
                         <input
                           type="radio"
                           name="quoteNumberMode"
                           value="manual"
                           checked={quoteNumberMode === "manual"}
-                          onChange={(e) => setQuoteNumberMode(e.target.value)}
-                          className="w-4 h-4 text-[#156372] border-gray-300 focus:ring-[#156372] cursor-pointer"
+                          onChange={() => setQuoteNumberMode("manual")}
+                          className="w-4 h-4 text-[#2f80ed] border-gray-300 focus:ring-[#2f80ed] cursor-pointer"
                         />
                       </div>
                       <div className="flex-1">
-                        <span className="text-sm font-medium text-gray-900">
+                        <span className="text-[13px] leading-none text-gray-700">
                           Enter quote numbers manually
                         </span>
                       </div>
@@ -4754,30 +7279,40 @@ const NewQuote = () => {
                 </div>
               </div>
 
-              {/* Modal Footer */}
-              <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200">
+              <div className="flex items-center gap-2 px-4 py-4 border-t border-gray-200">
                 <button
-                  onClick={() => setIsQuoteNumberModalOpen(false)}
-                  className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium cursor-pointer "
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    // Update quote number based on mode
-                    if (quoteNumberMode === "auto") {
-                      setFormData(prev => ({
-                        ...prev,
-                        quoteNumber: `${quotePrefix}${quoteNextNumber}`
-                      }));
-                    }
-                    // If switching to manual, keep current value but make it editable
+                  onClick={async () => {
+                    const nextDigits = extractQuoteDigits(quoteNextNumber) || "1";
+                    const width = nextDigits.length >= 2 ? nextDigits.length : 6;
+                    const normalizedDigits = nextDigits.padStart(width, "0");
+                    const normalizedPrefix = sanitizeQuotePrefix(quotePrefix);
+                    setQuoteNextNumber(normalizedDigits);
+                    setQuotePrefix(normalizedPrefix);
+                    setFormData(prev => ({
+                      ...prev,
+                      quoteNumber:
+                        quoteNumberMode === "auto"
+                          ? buildQuoteNumber(normalizedPrefix, normalizedDigits)
+                          : prev.quoteNumber
+                    }));
+      try {
+        await persistQuoteSeriesPreferences();
+        toast.success("Quote number series updated.");
+      } catch (error) {
+                        console.error("Error saving quote number series:", error);
+                        toast.error("Failed to save quote number series.");
+                      }
                     setIsQuoteNumberModalOpen(false);
                   }}
-                  className="px-6 py-2 text-white rounded-md text-sm font-medium cursor-pointer"
-                  style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+                  className="px-4 h-8 bg-[#156372] text-white rounded-md text-[12px] font-semibold hover:bg-[#0f5661]"
                 >
                   Save
+                </button>
+                <button
+                  onClick={() => setIsQuoteNumberModalOpen(false)}
+                  className="px-4 h-8 bg-white border border-gray-300 text-gray-700 rounded-md text-[12px] font-medium hover:bg-gray-50"
+                >
+                  Cancel
                 </button>
               </div>
             </div>
@@ -5013,7 +7548,7 @@ const NewQuote = () => {
                       <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                       <input
                         type="text"
-                        placeholder="Type to search or scan the barcode of the item."
+                        placeholder="Type to search or scan the barcode of the item or plan."
                         value={bulkAddSearch}
                         onChange={(e) => setBulkAddSearch(e.target.value)}
                         className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#156372]"
@@ -5031,15 +7566,17 @@ const NewQuote = () => {
                           onClick={() => handleBulkItemToggle(item)}
                         >
                           <div className="flex-1">
-                            <div className="font-medium text-gray-900">{item.name}</div>
+                            <div className="font-medium text-gray-900 flex items-center gap-2">
+                              <span>{item.name}</span>
+                              {item.entityType === "plan" ? (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#e6f4f7] text-[#156372]">Plan</span>
+                              ) : null}
+                            </div>
                             <div className="text-xs text-gray-500 mt-1">
-                              SKU: {item.sku} Rate: {formData.currency} {item.rate.toFixed(2)}
+                              {item.entityType === "plan" ? "Code" : "SKU"}: {item.code || item.sku || "-"}
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-xs text-gray-500">
-                              Stock on Hand {item.stockOnHand.toFixed(2)} {item.unit}
-                            </div>
                             {isSelected && (
                               <div className="mt-2 w-6 h-6 bg-[#156372] rounded-full flex items-center justify-center">
                                 <Check size={16} className="text-white" />
@@ -5077,7 +7614,7 @@ const NewQuote = () => {
                             <div className="flex-1">
                               <div className="font-medium text-gray-900">{selectedItem.name}</div>
                               <div className="text-xs text-gray-500 mt-1">
-                                SKU: {selectedItem.sku} â€¢ {formData.currency}{selectedItem.rate.toFixed(2)}
+                                {selectedItem.entityType === "plan" ? "Code" : "SKU"}: {selectedItem.code || selectedItem.sku || "-"} • {formData.currency}{Number(selectedItem.rate || 0).toFixed(2)}
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -5391,7 +7928,7 @@ const NewQuote = () => {
                 <div className="w-[180px] bg-white border-r border-gray-200 flex flex-col overflow-y-auto">
                   <div className="p-2">
                     {[
-                      { id: "taban", name: "Taban Books Drive", icon: LayoutGrid },
+                      { id: "zoho", name: "Zoho WorkDrive", icon: LayoutGrid },
                       { id: "gdrive", name: "Google Drive", icon: HardDrive },
                       { id: "dropbox", name: "Dropbox", icon: Box },
                       { id: "box", name: "Box", icon: Square },
@@ -5475,7 +8012,7 @@ const NewQuote = () => {
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books. The use and transfer of information received from Google APIs to Taban Books will adhere to{" "}
+                          and understand that the rights to use this product do not come from Zoho. The use and transfer of information received from Google APIs to Zoho will adhere to{" "}
                           <a
                             href="#"
                             className="text-[#156372] underline "
@@ -5500,7 +8037,7 @@ const NewQuote = () => {
                         className="px-8 py-3 bg-[#156372] text-white rounded-md text-sm font-semibold  shadow-sm"
                         onClick={() => {
                           window.open(
-                            "https://accounts.google.com/v3/signin/accountchooser?access_type=offline&approval_prompt=force&client_id=932402265855-3k3mfquq4o5kh60o8tnc9mhgn9h77717.apps.googleusercontent.com&redirect_uri=https%3A%2F%2Fapps.tabanbooks.com%2Fauth%2Fgoogle&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive&state=3a3b0106a0c2d908b369a75ad93185c0aa431c64497733bda2d375130c4da610d88104c252c552adc1dee9d6167ad6bb8d2258113b9dce48b47ca4a970314a1fa7b51df3a7716016ac37be9e7d4d9f21077f946b82dc039ae2f08b7be79117042545529cf82d67d58ef6426621f5b5f885af900571347968d419f6d1a5abe3e7e1a3a4d04a433a6b3c5173f68c0c5bea&dsh=S557386361%3A1766903862725658&o2v=1&service=lso&flowName=GeneralOAuthFlow&opparams=%253F&continue=https%3A%2F%2Faccounts.google.com%2Fsignin%2Foauth%2Fconsent%3Fauthuser%3Dunknown%26part%3DAJi8hAP8z-36EGAbjuuLEd2uWDyjQgraM1HNpjnJVe4mUhXhPOQkoJHNKZG6WoCFPPrb5EDYGeFuyF3TI7jUSvDUIwBbk0PGoZLgn4Jt5TdOWWzFyQf6jLfEXhnKHaHRvCzRofERa0CbAnwAUviCEIRh6OE8GWAy3xDGHH6VltpKe7vSGjJfzwkDnAckJm1v9fghFiv7u6_xqfZlF8iB26QlWNE86HHYqzyIP3N9LKEh0NWNZAdiV__IdSu_RqOJPYoHDRNRRsyctIbVsj3CDhUyCADZvROzoeQI9VvIqJSiWLTxE7royBXKDDS96rJYovyIQ79hC_n_aNjoPVUD9jfp5cnJkn_rkGpzetwAYJTRSKhP8gM5YlFdK2Pfp2uT6ZHzVAOYmlyeCX4dc1IsyRtinTLx5WyAUPR_QcLPQzuQcRPvtjL23ZvKxoexvKp3t4zX_HTFKMrduT4G6ojAd7C-kurnZ1Wx6g%26flowName%3DGeneralOAuthFlow%26as%3DS557386361%253A1766903862725658%26client_id%3D932402265855-3k3mfquq4o5kh60o8tnc9mhgn9h77717.apps.googleusercontent.com%26requestPath%3D%252Fsignin%252Foauth%252Fconsent%23&app_domain=https%3A%2F%2Fapps.tabanbooks.com",
+                            "https://accounts.google.com/v3/signin/accountchooser?access_type=offline&approval_prompt=force&client_id=932402265855-3k3mfquq4o5kh60o8tnc9mhgn9h77717.apps.googleusercontent.com&redirect_uri=https%3A%2F%2Fgadgets.zoho.com%2Fauth%2Fgoogle&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive&state=3a3b0106a0c2d908b369a75ad93185c0aa431c64497733bda2d375130c4da610d88104c252c552adc1dee9d6167ad6bb8d2258113b9dce48b47ca4a970314a1fa7b51df3a7716016ac37be9e7d4d9f21077f946b82dc039ae2f08b7be79117042545529cf82d67d58ef6426621f5b5f885af900571347968d419f6d1a5abe3e7e1a3a4d04a433a6b3c5173f68c0c5bea&dsh=S557386361%3A1766903862725658&o2v=1&service=lso&flowName=GeneralOAuthFlow&opparams=%253F&continue=https%3A%2F%2Faccounts.google.com%2Fsignin%2Foauth%2Fconsent%3Fauthuser%3Dunknown%26part%3DAJi8hAP8z-36EGAbjuuLEd2uWDyjQgraM1HNpjnJVe4mUhXhPOQkoJHNKZG6WoCFPPrb5EDYGeFuyF3TI7jUSvDUIwBbk0PGoZLgn4Jt5TdOWWzFyQf6jLfEXhnKHaHRvCzRofERa0CbAnwAUviCEIRh6OE8GWAy3xDGHH6VltpKe7vSGjJfzwkDnAckJm1v9fghFiv7u6_xqfZlF8iB26QlWNE86HHYqzyIP3N9LKEh0NWNZAdiV__IdSu_RqOJPYoHDRNRRsyctIbVsj3CDhUyCADZvROzoeQI9VvIqJSiWLTxE7royBXKDDS96rJYovyIQ79hC_n_aNjoPVUD9jfp5cnJkn_rkGpzetwAYJTRSKhP8gM5YlFdK2Pfp2uT6ZHzVAOYmlyeCX4dc1IsyRtinTLx5WyAUPR_QcLPQzuQcRPvtjL23ZvKxoexvKp3t4zX_HTFKMrduT4G6ojAd7C-kurnZ1Wx6g%26flowName%3DGeneralOAuthFlow%26as%3DS557386361%253A1766903862725658%26client_id%3D932402265855-3k3mfquq4o5kh60o8tnc9mhgn9h77717.apps.googleusercontent.com%26requestPath%3D%252Fsignin%252Foauth%252Fconsent%23&app_domain=https%3A%2F%2Fgadgets.zoho.com",
                             "_blank"
                           );
                         }}
@@ -5556,7 +8093,7 @@ const NewQuote = () => {
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books.
+                          and understand that the rights to use this product do not come from Zoho.
                         </p>
                       </div>
 
@@ -5565,7 +8102,7 @@ const NewQuote = () => {
                         className="px-8 py-3 bg-[#156372] text-white rounded-md text-sm font-semibold  shadow-sm"
                         onClick={() => {
                           window.open(
-                            "https://www.dropbox.com/oauth2/authorize?response_type=code&client_id=ovpkm9147d63ifh&redirect_uri=https://apps.tabanbooks.com/dropbox/auth/v2/saveToken&state=190d910cedbc107e58195259f79a434d05c66c88e1e6eaa0bc585c6a0fddb159871ede64adb4d5da61c107ca7cbb7bae891c80e9c69cf125faaaf622ab58f37c5b1d42b42c7f3add07d92465295564a6c5bd98228654cce8ff68da24941db6f0aab9a60398ac49e41b3ec211acfd5bcc&force_reapprove=true&token_access_type=offline",
+                            "https://www.dropbox.com/oauth2/authorize?response_type=code&client_id=ovpkm9147d63ifh&redirect_uri=https://gadgets.zoho.com/dropbox/auth/v2/saveToken&state=190d910cedbc107e58195259f79a434d05c66c88e1e6eaa0bc585c6a0fddb159871ede64adb4d5da61c107ca7cbb7bae891c80e9c69cf125faaaf622ab58f37c5b1d42b42c7f3add07d92465295564a6c5bd98228654cce8ff68da24941db6f0aab9a60398ac49e41b3ec211acfd5bcc&force_reapprove=true&token_access_type=offline",
                             "_blank"
                           );
                         }}
@@ -5611,7 +8148,7 @@ const NewQuote = () => {
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books.
+                          and understand that the rights to use this product do not come from Zoho.
                         </p>
                       </div>
 
@@ -5620,7 +8157,7 @@ const NewQuote = () => {
                         className="px-8 py-3 bg-[#156372] text-white rounded-md text-sm font-semibold  shadow-sm"
                         onClick={() => {
                           window.open(
-                            "https://account.box.com/api/oauth2/authorize?response_type=code&client_id=f95f6ysfm8vg1q3g84m0xyyblwnj3tr5&redirect_uri=https%3A%2F%2Fapps.tabanbooks.com%2Fauth%2Fbox&state=37e352acfadd37786b1d388fb0f382baa59c9246f4dda329361910db55643700578352e4636bde8a0743bd3060e51af0ee338a34b2080bbd53a337f46b0995e28facbeff76d7efaf8db4493a0ef77be45364e38816d94499fba739987744dd1f6f5c08f84c0a11b00e075d91d7ea5c6d",
+                            "https://account.box.com/api/oauth2/authorize?response_type=code&client_id=f95f6ysfm8vg1q3g84m0xyyblwnj3tr5&redirect_uri=https%3A%2F%2Fgadgets.zoho.com%2Fauth%2Fbox&state=37e352acfadd37786b1d388fb0f382baa59c9246f4dda329361910db55643700578352e4636bde8a0743bd3060e51af0ee338a34b2080bbd53a337f46b0995e28facbeff76d7efaf8db4493a0ef77be45364e38816d94499fba739987744dd1f6f5c08f84c0a11b00e075d91d7ea5c6d",
                             "_blank"
                           );
                         }}
@@ -5660,7 +8197,7 @@ const NewQuote = () => {
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books.
+                          and understand that the rights to use this product do not come from Zoho.
                         </p>
                       </div>
 
@@ -5669,7 +8206,7 @@ const NewQuote = () => {
                         className="px-8 py-3 bg-[#156372] text-white rounded-md text-sm font-semibold  shadow-sm"
                         onClick={() => {
                           window.open(
-                            "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=0ecabec7-1fac-433f-a968-9985926b51c3&state=e0b1053c9465a9cb98fea7eea99d3074930c6c5607a21200967caf2db861cf9df77442c92e8565087c2a339614e18415cbeb95d59c63605cee4415353b2c44da13c6b9f34bca1fcd3abdd630595133a5232ddb876567bedbe620001a59c9989df94c3823476d0eef4363b351e8886c5563f56bc9d39db9f3db7c37cd1ad827c5.%5E.US&redirect_uri=https%3A%2F%2Fapps.tabanbooks.com%2Ftpa%2Foffice365&response_type=code&prompt=select_account&scope=Files.Read%20User.Read%20offline_access&sso_reload=true",
+                            "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=0ecabec7-1fac-433f-a968-9985926b51c3&state=e0b1053c9465a9cb98fea7eea99d3074930c6c5607a21200967caf2db861cf9df77442c92e8565087c2a339614e18415cbeb95d59c63605cee4415353b2c44da13c6b9f34bca1fcd3abdd630595133a5232ddb876567bedbe620001a59c9989df94c3823476d0eef4363b351e8886c5563f56bc9d39db9f3db7c37cd1ad827c5.%5E.US&redirect_uri=https%3A%2F%2Fgadgets.zoho.com%2Ftpa%2Foffice365&response_type=code&prompt=select_account&scope=Files.Read%20User.Read%20offline_access&sso_reload=true",
                             "_blank"
                           );
                         }}
@@ -5726,7 +8263,7 @@ const NewQuote = () => {
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books.
+                          and understand that the rights to use this product do not come from Zoho.
                         </p>
                       </div>
 
@@ -5744,7 +8281,7 @@ const NewQuote = () => {
                       </button>
                     </div>
                   ) : (
-                    /* Default Content for Taban Books Drive */
+                    /* Default Content for Zoho WorkDrive */
                     <div className="flex flex-col items-center justify-center">
                       {/* Illustration Area - Using a placeholder illustration */}
                       <div className="relative w-full max-w-md h-64 mb-6 flex items-center justify-center">
@@ -5802,7 +8339,7 @@ const NewQuote = () => {
 
                       {/* Description Text */}
                       <p className="text-sm text-gray-600 text-center mb-6 max-w-md">
-                        Taban Books Drive is an online file sync, storage and content collaboration platform.
+                        Zoho WorkDrive is an online file sync, storage and content collaboration platform.
                       </p>
 
                       {/* Set up your team button */}
@@ -5810,7 +8347,7 @@ const NewQuote = () => {
                         className="px-6 py-2.5 bg-[#156372] text-white rounded-md text-sm font-semibold  shadow-sm"
                         onClick={() => {
                           window.open(
-                            "https://drive.tabanbooks.com/home/onboard/createteamwithsoid?org_id=909892451&service_name=TabanBooks",
+                            "https://workdrive.zoho.com/home/onboard/createteamwithsoid?org_id=909892451&service_name=ZohoBooks",
                             "_blank"
                           );
                         }}
@@ -5843,36 +8380,6 @@ const NewQuote = () => {
           </div>
         )
       }
-
-      {/* Reporting Tags Modal */}
-      {isReportingTagsModalOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-          onClick={() => setIsReportingTagsModalOpen(false)}
-        >
-          <div
-            className="bg-white rounded-lg shadow-xl w-full max-w-md"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-5 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Reporting Tags</h2>
-            </div>
-            <div className="p-5">
-              <p className="text-sm text-gray-700">
-                There are no active reporting tags or you haven't created a reporting tag yet. You can create/edit reporting tags under settings.
-              </p>
-            </div>
-            <div className="flex items-center justify-end gap-3 p-5 border-t border-gray-200">
-              <button
-                className="px-4 py-2 bg-[#156372] text-white rounded-md text-sm font-medium border border-[#156372]"
-                onClick={() => setIsReportingTagsModalOpen(false)}
-              >
-                OK
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Advanced Customer Search Modal */}
       {
@@ -6026,55 +8533,13 @@ const NewQuote = () => {
         typeof document !== "undefined" && document.body && createPortal(
           <div
             className={`fixed inset-0 z-[10000] flex items-center justify-center transition-opacity duration-150 ${isNewCustomerQuickActionOpen ? "bg-black bg-opacity-50 opacity-100" : "bg-transparent opacity-0 pointer-events-none"}`}
-            onClick={() => {
-              setIsNewCustomerQuickActionOpen(false);
-              reloadCustomersForQuote();
-            }}
+            onClick={closeCustomerQuickAction}
           >
             <div
-              className="bg-white rounded-lg shadow-xl w-[96vw] h-[94vh] max-w-[1400px] flex flex-col"
+              className="bg-white rounded-lg shadow-xl w-[84vw] h-[92vh] max-w-[1120px] flex flex-col overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between p-5 border-b border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-900">New Customer (Quick Action)</h2>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={isReloadingCustomerFrame || isAutoSelectingCustomerFromQuickAction}
-                    className="px-3 py-1.5 border border-gray-300 rounded text-sm text-gray-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                    onClick={() => {
-                      setIsReloadingCustomerFrame(true);
-                      setCustomerQuickActionFrameKey(prev => prev + 1);
-                    }}
-                  >
-                    {isReloadingCustomerFrame ? "Reloading..." : "Reload Form"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isRefreshingCustomersQuickAction || isAutoSelectingCustomerFromQuickAction}
-                    className="px-3 py-1.5 border border-gray-300 rounded text-sm text-gray-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                    onClick={async () => {
-                      setIsRefreshingCustomersQuickAction(true);
-                      await reloadCustomersForQuote();
-                      setIsRefreshingCustomersQuickAction(false);
-                    }}
-                  >
-                    {isRefreshingCustomersQuickAction ? "Refreshing..." : "Refresh Customers"}
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  className="w-8 h-8 bg-[#156372] text-white rounded flex items-center justify-center"
-                  onClick={() => {
-                    setIsNewCustomerQuickActionOpen(false);
-                    reloadCustomersForQuote();
-                  }}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="flex-1 p-2 bg-gray-100">
+              <div className="flex-1 bg-[#f6f7fb] p-0">
                 <iframe
                   key={customerQuickActionFrameKey}
                   title="New Customer Quick Action"
@@ -6086,7 +8551,7 @@ const NewQuote = () => {
                     }
                     await tryAutoSelectNewCustomerFromQuickAction();
                   }}
-                  className="w-full h-full bg-white rounded border border-gray-200"
+                  className="w-full h-full bg-white border-0"
                 />
               </div>
             </div>
@@ -6212,7 +8677,7 @@ const NewQuote = () => {
                   </div>
                   <div className="flex gap-2 pt-4">
                     <button
-                      onClick={handleSaveAndSelectSalesperson}
+                      onClick={handleSaveNewSalesperson}
                       className="flex-1 px-4 py-2 bg-[#156372] text-white rounded-md "
                     >
                       Add
@@ -6235,13 +8700,18 @@ const NewQuote = () => {
       {/* Manage Salespersons Modal */}
       {
         isManageSalespersonsOpen && createPortal(
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000]" onClick={() => setIsManageSalespersonsOpen(false)}>
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000]">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
               {/* Modal Header */}
               <div className="flex items-center justify-between p-6 border-b border-gray-200">
                 <h2 className="text-xl font-bold text-gray-900">Manage Salespersons</h2>
                 <button
-                  onClick={() => setIsManageSalespersonsOpen(false)}
+                  onClick={() => {
+                    handleCancelNewSalesperson();
+                    setSelectedSalespersonIds([]);
+                    setManageSalespersonMenuOpen(null);
+                    setIsManageSalespersonsOpen(false);
+                  }}
                   className="p-2  rounded-lg text-gray-400 "
                 >
                   <X size={20} />
@@ -6284,14 +8754,18 @@ const NewQuote = () => {
                       type="text"
                       placeholder="Search Salesperson"
                       value={manageSalespersonSearch}
-                      onChange={(e) => setManageSalespersonSearch(e.target.value)}
+                      onChange={(e) => {
+                        setManageSalespersonSearch(e.target.value);
+                        setManageSalespersonsPage(1);
+                      }}
                       className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#156372]"
                     />
                   </div>
                   <button
                     onClick={() => {
-                      setIsNewSalespersonFormOpen(true);
+                      handleStartNewSalesperson();
                       setManageSalespersonSearch("");
+                      setManageSalespersonsPage(1);
                     }}
                     className="flex items-center gap-2 px-4 py-2 bg-[#156372] text-white rounded-md "
                   >
@@ -6305,7 +8779,9 @@ const NewQuote = () => {
               <div className="flex-1 overflow-y-auto p-6">
                 {isNewSalespersonFormOpen ? (
                   <div className="mb-6 p-4 border border-gray-200 rounded-lg bg-gray-50">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-4">Add New Salesperson</h3>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                      {editingSalespersonId ? "Edit Salesperson" : "Add New Salesperson"}
+                    </h3>
                     <div className="space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
@@ -6331,10 +8807,10 @@ const NewQuote = () => {
                       </div>
                       <div className="flex gap-2">
                         <button
-                          onClick={handleSaveAndSelectSalesperson}
+                          onClick={handleSaveNewSalesperson}
                           className="flex-1 px-4 py-2 bg-[#156372] text-white rounded-md "
                         >
-                          Add
+                          {editingSalespersonId ? "Save Changes" : "Add"}
                         </button>
                         <button
                           onClick={handleCancelNewSalesperson}
@@ -6354,12 +8830,16 @@ const NewQuote = () => {
                         <input
                           type="checkbox"
                           className="rounded border-gray-300 text-[#156372] focus:ring-[#156372]"
-                          checked={filteredManageSalespersons.length > 0 && selectedSalespersonIds.length === filteredManageSalespersons.length}
+                          checked={paginatedManageSalespersons.length > 0 && paginatedManageSalespersons.every((sp: any) => selectedSalespersonIds.includes(String(sp.id || sp._id || "")))}
                           onChange={(e) => {
                             if (e.target.checked) {
-                              setSelectedSalespersonIds(filteredManageSalespersons.map(s => s.id || s._id));
+                              setSelectedSalespersonIds(paginatedManageSalespersons.map((s: any) => String(s.id || s._id || "")));
                             } else {
-                              setSelectedSalespersonIds([]);
+                              setSelectedSalespersonIds(
+                                selectedSalespersonIds.filter(
+                                  (id) => !paginatedManageSalespersons.some((sp: any) => String(sp.id || sp._id || "") === String(id))
+                                )
+                              );
                             }
                           }}
                         />
@@ -6370,15 +8850,16 @@ const NewQuote = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredManageSalespersons.length === 0 ? (
+                    {paginatedManageSalespersons.length === 0 ? (
                       <tr>
                         <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
                           {manageSalespersonSearch ? "No salespersons found" : "No salespersons available"}
                         </td>
                       </tr>
                     ) : (
-                      filteredManageSalespersons.map(salesperson => {
-                        const salespersonId = salesperson.id || salesperson._id;
+                      paginatedManageSalespersons.map((salesperson: any) => {
+                        const salespersonId = String(salesperson.id || salesperson._id || "");
+                        const isInactive = String(salesperson.status || "").toLowerCase() === "inactive";
                         return (
                           <tr key={salespersonId} className="group hover:bg-gray-50">
                             <td className="px-4 py-3">
@@ -6398,8 +8879,8 @@ const NewQuote = () => {
                               </div>
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900">
-                              {salesperson.name}
-                              {salesperson.status === 'inactive' && (
+                              {salesperson.name || salesperson.displayName || "Unnamed Salesperson"}
+                              {isInactive && (
                                 <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
                                   Inactive
                                 </span>
@@ -6409,12 +8890,18 @@ const NewQuote = () => {
                             <td className="px-4 py-3 text-right">
                               <div className="hidden group-hover:flex items-center justify-end gap-2">
                                 <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleStartEditSalesperson(salesperson);
+                                  }}
                                   className="p-1 text-gray-500 hover:text-[#156372] hover:bg-gray-100 rounded"
                                   title="Edit"
                                 >
                                   <Edit2 size={16} />
                                 </button>
                                 <button
+                                  type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     const rect = e.currentTarget.getBoundingClientRect();
@@ -6433,15 +8920,41 @@ const NewQuote = () => {
                     )}
                   </tbody>
                 </table>
+
+                {manageSalespersonsTotalPages > 1 && (
+                  <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
+                    <div>
+                      Page {manageSalespersonsCurrentPage} of {manageSalespersonsTotalPages}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="rounded border border-gray-300 bg-white px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={manageSalespersonsCurrentPage <= 1}
+                        onClick={() => setManageSalespersonsPage((prev) => Math.max(1, prev - 1))}
+                      >
+                        Prev
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border border-gray-300 bg-white px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={manageSalespersonsCurrentPage >= manageSalespersonsTotalPages}
+                        onClick={() => setManageSalespersonsPage((prev) => Math.min(manageSalespersonsTotalPages, prev + 1))}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Dropdown Portal */}
-            {manageSalespersonMenuOpen && menuPosition && createPortal(
-              <>
-                <div
-                  className="fixed inset-0 z-[10000]"
-                  onClick={() => setManageSalespersonMenuOpen(null)}
+              {manageSalespersonMenuOpen && menuPosition && createPortal(
+                <>
+                  <div
+                    className="fixed inset-0 z-[10000]"
+                    onClick={() => setManageSalespersonMenuOpen(null)}
                 />
                 <div
                   className="fixed bg-white rounded-md shadow-lg z-[10001] border border-gray-100 py-1 w-48"
@@ -6453,23 +8966,25 @@ const NewQuote = () => {
                   {manageSalespersonMenuOpen === "BULK_ACTIONS" ? (
                     <>
                       <button
-                        onClick={() => setManageSalespersonMenuOpen(null)}
-                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-[#156372] hover:text-white transition-colors"
+                        type="button"
+                        onClick={() => handleBulkSalespersonStatusChange("active")}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
                       >
                         Mark as Active
                       </button>
                       <button
-                        onClick={() => setManageSalespersonMenuOpen(null)}
-                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-[#156372] hover:text-white transition-colors"
+                        type="button"
+                        onClick={() => handleBulkSalespersonStatusChange("inactive")}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
                       >
                         Mark as Inactive
                       </button>
                       <button
+                        type="button"
                         onClick={() => {
-                          // Handle bulk delete if needed
-                          setManageSalespersonMenuOpen(null);
+                          handleBulkDeleteSalespersons();
                         }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-[#156372] hover:text-white transition-colors"
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
                       >
                         Delete
                       </button>
@@ -6477,19 +8992,36 @@ const NewQuote = () => {
                   ) : (
                     <>
                       <button
+                        type="button"
                         onClick={() => {
+                          const salesperson = salespersons.find((sp: any) => String(sp.id || sp._id || "") === manageSalespersonMenuOpen);
+                          if (salesperson) handleStartEditSalesperson(salesperson);
                           setManageSalespersonMenuOpen(null);
                         }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-[#156372] hover:text-white transition-colors"
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
                       >
-                        Mark as Inactive
+                        Edit
                       </button>
                       <button
+                        type="button"
+                        onClick={() => {
+                          const salesperson = salespersons.find((sp: any) => String(sp.id || sp._id || "") === manageSalespersonMenuOpen);
+                          if (salesperson) {
+                            const nextStatus = String(salesperson?.status || "").toLowerCase() === "inactive" ? "active" : "inactive";
+                            void handleSetSalespersonStatus(manageSalespersonMenuOpen, nextStatus);
+                          }
+                        }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                      >
+                        {salespersons.find((sp: any) => String(sp.id || sp._id || "") === manageSalespersonMenuOpen && String(sp?.status || "").toLowerCase() === "inactive") ? "Mark as Active" : "Mark as Inactive"}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => {
                           handleDeleteSalesperson(manageSalespersonMenuOpen);
                           setManageSalespersonMenuOpen(null);
                         }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-[#156372] hover:text-white transition-colors"
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
                       >
                         Delete
                       </button>
@@ -6503,11 +9035,21 @@ const NewQuote = () => {
           document.body
         )
       }
+
+      <NewTaxModal
+        isOpen={isNewTaxQuickModalOpen}
+        onClose={() => {
+          setIsNewTaxQuickModalOpen(false);
+          setNewTaxTargetItemId(null);
+        }}
+        onCreated={handleTaxCreatedFromModal}
+      />
     </>
   );
 };
 
 export default NewQuote;
+
 
 
 

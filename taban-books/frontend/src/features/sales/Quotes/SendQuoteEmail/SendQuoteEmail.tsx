@@ -24,7 +24,7 @@ import {
   Check
 } from "lucide-react";
 import { getQuoteById, updateQuote, Quote, ContactPerson, AttachedFile } from "../../salesModel";
-import { emailTemplatesAPI, quotesAPI, contactPersonsAPI, senderEmailsAPI } from "../../../../services/api";
+import { emailTemplatesAPI, quotesAPI, contactPersonsAPI, senderEmailsAPI, customersAPI } from "../../../../services/api";
 import { API_BASE_URL, getToken } from "../../../../services/auth";
 import { applyEmailTemplate } from "../../../settings/emailTemplateUtils";
 
@@ -75,6 +75,9 @@ export default function SendQuoteEmail() {
   });
   const contactDropdownRef = useRef<HTMLDivElement>(null);
   const preloadedQuoteFromState = (location.state as { preloadedQuote?: Quote } | null)?.preloadedQuote;
+  const prefilledRecipientFromState = String(
+    (location.state as any)?.customerEmail || (location.state as any)?.sendTo || ""
+  ).trim();
 
   const safeParseJson = (value: string | null) => {
     if (!value) return null;
@@ -160,10 +163,9 @@ export default function SendQuoteEmail() {
         if (!isMounted) return;
         setQuote(quoteData);
 
-        const userProfile = getCurrentUserProfile();
         const organizationProfile = getOrganizationProfileForPdf();
-        let resolvedSenderName = userProfile.name || "";
-        let resolvedSenderEmail = userProfile.email || "";
+        let resolvedSenderName = organizationProfile.name || "Team";
+        let resolvedSenderEmail = organizationProfile.email || "";
         const customerId = quoteData.customerId || (quoteData.customer ? (quoteData.customer._id || quoteData.customer) : null);
 
         const settingsPromise = fetch(`${API_BASE_URL}/settings/general`, {
@@ -182,10 +184,8 @@ export default function SendQuoteEmail() {
 
         if (primarySenderResult.status === "fulfilled") {
           const primarySenderRes = primarySenderResult.value;
-          if (primarySenderRes && primarySenderRes.success && primarySenderRes.data) {
-            if (!resolvedSenderName) {
-              resolvedSenderName = primarySenderRes.data.name || "";
-            }
+          if (primarySenderRes && primarySenderRes.success && primarySenderRes.data?.isVerified) {
+            resolvedSenderName = primarySenderRes.data.name || resolvedSenderName;
             resolvedSenderEmail = primarySenderRes.data.email || resolvedSenderEmail;
           }
         } else {
@@ -243,6 +243,7 @@ export default function SendQuoteEmail() {
     <div style="margin-top: 30px; padding-top: 20px;">
       <p style="margin: 0; color: #6b7280; font-size: 14px;">Regards,</p>
       <p style="margin: 5px 0 0 0; font-weight: bold; font-size: 14px;">${resolvedSenderName}</p>
+      ${resolvedSenderEmail ? `<p style="margin: 2px 0 0 0; color: #9ca3af; font-size: 12px;">${resolvedSenderEmail}</p>` : ""}
       <p style="margin: 0; color: #9ca3af; font-size: 12px;">${companyName}</p>
     </div>
   </div>
@@ -277,9 +278,26 @@ export default function SendQuoteEmail() {
           console.error("Error loading quote email template:", templateResult.reason);
         }
 
+        let resolvedRecipient =
+          prefilledRecipientFromState ||
+          quoteData.customer?.email ||
+          quoteData.customer?.primaryEmail ||
+          quoteData.customerEmail ||
+          "";
+
+        if (!resolvedRecipient && customerId) {
+          try {
+            const customerRes: any = await customersAPI.getById(String(customerId));
+            const customerRow: any = customerRes?.data?.customer || customerRes?.data || customerRes;
+            resolvedRecipient = String(customerRow?.email || customerRow?.primaryEmail || "").trim();
+          } catch (customerError) {
+            console.error("Error loading customer for quote email:", customerError);
+          }
+        }
+
         setEmailData({
           from: resolvedSenderEmail ? `"${resolvedSenderName}" <${resolvedSenderEmail}>` : resolvedSenderName,
-          sendTo: quoteData.customer?.email || quoteData.customerEmail || "",
+          sendTo: resolvedRecipient,
           cc: "",
           bcc: "",
           subject: templateSubject,
@@ -636,6 +654,15 @@ export default function SendQuoteEmail() {
         attachSystemPDF: attachSystemPdfFallback,
         attachments: outgoingAttachments
       });
+
+      try {
+        await quotesAPI.update(quoteId, {
+          status: "Sent",
+          sentAt: new Date().toISOString(),
+        });
+      } catch (statusError) {
+        console.error("Failed to update quote status to Sent:", statusError);
+      }
 
       toast.success("Email sent successfully!");
       // Redirect to the quote detail page

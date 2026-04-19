@@ -1,10 +1,12 @@
 import type { SyncStorageAdapter } from "./persistence";
+import { createVersionStamp } from "./versioning";
 
 export type SyncManifestEntry = {
   id: string;
   version_id: string;
   last_updated: string;
   file_hash?: string;
+  file_hash_algorithm?: string;
   file_size?: number;
   mime_type?: string;
   download_url?: string;
@@ -100,13 +102,12 @@ function countPendingOperations<TItem>(payload: SyncResourcePayload<TItem> | nul
   }, 0);
 }
 
-export function createVersionStamp() {
+function normalizePayloadMetadata<TItem>(payload: SyncResourcePayload<TItem>) {
+  const stamp = createVersionStamp();
   return {
-    version_id:
-      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID()
-        : `sync-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-    last_updated: new Date().toISOString(),
+    ...payload,
+    version_id: String(payload.version_id || stamp.version_id),
+    last_updated: String(payload.last_updated || stamp.last_updated),
   };
 }
 
@@ -201,7 +202,7 @@ export class SyncEngine<TItem> {
     this.hydratePromise = (async () => {
       const cachedPayload = await this.options.storage.read();
       if (cachedPayload) {
-        this.payload = cloneValue(cachedPayload);
+        this.payload = normalizePayloadMetadata(cloneValue(cachedPayload));
         this.publish({
           payload: this.payload,
           data: cloneValue(this.payload.items),
@@ -289,7 +290,7 @@ export class SyncEngine<TItem> {
           return this.payload ? cloneValue(this.payload) : null;
         }
 
-        const nextPayload = cloneValue(response.payload);
+        const nextPayload = normalizePayloadMetadata(cloneValue(response.payload));
         const hasChanged = !deepEqual(this.payload, nextPayload);
 
         if (hasChanged) {
@@ -336,7 +337,7 @@ export class SyncEngine<TItem> {
   }
 
   async replacePayload(payload: SyncResourcePayload<TItem>) {
-    const nextPayload = cloneValue(payload);
+    const nextPayload = normalizePayloadMetadata(cloneValue(payload));
     await this.options.storage.write(nextPayload);
     this.payload = nextPayload;
     this.publish({
@@ -353,7 +354,7 @@ export class SyncEngine<TItem> {
   async updatePayload(
     updater: (current: SyncResourcePayload<TItem> | null) => SyncResourcePayload<TItem>,
   ) {
-    const nextPayload = updater(this.payload ? cloneValue(this.payload) : null);
+    const nextPayload = normalizePayloadMetadata(updater(this.payload ? cloneValue(this.payload) : null));
     return this.replacePayload(nextPayload);
   }
 

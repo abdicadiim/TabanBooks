@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import LoadingSpinner from "../../../components/LoadingSpinner";
-import { PAYMENT_MODE_OPTIONS, getPaymentModeLabel } from "../../../utils/paymentModes";
-import { getSalesReceipts, getSalesReceiptsPaginated, deleteSalesReceipt, updateSalesReceipt, getSalesReceiptById, getCustomers, getSalespersons, getTaxes, getProjects, getItemsFromAPI, getCustomViews, deleteCustomView } from "../salesModel";
-import { sampleItems } from "../../items/itemsModel";
+import { getSalesReceipts, deleteSalesReceipt, updateSalesReceipt, getSalesReceiptById, getCustomers, getSalespersons, getTaxes, getProjects, getItemsFromAPI, getCustomViews, deleteCustomView } from "../salesModel";
+// import { sampleItems } from "../../items/itemsModel";
+import { toast } from "react-hot-toast";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import {
@@ -23,27 +24,115 @@ import {
   CheckSquare,
   Square,
   FileText,
+  Grid3x3,
   Trash2,
   Eye,
   Check,
-  Download
+  CheckCircle,
+  Download,
+  RotateCcw,
+  SlidersHorizontal,
+  Mail
 } from "lucide-react";
+import SalesReceiptsCustomizeColumnsModal, { SalesReceiptsColumnOption } from "./SalesReceiptsCustomizeColumnsModal";
+import { useSalesReceiptsListQuery } from "./salesReceiptsQueries";
 
-import FieldCustomization from "../shared/FieldCustomization";
+// import FieldCustomization from "../shared/FieldCustomization";
+
+const sampleItems: any[] = [];
+const FieldCustomization: React.FC<any> = () => null;
 
 const salesReceiptViews = [
   "All",
-  "Draft",
-  "Completed",
+  "Paid",
   "Void"
+];
+
+const viewStatusMap = {
+  All: "All",
+  Paid: "paid",
+  Void: "void"
+};
+
+const mapSortOptionToField = (option: string) => {
+  switch (option) {
+    case "Date (Newest First)":
+    case "Date (Oldest First)":
+      return "date";
+    case "Receipt # (Ascending)":
+    case "Receipt # (Descending)":
+      return "receiptNumber";
+    case "Amount (High to Low)":
+    case "Amount (Low to High)":
+      return "total";
+    case "Customer Name (A-Z)":
+    case "Customer Name (Z-A)":
+      return "customerName";
+    default:
+      return "date";
+  }
+};
+
+const isSortDescendingOption = (option: string) =>
+  option.includes("Descending") ||
+  option.includes("Newest") ||
+  option.includes("High to Low");
+
+const normalizeSalesReceiptStatus = (value: any) => {
+  const status = String(value || "").trim().toLowerCase();
+  return status === "void" ? "void" : "paid";
+};
+
+const getSalesReceiptStatusLabel = (value: any) => (normalizeSalesReceiptStatus(value) === "void" ? "VOID" : "PAID");
+const isSalesReceiptEmailSent = (receipt: any) => {
+  const rawStatus = String(receipt?.status || receipt?.emailStatus || "").trim().toLowerCase();
+  return Boolean(
+    receipt?.emailSent ||
+    receipt?.emailSentAt ||
+    receipt?.lastEmailSentAt ||
+    receipt?.emailedAt ||
+    receipt?.sentAt ||
+    rawStatus === "sent"
+  );
+};
+
+const SALES_RECEIPTS_COLUMNS_STORAGE_KEY = "billing_sales_receipts_visible_columns_v1";
+const SALES_RECEIPTS_LIST_COLUMNS: SalesReceiptsColumnOption[] = [
+  { key: "receipt_date", label: "Receipt Date", locked: true },
+  { key: "location", label: "Location" },
+  { key: "receipt_number", label: "Sales Receipt" },
+  { key: "reference", label: "Reference" },
+  { key: "customer_name", label: "Customer Name" },
+  { key: "payment_mode", label: "Payment Mode" },
+  { key: "status", label: "Status" },
+  { key: "amount", label: "Amount" },
+  { key: "created_by", label: "Created By" }
 ];
 
 export default function SalesReceipts() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [isCustomizeModalOpen, setIsCustomizeModalOpen] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(SALES_RECEIPTS_COLUMNS_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const allowed = new Set(SALES_RECEIPTS_LIST_COLUMNS.map((c) => c.key));
+        const filtered = parsed.filter((k: string) => allowed.has(k));
+        if (filtered.length > 0) return filtered;
+      }
+    } catch (_error) {
+      // ignore and use defaults
+    }
+    return SALES_RECEIPTS_LIST_COLUMNS.map((c) => c.key);
+  });
+  const isColumnVisible = (key: string) => visibleColumns.includes(key);
   const [isViewDropdownOpen, setIsViewDropdownOpen] = useState(false);
   const [selectedView, setSelectedView] = useState("All Sales Receipts");
   const [selectedStatus, setSelectedStatus] = useState("All");
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [activeSort, setActiveSort] = useState("Date (Newest First)");
@@ -101,16 +190,33 @@ export default function SalesReceipts() {
   const [bulkUpdateValue, setBulkUpdateValue] = useState("");
   const [isBulkUpdateFieldDropdownOpen, setIsBulkUpdateFieldDropdownOpen] = useState(false);
   const [isFieldCustomizationOpen, setIsFieldCustomizationOpen] = useState(false);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [pendingBulkDeleteIds, setPendingBulkDeleteIds] = useState<string[]>([]);
 
   const [salesReceipts, setSalesReceipts] = useState([]);
   const [filteredSalesReceipts, setFilteredSalesReceipts] = useState([]);
   const [selectedReceipts, setSelectedReceipts] = useState([]);
   const [customers, setCustomers] = useState([]);
+
+  useEffect(() => {
+    localStorage.setItem(SALES_RECEIPTS_COLUMNS_STORAGE_KEY, JSON.stringify(visibleColumns));
+  }, [visibleColumns]);
   const [salespersons, setSalespersons] = useState([]);
   const [projects, setProjects] = useState([]);
   const [taxes, setTaxes] = useState([]);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 50, pages: 0 });
   const [currentPage, setCurrentPage] = useState(1);
+  const receiptQueryParams = useMemo(() => {
+    const sortField = mapSortOptionToField(activeSort);
+    return {
+      page: currentPage,
+      limit: 50,
+      status: selectedStatus === "All" ? undefined : selectedStatus,
+      sortBy: sortField,
+      sortOrder: isSortDescendingOption(activeSort) ? "desc" : "asc",
+    };
+  }, [activeSort, currentPage, selectedStatus]);
+  const salesReceiptsQuery = useSalesReceiptsListQuery(receiptQueryParams);
 
   const viewDropdownRef = useRef(null);
   const moreMenuRef = useRef(null);
@@ -118,6 +224,7 @@ export default function SalesReceipts() {
   const exportDropdownRef = useRef(null);
   const periodDropdownRef = useRef(null);
   const bulkUpdateFieldDropdownRef = useRef(null);
+  const bulkUpdateModalRoot = typeof document !== "undefined" ? document.body : null;
 
   const periodOptions = ["All", "Today", "This Week", "This Month", "This Quarter", "This Year", "Custom"];
 
@@ -132,6 +239,14 @@ export default function SalesReceipts() {
     "Amount (Low to High)"
   ];
 
+  const sortMenuOptions = [
+    { label: "Receipt Date", value: "Date (Newest First)" },
+    { label: "Sales Receipt", value: "Receipt # (Ascending)" },
+    { label: "Customer Name", value: "Customer Name (A-Z)" },
+    { label: "Amount", value: "Amount (High to Low)" },
+    { label: "Created Time", value: "Date (Newest First)" }
+  ];
+
   const exportOptions = [
     "Export to PDF",
     "Export to Excel",
@@ -143,7 +258,7 @@ export default function SalesReceipts() {
     .trim()
     .replace(/\w\S*/g, (text) => text.charAt(0).toUpperCase() + text.slice(1).toLowerCase());
 
-  const customerBulkOptions = useMemo(() => {
+  const customerBulkOptions = useMemo<{ value: string; label: string; customerId: string; customerName: string }[]>(() => {
     const optionsMap = new Map();
 
     (customers || []).forEach((customer) => {
@@ -194,11 +309,11 @@ export default function SalesReceipts() {
   }, [customers, salesReceipts]);
 
   const paymentModeBulkOptions = useMemo(() => {
-    const defaults = [...PAYMENT_MODE_OPTIONS];
+    const defaults = ["Cash", "Check", "Credit Card", "Bank Transfer", "Bank Remittance", "Other"];
     const dynamicValues = (salesReceipts || [])
       .map((receipt) => String(receipt?.paymentMode || receipt?.paymentMethod || "").trim())
       .filter(Boolean)
-      .map((value) => getPaymentModeLabel(value));
+      .map((value) => titleCase(value));
     const values = Array.from(new Set([...defaults, ...dynamicValues]));
     return values
       .map((value) => ({ value, label: value }))
@@ -235,9 +350,9 @@ export default function SalesReceipts() {
   }, [salesReceipts]);
 
   const statusBulkOptions = useMemo(() => {
-    const defaults = ["completed", "draft", "void", "paid"];
+    const defaults = ["paid", "void"];
     const dynamicValues = (salesReceipts || [])
-      .map((receipt) => String(receipt?.status || "").trim().toLowerCase())
+      .map((receipt) => normalizeSalesReceiptStatus(receipt?.status))
       .filter(Boolean);
     const values = Array.from(new Set([...defaults, ...dynamicValues]));
     return values
@@ -270,7 +385,7 @@ export default function SalesReceipts() {
       buildPayload: (value) => {
         const selectedOption = customerBulkOptions.find((option) => option.value === value);
         if (!selectedOption) return null;
-        const payload = { customerName: selectedOption.customerName };
+        const payload: any = { customerName: selectedOption.customerName };
         if (selectedOption.customerId) {
           payload.customer = selectedOption.customerId;
           payload.customerId = selectedOption.customerId;
@@ -291,7 +406,7 @@ export default function SalesReceipts() {
       label: "Status",
       type: "select",
       options: statusBulkOptions,
-      buildPayload: (value) => ({ status: String(value || "").trim().toLowerCase() })
+      buildPayload: (value) => ({ status: normalizeSalesReceiptStatus(value) })
     },
     {
       label: "Currency",
@@ -346,49 +461,16 @@ export default function SalesReceipts() {
   const bulkUpdateFieldOptions = bulkFieldConfigs.map((config) => config.label);
   const selectedBulkFieldConfig = bulkFieldConfigs.find((config) => config.label === bulkUpdateField) || null;
 
-  const mapSortOptionToField = (option) => {
-    switch (option) {
-      case "Date (Newest First)":
-      case "Date (Oldest First)": return "date";
-      case "Receipt # (Ascending)":
-      case "Receipt # (Descending)": return "receiptNumber";
-      case "Amount (High to Low)":
-      case "Amount (Low to High)": return "total";
-      case "Customer Name (A-Z)":
-      case "Customer Name (Z-A)": return "customerName";
-      default: return "date";
+  const refreshData = (page = currentPage) => {
+    if (page !== currentPage) {
+      setCurrentPage(page);
     }
-  };
-
-  const refreshData = async (page = currentPage) => {
-    setIsRefreshing(true);
-    try {
-      const isDesc = activeSort.includes("Descending") || activeSort.includes("Newest") || activeSort.includes("High to Low");
-      const response = await getSalesReceiptsPaginated({
-        page,
-        limit: 50,
-        status: selectedStatus === "All Sales Receipts" ? "All" : selectedStatus,
-        sortBy: mapSortOptionToField(activeSort),
-        sortOrder: isDesc ? "desc" : "asc"
-      });
-
-      setSalesReceipts(response.data);
-      setFilteredSalesReceipts(response.data);
-      setPagination(response.pagination);
-
-      const allCustomViews = getCustomViews().filter(v => v.type === "sales-receipts");
-      setCustomViews(allCustomViews);
-    } catch (error) {
-      console.error("Error refreshing data:", error);
-    } finally {
-      setIsRefreshing(false);
-      setHasLoadedOnce(true);
-    }
+    salesReceiptsQuery.refetch();
   };
 
   useEffect(() => {
-    refreshData(currentPage);
-  }, [selectedStatus, activeSort, currentPage]);
+    setCurrentPage(1);
+  }, [selectedStatus, activeSort]);
 
   useEffect(() => {
     const initialLoad = async () => {
@@ -404,16 +486,24 @@ export default function SalesReceipts() {
 
     initialLoad();
 
-    window.addEventListener("storage", () => refreshData(currentPage));
-    document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) refreshData(currentPage);
-    });
+    const handleStorage = () => {
+      salesReceiptsQuery.refetch();
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        salesReceiptsQuery.refetch();
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      window.removeEventListener("storage", () => refreshData(currentPage));
-      document.removeEventListener("visibilitychange", () => refreshData(currentPage));
+      window.removeEventListener("storage", handleStorage);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, []);
+  }, [salesReceiptsQuery.refetch]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -422,6 +512,7 @@ export default function SalesReceipts() {
       }
       if (moreMenuRef.current && !moreMenuRef.current.contains(event.target)) {
         setIsMoreMenuOpen(false);
+        setIsSortMenuOpen(false);
       }
       if (periodDropdownRef.current && !periodDropdownRef.current.contains(event.target)) {
         setIsPeriodDropdownOpen(false);
@@ -458,14 +549,14 @@ export default function SalesReceipts() {
       }
     };
 
-    if (isViewDropdownOpen || isMoreMenuOpen || isPeriodDropdownOpen || isBulkUpdateFieldDropdownOpen || isSearchTypeDropdownOpen || isFilterTypeDropdownOpen || isItemNameDropdownOpen || isAccountDropdownOpen || isCustomerDropdownOpen || isPaymentMethodDropdownOpen || isSalespersonDropdownOpen || isTaxDropdownOpen || isAttentionDropdownOpen) {
+    if (isViewDropdownOpen || isMoreMenuOpen || isSortMenuOpen || isPeriodDropdownOpen || isBulkUpdateFieldDropdownOpen || isSearchTypeDropdownOpen || isFilterTypeDropdownOpen || isItemNameDropdownOpen || isAccountDropdownOpen || isCustomerDropdownOpen || isPaymentMethodDropdownOpen || isSalespersonDropdownOpen || isTaxDropdownOpen || isAttentionDropdownOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isViewDropdownOpen, isMoreMenuOpen, isPeriodDropdownOpen, isBulkUpdateFieldDropdownOpen]);
+  }, [isViewDropdownOpen, isMoreMenuOpen, isSortMenuOpen, isPeriodDropdownOpen, isBulkUpdateFieldDropdownOpen]);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -485,7 +576,7 @@ export default function SalesReceipts() {
       "Receipt Number": receipt.receiptNumber || receipt.id || "",
       "Reference Number": receipt.referenceNumber || "",
       "Customer Name": receipt.customerName || receipt.customer || "",
-      "Status": receipt.status || "completed",
+      "Status": normalizeSalesReceiptStatus(receipt.status),
       "Amount": receipt.total || receipt.amount || 0,
       "Payment Method": receipt.paymentMode || receipt.paymentMethod || "",
       "Salesperson": receipt.salesperson || ""
@@ -511,7 +602,7 @@ export default function SalesReceipts() {
     }
   };
 
-  const applyFilters = (allReceipts, status, views = customViews, sortOption = activeSort) => {
+  const applyFilters = useCallback((allReceipts, status, views = customViews, sortOption = activeSort) => {
     let filtered = Array.isArray(allReceipts) ? allReceipts : [];
 
     // Check if it's a custom view
@@ -526,8 +617,9 @@ export default function SalesReceipts() {
       });
     } else if (status !== "All") {
       filtered = filtered.filter(receipt => {
-        const receiptStatus = (receipt.status || "completed").toLowerCase();
-        return receiptStatus === status.toLowerCase();
+        const receiptStatus = normalizeSalesReceiptStatus(receipt.status);
+        const requestedStatus = normalizeSalesReceiptStatus(status);
+        return receiptStatus === requestedStatus;
       });
     }
 
@@ -535,10 +627,10 @@ export default function SalesReceipts() {
     const sorted = [...filtered];
     switch (sortOption) {
       case "Date (Newest First)":
-        sorted.sort((a, b) => new Date(b.date || b.receiptDate) - new Date(a.date || a.receiptDate));
+        sorted.sort((a, b) => new Date(b.date || b.receiptDate).getTime() - new Date(a.date || a.receiptDate).getTime());
         break;
       case "Date (Oldest First)":
-        sorted.sort((a, b) => new Date(a.date || a.receiptDate) - new Date(b.date || b.receiptDate));
+        sorted.sort((a, b) => new Date(a.date || a.receiptDate).getTime() - new Date(b.date || b.receiptDate).getTime());
         break;
       case "Receipt # (Ascending)":
         sorted.sort((a, b) => (a.receiptNumber || "").localeCompare(b.receiptNumber || ""));
@@ -563,7 +655,20 @@ export default function SalesReceipts() {
     }
 
     setFilteredSalesReceipts(sorted);
-  };
+  }, [customViews, activeSort]);
+
+  useEffect(() => {
+    if (!salesReceiptsQuery.data) return;
+    const rows = salesReceiptsQuery.data.data;
+    setSalesReceipts(rows);
+    setPagination(salesReceiptsQuery.data.pagination);
+    applyFilters(rows, selectedStatus);
+    setHasLoadedOnce(true);
+  }, [salesReceiptsQuery.data, selectedStatus, applyFilters]);
+
+  useEffect(() => {
+    setIsRefreshing(salesReceiptsQuery.isFetching);
+  }, [salesReceiptsQuery.isFetching]);
 
   const formatDate = (dateString) => {
     if (!dateString) return "-";
@@ -853,11 +958,11 @@ export default function SalesReceipts() {
     }
 
     if (advancedSearchData.totalRangeFrom) {
-      filtered = filtered.filter(r => parseFloat(r.total || r.amount || 0) >= parseFloat(advancedSearchData.totalRangeFrom));
+      filtered = filtered.filter(r => parseFloat(String(r.total || r.amount || 0)) >= parseFloat(String(advancedSearchData.totalRangeFrom)));
     }
 
     if (advancedSearchData.totalRangeTo) {
-      filtered = filtered.filter(r => parseFloat(r.total || r.amount || 0) <= parseFloat(advancedSearchData.totalRangeTo));
+      filtered = filtered.filter(r => parseFloat(String(r.total || r.amount || 0)) <= parseFloat(String(advancedSearchData.totalRangeTo)));
     }
 
     if (advancedSearchData.filterType && advancedSearchData.filterType !== "All") {
@@ -893,7 +998,8 @@ export default function SalesReceipts() {
   };
 
   const handleStatusFilter = (status) => {
-    setSelectedStatus(status);
+    const mappedStatus = viewStatusMap[status] || status;
+    setSelectedStatus(mappedStatus);
     setIsViewDropdownOpen(false);
     if (status === "All") {
       setSelectedView("All Sales Receipts");
@@ -929,7 +1035,8 @@ export default function SalesReceipts() {
   );
 
   const isViewSelected = (view) => {
-    return selectedStatus === view;
+    if (view === "All") return selectedView === "All Sales Receipts";
+    return selectedView === view;
   };
 
   const handleCreateNewReceipt = () => {
@@ -952,7 +1059,7 @@ export default function SalesReceipts() {
       const allReceipts = await getSalesReceipts();
       setSalesReceipts(allReceipts);
       applyFilters(allReceipts, selectedStatus);
-      alert("List refreshed successfully.");
+      toast.success("List refreshed successfully.");
     } catch (error) {
       console.error("Error refreshing list:", error);
     } finally {
@@ -963,7 +1070,7 @@ export default function SalesReceipts() {
   const handleResetColumnWidth = () => {
     setIsMoreMenuOpen(false);
     localStorage.removeItem("salesReceiptColumnWidths");
-    alert("Column widths have been reset to default.");
+    toast.success("Column widths have been reset to default.");
   };
 
   const getSalesReceiptPdfTemplate = (receipt) => {
@@ -991,7 +1098,7 @@ export default function SalesReceipts() {
       <div style="width:794px; min-height:1123px; background:#ffffff; padding:40px; box-sizing:border-box; font-family:Arial, sans-serif; color:#111827;">
         <div style="margin-bottom:28px;">
           <div style="font-size:28px; font-weight:700; letter-spacing:0.02em;">SALES RECEIPT</div>
-          <div style="margin-top:8px; color:#4b5563; font-size:14px;">Sales Receipt# ${receipt?.receiptNumber || receipt?.id || ""}</div>
+          <div style="margin-top:8px; color:#4b5563; font-size:14px;">Sales Receipt ${receipt?.receiptNumber || receipt?.id || ""}</div>
         </div>
 
         <div style="display:flex; justify-content:space-between; margin-bottom:24px;">
@@ -1057,7 +1164,7 @@ export default function SalesReceipts() {
   const downloadSalesReceiptsPdf = async (receipts, fileNamePrefix = "sales-receipts") => {
     const receiptsToDownload = Array.isArray(receipts) ? receipts.filter(Boolean) : [];
     if (receiptsToDownload.length === 0) {
-      alert("No sales receipts available for PDF download.");
+      toast.error("No sales receipts available for PDF download.");
       return;
     }
 
@@ -1138,7 +1245,7 @@ export default function SalesReceipts() {
 
     const dataToExport = filteredSalesReceipts;
     if (dataToExport.length === 0) {
-      alert("No data to export.");
+      toast.error("No data to export.");
       return;
     }
 
@@ -1195,34 +1302,43 @@ export default function SalesReceipts() {
 
   const handleBulkDelete = async () => {
     if (selectedReceipts.length === 0) {
-      alert("Please select at least one sales receipt.");
+      toast.error("Please select at least one sales receipt.");
       return;
     }
+    setPendingBulkDeleteIds([...selectedReceipts]);
+    setIsBulkDeleteModalOpen(true);
+  };
 
-    const count = selectedReceipts.length;
-    const confirmMessage = `Are you sure you want to delete ${count} sales receipt(s)? This action cannot be undone.`;
+  const handleConfirmBulkDelete = async () => {
+    const idsToDelete = [...pendingBulkDeleteIds];
+    if (idsToDelete.length === 0) return;
 
-    if (window.confirm(confirmMessage)) {
-      try {
-        for (const receiptId of selectedReceipts) {
-          await deleteSalesReceipt(receiptId);
-        }
-
-        const allReceipts = await getSalesReceipts();
-        setSalesReceipts(allReceipts);
-        applyFilters(allReceipts, selectedStatus);
-        setSelectedReceipts([]);
-        alert(`${count} sales receipt(s) deleted successfully.`);
-      } catch (error) {
-        console.error("Error deleting sales receipts:", error);
-        alert("An error occurred while deleting sales receipts.");
+    try {
+      for (const receiptId of idsToDelete) {
+        await deleteSalesReceipt(receiptId);
       }
+
+      const allReceipts = await getSalesReceipts();
+      setSalesReceipts(allReceipts);
+      applyFilters(allReceipts, selectedStatus);
+      setSelectedReceipts([]);
+      setIsBulkDeleteModalOpen(false);
+      setPendingBulkDeleteIds([]);
+      toast.success(`${idsToDelete.length} sales receipt(s) deleted successfully.`);
+    } catch (error: any) {
+      console.error("Error deleting sales receipts:", error);
+      toast.error(error?.message || "An error occurred while deleting sales receipts.");
     }
+  };
+
+  const handleCancelBulkDelete = () => {
+    setIsBulkDeleteModalOpen(false);
+    setPendingBulkDeleteIds([]);
   };
 
   const handleBulkUpdate = () => {
     if (selectedReceipts.length === 0) {
-      alert("Please select at least one sales receipt.");
+      toast.error("Please select at least one sales receipt.");
       return;
     }
     setIsBulkUpdateModalOpen(true);
@@ -1238,26 +1354,26 @@ export default function SalesReceipts() {
 
   const handleBulkUpdateSubmit = async () => {
     if (!bulkUpdateField || !selectedBulkFieldConfig) {
-      alert("Please select a field.");
+      toast.error("Please select a field.");
       return;
     }
 
     if (selectedReceipts.length === 0) {
-      alert("Please select at least one sales receipt to update.");
+      toast.error("Please select at least one sales receipt to update.");
       return;
     }
 
     const rawValue = String(bulkUpdateValue || "").trim();
     if (!rawValue) {
-      alert("Please enter a value.");
+      toast.error("Please enter a value.");
       return;
     }
 
-    let parsedValue = rawValue;
+    let parsedValue: string | number = rawValue;
     if (selectedBulkFieldConfig.type === "number") {
       const normalizedNumber = Number(rawValue.replace(/,/g, ""));
       if (!Number.isFinite(normalizedNumber)) {
-        alert("Please enter a valid number.");
+        toast.error("Please enter a valid number.");
         return;
       }
       parsedValue = normalizedNumber;
@@ -1266,7 +1382,7 @@ export default function SalesReceipts() {
     if (selectedBulkFieldConfig.type === "date") {
       const parsedDate = new Date(rawValue);
       if (Number.isNaN(parsedDate.getTime())) {
-        alert("Please select a valid date.");
+        toast.error("Please select a valid date.");
         return;
       }
       parsedValue = rawValue;
@@ -1274,7 +1390,7 @@ export default function SalesReceipts() {
 
     const updateData = selectedBulkFieldConfig.buildPayload(parsedValue);
     if (!updateData || Object.keys(updateData).length === 0) {
-      alert("Invalid value for selected field.");
+      toast.error("Invalid value for selected field.");
       return;
     }
 
@@ -1305,10 +1421,10 @@ export default function SalesReceipts() {
       setBulkUpdateField("");
       setBulkUpdateValue("");
 
-      alert(`Successfully updated ${count} sales receipt(s).`);
+      toast.success(`Successfully updated ${count} sales receipt(s).`);
     } catch (error) {
       console.error("Error updating sales receipts:", error);
-      alert("An error occurred while updating sales receipts.");
+      toast.error("An error occurred while updating sales receipts.");
     }
   };
 
@@ -1364,7 +1480,7 @@ export default function SalesReceipts() {
 
   const handleBulkPDFDownload = async () => {
     if (selectedReceipts.length === 0) {
-      alert("Please select at least one sales receipt.");
+      toast.error("Please select at least one sales receipt.");
       return;
     }
 
@@ -1373,290 +1489,247 @@ export default function SalesReceipts() {
   };
 
   return (
-    <div className="w-full min-h-screen bg-gray-50">
+    <div className="w-full h-full min-h-0 flex flex-col bg-white overflow-hidden">
       {/* Header - Show Bulk Actions Bar when items are selected, otherwise show normal header */}
       {selectedReceipts.length > 0 ? (
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white">
-          <div className="flex items-center gap-2">
-            <button
-              className="px-4 py-2 text-white rounded-md text-sm font-medium cursor-pointer"
-              style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-              onMouseEnter={(e) => e.target.style.opacity = "0.9"}
-              onMouseLeave={(e) => e.target.style.opacity = "1"}
-              onClick={handleBulkUpdate}
-            >
-              Bulk Update
-            </button>
-            <button
-              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 text-[#156372] rounded-lg cursor-pointer hover:bg-gray-50 hover:border-[#156372] transition-all font-semibold text-sm shadow-sm"
-              onClick={handleBulkPDFDownload}
-              title="PDF Download"
-            >
-              <Download size={16} />
-              PDF Download
-            </button>
-            <button
-              className="px-4 py-2 text-white border-none rounded-md text-sm font-medium cursor-pointer transition-all flex items-center gap-2"
-              style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-              onMouseEnter={(e) => e.target.style.opacity = "0.9"}
-              onMouseLeave={(e) => e.target.style.opacity = "1"}
-              onClick={handleBulkDelete}
-            >
-              <Trash2 size={16} />
-              Delete
-            </button>
+        /* Bulk Actions Header */
+        <div className="flex-none flex items-center justify-between px-6 py-6 bg-white border-b border-gray-100 relative overflow-visible z-[100]">
+          <div className="flex min-w-0 flex-1 items-center gap-3 pl-4 pr-2 overflow-visible">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
+              <button
+                className="px-4 py-2 rounded-md text-sm font-medium cursor-pointer bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors"
+                onClick={handleBulkUpdate}
+              >
+                Bulk Update
+              </button>
+              <button
+                className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 text-[#156372] rounded-lg cursor-pointer hover:bg-gray-50 hover:border-[#156372] transition-all font-semibold text-sm shadow-sm"
+                onClick={handleBulkPDFDownload}
+                title="PDF Download"
+              >
+                <Download size={16} />
+                PDF Download
+              </button>
+              <button
+                className="px-4 py-2 rounded-md text-sm font-medium cursor-pointer transition-colors flex items-center gap-2 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
+                onClick={handleBulkDelete}
+              >
+                <Trash2 size={16} />
+                Delete
+              </button>
+              <div className="mx-2 h-5 w-px bg-gray-200" />
+              <div className="inline-flex items-center gap-2 text-sm text-slate-500">
+                <span className="flex items-center justify-center min-w-[24px] h-6 px-2 rounded text-[13px] font-semibold text-gray-700 bg-gray-100 border border-gray-200">
+                  {selectedReceipts.length}
+                </span>
+                <span className="text-sm text-gray-700">Selected</span>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="flex items-center justify-center min-w-[24px] h-6 px-2 rounded text-[13px] font-semibold text-white" style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}>
-              {selectedReceipts.length}
-            </span>
-            <span className="text-sm text-gray-700">Selected</span>
-            <button
-              className="flex items-center gap-1 py-1.5 px-3 bg-transparent border-none text-sm text-red-500 cursor-pointer transition-colors hover:text-red-600"
-              onClick={handleClearSelection}
-            >
-              Esc <X size={14} className="text-red-500" />
-            </button>
-          </div>
+          <button
+            className="flex items-center gap-1 py-1.5 px-3 bg-transparent border-none text-sm text-red-500 cursor-pointer transition-colors hover:text-red-600"
+            onClick={handleClearSelection}
+          >
+            Esc <X size={14} className="text-red-500" />
+          </button>
         </div>
       ) : (
         /* Normal Page Header */
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="relative" ref={viewDropdownRef}>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setIsViewDropdownOpen(!isViewDropdownOpen)}
-                    className="flex items-center gap-3 px-4 py-1.5 bg-[#F0F5FF] hover:bg-[#E1EBFF] rounded-lg transition-colors group"
-                  >
-                    <h1 className="text-xl font-bold text-[#111827]">{selectedView}</h1>
-                    <ChevronDown
-                      size={18}
-                      className={`text-[#2563EB] transition-transform duration-200 ${isViewDropdownOpen ? "rotate-180" : ""}`}
-                    />
-                  </button>
-                </div>
-
-                {isViewDropdownOpen && (
-                  <div className="absolute top-full left-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 min-w-[300px] flex flex-col max-h-[500px] overflow-hidden">
-                    {/* Search Bar */}
-                    <div className="flex items-center gap-2 p-3 border-b border-gray-200 bg-gray-50">
-                      <Search size={16} className="text-gray-400" />
-                      <input
-                        type="text"
-                        placeholder="Search views..."
-                        value={viewSearchQuery}
-                        onChange={(e) => setViewSearchQuery(e.target.value)}
-                        className="flex-1 text-sm bg-transparent focus:outline-none"
-                      />
-                    </div>
-
-                    {/* View Options Scroll Area */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar pt-2">
-                      {filteredDefaultViews.map((option) => (
-                        <div
-                          key={option}
-                          className={`group flex items-center justify-between px-4 py-2 mx-2 my-1 text-sm cursor-pointer rounded-lg transition-all ${isViewSelected(option)
-                            ? "bg-white border-2 border-blue-600 font-semibold text-[#111827]"
-                            : "text-[#4B5563] hover:bg-gray-50"
-                            }`}
-                          onClick={() => handleStatusFilter(option)}
-                        >
-                          <span>{option}</span>
-                          <Star size={16} className="text-gray-300 group-hover:text-gray-400" />
-                        </div>
-                      ))}
-
-                      {/* Custom Views */}
-                      {filteredCustomViews.length > 0 && (
-                        <div className="mt-4 pb-2">
-                          <div className="px-3 pb-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-white">
-                            Custom Views
-                          </div>
-                          {filteredCustomViews.map((view) => (
-                            <div
-                              key={view.id}
-                              className={`group flex items-center justify-between px-4 py-2 mx-2 my-1 text-sm cursor-pointer rounded-lg transition-all ${isViewSelected(view.name)
-                                ? "bg-white border-2 border-blue-600 font-semibold text-[#111827]"
-                                : "text-[#4B5563] hover:bg-gray-50"
-                                }`}
-                              onClick={() => handleStatusFilter(view.name)}
-                            >
-                              <span className="truncate max-w-[160px]">{view.name}</span>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={(e) => handleDeleteCustomView(view.id, e)}
-                                  className="p-1 opacity-0 group-hover:opacity-100 hover:bg-red-50 text-gray-300 hover:text-red-500 rounded transition-opacity"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
-                                <Star
-                                  size={16}
-                                  className={view.isFavorite ? "text-yellow-400 fill-yellow-400" : "text-gray-300 group-hover:text-gray-400"}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    {/* Removed New Custom View button as requested */}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                className="cursor-pointer transition-all bg-gradient-to-r from-[#156372] to-[#0D4A52] text-white px-6 py-2 rounded-lg border-[#0D4A52] border-b-[4px] hover:brightness-110 hover:-translate-y-[1px] hover:border-b-[6px] active:border-b-[2px] active:brightness-90 active:translate-y-[2px] flex items-center gap-2 text-sm font-bold shadow-md"
-                onClick={handleCreateNewReceipt}
-              >
-                <Plus size={16} strokeWidth={3} />
-                New
-              </button>
-              <div className="relative" ref={moreMenuRef}>
+        <div className="flex-none flex items-center justify-between px-6 py-6 bg-white border-b border-gray-100 relative overflow-visible">
+          <div className="flex items-center gap-8 pl-4">
+            <div className="relative" ref={viewDropdownRef}>
+              <div className="flex items-center gap-2">
                 <button
-                  className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
-                  onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+                  onClick={() => setIsViewDropdownOpen(!isViewDropdownOpen)}
+                  className="flex items-center gap-1.5 py-4 cursor-pointer group border-b-2 border-slate-900 -mb-[1px] bg-transparent outline-none"
                 >
-                  <MoreVertical size={18} />
+                  <h1 className="text-[15px] font-bold text-slate-900 transition-colors">{selectedView}</h1>
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform duration-200 text-[#156372] ${isViewDropdownOpen ? "rotate-180" : ""}`}
+                  />
                 </button>
-
-                {isMoreMenuOpen && (
-                  <div className="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px] z-[1000] overflow-visible py-1">
-                    {/* Import */}
-                    <div
-                      className="relative flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-all text-sm text-gray-700 group hover:bg-gray-50"
-                      onClick={() => {
-                        handleImportReceipts();
-                        setIsMoreMenuOpen(false);
-                      }}
-                    >
-                      <Download size={16} className="text-[#156372] flex-shrink-0" />
-                      <span className="flex-1 font-medium text-[13px]">Import</span>
-                      <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />
-
-                      {/* Import Submenu */}
-                      <div className="absolute top-0 right-full mr-1.5 min-w-[200px] bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-[99999] pointer-events-none opacity-0 translate-x-2.5 transition-all group-hover:pointer-events-auto group-hover:opacity-100 group-hover:translate-x-0">
-                        <div
-                          className="flex items-center py-2.5 px-4 text-sm text-gray-700 cursor-pointer transition-all"
-                          style={{ color: "#156372" }}
-                          onMouseEnter={(e) => {
-                            e.target.style.backgroundColor = "rgba(21, 99, 114, 0.1)";
-                            e.target.style.color = "white";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.target.style.backgroundColor = "transparent";
-                            e.target.style.color = "#156372";
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleImportReceipts();
-                            setIsMoreMenuOpen(false);
-                          }}
-                        >
-                          Import Sales Receipts
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Sort by */}
-                    <div className="relative flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-all text-sm text-gray-700 group hover:bg-gray-50">
-                      <ArrowUpDown size={16} className="text-[#156372] flex-shrink-0" />
-                      <span className="flex-1 font-medium text-[13px]">Sort by</span>
-                      <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />
-
-                      {/* Sort by Submenu */}
-                      <div className="absolute top-0 right-full mr-1.5 w-[220px] bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-[99999] pointer-events-none opacity-0 translate-x-2.5 transition-all group-hover:pointer-events-auto group-hover:opacity-100 group-hover:translate-x-0">
-                        {sortOptions.map((option) => (
-                          <div
-                            key={option}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSort(option);
-                              setIsMoreMenuOpen(false);
-                            }}
-                            className={`flex items-center justify-between py-2.5 px-3.5 mx-2 text-sm transition-all rounded-md ${activeSort === option ? "text-white" : "text-gray-700 hover:bg-gray-100"
-                              }`}
-                            style={activeSort === option ? { background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" } : {}}
-                          >
-                            <span>{option}</span>
-                            {activeSort === option && <Check size={14} className="text-white" />}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Export */}
-                    <div className="relative flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-all text-sm text-gray-700 group hover:bg-gray-50">
-                      <FileUp size={16} className="text-[#156372] flex-shrink-0" />
-                      <span className="flex-1 font-medium text-[13px]">Export</span>
-                      <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />
-
-                      {/* Export Submenu */}
-                      <div className="absolute top-0 right-full mr-1.5 min-w-[180px] bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-[99999] pointer-events-none opacity-0 translate-x-2.5 transition-all group-hover:pointer-events-auto group-hover:opacity-100 group-hover:translate-x-0">
-                        {exportOptions.map((option) => (
-                          <div
-                            key={option}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleExport(option);
-                              setIsMoreMenuOpen(false);
-                            }}
-                            className="flex items-center py-2.5 px-4 text-sm text-gray-700 cursor-pointer transition-all"
-                            style={{ color: "#156372" }}
-                            onMouseEnter={(e) => {
-                              e.target.style.backgroundColor = "rgba(21, 99, 114, 0.1)";
-                              e.target.style.color = "white";
-                            }}
-                            onMouseLeave={(e) => {
-                              e.target.style.backgroundColor = "transparent";
-                              e.target.style.color = "#156372";
-                            }}
-                          >
-                            {option}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="h-px bg-gray-100 my-1"></div>
-
-                    {/* Refresh List */}
-                    <div
-                      className={`flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-colors text-sm text-gray-700 hover:bg-gray-50 ${isRefreshing ? "opacity-50 cursor-not-allowed" : ""}`}
-                      onClick={() => {
-                        if (!isRefreshing) {
-                          refreshData();
-                          setIsMoreMenuOpen(false);
-                        }
-                      }}
-                    >
-                      <RefreshCw size={16} className={`text-[#156372] flex-shrink-0 ${isRefreshing ? "animate-spin" : ""}`} />
-                      <span className="flex-1 font-medium text-[13px]">Refresh List</span>
-                    </div>
-
-                    {/* Reset Column Width */}
-                    <div
-                      className="flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-colors text-sm text-gray-700 hover:bg-gray-50"
-                      onClick={() => handleResetColumnWidth()}
-                    >
-                      <Settings size={16} className="text-[#156372] flex-shrink-0" />
-                      <span className="flex-1 font-medium text-[13px]">Reset Column Width</span>
-                    </div>
-                  </div>
-                )}
               </div>
+
+              {isViewDropdownOpen && (
+                <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-2xl z-50 py-2 overflow-hidden">
+                  <div className="max-h-80 overflow-y-auto py-1">
+                    {salesReceiptViews.map((option) => (
+                      <div
+                        key={option}
+                        className={`flex items-center justify-between px-4 py-2 text-sm cursor-pointer ${isViewSelected(option)
+                          ? "text-[#156372] font-semibold bg-blue-50"
+                          : "text-[#374151] hover:bg-gray-50"
+                          }`}
+                        onClick={() => handleStatusFilter(option)}
+                      >
+                        <span>{option}</span>
+                        {isViewSelected(option) && <CheckCircle size={14} className="text-[#156372]" />}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleCreateNewReceipt}
+              className="h-[38px] cursor-pointer transition-all text-white px-5 rounded-lg border-[#0D4A52] border-b-[4px] hover:brightness-110 hover:-translate-y-[1px] hover:border-b-[6px] active:border-b-[2px] active:translate-y-[1px] text-sm font-semibold shadow-sm flex items-center justify-center gap-2"
+              style={{ background: "linear-gradient(180deg, #156372 0%, #0D4A52 100%)" }}
+              type="button"
+            >
+              <Plus size={16} strokeWidth={3} />
+              <span>New</span>
+            </button>
+            <div className="relative" ref={moreMenuRef}>
+              <button
+                className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
+                onClick={() => {
+                  setIsMoreMenuOpen((prev) => {
+                    const next = !prev;
+                    if (!next) setIsSortMenuOpen(false);
+                    return next;
+                  });
+                }}
+              >
+                <MoreVertical size={18} />
+              </button>
+
+              {isMoreMenuOpen && (
+                <div className="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[220px] z-[1000] overflow-visible py-1">
+                  {/* Sort by */}
+                  <div className="relative">
+                    <button
+                      className={`w-full flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-all text-sm rounded-md ${isSortMenuOpen ? "bg-[#3b82f6] text-white" : "text-gray-700 hover:bg-gray-50"
+                        }`}
+                      onClick={() => setIsSortMenuOpen((prev) => !prev)}
+                    >
+                      <ArrowUpDown size={16} className={`flex-shrink-0 ${isSortMenuOpen ? "text-white" : "text-[#156372]"}`} />
+                      <span className="flex-1 font-medium text-[13px] text-left">Sort by</span>
+                      <ChevronRight size={16} className={`flex-shrink-0 ${isSortMenuOpen ? "text-white" : "text-gray-400"}`} />
+                    </button>
+
+                    {isSortMenuOpen && (
+                      <div className="absolute top-0 right-full mr-1.5 w-[220px] bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-[99999]">
+                        {sortMenuOptions.map((option) => {
+                          const isActive = activeSort === option.value;
+                          return (
+                            <div
+                              key={option.label}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSort(option.value);
+                                setIsMoreMenuOpen(false);
+                                setIsSortMenuOpen(false);
+                              }}
+                              className={`flex items-center justify-between py-2.5 px-3.5 mx-2 text-sm transition-all rounded-md ${isActive ? "bg-[#3b82f6] text-white" : "text-gray-700 hover:bg-gray-100"
+                                }`}
+                            >
+                              <span>{option.label}</span>
+                              {isActive && <Check size={14} className="text-white" />}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Import Sales Receipts */}
+                  <div
+                    className="flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-all text-sm text-gray-700 hover:bg-gray-50"
+                    onClick={() => {
+                      handleImportReceipts();
+                      setIsMoreMenuOpen(false);
+                      setIsSortMenuOpen(false);
+                    }}
+                  >
+                    <Download size={16} className="text-[#156372] flex-shrink-0" />
+                    <span className="flex-1 font-medium text-[13px]">Import Sales Receipts</span>
+                  </div>
+
+                  {/* Export Sales Receipt */}
+                  <div
+                    className="flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-all text-sm text-gray-700 hover:bg-gray-50"
+                    onClick={() => {
+                      handleExport("Export to PDF");
+                      setIsMoreMenuOpen(false);
+                      setIsSortMenuOpen(false);
+                    }}
+                  >
+                    <FileUp size={16} className="text-[#156372] flex-shrink-0" />
+                    <span className="flex-1 font-medium text-[13px]">Export Sales Receipt</span>
+                  </div>
+
+                  <div className="h-px bg-gray-100 my-1"></div>
+
+                  {/* Preferences */}
+                  <div
+                    className="flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-all text-sm text-gray-700 hover:bg-gray-50"
+                    onClick={() => {
+                      navigate("/settings/sales-receipts");
+                      setIsMoreMenuOpen(false);
+                      setIsSortMenuOpen(false);
+                    }}
+                  >
+                    <Settings size={16} className="text-[#156372] flex-shrink-0" />
+                    <span className="flex-1 font-medium text-[13px]">Preferences</span>
+                  </div>
+
+                  {/* Manage Custom Fields */}
+                  <div
+                    className="flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-all text-sm text-gray-700 hover:bg-gray-50"
+                    onClick={() => {
+                      setIsFieldCustomizationOpen(true);
+                      setIsMoreMenuOpen(false);
+                      setIsSortMenuOpen(false);
+                    }}
+                  >
+                    <Grid3x3 size={16} className="text-[#156372] flex-shrink-0" />
+                    <span className="flex-1 font-medium text-[13px]">Manage Custom Fields</span>
+                  </div>
+
+                  <div className="h-px bg-gray-100 my-1"></div>
+
+                  {/* Refresh List */}
+                  <div
+                    className={`flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-colors text-sm text-gray-700 hover:bg-gray-50 ${isRefreshing ? "opacity-50 cursor-not-allowed" : ""}`}
+                    onClick={() => {
+                      if (!isRefreshing) {
+                        refreshData();
+                        setIsMoreMenuOpen(false);
+                        setIsSortMenuOpen(false);
+                      }
+                    }}
+                  >
+                    <RefreshCw size={16} className={`text-[#156372] flex-shrink-0 ${isRefreshing ? "animate-spin" : ""}`} />
+                    <span className="flex-1 font-medium text-[13px]">Refresh List</span>
+                  </div>
+
+                  {/* Reset Column Width */}
+                  <div
+                    className="flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-colors text-sm text-gray-700 hover:bg-gray-50"
+                    onClick={() => {
+                      handleResetColumnWidth();
+                      setIsMoreMenuOpen(false);
+                      setIsSortMenuOpen(false);
+                    }}
+                  >
+                    <RotateCcw size={16} className="text-[#156372] flex-shrink-0" />
+                    <span className="flex-1 font-medium text-[13px]">Reset Column Width</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
 
       {/* Bulk Update Modal */}
-      {isBulkUpdateModalOpen && (
+      {isBulkUpdateModalOpen && bulkUpdateModalRoot && createPortal(
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
+          className="fixed inset-0 z-[9999] flex items-start justify-center bg-black/50 pt-0"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleBulkUpdateCancel();
@@ -1687,7 +1760,7 @@ export default function SalesReceipts() {
                     <ChevronDown size={16} />
                   </button>
                   {isBulkUpdateFieldDropdownOpen && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-[10000] max-h-60 overflow-y-auto">
                       {bulkUpdateFieldOptions.map((option) => (
                         <div
                           key={option}
@@ -1710,8 +1783,8 @@ export default function SalesReceipts() {
               <button
                 className="px-6 py-2 text-white border-none rounded-lg text-sm font-semibold cursor-pointer transition-all shadow-md active:transform active:scale-95"
                 style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                onMouseEnter={(e) => e.target.style.opacity = "0.9"}
-                onMouseLeave={(e) => e.target.style.opacity = "1"}
+                onMouseEnter={(e) => (e.currentTarget as HTMLButtonElement).style.opacity = "0.9"}
+                onMouseLeave={(e) => (e.currentTarget as HTMLButtonElement).style.opacity = "1"}
                 onClick={handleBulkUpdateSubmit}
               >
                 Update
@@ -1724,24 +1797,25 @@ export default function SalesReceipts() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        bulkUpdateModalRoot
       )}
 
       {/* Filter Bar */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3">
-        <div className="flex items-center gap-4">
+      <div className="bg-white border-b border-gray-200">
+        <div className="flex items-center gap-4 px-6 py-3">
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">VIEW BY:</span>
           <div className="relative flex items-center gap-2" ref={periodDropdownRef}>
             <span className="text-sm font-medium text-gray-700">Period:</span>
             <button
-              className="flex items-center gap-2 px-3 py-1.5 border-2 border-gray-200 rounded-lg text-sm text-gray-700 hover:border-[#156372] transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:border-[#156372] transition-colors shadow-sm"
               onClick={() => setIsPeriodDropdownOpen(!isPeriodDropdownOpen)}
             >
               <span>{selectedPeriod}</span>
               <ChevronDown size={14} />
             </button>
             {isPeriodDropdownOpen && (
-              <div className="absolute top-full left-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 min-w-[150px] overflow-hidden">
+              <div className="absolute top-full left-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl z-50 min-w-[150px] overflow-hidden">
                 {periodOptions.map((option) => (
                   <div
                     key={option}
@@ -1761,7 +1835,7 @@ export default function SalesReceipts() {
         </div>
       </div>
 
-      <div className="p-6 relative">
+      <div className="relative flex-1 overflow-hidden min-h-0">
 
         {hasLoadedOnce && !isRefreshing && filteredSalesReceipts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -1769,51 +1843,49 @@ export default function SalesReceipts() {
             <p className="text-gray-600 mb-6 max-w-md">
               Create sales receipts and send them to your customers as proof of payment you've received towards their purchase.
             </p>
-
-            <div className="flex items-center gap-4">
-              <button
-                className="px-6 py-3 bg-gradient-to-r from-[#156372] to-[#0D4A52] text-white rounded-lg text-sm font-semibold uppercase hover:opacity-90 transition-all shadow-md"
-                onClick={handleCreateNewReceipt}
-              >
-                NEW SALES RECEIPT
-              </button>
-              <button
-                className="px-6 py-3 text-[#156372] hover:text-blue-700 text-sm font-semibold underline"
-                onClick={handleImportReceipts}
-              >
-                Import Sales Receipt
-              </button>
-            </div>
           </div>
         ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
-
-                    <th className="p-4 text-left">
-                      <input
-                        type="checkbox"
-                        checked={selectedReceipts.length === filteredSalesReceipts.length && filteredSalesReceipts.length > 0}
-                        onChange={handleSelectAll}
-                        className="w-4 h-4 text-[#156372] border-gray-300 rounded focus:ring-blue-500"
-                      />
+          <div className="flex-1 overflow-hidden bg-white min-h-0">
+            <div className="h-full overflow-auto bg-[#f6f7fb] custom-scrollbar">
+              <table className="w-full min-w-full text-left border-collapse table-fixed bg-white">
+                <thead className="bg-[#f6f7fb] sticky top-0 z-20 border-b border-[#e6e9f2]">
+                  <tr className="text-[10px] font-semibold text-[#7b8494] uppercase tracking-wider">
+                    <th className="px-4 py-3 w-[104px] min-w-[104px] sales-receipts-select-header">
+                      <div className="sales-receipts-select-header-actions flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsCustomizeModalOpen(true);
+                          }}
+                          className="h-6 w-6 flex items-center justify-center rounded border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                          title="Customize Columns"
+                        >
+                          <SlidersHorizontal size={13} className="text-[#1b5e6a]" />
+                        </button>
+                        <input
+                          type="checkbox"
+                          checked={selectedReceipts.length === filteredSalesReceipts.length && filteredSalesReceipts.length > 0}
+                          onChange={handleSelectAll}
+                          className="sales-receipts-select-header-checkbox w-4 h-4 text-[#156372] border-gray-300 rounded focus:ring-blue-500"
+                        />
+                      </div>
                     </th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                    {isColumnVisible("receipt_date") && <th className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         RECEIPT DATE
                         <ArrowUpDown size={14} className="text-gray-400" />
                       </div>
-                    </th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">SALES RECEIPT#</th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">REFERENCE</th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">CUSTOMER NAME</th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">PAYMENT MODE</th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">STATUS</th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">AMOUNT</th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">CREATED BY</th>
-                    <th className="p-4 text-left">
+                    </th>}
+                    {isColumnVisible("location") && <th className="px-4 py-3">LOCATION</th>}
+                    {isColumnVisible("receipt_number") && <th className="px-4 py-3">SALES RECEIPT#</th>}
+                    {isColumnVisible("reference") && <th className="px-4 py-3">REFERENCE</th>}
+                    {isColumnVisible("customer_name") && <th className="px-4 py-3">CUSTOMER NAME</th>}
+                    {isColumnVisible("payment_mode") && <th className="px-4 py-3">PAYMENT MODE</th>}
+                    {isColumnVisible("status") && <th className="px-4 py-3">STATUS</th>}
+                    {isColumnVisible("amount") && <th className="px-4 py-3">AMOUNT</th>}
+                    {isColumnVisible("created_by") && <th className="px-4 py-3">CREATED BY</th>}
+                    <th className="px-6 py-3 w-10">
                       <button
                         onClick={handleOpenAdvancedSearch}
                         className="p-1 hover:bg-gray-200 rounded transition-colors"
@@ -1823,81 +1895,91 @@ export default function SalesReceipts() {
                     </th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="bg-white">
                   {isRefreshing || !hasLoadedOnce ? (
                     Array(5).fill(0).map((_, index) => (
-                      <tr key={`skeleton-${index}`} className="border-b border-gray-100">
-
-                        <td className="p-4">
-                          <div className="w-4 h-4 bg-gray-200 rounded animate-pulse"></div>
+                      <tr key={`skeleton-${index}`} className="border-b border-[#eef1f6] h-[50px] animate-pulse">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="h-6 w-6 shrink-0" aria-hidden />
+                            <span className="h-5 w-px shrink-0 bg-transparent" aria-hidden />
+                            <div className="w-4 h-4 bg-gray-100 rounded" />
+                          </div>
                         </td>
-                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-24"></div></td>
-                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-32"></div></td>
-                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-20"></div></td>
-                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-32"></div></td>
-                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-24"></div></td>
-                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-20"></div></td>
-                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-24"></div></td>
-                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-24"></div></td>
-                        <td className="p-4"></td>
+                        {isColumnVisible("receipt_date") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
+                        {isColumnVisible("location") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
+                        {isColumnVisible("receipt_number") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-32"></div></td>}
+                        {isColumnVisible("reference") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-20"></div></td>}
+                        {isColumnVisible("customer_name") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-32"></div></td>}
+                        {isColumnVisible("payment_mode") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
+                        {isColumnVisible("status") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-20"></div></td>}
+                        {isColumnVisible("amount") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
+                        {isColumnVisible("created_by") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
+                        <td className="px-4 py-3"></td>
                       </tr>
                     ))
                   ) : (
                     (Array.isArray(filteredSalesReceipts) ? filteredSalesReceipts : []).map((receipt) => (
                       <tr
                         key={receipt.id}
-                        className="border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer"
+                        className="text-[13px] h-[50px] group transition-all border-b border-[#eef1f6] cursor-pointer hover:bg-[#f8fafc]"
                         onClick={(e) => {
-                          // Don't navigate if clicking checkbox or filter icon
-                          if (!e.target.closest('input[type="checkbox"]') && !e.target.closest('svg')) {
-                            console.log("Navigating to receipt detail:", receipt.id, receipt);
+                          const target = e.target as HTMLElement;
+                          if (!target.closest('input[type="checkbox"]') && !target.closest('svg') && !target.closest('button')) {
                             navigate(`/sales/sales-receipts/${receipt.id}`);
                           }
                         }}
                       >
-
                         <td
-                          className="p-4"
+                          className="px-4 py-3 w-[104px] min-w-[104px] sales-receipts-select-cell"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleSelectReceipt(receipt.id, e);
                           }}
                         >
-                          <input
-                            type="checkbox"
-                            checked={selectedReceipts.includes(receipt.id)}
-                            onChange={(e) => handleSelectReceipt(receipt.id, e)}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-4 h-4 text-[#156372] border-gray-300 rounded focus:ring-blue-500"
-                          />
+                          <div className="sales-receipts-select-cell-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={selectedReceipts.includes(receipt.id)}
+                              onChange={(e) => handleSelectReceipt(receipt.id, e)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-4 h-4 text-[#156372] border-gray-300 rounded focus:ring-blue-500"
+                            />
+                          </div>
                         </td>
-                        <td className="p-4 text-gray-900">{formatDate(receipt.date || receipt.receiptDate)}</td>
-                        <td className="p-4">
-                          <span
-                            className="text-[#156372] hover:text-blue-700 hover:underline font-medium cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/sales/sales-receipts/${receipt.id}`);
-                            }}
-                          >
-                            {receipt.receiptNumber || receipt.id || "—"}
+                        {isColumnVisible("receipt_date") && <td className="p-4 text-gray-900">{formatDate(receipt.date || receipt.receiptDate)}</td>}
+                        {isColumnVisible("location") && <td className="p-4 text-gray-900">{receipt.location || receipt.branch || "Head Office"}</td>}
+                        {isColumnVisible("receipt_number") && <td className="p-4">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="text-[#156372] hover:text-blue-700 hover:underline font-medium cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/sales/sales-receipts/${receipt.id}`);
+                              }}
+                            >
+                              {receipt.receiptNumber || receipt.id || "-"}
+                            </span>
+                            {isSalesReceiptEmailSent(receipt) && (
+                              <div title="Sent by Email" className="p-0.5 rounded text-slate-500">
+                                <Mail size={12} />
+                              </div>
+                            )}
+                          </div>
+                        </td>}
+                        {isColumnVisible("reference") && <td className="p-4 text-gray-900">{receipt.paymentReference || receipt.referenceNumber || "-"}</td>}
+                        {isColumnVisible("customer_name") && <td className="p-4 text-gray-900">{receipt.customerName || receipt.customer?.displayName || receipt.customer?.companyName || (typeof receipt.customer === 'string' ? receipt.customer : "-")}</td>}
+                        {isColumnVisible("payment_mode") && <td className="p-4 text-gray-900">{receipt.paymentMode || "-"}</td>}
+                        {isColumnVisible("status") && <td className="p-4">
+                        <span className={`text-xs font-semibold ${normalizeSalesReceiptStatus(receipt.status) === "void"
+                          ? "text-rose-700"
+                          : "text-emerald-700"
+                          }`}>
+                            {getSalesReceiptStatusLabel(receipt.status)}
                           </span>
-                        </td>
-                        <td className="p-4 text-gray-900">{receipt.paymentReference || receipt.referenceNumber || "—"}</td>
-                        <td className="p-4 text-gray-900">{receipt.customerName || receipt.customer?.displayName || receipt.customer?.companyName || (typeof receipt.customer === 'string' ? receipt.customer : "—")}</td>
-                        <td className="p-4 text-gray-900">{receipt.paymentMode || "—"}</td>
-                        <td className="p-4">
-                          <span className={`text-xs font-semibold ${(receipt.status || "paid").toLowerCase() === "paid"
-                            ? "text-green-700"
-                            : (receipt.status || "paid").toLowerCase() === "draft"
-                              ? "text-yellow-700"
-                              : "text-red-700"
-                            }`}>
-                            {(receipt.status || "paid").toUpperCase()}
-                          </span>
-                        </td>
-                        <td className="p-4 text-gray-900 font-semibold">{formatCurrency(receipt.total || receipt.amount, receipt.currency)}</td>
-                        <td className="p-4 text-gray-900">{receipt.createdBy?.name || (typeof receipt.createdBy === 'string' ? receipt.createdBy : "—")}</td>
+                        </td>}
+                        {isColumnVisible("amount") && <td className="p-4 text-gray-900 font-semibold">{formatCurrency(receipt.total || receipt.amount, receipt.currency)}</td>}
+                        {isColumnVisible("created_by") && <td className="p-4 text-gray-900">{getCreatedByDisplayName(receipt)}</td>}
                         <td className="p-4"></td>
                       </tr>
                     ))
@@ -1905,49 +1987,51 @@ export default function SalesReceipts() {
                 </tbody>
               </table>
             </div>
-
-            {/* Pagination Controls */}
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-              <div className="text-sm text-gray-600">
-                Showing <span className="font-semibold">{pagination.total === 0 ? 0 : ((pagination.page - 1) * pagination.limit) + 1}</span> to <span className="font-semibold">{Math.min(pagination.page * pagination.limit, pagination.total)}</span> of <span className="font-semibold">{pagination.total}</span> entries
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  className={`p-2 rounded-lg border border-gray-200 hover:bg-white transition-colors ${pagination.page === 1 ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={pagination.page === 1}
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                {Array.from({ length: Math.min(5, pagination.pages) }, (_, i) => {
-                  let pageNum;
-                  if (pagination.pages <= 5) pageNum = i + 1;
-                  else if (pagination.page <= 3) pageNum = i + 1;
-                  else if (pagination.page >= pagination.pages - 2) pageNum = pagination.pages - 4 + i;
-                  else pageNum = pagination.page - 2 + i;
-
-                  return (
-                    <button
-                      key={pageNum}
-                      className={`w-8 h-8 rounded-lg border text-sm font-medium transition-colors ${pagination.page === pageNum ? 'bg-[#156372] text-white border-[#156372]' : 'border-gray-200 hover:bg-white text-gray-600'}`}
-                      onClick={() => setCurrentPage(pageNum)}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                })}
-                <button
-                  className={`p-2 rounded-lg border border-gray-200 hover:bg-white transition-colors ${pagination.page === pagination.pages || pagination.pages === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  onClick={() => setCurrentPage(p => Math.min(pagination.pages, p + 1))}
-                  disabled={pagination.page === pagination.pages || pagination.pages === 0}
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-            </div>
           </div>
         )}
       </div>
+
+      {isBulkDeleteModalOpen && (
+        <div className="fixed inset-0 z-[2100] flex items-start justify-center bg-black/40 pt-16">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3">
+              <div className="h-7 w-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-[12px] font-bold">
+                !
+              </div>
+              <h3 className="text-[15px] font-semibold text-slate-800 flex-1">
+                Delete {pendingBulkDeleteIds.length} sales receipt{pendingBulkDeleteIds.length === 1 ? "" : "s"}?
+              </h3>
+              <button
+                type="button"
+                className="h-7 w-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                onClick={handleCancelBulkDelete}
+                aria-label="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="px-5 py-3 text-[13px] text-slate-600">
+              You cannot retrieve these sales receipts once they have been deleted.
+            </div>
+            <div className="flex items-center justify-start gap-2 border-t border-slate-100 px-5 py-3">
+              <button
+                type="button"
+                className="px-4 py-1.5 rounded-md bg-blue-600 text-white text-[12px] hover:bg-blue-700"
+                onClick={handleConfirmBulkDelete}
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                className="px-4 py-1.5 rounded-md border border-slate-300 text-[12px] text-slate-700 hover:bg-slate-50"
+                onClick={handleCancelBulkDelete}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Advanced Search Modal */}
       {isAdvancedSearchOpen && (
@@ -2024,9 +2108,9 @@ export default function SalesReceipts() {
               <div className="grid grid-cols-2 gap-x-12 gap-y-6">
                 {/* Left Column */}
                 <div className="space-y-6">
-                  {/* Sales Receipt# */}
+                  {/* Sales Receipt */}
                   <div className="flex items-center gap-4">
-                    <label className="w-32 text-sm font-medium text-gray-600 text-right">Sales Receipt#</label>
+                    <label className="w-32 text-sm font-medium text-gray-600 text-right">Sales Receipt</label>
                     <input
                       type="text"
                       value={advancedSearchData.receiptNumber}
@@ -2155,9 +2239,9 @@ export default function SalesReceipts() {
 
                 {/* Right Column */}
                 <div className="space-y-6">
-                  {/* Reference# */}
+                  {/* Reference */}
                   <div className="flex items-center gap-4">
-                    <label className="w-32 text-sm font-medium text-gray-600 text-right">Reference#</label>
+                    <label className="w-32 text-sm font-medium text-gray-600 text-right">Reference</label>
                     <input
                       type="text"
                       value={advancedSearchData.referenceNumber}
@@ -2349,8 +2433,8 @@ export default function SalesReceipts() {
               <button
                 className="px-8 py-2.5 text-white border-none text-sm font-bold rounded-lg cursor-pointer transition-all shadow-md active:transform active:scale-95"
                 style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                onMouseEnter={(e) => e.target.style.opacity = "0.9"}
-                onMouseLeave={(e) => e.target.style.opacity = "1"}
+                onMouseEnter={(e) => (e.currentTarget as HTMLButtonElement).style.opacity = "0.9"}
+                onMouseLeave={(e) => (e.currentTarget as HTMLButtonElement).style.opacity = "1"}
                 onClick={handleAdvancedSearchSubmit}
               >
                 Search
@@ -2366,6 +2450,17 @@ export default function SalesReceipts() {
         </div>
       )}
 
+      <SalesReceiptsCustomizeColumnsModal
+        open={isCustomizeModalOpen}
+        columns={SALES_RECEIPTS_LIST_COLUMNS}
+        value={visibleColumns}
+        onClose={() => setIsCustomizeModalOpen(false)}
+        onSave={(nextVisibleColumns) => {
+          setVisibleColumns(nextVisibleColumns);
+          setIsCustomizeModalOpen(false);
+        }}
+      />
+
       {/* Field Customization Modal */}
       {isFieldCustomizationOpen && (
         <FieldCustomization
@@ -2376,5 +2471,6 @@ export default function SalesReceipts() {
     </div>
   );
 }
+
 
 

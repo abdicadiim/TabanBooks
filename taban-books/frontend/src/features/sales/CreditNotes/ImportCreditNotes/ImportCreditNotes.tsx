@@ -1,4 +1,5 @@
-﻿import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import { toast } from "react-hot-toast";
 import { useNavigate, useLocation } from "react-router-dom";
 import { X, Download, ChevronDown, ChevronUp, HelpCircle, Search, Check, Lightbulb, Info, LayoutGrid, HardDrive, Box, Square, Cloud, ChevronUp as ChevronUpIcon, Users, FileText, Folder, Building2, Edit, ChevronLeft } from "lucide-react";
 import { getAllDocuments } from "../../../../utils/documentStorage";
@@ -27,7 +28,7 @@ export default function ImportCreditNotes() {
   const [documentSearch, setDocumentSearch] = useState("");
   const [documents, setDocuments] = useState([]);
   const [selectedDocuments, setSelectedDocuments] = useState([]);
-  const [selectedCloudProvider, setSelectedCloudProvider] = useState("taban");
+  const [selectedCloudProvider, setSelectedCloudProvider] = useState("zoho");
   const [currentStep, setCurrentStep] = useState("configure"); // "configure", "mapFields", "preview"
   const [fieldMappings, setFieldMappings] = useState({});
   const [previewData, setPreviewData] = useState({
@@ -137,14 +138,14 @@ export default function ImportCreditNotes() {
       const maxSize = 25 * 1024 * 1024; // 25MB
 
       if (!validTypes.includes(fileExtension)) {
-        alert("Please select a valid file format (CSV, TSV, or XLS).");
+        toast("Please select a valid file format (CSV, TSV, or XLS).");
         event.target.value = "";
         setSelectedFile(null);
         return;
       }
 
       if (file.size > maxSize) {
-        alert("File size must be less than 25 MB.");
+        toast("File size must be less than 25 MB.");
         event.target.value = "";
         setSelectedFile(null);
         return;
@@ -207,13 +208,13 @@ export default function ImportCreditNotes() {
       const maxSize = 25 * 1024 * 1024; // 25MB
 
       if (!validTypes.includes(fileExtension)) {
-        alert("Please select a valid file format (CSV, TSV, or XLS).");
+        toast("Please select a valid file format (CSV, TSV, or XLS).");
         setSelectedFile(null);
         return;
       }
 
       if (file.size > maxSize) {
-        alert("File size must be less than 25 MB.");
+        toast("File size must be less than 25 MB.");
         setSelectedFile(null);
         return;
       }
@@ -290,7 +291,7 @@ export default function ImportCreditNotes() {
   const handleNext = async () => {
     if (currentStep === "configure") {
       if (!selectedFile) {
-        alert("Please select a file to continue.");
+        toast("Please select a file to continue.");
         return;
       }
       // Parse import file to get headers
@@ -300,7 +301,7 @@ export default function ImportCreditNotes() {
         setCurrentStep("mapFields");
       } catch (error) {
         console.error("Error reading file:", error);
-        alert("Error reading file. Please try again.");
+        toast("Error reading file. Please try again.");
       }
     } else if (currentStep === "mapFields") {
       // Calculate preview data before moving to preview step
@@ -327,7 +328,7 @@ export default function ImportCreditNotes() {
           setCurrentStep("preview");
         } catch (error) {
           console.error("Error reading file:", error);
-          alert("Error reading file. Please try again.");
+          toast("Error reading file. Please try again.");
         }
       } else {
         setCurrentStep("preview");
@@ -474,7 +475,7 @@ export default function ImportCreditNotes() {
 
   const handleImport = async () => {
     if (!selectedFile) {
-      alert("No file selected");
+      toast("No file selected");
       return;
     }
 
@@ -482,7 +483,7 @@ export default function ImportCreditNotes() {
       const { headers, rows } = await parseImportFile(selectedFile);
 
       if (rows.length === 0) {
-        alert("No data found in the file");
+        toast("No data found in the file");
         return;
       }
 
@@ -786,14 +787,14 @@ export default function ImportCreditNotes() {
       }
 
       if (importedCount > 0) {
-        alert(`Successfully imported ${importedCount} credit note(s).${skippedCount > 0 ? ` ${skippedCount} record(s) skipped.` : ''}`);
+        toast(`Successfully imported ${importedCount} credit note(s).${skippedCount > 0 ? ` ${skippedCount} record(s) skipped.` : ''}`);
         navigate("/sales/credit-notes");
       } else {
-        alert(`No credit notes were imported.${errors.length > 0 ? ` ${errors.slice(0, 3).join(" ")}` : ""}`);
+        toast(`No credit notes were imported.${errors.length > 0 ? ` ${errors.slice(0, 3).join(" ")}` : ""}`);
       }
     } catch (error) {
       console.error("Error importing credit notes:", error);
-      alert("Error importing credit notes. Please check the file format and try again.");
+      toast("Error importing credit notes. Please check the file format and try again.");
     }
   };
 
@@ -892,7 +893,7 @@ export default function ImportCreditNotes() {
                 </p>
               )}
               <p className="mt-4 text-xs text-gray-500">
-                Maximum File Size: 25 MB â€¢ File Format: CSV or TSV or XLS
+                Maximum File Size: 25 MB • File Format: CSV or TSV or XLS
               </p>
               <p className="mt-2 text-xs text-gray-500">
                 Download{" "}
@@ -1121,7 +1122,7 @@ export default function ImportCreditNotes() {
               <div className="w-[180px] bg-white border-r border-gray-200 flex flex-col overflow-y-auto">
                 <div className="p-2">
                   {[
-                    { id: "taban", name: "Taban Books Drive", icon: LayoutGrid },
+                    { id: "zoho", name: "Zoho WorkDrive", icon: LayoutGrid },
                     { id: "gdrive", name: "Google Drive", icon: HardDrive },
                     { id: "dropbox", name: "Dropbox", icon: Box },
                     { id: "box", name: "Box", icon: Square },
@@ -1205,7 +1206,7 @@ export default function ImportCreditNotes() {
                         >
                           privacy policy
                         </a>{" "}
-                        and understand that the rights to use this product do not come from Taban Books. The use and transfer of information received from Google APIs to Taban Books will adhere to{" "}
+                        and understand that the rights to use this product do not come from Zoho. The use and transfer of information received from Google APIs to Zoho will adhere to{" "}
                         <a
                           href="#"
                           className="text-blue-600 underline hover:text-blue-700"
@@ -1230,7 +1231,7 @@ export default function ImportCreditNotes() {
                       className="px-8 py-3 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
                       onClick={() => {
                         window.open(
-                          "https://accounts.google.com/v3/signin/accountchooser?access_type=offline&approval_prompt=force&client_id=932402265855-3k3mfquq4o5kh60o8tnc9mhgn9h77717.apps.googleusercontent.com&redirect_uri=https%3A%2F%2Fapps.tabanbooks.com%2Fauth%2Fgoogle&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive&state=3a3b0106a0c2d908b369a75ad93185c0aa431c64497733bda2d375130c4da610d88104c252c552adc1dee9d6167ad6bb8d2258113b9dce48b47ca4a970314a1fa7b51df3a7716016ac37be9e7d4d9f21077f946b82dc039ae2f08b7be79117042545529cf82d67d58ef6426621f5b5f885af900571347968d419f6d1a5abe3e7e1a3a4d04a433a6b3c5173f68c0c5bea&dsh=S557386361%3A1766903862725658&o2v=1&service=lso&flowName=GeneralOAuthFlow&opparams=%253F&continue=https%3A%2F%2Faccounts.google.com%2Fsignin%2Foauth%2Fconsent%3Fauthuser%3Dunknown%26part%3DAJi8hAP8z-36EGAbjuuLEd2uWDyjQgraM1HNpjnJVe4mUhXhPOQkoJHNKZG6WoCFPPrb5EDYGeFuyF3TI7jUSvDUIwBbk0PGoZLgn4Jt5TdOWWzFyQf6jLfEXhnKHaHRvCzRofERa0CbAnwAUviCEIRh6OE8GWAy3xDGHH6VltpKe7vSGjJfzwkDnAckJm1v9fghFiv7u6_xqfZlF8iB26QlWNE86HHYqzyIP3N9LKEh0NWNZAdiV__IdSu_RqOJPYoHDRNRRsyctIbVsj3CDhUyCADZvROzoeQI9VvIqJSiWLTxE7royBXKDDS96rJYovyIQ79hC_n_aNjoPVUD9jfp5cnJkn_rkGpzetwAYJTRSKhP8gM5YlFdK2Pfp2uT6ZHzVAOYmlyeCX4dc1IsyRtinTLx5WyAUPR_QcLPQzuQcRPvtjL23ZvKxoexvKp3t4zX_HTFKMrduT4G6ojAd7C-kurnZ1Wx6g%26flowName%3DGeneralOAuthFlow%26as%3DS557386361%253A1766903862725658%26client_id%3D932402265855-3k3mfquq4o5kh60o8tnc9mhgn9h77717.apps.googleusercontent.com%26requestPath%3D%252Fsignin%252Foauth%252Fconsent%23&app_domain=https%3A%2F%2Fapps.tabanbooks.com",
+                          "https://accounts.google.com/v3/signin/accountchooser?access_type=offline&approval_prompt=force&client_id=932402265855-3k3mfquq4o5kh60o8tnc9mhgn9h77717.apps.googleusercontent.com&redirect_uri=https%3A%2F%2Fgadgets.zoho.com%2Fauth%2Fgoogle&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive&state=3a3b0106a0c2d908b369a75ad93185c0aa431c64497733bda2d375130c4da610d88104c252c552adc1dee9d6167ad6bb8d2258113b9dce48b47ca4a970314a1fa7b51df3a7716016ac37be9e7d4d9f21077f946b82dc039ae2f08b7be79117042545529cf82d67d58ef6426621f5b5f885af900571347968d419f6d1a5abe3e7e1a3a4d04a433a6b3c5173f68c0c5bea&dsh=S557386361%3A1766903862725658&o2v=1&service=lso&flowName=GeneralOAuthFlow&opparams=%253F&continue=https%3A%2F%2Faccounts.google.com%2Fsignin%2Foauth%2Fconsent%3Fauthuser%3Dunknown%26part%3DAJi8hAP8z-36EGAbjuuLEd2uWDyjQgraM1HNpjnJVe4mUhXhPOQkoJHNKZG6WoCFPPrb5EDYGeFuyF3TI7jUSvDUIwBbk0PGoZLgn4Jt5TdOWWzFyQf6jLfEXhnKHaHRvCzRofERa0CbAnwAUviCEIRh6OE8GWAy3xDGHH6VltpKe7vSGjJfzwkDnAckJm1v9fghFiv7u6_xqfZlF8iB26QlWNE86HHYqzyIP3N9LKEh0NWNZAdiV__IdSu_RqOJPYoHDRNRRsyctIbVsj3CDhUyCADZvROzoeQI9VvIqJSiWLTxE7royBXKDDS96rJYovyIQ79hC_n_aNjoPVUD9jfp5cnJkn_rkGpzetwAYJTRSKhP8gM5YlFdK2Pfp2uT6ZHzVAOYmlyeCX4dc1IsyRtinTLx5WyAUPR_QcLPQzuQcRPvtjL23ZvKxoexvKp3t4zX_HTFKMrduT4G6ojAd7C-kurnZ1Wx6g%26flowName%3DGeneralOAuthFlow%26as%3DS557386361%253A1766903862725658%26client_id%3D932402265855-3k3mfquq4o5kh60o8tnc9mhgn9h77717.apps.googleusercontent.com%26requestPath%3D%252Fsignin%252Foauth%252Fconsent%23&app_domain=https%3A%2F%2Fgadgets.zoho.com",
                           "_blank"
                         );
                       }}
@@ -1286,7 +1287,7 @@ export default function ImportCreditNotes() {
                         >
                           privacy policy
                         </a>{" "}
-                        and understand that the rights to use this product do not come from Taban Books.
+                        and understand that the rights to use this product do not come from Zoho.
                       </p>
                     </div>
 
@@ -1295,7 +1296,7 @@ export default function ImportCreditNotes() {
                       className="px-8 py-3 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
                       onClick={() => {
                         window.open(
-                          "https://www.dropbox.com/oauth2/authorize?response_type=code&client_id=ovpkm9147d63ifh&redirect_uri=https://apps.tabanbooks.com/dropbox/auth/v2/saveToken&state=190d910cedbc107e58195259f79a434d05c66c88e1e6eaa0bc585c6a0fddb159871ede64adb4d5da61c107ca7cbb7bae891c80e9c69cf125faaaf622ab58f37c5b1d42b42c7f3add07d92465295564a6c5bd98228654cce8ff68da24941db6f0aab9a60398ac49e41b3ec211acfd5bcc&force_reapprove=true&token_access_type=offline",
+                          "https://www.dropbox.com/oauth2/authorize?response_type=code&client_id=ovpkm9147d63ifh&redirect_uri=https://gadgets.zoho.com/dropbox/auth/v2/saveToken&state=190d910cedbc107e58195259f79a434d05c66c88e1e6eaa0bc585c6a0fddb159871ede64adb4d5da61c107ca7cbb7bae891c80e9c69cf125faaaf622ab58f37c5b1d42b42c7f3add07d92465295564a6c5bd98228654cce8ff68da24941db6f0aab9a60398ac49e41b3ec211acfd5bcc&force_reapprove=true&token_access_type=offline",
                           "_blank"
                         );
                       }}
@@ -1341,7 +1342,7 @@ export default function ImportCreditNotes() {
                         >
                           privacy policy
                         </a>{" "}
-                        and understand that the rights to use this product do not come from Taban Books.
+                        and understand that the rights to use this product do not come from Zoho.
                       </p>
                     </div>
 
@@ -1350,7 +1351,7 @@ export default function ImportCreditNotes() {
                       className="px-8 py-3 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
                       onClick={() => {
                         window.open(
-                          "https://account.box.com/api/oauth2/authorize?response_type=code&client_id=f95f6ysfm8vg1q3g84m0xyyblwnj3tr5&redirect_uri=https%3A%2F%2Fapps.tabanbooks.com%2Fauth%2Fbox&state=37e352acfadd37786b1d388fb0f382baa59c9246f4dda329361910db55643700578352e4636bde8a0743bd3060e51af0ee338a34b2080bbd53a337f46b0995e28facbeff76d7efaf8db4493a0ef77be45364e38816d94499fba739987744dd1f6f5c08f84c0a11b00e075d91d7ea5c6d",
+                          "https://account.box.com/api/oauth2/authorize?response_type=code&client_id=f95f6ysfm8vg1q3g84m0xyyblwnj3tr5&redirect_uri=https%3A%2F%2Fgadgets.zoho.com%2Fauth%2Fbox&state=37e352acfadd37786b1d388fb0f382baa59c9246f4dda329361910db55643700578352e4636bde8a0743bd3060e51af0ee338a34b2080bbd53a337f46b0995e28facbeff76d7efaf8db4493a0ef77be45364e38816d94499fba739987744dd1f6f5c08f84c0a11b00e075d91d7ea5c6d",
                           "_blank"
                         );
                       }}
@@ -1390,7 +1391,7 @@ export default function ImportCreditNotes() {
                         >
                           privacy policy
                         </a>{" "}
-                        and understand that the rights to use this product do not come from Taban Books.
+                        and understand that the rights to use this product do not come from Zoho.
                       </p>
                     </div>
 
@@ -1399,7 +1400,7 @@ export default function ImportCreditNotes() {
                       className="px-8 py-3 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
                       onClick={() => {
                         window.open(
-                          "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=0ecabec7-1fac-433f-a968-9985926b51c3&state=e0b1053c9465a9cb98fea7eea99d3074930c6c5607a21200967caf2db861cf9df77442c92e8565087c2a339614e18415cbeb95d59c63605cee4415353b2c44da13c6b9f34bca1fcd3abdd630595133a5232ddb876567bedbe620001a59c9989df94c3823476d0eef4363b351e8886c5563f56bc9d39db9f3db7c37cd1ad827c5.%5E.US&redirect_uri=https%3A%2F%2Fapps.tabanbooks.com%2Ftpa%2Foffice365&response_type=code&prompt=select_account&scope=Files.Read%20User.Read%20offline_access&sso_reload=true",
+                          "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=0ecabec7-1fac-433f-a968-9985926b51c3&state=e0b1053c9465a9cb98fea7eea99d3074930c6c5607a21200967caf2db861cf9df77442c92e8565087c2a339614e18415cbeb95d59c63605cee4415353b2c44da13c6b9f34bca1fcd3abdd630595133a5232ddb876567bedbe620001a59c9989df94c3823476d0eef4363b351e8886c5563f56bc9d39db9f3db7c37cd1ad827c5.%5E.US&redirect_uri=https%3A%2F%2Fgadgets.zoho.com%2Ftpa%2Foffice365&response_type=code&prompt=select_account&scope=Files.Read%20User.Read%20offline_access&sso_reload=true",
                           "_blank"
                         );
                       }}
@@ -1456,7 +1457,7 @@ export default function ImportCreditNotes() {
                         >
                           privacy policy
                         </a>{" "}
-                        and understand that the rights to use this product do not come from Taban Books.
+                        and understand that the rights to use this product do not come from Zoho.
                       </p>
                     </div>
 
@@ -1532,18 +1533,18 @@ export default function ImportCreditNotes() {
 
                     {/* Description Text */}
                     <p className="text-sm text-gray-600 text-center mb-6 max-w-md">
-                      {selectedCloudProvider === "taban"
-                        ? "Taban Books Drive is an online file sync, storage and content collaboration platform."
+                      {selectedCloudProvider === "zoho"
+                        ? "Zoho WorkDrive is an online file sync, storage and content collaboration platform."
                         : "Select a cloud storage provider to get started."}
                     </p>
 
                     {/* Set up your team button */}
-                    {selectedCloudProvider === "taban" && (
+                    {selectedCloudProvider === "zoho" && (
                       <button
                         className="px-6 py-2.5 bg-green-600 text-white rounded-md text-sm font-semibold hover:bg-green-700 transition-colors shadow-sm"
                         onClick={() => {
                           window.open(
-                            "https://drive.tabanbooks.com/home/onboard/createteamwithsoid?org_id=909892451&service_name=TabanBooks",
+                            "https://workdrive.zoho.com/home/onboard/createteamwithsoid?org_id=909892451&service_name=ZohoBooks",
                             "_blank"
                           );
                         }}
@@ -1683,7 +1684,7 @@ export default function ImportCreditNotes() {
                           </div>
                         </div>
                         <div className="text-sm text-gray-600">
-                          {doc.size} â€¢ {doc.type?.toUpperCase() || "FILE"}
+                          {doc.size} • {doc.type?.toUpperCase() || "FILE"}
                         </div>
                         <div className="text-sm text-gray-600">
                           {doc.uploadedBy || "Me"}

@@ -1,9 +1,8 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getCustomerById } from "../../salesModel";
 import { getMe, getCurrentUser } from "../../../../services/auth";
 import { customersAPI } from "../../../../services/api";
-import toast from "react-hot-toast";
+import { toast } from "react-hot-toast";
 import { X, Bold, Italic, Underline, Link2, Image as ImageIcon, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered, ChevronDown } from "lucide-react";
 
 export default function RequestReview() {
@@ -22,7 +21,7 @@ export default function RequestReview() {
   const [fontSize, setFontSize] = useState("16 px");
   const [isFontSizeDropdownOpen, setIsFontSizeDropdownOpen] = useState(false);
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
-  const [linkUrl, setLinkUrl] = useState("https://books.tabanbooks.com/portal/tabanenterprises");
+  const [linkUrl, setLinkUrl] = useState("https://books.zohosecure.com/portal/tabanenterprises");
   const [rateButtonUrl, setRateButtonUrl] = useState("");
   const [selectedRating, setSelectedRating] = useState(0); // Track selected star rating
   const [companyLogo, setCompanyLogo] = useState(null); // Company logo image
@@ -74,20 +73,9 @@ export default function RequestReview() {
         const response = await customersAPI.getById(id);
         if (response && response.data) {
           setCustomer(response.data);
-        } else {
-          // Fallback to local model
-          const localCustomer = getCustomerById(id);
-          if (localCustomer) {
-            setCustomer(localCustomer);
-          }
         }
       } catch (error) {
         console.error('Error fetching customer:', error);
-        // Fallback to local model
-        const localCustomer = getCustomerById(id);
-        if (localCustomer) {
-          setCustomer(localCustomer);
-        }
       }
     };
 
@@ -238,21 +226,21 @@ ${orgName}`;
 
       if (response && response.success) {
         toast.dismiss(loadingToast);
-        toast.success(`âœ… Review request email sent successfully to ${recipientEmail.trim()}`);
+        toast.success(`✅ Review request email sent successfully to ${recipientEmail.trim()}`);
 
         // Navigate back after a short delay
         setTimeout(() => {
           navigate(`/sales/customers/${id}`);
         }, 1500);
       } else {
-        throw new Error(response?.message || response?.error || 'Failed to send email');
+        throw new Error((response as any)?.message || 'Failed to send email');
       }
     } catch (error) {
       console.error('Error sending review request email:', error);
       const errorMessage = error.data?.message || error.data?.error || error.message || 'Unknown error';
 
-      toast.error(`âŒ Failed to send email: ${errorMessage}`, {
-        duration: 5000
+      toast.error(`❌ Failed to send email: ${errorMessage}`, {
+        autoClose: 5000
       });
     }
   };
@@ -521,7 +509,7 @@ ${orgName}`;
                       />
                     ) : (
                       <div className="w-full h-full bg-gradient-to-br from-blue-500 via-green-500 to-yellow-500 rounded-lg flex items-center justify-center">
-                        <span className="text-white text-2xl">ðŸ“š</span>
+                        <span className="text-white text-2xl">📚</span>
                       </div>
                     )}
                     <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 rounded-lg flex items-center justify-center transition-opacity">
@@ -560,7 +548,7 @@ ${orgName}`;
                               }
                             }}
                           >
-                            â˜…
+                            ★
                           </span>
                         ))}
                       </div>
@@ -598,10 +586,13 @@ ${orgName}`;
                     const text = e.clipboardData.getData('text/plain');
                     if (emailBodyRef.current) {
                       const selection = window.getSelection();
-                      if (selection.rangeCount > 0) {
-                        selection.deleteContents();
-                        selection.getRangeAt(0).insertNode(document.createTextNode(text));
-                        selection.collapseToEnd();
+                      if (selection && selection.rangeCount > 0) {
+                        const range = selection.getRangeAt(0);
+                        range.deleteContents();
+                        range.insertNode(document.createTextNode(text));
+                        range.collapse(false);
+                        selection.removeAllRanges();
+                        selection.addRange(range);
                       }
                     }
                     // Update after paste
@@ -636,7 +627,7 @@ ${orgName}`;
               <button
                 onClick={() => {
                   setIsLinkDialogOpen(false);
-                  setLinkUrl("https://books.tabanbooks.com/portal/tabanenterprises");
+                  setLinkUrl("https://books.zohosecure.com/portal/tabanenterprises");
                 }}
                 className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium cursor-pointer hover:bg-gray-50"
               >
@@ -688,5 +679,4 @@ ${orgName}`;
     </div>
   );
 }
-
 

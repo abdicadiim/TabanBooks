@@ -6,7 +6,6 @@ import Vendor from "./vendor/Vendor";
 import NewVendor from "./vendor/NewVendor";
 import VendorDetail from "./vendor/VendorDetail";
 import NewVendorCustomView from "./vendor/NewVendorCustomView";
-import SendEmailStatement from "../sales/Customers/CustomerDetail/SendEmailStatement/SendEmailStatement";
 import NewExpenseCustomView from "./expenses/NewExpenseCustomView";
 import ImportVendors from "./vendor/ImportVendors";
 import ImportExpenses from "./expenses/ImportExpenses";
@@ -44,6 +43,15 @@ import ImportRefunds from "./vendor-credits/ImportRefunds";
 import ImportVendorCredits from "./vendor-credits/ImportVendorCredits";
 import ReceiptsInbox from "./receipts/ReceiptsInbox";
 import UploadedDocuments from "./documents/UploadedDocuments";
+
+function SendEmailStatement() {
+  return (
+    <div className="card">
+      <h2 className="card-title">Send statement</h2>
+      <p className="card-body-text">This statement screen is not available in the current build.</p>
+    </div>
+  );
+}
 
 function Placeholder({ title }: { title: string }) {
   return (

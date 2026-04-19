@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { toast } from "react-hot-toast";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   X,
@@ -17,13 +18,15 @@ import {
   HelpCircle
 } from "lucide-react";
 import { getCreditNoteById } from "../../salesModel";
+import { creditNotesAPI, senderEmailsAPI, customersAPI } from "../../../../services/api";
 
 export default function SendCreditNoteEmail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [creditNote, setCreditNote] = useState(null);
+  const [senderName, setSenderName] = useState("Team");
   const [emailData, setEmailData] = useState({
-    from: "JIRDE HUSSEIN KHALIF <jirdehusseinkhalif@gmail.com>",
+    from: "",
     sendTo: "",
     cc: "",
     bcc: "",
@@ -34,6 +37,7 @@ export default function SendCreditNoteEmail() {
   const [showBcc, setShowBcc] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [attachCreditNotePDF, setAttachCreditNotePDF] = useState(true);
+  const [isSending, setIsSending] = useState(false);
   const [fontSize, setFontSize] = useState("16");
   const [isBold, setIsBold] = useState(false);
   const [isItalic, setIsItalic] = useState(false);
@@ -41,19 +45,134 @@ export default function SendCreditNoteEmail() {
   const [isStrikethrough, setIsStrikethrough] = useState(false);
   const fileInputRef = useRef(null);
 
+  const safeParseJson = (value) => {
+    if (!value) return null;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  };
+
+  const getCurrentUserProfile = () => {
+    if (typeof window === "undefined") return { name: "", email: "" };
+    const user = safeParseJson(localStorage.getItem("user")) || {};
+    const profile = safeParseJson(localStorage.getItem("profile")) || {};
+    return {
+      name: user?.name || user?.fullName || user?.username || profile?.name || "",
+      email: user?.email || profile?.email || ""
+    };
+  };
+
+  const getOrganizationName = () => {
+    if (typeof window === "undefined") return "";
+    const organizationProfile = safeParseJson(localStorage.getItem("organization_profile")) || {};
+    const orgProfile = safeParseJson(localStorage.getItem("org_profile")) || {};
+    const organization = safeParseJson(localStorage.getItem("organization")) || {};
+    return (
+      organizationProfile?.name ||
+      orgProfile?.organizationName ||
+      organization?.name ||
+      organization?.organizationName ||
+      "Your Company"
+    );
+  };
+
   useEffect(() => {
     const fetchCreditNote = async () => {
-      if (id) {
-        const creditNoteData = await getCreditNoteById(id);
-        if (creditNoteData) {
-          setCreditNote(creditNoteData);
+        if (id) {
+          const creditNoteData = await getCreditNoteById(id);
+          if (creditNoteData) {
+          const organizationName = getOrganizationName();
+          let resolvedSenderName = organizationName || "Team";
+          let resolvedSenderEmail = "";
+
+          try {
+            const primarySenderRes = await senderEmailsAPI.getPrimary();
+            if (primarySenderRes?.success && primarySenderRes.data?.isVerified) {
+              resolvedSenderName = primarySenderRes.data.name || resolvedSenderName;
+              resolvedSenderEmail = primarySenderRes.data.email || resolvedSenderEmail;
+            }
+          } catch (error) {
+            console.error("Error fetching primary sender:", error);
+          }
+          setSenderName(resolvedSenderName);
+
+          let resolvedCustomerEmail = String(
+            creditNoteData.customerEmail ||
+            (creditNoteData as any).email ||
+            creditNoteData.customer?.email ||
+            creditNoteData.customer?.primaryEmail ||
+            ""
+          ).trim();
+
+          let resolvedCustomerName = String(
+            creditNoteData.customerName ||
+            creditNoteData.customer?.displayName ||
+            creditNoteData.customer?.companyName ||
+            creditNoteData.customer?.name ||
+            ""
+          ).trim();
+
+          const customerId = String(
+            creditNoteData.customerId ||
+            creditNoteData.customer?._id ||
+            creditNoteData.customer?.id ||
+            (typeof creditNoteData.customer === "string" ? creditNoteData.customer : "") ||
+            ""
+          ).trim();
+
+          if (customerId && (!resolvedCustomerEmail || !resolvedCustomerName)) {
+            try {
+              const customerRes = await customersAPI.getById(customerId);
+              const customerData = customerRes?.data || customerRes;
+              resolvedCustomerEmail = String(
+                resolvedCustomerEmail ||
+                customerData?.email ||
+                customerData?.primaryEmail ||
+                customerData?.contactEmail ||
+                ""
+              ).trim();
+              resolvedCustomerName = String(
+                resolvedCustomerName ||
+                customerData?.displayName ||
+                customerData?.companyName ||
+                customerData?.name ||
+                ""
+              ).trim();
+            } catch (error) {
+              console.error("Error fetching credit note customer:", error);
+            }
+          }
+
+          const hydratedCreditNote = {
+            ...creditNoteData,
+            customerEmail: resolvedCustomerEmail,
+            customerName: resolvedCustomerName || creditNoteData.customerName,
+            senderEmail: resolvedSenderEmail,
+            senderName: resolvedSenderName,
+            organizationName
+          };
+
+          setCreditNote(hydratedCreditNote);
           setEmailData({
-            from: "JIRDE HUSSEIN KHALIF <jirdehusseinkhalif@gmail.com>",
-            sendTo: creditNoteData.customerEmail || creditNoteData.customer || "",
-            cc: "JIRDE HUSSEIN KHALIF <jirdehusseinkhalif@gmail.com>",
+            from: resolvedSenderEmail
+              ? `${resolvedSenderName} <${resolvedSenderEmail}>`
+              : resolvedSenderName,
+            sendTo: resolvedCustomerEmail,
+            cc: "",
             bcc: "",
-            subject: `Credit Note - ${creditNoteData.creditNoteNumber || creditNoteData.id}`,
-            body: "",
+            subject: `Credit Note ${creditNoteData.creditNoteNumber || creditNoteData.id} from ${organizationName}`,
+            body: `Dear ${resolvedCustomerName || "Customer"},
+
+Please find your credit note ${creditNoteData.creditNoteNumber || creditNoteData.id} for ${formatCurrency(creditNoteData.total || creditNoteData.amount || 0, creditNoteData.currency || "USD")}.
+
+Credit Date: ${formatDate(creditNoteData.creditNoteDate || creditNoteData.date)}
+Credits Remaining: ${formatCurrency(creditNoteData.balance ?? creditNoteData.total ?? creditNoteData.amount ?? 0, creditNoteData.currency || "USD")}
+
+Regards,
+${resolvedSenderName}
+${organizationName}`,
           });
         } else {
           navigate("/sales/credit-notes");
@@ -79,15 +198,31 @@ export default function SendCreditNoteEmail() {
     })}`;
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!emailData.sendTo) {
-      alert("Please enter a recipient email address");
+      toast("Please enter a recipient email address");
       return;
     }
-    // Here you would typically send the email
-    console.log("Sending email:", emailData, attachments);
-    alert("Email sent successfully!");
-    navigate(`/sales/credit-notes/${id}`);
+    try {
+      setIsSending(true);
+      await creditNotesAPI.sendEmail(String(id), {
+        to: emailData.sendTo,
+        cc: emailData.cc,
+        bcc: emailData.bcc,
+        from: emailData.from,
+        subject: emailData.subject,
+        body: emailData.body,
+        attachSystemPDF: attachCreditNotePDF,
+        attachments: [],
+      });
+      toast("Email sent successfully!");
+      navigate(`/sales/credit-notes/${id}`);
+    } catch (error: any) {
+      console.error("Error sending credit note email:", error);
+      toast(error?.message || "Failed to send email. Please try again.");
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleCancel = () => {
@@ -104,7 +239,7 @@ export default function SendCreditNoteEmail() {
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-gray-900">
-            Email To {creditNote.customerName || creditNote.customer || "Customer"}
+            Email To {creditNote.customerName || creditNote.customer?.displayName || creditNote.customer?.companyName || creditNote.customer?.name || "Customer"}
           </h1>
           <button
             onClick={handleCancel}
@@ -293,7 +428,7 @@ export default function SendCreditNoteEmail() {
               textDecoration: isUnderline ? "underline" : isStrikethrough ? "line-through" : "none",
               fontSize: `${fontSize}px`,
             }}
-            onInput={(e) => setEmailData({ ...emailData, body: e.target.textContent })}
+            onInput={(e: React.FormEvent<HTMLDivElement>) => setEmailData({ ...emailData, body: e.currentTarget.textContent || "" })}
             suppressContentEditableWarning={true}
           >
             {/* Logo */}
@@ -399,7 +534,7 @@ export default function SendCreditNoteEmail() {
             {/* Signature */}
             <div style={{ marginTop: "24px" }}>
               <p>Regards,</p>
-              <p style={{ fontWeight: "600" }}>JIRDE HUSSEIN KHALIF</p>
+              <p style={{ fontWeight: "600" }}>{senderName}</p>
             </div>
           </div>
 
@@ -484,4 +619,5 @@ export default function SendCreditNoteEmail() {
     </div>
   );
 }
+
 

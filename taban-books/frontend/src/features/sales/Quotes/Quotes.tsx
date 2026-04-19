@@ -1,7 +1,12 @@
-﻿import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import LoadingSpinner from "../../../components/LoadingSpinner";
-import { getQuotes, deleteQuotes, updateQuote, getCustomers, getProjects, getSalespersons, getCustomViews, deleteCustomView } from "../salesModel";
+import { useQueryClient } from "@tanstack/react-query";
+import { deleteQuotes, updateQuote, getCustomers, getProjects, getSalespersons, getCustomViews, deleteCustomView } from "../salesModel";
+import { invalidateQuoteQueries, useQuotesListQuery } from "./quoteQueries";
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import {
@@ -18,7 +23,7 @@ import {
   Check,
   CheckCircle,
   XCircle,
-  Send,
+  Mail,
   FileCheck,
   Search,
   Filter,
@@ -111,12 +116,12 @@ export default function Quotes() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [selectedView, setSelectedView] = useState("All Quotes");
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [openMoreSubmenu, setOpenMoreSubmenu] = useState<null | "sort" | "export">(null);
   const [viewSearchQuery, setViewSearchQuery] = useState("");
   const [customViews, setCustomViews] = useState<CustomView[]>(() => getCustomViews().filter(v => v.type === "quotes"));
   const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [quotesLoading, setQuotesLoading] = useState(true);
   const [sortConfig, setSortConfig] = useState({ key: "createdTime", direction: "desc" as "asc" | "desc" });
-  const [selectedQuotes, setSelectedQuotes] = useState<Quote[]>([]);
+  const [selectedQuotes, setSelectedQuotes] = useState<string[]>([]);
   const [isBulkUpdateModalOpen, setIsBulkUpdateModalOpen] = useState(false);
   const [bulkUpdateField, setBulkUpdateField] = useState("");
   const [bulkUpdateValue, setBulkUpdateValue] = useState("");
@@ -124,10 +129,13 @@ export default function Quotes() {
   const [bulkFieldSearch, setBulkFieldSearch] = useState("");
   const [selectedBulkCustomer, setSelectedBulkCustomer] = useState<Customer | null>(null);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
-  const [isMarkAsSentModalOpen, setIsMarkAsSentModalOpen] = useState(false);
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [isDeleteConfirmModalOpen, setIsDeleteConfirmModalOpen] = useState(false);
   const [isDeletingQuotes, setIsDeletingQuotes] = useState(false);
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isExportQuotesModalOpen, setIsExportQuotesModalOpen] = useState(false);
+  const [isExportCurrentViewModalOpen, setIsExportCurrentViewModalOpen] = useState(false);
+  const [isExportStatusDropdownOpen, setIsExportStatusDropdownOpen] = useState(false);
+  const [exportStatusSearch, setExportStatusSearch] = useState("");
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isAdvancedSearchOpen, setIsAdvancedSearchOpen] = useState(false);
@@ -135,15 +143,42 @@ export default function Quotes() {
   const [isCustomizeColumnsModalOpen, setIsCustomizeColumnsModalOpen] = useState(false);
   const [columnSearchTerm, setColumnSearchTerm] = useState("");
   const [visibleColumns, setVisibleColumns] = useState([
-    'date', 'quoteNumber', 'referenceNumber', 'customerName', 'status', 'amount'
+    'date', 'location', 'quoteNumber', 'referenceNumber', 'customerName', 'status', 'amount'
   ]);
   const [tempVisibleColumns, setTempVisibleColumns] = useState([...visibleColumns]);
   const [headerMenuPosition, setHeaderMenuPosition] = useState({ top: 0, left: 0 });
+  const [viewDropdownPosition, setViewDropdownPosition] = useState({ top: 0, left: 0, width: 288 });
+  const [moreMenuPosition, setMoreMenuPosition] = useState({ top: 0, left: 0 });
   // const headerMenuRef = useRef<HTMLDivElement>(null);
   const headerMenuMenuRef = useRef<HTMLDivElement>(null);
+  const viewDropdownMenuRef = useRef<HTMLDivElement>(null);
+  const moreMenuMenuRef = useRef<HTMLDivElement>(null);
+
+  const formatAddressLines = (address: any, fallback: string[]) => {
+    if (typeof address === "string") {
+      const trimmed = address.trim();
+      if (trimmed) return [trimmed];
+    }
+
+    const lines = [
+      address?.attention || address?.name,
+      address?.street1 || address?.addressLine1 || address?.address,
+      address?.street2 || address?.addressLine2,
+      [address?.city, address?.state, address?.zipCode || address?.postalCode].filter(Boolean).join(", "),
+      address?.country,
+      address?.phone ? `Phone: ${address.phone}` : "",
+      address?.fax ? `Fax Number: ${address.fax}` : "",
+    ]
+      .map((line) => String(line || "").trim())
+      .filter(Boolean);
+
+    if (lines.length > 0) return lines;
+    return fallback.filter(Boolean);
+  };
 
   const allColumnOptions = [
     { key: 'date', label: 'Date', locked: true },
+    { key: 'location', label: 'Location', locked: true },
     { key: 'quoteNumber', label: 'Quote Number', locked: true },
     { key: 'referenceNumber', label: 'Reference number', locked: false },
     { key: 'customerName', label: 'Customer Name', locked: true },
@@ -156,10 +191,29 @@ export default function Quotes() {
     { key: 'salesperson', label: 'Sales person', locked: false },
     { key: 'subTotal', label: 'Sub Total', locked: false },
   ];
+  const lockedColumnKeys = allColumnOptions.filter((col) => col.locked).map((col) => col.key);
+  const allColumnKeys = allColumnOptions.map((col) => col.key);
+  const [tempColumnOrder, setTempColumnOrder] = useState<string[]>(allColumnKeys);
+  const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
+
+  const ensureLockedColumns = (keys: string[]) => {
+    const next = Array.from(new Set(keys));
+    lockedColumnKeys.forEach((key) => {
+      if (!next.includes(key)) next.push(key);
+    });
+    return next;
+  };
+
+  const buildTempColumnOrder = (currentVisible: string[]) => {
+    const cleanVisible = Array.from(new Set(currentVisible.filter((key) => allColumnKeys.includes(key))));
+    const remaining = allColumnKeys.filter((key) => !cleanVisible.includes(key));
+    return [...cleanVisible, ...remaining];
+  };
 
   const [resizingColumn, setResizingColumn] = useState<string | null>(null);
-  const [columnWidths, setColumnWidths] = useState({
+  const defaultColumnWidths = {
     date: 150,
+    location: 150,
     quoteNumber: 150,
     referenceNumber: 180,
     customerName: 250,
@@ -171,13 +225,56 @@ export default function Quotes() {
     expiryDate: 150,
     salesperson: 150,
     subTotal: 150
-  });
+  };
+  const [columnWidths, setColumnWidths] = useState(defaultColumnWidths);
+  const resizingRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
   const headerMenuRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const [currentPreviewIndex, setCurrentPreviewIndex] = useState(0);
   const [searchType, setSearchType] = useState("Quotes");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [salespersons, setSalespersons] = useState<Salesperson[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [exportQuotesData, setExportQuotesData] = useState({
+    module: "Quotes",
+    status: "All",
+    dateFrom: "",
+    dateTo: "",
+    exportTemplate: "",
+    decimalFormat: "1234567.89",
+    fileFormat: "XLSX",
+    includeSensitive: false,
+    password: "",
+  });
+  const [exportCurrentViewData, setExportCurrentViewData] = useState({
+    decimalFormat: "1234567.89",
+    fileFormat: "XLSX",
+    password: "",
+  });
+  const queryClient = useQueryClient();
+  const quotesListQuery = useQuotesListQuery();
+  const isQuotesLoading = (quotesListQuery.isPending || quotesListQuery.isFetching) && !(quotesListQuery.data?.length);
+  const exportStatusOptions = [
+    "All",
+    "Draft",
+    "Pending Approval",
+    "Approved",
+    "Sent",
+    "Invoiced",
+    "Accepted",
+    "Declined",
+    "Expired",
+    "Rejected",
+    "Partially Invoiced",
+  ];
+  const sortMenuOptions = [
+    { key: "createdTime", label: "Created Time" },
+    { key: "lastModifiedTime", label: "Last Modified Time" },
+    { key: "date", label: "Date" },
+    { key: "quoteNumber", label: "Quote Number" },
+    { key: "customerName", label: "Customer Name" },
+    { key: "amount", label: "Amount" },
+  ];
   const searchTypeOptions = [
     "Customers",
     "Items",
@@ -203,7 +300,10 @@ export default function Quotes() {
     "Documents",
     "Task"
   ];
-  const [advancedSearchData, setAdvancedSearchData] = useState({
+  const [advancedSearchData, setAdvancedSearchData] = useState<Record<string, any>>({
+    // Search Metadata
+    searchType: "Quotes",
+    filterType: "All",
     // Customers
     displayName: "",
     companyName: "",
@@ -249,6 +349,12 @@ export default function Quotes() {
     taxExemptions: "",
     addressType: "Billing and Shipping",
     attention: "",
+    dateRangeStart: "",
+    dateRangeEnd: "",
+    totalRangeStart: "",
+    totalRangeEnd: "",
+    tax: "",
+    addressLine: "",
     // Invoices
     invoiceNumber: "",
     orderNumber: "",
@@ -326,57 +432,129 @@ export default function Quotes() {
   const taxExemptionsInvoiceDropdownRef = useRef(null);
   const [isStatusInvoiceDropdownOpen, setIsStatusInvoiceDropdownOpen] = useState(false);
   const statusInvoiceDropdownRef = useRef(null);
-  const dropdownRef = useRef(null);
   const moreMenuRef = useRef(null);
   const bulkFieldDropdownRef = useRef(null);
 
-  const refreshData = async () => {
-    setIsRefreshing(true);
+  const tableMinWidth = useMemo(() => {
+    const columnsTotal = visibleColumns.reduce((sum, key) => sum + Number(columnWidths[key] || 120), 0);
+    return 56 + 40 + columnsTotal;
+  }, [visibleColumns, columnWidths]);
+
+  useEffect(() => {
+    if (quotesListQuery.data) {
+      setQuotes(quotesListQuery.data);
+    }
+  }, [quotesListQuery.data]);
+
+  const startColumnResizing = (key: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingRef.current = {
+      key,
+      startX: e.clientX,
+      startWidth: Number(columnWidths[key] || 120),
+    };
+    setResizingColumn(key);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  const renderColumnResizeHandle = (key: string) => (
+    <div
+      className="absolute -right-[4px] top-0 bottom-0 z-20 w-[10px] cursor-col-resize bg-transparent"
+      onMouseDown={(e) => startColumnResizing(key, e)}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div
+        className={`pointer-events-none absolute left-1/2 top-[5px] bottom-[5px] w-[2px] -translate-x-1/2 rounded ${resizingColumn === key ? "bg-[#156372]" : "bg-transparent group-hover/header:bg-slate-300"
+          }`}
+      />
+    </div>
+  );
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const { key, startX, startWidth } = resizingRef.current;
+      const nextWidth = Math.max(80, startWidth + (e.clientX - startX));
+      setColumnWidths((prev) => ({ ...prev, [key]: nextWidth }));
+    };
+
+    const handleMouseUp = () => {
+      if (!resizingRef.current) return;
+      resizingRef.current = null;
+      setResizingColumn(null);
+      document.body.style.cursor = "default";
+      document.body.style.userSelect = "auto";
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
+  const loadMetadata = useCallback(async () => {
     try {
-      const [loadedQuotes, loadedCustomers, loadedSalespersons, loadedProjects] = await Promise.all([
-        getQuotes(),
+      const [loadedCustomers, loadedSalespersons, loadedProjects] = await Promise.all([
         getCustomers(),
         getSalespersons(),
         getProjects()
       ]);
-      setQuotes(Array.isArray(loadedQuotes) ? loadedQuotes : []);
       setCustomers(Array.isArray(loadedCustomers) ? loadedCustomers : []);
       setSalespersons(Array.isArray(loadedSalespersons) ? loadedSalespersons : []);
       setProjects(Array.isArray(loadedProjects) ? loadedProjects : []);
       setCustomViews(getCustomViews().filter(v => v.type === "quotes"));
     } catch (error) {
+      console.error("Error refreshing quotes metadata:", error);
+      setCustomers([]);
+      setSalespersons([]);
+      setProjects([]);
+    }
+  }, []);
+
+  const refreshData = async () => {
+    setIsRefreshing(true);
+    try {
+      await loadMetadata();
+      await invalidateQuoteQueries(queryClient);
+    } catch (error) {
       console.error("Error refreshing quotes:", error);
-      setQuotes([]);
     } finally {
       setIsRefreshing(false);
     }
   };
 
   useEffect(() => {
-    const loadData = async () => {
-      setQuotesLoading(true);
-      try {
-        const [loadedQuotes, loadedCustomers, loadedSalespersons, loadedProjects] = await Promise.all([
-          getQuotes(),
-          getCustomers(),
-          getSalespersons(),
-          getProjects()
-        ]);
-        setQuotes(Array.isArray(loadedQuotes) ? loadedQuotes : []);
-        setCustomers(Array.isArray(loadedCustomers) ? loadedCustomers : []);
-        setSalespersons(Array.isArray(loadedSalespersons) ? loadedSalespersons : []);
-        setProjects(Array.isArray(loadedProjects) ? loadedProjects : []);
-        setCustomViews(getCustomViews().filter(v => v.type === "quotes"));
-      } catch (error) {
-        console.error("Error loading quotes:", error);
-        setQuotes([]);
-      } finally {
-        setQuotesLoading(false);
-      }
-    };
+    void loadMetadata();
+  }, [loadMetadata, location.pathname]);
 
-    loadData();
-  }, [location.pathname]);
+  const resolveCustomerName = (q: Quote) => {
+    // If it's already an object with a name, use it
+    if (typeof q.customer === 'object' && q.customer) {
+      const name = q.customer.displayName || q.customer.name || q.customer.companyName;
+      if (name) return name;
+    }
+
+    // Try to find by ID in our customers list
+    const customerId = q.customerId || (typeof q.customer === 'string' ? q.customer : q.customer?._id || q.customer?.id);
+    if (customerId) {
+      const found = customers.find(c => (c._id || c.id) === customerId);
+      if (found) return found.displayName || found.name || found.companyName || found.company_name;
+    }
+
+    // If customerName exists but looks like an ID, try one last time to match it as an ID
+    if (q.customerName && q.customerName.startsWith('cus-')) {
+      const found = customers.find(c => (c._id || c.id) === q.customerName);
+      if (found) return found.displayName || found.name || found.companyName;
+    }
+
+    // Fallback to what we have
+    return q.customerName || (typeof q.customer === 'string' ? q.customer : '') || 'N/A';
+  };
 
   const getQuoteFieldValue = (quote, fieldName) => {
     const getCustomerName = (q) => {
@@ -391,7 +569,7 @@ export default function Quotes() {
       "Date": quote.quoteDate || quote.date || "",
       "Quote#": quote.quoteNumber || quote.id || "",
       "Reference Number": quote.referenceNumber || "",
-      "Customer Name": getCustomerName(quote),
+      "Customer Name": resolveCustomerName(quote),
       "Status": quote.status || "draft",
       "Amount": quote.total || quote.amount || 0,
       "Project Name": quote.projectName || "",
@@ -418,6 +596,23 @@ export default function Quotes() {
     }
   };
 
+  const getEffectiveStatus = (quote: any) => {
+    const statusRaw = String(quote?.status || "").toLowerCase();
+    const expiry = parseDateSafe(quote?.expiryDate);
+    if (expiry) {
+      const expiryDate = new Date(expiry);
+      const today = new Date();
+      expiryDate.setHours(0, 0, 0, 0);
+      today.setHours(0, 0, 0, 0);
+      const isPast = expiryDate < today;
+      const protectedStatuses = ["converted", "invoiced", "accepted", "approved", "declined", "rejected"];
+      if (isPast && !protectedStatuses.includes(statusRaw)) {
+        return "expired";
+      }
+    }
+    return statusRaw || "draft";
+  };
+
   // Filter quotes based on selected view
   const filteredQuotes = useMemo(() => {
     // Ensure quotes is always an array
@@ -439,16 +634,19 @@ export default function Quotes() {
 
     switch (selectedView) {
       case "All Quotes": return quotes;
-      case "Open Quotes": return quotes.filter(q => q.status === "open");
-      case "Sent": return quotes.filter(q => q.status === "sent");
-      case "Accepted": return quotes.filter(q => q.status === "accepted");
+      case "Open Quotes": return quotes.filter(q => getEffectiveStatus(q) === "open");
+      case "Sent": return quotes.filter(q => getEffectiveStatus(q) === "sent");
+      case "Accepted": return quotes.filter(q => getEffectiveStatus(q) === "accepted");
       case "Declined": return quotes.filter(q => {
-        const status = String(q.status || "").toLowerCase();
+        const status = getEffectiveStatus(q);
         return status === "declined" || status === "rejected";
       });
-      case "Expired": return quotes.filter(q => q.status === "expired");
-      case "Converted to Invoice": return quotes.filter(q => q.status === "converted");
-      case "Draft Quotes": return quotes.filter(q => q.status === "draft");
+      case "Expired": return quotes.filter(q => getEffectiveStatus(q) === "expired");
+      case "Converted to Invoice": return quotes.filter(q => {
+        const status = getEffectiveStatus(q);
+        return status === "converted" || status === "invoiced";
+      });
+      case "Draft Quotes": return quotes.filter(q => getEffectiveStatus(q) === "draft");
       default: return quotes;
     }
   }, [quotes, selectedView, customViews]);
@@ -473,8 +671,8 @@ export default function Quotes() {
           bValue = (b.customerName || (typeof b.customer === 'object' && b.customer ? (b.customer.displayName || b.customer.name || '') : (b.customer || ""))).toLowerCase();
           break;
         case "amount":
-          aValue = parseFloat(a.total || a.amount || 0);
-          bValue = parseFloat(b.total || b.amount || 0);
+          aValue = Number(a.total || a.amount || 0);
+          bValue = Number(b.total || b.amount || 0);
           break;
         case "createdTime":
           aValue = new Date(a.createdTime || a.createdAt || 0);
@@ -509,7 +707,7 @@ export default function Quotes() {
     }));
   };
 
-  const handleExportCurrentView = () => {
+  const buildQuoteExportRows = () => {
     const getCustomerName = (q: Quote) => {
       if (q.customerName) return q.customerName;
       if (typeof q.customer === 'object' && q.customer) {
@@ -518,33 +716,179 @@ export default function Quotes() {
       return q.customer || '';
     };
 
-    const exportData = sortedQuotes.map(quote => ({
-      "Quote Number": quote.quoteNumber || quote.id,
+    return sortedQuotes.map(quote => ({
+      "ESTIMATE_ID": quote.id || quote._id || "",
       "Date": formatDate(quote.date || quote.quoteDate),
-      "Reference Number": quote.referenceNumber || "",
+      "Location": quote.selectedLocation || quote.location || "Head Office",
+      "Quote Number": quote.quoteNumber || quote.id,
+      "Reference number": quote.referenceNumber || "",
       "Customer Name": getCustomerName(quote),
       "Status": getStatusDisplay(quote.status),
       "Amount": formatAmount(quote.total || quote.amount, quote.currency)
     }));
+  };
 
-    // Convert to CSV
-    const headers = Object.keys(exportData[0] || {});
-    const csvContent = [
-      headers.join(","),
-      ...exportData.map(row => headers.map(header => `"${row[header] || ""}"`).join(","))
-    ].join("\n");
+  const normalizeStatusKey = (value: any) => String(value || "").toLowerCase().replace(/[\s_-]+/g, "");
 
-    // Download
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `quotes_export_${new Date().toISOString().split("T")[0]}.csv`);
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  function parseDateSafe(value: any) {
+    if (!value) return null;
+    const direct = new Date(value);
+    if (!Number.isNaN(direct.getTime())) return direct;
+    const text = String(value);
+    const ddmmyyyy = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (ddmmyyyy) {
+      const [, d, m, y] = ddmmyyyy;
+      const parsed = new Date(Number(y), Number(m) - 1, Number(d));
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    return null;
+  }
+
+  const formatDateISO = (value: any) => {
+    const parsed = parseDateSafe(value);
+    if (!parsed) return "";
+    return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
+  };
+
+  const getQuoteRowsForDetailedExport = () => {
+    const statusFilterKey = normalizeStatusKey(exportQuotesData.status);
+    const fromDate = parseDateSafe(exportQuotesData.dateFrom);
+    const toDate = parseDateSafe(exportQuotesData.dateTo);
+
+    return sortedQuotes.filter((quote) => {
+      if (statusFilterKey !== "all") {
+        const quoteStatusKey = normalizeStatusKey(quote.status || getStatusDisplay(quote.status));
+        if (quoteStatusKey !== statusFilterKey) return false;
+      }
+
+      if (!fromDate && !toDate) return true;
+      const quoteDate = parseDateSafe(quote.quoteDate || quote.date);
+      if (!quoteDate) return false;
+      if (fromDate && quoteDate < fromDate) return false;
+      if (toDate && quoteDate > toDate) return false;
+      return true;
+    });
+  };
+
+  const buildDetailedQuoteExportRows = () => {
+    const rows = getQuoteRowsForDetailedExport();
+    const detailedRows: any[] = [];
+
+    rows.forEach((quote) => {
+      const items = Array.isArray(quote.items) && quote.items.length > 0 ? quote.items : [{}];
+      items.forEach((item: any) => {
+        detailedRows.push({
+          "Quote Date": formatDateISO(quote.quoteDate || quote.date),
+          "Quote ID": quote.id || quote._id || "",
+          "Quote Number": quote.quoteNumber || quote.id || "",
+          "Quote Status": String(quote.status || "").toLowerCase(),
+          "Customer ID": quote.customerId || quote.customer?._id || quote.customer?.id || "",
+          "Branch Name": quote.selectedLocation || quote.location || "Head Office",
+          "Location Name": quote.selectedLocation || quote.location || "Head Office",
+          "Expiry Date": formatDateISO(quote.expiryDate),
+          "PurchaseOrder": quote.referenceNumber || "",
+          "Currency Code": quote.currency || "AMD",
+          "Exchange Rate": Number(quote.exchangeRate ?? 1).toFixed(2),
+          "Discount Type": quote.discountType ? "entity_level" : "",
+          "Is Discount Before Tax": "true",
+          "Entity Discount Percent": Number(quote.discount ?? 0).toFixed(2),
+          "Is Inclusive Tax": String(quote.taxExclusive || "").toLowerCase().includes("inclusive"),
+          "SubTotal": Number(quote.subTotal ?? 0).toFixed(2),
+          "Total": Number(quote.total ?? quote.amount ?? 0).toFixed(2),
+          "Adjustment": Number(quote.adjustment ?? 0).toFixed(2),
+          "Notes": quote.customerNotes || "Looking forward for your business.",
+          "Terms & Conditions": quote.termsAndConditions || "",
+          "Subject": quote.subject || "",
+          "Customer Name": quote.customerName || quote.customer?.displayName || quote.customer?.name || "",
+          "Project Name": quote.projectName || "",
+          "Project ID": quote.projectId || quote.project?._id || quote.project?.id || "",
+          "Sales person": quote.salesperson || quote.salespersonName || "",
+          "Billing Address": quote.billingAddress || "",
+          "Billing City": quote.billingCity || "",
+          "Billing State": quote.billingState || "",
+          "Billing Country": quote.billingCountry || "",
+          "Billing Code": quote.billingCode || "",
+          "Billing Fax": quote.billingFax || "",
+          "Template Name": quote.templateName || "Standard Template",
+          "Adjustment Description": quote.adjustmentDescription || (Number(quote.adjustment || 0) !== 0 ? "Adjustment" : ""),
+          "Shipping Address": quote.shippingAddress || "",
+          "Shipping City": quote.shippingCity || "",
+          "Shipping State": quote.shippingState || "",
+          "Shipping Country": quote.shippingCountry || "",
+          "Shipping Code": quote.shippingCode || "",
+          "Shipping Fax": quote.shippingFax || "",
+          "Source": quote.source || "1",
+          "Reference ID": quote.referenceId || "",
+          "Last Sync Time": quote.lastSyncTime || "",
+          "Entity Discount Amount": Number(quote.discountAmount ?? 0).toFixed(3),
+          "Shipping Charge": Number(quote.shippingCharges ?? 0).toFixed(2),
+          "Shipping Charge Tax ID": quote.shippingChargeTaxId || "",
+          "Shipping Charge Tax Amount": Number(quote.shippingChargeTaxAmount ?? 0).toFixed(2),
+          "Shipping Charge Tax Name": quote.shippingChargeTaxName || "",
+          "Shipping Charge Tax %": quote.shippingChargeTaxPercent || "",
+          "Shipping Charge Tax Type": quote.shippingChargeTaxType || "",
+          "Item Name": item.itemDetails || item.name || "",
+          "Item Desc": item.description || item.itemDesc || "",
+          "Quantity": Number(item.quantity ?? 1).toFixed(2),
+          "Discount": Number(item.discountPercent ?? 0).toFixed(2),
+          "Discount Amount": Number(item.discountAmount ?? 0).toFixed(1),
+          "Item Tax Amount": Number(item.taxAmount ?? 0).toFixed(2),
+          "Item Total": Number(item.amount ?? item.total ?? 0).toFixed(2),
+          "Product ID": item.productId || item.id || "",
+          "Account": item.account || "Sales",
+          "SKU": item.sku || "",
+          "Usage unit": item.unit || "",
+          "Item Price": Number(item.rate ?? 0).toFixed(2),
+          "Tax ID": item.taxId || item.tax || "",
+          "Item Tax": item.taxName || "",
+          "Item Tax %": item.taxRate || "",
+          "Item Tax Type": item.taxType || "",
+          "Coupon Name": item.couponName || "",
+          "Coupon Code": item.couponCode || "",
+          "Item Code": item.itemCode || "",
+          "Line Item Type": item.itemType || "Item",
+          "Quote Type": quote.createRetainerInvoice ? "New Subscription" : "New Invoice",
+          "LINEITEM.TAG.sc": item?.reportingTags?.[0]?.name || "",
+          "TAG.wsq": quote?.reportingTags?.[0]?.name || "",
+        });
+      });
+    });
+
+    return detailedRows;
+  };
+
+  const handleExportCurrentView = async (format: "CSV" | "XLSX" = "CSV") => {
+    const exportData = buildQuoteExportRows();
+    if (exportData.length === 0) {
+      alert("No quotes to export.");
+      return;
+    }
+
+    if (format === "XLSX") {
+      const XLSX = await import("xlsx");
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Quotes");
+      XLSX.writeFile(workbook, `quotes_export_${new Date().toISOString().split("T")[0]}.xlsx`);
+    } else {
+      const headers = Object.keys(exportData[0] || {});
+      const csvContent = [
+        headers.join(","),
+        ...exportData.map((row: any) => headers.map((header) => `"${row[header] || ""}"`).join(","))
+      ].join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `quotes_export_${new Date().toISOString().split("T")[0]}.csv`);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
     setIsMoreMenuOpen(false);
+    setOpenMoreSubmenu(null);
   };
 
   const handleNewCustomView = () => {
@@ -576,12 +920,15 @@ export default function Quotes() {
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+      const clickedViewMenu = viewDropdownMenuRef.current?.contains(event.target as Node);
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node) && !clickedViewMenu) {
         setIsDropdownOpen(false);
         setViewSearchQuery(""); // Reset search query when dropdown closes
       }
-      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target)) {
+      const clickedMoreMenu = moreMenuMenuRef.current?.contains(event.target as Node);
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node) && !clickedMoreMenu) {
         setIsMoreMenuOpen(false);
+        setOpenMoreSubmenu(null);
       }
       if (bulkFieldDropdownRef.current && !bulkFieldDropdownRef.current.contains(event.target)) {
         setIsBulkFieldDropdownOpen(false);
@@ -681,36 +1028,36 @@ export default function Quotes() {
   };
 
   const formatCurrency = (amount: string | number, currency: string = "AMD") => {
-    const num = parseFloat(amount) || 0;
-    const currencySymbols = {
+    const num = Number(amount) || 0;
+    const currencySymbols: Record<string, string> = {
       'USD': '$',
-      'EUR': 'â‚¬',
-      'GBP': 'Â£',
-      'AMD': 'Ö',
-      'AED': 'Ø¯.Ø¥',
-      'INR': 'â‚¹',
-      'JPY': 'Â¥',
-      'CNY': 'Â¥',
-      'RUB': 'â‚½',
+      'EUR': '€',
+      'GBP': '£',
+      'AMD': '֏',
+      'AED': 'د.إ',
+      'INR': '₹',
+      'JPY': '¥',
+      'CNY': '¥',
+      'RUB': '₽',
       'KES': 'KSh',
-      'NGN': 'â‚¦'
+      'NGN': '₦'
     };
     const symbol = currencySymbols[currency] || currency;
     return `${symbol}${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const formatAmount = (amount: string | number, currency: string = "AMD") => {
-    const num = parseFloat(amount) || 0;
-    const currencySymbols = {
+    const num = Number(amount) || 0;
+    const currencySymbols: Record<string, string> = {
       'USD': '$',
-      'EUR': 'â‚¬',
-      'GBP': 'Â£',
-      'AMD': 'Ö',
-      'AED': 'Ø¯.Ø¥',
-      'INR': 'â‚¹',
-      'JPY': 'Â¥',
-      'CNY': 'Â¥',
-      'RUB': 'â‚½'
+      'EUR': '€',
+      'GBP': '£',
+      'AMD': '֏',
+      'AED': 'د.إ',
+      'INR': '₹',
+      'JPY': '¥',
+      'CNY': '¥',
+      'RUB': '₽'
     };
     const symbol = currencySymbols[currency] || currency;
     return `${symbol}${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -721,6 +1068,7 @@ export default function Quotes() {
       draft: '#6B7280',
       sent: '#3B82F6',
       open: '#10B981',
+      approved: '#059669',
       accepted: '#059669',
       declined: '#EF4444',
       rejected: '#EF4444',
@@ -732,10 +1080,12 @@ export default function Quotes() {
   };
 
   const getStatusText = (status: string) => {
+    const s = (status || '').toLowerCase();
     const statusTexts = {
       draft: 'Draft',
       sent: 'Sent',
       open: 'Open',
+      approved: 'Approved',
       accepted: 'Accepted',
       declined: 'Declined',
       rejected: 'Declined',
@@ -743,7 +1093,7 @@ export default function Quotes() {
       converted: 'Invoiced',
       invoiced: 'Invoiced'
     };
-    return statusTexts[status as keyof typeof statusTexts] || status;
+    return statusTexts[s as keyof typeof statusTexts] || status;
   };
 
   const getStatusDisplay = (status: string) => {
@@ -751,18 +1101,20 @@ export default function Quotes() {
   };
 
   const getStatusClass = (status: string) => {
+    const s = (status || '').toLowerCase();
     const statusClasses = {
-      draft: 'bg-gray-100 text-gray-800 border-gray-200',
-      sent: 'bg-blue-100 text-blue-800 border-blue-200',
-      open: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-      accepted: 'bg-green-100 text-green-800 border-green-200',
-      declined: 'bg-red-100 text-red-800 border-red-200',
-      rejected: 'bg-red-100 text-red-800 border-red-200',
-      expired: 'bg-amber-100 text-amber-800 border-amber-200',
-      converted: 'bg-green-100 text-green-800 border-green-200',
-      invoiced: 'bg-green-100 text-green-800 border-green-200'
+      draft: 'bg-slate-100 text-slate-600 border-slate-200',
+      sent: 'bg-blue-50 text-blue-600 border-blue-100',
+      open: 'bg-[#156372]/10 text-[#156372] border-[#156372]/20',
+      approved: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+      accepted: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+      declined: 'bg-red-50 text-red-600 border-red-100',
+      rejected: 'bg-red-50 text-red-600 border-red-100',
+      expired: 'bg-amber-50 text-amber-600 border-amber-100',
+      converted: 'bg-indigo-50 text-indigo-600 border-indigo-100',
+      invoiced: 'bg-emerald-50 text-emerald-600 border-emerald-100'
     };
-    return statusClasses[status?.toLowerCase() as keyof typeof statusClasses] || 'bg-gray-100 text-gray-800 border-gray-200';
+    return statusClasses[s as keyof typeof statusClasses] || 'bg-slate-100 text-slate-600 border-slate-200';
   };
 
   // Bulk action handlers
@@ -770,29 +1122,47 @@ export default function Quotes() {
     setSelectedQuotes([]);
   };
 
+  const handleViewSelect = (view: string) => {
+    setSelectedView(view);
+    setIsDropdownOpen(false);
+    setViewSearchQuery("");
+  };
+
+  const handleBulkUpdate = () => {
+    setIsBulkUpdateModalOpen(true);
+  };
+
   const handleBulkMarkAsSent = () => {
-    setIsMarkAsSentModalOpen(true);
+    void (async () => {
+      const selectedCount = selectedQuotes.length;
+      if (selectedCount === 0) {
+        toast.error("Please select at least one quote.");
+        return;
+      }
+
+      try {
+        await Promise.all(selectedQuotes.map(quoteId => updateQuote(quoteId, { status: "sent" })));
+        await invalidateQuoteQueries(queryClient);
+        setSelectedQuotes([]);
+        toast.success(`Marked ${selectedCount} quote${selectedCount === 1 ? "" : "s"} as sent.`);
+      } catch (error) {
+        console.error("Error marking quotes as sent:", error);
+        toast.error("Failed to mark quotes as sent. Please try again.");
+      }
+    })();
   };
 
-  const handleConfirmMarkAsSent = async () => {
+  const handleBulkSubmitForApproval = async () => {
     try {
-      // Update all selected quotes
       await Promise.all(
-        selectedQuotes.map(quoteId => updateQuote(quoteId, { status: "sent" }))
+        selectedQuotes.map(quoteId => updateQuote(quoteId, { status: "approved" }))
       );
-      // Reload quotes
-      const loadedQuotes = await getQuotes();
-      setQuotes(Array.isArray(loadedQuotes) ? loadedQuotes : []);
+      await invalidateQuoteQueries(queryClient);
       setSelectedQuotes([]);
-      setIsMarkAsSentModalOpen(false);
     } catch (error) {
-      console.error("Error marking quotes as sent:", error);
-      alert("Failed to mark quotes as sent. Please try again.");
+      console.error("Error submitting quotes for approval:", error);
+      toast.error("Failed to submit quotes for approval. Please try again.");
     }
-  };
-
-  const handleCancelMarkAsSent = () => {
-    setIsMarkAsSentModalOpen(false);
   };
 
   // Advanced Search handlers
@@ -814,9 +1184,8 @@ export default function Quotes() {
 
   const handleAdvancedSearchSubmit = async () => {
     try {
-      // Get fresh quotes from API
-      let filtered = await getQuotes();
-      if (!Array.isArray(filtered)) filtered = [];
+      const baseQuotes = Array.isArray(quotesListQuery.data) ? quotesListQuery.data : [];
+      let filtered = [...baseQuotes];
 
       // Filter by quote number
       if (advancedSearchData.quoteNumber) {
@@ -856,14 +1225,14 @@ export default function Quotes() {
       // Filter by total range start
       if (advancedSearchData.totalRangeStart) {
         filtered = filtered.filter(q =>
-          parseFloat(q.total || 0) >= parseFloat(advancedSearchData.totalRangeStart)
+          Number(q.total || 0) >= parseFloat(advancedSearchData.totalRangeStart)
         );
       }
 
       // Filter by total range end
       if (advancedSearchData.totalRangeEnd) {
         filtered = filtered.filter(q =>
-          parseFloat(q.total || 0) <= parseFloat(advancedSearchData.totalRangeEnd)
+          Number(q.total || 0) <= parseFloat(advancedSearchData.totalRangeEnd)
         );
       }
 
@@ -932,8 +1301,9 @@ export default function Quotes() {
     });
     // Reload all quotes
     try {
-      const loadedQuotes = await getQuotes();
-      setQuotes(Array.isArray(loadedQuotes) ? loadedQuotes : []);
+      const baseQuotes = Array.isArray(quotesListQuery.data) ? quotesListQuery.data : [];
+      setQuotes(baseQuotes);
+      await invalidateQuoteQueries(queryClient);
     } catch (error) {
       console.error("Error reloading quotes:", error);
       setQuotes([]);
@@ -984,10 +1354,11 @@ export default function Quotes() {
   // Get all quotes for the Quote# dropdown
   const getAllQuotesForDropdown = async () => {
     try {
-      const allQuotes = await getQuotes();
-      if (!Array.isArray(allQuotes)) return [];
-      if (!advancedSearchData.quoteNumber.trim()) return allQuotes;
-      return allQuotes.filter(q =>
+      const currentData = Array.isArray(quotesListQuery.data)
+        ? quotesListQuery.data
+        : (await quotesListQuery.refetch()).data ?? [];
+      if (!advancedSearchData.quoteNumber.trim()) return currentData;
+      return currentData.filter(q =>
         (q.quoteNumber || q.id || "").toLowerCase().includes(advancedSearchData.quoteNumber.toLowerCase())
       );
     } catch (error) {
@@ -1082,8 +1453,7 @@ export default function Quotes() {
     try {
       setIsDeletingQuotes(true);
       await deleteQuotes(selectedQuotes);
-      const loadedQuotes = await getQuotes();
-      setQuotes(Array.isArray(loadedQuotes) ? loadedQuotes : []);
+      await invalidateQuoteQueries(queryClient);
       setSelectedQuotes([]);
       setIsDeleteConfirmModalOpen(false);
     } catch (error) {
@@ -1098,16 +1468,27 @@ export default function Quotes() {
     setIsDeleteConfirmModalOpen(false);
   };
 
-  const handleBulkUpdate = () => {
-    setIsBulkUpdateModalOpen(true);
-  };
+  // const handleBulkUpdate = () => {
+  //   setIsBulkUpdateModalOpen(true);
+  // };
 
   const handleBulkUpdateSubmit = async () => {
     if (!bulkUpdateField) {
-      alert("Please select a field to update");
+      toast.warn("Please select a field to update");
       return;
     }
 
+    if (selectedQuotes.length === 0) {
+      toast.warn("Please select at least one quote to update");
+      return;
+    }
+
+    if (!String(bulkUpdateValue ?? "").trim() && bulkUpdateField !== "billingAddress" && bulkUpdateField !== "shippingAddress" && bulkUpdateField !== "billingAndShippingAddress") {
+      toast.warn("Please enter a value to update");
+      return;
+    }
+
+    setIsBulkUpdating(true);
     try {
       // Update all selected quotes with the new value
       await Promise.all(
@@ -1118,8 +1499,7 @@ export default function Quotes() {
       );
 
       // Reload quotes
-      const loadedQuotes = await getQuotes();
-      setQuotes(Array.isArray(loadedQuotes) ? loadedQuotes : []);
+      await invalidateQuoteQueries(queryClient);
 
       // Reset and close modal
       setBulkUpdateField("");
@@ -1128,9 +1508,12 @@ export default function Quotes() {
       setBulkFieldSearch("");
       setIsBulkUpdateModalOpen(false);
       setSelectedQuotes([]);
+      toast.success(`Updated ${selectedQuotes.length} quote${selectedQuotes.length === 1 ? "" : "s"} successfully`);
     } catch (error) {
       console.error("Error updating quotes:", error);
-      alert("Failed to update quotes. Please try again.");
+      toast.error("Failed to update quotes. Please try again.");
+    } finally {
+      setIsBulkUpdating(false);
     }
   };
 
@@ -1353,9 +1736,9 @@ export default function Quotes() {
       document.body.appendChild(tempDiv);
 
       try {
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
         const canvas = await html2canvas(tempDiv, {
-          scale: 2,
+          scale: 1.5,
           useCORS: true,
           allowTaint: true,
           backgroundColor: '#ffffff',
@@ -1371,18 +1754,18 @@ export default function Quotes() {
           pdf.addPage();
         }
 
-        const imgData = canvas.toDataURL('image/png');
+        const imgData = canvas.toDataURL('image/jpeg', 0.97);
         const imgHeight = (canvas.height * printableWidth) / canvas.width;
         let heightLeft = imgHeight;
         let positionY = margin;
 
-        pdf.addImage(imgData, 'PNG', margin, positionY, printableWidth, imgHeight);
+        pdf.addImage(imgData, 'JPEG', margin, positionY, printableWidth, imgHeight, undefined, 'FAST');
         heightLeft -= printableHeight;
 
         while (heightLeft > 0.01) {
           pdf.addPage();
           positionY = margin - (imgHeight - heightLeft);
-          pdf.addImage(imgData, 'PNG', margin, positionY, printableWidth, imgHeight);
+          pdf.addImage(imgData, 'JPEG', margin, positionY, printableWidth, imgHeight, undefined, 'FAST');
           heightLeft -= printableHeight;
         }
       } finally {
@@ -1639,17 +2022,124 @@ export default function Quotes() {
     `;
   };
 
-  const handleViewSelect = (view) => {
-    setSelectedView(view);
-    setIsDropdownOpen(false);
-  };
 
   const handleCreateNewQuote = () => {
     navigate("/sales/quotes/new");
   };
 
   const handleImportQuotes = () => {
-    setIsImportModalOpen(true);
+    navigate("/sales/quotes/import");
+    setIsMoreMenuOpen(false);
+  };
+
+  const handleQuotePreferences = () => {
+    navigate("/settings/quotes");
+    setIsMoreMenuOpen(false);
+    setOpenMoreSubmenu(null);
+  };
+
+  const handleManageCustomFields = () => {
+    navigate("/settings/quotes/new-field");
+    setIsMoreMenuOpen(false);
+    setOpenMoreSubmenu(null);
+  };
+
+  const handleResetColumnWidth = () => {
+    setColumnWidths(defaultColumnWidths);
+    setIsMoreMenuOpen(false);
+    setOpenMoreSubmenu(null);
+  };
+
+  const handleSelectSortFromMenu = (sortKey: string) => {
+    setSortConfig({ key: sortKey, direction: "desc" });
+    setIsMoreMenuOpen(false);
+    setOpenMoreSubmenu(null);
+  };
+
+  const handleExportQuotesFromMenu = async () => {
+    setIsExportQuotesModalOpen(true);
+    setIsExportStatusDropdownOpen(false);
+    setExportStatusSearch("");
+    setIsMoreMenuOpen(false);
+    setOpenMoreSubmenu(null);
+  };
+
+  const handleExportCurrentViewFromMenu = () => {
+    setIsExportCurrentViewModalOpen(true);
+    setIsMoreMenuOpen(false);
+    setOpenMoreSubmenu(null);
+  };
+
+  const closeExportQuotesModal = () => {
+    setIsExportQuotesModalOpen(false);
+    setIsExportStatusDropdownOpen(false);
+    setExportStatusSearch("");
+  };
+
+  const handleConfirmExportQuotes = async () => {
+    const exportData = buildDetailedQuoteExportRows();
+    if (exportData.length === 0) {
+      alert("No quotes found for selected filters.");
+      return;
+    }
+
+    const selected = String(exportQuotesData.fileFormat || "XLSX").toUpperCase();
+    const exportAs = selected === "CSV" ? "CSV" : "XLSX";
+
+    if (exportAs === "XLSX") {
+      const XLSX = await import("xlsx");
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Quotes");
+      XLSX.writeFile(workbook, `quotes_export_${new Date().toISOString().split("T")[0]}.xlsx`);
+    } else {
+      const headers = Object.keys(exportData[0] || {});
+      const csvContent = [
+        headers.join(","),
+        ...exportData.map((row: any) => headers.map((header) => `"${row[header] ?? ""}"`).join(","))
+      ].join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `quotes_export_${new Date().toISOString().split("T")[0]}.csv`);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    closeExportQuotesModal();
+  };
+
+  const closeExportCurrentViewModal = () => {
+    setIsExportCurrentViewModalOpen(false);
+  };
+
+  const handleConfirmExportCurrentView = async () => {
+    const selectedFormat = exportCurrentViewData.fileFormat === "CSV" ? "CSV" : "XLSX";
+    await handleExportCurrentView(selectedFormat);
+    closeExportCurrentViewModal();
+  };
+
+  const handleCustomizeColumnsOpen = () => {
+    setTempVisibleColumns(ensureLockedColumns([...visibleColumns]));
+    setTempColumnOrder(buildTempColumnOrder(visibleColumns));
+    setColumnSearchTerm("");
+    setIsCustomizeColumnsModalOpen(true);
+  };
+
+  const handleColumnDrop = (targetKey: string) => {
+    if (!draggedColumnKey || draggedColumnKey === targetKey) return;
+    setTempColumnOrder((prev) => {
+      const from = prev.indexOf(draggedColumnKey);
+      const to = prev.indexOf(targetKey);
+      if (from < 0 || to < 0) return prev;
+      const updated = [...prev];
+      const [moved] = updated.splice(from, 1);
+      updated.splice(to, 0, moved);
+      return updated;
+    });
   };
 
   const handleCreateCustomView = () => {
@@ -1673,607 +2163,597 @@ export default function Quotes() {
     return `${day}/${month}/${year}`;
   };
 
+  // Header height is fixed by layout; no runtime measurement needed.
+
   return (
-    <div className="w-full h-screen flex flex-col bg-white">
-      {/* Header - Show Bulk Actions Bar when items are selected, otherwise show normal header */}
+    <div className="flex flex-col h-full min-h-0 w-full bg-white font-sans text-gray-800 antialiased relative overflow-hidden">
+      <ToastContainer position="top-center" autoClose={2500} hideProgressBar newestOnTop closeOnClick pauseOnHover draggable />
+      {/* Header Section */}
       {selectedQuotes.length > 0 ? (
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between p-4 md:p-6 border-b border-gray-200 bg-white gap-4">
-          <div className="flex flex-wrap items-center gap-2">
+        <div
+          className="flex-none relative z-30 flex items-center justify-between px-6 py-6 border-b border-gray-100 bg-white overflow-visible"
+        >
+          <div className="flex items-center gap-2 py-2.5">
             <button
-              className="flex items-center gap-1.5 py-2 px-4 bg-gradient-to-r from-[#156372] to-[#0D4A52] rounded-md text-sm font-medium text-white cursor-pointer transition-all hover:opacity-90 shadow-sm"
+              className="px-4 py-2 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
               onClick={handleBulkUpdate}
             >
               Bulk Update
             </button>
             <button
-              className="flex items-center gap-1.5 py-2 px-2.5 bg-white border border-gray-200 rounded-md text-sm font-medium text-gray-700 cursor-pointer transition-all hover:bg-gray-50 hover:border-gray-300"
+              className="px-4 py-2 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm flex items-center gap-2"
               onClick={handleExportPDF}
-              title="Download PDF"
             >
-              <FileDown size={16} />
+              <FileDown size={16} className="text-gray-500" />
+              Download PDF
             </button>
             <button
-              className="flex items-center gap-1.5 py-2 px-4 bg-white border border-gray-200 rounded-md text-sm font-medium text-gray-700 cursor-pointer transition-all hover:bg-gray-50 hover:border-gray-300"
+              className="px-4 py-2 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
               onClick={handleBulkMarkAsSent}
             >
               Mark As Sent
             </button>
             <button
-              className="flex items-center gap-1.5 py-2 px-4 bg-white border border-red-300 rounded-md text-sm font-medium text-red-600 cursor-pointer transition-all hover:bg-red-50 hover:border-red-300"
+              className="px-4 py-2 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
+              onClick={handleBulkSubmitForApproval}
+            >
+              Submit for Approval
+            </button>
+            <button
+              className="px-4 py-2 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
               onClick={handleBulkDelete}
             >
-              <Trash2 size={16} />
               Delete
             </button>
+
+            <div className="mx-2 h-5 w-px bg-gray-200" />
+
+            <div className="inline-flex items-center gap-2 text-sm text-slate-500">
+              <span className="flex h-6 min-w-[24px] items-center justify-center rounded px-2 text-[13px] font-semibold text-white"
+                style={{ background: 'linear-gradient(90deg, #156372 0%, #0D4A52 100%)' }}>
+                {selectedQuotes.length}
+              </span>
+              <span className="text-sm text-gray-700">Selected</span>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="flex items-center justify-center min-w-[24px] h-6 px-2 bg-gradient-to-r from-[#156372] to-[#0D4A52] rounded text-[13px] font-semibold text-white">{selectedQuotes.length}</span>
-            <span className="text-sm text-gray-700">Selected</span>
-            <button
-              className="flex items-center gap-1 py-1.5 px-3 bg-transparent border-none text-sm text-red-500 cursor-pointer transition-colors hover:text-red-600"
-              onClick={handleClearSelection}
-            >
-              Esc <X size={14} className="text-red-500" />
-            </button>
-          </div>
+
+          <button
+            onClick={() => setSelectedQuotes([])}
+            className="inline-flex items-center gap-1 text-sm text-red-500 hover:text-red-600"
+          >
+            <span>Esc</span>
+            <X size={16} className="text-red-500" />
+          </button>
         </div>
       ) : (
-        /* Normal Page Header */
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between p-4 md:p-6 border-b border-gray-200 bg-white gap-4">
-          {/* Title with Dropdown */}
-          <div className="relative" ref={dropdownRef}>
-            <button
-              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className={`flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-50 ${isDropdownOpen ? "border-[#156372]" : ""}`}
-            >
-              <h1 className="text-lg md:text-xl font-semibold text-gray-900 truncate max-w-[200px] md:max-w-none">
-                {selectedView}
-              </h1>
-              {isDropdownOpen ? (
-                <ChevronUp size={20} className="text-gray-600" />
-              ) : (
-                <ChevronDown size={20} className="text-gray-600" />
-              )}
-            </button>
+        <div
+          className="flex-none flex items-center justify-between px-6 py-6 border-b border-gray-100 bg-white relative overflow-visible"
+        >
+          <div className="flex items-center gap-8 pl-4">
+            <div className="relative" ref={dropdownRef}>
+              <button
+                type="button"
+                className="flex items-center gap-1.5 py-4 cursor-pointer group border-b-2 border-slate-900 -mb-[1px] bg-transparent outline-none"
+                onClick={() => {
+                  if (isDropdownOpen) {
+                    setIsDropdownOpen(false);
+                    return;
+                  }
 
-            {isDropdownOpen && (
-              <div className="absolute top-full left-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-[100] min-w-[280px] md:min-w-[300px] flex flex-col max-h-[400px] md:max-h-[500px] overflow-hidden">
-                {/* Search Bar */}
-                <div className="flex items-center gap-2 p-3 border-b border-gray-200 bg-gray-50">
-                  <Search size={16} className="text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Search views..."
-                    value={viewSearchQuery}
-                    onChange={(e) => setViewSearchQuery(e.target.value)}
-                    className="flex-1 text-sm bg-transparent focus:outline-none"
-                  />
-                </div>
-
-                {/* View Options Scroll Area */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar pt-2">
-                  {/* System Views */}
-                  <div className="px-3 pb-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-white">
-                    System Views
+                  const rect = dropdownRef.current?.getBoundingClientRect();
+                  if (rect) {
+                    setViewDropdownPosition({
+                      top: rect.bottom + 8,
+                      left: rect.left,
+                      width: rect.width,
+                    });
+                  }
+                  setIsDropdownOpen(true);
+                }}
+              >
+                <span className="text-[15px] font-bold text-slate-900 transition-colors">
+                  {selectedView}
+                </span>
+                <ChevronDown size={14} className={`transition-transform duration-200 text-[#156372] ${isDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
+            {isDropdownOpen && typeof document !== "undefined" ? createPortal(
+              <div className="fixed inset-0 z-[2147483646] pointer-events-none">
+                <div
+                  ref={viewDropdownMenuRef}
+                  className="absolute bg-white border border-gray-200 rounded-lg shadow-2xl py-2 animate-in fade-in zoom-in-95 duration-200 overflow-hidden pointer-events-auto"
+                  style={{
+                    top: `${viewDropdownPosition.top}px`,
+                    left: `${viewDropdownPosition.left}px`,
+                    width: `${Math.max(288, viewDropdownPosition.width)}px`,
+                  }}
+                >
+                <div className="px-3 pb-2 border-b border-gray-100">
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-md border border-gray-200 focus-within:border-[#156372] focus-within:ring-1 focus-within:ring-[#156372]/10 transition-all">
+                    <Search size={14} className="text-gray-400" />
+                    <input
+                      autoFocus
+                      placeholder="Search Views"
+                      className="bg-transparent border-none outline-none text-sm w-full"
+                      value={viewSearchQuery}
+                      onChange={(e) => setViewSearchQuery(e.target.value)}
+                    />
                   </div>
-                  {filteredDefaultViews.map((view) => (
-                    <div
+                </div>
+                <div className="max-h-80 overflow-y-auto py-1">
+                  <div className="px-4 py-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50/50">DEFAULT VIEWS</div>
+                  {filteredDefaultViews.map(view => (
+                    <button
                       key={view}
-                      onClick={() => {
-                        setSelectedView(view);
-                        setIsDropdownOpen(false);
-                      }}
-                      className="px-4 py-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 transition-colors flex items-center justify-between"
+                      onClick={() => handleViewSelect(view)}
+                      className={`flex items-center justify-between px-4 py-2 hover:bg-[#156372]/5 cursor-pointer group/item transition-colors w-full ${isViewSelected(view) ? 'bg-[#156372]/5' : ''}`}
                     >
-                      <span>{view}</span>
-                      {selectedView === view && (
-                        <Check size={16} className="text-[#156372]" />
-                      )}
-                    </div>
+                      <span className={`text-sm ${isViewSelected(view) ? 'text-[#156372] font-semibold' : 'text-gray-700'}`}>{view}</span>
+                      {isViewSelected(view) && <Check size={14} className="text-[#156372]" />}
+                    </button>
                   ))}
 
-                  {/* Custom Views */}
                   {filteredCustomViews.length > 0 && (
                     <>
-                      <div className="px-3 pb-2 pt-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-white">
-                        Custom Views
-                      </div>
-                      {filteredCustomViews.map((view) => (
-                        <div
+                      <div className="px-4 py-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50/50 mt-2">CUSTOM VIEWS</div>
+                      {filteredCustomViews.map(view => (
+                        <button
                           key={view.id}
-                          className="px-4 py-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 transition-colors flex items-center justify-between"
-                          onClick={() => {
-                            setSelectedView(view.viewName);
-                            setIsDropdownOpen(false);
-                          }}
+                          onClick={() => handleViewSelect(view.name)}
+                          className={`flex items-center justify-between px-4 py-2 hover:bg-[#156372]/5 cursor-pointer group/item transition-colors w-full ${isViewSelected(view.name) ? 'bg-[#156372]/5' : ''}`}
                         >
-                          <span>{view.viewName}</span>
-                          {selectedView === view.viewName && (
-                            <Check size={16} className="text-[#156372]" />
-                          )}
-                        </div>
+                          <span className={`text-sm ${isViewSelected(view.name) ? 'text-[#156372] font-semibold' : 'text-gray-700'}`}>{view.name}</span>
+                          <div className="flex items-center gap-2">
+                            <Trash2
+                              size={14}
+                              className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover/item:opacity-100"
+                              onClick={(e) => handleDeleteCustomView(view.id, e)}
+                            />
+                            {isViewSelected(view.name) && <Check size={14} className="text-[#156372]" />}
+                          </div>
+                        </button>
                       ))}
                     </>
                   )}
                 </div>
-              </div>
-            )}
+                </div>
+              </div>,
+              document.body
+            ) : null}
           </div>
 
-          {/* Header Actions */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-3 mr-4">
             <button
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#156372] to-[#0D4A52] text-white rounded-md text-sm font-medium cursor-pointer transition-all hover:opacity-90 shadow-md"
-              onClick={() => navigate("/sales/quotes/new")}
+              onClick={handleCreateNewQuote}
+              className="inline-flex items-center gap-2 rounded-lg px-4 py-1.5 bg-[#156372] text-white text-sm font-semibold cursor-pointer hover:brightness-110 transition-all active:brightness-95 border-[#0D4A52] border-b-[4px] shadow-sm"
+              style={{ background: 'linear-gradient(90deg, #156372 0%, #0D4A52 100%)' }}
+              aria-label="Create new quote"
             >
               <Plus size={16} strokeWidth={3} />
-              New Quote
+              New
             </button>
+
             <div className="relative" ref={moreMenuRef}>
               <button
-                className="flex items-center justify-center w-9 h-9 bg-gray-50 border border-gray-200 rounded-md cursor-pointer text-gray-500 transition-colors hover:bg-gray-100"
-                onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+                onClick={() => {
+                  if (isMoreMenuOpen) {
+                    setIsMoreMenuOpen(false);
+                    setOpenMoreSubmenu(null);
+                    return;
+                  }
+
+                  const rect = moreMenuRef.current?.getBoundingClientRect();
+                  if (rect) {
+                    setMoreMenuPosition({
+                      top: rect.bottom + 8,
+                      left: rect.left,
+                    });
+                  }
+                  setIsMoreMenuOpen(true);
+                  setOpenMoreSubmenu(null);
+                }}
+                className="p-2 text-gray-500 hover:text-[#156372] hover:bg-gray-100 rounded-md transition-all cursor-pointer border border-gray-200"
               >
                 <MoreVertical size={18} />
               </button>
-
-              {isMoreMenuOpen && (
-                <div className="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px] z-[1000] overflow-visible">
-                  <div className="relative flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-all text-sm text-gray-700 group hover:bg-[#156372] hover:text-white">
-                    <ArrowUpDown size={16} className="text-[#156372] flex-shrink-0 group-hover:text-white" />
-                    <span className="flex-1">Sort by</span>
-                    <ChevronRight size={16} className="text-gray-400 flex-shrink-0 group-hover:text-white" />
-
-                    {/* Sort by Submenu */}
-                    <div className="absolute top-0 right-full mr-1.5 w-[180px] bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-[99999] pointer-events-none opacity-0 translate-x-2.5 transition-all group-hover:pointer-events-auto group-hover:opacity-100 group-hover:translate-x-0">
-                      <div
-                        className={`flex items-center justify-between py-2.5 px-3.5 mx-2 text-sm text-gray-700 cursor-pointer transition-all bg-white rounded-md ${sortConfig.key === "createdTime" ? "!bg-[#156372] !text-white" : "hover:bg-[#156372] hover:text-white"}`}
-                        onClick={() => {
-                          handleSort("createdTime");
-                          setIsMoreMenuOpen(false);
-                        }}
-                      >
-                        Created Time
-                        {sortConfig.key === "createdTime" && (
-                          sortConfig.direction === "asc" ?
-                            <ChevronUp size={14} className="text-white" /> :
-                            <ChevronDown size={14} className="text-white" />
-                        )}
-                      </div>
-                      <div
-                        className={`flex items-center justify-between py-2.5 px-3.5 mx-2 text-sm text-gray-700 cursor-pointer transition-all bg-white rounded-md ${sortConfig.key === "lastModifiedTime" ? "!bg-[#156372] !text-white" : "hover:bg-[#156372] hover:text-white"}`}
-                        onClick={() => {
-                          handleSort("lastModifiedTime");
-                          setIsMoreMenuOpen(false);
-                        }}
-                      >
-                        Last Modified Time
-                        {sortConfig.key === "lastModifiedTime" && (
-                          sortConfig.direction === "asc" ?
-                            <ChevronUp size={14} className="text-white" /> :
-                            <ChevronDown size={14} className="text-white" />
-                        )}
-                      </div>
-                      <div
-                        className={`flex items-center justify-between py-2.5 px-3.5 mx-2 text-sm text-gray-700 cursor-pointer transition-all bg-white rounded-md ${sortConfig.key === "date" ? "!bg-[#156372] !text-white" : "hover:bg-[#156372] hover:text-white"}`}
-                        onClick={() => {
-                          handleSort("date");
-                          setIsMoreMenuOpen(false);
-                        }}
-                      >
-                        Date
-                        {sortConfig.key === "date" && (
-                          sortConfig.direction === "asc" ?
-                            <ChevronUp size={14} className="text-white" /> :
-                            <ChevronDown size={14} className="text-white" />
-                        )}
-                      </div>
-                      <div
-                        className={`flex items-center justify-between py-2.5 px-3.5 mx-2 text-sm text-gray-700 cursor-pointer transition-all bg-white rounded-md ${sortConfig.key === "quoteNumber" ? "!bg-[#156372] !text-white" : "hover:bg-[#156372] hover:text-white"}`}
-                        onClick={() => {
-                          handleSort("quoteNumber");
-                          setIsMoreMenuOpen(false);
-                        }}
-                      >
-                        Quote Number
-                        {sortConfig.key === "quoteNumber" && (
-                          sortConfig.direction === "asc" ?
-                            <ChevronUp size={14} className="text-white" /> :
-                            <ChevronDown size={14} className="text-white" />
-                        )}
-                      </div>
-                      <div
-                        className={`flex items-center justify-between py-2.5 px-3.5 mx-2 text-sm text-gray-700 cursor-pointer transition-all bg-white rounded-md ${sortConfig.key === "customerName" ? "!bg-[#156372] !text-white" : "hover:bg-[#156372] hover:text-white"}`}
-                        onClick={() => {
-                          handleSort("customerName");
-                          setIsMoreMenuOpen(false);
-                        }}
-                      >
-                        Customer Name
-                        {sortConfig.key === "customerName" && (
-                          sortConfig.direction === "asc" ?
-                            <ChevronUp size={14} className="text-white" /> :
-                            <ChevronDown size={14} className="text-white" />
-                        )}
-                      </div>
-                      <div
-                        className={`flex items-center justify-between py-2.5 px-3.5 mx-2 text-sm text-gray-700 cursor-pointer transition-all bg-white rounded-md ${sortConfig.key === "amount" ? "!bg-[#156372] !text-white" : "hover:bg-[#156372] hover:text-white"}`}
-                        onClick={() => {
-                          handleSort("amount");
-                          setIsMoreMenuOpen(false);
-                        }}
-                      >
-                        Amount
-                        {sortConfig.key === "amount" && (
-                          sortConfig.direction === "asc" ?
-                            <ChevronUp size={14} className="text-white" /> :
-                            <ChevronDown size={14} className="text-white" />
-                        )}
-                      </div>
+            </div>
+            {isMoreMenuOpen && typeof document !== "undefined" ? createPortal(
+              <div className="fixed inset-0 z-[2147483647] pointer-events-none">
+                <div
+                  ref={moreMenuMenuRef}
+                  className="absolute w-56 bg-white border border-gray-200 rounded-lg shadow-2xl py-2 animate-in fade-in slide-in-from-top-2 duration-200 pointer-events-auto"
+                  style={{
+                    top: `${moreMenuPosition.top}px`,
+                    left: `${moreMenuPosition.left}px`,
+                  }}
+                >
+                <div className="relative">
+                  <button
+                    onClick={() => setOpenMoreSubmenu((prev) => (prev === "sort" ? null : "sort"))}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 flex items-center justify-between"
+                  >
+                    <span className="flex items-center gap-3">
+                      <ArrowUpDown size={16} />
+                      Sort by
+                    </span>
+                    <ChevronRight size={15} />
+                  </button>
+                  {openMoreSubmenu === "sort" && (
+                    <div className="absolute top-0 right-full mr-2 w-52 bg-white border border-gray-200 rounded-lg shadow-xl py-1 z-[100001]">
+                      {sortMenuOptions.map((option) => {
+                        const isActive = sortConfig.key === option.key;
+                        return (
+                          <button
+                            key={option.key}
+                            onClick={() => handleSelectSortFromMenu(option.key)}
+                            className="w-full text-left px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 flex items-center justify-between"
+                          >
+                            <span>{option.label}</span>
+                            {isActive ? <Check size={14} className="text-gray-500" /> : null}
+                          </button>
+                        );
+                      })}
                     </div>
-                  </div>
-                  <div className="relative flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-all text-sm text-gray-700 group hover:bg-[#156372] hover:text-white">
-                    <Download size={16} className="text-[#156372] flex-shrink-0 group-hover:text-white" />
-                    <span className="flex-1">Import</span>
-                    <ChevronRight size={16} className="text-gray-400 flex-shrink-0 group-hover:text-white" />
-
-                    {/* Import Submenu */}
-                    <div className="absolute top-0 right-full mr-1.5 min-w-[160px] bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-[99999] pointer-events-none opacity-0 translate-x-2.5 transition-all group-hover:pointer-events-auto group-hover:opacity-100 group-hover:translate-x-0">
-                      <div
-                        className="flex items-center py-2.5 px-4 text-sm text-gray-700 cursor-pointer transition-all whitespace-nowrap hover:bg-[#156372] hover:text-white"
-                        onClick={() => {
-                          handleImportQuotes();
-                          setIsMoreMenuOpen(false);
-                        }}
-                      >
-                        Import Quotes
-                      </div>
-                    </div>
-                  </div>
-                  <div className="relative flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-all text-sm text-gray-700 group hover:bg-[#156372] hover:text-white">
-                    <Upload size={16} className="text-[#156372] flex-shrink-0 group-hover:text-white" />
+                  )}
+                </div>
+                <button
+                  onClick={handleImportQuotes}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 flex items-center gap-3"
+                >
+                  <Download size={16} />
+                  Import Quotes
+                </button>
+                <div className="relative">
+                  <button
+                    onClick={() => setOpenMoreSubmenu((prev) => (prev === "export" ? null : "export"))}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 flex items-center gap-3"
+                  >
+                    <Upload size={16} />
                     <span className="flex-1">Export</span>
-                    <ChevronRight size={16} className="text-gray-400 flex-shrink-0 group-hover:text-white" />
-
-                    {/* Export Submenu */}
-                    <div className="absolute top-0 right-full mr-1.5 min-w-[160px] bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-[99999] pointer-events-none opacity-0 translate-x-2.5 transition-all group-hover:pointer-events-auto group-hover:opacity-100 group-hover:translate-x-0">
-                      <div
-                        className="flex items-center py-2.5 px-4 text-sm text-gray-700 cursor-pointer transition-all whitespace-nowrap hover:bg-[#156372] hover:text-white"
-                        onClick={() => {
-                          handleExportPDF();
-                          setIsMoreMenuOpen(false);
-                        }}
+                    <ChevronRight size={15} />
+                  </button>
+                  {openMoreSubmenu === "export" && (
+                    <div className="absolute top-0 right-full mr-2 w-52 bg-white border border-gray-200 rounded-lg shadow-xl py-1 z-[100001]">
+                      <button
+                        onClick={handleExportQuotesFromMenu}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
                       >
                         Export Quotes
-                      </div>
-                      <div
-                        className="flex items-center py-2.5 px-4 text-sm text-gray-700 cursor-pointer transition-all whitespace-nowrap hover:bg-[#156372] hover:text-white"
-                        onClick={handleExportCurrentView}
+                      </button>
+                      <button
+                        onClick={handleExportCurrentViewFromMenu}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
                       >
                         Export Current View
-                      </div>
+                      </button>
                     </div>
-                  </div>
-                  <div
-                    className="flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-colors text-sm text-gray-700 hover:bg-[#156372] hover:text-white group"
-                    onClick={() => {
-                      setIsMoreMenuOpen(false);
-                      navigate("/settings/quotes");
-                    }}
-                  >
-                    <Settings size={16} className="text-[#156372] flex-shrink-0 group-hover:text-white" />
-                    <span className="flex-1">Preferences</span>
-                  </div>
-                  <div
-                    className="flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-colors text-sm text-gray-700 hover:bg-[#156372] hover:text-white group"
-                    onClick={() => {
-                      setIsMoreMenuOpen(false);
-                      navigate("/settings/quotes");
-                    }}
-                  >
-                    <Database size={16} className="text-[#156372] flex-shrink-0 group-hover:text-white" />
-                    <span className="flex-1">Manage Custom Fields</span>
-                  </div>
-                  <div
-                    className={`flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-colors text-sm text-gray-700 hover:bg-[#156372] hover:text-white group ${isRefreshing ? "opacity-50 cursor-not-allowed" : ""}`}
-                    onClick={() => {
-                      if (!isRefreshing) {
-                        refreshData();
-                        setIsMoreMenuOpen(false);
-                      }
-                    }}
-                  >
-                    <RefreshCw size={16} className={`text-[#156372] flex-shrink-0 ${isRefreshing ? "animate-spin" : ""} group-hover:text-white`} />
-                    <span className="flex-1">Refresh List</span>
-                  </div>
-                  <div
-                    className="flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-colors text-sm text-gray-700 hover:bg-[#156372] hover:text-white group"
-                    onClick={() => {
-                      // Reset column widths - this would typically reset localStorage column width settings
-                      alert("Column widths reset to default");
-                      setIsMoreMenuOpen(false);
-                    }}
-                  >
-                    <RefreshCw size={16} className="text-[#156372] flex-shrink-0 group-hover:text-white" />
-                    <span className="flex-1">Reset Column Width</span>
-                  </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )
-      }
-
-      {/* Content Area */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 relative">
-
-        {quotes.length > 0 || quotesLoading ? (
-          /* Quotes List View */
-          <div className="w-full">
-            {/* Mobile Card View */}
-            <div className="md:hidden space-y-3">
-              {sortedQuotes.map((quote) => (
-                <div
-                  key={quote.id}
-                  className={`bg-white border border-gray-200 rounded-lg p-4 cursor-pointer transition-colors hover:shadow-md ${selectedQuotes.includes(quote.id) ? 'ring-2 ring-blue-500' : ''}`}
-                  onClick={() => navigate(`/sales/quotes/${quote.id}`)}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedQuotes.includes(quote.id)}
-                        onChange={() => handleSelectQuote(quote.id)}
-                        className="w-4 h-4 cursor-pointer"
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                      <div>
-                        <div className="font-medium text-[#156372]">{quote.quoteNumber}</div>
-                        <div className="text-sm text-gray-600">{formatDate(quote.date || quote.quoteDate)}</div>
-                      </div>
-                    </div>
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusClass(quote.status)}`}>
-                      {getStatusDisplay(quote.status)}
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Customer:</span>
-                      <span className="text-gray-900">{quote.customerName || (typeof quote.customer === 'object' && quote.customer ? (quote.customer.displayName || quote.customer.name || 'Unknown Customer') : (typeof quote.customer === 'string' ? quote.customer : ''))}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Reference:</span>
-                      <span className="text-gray-900">{quote.referenceNumber || "-"}</span>
-                    </div>
-                    <div className="flex justify-between text-sm font-medium">
-                      <span className="text-gray-600">Amount:</span>
-                      <span className="text-gray-900">{formatAmount(quote.total || quote.amount, quote.currency)}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Desktop Table View */}
-            <div className="hidden md:block bg-white border border-gray-200 rounded-lg">
-              <div className="overflow-x-auto min-h-[450px]">
-                <table className="w-full border-collapse text-sm min-w-[800px]">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="py-3 px-4 text-left w-16 relative">
-                        <div className="flex items-center gap-2">
-                          <div className="relative" ref={headerMenuRef}>
-                            <SlidersHorizontal
-                              size={14}
-                              className="text-blue-600 cursor-pointer hover:text-blue-700"
-                              onClick={(e) => {
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                setHeaderMenuPosition({ top: rect.bottom + 8, left: rect.left });
-                                setIsHeaderMenuOpen(!isHeaderMenuOpen);
-                              }}
-                            />
-                          </div>
-                          <input
-                            type="checkbox"
-                            checked={selectedQuotes.length === sortedQuotes.length && sortedQuotes.length > 0}
-                            onChange={handleSelectAll}
-                            className="w-4 h-4 cursor-pointer"
-                          />
-                        </div>
-                      </th>
-                      {allColumnOptions.filter(col => visibleColumns.includes(col.key)).map((col, idx) => (
-                        <th
-                          key={col.key}
-                          style={{ width: columnWidths[col.key] }}
-                          className={`py-3 px-4 text-${col.key === 'amount' ? 'right' : 'left'} font-medium text-gray-600 text-xs uppercase tracking-wider relative group whitespace-nowrap`}
-                        >
-                          {col.label}
-                          {/* Resizer handle */}
-                          <div
-                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-400 group-hover:bg-gray-300 transition-colors"
-                            onMouseDown={(e) => {
-                              setResizingColumn(col.key);
-                              const startX = e.pageX;
-                              const startWidth = columnWidths[col.key];
-
-                              const onMouseMove = (moveEvent: MouseEvent) => {
-                                const newWidth = Math.max(80, startWidth + (moveEvent.pageX - startX));
-                                setColumnWidths(prev => ({ ...prev, [col.key]: newWidth }));
-                              };
-
-                              const onMouseUp = () => {
-                                document.removeEventListener('mousemove', onMouseMove);
-                                document.removeEventListener('mouseup', onMouseUp);
-                                setResizingColumn(null);
-                              };
-
-                              document.addEventListener('mousemove', onMouseMove);
-                              document.addEventListener('mouseup', onMouseUp);
-                            }}
-                          ></div>
-                        </th>
-                      ))}
-                      <th className="py-3 px-4 text-left w-12">
-                        <button
-                          className="p-1 text-gray-600 hover:bg-gray-100 rounded-md cursor-pointer"
-                          onClick={handleOpenAdvancedSearch}
-                          title="Advanced Search"
-                        >
-                          <Search size={16} />
-                        </button>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {isRefreshing || quotesLoading ? (
-                      Array(5).fill(0).map((_, index) => (
-                        <tr key={`skeleton-${index}`} className="border-b border-gray-200">
-                          <td className="py-3 px-4">
-                            <div className="w-4 h-4 bg-gray-200 rounded animate-pulse"></div>
-                          </td>
-                          {visibleColumns.map(colKey => (
-                            <td key={colKey} className="py-3 px-4">
-                              <div className="h-4 bg-gray-200 rounded animate-pulse w-full"></div>
-                            </td>
-                          ))}
-                          <td className="py-3 px-4"></td>
-                        </tr>
-                      ))
-                    ) : (
-                      sortedQuotes.length === 0 ? (
-                        <tr>
-                          <td colSpan={visibleColumns.length + 2} className="py-8 text-center text-gray-500">
-                            No quotes found
-                          </td>
-                        </tr>
-                      ) : (
-                        sortedQuotes.map((quote) => (
-                          <tr
-                            key={quote.id}
-                            className={`border-b border-gray-200 transition-colors cursor-pointer hover:bg-gray-50 ${selectedQuotes.includes(quote.id) ? 'bg-gray-100' : ''}`}
-                            onClick={() => navigate(`/sales/quotes/${quote.id}`)}
-                          >
-                            <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
-                              <input
-                                type="checkbox"
-                                checked={selectedQuotes.includes(quote.id)}
-                                onChange={() => handleSelectQuote(quote.id)}
-                                className="w-4 h-4 cursor-pointer"
-                              />
-                            </td>
-                            {allColumnOptions.filter(col => visibleColumns.includes(col.key)).map(col => (
-                              <td key={`${quote.id}-${col.key}`} className={`py-3 px-4 text-gray-900 ${col.key === 'amount' ? 'text-right font-medium' : ''}`}>
-                                <div className="truncate">
-                                  {col.key === 'date' ? formatDate(quote.date || quote.quoteDate) :
-                                    col.key === 'quoteNumber' ? (
-                                      <span className="text-[#156372] font-medium hover:underline">
-                                        {quote.quoteNumber}
-                                      </span>
-                                    ) :
-                                      col.key === 'status' ? (
-                                        <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getStatusClass(quote.status)}`}>
-                                          {getStatusDisplay(quote.status)}
-                                        </span>
-                                      ) :
-                                        col.key === 'amount' ? formatAmount(quote.total || quote.amount, quote.currency) :
-                                          col.key === 'customerName' ? (quote.customerName || (typeof quote.customer === 'object' && quote.customer ? (quote.customer.displayName || quote.customer.name || 'Unknown Customer') : (typeof quote.customer === 'string' ? quote.customer : ''))) :
-                                            quote[col.key] || "-"}
-                                </div>
-                              </td>
-                            ))}
-                            <td className="py-3 px-4"></td>
-                          </tr>
-                        ))
-                      )
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        ) : (
-          /* Empty State */
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-              <FileText size={32} className="text-gray-400" />
-            </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No quotes found</h3>
-            <p className="text-gray-600 mb-6">Get started by creating your first quote.</p>
-            <button
-              className="flex items-center gap-2 px-4 py-2 bg-[#156372] text-white rounded-md text-sm font-medium cursor-pointer hover:bg-blue-700 transition-colors"
-              onClick={() => navigate("/sales/quotes/new")}
-            >
-              <Plus size={16} />
-              Create Quote
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Import Modal */}
-      {isImportModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Import Quotes</h3>
-              <p className="text-gray-600 mb-6">Choose the format you want to import your quotes from.</p>
-              <div className="space-y-3">
                 <button
-                  onClick={() => {
-                    setIsImportModalOpen(false);
-                    navigate("/sales/quotes/import");
-                  }}
-                  className="w-full px-4 py-3 bg-[#156372] text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+                  onClick={handleQuotePreferences}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 flex items-center gap-3"
                 >
-                  Import from File
+                  <Settings size={16} />
+                  Preferences
                 </button>
                 <button
-                  onClick={() => setIsImportModalOpen(false)}
-                  className="w-full px-4 py-3 bg-white border border-gray-200 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
+                  onClick={handleManageCustomFields}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 flex items-center gap-3"
                 >
-                  Cancel
+                  <Columns size={16} />
+                  Manage Custom Fields
                 </button>
-              </div>
-            </div>
+                <div className="h-px bg-gray-100 my-1" />
+                <button
+                  onClick={refreshData}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 flex items-center gap-3"
+                >
+                  <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                  Refresh List
+                </button>
+                <button
+                  onClick={handleResetColumnWidth}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 flex items-center gap-3"
+                >
+                  <RefreshCw size={16} />
+                  Reset Column Width
+                </button>
+                </div>
+              </div>,
+              document.body
+            ) : null}
           </div>
         </div>
       )}
 
-      {/* Mark As Sent Confirmation Modal */}
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-hidden flex flex-col relative z-0">
+        {isRefreshing && (
+          <div className="absolute inset-0 bg-white/50 z-20 flex items-center justify-center backdrop-blur-[1px]">
+            <RefreshCw size={24} className="text-[#156372] animate-spin" />
+          </div>
+        )}
+
+        {isQuotesLoading ? (
+          <div
+            className="flex-1 overflow-auto bg-white min-h-0"
+          >
+            <table className="w-full text-left border-collapse" style={{ minWidth: `${tableMinWidth}px` }}>
+              <thead className="bg-[#f6f7fb] sticky top-0 z-20 border-b border-[#e6e9f2]">
+                <tr className="text-[10px] font-semibold text-[#7b8494] uppercase tracking-wider">
+                  <th className="w-16 px-4 py-3 text-left bg-[#f6f7fb]">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="h-6 w-6 flex items-center justify-center rounded border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCustomizeColumnsOpen();
+                        }}
+                        title="Customize columns"
+                      >
+                        <SlidersHorizontal size={13} className="text-[#156372]" />
+                      </button>
+                      <div className="h-5 w-px bg-gray-200" />
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded border-gray-300 text-[#156372] focus:ring-0 cursor-pointer"
+                        checked={false}
+                        readOnly
+                      />
+                    </div>
+                  </th>
+                  {visibleColumns.map((colKey) => {
+                    const column = allColumnOptions.find(c => c.key === colKey);
+                    return (
+                      <th
+                        key={colKey}
+                        className="group/header relative px-4 py-3 text-left text-[11px] font-semibold text-[#7b8494] uppercase tracking-wider select-none bg-[#f6f7fb]"
+                        style={{
+                          width: `${columnWidths[colKey] || 120}px`,
+                          minWidth: `${columnWidths[colKey] || 120}px`,
+                          maxWidth: `${columnWidths[colKey] || 120}px`,
+                        }}
+                      >
+                        {column?.label}
+                        {renderColumnResizeHandle(colKey)}
+                      </th>
+                    );
+                  })}
+                  <th className="w-10 px-4 py-3 text-right bg-[#f6f7fb] border-l border-transparent"></th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-[#eef1f6] animate-pulse">
+                {Array.from({ length: 10 }).map((_, idx) => (
+                  <tr key={idx} className="text-[13px] h-[50px] border-b border-[#eef1f6]">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 shrink-0" />
+                        <div className="h-5 w-px bg-transparent shrink-0" />
+                        <div className="w-4 h-4 rounded bg-gray-100 border border-gray-200" />
+                      </div>
+                    </td>
+                    {visibleColumns.map((colKey) => (
+                      <td
+                        key={colKey}
+                        className="px-4 py-3"
+                        style={{
+                          width: `${columnWidths[colKey] || 120}px`,
+                          minWidth: `${columnWidths[colKey] || 120}px`,
+                          maxWidth: `${columnWidths[colKey] || 120}px`,
+                        }}
+                      >
+                        <div className="h-3 bg-gray-100 rounded w-2/3" />
+                      </td>
+                    ))}
+                    <td className="w-10 px-4 py-3 border-l border-[#eef1f6]"></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : sortedQuotes.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gray-50/30">
+            <div className="w-24 h-24 bg-white rounded-2xl shadow-sm flex items-center justify-center mb-6 border border-gray-100">
+              <FileText size={48} className="text-gray-200" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">No quotes found</h3>
+            <p className="text-gray-500 max-w-xs mb-8">
+              Looks like you haven't created any quotes yet or no quotes match your current view.
+            </p>
+          </div>
+        ) : (
+          <div
+            className="flex-1 overflow-auto bg-[#f6f7fb] min-h-0 custom-scrollbar"
+          >
+            <table className="w-full text-left border-collapse" style={{ minWidth: `${tableMinWidth}px` }}>
+            <thead className="bg-[#f6f7fb] sticky top-0 z-20 border-b border-[#e6e9f2]">
+              <tr className="text-[10px] font-semibold text-[#7b8494] uppercase tracking-wider">
+                <th className="w-16 px-4 py-3 text-left bg-[#f6f7fb]">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="h-6 w-6 flex items-center justify-center rounded border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCustomizeColumnsOpen();
+                        }}
+                        title="Customize columns"
+                      >
+                        <SlidersHorizontal size={13} className="text-[#156372]" />
+                      </button>
+                      <div className="h-5 w-px bg-gray-200" />
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded border-gray-300 text-[#156372] focus:ring-0 cursor-pointer"
+                        checked={selectedQuotes.length === sortedQuotes.length && sortedQuotes.length > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedQuotes(sortedQuotes.map(q => q.id));
+                          } else {
+                            setSelectedQuotes([]);
+                          }
+                        }}
+                      />
+                    </div>
+                  </th>
+                  {visibleColumns.map((colKey) => {
+                    const column = allColumnOptions.find(c => c.key === colKey);
+                    return (
+                      <th
+                        key={colKey}
+                        className="group/header relative px-4 py-3 text-left text-[11px] font-semibold text-[#7b8494] uppercase tracking-wider select-none bg-white"
+                        style={{
+                          width: `${columnWidths[colKey] || 120}px`,
+                          minWidth: `${columnWidths[colKey] || 120}px`,
+                          maxWidth: `${columnWidths[colKey] || 120}px`,
+                        }}
+                        onClick={() => handleSort(colKey)}
+                      >
+                        {column?.label}
+                        {renderColumnResizeHandle(colKey)}
+                      </th>
+                    );
+                  })}
+                  <th className="w-10 px-4 py-3 text-right bg-[#f6f7fb] border-l border-transparent">
+                    <button
+                      type="button"
+                      className="text-gray-400 hover:text-[#156372]"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsAdvancedSearchOpen(true);
+                      }}
+                      title="Search"
+                    >
+                      <Search size={14} />
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-[#eef1f6]">
+                {sortedQuotes.map((quote) => {
+                  const effectiveStatus = getEffectiveStatus(quote);
+                  return (
+                  <tr
+                    key={quote.id}
+                    className={`group transition-all hover:bg-[#f8fafc] cursor-pointer ${selectedQuotes.includes(quote.id) ? 'bg-[#156372]/5' : ''}`}
+                    onClick={() =>
+                      navigate(`/sales/quotes/${quote.id}`, {
+                        state: { preloadedQuote: quote, preloadedQuotes: sortedQuotes },
+                      })
+                    }
+                  >
+                    <td className="px-4 py-3 bg-inherit" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 shrink-0" />
+                        <div className="h-5 w-px bg-transparent shrink-0" />
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 rounded border-gray-300 text-[#156372] focus:ring-0 cursor-pointer"
+                          checked={selectedQuotes.includes(quote.id)}
+                          onChange={() => {
+                            setSelectedQuotes(prev =>
+                              prev.includes(quote.id)
+                                ? prev.filter(id => id !== quote.id)
+                                : [...prev, quote.id]
+                            );
+                          }}
+                        />
+                      </div>
+                    </td>
+                    {visibleColumns.map((colKey) => (
+                      <td
+                        key={colKey}
+                        className="px-4 py-3 text-[13px] text-gray-700 whitespace-nowrap"
+                        style={{
+                          width: `${columnWidths[colKey] || 120}px`,
+                          minWidth: `${columnWidths[colKey] || 120}px`,
+                          maxWidth: `${columnWidths[colKey] || 120}px`,
+                        }}
+                      >
+                        {colKey === 'date' ? (
+                          <span className="font-medium text-[#156372]">{formatDate(quote.date || quote.quoteDate)}</span>
+                        ) : colKey === 'location' ? (
+                          <span className="text-[#156372]">{quote.selectedLocation || quote.location || "Head Office"}</span>
+                        ) : colKey === 'quoteNumber' ? (
+                          <span className="font-semibold text-[#0f52d1] inline-flex items-center gap-1">
+                            {quote.quoteNumber || quote.id}
+                            {String(quote.status || "").toLowerCase() === "sent" && (
+                              <Mail size={14} className="text-gray-500" />
+                            )}
+                          </span>
+                        ) : colKey === 'expiryDate' ? (
+                          <span className="text-gray-700">{formatDate(quote.expiryDate)}</span>
+                        ) : colKey === 'status' ? (
+                          <span
+                            className="font-medium uppercase tracking-wide"
+                            style={{ color: getStatusColor(effectiveStatus) }}
+                          >
+                            {String(getStatusDisplay(effectiveStatus) || "").toUpperCase()}
+                          </span>
+                        ) : colKey === 'amount' ? (
+                          <span className="font-medium text-[#156372]">
+                            {formatAmount(quote.total || quote.amount, quote.currency)}
+                          </span>
+                        ) : colKey === 'customerName' ? (
+                          <span className="text-[#156372]">
+                            {resolveCustomerName(quote)}
+                          </span>
+                        ) : (
+                          quote[colKey] || "-"
+                        )}
+                      </td>
+                    ))}
+                    <td className="w-10 px-4 py-3 text-right border-l border-[#eef1f6] group-hover:bg-[#f8fafc]/95 transition-colors"></td>
+                  </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Modals Section */}
+
+      {/* Delete Confirmation Modal */}
       {
-        isMarkAsSentModalOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={handleCancelMarkAsSent}>
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="p-6 sm:p-8">
-                <div className="flex items-center justify-center mb-4">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 bg-yellow-100 rounded-full flex items-center justify-center shadow-lg">
-                    <Send size={32} className="text-yellow-600" />
-                  </div>
+        isDeleteConfirmModalOpen && (
+          <div className="fixed inset-0 z-[2100] flex items-start justify-center bg-black/40 pt-16" onClick={handleCancelBulkDelete}>
+            <div className="w-full max-w-md rounded-lg bg-white shadow-2xl border border-slate-200" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3">
+                <div className="h-7 w-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-[12px] font-bold">
+                  !
                 </div>
-                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-3 text-center">Mark Quotes as Sent</h3>
-                <p className="text-sm sm:text-base text-gray-600 text-center mb-6">
-                  Are you sure you want to mark {selectedQuotes.length} quote(s) as sent? This will change their status to "Sent".
-                </p>
-                <p className="text-xs sm:text-sm text-gray-500 text-center mb-6">
-                  The Quote(s) that are marked as sent will be displayed in the respective contacts' Customer Portal (if enabled).
-                </p>
-              </div>
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 p-4 sm:p-6 border-t border-gray-200 bg-gray-50">
+                <h3 className="text-[15px] font-semibold text-slate-800 flex-1">
+                  Delete {selectedQuotes.length} quote{selectedQuotes.length === 1 ? "" : "s"}?
+                </h3>
                 <button
-                  onClick={handleCancelMarkAsSent}
-                  className="w-full sm:w-auto px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
+                  type="button"
+                  className="h-7 w-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                  onClick={handleCancelBulkDelete}
+                  aria-label="Close"
                 >
-                  Cancel
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="px-5 py-3 text-[13px] text-slate-600">
+                You cannot retrieve these quotes once they have been deleted.
+              </div>
+              <div className="flex items-center justify-start gap-2 border-t border-slate-100 px-5 py-3">
+                <button
+                  onClick={handleConfirmBulkDelete}
+                  disabled={isDeletingQuotes}
+                  className={`px-4 py-1.5 rounded-md bg-[#156372] text-white text-[12px] hover:bg-[#0D4A52] ${isDeletingQuotes ? "opacity-70 cursor-not-allowed" : ""}`}
+                >
+                  {isDeletingQuotes ? "Deleting..." : "Delete"}
                 </button>
                 <button
-                  onClick={handleConfirmMarkAsSent}
-                  className="w-full sm:w-auto px-6 py-2.5 bg-[#156372] text-white rounded-md text-sm font-medium hover:opacity-90 transition-colors"
-                  style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                  onMouseEnter={(e) => e.target.style.opacity = "0.9"}
-                  onMouseLeave={(e) => e.target.style.opacity = "1"}
+                  onClick={handleCancelBulkDelete}
+                  disabled={isDeletingQuotes}
+                  className={`px-4 py-1.5 rounded-md border border-slate-300 text-[12px] text-slate-700 hover:bg-slate-50 ${isDeletingQuotes ? "opacity-70 cursor-not-allowed" : ""}`}
                 >
-                  Mark as Sent
+                  Cancel
                 </button>
               </div>
             </div>
@@ -2281,46 +2761,11 @@ export default function Quotes() {
         )
       }
 
-      {/* Delete Confirmation Modal */}
-      {isDeleteConfirmModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={handleCancelBulkDelete}>
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6 sm:p-8">
-              <div className="flex items-center justify-center mb-4">
-                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-red-100 rounded-full flex items-center justify-center shadow-lg">
-                  <Trash2 size={32} className="text-red-600" />
-                </div>
-              </div>
-              <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-3 text-center">Delete Quotes</h3>
-              <p className="text-sm sm:text-base text-gray-600 text-center mb-6">
-                Are you sure you want to delete {selectedQuotes.length} quote(s)? This action cannot be undone.
-              </p>
-            </div>
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 p-4 sm:p-6 border-t border-gray-200 bg-gray-50">
-              <button
-                onClick={handleCancelBulkDelete}
-                disabled={isDeletingQuotes}
-                className="w-full sm:w-auto px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmBulkDelete}
-                disabled={isDeletingQuotes}
-                className="w-full sm:w-auto px-6 py-2.5 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isDeletingQuotes ? "Deleting..." : "Delete"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Advanced Search Modal */}
       {
         isAdvancedSearchOpen && (
           <div
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2000]"
+            className="fixed inset-0 bg-black/40 backdrop-blur-[2px] flex items-start justify-center z-[2000] pt-[5vh] overflow-y-auto px-4 py-6"
             onClick={handleCloseAdvancedSearch}
           >
             <div className="bg-white rounded-lg shadow-lg w-full max-w-[800px] mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -3112,8 +3557,8 @@ export default function Quotes() {
       {/* Bulk Update Modal */}
       {
         isBulkUpdateModalOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center" onClick={handleCancelBulkUpdate}>
-            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-50 flex items-start justify-center pt-4 overflow-y-auto px-4 py-6" onClick={handleCancelBulkUpdate}>
+            <div className="bg-white rounded-lg shadow-xl max-w-[760px] w-full mx-4 overflow-visible" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-gray-200">
                 <h2 className="text-lg font-semibold text-gray-900">Bulk Update Quotes</h2>
                 <button
@@ -3129,7 +3574,7 @@ export default function Quotes() {
                   Choose a field from the dropdown and update with new information.
                 </p>
 
-                <div className="flex flex-col gap-4 mb-6">
+                <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-4 mb-6 items-start">
                   {/* Custom Field Dropdown */}
                   <div className="relative w-full" ref={bulkFieldDropdownRef}>
                     <div
@@ -3147,7 +3592,7 @@ export default function Quotes() {
                     </div>
 
                     {isBulkFieldDropdownOpen && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-60 overflow-y-auto">
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-[9999] overflow-visible">
                         <div className="flex items-center gap-2 p-3 border-b border-gray-200">
                           <Search size={16} />
                           <input
@@ -3160,7 +3605,7 @@ export default function Quotes() {
                             onClick={(e) => e.stopPropagation()}
                           />
                         </div>
-                        <div className="max-h-48 overflow-y-auto">
+                        <div>
                           {getFilteredBulkFieldOptions().map(option => (
                             <div
                               key={option.value}
@@ -3180,7 +3625,9 @@ export default function Quotes() {
                     )}
                   </div>
 
-                  {renderBulkUpdateValueInput()}
+                  <div className="w-full min-w-0">
+                    {renderBulkUpdateValueInput()}
+                  </div>
                 </div>
 
                 <p className="text-sm text-gray-600 mb-6">
@@ -3190,10 +3637,11 @@ export default function Quotes() {
 
               <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
                 <button
-                  className="px-4 py-2 rounded-md text-sm font-medium bg-[#156372] text-white hover:bg-blue-700 cursor-pointer"
+                  className="px-4 py-2 rounded-md text-sm font-medium bg-[#156372] text-white hover:bg-blue-700 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
                   onClick={handleBulkUpdateSubmit}
+                  disabled={isBulkUpdating}
                 >
-                  Update
+                  {isBulkUpdating ? "Updating..." : "Update"}
                 </button>
                 <button
                   className="px-4 py-2 rounded-md text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 cursor-pointer"
@@ -3208,68 +3656,121 @@ export default function Quotes() {
       }
 
       {/* Address Selection Modal */}
-      {isAddressModalOpen && selectedBulkCustomer && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center" onClick={() => setIsAddressModalOpen(false)}>
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Choose Address</h2>
+      {isAddressModalOpen && selectedBulkCustomer && typeof document !== "undefined" && document.body && createPortal(
+        <div
+          className="fixed inset-0 bg-black/45 z-[12000] flex items-start justify-center pt-6 pb-6 px-4"
+          onClick={() => setIsAddressModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-[640px] rounded-lg bg-white shadow-xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Choose {bulkUpdateField === "billingAddress" ? "Billing Address" : bulkUpdateField === "shippingAddress" ? "Shipping Address" : "Billing or Shipping Address"}
+              </h2>
               <button
+                type="button"
                 className="p-1 text-gray-500 hover:text-gray-700 cursor-pointer"
                 onClick={() => setIsAddressModalOpen(false)}
               >
                 <X size={20} />
               </button>
             </div>
-            <div className="p-6">
-              <div className="mb-4">
-                <span className="text-sm font-semibold text-gray-900">Customer Name: </span>
-                <span className="text-sm text-gray-700">{selectedBulkCustomer.name}</span>
+
+            <div className="px-5 py-4">
+              <div className="rounded-lg border border-gray-100 bg-gray-50/70 p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">
+                  Customer
+                </div>
+                <div className="text-sm font-medium text-gray-900">
+                  {selectedBulkCustomer.displayName || selectedBulkCustomer.name || "Selected customer"}
+                </div>
               </div>
-              <div className="space-y-3">
+
+              <div className="mt-4 space-y-3">
                 {bulkUpdateField === "billingAddress" || bulkUpdateField === "billingAndShippingAddress" ? (
-                  <div className="border border-gray-200 rounded-md p-4 cursor-pointer hover:bg-gray-50"
+                  <button
+                    type="button"
+                    className="w-full text-left rounded-lg border border-gray-200 p-4 hover:bg-gray-50 transition-colors"
                     onClick={() => {
-                      const address = selectedBulkCustomer.billingAddress ||
-                        `${selectedBulkCustomer.billingStreet1 || ""} ${selectedBulkCustomer.billingStreet2 || ""} ${selectedBulkCustomer.billingCity || ""} ${selectedBulkCustomer.billingState || ""} ${selectedBulkCustomer.billingZipCode || ""}`.trim();
-                      setBulkUpdateValue(address);
+                      const addressValue = formatAddressLines(selectedBulkCustomer.billingAddress, [
+                        selectedBulkCustomer.billingStreet1,
+                        selectedBulkCustomer.billingStreet2,
+                        [selectedBulkCustomer.billingCity, selectedBulkCustomer.billingState, selectedBulkCustomer.billingZipCode].filter(Boolean).join(" "),
+                        selectedBulkCustomer.billingCountry,
+                      ]).join(", ");
+                      setBulkUpdateValue(addressValue);
                       setIsAddressModalOpen(false);
                     }}
                   >
-                    <div className="text-sm font-semibold text-gray-900 mb-1">Billing Address</div>
-                    <div className="text-sm text-gray-600">
-                      {selectedBulkCustomer.billingAddress ||
-                        `${selectedBulkCustomer.billingStreet1 || ""} ${selectedBulkCustomer.billingStreet2 || ""} ${selectedBulkCustomer.billingCity || ""} ${selectedBulkCustomer.billingState || ""} ${selectedBulkCustomer.billingZipCode || ""}`.trim() || "No billing address"}
+                    <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
+                      Billing Address
                     </div>
-                  </div>
+                    <div className="space-y-0.5 text-sm text-gray-700 leading-6">
+                      {formatAddressLines(selectedBulkCustomer.billingAddress, [
+                        selectedBulkCustomer.billingStreet1,
+                        selectedBulkCustomer.billingStreet2,
+                        [selectedBulkCustomer.billingCity, selectedBulkCustomer.billingState, selectedBulkCustomer.billingZipCode].filter(Boolean).join(" "),
+                        selectedBulkCustomer.billingCountry,
+                      ]).map((line, idx) => (
+                        <div key={`billing-line-${idx}`}>{line}</div>
+                      ))}
+                      {formatAddressLines(selectedBulkCustomer.billingAddress, []).length === 0 && (
+                        <div className="text-gray-500 italic">No billing address</div>
+                      )}
+                    </div>
+                  </button>
                 ) : null}
+
                 {bulkUpdateField === "shippingAddress" || bulkUpdateField === "billingAndShippingAddress" ? (
-                  <div className="border border-gray-200 rounded-md p-4 cursor-pointer hover:bg-gray-50"
+                  <button
+                    type="button"
+                    className="w-full text-left rounded-lg border border-gray-200 p-4 hover:bg-gray-50 transition-colors"
                     onClick={() => {
-                      const address = selectedBulkCustomer.shippingAddress ||
-                        `${selectedBulkCustomer.shippingStreet1 || ""} ${selectedBulkCustomer.shippingStreet2 || ""} ${selectedBulkCustomer.shippingCity || ""} ${selectedBulkCustomer.shippingState || ""} ${selectedBulkCustomer.shippingZipCode || ""}`.trim();
-                      setBulkUpdateValue(address);
+                      const addressValue = formatAddressLines(selectedBulkCustomer.shippingAddress, [
+                        selectedBulkCustomer.shippingStreet1,
+                        selectedBulkCustomer.shippingStreet2,
+                        [selectedBulkCustomer.shippingCity, selectedBulkCustomer.shippingState, selectedBulkCustomer.shippingZipCode].filter(Boolean).join(" "),
+                        selectedBulkCustomer.shippingCountry,
+                      ]).join(", ");
+                      setBulkUpdateValue(addressValue);
                       setIsAddressModalOpen(false);
                     }}
                   >
-                    <div className="text-sm font-semibold text-gray-900 mb-1">Shipping Address</div>
-                    <div className="text-sm text-gray-600">
-                      {selectedBulkCustomer.shippingAddress ||
-                        `${selectedBulkCustomer.shippingStreet1 || ""} ${selectedBulkCustomer.shippingStreet2 || ""} ${selectedBulkCustomer.shippingCity || ""} ${selectedBulkCustomer.shippingState || ""} ${selectedBulkCustomer.shippingZipCode || ""}`.trim() || "No shipping address"}
+                    <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
+                      Shipping Address
                     </div>
-                  </div>
+                    <div className="space-y-0.5 text-sm text-gray-700 leading-6">
+                      {formatAddressLines(selectedBulkCustomer.shippingAddress, [
+                        selectedBulkCustomer.shippingStreet1,
+                        selectedBulkCustomer.shippingStreet2,
+                        [selectedBulkCustomer.shippingCity, selectedBulkCustomer.shippingState, selectedBulkCustomer.shippingZipCode].filter(Boolean).join(" "),
+                        selectedBulkCustomer.shippingCountry,
+                      ]).map((line, idx) => (
+                        <div key={`shipping-line-${idx}`}>{line}</div>
+                      ))}
+                      {formatAddressLines(selectedBulkCustomer.shippingAddress, []).length === 0 && (
+                        <div className="text-gray-500 italic">No shipping address</div>
+                      )}
+                    </div>
+                  </button>
                 ) : null}
               </div>
             </div>
-            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
+
+            <div className="px-5 py-4 border-t border-gray-200 flex items-center justify-end">
               <button
-                className="px-4 py-2 rounded-md text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 cursor-pointer"
+                type="button"
+                className="px-4 py-2 rounded-md border border-gray-300 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50"
                 onClick={() => setIsAddressModalOpen(false)}
               >
                 Cancel
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Print Preview Modal */}
@@ -3393,7 +3894,7 @@ export default function Quotes() {
                       justifyContent: "center",
                       fontSize: "48px"
                     }}>
-                      ðŸ“–â˜€ï¸âœï¸
+                      📖☀️✏️
                     </div>
                     {/* Company Details */}
                     <div>
@@ -3469,7 +3970,7 @@ export default function Quotes() {
                         ))
                       ) : (
                         <tr>
-                          <td colSpan="5" style={{ padding: "24px", textAlign: "center", color: "#666", fontSize: "14px" }}>
+                          <td colSpan={5} style={{ padding: "24px", textAlign: "center", color: "#666", fontSize: "14px" }}>
                             No items added
                           </td>
                         </tr>
@@ -3533,177 +4034,348 @@ export default function Quotes() {
         )
       }
 
-      {/* Import Quotes Modal */}
       {
-        isImportModalOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000]" onClick={() => setIsImportModalOpen(false)}>
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
-              {/* Modal Header */}
-              <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-900">Import Quotes</h2>
+        isExportQuotesModalOpen && (
+          <div className="fixed inset-0 bg-black/40 z-[10050] flex items-start justify-center pt-8 sm:pt-10" onClick={closeExportQuotesModal}>
+            <div className="bg-white rounded-md shadow-2xl w-full max-w-[700px] mx-3 max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                <h3 className="text-[28px] font-medium text-gray-800">Export Quotes</h3>
                 <button
-                  onClick={() => setIsImportModalOpen(false)}
-                  className="text-red-500 hover:text-red-600 transition-colors"
+                  onClick={closeExportQuotesModal}
+                  className="w-7 h-7 flex items-center justify-center border border-blue-300 rounded-sm text-red-500 hover:bg-gray-50"
                 >
-                  <X size={24} />
+                  <X size={16} />
                 </button>
               </div>
 
-              {/* Modal Body */}
-              <div className="p-6">
-                <p className="text-sm text-gray-700 mb-6">
-                  You can import quotes into Taban Books from a .CSV or .TSV or .XLS file.
-                </p>
+              <div className="px-4 py-4">
+                <div className="bg-blue-50 text-slate-700 rounded-md px-3 py-3 text-sm mb-6">
+                  You can export your data from Zoho Billing in CSV, XLS or XLSX format.
+                </div>
+
+                <div className="space-y-5">
+                  <div>
+                    <label className="block text-red-500 text-sm mb-1">Module*</label>
+                    <select className="w-full sm:w-[320px] border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50" value={exportQuotesData.module} onChange={(e) => setExportQuotesData((p) => ({ ...p, module: e.target.value }))}>
+                      <option>Quotes</option>
+                    </select>
+                  </div>
+
+                  <div className="border-t border-gray-200 pt-4">
+                    <label className="block text-red-500 text-sm mb-1">Select Status*</label>
+                    <div className="relative w-full sm:w-[320px]">
+                      <button
+                        type="button"
+                        onClick={() => setIsExportStatusDropdownOpen((prev) => !prev)}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-left flex items-center justify-between bg-white"
+                      >
+                        <span>{exportQuotesData.status}</span>
+                        {isExportStatusDropdownOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </button>
+                      {isExportStatusDropdownOpen && (
+                        <div className="absolute z-[10060] mt-2 w-full bg-white border border-gray-300 rounded-md shadow-lg">
+                          <div className="p-2 border-b border-gray-200">
+                            <div className="relative">
+                              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                              <input
+                                type="text"
+                                placeholder="Search"
+                                value={exportStatusSearch}
+                                onChange={(e) => setExportStatusSearch(e.target.value)}
+                                className="w-full border border-gray-300 rounded-md pl-8 pr-2 py-1.5 text-sm"
+                              />
+                            </div>
+                          </div>
+                          <div className="max-h-56 overflow-y-auto py-1">
+                            {exportStatusOptions
+                              .filter((option) => option.toLowerCase().includes(exportStatusSearch.toLowerCase()))
+                              .map((option) => {
+                                const isSelected = exportQuotesData.status === option;
+                                return (
+                                  <button
+                                    key={option}
+                                    type="button"
+                                    onClick={() => {
+                                      setExportQuotesData((p) => ({ ...p, status: option }));
+                                      setIsExportStatusDropdownOpen(false);
+                                    }}
+                                    className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between ${isSelected ? "bg-[#156372] text-white" : "text-gray-700 hover:bg-[#156372] hover:text-white"
+                                      }`}
+                                  >
+                                    <span>{option}</span>
+                                    {isSelected ? <Check size={14} /> : null}
+                                  </button>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-gray-700 text-sm mb-1">Date Range</label>
+                    <div className="flex items-center gap-2">
+                      <input type="text" placeholder="dd MMM yyyy" className="w-full sm:w-[180px] border border-gray-300 rounded-md px-3 py-2 text-sm" value={exportQuotesData.dateFrom} onChange={(e) => setExportQuotesData((p) => ({ ...p, dateFrom: e.target.value }))} />
+                      <span className="text-gray-500">-</span>
+                      <input type="text" placeholder="dd MMM yyyy" className="w-full sm:w-[180px] border border-gray-300 rounded-md px-3 py-2 text-sm" value={exportQuotesData.dateTo} onChange={(e) => setExportQuotesData((p) => ({ ...p, dateTo: e.target.value }))} />
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-200 pt-4">
+                    <label className="block text-gray-700 text-sm mb-1">Export Template</label>
+                    <select className="w-full sm:w-[320px] border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-500" value={exportQuotesData.exportTemplate} onChange={(e) => setExportQuotesData((p) => ({ ...p, exportTemplate: e.target.value }))}>
+                      <option value="">Select an Export Template</option>
+                    </select>
+                  </div>
+
+                  <div className="border-t border-gray-200 pt-4">
+                    <label className="block text-red-500 text-sm mb-1">Decimal Format*</label>
+                    <select className="w-full sm:w-[320px] border border-gray-300 rounded-md px-3 py-2 text-sm" value={exportQuotesData.decimalFormat} onChange={(e) => setExportQuotesData((p) => ({ ...p, decimalFormat: e.target.value }))}>
+                      <option>1234567.89</option>
+                      <option>1234567,89</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-red-500 text-sm mb-2">Export File Format*</label>
+                    <div className="space-y-2 text-sm text-gray-700">
+                      <label className="flex items-center gap-2">
+                        <input type="radio" name="quotes_export_format" checked={exportQuotesData.fileFormat === "CSV"} onChange={() => setExportQuotesData((p) => ({ ...p, fileFormat: "CSV" }))} />
+                        CSV (Comma Separated Value)
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input type="radio" name="quotes_export_format" checked={exportQuotesData.fileFormat === "XLS"} onChange={() => setExportQuotesData((p) => ({ ...p, fileFormat: "XLS" }))} />
+                        XLS (Microsoft Excel 1997-2004 Compatible)
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input type="radio" name="quotes_export_format" checked={exportQuotesData.fileFormat === "XLSX"} onChange={() => setExportQuotesData((p) => ({ ...p, fileFormat: "XLSX" }))} />
+                        XLSX (Microsoft Excel)
+                      </label>
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" checked={exportQuotesData.includeSensitive} onChange={(e) => setExportQuotesData((p) => ({ ...p, includeSensitive: e.target.checked }))} />
+                    Include Sensitive Personally Identifiable Information (PII) while exporting.
+                  </label>
+
+                  <div>
+                    <label className="block text-gray-700 text-sm mb-1">File Protection Password</label>
+                    <input type="password" className="w-full sm:w-[320px] border border-gray-300 rounded-md px-3 py-2 text-sm" value={exportQuotesData.password} onChange={(e) => setExportQuotesData((p) => ({ ...p, password: e.target.value }))} />
+                  </div>
+                </div>
               </div>
 
-              {/* Modal Footer */}
-              <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200">
+              <div className="flex items-center gap-2 px-4 py-4 border-t border-gray-200">
+                <button onClick={handleConfirmExportQuotes} className="px-5 py-2 bg-[#22c55e] text-white rounded-md text-sm font-semibold hover:bg-[#16a34a]">Export</button>
+                <button onClick={closeExportQuotesModal} className="px-5 py-2 border border-gray-300 text-gray-700 rounded-md text-sm">Cancel</button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+      {
+        isExportCurrentViewModalOpen && (
+          <div className="fixed inset-0 bg-black/40 z-[10055] flex items-start justify-center pt-8 sm:pt-10" onClick={closeExportCurrentViewModal}>
+            <div className="bg-white rounded-md shadow-2xl w-full max-w-[640px] mx-3" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                <h3 className="text-[24px] font-medium text-gray-800">Export Current View</h3>
                 <button
-                  onClick={() => setIsImportModalOpen(false)}
-                  className="px-6 py-2 bg-white border border-gray-200 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
+                  onClick={closeExportCurrentViewModal}
+                  className="w-7 h-7 flex items-center justify-center border border-blue-300 rounded-sm text-red-500 hover:bg-gray-50"
                 >
-                  Cancel
+                  <X size={16} />
                 </button>
-                <button
-                  onClick={() => {
-                    setIsImportModalOpen(false);
-                    navigate("/sales/quotes/import");
-                  }}
-                  className="px-6 py-2 bg-[#156372] text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
-                >
-                  Continue
-                </button>
+              </div>
+
+              <div className="px-4 py-4 space-y-4">
+                <div className="bg-blue-50 text-slate-700 rounded-md px-3 py-3 text-sm">
+                  Only the current view with visible columns will be exported.
+                </div>
+
+                <div>
+                  <label className="block text-red-500 text-sm mb-1">Decimal Format*</label>
+                  <select
+                    className="w-full sm:w-[320px] border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    value={exportCurrentViewData.decimalFormat}
+                    onChange={(e) => setExportCurrentViewData((p) => ({ ...p, decimalFormat: e.target.value }))}
+                  >
+                    <option>1234567.89</option>
+                    <option>1234567,89</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-red-500 text-sm mb-2">Export File Format*</label>
+                  <div className="space-y-2 text-sm text-gray-700">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="quotes_export_current_format"
+                        checked={exportCurrentViewData.fileFormat === "XLSX"}
+                        onChange={() => setExportCurrentViewData((p) => ({ ...p, fileFormat: "XLSX" }))}
+                      />
+                      XLSX (Microsoft Excel)
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="quotes_export_current_format"
+                        checked={exportCurrentViewData.fileFormat === "CSV"}
+                        onChange={() => setExportCurrentViewData((p) => ({ ...p, fileFormat: "CSV" }))}
+                      />
+                      CSV (Comma Separated Value)
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 px-4 py-4 border-t border-gray-200">
+                <button onClick={handleConfirmExportCurrentView} className="px-5 py-2 bg-[#22c55e] text-white rounded-md text-sm font-semibold hover:bg-[#16a34a]">Export</button>
+                <button onClick={closeExportCurrentViewModal} className="px-5 py-2 border border-gray-300 text-gray-700 rounded-md text-sm">Cancel</button>
               </div>
             </div>
           </div>
         )
       }
       {/* Customize Columns Modal */}
-      {isCustomizeColumnsModalOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[3000]">
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-[500px] overflow-hidden">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-[#f9fafb]">
-              <div className="flex items-center gap-3">
-                <SlidersHorizontal size={18} className="text-gray-500" />
-                <h3 className="text-[15px] font-semibold text-gray-800">Customize Columns</h3>
+      {
+        isCustomizeColumnsModalOpen && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] flex items-start justify-center z-[3000] pt-[10vh] overflow-y-auto px-4 py-6" onClick={() => setIsCustomizeColumnsModalOpen(false)}>
+            <div className="bg-white rounded-lg shadow-2xl w-full max-w-[500px] overflow-hidden" onClick={e => e.stopPropagation()}>
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-[#f9fafb]">
+                <div className="flex items-center gap-3">
+                  <SlidersHorizontal size={18} className="text-gray-500" />
+                  <h3 className="text-[15px] font-semibold text-gray-800">Customize Columns</h3>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className="text-xs text-gray-500 font-medium">{tempVisibleColumns.length} of {allColumnOptions.length} Selected</span>
+                  <button
+                    onClick={() => setIsCustomizeColumnsModalOpen(false)}
+                    className="w-7 h-7 flex items-center justify-center border border-blue-200 rounded shadow-sm hover:bg-gray-50 transition-colors group"
+                  >
+                    <X size={16} className="text-red-500 group-hover:text-red-600" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-4">
-                <span className="text-xs text-gray-500 font-medium">{tempVisibleColumns.length} of {allColumnOptions.length} Selected</span>
+
+              {/* Search Bar */}
+              <div className="px-6 py-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <input
+                    type="text"
+                    placeholder="Search"
+                    value={columnSearchTerm}
+                    onChange={(e) => setColumnSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Columns List */}
+              <div className="px-3 pb-6 max-h-[400px] overflow-y-auto">
+                {tempColumnOrder
+                  .map((key) => allColumnOptions.find((col) => col.key === key))
+                  .filter((col): col is { key: string; label: string; locked: boolean } => Boolean(col))
+                  .filter((col) => col.label.toLowerCase().includes(columnSearchTerm.toLowerCase()))
+                  .map((col) => {
+                    const isChecked = tempVisibleColumns.includes(col.key);
+                    return (
+                      <div
+                        key={col.key}
+                        draggable={!columnSearchTerm.trim()}
+                        onDragStart={() => setDraggedColumnKey(col.key)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={() => handleColumnDrop(col.key)}
+                        onDragEnd={() => setDraggedColumnKey(null)}
+                        className="flex items-center gap-3 px-4 py-2 mb-2 bg-gray-50 hover:bg-gray-100 group cursor-pointer transition-colors rounded-md"
+                        onClick={() => {
+                          if (col.locked) return;
+                          if (isChecked) {
+                            setTempVisibleColumns(prev => prev.filter(k => k !== col.key));
+                          } else {
+                            setTempVisibleColumns(prev => [...prev, col.key]);
+                          }
+                        }}
+                      >
+                        <GripVertical size={14} className="text-gray-400 cursor-grab active:cursor-grabbing" />
+                        <div className="flex-1 flex items-center gap-3">
+                          {col.locked ? (
+                            <div className="w-4 h-4 flex items-center justify-center">
+                              <Lock size={12} className="text-gray-500" />
+                            </div>
+                          ) : (
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => { }} // Handled by div click
+                              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 pointer-events-none"
+                            />
+                          )}
+                          <span className={`text-[13.5px] ${isChecked ? 'text-gray-900 font-medium' : 'text-gray-600'}`}>{col.label}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-start gap-3 px-6 py-4 border-t border-gray-100 bg-[#f9fafb]">
+                <button
+                  onClick={() => {
+                    const normalizedVisible = ensureLockedColumns(tempVisibleColumns)
+                      .filter((key) => allColumnKeys.includes(key));
+                    setVisibleColumns(tempColumnOrder.filter((key) => normalizedVisible.includes(key)));
+                    setIsCustomizeColumnsModalOpen(false);
+                  }}
+                  className="px-6 py-2 bg-blue-500 text-white rounded text-[13px] font-medium hover:bg-blue-600 transition-colors shadow-sm"
+                >
+                  Save
+                </button>
                 <button
                   onClick={() => setIsCustomizeColumnsModalOpen(false)}
-                  className="w-7 h-7 flex items-center justify-center border border-blue-200 rounded shadow-sm hover:bg-gray-50 transition-colors group"
+                  className="px-6 py-2 bg-white border border-gray-200 text-gray-700 rounded text-[13px] font-medium hover:bg-gray-50 transition-colors"
                 >
-                  <X size={16} className="text-red-500 group-hover:text-red-600" />
+                  Cancel
                 </button>
               </div>
             </div>
-
-            {/* Search Bar */}
-            <div className="px-6 py-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                <input
-                  type="text"
-                  placeholder="Search"
-                  value={columnSearchTerm}
-                  onChange={(e) => setColumnSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-            </div>
-
-            {/* Columns List */}
-            <div className="px-2 pb-6 max-h-[400px] overflow-y-auto">
-              {allColumnOptions
-                .filter(col => col.label.toLowerCase().includes(columnSearchTerm.toLowerCase()))
-                .map((col) => {
-                  const isChecked = tempVisibleColumns.includes(col.key);
-                  return (
-                    <div
-                      key={col.key}
-                      className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 group cursor-pointer transition-colors"
-                      onClick={() => {
-                        if (col.locked) return;
-                        if (isChecked) {
-                          setTempVisibleColumns(prev => prev.filter(k => k !== col.key));
-                        } else {
-                          setTempVisibleColumns(prev => [...prev, col.key]);
-                        }
-                      }}
-                    >
-                      <GripVertical size={14} className="text-gray-300 cursor-grab active:cursor-grabbing" />
-                      <div className="flex-1 flex items-center gap-3">
-                        {col.locked ? (
-                          <div className="w-4 h-4 flex items-center justify-center">
-                            <Lock size={12} className="text-gray-500" />
-                          </div>
-                        ) : (
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => { }} // Handled by div click
-                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 pointer-events-none"
-                          />
-                        )}
-                        <span className={`text-[13.5px] ${isChecked ? 'text-gray-900 font-medium' : 'text-gray-600'}`}>{col.label}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="flex items-center justify-start gap-3 px-6 py-4 border-t border-gray-100 bg-[#f9fafb]">
-              <button
-                onClick={() => {
-                  setVisibleColumns([...tempVisibleColumns]);
-                  setIsCustomizeColumnsModalOpen(false);
-                }}
-                className="px-6 py-2 bg-blue-500 text-white rounded text-[13px] font-medium hover:bg-blue-600 transition-colors shadow-sm"
-              >
-                Save
-              </button>
-              <button
-                onClick={() => setIsCustomizeColumnsModalOpen(false)}
-                className="px-6 py-2 bg-white border border-gray-200 text-gray-700 rounded text-[13px] font-medium hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )
+      }
       {/* Header Menu Overlay - Rendered outside table to avoid clipping */}
-      {isHeaderMenuOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-[1000]"
-            onClick={() => setIsHeaderMenuOpen(false)}
-          ></div>
-          <div
-            ref={headerMenuMenuRef}
-            className="fixed bg-white border border-gray-200 rounded-md shadow-xl z-[1001] py-1 w-48 animate-in fade-in zoom-in-95 duration-100"
-            style={{
-              top: `${headerMenuPosition.top}px`,
-              left: `${headerMenuPosition.left}px`
-            }}
-          >
+      {
+        isHeaderMenuOpen && (
+          <>
             <div
-              className="px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer flex items-center gap-2"
-              onClick={() => {
-                setIsCustomizeColumnsModalOpen(true);
-                setTempVisibleColumns([...visibleColumns]);
-                setIsHeaderMenuOpen(false);
+              className="fixed inset-0 z-[1000]"
+              onClick={() => setIsHeaderMenuOpen(false)}
+            ></div>
+            <div
+              ref={headerMenuMenuRef}
+              className="fixed bg-white border border-gray-200 rounded-md shadow-xl z-[1001] py-1 w-48 animate-in fade-in zoom-in-95 duration-100"
+              style={{
+                top: `${headerMenuPosition.top}px`,
+                left: `${headerMenuPosition.left}px`
               }}
             >
-              <SlidersHorizontal size={14} />
-              <span>Customize Columns</span>
+              <div
+                className="px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer flex items-center gap-2"
+                onClick={() => {
+                  handleCustomizeColumnsOpen();
+                  setIsHeaderMenuOpen(false);
+                }}
+              >
+                <SlidersHorizontal size={14} />
+                <span>Customize Columns</span>
+              </div>
             </div>
-          </div>
-        </>
-      )}
+          </>
+        )
+      }
     </div >
   );
 }
-

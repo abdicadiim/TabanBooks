@@ -1,9 +1,9 @@
 ﻿import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, Download, ChevronDown, ChevronUp, HelpCircle, Search, Check, Lightbulb, LayoutGrid, HardDrive, Box, Square, Cloud, ChevronUp as ChevronUpIcon, Users, FileText, Folder, Building2, Edit, ChevronLeft, Info } from "lucide-react";
-import * as XLSX from "xlsx";
 import { getAllDocuments } from "../../../../utils/documentStorage";
 import { saveQuote, getQuotes, getCustomers, updateQuote } from "../../salesModel";
+import { reportingTagsAPI } from "../../../../services/api";
 
 export default function ImportQuotes() {
   const navigate = useNavigate();
@@ -19,10 +19,16 @@ export default function ImportQuotes() {
   const [documentSearch, setDocumentSearch] = useState("");
   const [documents, setDocuments] = useState<any[]>([]);
   const [selectedDocuments, setSelectedDocuments] = useState<any[]>([]);
-  const [selectedCloudProvider, setSelectedCloudProvider] = useState("taban");
+  const [selectedCloudProvider, setSelectedCloudProvider] = useState("zoho");
   const [currentStep, setCurrentStep] = useState("configure"); // "configure", "mapFields", "preview"
   const [fieldMappings, setFieldMappings] = useState<Record<string, string>>({});
   const [decimalFormat, setDecimalFormat] = useState("1234567.89");
+  const [dateFormat, setDateFormat] = useState("yyyy-MM-dd");
+  const [isDataFormatsModalOpen, setIsDataFormatsModalOpen] = useState(false);
+  const [tempDateFormat, setTempDateFormat] = useState("yyyy-MM-dd");
+  const [tempDecimalFormat, setTempDecimalFormat] = useState("1234567.89");
+  const [isDateFormatAtFieldLevel, setIsDateFormatAtFieldLevel] = useState(true);
+  const [isDecimalFormatAtFieldLevel, setIsDecimalFormatAtFieldLevel] = useState(false);
   const [previewData, setPreviewData] = useState({
     readyToImport: 0,
     skippedRecords: 0,
@@ -32,6 +38,7 @@ export default function ImportQuotes() {
   const [showSkippedDetails, setShowSkippedDetails] = useState(false);
   const [showUnmappedDetails, setShowUnmappedDetails] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [autoGenerateQuoteNumbers, setAutoGenerateQuoteNumbers] = useState(false);
   const [importedFileHeaders, setImportedFileHeaders] = useState([
     "Quote Number",
     "Quote Date",
@@ -47,6 +54,10 @@ export default function ImportQuotes() {
     "Rate",
     "Amount"
   ]);
+  const [openMappingDropdownField, setOpenMappingDropdownField] = useState<string | null>(null);
+  const [mappingSearch, setMappingSearch] = useState("");
+  const [entityLevelTagFields, setEntityLevelTagFields] = useState<Array<{ name: string; required: boolean }>>([]);
+  const [itemLevelTagFields, setItemLevelTagFields] = useState<Array<{ name: string; required: boolean }>>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const encodingDropdownRef = useRef<HTMLDivElement | null>(null);
   const fileSourceDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -63,17 +74,21 @@ export default function ImportQuotes() {
         if (fileSourceDropdownRef.current && !fileSourceDropdownRef.current.contains(target)) {
           setIsFileSourceDropdownOpen(false);
         }
+        if ((target as HTMLElement).closest('[data-mapping-dropdown="true"]') === null) {
+          setOpenMappingDropdownField(null);
+          setMappingSearch("");
+        }
       }
     };
 
-    if (isEncodingDropdownOpen || isFileSourceDropdownOpen) {
+    if (isEncodingDropdownOpen || isFileSourceDropdownOpen || openMappingDropdownField) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isEncodingDropdownOpen, isFileSourceDropdownOpen]);
+  }, [isEncodingDropdownOpen, isFileSourceDropdownOpen, openMappingDropdownField]);
 
   // Listen for document updates
   useEffect(() => {
@@ -131,10 +146,203 @@ export default function ImportQuotes() {
     "ISO-8859-9 (Turkish)",
     "GB2312 (Simplified Chinese)",
     "Big5 (Traditional Chinese)",
-    "Shift_JIS (Japanese)",
-    "Windows-1252",
-    "ASCII"
+    "Shift_JIS (Japanese)"
   ];
+  const baseMapFieldsList = [
+    "Adjustment",
+    "Adjustment Description",
+    "Currency Code",
+    "Customer Name",
+    "Customer Number",
+    "Discount",
+    "Discount Amount",
+    "Discount Type",
+    "Entity Discount Amount",
+    "Entity Discount Percent",
+    "Exchange Rate",
+    "Expiry Date",
+    "Is Digital Service",
+    "Is Discount Before Tax",
+    "Is Tracked For MOSS",
+    "Item Desc",
+    "Item Name",
+    "Item Price",
+    "Item Tax1",
+    "Item Tax1 %",
+    "Item Tax1 Type",
+    "Line Item Type",
+    "Notes",
+    "Coupon Code",
+    "Item Code",
+    "Project ID",
+    "Project Name",
+    "PurchaseOrder",
+    "Quantity",
+    "Quote Date",
+    "Quote Number",
+    "Quote Status",
+    "Sales person",
+    "Shipping Charge",
+    "Shipping Charge Tax Name",
+    "Shipping Charge Tax Type",
+    "Shipping Charge Tax %",
+    "SKU",
+    "Template Name",
+    "Terms & Conditions",
+    "Usage unit"
+  ];
+  const mapFieldsList = Array.from(
+    new Set([
+      ...baseMapFieldsList,
+      ...entityLevelTagFields.map((tag) => tag.name),
+      ...itemLevelTagFields.map((tag) => tag.name),
+    ])
+  );
+  const mapFieldSections = [
+    {
+      title: "Quote Details",
+      fields: [
+        "Quote Number",
+        "Quote Date",
+        "Expiry Date",
+        "Quote Status",
+        "Notes",
+        "Terms & Conditions",
+        "Project ID",
+        "Project Name",
+        "PurchaseOrder",
+        "Template Name",
+        "Sales person",
+        "Currency Code",
+        "Exchange Rate",
+        "Adjustment",
+        "Adjustment Description",
+        "Discount Type",
+        "Is Discount Before Tax",
+        "Entity Discount Percent",
+        "Entity Discount Amount",
+        "Is Tracked For MOSS",
+        "Is Digital Service"
+      ]
+    },
+    {
+      title: "Contact Details",
+      fields: ["Customer Name", "Customer Number"]
+    },
+    {
+      title: "Shipping Charge Details",
+      fields: [
+        "Shipping Charge",
+        "Shipping Charge Tax Name",
+        "Shipping Charge Tax Type",
+        "Shipping Charge Tax %"
+      ]
+    },
+    {
+      title: "Item Details",
+      fields: [
+        "Item Price",
+        "Usage unit",
+        "Item Desc",
+        "Line Item Type",
+        "Item Code",
+        "Item Name",
+        "SKU",
+        "Quantity",
+        "Discount",
+        "Discount Amount",
+        "Coupon Code",
+        "Item Tax1",
+        "Item Tax1 Type",
+        "Item Tax1 %",
+        ...itemLevelTagFields.map((tag) => tag.name)
+      ]
+    },
+    {
+      title: "Entity Level Tags",
+      fields: entityLevelTagFields.map((tag) => tag.name)
+    }
+  ].filter((section) => section.fields.length > 0);
+  const requiredTagFieldNames = [
+    ...entityLevelTagFields.filter((tag) => tag.required).map((tag) => tag.name),
+    ...itemLevelTagFields.filter((tag) => tag.required).map((tag) => tag.name),
+  ];
+  const requiredMapFields = ["Quote Number", "Quote Date", "Customer Name"];
+  const normalizeFieldKey = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const findBestHeaderMatch = (field: string, headers: string[]) => {
+    const normalizedField = normalizeFieldKey(field);
+    return (
+      headers.find((header) => normalizeFieldKey(header) === normalizedField) ||
+      headers.find((header) => normalizeFieldKey(header).includes(normalizedField)) ||
+      headers.find((header) => normalizedField.includes(normalizeFieldKey(header))) ||
+      ""
+    );
+  };
+  const normalizeReportingTagAppliesTo = (tag: any): string[] => {
+    const direct = Array.isArray(tag?.appliesTo) ? tag.appliesTo : [];
+    const fromModulesObject = tag?.modules && typeof tag.modules === "object"
+      ? Object.keys(tag.modules).filter((key) => Boolean(tag.modules[key]))
+      : [];
+    const fromModuleSettings = tag?.moduleSettings && typeof tag.moduleSettings === "object"
+      ? Object.keys(tag.moduleSettings).filter((key) => Boolean(tag.moduleSettings[key]))
+      : [];
+    const fromAssociations = Array.isArray(tag?.associations) ? tag.associations : [];
+    const fromModulesList = Array.isArray(tag?.modulesList) ? tag.modulesList : [];
+
+    return [...direct, ...fromModulesObject, ...fromModuleSettings, ...fromAssociations, ...fromModulesList]
+      .map((value: any) => String(value || "").toLowerCase().trim())
+      .filter(Boolean);
+  };
+
+  const loadReportingTagsForImport = async () => {
+    try {
+      const response = await reportingTagsAPI.getAll();
+      const rows = Array.isArray(response) ? response : (response?.data || []);
+      if (!Array.isArray(rows)) {
+        setEntityLevelTagFields([]);
+        setItemLevelTagFields([]);
+        return;
+      }
+
+      const activeRows = rows.filter((tag: any) => {
+        const isInactive = String(tag?.status || "").toLowerCase() === "inactive";
+        const explicitlyInactive = tag?.isActive === false;
+        return !isInactive && !explicitlyInactive;
+      });
+
+      const quoteScoped = activeRows.filter((tag: any) => {
+        const appliesTo = normalizeReportingTagAppliesTo(tag);
+        return appliesTo.some((entry) => entry.includes("quote") || entry.includes("sales"));
+      });
+      const tagsToUse = quoteScoped.length > 0 ? quoteScoped : activeRows;
+
+      const entityTags: Array<{ name: string; required: boolean }> = [];
+      const itemTags: Array<{ name: string; required: boolean }> = [];
+
+      tagsToUse.forEach((tag: any) => {
+        const name = String(tag?.name || tag?.displayName || "").trim();
+        if (!name) return;
+        const required = Boolean(tag?.isMandatory);
+        const level = String(tag?.moduleLevel?.sales || tag?.level || "transaction").toLowerCase();
+        if (level.includes("line")) {
+          itemTags.push({ name, required });
+        } else {
+          entityTags.push({ name, required });
+        }
+      });
+
+      setEntityLevelTagFields(entityTags);
+      setItemLevelTagFields(itemTags);
+    } catch (error) {
+      console.error("Error loading reporting tags for import mapping:", error);
+      setEntityLevelTagFields([]);
+      setItemLevelTagFields([]);
+    }
+  };
+
+  useEffect(() => {
+    loadReportingTagsForImport();
+  }, []);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -248,6 +456,14 @@ export default function ImportQuotes() {
         const { headers } = await parseImportFile(selectedFile as File);
         if (headers.length > 0) {
           setImportedFileHeaders(headers);
+          const autoMappedFields: Record<string, string> = {};
+          mapFieldsList.forEach((field) => {
+            const matchedHeader = findBestHeaderMatch(field, headers);
+            if (matchedHeader) {
+              autoMappedFields[field] = matchedHeader;
+            }
+          });
+          setFieldMappings(autoMappedFields);
         }
       } catch (error) {
         console.error("Error reading headers from import file:", error);
@@ -260,10 +476,10 @@ export default function ImportQuotes() {
           const { headers, rows } = await parseImportFile(selectedFile as File);
 
           // Calculate unmapped fields count
-          const requiredFields = ["Quote Number", "Customer Name", "Quote Date"];
+          const requiredFields = [...requiredMapFields, ...requiredTagFieldNames];
           let unmappedCount = 0;
           requiredFields.forEach(field => {
-            if (!fieldMappings[field]) {
+            if (!(fieldMappings[field] || findBestHeaderMatch(field, headers))) {
               unmappedCount++;
             }
           });
@@ -292,64 +508,203 @@ export default function ImportQuotes() {
     }
   };
 
+  const openDataFormatsModal = () => {
+    setTempDateFormat(dateFormat);
+    setTempDecimalFormat(decimalFormat);
+    setIsDataFormatsModalOpen(true);
+  };
+
+  const handleSaveDataFormats = () => {
+    setDateFormat(tempDateFormat);
+    setDecimalFormat(tempDecimalFormat);
+    setIsDataFormatsModalOpen(false);
+  };
+
   const filteredEncodingOptions = encodingOptions.filter(option =>
     option.toLowerCase().includes(encodingSearch.toLowerCase())
   );
+  const mappingDropdownOptions = Array.from(new Set([...mapFieldsList, ...importedFileHeaders]));
+  const renderMappingSection = (title: string, fields: string[]) => (
+    <div className="mb-8" key={title}>
+      <h3 className="text-xl font-semibold text-gray-900 mb-4">{title}</h3>
+      <div className="grid grid-cols-2 bg-gray-50 border-y border-gray-200">
+        <div className="px-4 py-2 text-[11px] tracking-wide font-semibold text-gray-600">ZOHO BILLING FIELD</div>
+        <div className="px-4 py-2 text-[11px] tracking-wide font-semibold text-gray-600">IMPORTED FILE HEADERS</div>
+      </div>
+      <div className="space-y-3 pt-4">
+        {fields.map((field) => {
+          const selectedValue = fieldMappings[field] || findBestHeaderMatch(field, importedFileHeaders) || "";
+          const filteredOptions = mappingDropdownOptions.filter((option) =>
+            option.toLowerCase().includes(mappingSearch.toLowerCase())
+          );
+          const isRequired = requiredMapFields.includes(field) || requiredTagFieldNames.includes(field);
+
+          return (
+            <div key={field} className="grid grid-cols-2 gap-6 items-start">
+              <div className="text-sm font-medium text-gray-700 pt-2.5">
+                {field}
+                {isRequired && <span className="text-red-500 ml-1">*</span>}
+              </div>
+              <div className="relative" data-mapping-dropdown="true">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (openMappingDropdownField === field) {
+                      setOpenMappingDropdownField(null);
+                      setMappingSearch("");
+                    } else {
+                      setOpenMappingDropdownField(field);
+                      setMappingSearch("");
+                    }
+                  }}
+                  className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-md bg-white text-sm text-gray-700 hover:border-[#156372]"
+                >
+                  <span>{selectedValue || "Select"}</span>
+                  <div className="flex items-center gap-2">
+                    {selectedValue && (
+                      <X
+                        size={14}
+                        className="text-red-500 hover:text-red-700"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setFieldMappings((prev) => ({ ...prev, [field]: "" }));
+                        }}
+                      />
+                    )}
+                    <ChevronDown size={14} className="text-gray-500" />
+                  </div>
+                </button>
+                {openMappingDropdownField === field && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md shadow-xl z-40 overflow-hidden">
+                    <div className="p-2 border-b border-gray-200">
+                      <div className="flex items-center gap-2 border border-[#156372] rounded-md px-2 py-1.5">
+                        <Search size={14} className="text-gray-400" />
+                        <input
+                          type="text"
+                          value={mappingSearch}
+                          onChange={(e) => setMappingSearch(e.target.value)}
+                          placeholder="Search"
+                          className="w-full text-sm bg-transparent focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-52 overflow-y-auto">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFieldMappings((prev) => ({ ...prev, [field]: "" }));
+                          setOpenMappingDropdownField(null);
+                          setMappingSearch("");
+                        }}
+                        className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between transition-colors ${
+                          !selectedValue ? "bg-[#156372] text-white" : "text-gray-700 hover:bg-[#156372] hover:text-white"
+                        }`}
+                      >
+                        <span>Select</span>
+                        {!selectedValue ? <Check size={14} /> : null}
+                      </button>
+                      {filteredOptions.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => {
+                            setFieldMappings((prev) => ({ ...prev, [field]: option }));
+                            setOpenMappingDropdownField(null);
+                            setMappingSearch("");
+                          }}
+                          className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between transition-colors ${
+                            selectedValue === option ? "bg-[#156372] text-white" : "text-gray-700 hover:bg-[#156372] hover:text-white"
+                          }`}
+                        >
+                          <span>{option}</span>
+                          {selectedValue === option ? <Check size={14} /> : null}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   const sampleHeaders = [
-    "Quote Number",
     "Quote Date",
+    "Quote Number",
     "Expiry Date",
     "Quote Status",
-    "Reference Number",
     "Customer Name",
+    "Is Tracked For MOSS",
     "Project Name",
-    "Salesperson",
-    "Subject",
+    "Project ID",
+    "PurchaseOrder",
+    "Template Name",
     "Currency Code",
+    "Exchange Rate",
     "Item Name",
-    "Item Description",
+    "SKU",
+    "Item Desc",
     "Quantity",
-    "Unit",
-    "Rate",
-    "Tax Name",
-    "Tax Percentage",
-    "Discount",
-    "Discount Type",
-    "Shipping Charges",
-    "Adjustment",
-    "Amount",
-    "Total",
+    "Item Price",
     "Notes",
-    "Terms & Conditions"
+    "Terms & Conditions",
+    "Sales person",
+    "Shipping Charge",
+    "Adjustment",
+    "Adjustment Description",
+    "Discount Type",
+    "Is Discount Before Tax",
+    "Entity Discount Percent",
+    "Entity Discount Amount",
+    "Usage unit",
+    "Discount",
+    "Discount Amount",
+    "Item Tax1",
+    "Item Tax1 Type",
+    "Item Tax1 %",
+    "Is Digital Service"
   ];
 
   const sampleRow = [
-    "QT-000001",
-    "2026-02-11",
-    "2026-02-25",
-    "sent",
-    "REF-001",
-    "Abduladim Abduladim",
-    "Website Revamp",
-    "Mahir",
-    "Sample quote for imported data",
-    "AMD",
-    "camera",
-    "camera",
+    "2013-07-20",
+    "QT-1",
+    "2013-07-25",
+    "Sent",
+    "Flashter Inc.",
+    "",
+    "",
+    "",
+    "",
+    "Classic",
+    "USD",
     "1",
-    "pcs",
-    "10.00",
-    "VAT",
+    "Samsung Galaxy S10 Plus Hard Case",
+    "SAMHARD10",
+    "Metal Black, Matt finish",
+    "1",
     "5",
-    "0",
-    "percent",
-    "0",
-    "0",
-    "10.00",
-    "10.50",
     "Looking forward for your business.",
-    "Standard rate and terms apply."
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "Standard Rate",
+    "ItemAmount",
+    "5",
+    ""
   ];
 
   const escapeCsvValue = (value: string) => `"${String(value ?? "").replace(/"/g, '""')}"`;
@@ -485,6 +840,7 @@ export default function ImportQuotes() {
   };
 
   const parseSpreadsheetFile = async (file: File): Promise<{ headers: string[]; rows: Record<string, string>[] }> => {
+    const XLSX = await import("xlsx");
     const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (ev: ProgressEvent<FileReader>) => resolve(ev.target?.result as ArrayBuffer);
@@ -652,7 +1008,7 @@ export default function ImportQuotes() {
           // Get item details if available
           const itemName = getValue("Item Name");
           const quantity = getValue("Quantity");
-          const rate = getValue("Rate");
+          const rate = getValue("Item Price") || getValue("Rate");
           const amount = getValue("Amount");
 
           const items = [];
@@ -747,7 +1103,7 @@ export default function ImportQuotes() {
         {/* Header */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6 p-6">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className="text-xl font-semibold text-gray-900">
               {currentStep === "configure" ? "Quotes - Select File" : currentStep === "mapFields" ? "Map Fields" : "Preview"}
             </h1>
             <button className="p-2 hover:bg-gray-100 rounded-lg text-red-500 hover:text-red-600 transition-colors" onClick={handleClose}>
@@ -782,247 +1138,136 @@ export default function ImportQuotes() {
 
         {currentStep === "configure" && (
           <>
-            {/* File Upload Area */}
-            <div
-              className="bg-white rounded-xl shadow-sm border-2 border-dashed border-gray-300 p-12 text-center mb-6 hover:border-blue-500 transition-colors"
-              ref={dropAreaRef}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-            >
-              <Download size={48} className="text-gray-400 mx-auto mb-4" />
-              <p className="text-lg font-semibold text-gray-700 mb-4">Drag and drop file to import</p>
-              <div className="relative inline-block" ref={fileSourceDropdownRef}>
-                <button
-                  className="px-6 py-3 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-2 mx-auto"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsFileSourceDropdownOpen(!isFileSourceDropdownOpen);
-                  }}
-                >
-                  Choose File
-                  <ChevronDown size={16} />
-                </button>
-                {isFileSourceDropdownOpen && (
-                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[200px]">
-                    <div
-                      className="px-4 py-3 text-sm text-gray-700 cursor-pointer hover:bg-blue-600 hover:text-white transition-colors"
-                      onClick={handleAttachFromDesktop}
-                    >
-                      Attach From Desktop
-                    </div>
-                    <div
-                      className="px-4 py-3 text-sm text-gray-700 cursor-pointer hover:bg-blue-600 hover:text-white transition-colors"
-                      onClick={handleAttachFromCloud}
-                    >
-                      Attach From Cloud
-                    </div>
-                    <div
-                      className="px-4 py-3 text-sm text-gray-700 cursor-pointer hover:bg-blue-600 hover:text-white transition-colors"
-                      onClick={handleAttachFromDocuments}
-                    >
-                      Attach From Documents
-                    </div>
-                  </div>
-                )}
-              </div>
-              {selectedFile && (
-                <p className="mt-4 text-sm font-medium text-green-600">
-                  Selected: {selectedFile.name}
-                </p>
-              )}
-              <p className="mt-4 text-xs text-gray-500">
-                Maximum File Size: 25 MB â€¢ File Format: CSV or TSV or XLS
-              </p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,.tsv,.xls,.xlsx"
-                onChange={handleFileSelect}
-                style={{ display: "none" }}
-              />
-            </div>
-
-            {/* Sample File Links */}
-            <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 mb-6">
-              <p className="text-sm text-gray-700">
-                Download a{" "}
-                <a
-                  href="#"
-                  onClick={handleDownloadSampleCsv}
-                  className="text-blue-600 hover:text-blue-700 hover:underline font-semibold"
-                >
-                  sample csv file
-                </a>
-                {" "}or{" "}
-                <a
-                  href="#"
-                  onClick={handleDownloadSampleXls}
-                  className="text-blue-600 hover:text-blue-700 hover:underline font-semibold"
-                >
-                  sample xls file
-                </a>
-                {" "}and compare it to your import file to ensure you have the file perfect for the import.
-              </p>
-            </div>
-
-            {/* Duplicate Handling Section */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-              <div className="flex items-center gap-2 mb-4">
-                <label className="text-sm font-semibold text-gray-700">Duplicate Handling:</label>
-                <span className="text-red-500">*</span>
-                <HelpCircle size={16} className="text-gray-400 cursor-help" />
-              </div>
-              <div className="space-y-4">
-                <label className="flex items-start gap-3 cursor-pointer group">
-                  <input
-                    type="radio"
-                    name="duplicateHandling"
-                    value="skip"
-                    checked={duplicateHandling === "skip"}
-                    onChange={(e) => setDuplicateHandling(e.target.value)}
-                    className="mt-1 w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-gray-900">Skip Duplicates</div>
-                    <div className="text-xs text-gray-600 mt-1">
-                      Retains the quotes in Taban Books and does not import the duplicates in the import file.
-                    </div>
-                  </div>
-                </label>
-                <label className="flex items-start gap-3 cursor-pointer group">
-                  <input
-                    type="radio"
-                    name="duplicateHandling"
-                    value="overwrite"
-                    checked={duplicateHandling === "overwrite"}
-                    onChange={(e) => setDuplicateHandling(e.target.value)}
-                    className="mt-1 w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-gray-900">Overwrite quotes</div>
-                    <div className="text-xs text-gray-600 mt-1">
-                      Imports the duplicates in the import file and overwrites the existing quotes in Taban Books.
-                    </div>
-                  </div>
-                </label>
-                <label className="flex items-start gap-3 cursor-pointer group">
-                  <input
-                    type="radio"
-                    name="duplicateHandling"
-                    value="add"
-                    checked={duplicateHandling === "add"}
-                    onChange={(e) => setDuplicateHandling(e.target.value)}
-                    className="mt-1 w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-gray-900">Add duplicates as new quotes</div>
-                    <div className="text-xs text-gray-600 mt-1">
-                      Imports the duplicates in the import file and adds them as new quotes in Taban Books.
-                    </div>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            {/* Character Encoding */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-sm font-semibold text-gray-700">Character Encoding</span>
-                <HelpCircle size={16} className="text-gray-400 cursor-help" />
-              </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-8">
               <div
-                className="relative"
-                ref={encodingDropdownRef}
+                className="border border-dashed border-gray-300 rounded-xl p-10 text-center mb-5"
+                ref={dropAreaRef}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
               >
-                <button
-                  className="w-full flex items-center justify-between px-4 py-3 border-2 border-gray-200 rounded-lg bg-white text-gray-700 hover:border-blue-500 transition-colors"
-                  onClick={() => setIsEncodingDropdownOpen(!isEncodingDropdownOpen)}
-                >
-                  <span className="text-sm font-medium">{characterEncoding}</span>
-                  {isEncodingDropdownOpen ? (
-                    <ChevronUp size={16} className="text-gray-400" />
-                  ) : (
-                    <ChevronDown size={16} className="text-gray-400" />
-                  )}
-                </button>
-                {isEncodingDropdownOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 max-h-80 overflow-hidden">
-                    <div className="flex items-center gap-2 p-3 border-b border-gray-200 bg-gray-50">
-                      <Search size={16} className="text-gray-400" />
-                      <input
-                        type="text"
-                        placeholder="Search encoding..."
-                        value={encodingSearch}
-                        onChange={(e) => setEncodingSearch(e.target.value)}
-                        className="flex-1 text-sm bg-transparent focus:outline-none"
-                      />
-                    </div>
-                    <div className="max-h-60 overflow-y-auto">
-                      {filteredEncodingOptions.map((option) => (
-                        <div
-                          key={option}
-                          className={`p-3 cursor-pointer hover:bg-blue-50 flex items-center justify-between transition-colors ${option === characterEncoding ? "bg-blue-50 border-l-4 border-blue-600" : ""
-                            }`}
-                          onClick={() => {
-                            setCharacterEncoding(option);
-                            setIsEncodingDropdownOpen(false);
-                            setEncodingSearch("");
-                          }}
-                        >
-                          <span className="text-sm font-medium text-gray-900">{option}</span>
-                          {option === characterEncoding && (
-                            <Check size={16} className="text-blue-600" />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Page Tips */}
-            <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-6 mb-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Lightbulb size={20} className="text-yellow-600" />
-                <h3 className="text-base font-semibold text-gray-900">Page Tips</h3>
-              </div>
-              <ul className="space-y-2 text-sm text-gray-700 list-disc list-inside">
-                <li>
-                  You can download the{" "}
-                  <a
-                    href="#"
-                    onClick={handleDownloadSampleXls}
-                    className="text-blue-600 hover:text-blue-700 hover:underline font-semibold"
+                <div className="w-16 h-16 rounded-full bg-gray-100 mx-auto flex items-center justify-center mb-5 shadow-sm">
+                  <Download size={24} className="text-gray-500" />
+                </div>
+                <p className="text-lg font-medium text-gray-900 mb-5">Drag and drop file to import</p>
+                <div className="relative inline-block" ref={fileSourceDropdownRef}>
+                  <button
+                    className="px-6 py-2.5 bg-[#156372] text-white text-sm font-semibold rounded-md shadow-sm hover:bg-[#0f4f5b]"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsFileSourceDropdownOpen(!isFileSourceDropdownOpen);
+                    }}
                   >
-                    sample xls file
-                  </a>
-                  {" "}to get detailed information about the data fields used while importing.
-                </li>
-                <li>
-                  If you have files in other formats, you can convert it to an accepted file format using any online/offline converter.
-                </li>
-                <li>
-                  You can configure your import settings and save them for future too!
-                </li>
-              </ul>
-            </div>
+                    Choose File
+                  </button>
+                  {isFileSourceDropdownOpen && (
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[220px] overflow-hidden">
+                      <button className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-[#156372] hover:text-white" onClick={handleAttachFromDesktop}>Attach From Desktop</button>
+                      <button className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-[#156372] hover:text-white" onClick={handleAttachFromCloud}>Attach From Cloud</button>
+                      <button className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-[#156372] hover:text-white" onClick={handleAttachFromDocuments}>Attach From Documents</button>
+                    </div>
+                  )}
+                </div>
+                {selectedFile && <p className="mt-4 text-sm font-medium text-[#156372]">Selected: {selectedFile.name}</p>}
+                <p className="mt-5 text-sm text-gray-500">Maximum File Size: 25 MB • File Format: CSV or TSV or XLS</p>
+                <input ref={fileInputRef} type="file" accept=".csv,.tsv,.xls,.xlsx" onChange={handleFileSelect} style={{ display: "none" }} />
+              </div>
 
-            {/* Navigation Buttons */}
-            <div className="flex items-center justify-end gap-3">
-              <button
-                className="px-8 py-3 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
-                onClick={handleNext}
-              >
-                Next &gt;
-              </button>
-              <button
-                className="px-8 py-3 bg-white border-2 border-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors"
-                onClick={handleCancel}
-              >
-                Cancel
-              </button>
+              <p className="text-sm text-gray-700 mb-8">
+                Download a <a href="#" onClick={handleDownloadSampleCsv} className="text-blue-600 hover:underline">sample csv file</a> or <a href="#" onClick={handleDownloadSampleXls} className="text-blue-600 hover:underline">sample xls file</a> and compare it to your import file to ensure you have the file perfect for the import.
+              </p>
+
+              <div className="mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-[180px_1fr] gap-4 items-start">
+                  <div className="flex items-center gap-1 text-gray-800 mt-2">
+                    <span className="text-sm font-medium">Character Encoding</span>
+                    <HelpCircle size={14} className="text-gray-400" />
+                  </div>
+                  <div className="relative" ref={encodingDropdownRef}>
+                    <button
+                      className="w-full flex items-center justify-between px-4 py-2.5 border border-gray-300 rounded-md bg-white text-gray-700 hover:border-[#156372]"
+                      onClick={() => setIsEncodingDropdownOpen(!isEncodingDropdownOpen)}
+                    >
+                      <span className="text-sm text-gray-900">{characterEncoding}</span>
+                      {isEncodingDropdownOpen ? <ChevronUp size={16} className="text-[#156372]" /> : <ChevronDown size={16} className="text-gray-500" />}
+                    </button>
+                    {isEncodingDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-300 rounded-md shadow-xl z-50 overflow-hidden">
+                        <div className="p-2 border-b border-gray-200">
+                          <div className="flex items-center gap-2 border border-[#156372] rounded-md px-2 py-1.5">
+                            <Search size={14} className="text-gray-400" />
+                            <input
+                              type="text"
+                              placeholder="Search"
+                              value={encodingSearch}
+                              onChange={(e) => setEncodingSearch(e.target.value)}
+                              className="flex-1 text-sm bg-transparent focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                        <div className="max-h-60 overflow-y-auto">
+                          {filteredEncodingOptions.map((option) => (
+                            <button
+                              key={option}
+                              className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between ${
+                                option === characterEncoding ? "bg-[#156372] text-white" : "text-gray-700 hover:bg-[#156372] hover:text-white"
+                              }`}
+                              onClick={() => {
+                                setCharacterEncoding(option);
+                                setIsEncodingDropdownOpen(false);
+                                setEncodingSearch("");
+                              }}
+                            >
+                              <span>{option}</span>
+                              {option === characterEncoding ? <Check size={14} /> : null}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mb-8">
+                <label className="inline-flex items-center gap-2 text-gray-900">
+                  <input
+                    type="checkbox"
+                    checked={autoGenerateQuoteNumbers}
+                    onChange={(e) => setAutoGenerateQuoteNumbers(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300"
+                  />
+                  <span className="text-sm font-medium">Auto-Generate Quote Numbers</span>
+                </label>
+                <p className="mt-2 text-sm text-gray-600 max-w-[760px]">
+                  Quote numbers will be generated automatically according to your settings. Any Quote numbers in the import file will be ignored.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 mb-8">
+                <div className="flex items-center gap-2 mb-4">
+                  <Lightbulb size={16} className="text-yellow-500" />
+                  <h3 className="text-sm font-semibold text-gray-900">Page Tips</h3>
+                </div>
+                <ul className="space-y-2 text-gray-700 list-disc pl-6">
+                  <li>You can download the <a href="#" onClick={handleDownloadSampleXls} className="text-blue-600 hover:underline">sample xls file</a> to get detailed information about the data fields used while importing.</li>
+                  <li>If you have files in other formats, you can convert it to an accepted file format using any online/offline converter.</li>
+                  <li>You can configure your import settings and save them for future too!</li>
+                </ul>
+              </div>
+
+              <div className="flex items-center justify-between border-t border-gray-200 pt-5">
+                <button
+                  className="px-7 py-2.5 bg-[#156372] text-white rounded-md text-sm font-semibold hover:bg-[#0f4f5b] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#156372]"
+                  onClick={handleNext}
+                  disabled={!selectedFile}
+                >
+                  Next ›
+                </button>
+                <button className="px-7 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50" onClick={handleCancel}>
+                  Cancel
+                </button>
+              </div>
             </div>
           </>
         )}
@@ -1048,267 +1293,113 @@ export default function ImportQuotes() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-900">Default Data Formats</h2>
+                <button
+                  type="button"
+                  onClick={openDataFormatsModal}
+                  className="inline-flex items-center gap-1.5 text-sm text-[#156372] hover:text-[#0f4f5b]"
+                >
+                  <Edit size={14} />
+                  Edit
+                </button>
               </div>
-              <div>
-                <div className="text-sm text-gray-700">
+              <div className="grid grid-cols-2 gap-4 text-sm text-gray-700">
+                <div>
+                  <span className="font-medium">Date:</span> {dateFormat}
+                </div>
+                <div>
                   <span className="font-medium">Decimal Format:</span> {decimalFormat}
                 </div>
               </div>
             </div>
-
-            {/* Quote Details Section */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Quote Details</h2>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="text-sm font-semibold text-gray-700">TABAN BOOKS FIELD</div>
-                <div className="text-sm font-semibold text-gray-700">IMPORTED FILE HEADERS</div>
-              </div>
-              <div className="space-y-4">
-                {[
-                  { field: "Quote Number", required: true },
-                  { field: "Quote Date", required: true, hasDateFormat: true },
-                  { field: "Expiry Date", required: false, hasDateFormat: true },
-                  { field: "Quote Status", required: false },
-                  { field: "Notes", required: false },
-                  { field: "Terms & Conditions", required: false },
-                ].map((item) => (
-                  <div key={item.field} className="grid grid-cols-2 gap-4 items-center">
-                    <div className="text-sm font-medium text-gray-700">
-                      {item.field}
-                      {item.required && <span className="text-red-500 ml-1">*</span>}
-                    </div>
-                    <div className="relative flex items-center gap-2">
-                      <div className="flex-1 relative">
-                        <select
-                          value={fieldMappings[item.field] || (importedFileHeaders.find(h => h.toLowerCase().includes(item.field.toLowerCase().split(' ')[0].toLowerCase())) || "")}
-                          onChange={(e) => setFieldMappings({ ...fieldMappings, [item.field]: e.target.value })}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white pr-8"
-                        >
-                          <option value="">Select</option>
-                          {importedFileHeaders.map((header) => (
-                            <option key={header} value={header}>
-                              {header}
-                            </option>
-                          ))}
-                        </select>
-                        {fieldMappings[item.field] && (
-                          <X
-                            size={16}
-                            className="absolute right-8 top-1/2 transform -translate-y-1/2 text-red-500 cursor-pointer hover:text-red-700"
-                            onClick={() => setFieldMappings({ ...fieldMappings, [item.field]: "" })}
-                          />
-                        )}
-                        <ChevronDown size={16} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
+            {isDataFormatsModalOpen && (
+              <div className="fixed inset-0 z-[170] bg-black/40 flex items-start justify-center pt-16 px-4">
+                <div className="w-full max-w-3xl bg-white rounded-md border border-gray-200 shadow-2xl overflow-hidden">
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-800">Default Data Formats</h3>
+                    <button
+                      type="button"
+                      onClick={() => setIsDataFormatsModalOpen(false)}
+                      className="w-7 h-7 flex items-center justify-center border border-blue-300 rounded-sm text-red-500 hover:bg-gray-50"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div className="p-5">
+                    <div className="border border-gray-200 rounded-sm overflow-hidden">
+                      <div className="grid grid-cols-[1.1fr_1.6fr_2fr] bg-gray-50 border-b border-gray-200">
+                        <div className="px-3 py-2 text-xs font-semibold text-gray-700">DATA TYPE</div>
+                        <div className="px-3 py-2 text-xs font-semibold text-gray-700">SELECT FORMAT AT FIELD LEVEL</div>
+                        <div className="px-3 py-2 text-xs font-semibold text-gray-700">DEFAULT FORMAT</div>
                       </div>
-                      {item.hasDateFormat && (
-                        <div className="relative w-32">
-                          <select className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white pr-8">
+                      <div className="grid grid-cols-[1.1fr_1.6fr_2fr] border-b border-gray-200">
+                        <div className="px-3 py-2.5 text-sm text-gray-700">Date</div>
+                        <div className="px-3 py-2.5 flex items-center justify-center">
+                          <input
+                            type="checkbox"
+                            checked={isDateFormatAtFieldLevel}
+                            onChange={(e) => setIsDateFormatAtFieldLevel(e.target.checked)}
+                            className="w-4 h-4 text-[#156372] border-gray-300 rounded focus:ring-[#156372]"
+                          />
+                        </div>
+                        <div className="px-3 py-2.5">
+                          <select
+                            value={tempDateFormat}
+                            onChange={(e) => setTempDateFormat(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#156372]"
+                          >
                             <option value="yyyy-MM-dd">yyyy-MM-dd</option>
                             <option value="MM/dd/yyyy">MM/dd/yyyy</option>
                             <option value="dd/MM/yyyy">dd/MM/yyyy</option>
                           </select>
-                          <HelpCircle size={14} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
-                          <ChevronDown size={14} className="absolute right-8 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
                         </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Contact Details Section */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Contact Details</h2>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="text-sm font-semibold text-gray-700">TABAN BOOKS FIELD</div>
-                <div className="text-sm font-semibold text-gray-700">IMPORTED FILE HEADERS</div>
-              </div>
-              <div className="space-y-4">
-                {[
-                  { field: "Customer Name", required: true },
-                ].map((item) => (
-                  <div key={item.field} className="grid grid-cols-2 gap-4 items-center">
-                    <div className="text-sm font-medium text-gray-700">
-                      {item.field}
-                      {item.required && <span className="text-red-500 ml-1">*</span>}
-                    </div>
-                    <div className="relative flex items-center gap-2">
-                      <div className="flex-1 relative">
-                        <select
-                          value={fieldMappings[item.field] || (importedFileHeaders.find(h => h.toLowerCase().includes(item.field.toLowerCase().split(' ')[0].toLowerCase())) || "")}
-                          onChange={(e) => setFieldMappings({ ...fieldMappings, [item.field]: e.target.value })}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white pr-8"
-                        >
-                          <option value="">Select</option>
-                          {importedFileHeaders.map((header) => (
-                            <option key={header} value={header}>
-                              {header}
-                            </option>
-                          ))}
-                        </select>
-                        {fieldMappings[item.field] && (
-                          <X
-                            size={16}
-                            className="absolute right-8 top-1/2 transform -translate-y-1/2 text-red-500 cursor-pointer hover:text-red-700"
-                            onClick={() => setFieldMappings({ ...fieldMappings, [item.field]: "" })}
+                      </div>
+                      <div className="grid grid-cols-[1.1fr_1.6fr_2fr]">
+                        <div className="px-3 py-2.5 text-sm text-gray-700">Decimal Format</div>
+                        <div className="px-3 py-2.5 flex items-center justify-center">
+                          <input
+                            type="checkbox"
+                            checked={isDecimalFormatAtFieldLevel}
+                            onChange={(e) => setIsDecimalFormatAtFieldLevel(e.target.checked)}
+                            className="w-4 h-4 text-[#156372] border-gray-300 rounded focus:ring-[#156372]"
                           />
-                        )}
-                        <ChevronDown size={16} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
+                        </div>
+                        <div className="px-3 py-2.5">
+                          <select
+                            value={tempDecimalFormat}
+                            onChange={(e) => setTempDecimalFormat(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#156372]"
+                          >
+                            <option value="1234567.89">1234567.89</option>
+                            <option value="1,234,567.89">1,234,567.89</option>
+                            <option value="1234567,89">1234567,89</option>
+                            <option value="1.234.567,89">1.234.567,89</option>
+                          </select>
+                        </div>
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Tax Details Section */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Tax Details</h2>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="text-sm font-semibold text-gray-700">TABAN BOOKS FIELD</div>
-                <div className="text-sm font-semibold text-gray-700">IMPORTED FILE HEADERS</div>
-              </div>
-              <div className="space-y-4">
-                {[
-                  { field: "Is Inclusive Tax", required: false },
-                ].map((item) => (
-                  <div key={item.field} className="grid grid-cols-2 gap-4 items-center">
-                    <div className="text-sm font-medium text-gray-700">
-                      {item.field}
-                      {item.required && <span className="text-red-500 ml-1">*</span>}
-                    </div>
-                    <div className="relative flex items-center gap-2">
-                      <div className="flex-1 relative">
-                        <select
-                          value={fieldMappings[item.field] || ""}
-                          onChange={(e) => setFieldMappings({ ...fieldMappings, [item.field]: e.target.value })}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white pr-8"
-                        >
-                          <option value="">Select</option>
-                          {importedFileHeaders.map((header) => (
-                            <option key={header} value={header}>
-                              {header}
-                            </option>
-                          ))}
-                        </select>
-                        {fieldMappings[item.field] && (
-                          <X
-                            size={16}
-                            className="absolute right-8 top-1/2 transform -translate-y-1/2 text-red-500 cursor-pointer hover:text-red-700"
-                            onClick={() => setFieldMappings({ ...fieldMappings, [item.field]: "" })}
-                          />
-                        )}
-                        <ChevronDown size={16} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
-                      </div>
-                    </div>
+                  <div className="px-5 py-4 border-t border-gray-200 flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleSaveDataFormats}
+                      className="px-5 py-2 bg-[#156372] text-white rounded-md text-sm font-semibold hover:bg-[#0f4f5b]"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsDataFormatsModalOpen(false)}
+                      className="px-5 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
                   </div>
-                ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Shipping Charge Details Section */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Shipping Charge Details</h2>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="text-sm font-semibold text-gray-700">TABAN BOOKS FIELD</div>
-                <div className="text-sm font-semibold text-gray-700">IMPORTED FILE HEADERS</div>
-              </div>
-              <div className="space-y-4">
-                {[
-                  { field: "Shipping Charge", required: false },
-                  { field: "Shipping Charge Tax Name", required: false },
-                  { field: "Shipping Charge Tax Type", required: false },
-                  { field: "Shipping Charge Tax %", required: false },
-                ].map((item) => (
-                  <div key={item.field} className="grid grid-cols-2 gap-4 items-center">
-                    <div className="text-sm font-medium text-gray-700">
-                      {item.field}
-                      {item.required && <span className="text-red-500 ml-1">*</span>}
-                    </div>
-                    <div className="relative flex items-center gap-2">
-                      <div className="flex-1 relative">
-                        <select
-                          value={fieldMappings[item.field] || (importedFileHeaders.find(h => h.toLowerCase().includes(item.field.toLowerCase().split(' ')[0].toLowerCase())) || "")}
-                          onChange={(e) => setFieldMappings({ ...fieldMappings, [item.field]: e.target.value })}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white pr-8"
-                        >
-                          <option value="">Select</option>
-                          {importedFileHeaders.map((header) => (
-                            <option key={header} value={header}>
-                              {header}
-                            </option>
-                          ))}
-                        </select>
-                        {fieldMappings[item.field] && (
-                          <X
-                            size={16}
-                            className="absolute right-8 top-1/2 transform -translate-y-1/2 text-red-500 cursor-pointer hover:text-red-700"
-                            onClick={() => setFieldMappings({ ...fieldMappings, [item.field]: "" })}
-                          />
-                        )}
-                        <ChevronDown size={16} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Item Details Section */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Item Details</h2>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="text-sm font-semibold text-gray-700">TABAN BOOKS FIELD</div>
-                <div className="text-sm font-semibold text-gray-700">IMPORTED FILE HEADERS</div>
-              </div>
-              <div className="space-y-4">
-                {[
-                  { field: "Item Price", required: false },
-                  { field: "Account", required: false },
-                  { field: "Usage unit", required: false },
-                  { field: "Item Desc", required: false },
-                  { field: "Item Name", required: false },
-                  { field: "Kit Combo Item Name", required: false },
-                  { field: "Quantity", required: false },
-                  { field: "Discount", required: false },
-                  { field: "Discount Amount", required: false },
-                  { field: "Item Tax", required: false },
-                  { field: "Item Tax Type", required: false },
-                  { field: "Item Tax %", required: false },
-                ].map((item) => (
-                  <div key={item.field} className="grid grid-cols-2 gap-4 items-center">
-                    <div className="text-sm font-medium text-gray-700">
-                      {item.field}
-                      {item.required && <span className="text-red-500 ml-1">*</span>}
-                    </div>
-                    <div className="relative flex items-center gap-2">
-                      <div className="flex-1 relative">
-                        <select
-                          value={fieldMappings[item.field] || (importedFileHeaders.find(h => h.toLowerCase().includes(item.field.toLowerCase().split(' ')[0].toLowerCase())) || "")}
-                          onChange={(e) => setFieldMappings({ ...fieldMappings, [item.field]: e.target.value })}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white pr-8"
-                        >
-                          <option value="">Select</option>
-                          {importedFileHeaders.map((header) => (
-                            <option key={header} value={header}>
-                              {header}
-                            </option>
-                          ))}
-                        </select>
-                        {fieldMappings[item.field] && (
-                          <X
-                            size={16}
-                            className="absolute right-8 top-1/2 transform -translate-y-1/2 text-red-500 cursor-pointer hover:text-red-700"
-                            onClick={() => setFieldMappings({ ...fieldMappings, [item.field]: "" })}
-                          />
-                        )}
-                        <ChevronDown size={16} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              {mapFieldSections.map((section) => renderMappingSection(section.title, section.fields))}
             </div>
 
             {/* Navigation Buttons */}
@@ -1322,7 +1413,7 @@ export default function ImportQuotes() {
               </button>
               <div className="flex items-center gap-3">
                 <button
-                  className="px-8 py-3 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
+                  className="px-8 py-3 bg-[#156372] text-white rounded-lg text-sm font-semibold hover:bg-[#0f4f5b] transition-colors shadow-sm"
                   onClick={handleNext}
                 >
                   Next &gt;
@@ -1452,7 +1543,7 @@ export default function ImportQuotes() {
               <div className="w-[180px] bg-white border-r border-gray-200 flex flex-col overflow-y-auto">
                 <div className="p-2">
                   {[
-                    { id: "taban", name: "Taban Books Drive", icon: LayoutGrid },
+                    { id: "zoho", name: "Zoho WorkDrive", icon: LayoutGrid },
                     { id: "gdrive", name: "Google Drive", icon: HardDrive },
                     { id: "dropbox", name: "Dropbox", icon: Box },
                     { id: "box", name: "Box", icon: Square },
@@ -1536,7 +1627,7 @@ export default function ImportQuotes() {
                         >
                           privacy policy
                         </a>{" "}
-                        and understand that the rights to use this product do not come from Taban Books. The use and transfer of information received from Google APIs to Taban Books will adhere to{" "}
+                        and understand that the rights to use this product do not come from Zoho. The use and transfer of information received from Google APIs to Zoho will adhere to{" "}
                         <a
                           href="#"
                           className="text-blue-600 underline hover:text-blue-700"
@@ -1561,7 +1652,7 @@ export default function ImportQuotes() {
                       className="px-8 py-3 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
                       onClick={() => {
                         window.open(
-                          "https://accounts.google.com/v3/signin/accountchooser?access_type=offline&approval_prompt=force&client_id=932402265855-3k3mfquq4o5kh60o8tnc9mhgn9h77717.apps.googleusercontent.com&redirect_uri=https%3A%2F%2Fapps.tabanbooks.com%2Fauth%2Fgoogle&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive&state=3a3b0106a0c2d908b369a75ad93185c0aa431c64497733bda2d375130c4da610d88104c252c552adc1dee9d6167ad6bb8d2258113b9dce48b47ca4a970314a1fa7b51df3a7716016ac37be9e7d4d9f21077f946b82dc039ae2f08b7be79117042545529cf82d67d58ef6426621f5b5f885af900571347968d419f6d1a5abe3e7e1a3a4d04a433a6b3c5173f68c0c5bea&dsh=S557386361%3A1766903862725658&o2v=1&service=lso&flowName=GeneralOAuthFlow&opparams=%253F&continue=https%3A%2F%2Faccounts.google.com%2Fsignin%2Foauth%2Fconsent%3Fauthuser%3Dunknown%26part%3DAJi8hAP8z-36EGAbjuuLEd2uWDyjQgraM1HNpjnJVe4mUhXhPOQkoJHNKZG6WoCFPPrb5EDYGeFuyF3TI7jUSvDUIwBbk0PGoZLgn4Jt5TdOWWzFyQf6jLfEXhnKHaHRvCzRofERa0CbAnwAUviCEIRh6OE8GWAy3xDGHH6VltpKe7vSGjJfzwkDnAckJm1v9fghFiv7u6_xqfZlF8iB26QlWNE86HHYqzyIP3N9LKEh0NWNZAdiV__IdSu_RqOJPYoHDRNRRsyctIbVsj3CDhUyCADZvROzoeQI9VvIqJSiWLTxE7royBXKDDS96rJYovyIQ79hC_n_aNjoPVUD9jfp5cnJkn_rkGpzetwAYJTRSKhP8gM5YlFdK2Pfp2uT6ZHzVAOYmlyeCX4dc1IsyRtinTLx5WyAUPR_QcLPQzuQcRPvtjL23ZvKxoexvKp3t4zX_HTFKMrduT4G6ojAd7C-kurnZ1Wx6g%26flowName%3DGeneralOAuthFlow%26as%3DS557386361%253A1766903862725658%26client_id%3D932402265855-3k3mfquq4o5kh60o8tnc9mhgn9h77717.apps.googleusercontent.com%26requestPath%3D%252Fsignin%252Foauth%252Fconsent%23&app_domain=https%3A%2F%2Fapps.tabanbooks.com",
+                          "https://accounts.google.com/v3/signin/accountchooser?access_type=offline&approval_prompt=force&client_id=932402265855-3k3mfquq4o5kh60o8tnc9mhgn9h77717.apps.googleusercontent.com&redirect_uri=https%3A%2F%2Fgadgets.zoho.com%2Fauth%2Fgoogle&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive&state=3a3b0106a0c2d908b369a75ad93185c0aa431c64497733bda2d375130c4da610d88104c252c552adc1dee9d6167ad6bb8d2258113b9dce48b47ca4a970314a1fa7b51df3a7716016ac37be9e7d4d9f21077f946b82dc039ae2f08b7be79117042545529cf82d67d58ef6426621f5b5f885af900571347968d419f6d1a5abe3e7e1a3a4d04a433a6b3c5173f68c0c5bea&dsh=S557386361%3A1766903862725658&o2v=1&service=lso&flowName=GeneralOAuthFlow&opparams=%253F&continue=https%3A%2F%2Faccounts.google.com%2Fsignin%2Foauth%2Fconsent%3Fauthuser%3Dunknown%26part%3DAJi8hAP8z-36EGAbjuuLEd2uWDyjQgraM1HNpjnJVe4mUhXhPOQkoJHNKZG6WoCFPPrb5EDYGeFuyF3TI7jUSvDUIwBbk0PGoZLgn4Jt5TdOWWzFyQf6jLfEXhnKHaHRvCzRofERa0CbAnwAUviCEIRh6OE8GWAy3xDGHH6VltpKe7vSGjJfzwkDnAckJm1v9fghFiv7u6_xqfZlF8iB26QlWNE86HHYqzyIP3N9LKEh0NWNZAdiV__IdSu_RqOJPYoHDRNRRsyctIbVsj3CDhUyCADZvROzoeQI9VvIqJSiWLTxE7royBXKDDS96rJYovyIQ79hC_n_aNjoPVUD9jfp5cnJkn_rkGpzetwAYJTRSKhP8gM5YlFdK2Pfp2uT6ZHzVAOYmlyeCX4dc1IsyRtinTLx5WyAUPR_QcLPQzuQcRPvtjL23ZvKxoexvKp3t4zX_HTFKMrduT4G6ojAd7C-kurnZ1Wx6g%26flowName%3DGeneralOAuthFlow%26as%3DS557386361%253A1766903862725658%26client_id%3D932402265855-3k3mfquq4o5kh60o8tnc9mhgn9h77717.apps.googleusercontent.com%26requestPath%3D%252Fsignin%252Foauth%252Fconsent%23&app_domain=https%3A%2F%2Fgadgets.zoho.com",
                           "_blank"
                         );
                       }}
@@ -1617,7 +1708,7 @@ export default function ImportQuotes() {
                         >
                           privacy policy
                         </a>{" "}
-                        and understand that the rights to use this product do not come from Taban Books.
+                        and understand that the rights to use this product do not come from Zoho.
                       </p>
                     </div>
 
@@ -1626,7 +1717,7 @@ export default function ImportQuotes() {
                       className="px-8 py-3 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
                       onClick={() => {
                         window.open(
-                          "https://www.dropbox.com/oauth2/authorize?response_type=code&client_id=ovpkm9147d63ifh&redirect_uri=https://apps.tabanbooks.com/dropbox/auth/v2/saveToken&state=190d910cedbc107e58195259f79a434d05c66c88e1e6eaa0bc585c6a0fddb159871ede64adb4d5da61c107ca7cbb7bae891c80e9c69cf125faaaf622ab58f37c5b1d42b42c7f3add07d92465295564a6c5bd98228654cce8ff68da24941db6f0aab9a60398ac49e41b3ec211acfd5bcc&force_reapprove=true&token_access_type=offline",
+                          "https://www.dropbox.com/oauth2/authorize?response_type=code&client_id=ovpkm9147d63ifh&redirect_uri=https://gadgets.zoho.com/dropbox/auth/v2/saveToken&state=190d910cedbc107e58195259f79a434d05c66c88e1e6eaa0bc585c6a0fddb159871ede64adb4d5da61c107ca7cbb7bae891c80e9c69cf125faaaf622ab58f37c5b1d42b42c7f3add07d92465295564a6c5bd98228654cce8ff68da24941db6f0aab9a60398ac49e41b3ec211acfd5bcc&force_reapprove=true&token_access_type=offline",
                           "_blank"
                         );
                       }}
@@ -1672,7 +1763,7 @@ export default function ImportQuotes() {
                         >
                           privacy policy
                         </a>{" "}
-                        and understand that the rights to use this product do not come from Taban Books.
+                        and understand that the rights to use this product do not come from Zoho.
                       </p>
                     </div>
 
@@ -1681,7 +1772,7 @@ export default function ImportQuotes() {
                       className="px-8 py-3 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
                       onClick={() => {
                         window.open(
-                          "https://account.box.com/api/oauth2/authorize?response_type=code&client_id=f95f6ysfm8vg1q3g84m0xyyblwnj3tr5&redirect_uri=https%3A%2F%2Fapps.tabanbooks.com%2Fauth%2Fbox&state=37e352acfadd37786b1d388fb0f382baa59c9246f4dda329361910db55643700578352e4636bde8a0743bd3060e51af0ee338a34b2080bbd53a337f46b0995e28facbeff76d7efaf8db4493a0ef77be45364e38816d94499fba739987744dd1f6f5c08f84c0a11b00e075d91d7ea5c6d",
+                          "https://account.box.com/api/oauth2/authorize?response_type=code&client_id=f95f6ysfm8vg1q3g84m0xyyblwnj3tr5&redirect_uri=https%3A%2F%2Fgadgets.zoho.com%2Fauth%2Fbox&state=37e352acfadd37786b1d388fb0f382baa59c9246f4dda329361910db55643700578352e4636bde8a0743bd3060e51af0ee338a34b2080bbd53a337f46b0995e28facbeff76d7efaf8db4493a0ef77be45364e38816d94499fba739987744dd1f6f5c08f84c0a11b00e075d91d7ea5c6d",
                           "_blank"
                         );
                       }}
@@ -1721,7 +1812,7 @@ export default function ImportQuotes() {
                         >
                           privacy policy
                         </a>{" "}
-                        and understand that the rights to use this product do not come from Taban Books.
+                        and understand that the rights to use this product do not come from Zoho.
                       </p>
                     </div>
 
@@ -1730,7 +1821,7 @@ export default function ImportQuotes() {
                       className="px-8 py-3 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
                       onClick={() => {
                         window.open(
-                          "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=0ecabec7-1fac-433f-a968-9985926b51c3&state=e0b1053c9465a9cb98fea7eea99d3074930c6c5607a21200967caf2db861cf9df77442c92e8565087c2a339614e18415cbeb95d59c63605cee4415353b2c44da13c6b9f34bca1fcd3abdd630595133a5232ddb876567bedbe620001a59c9989df94c3823476d0eef4363b351e8886c5563f56bc9d39db9f3db7c37cd1ad827c5.%5E.US&redirect_uri=https%3A%2F%2Fapps.tabanbooks.com%2Ftpa%2Foffice365&response_type=code&prompt=select_account&scope=Files.Read%20User.Read%20offline_access&sso_reload=true",
+                          "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=0ecabec7-1fac-433f-a968-9985926b51c3&state=e0b1053c9465a9cb98fea7eea99d3074930c6c5607a21200967caf2db861cf9df77442c92e8565087c2a339614e18415cbeb95d59c63605cee4415353b2c44da13c6b9f34bca1fcd3abdd630595133a5232ddb876567bedbe620001a59c9989df94c3823476d0eef4363b351e8886c5563f56bc9d39db9f3db7c37cd1ad827c5.%5E.US&redirect_uri=https%3A%2F%2Fgadgets.zoho.com%2Ftpa%2Foffice365&response_type=code&prompt=select_account&scope=Files.Read%20User.Read%20offline_access&sso_reload=true",
                           "_blank"
                         );
                       }}
@@ -1787,7 +1878,7 @@ export default function ImportQuotes() {
                         >
                           privacy policy
                         </a>{" "}
-                        and understand that the rights to use this product do not come from Taban Books.
+                        and understand that the rights to use this product do not come from Zoho.
                       </p>
                     </div>
 
@@ -1863,18 +1954,18 @@ export default function ImportQuotes() {
 
                     {/* Description Text */}
                     <p className="text-sm text-gray-600 text-center mb-6 max-w-md">
-                      {selectedCloudProvider === "taban"
-                        ? "Taban Books Drive is an online file sync, storage and content collaboration platform."
+                      {selectedCloudProvider === "zoho"
+                        ? "Zoho WorkDrive is an online file sync, storage and content collaboration platform."
                         : "Select a cloud storage provider to get started."}
                     </p>
 
                     {/* Set up your team button */}
-                    {selectedCloudProvider === "taban" && (
+                    {selectedCloudProvider === "zoho" && (
                       <button
                         className="px-6 py-2.5 bg-green-600 text-white rounded-md text-sm font-semibold hover:bg-green-700 transition-colors shadow-sm"
                         onClick={() => {
                           window.open(
-                            "https://drive.tabanbooks.com/home/onboard/createteamwithsoid?org_id=909892451&service_name=TabanBooks",
+                            "https://workdrive.zoho.com/home/onboard/createteamwithsoid?org_id=909892451&service_name=ZohoBooks",
                             "_blank"
                           );
                         }}
@@ -2074,5 +2165,6 @@ export default function ImportQuotes() {
     </div>
   );
 }
+
 
 

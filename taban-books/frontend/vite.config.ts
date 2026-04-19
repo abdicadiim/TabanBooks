@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -15,6 +16,11 @@ export default defineConfig(({ mode }) => {
 
   const config = {
     plugins: [react()],
+    resolve: {
+      alias: {
+        "@tanstack/react-query": fileURLToPath(new URL("./src/features/sales/salesModel.ts", import.meta.url)),
+      },
+    },
     build: {
       rollupOptions: {
         output: {

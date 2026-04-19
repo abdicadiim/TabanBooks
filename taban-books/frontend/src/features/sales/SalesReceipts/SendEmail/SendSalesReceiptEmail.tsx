@@ -2,8 +2,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { getSalesReceiptById } from "../../salesModel";
-import { salesReceiptsAPI } from "../../../../services/api";
+import { salesReceiptsAPI, senderEmailsAPI } from "../../../../services/api";
 import { X, Bold, Italic, Underline, Strikethrough, Link as LinkIcon, Image as ImageIcon, Paperclip, Loader2 } from "lucide-react";
+import { formatSenderDisplay, resolveVerifiedPrimarySender } from "../../../../utils/emailSenderDisplay";
 
 const formatDisplayDate = (value: any) => {
   if (!value) return "";
@@ -20,47 +21,40 @@ const parseAmount = (value: any) => {
 
 const buildSalesReceiptEmailTemplate = (receipt: any) => {
   const receiptNumber = receipt?.receiptNumber || receipt?.id || "SR-00001";
-  const receiptDate = formatDisplayDate(receipt?.receiptDate || receipt?.date) || formatDisplayDate(new Date());
+  const receiptDate = formatDisplayDate(receipt?.receiptDate || receipt?.date || new Date());
   const currency = String(receipt?.currency || "USD").toUpperCase();
-  const amountPaid = `${currency}${parseAmount(receipt?.total ?? receipt?.amount).toFixed(2)}`;
+  const amountPaid = `${currency}${parseAmount(receipt?.total ?? receipt?.amount ?? 0).toFixed(2)}`;
   const customerName = receipt?.customerName || receipt?.customer?.displayName || receipt?.customer?.name || "Customer";
-  const note = String(receipt?.notes || "").trim();
+  const note = String(receipt?.notes || "").trim() || "Thank you for shopping with us.";
 
   return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #111827;">
-      <p style="font-size: 14px; line-height: 1.6; margin: 0 0 18px 0;">Dear ${customerName},</p>
-      <p style="font-size: 14px; line-height: 1.6; margin: 0 0 24px 0;">Please find attached the sales receipt for your recent purchase.</p>
-
-      <div style="background-color: #f8f7e9; border: 1px solid #e5e2cc; border-radius: 4px; padding: 34px 30px; margin: 26px 0;">
-        <div style="text-align: center;">
-          <div style="font-size: 32px; font-weight: 700; color: #111827; margin-bottom: 8px;">Amount Paid</div>
-          <div style="font-size: 46px; font-weight: 700; color: #22c55e; letter-spacing: 0.3px;">${amountPaid}</div>
-        </div>
-
-        <div style="border-top: 1px solid #ddd8bc; margin: 24px 0;"></div>
-
-        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-          <tr>
-            <td style="padding: 8px 0; color: #111827;">Receipt Number</td>
-            <td style="padding: 8px 0; color: #111827; text-align: right;">${receiptNumber}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 0; color: #111827;">Receipt Date</td>
-            <td style="padding: 8px 0; color: #111827; text-align: right;">${receiptDate}</td>
-          </tr>
-        </table>
-
-        <div style="border-top: 1px solid #ddd8bc; margin: 24px 0 20px;"></div>
-
-        <div>
-          <div style="font-size: 14px; font-weight: 700; color: #111827; margin-bottom: 6px;">Note:</div>
-          <div style="font-size: 14px; color: #374151; line-height: 1.55;">${note || "-"}</div>
-        </div>
+    <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #111827; background-color: #f8fafc; padding: 24px 0;">
+      <div style="background-color: #187bff; color: #fff; text-align: center; padding: 14px 0; font-size: 18px; font-weight: 600;">
+        SalesReceipt# ${receiptNumber}
       </div>
+      <div style="background-color: #ffffff; border: 1px solid #dee2e6; margin: 0 24px; border-radius: 6px; padding: 24px;">
+        <p style="font-size: 15px; margin: 0 0 8px 0;">Dear ${customerName},</p>
+        <p style="font-size: 15px; margin: 0 0 20px 0;">${note}</p>
 
-      <div style="margin-top: 18px;">
-        <p style="font-size: 14px; margin: 0 0 4px 0;">Regards,</p>
-        <p style="font-size: 14px; margin: 0; font-weight: 700;">Taban Enterprise</p>
+        <div style="background-color: #fff9e5; border-radius: 6px; border: 1px solid #f0e4b8; padding: 20px; text-align: center;">
+          <div style="font-size: 16px; font-weight: 600; color: #1f2937;">Amount Paid</div>
+          <div style="font-size: 32px; font-weight: 700; color: #16a34a; margin: 8px 0;">${amountPaid}</div>
+          <hr style="border: none; border-top: 1px solid #f0e4b8; margin: 12px 0;">
+          <table style="width: 100%; margin-top: 12px; font-size: 14px; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 4px 0; color: #374151; font-weight: 600;">Receipt Number</td>
+              <td style="padding: 4px 0; color: #111827; text-align: right;">${receiptNumber}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; color: #374151; font-weight: 600;">Receipt Date</td>
+              <td style="padding: 4px 0; color: #111827; text-align: right;">${receiptDate}</td>
+            </tr>
+          </table>
+          <div style="border-top: 1px solid #f0e4b8; margin: 12px 0;"></div>
+          <div style="font-size: 14px; color: #374151;">
+            Note: <span style="font-weight: 600; color: #111827;">${note}</span>
+          </div>
+        </div>
       </div>
     </div>
   `;
@@ -74,6 +68,8 @@ export default function SendSalesReceiptEmail() {
 
   const stateReceiptData = location.state?.receiptData || null;
   const [receiptData, setReceiptData] = useState(stateReceiptData || {});
+  const [senderName, setSenderName] = useState(String(stateReceiptData?.senderName || stateReceiptData?.organizationName || "System").trim() || "System");
+  const [senderEmail, setSenderEmail] = useState(String(stateReceiptData?.senderEmail || "").trim());
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -104,10 +100,42 @@ export default function SendSalesReceiptEmail() {
     };
   }, [id, stateReceiptData]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSender = async () => {
+      const fallbackName = String(receiptData?.senderName || receiptData?.organizationName || "System").trim() || "System";
+      const fallbackEmail = String(receiptData?.senderEmail || "").trim();
+
+      try {
+        const primarySenderRes = await senderEmailsAPI.getPrimary();
+        const sender = resolveVerifiedPrimarySender(primarySenderRes, fallbackName, fallbackEmail);
+        if (!cancelled) {
+          setSenderName(sender.name);
+          setSenderEmail(sender.email || fallbackEmail);
+        }
+      } catch (error) {
+        console.error("Failed to load verified sender for sales receipt email:", error);
+        if (!cancelled) {
+          setSenderName(fallbackName);
+          setSenderEmail(fallbackEmail);
+        }
+      }
+    };
+
+    if (receiptData && Object.keys(receiptData).length > 0) {
+      void loadSender();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [receiptData]);
+
   const defaultEmailBody = useMemo(() => buildSalesReceiptEmailTemplate(receiptData), [receiptData]);
 
   const [emailData, setEmailData] = useState({
-    from: "System <maxamuudm189@gmail.com>",
+    from: formatSenderDisplay(senderName, senderEmail, "System"),
     to: "",
     cc: "",
     bcc: "",
@@ -117,16 +145,15 @@ export default function SendSalesReceiptEmail() {
   });
 
   useEffect(() => {
-    const senderEmail = receiptData?.senderEmail || "maxamuudm189@gmail.com";
     const customerEmail = receiptData?.customerEmail || receiptData?.customer?.email || "";
     setEmailData((prev) => ({
       ...prev,
-      from: `System <${senderEmail}>`,
+      from: formatSenderDisplay(senderName, senderEmail, receiptData?.senderName || receiptData?.organizationName || "System"),
       to: prev.to || customerEmail,
       subject: prev.subject || "Receipt for your recent purchase from Taban Enterprise",
       body: defaultEmailBody
     }));
-  }, [receiptData, defaultEmailBody]);
+  }, [receiptData, defaultEmailBody, senderName, senderEmail]);
 
   const splitEmailList = (value: string) =>
     String(value || "")

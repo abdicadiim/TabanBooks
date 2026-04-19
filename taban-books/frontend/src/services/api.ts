@@ -387,6 +387,51 @@ export const itemsAPI = {
   search: (query: string) => apiRequest(`/items/search?q=${encodeURIComponent(query)}`),
 };
 
+export const productsAPI = {
+  getAll: (params: any = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/products${queryString ? `?${queryString}` : ''}`);
+  },
+  list: (params: any = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/products${queryString ? `?${queryString}` : ''}`);
+  },
+  getById: (id: any) => apiRequest(`/products/${id}`),
+  create: (data: any) => apiRequest('/products', { method: 'POST', body: data }),
+  update: (id: any, data: any) => apiRequest(`/products/${id}`, { method: 'PUT', body: data }),
+  delete: (id: any) => apiRequest(`/products/${id}`, { method: 'DELETE' }),
+};
+
+export const plansAPI = {
+  getAll: (params: any = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/plans${queryString ? `?${queryString}` : ''}`);
+  },
+  list: (params: any = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/plans${queryString ? `?${queryString}` : ''}`);
+  },
+  getById: (id: any) => apiRequest(`/plans/${id}`),
+  create: (data: any) => apiRequest('/plans', { method: 'POST', body: data }),
+  update: (id: any, data: any) => apiRequest(`/plans/${id}`, { method: 'PUT', body: data }),
+  delete: (id: any) => apiRequest(`/plans/${id}`, { method: 'DELETE' }),
+};
+
+export const priceListsAPI = {
+  getAll: (params: any = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/price-lists${queryString ? `?${queryString}` : ''}`);
+  },
+  list: (params: any = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/price-lists${queryString ? `?${queryString}` : ''}`);
+  },
+  getById: (id: any) => apiRequest(`/price-lists/${id}`),
+  create: (data: any) => apiRequest('/price-lists', { method: 'POST', body: data }),
+  update: (id: any, data: any) => apiRequest(`/price-lists/${id}`, { method: 'PUT', body: data }),
+  delete: (id: any) => apiRequest(`/price-lists/${id}`, { method: 'DELETE' }),
+};
+
 // ============================================================================
 // CUSTOMERS API
 // ============================================================================
@@ -520,6 +565,22 @@ export const recurringInvoicesAPI = {
   update: (id: any, data: any) => apiRequest(`/recurring-invoices/${id}`, { method: 'PUT', body: data }),
   delete: (id: any) => apiRequest(`/recurring-invoices/${id}`, { method: 'DELETE' }),
   generateInvoice: (id: any) => apiRequest(`/recurring-invoices/${id}/generate-invoice`, { method: 'POST' }),
+};
+
+// ============================================================================
+// SUBSCRIPTIONS API
+// ============================================================================
+
+export const subscriptionsAPI = {
+  getAll: (params: any = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/subscriptions${queryString ? `?${queryString}` : ''}`);
+  },
+  getById: (id: any) => apiRequest(`/subscriptions/${id}`),
+  create: (data: any) => apiRequest('/subscriptions', { method: 'POST', body: data }),
+  update: (id: any, data: any) => apiRequest(`/subscriptions/${id}`, { method: 'PUT', body: data }),
+  delete: (id: any) => apiRequest(`/subscriptions/${id}`, { method: 'DELETE' }),
+  getByCustomer: (customerId: any) => apiRequest(`/subscriptions?customerId=${customerId}`),
 };
 
 // ============================================================================
@@ -1269,14 +1330,308 @@ export const settingsAPI = {
 // TRANSACTION NUMBER SERIES API
 // ============================================================================
 
+const TRANSACTION_NUMBER_SERIES_CACHE_KEY = "taban_transaction_number_series_cache_v1";
+
+const readTransactionNumberSeriesCache = (): any[] => {
+  try {
+    const raw = localStorage.getItem(TRANSACTION_NUMBER_SERIES_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeTransactionNumberSeriesCache = (rows: any[]): void => {
+  try {
+    localStorage.setItem(
+      TRANSACTION_NUMBER_SERIES_CACHE_KEY,
+      JSON.stringify(Array.isArray(rows) ? rows : []),
+    );
+  } catch {
+    // Ignore localStorage failures and continue with API behavior.
+  }
+};
+
+const normalizeTransactionSeriesRows = (response: any): any[] => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.data?.data)) return response.data.data;
+  return [];
+};
+
+const normalizeTransactionModuleName = (value: any): string =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+const getDefaultSeriesPrefix = (moduleName: string): string => {
+  switch (normalizeTransactionModuleName(moduleName)) {
+    case "quote":
+      return "QT-";
+    case "invoice":
+      return "INV-";
+    case "credit note":
+      return "CN-";
+    case "debit note":
+      return "CDN-";
+    case "sales receipt":
+      return "SR-";
+    case "retainer invoice":
+      return "RET-";
+    case "subscriptions":
+    case "subscription":
+      return "SUB-";
+    case "purchase order":
+      return "PO-";
+    case "journal":
+      return "JRN-";
+    default:
+      return "";
+  }
+};
+
+const resolveSeriesNumberWidth = (row: any): number => {
+  const starting = String(row?.startingNumber ?? "").trim();
+  if (starting) return starting.length;
+  const current = Number(row?.currentNumber ?? row?.nextNumber ?? 1);
+  return current >= 100000 ? String(current).length : 6;
+};
+
+const formatSeriesNumber = (row: any, nextNumber: number, fallbackModule?: string): string => {
+  const prefix = String(row?.prefix ?? getDefaultSeriesPrefix(fallbackModule || row?.module)).trim();
+  const width = resolveSeriesNumberWidth(row);
+  return `${prefix}${String(Math.max(1, Number(nextNumber) || 1)).padStart(width, "0")}`;
+};
+
+const chooseMatchingTransactionSeries = (rows: any[], lookup: any): any => {
+  const moduleName = normalizeTransactionModuleName(lookup?.module);
+  const seriesId = String(lookup?.seriesId || lookup?.id || "").trim();
+  const seriesName = String(lookup?.seriesName || "").trim().toLowerCase();
+
+  if (seriesId) {
+    const byId = rows.find((row) => String(row?._id || row?.id || "").trim() === seriesId);
+    if (byId) return byId;
+  }
+
+  let matches = rows;
+  if (seriesName) {
+    const byName = rows.filter(
+      (row) => String(row?.seriesName || row?.name || "").trim().toLowerCase() === seriesName,
+    );
+    if (byName.length) matches = byName;
+  }
+
+  if (moduleName) {
+    const byModule = matches.filter((row) => normalizeTransactionModuleName(row?.module) === moduleName);
+    if (byModule.length) matches = byModule;
+  }
+
+  return (
+    matches.find((row) => Boolean(row?.isDefault)) ||
+    matches[0] ||
+    null
+  );
+};
+
+const updateCachedTransactionSeriesRow = (row: any): void => {
+  const nextId = String(row?._id || row?.id || "").trim();
+  if (!nextId) return;
+
+  const existing = readTransactionNumberSeriesCache();
+  const nextRows = existing.slice();
+  const index = nextRows.findIndex((item) => String(item?._id || item?.id || "").trim() === nextId);
+  if (index >= 0) {
+    nextRows[index] = { ...nextRows[index], ...row };
+  } else {
+    nextRows.push(row);
+  }
+  writeTransactionNumberSeriesCache(nextRows);
+};
+
 export const transactionNumberSeriesAPI = {
-  getAll: () => apiRequest('/settings/transaction-number-series'),
-  getById: (id: any) => apiRequest(`/settings/transaction-number-series/${id}`),
-  create: (data: any) => apiRequest('/settings/transaction-number-series', { method: 'POST', body: data }),
-  createMultiple: (data: any) => apiRequest('/settings/transaction-number-series/batch', { method: 'POST', body: data }),
-  update: (id: any, data: any) => apiRequest(`/settings/transaction-number-series/${id}`, { method: 'PUT', body: data }),
-  delete: (id: any) => apiRequest(`/settings/transaction-number-series/${id}`, { method: 'DELETE' }),
-  getNextNumber: (id: any) => apiRequest(`/settings/transaction-number-series/${id}/next`),
+  getAll: async (params: any = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    const response = await apiRequest(`/settings/transaction-number-series${queryString ? `?${queryString}` : ''}`);
+    writeTransactionNumberSeriesCache(normalizeTransactionSeriesRows(response));
+    return response;
+  },
+  getById: async (id: any) => {
+    const response = await apiRequest(`/settings/transaction-number-series/${id}`);
+    const row = response?.data || response;
+    if (row && typeof row === "object") {
+      updateCachedTransactionSeriesRow(row);
+    }
+    return response;
+  },
+  create: async (data: any) => {
+    const response = await apiRequest('/settings/transaction-number-series', { method: 'POST', body: data });
+    const row = response?.data || response;
+    if (row && typeof row === "object") {
+      updateCachedTransactionSeriesRow(row);
+    }
+    return response;
+  },
+  createMultiple: async (data: any) => {
+    const response = await apiRequest('/settings/transaction-number-series/batch', { method: 'POST', body: data });
+    const rows = normalizeTransactionSeriesRows(response);
+    if (rows.length) {
+      const existing = readTransactionNumberSeriesCache();
+      const byId = new Map(existing.map((row) => [String(row?._id || row?.id || ""), row]));
+      rows.forEach((row) => {
+        byId.set(String(row?._id || row?.id || ""), { ...byId.get(String(row?._id || row?.id || "")), ...row });
+      });
+      writeTransactionNumberSeriesCache(Array.from(byId.values()));
+    }
+    return response;
+  },
+  update: async (id: any, data: any) => {
+    const response = await apiRequest(`/settings/transaction-number-series/${id}`, { method: 'PUT', body: data });
+    const row = response?.data || response;
+    if (row && typeof row === "object") {
+      updateCachedTransactionSeriesRow(row);
+    }
+    return response;
+  },
+  updateMultiple: async (data: any) => {
+    const allSeriesResponse = await transactionNumberSeriesAPI.getAll();
+    const rows = normalizeTransactionSeriesRows(allSeriesResponse);
+    const originalName = String(data?.originalName || data?.seriesName || "").trim().toLowerCase();
+    const modules = Array.isArray(data?.modules) ? data.modules : [];
+
+    const matchingRows = rows.filter((row) => {
+      const rowSeriesName = String(row?.seriesName || row?.name || "").trim().toLowerCase();
+      return originalName ? rowSeriesName === originalName : false;
+    });
+
+    const responses = await Promise.all(
+      modules.map(async (moduleConfig: any) => {
+        const moduleName = normalizeTransactionModuleName(moduleConfig?.module);
+        const existingRow = matchingRows.find(
+          (row) => normalizeTransactionModuleName(row?.module) === moduleName,
+        );
+        const payload = {
+          module: moduleConfig?.module,
+          prefix: moduleConfig?.prefix,
+          startingNumber: moduleConfig?.startingNumber,
+          currentNumber: Math.max(1, parseInt(String(moduleConfig?.startingNumber || "1"), 10) || 1),
+          isDefault: Boolean(moduleConfig?.isDefault),
+          isActive: String(moduleConfig?.status || "Active").toLowerCase() !== "inactive",
+          restartNumbering: moduleConfig?.restartNumbering,
+          seriesName: data?.seriesName,
+          locationIds: data?.locationIds,
+        };
+
+        if (existingRow?._id || existingRow?.id) {
+          return transactionNumberSeriesAPI.update(existingRow._id || existingRow.id, payload);
+        }
+
+        return transactionNumberSeriesAPI.create(payload);
+      }),
+    );
+
+    return {
+      success: true,
+      data: responses.map((response: any) => response?.data || response).filter(Boolean),
+    };
+  },
+  delete: async (id: any) => {
+    const response = await apiRequest(`/settings/transaction-number-series/${id}`, { method: 'DELETE' });
+    const existing = readTransactionNumberSeriesCache();
+    writeTransactionNumberSeriesCache(
+      existing.filter((row) => String(row?._id || row?.id || "").trim() !== String(id || "").trim()),
+    );
+    return response;
+  },
+  getCachedNextNumber: (lookup: any) => {
+    const rows = readTransactionNumberSeriesCache();
+    const matched = chooseMatchingTransactionSeries(rows, lookup);
+    if (matched) {
+      const currentNumber = Number(matched?.currentNumber ?? matched?.nextNumber ?? 1);
+      const nextNumber = currentNumber > 0 ? currentNumber : 1;
+      return formatSeriesNumber(matched, nextNumber, lookup?.module);
+    }
+
+    const fallbackModule = String(lookup?.module || "").trim();
+    const fallbackPrefix = getDefaultSeriesPrefix(fallbackModule);
+    return fallbackPrefix ? `${fallbackPrefix}000001` : "";
+  },
+  getNextNumber: async (lookup: any) => {
+    const rawId =
+      typeof lookup === "string" || typeof lookup === "number"
+        ? String(lookup)
+        : String(lookup?.seriesId || lookup?.id || "").trim();
+    const reserve = typeof lookup === "object" ? Boolean(lookup?.reserve) : true;
+
+    if (rawId) {
+      if (!reserve) {
+        const rowResponse = await transactionNumberSeriesAPI.getById(rawId);
+        const row = rowResponse?.data || rowResponse;
+        const currentNumber = Number(row?.currentNumber ?? 1);
+        const formatted = formatSeriesNumber(row, currentNumber, row?.module);
+        return {
+          success: true,
+          data: {
+            nextNumber: formatted,
+            number: formatted,
+            currentNumber,
+          },
+        };
+      }
+
+      const response = await apiRequest(`/settings/transaction-number-series/${rawId}/next`);
+      const nextValue = Number(response?.data?.currentNumber ?? 1);
+      updateCachedTransactionSeriesRow({
+        _id: rawId,
+        currentNumber: nextValue,
+      });
+      if (response?.data?.number && !response?.data?.nextNumber) {
+        response.data.nextNumber = response.data.number;
+      }
+      return response;
+    }
+
+    const allSeriesResponse = await transactionNumberSeriesAPI.getAll();
+    const rows = normalizeTransactionSeriesRows(allSeriesResponse);
+    const matched = chooseMatchingTransactionSeries(rows, lookup);
+
+    if (!matched?._id && !matched?.id) {
+      return {
+        success: true,
+        data: {
+          nextNumber: transactionNumberSeriesAPI.getCachedNextNumber(lookup),
+          currentNumber: 1,
+        },
+      };
+    }
+
+    const matchedId = matched._id || matched.id;
+    if (!reserve) {
+      const currentNumber = Number(matched?.currentNumber ?? 1);
+      const formatted = formatSeriesNumber(matched, currentNumber, matched?.module);
+      return {
+        success: true,
+        data: {
+          nextNumber: formatted,
+          number: formatted,
+          currentNumber,
+        },
+      };
+    }
+
+    const response = await apiRequest(`/settings/transaction-number-series/${matchedId}/next`);
+    const nextValue = Number(response?.data?.currentNumber ?? 1);
+    updateCachedTransactionSeriesRow({
+      ...matched,
+      _id: matchedId,
+      currentNumber: nextValue,
+    });
+    if (response?.data?.number && !response?.data?.nextNumber) {
+      response.data.nextNumber = response.data.number;
+    }
+    return response;
+  },
 };
 
 // ============================================================================

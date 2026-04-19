@@ -1,8 +1,8 @@
-﻿import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { Info, Phone, Smartphone, Upload, X, Search, ChevronDown, Check, Globe, File, Edit, CheckCircle, Plus, MoreVertical, Folder, Cloud, Box, Layers, HardDrive, Settings, Paperclip, FileText, CreditCard, ChevronUp, Square, Grid3x3, RefreshCw, LayoutGrid, Loader2 } from "lucide-react";
-import { customersAPI, currenciesAPI, documentsAPI, taxesAPI } from "../../../../services/api";
+import { Info, Phone, Smartphone, Upload, X, Search, ChevronDown, Check, Globe, File, Edit, Mail, CheckCircle, Plus, MoreVertical, Folder, Cloud, Box, Layers, HardDrive, Settings, Paperclip, FileText, CreditCard, ChevronUp, Square, Grid3x3, LayoutGrid, Loader2, RefreshCw, Percent } from "lucide-react";
+import { customersAPI, currenciesAPI, documentsAPI, taxesAPI, priceListsAPI } from "../../../../services/api";
 
 import { getAllDocuments } from "../../../../utils/documentStorage";
 // import { getToken, API_BASE_URL } from "../../../../services/auth";
@@ -10,9 +10,17 @@ import { getToken, API_BASE_URL } from "../../../../services/auth";
 import { PaymentTermsDropdown } from "../../../../components/PaymentTermsDropdown";
 import { ConfigurePaymentTermsModal } from "../../../../components/ConfigurePaymentTermsModal";
 import { defaultPaymentTerms, PaymentTerm } from "../../../../hooks/usePaymentTermsDropdown";
+import useTaxDropdownStyle, { taxLabel } from "../../../../hooks/Taxdropdownstyle";
 import NewCurrencyModal from "../../../settings/organization-settings/setup-configurations/currencies/NewCurrencyModal";
-import NewTaxModal from "../../../../components/modals/NewTaxModal";
+import { toast } from "react-hot-toast";
+import SearchableDropdown from "../../../../components/ui/SearchableDropdown";
 import { countries, countryData, countryPhoneCodes } from "./countriesData";
+import {
+  useCustomerDetailQuery,
+  useSaveCustomerMutation,
+} from "../customerQueries";
+import { loadCustomerReportingTags } from "../customerReportingTags";
+
 
 const splitPhoneNumber = (phone: string, defaultPrefix: string) => {
   if (!phone) return { prefix: defaultPrefix, number: "" };
@@ -23,9 +31,175 @@ const splitPhoneNumber = (phone: string, defaultPrefix: string) => {
   return { prefix: defaultPrefix, number: phone };
 };
 
+const TEXT_ONLY_FIELDS = new Set(["firstName", "lastName"]);
+const DIGITS_ONLY_FIELDS = new Set([
+  "workPhone",
+  "mobile",
+  "billingPhone",
+  "billingFax",
+  "billingZipCode",
+  "shippingPhone",
+  "shippingFax",
+  "shippingZipCode",
+]);
+const DECIMAL_FIELDS = new Set(["openingBalance", "exchangeRate"]);
+
+const isValidEmailAddress = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+
+const sanitizeTextOnlyValue = (value: string) =>
+  value.replace(/[^\p{L}\s.'-]/gu, "");
+
+const sanitizeDigitsOnlyValue = (value: string) => value.replace(/\D+/g, "");
+
+const sanitizeDecimalValue = (value: string) => {
+  const cleaned = value.replace(/[^\d.]/g, "");
+  const [integerPart, ...decimalParts] = cleaned.split(".");
+  if (decimalParts.length === 0) return integerPart;
+  return `${integerPart}.${decimalParts.join("")}`;
+};
+
+const trimValue = (value: unknown) => String(value ?? "").trim();
+
+const CONTACT_PERSON_VALIDATION_FIELDS = [
+  "salutation",
+  "firstName",
+  "lastName",
+  "email",
+  "workPhone",
+  "mobile",
+  "skypeName",
+  "designation",
+  "department",
+];
+
+const hasContactPersonData = (contact: any) =>
+  CONTACT_PERSON_VALIDATION_FIELDS.some((fieldName) => trimValue(contact?.[fieldName]));
+
+const getReportingTagErrorKey = (tagId: string | number) => `reportingTag:${String(tagId).trim()}`;
+
+const getContactPersonErrorKey = (contactId: string | number, fieldName: "name" | "email") =>
+  `contactPerson:${String(contactId).trim()}:${fieldName}`;
+
+const escapeAttributeSelectorValue = (value: string) =>
+  String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"');
+
+const sanitizeTypedFieldValue = (fieldName: string, fieldValue: string) => {
+  if (TEXT_ONLY_FIELDS.has(fieldName)) {
+    return sanitizeTextOnlyValue(fieldValue);
+  }
+
+  if (DIGITS_ONLY_FIELDS.has(fieldName)) {
+    return sanitizeDigitsOnlyValue(fieldValue);
+  }
+
+  if (DECIMAL_FIELDS.has(fieldName)) {
+    return sanitizeDecimalValue(fieldValue);
+  }
+
+  return fieldValue;
+};
+
+const buildFormDataFromCustomer = (customer: any) => {
+  const workPhoneData = splitPhoneNumber(customer.workPhone || customer.phone || customer.work_phone || "", "+358");
+  const mobileData = splitPhoneNumber(customer.mobile || customer.mobilePhone || customer.mobile_phone || "", "+252");
+  const contactPersons = (customer.contactPersons || []).map((cp: any) => {
+    const cpWorkPhoneData = splitPhoneNumber(cp.workPhone || cp.phone || "", "+358");
+    const cpMobileData = splitPhoneNumber(cp.mobile || "", "+252");
+    return {
+      ...cp,
+      workPhonePrefix: cpWorkPhoneData.prefix,
+      workPhone: cpWorkPhoneData.number,
+      mobilePrefix: cpMobileData.prefix,
+      mobile: cpMobileData.number
+    };
+  });
+
+  return {
+    customerType: customer.customerType || "business",
+    salutation: customer.salutation || "",
+    firstName: customer.firstName || "",
+    lastName: customer.lastName || "",
+    companyName: customer.companyName || "",
+    displayName: customer.displayName || customer.name || "",
+    email: customer.email || "",
+    workPhonePrefix: workPhoneData.prefix,
+    workPhone: workPhoneData.number,
+    mobilePrefix: mobileData.prefix,
+    mobile: mobileData.number,
+    customerLanguage: customer.customerLanguage || customer.portalLanguage || "english",
+    taxRate: customer.taxRate || "",
+    companyId: customer.companyId || "",
+    locationCode: customer.locationCode || "",
+    currency: customer.currency || "USD",
+    accountsReceivable: customer.accountsReceivable || "",
+    openingBalance: customer.receivables?.toString() || customer.openingBalance || "",
+    paymentTerms: customer.paymentTerms || "due-on-receipt",
+    priceListId: customer.priceListId || customer.priceListID || customer.price_list_id || "",
+    enablePortal: customer.enablePortal || false,
+    customerOwner: customer.customerOwner || customer.salesperson || "",
+    websiteUrl: customer.websiteUrl || customer.website || "",
+    department: customer.department || "",
+    designation: customer.designation || "",
+    xHandle: customer.xHandle || "",
+    skypeName: customer.skypeName || "",
+    facebook: customer.facebook || "",
+    billingAttention: customer.billingAddress?.attention || customer.billingAttention || "",
+    billingCountry: customer.billingAddress?.country || customer.billingCountry || "",
+    billingStreet1: customer.billingAddress?.street1 || customer.billingStreet1 || "",
+    billingStreet2: customer.billingAddress?.street2 || customer.billingStreet2 || "",
+    billingCity: customer.billingAddress?.city || customer.billingCity || "",
+    billingState: customer.billingAddress?.state || customer.billingState || "",
+    billingZipCode: customer.billingAddress?.zipCode || customer.billingZipCode || "",
+    billingPhone: customer.billingAddress?.phone || customer.billingPhone || "",
+    billingFax: customer.billingAddress?.fax || customer.billingFax || "",
+    shippingAttention: customer.shippingAddress?.attention || customer.shippingAttention || "",
+    shippingCountry: customer.shippingAddress?.country || customer.shippingCountry || "",
+    shippingStreet1: customer.shippingAddress?.street1 || customer.shippingStreet1 || "",
+    shippingStreet2: customer.shippingAddress?.street2 || customer.shippingStreet2 || "",
+    shippingCity: customer.shippingAddress?.city || customer.shippingCity || "",
+    shippingState: customer.shippingAddress?.state || customer.shippingState || "",
+    shippingZipCode: customer.shippingAddress?.zipCode || customer.shippingZipCode || "",
+    shippingPhone: customer.shippingAddress?.phone || customer.shippingPhone || "",
+    shippingFax: customer.shippingAddress?.fax || customer.shippingFax || "",
+    documents: customer.documents || [],
+    contactPersons,
+    customFields: customer.customFields || {},
+    reportingTags: customer.reportingTags || [],
+    remarks: customer.remarks || customer.notes || "",
+    exchangeRate: customer.exchangeRate || "1.00",
+    customerNumber: customer.customerNumber || customer.customer_number || ""
+  };
+};
+
 const accounts = [
   { id: "ar1", name: "Accounts Receivable" }
 ];
+
+const PRICE_LISTS_STORAGE_KEY = "inv_price_lists_v1";
+const CUSTOMER_EDIT_PRELOAD_PREFIX = "billing_customer_edit_preload:";
+
+const resolveCustomerDisplayName = (customer: any) =>
+  String(
+    customer?.displayName ||
+    customer?.companyName ||
+    customer?.name ||
+    `${customer?.firstName || ""} ${customer?.lastName || ""}`.trim() ||
+    "Customer"
+  ).trim() || "Customer";
+
+const normalizeCustomerForRouteState = (customer: any, fallbackId?: string) => {
+  const resolvedId = String(customer?._id || customer?.id || fallbackId || "").trim();
+  const resolvedName = resolveCustomerDisplayName(customer);
+
+  return {
+    ...(customer || {}),
+    ...(resolvedId ? { id: resolvedId, _id: resolvedId } : {}),
+    name: resolvedName,
+    displayName: customer?.displayName || resolvedName,
+  };
+};
 
 
 
@@ -94,13 +268,41 @@ export default function NewCustomer() {
   const location = useLocation();
   const { id } = useParams();
   const isEditMode = !!id;
-  const [isLoading, setIsLoading] = useState(isEditMode);
+  const routeState = (location.state as any) || {};
+  const routeCustomer = routeState.customer || routeState.savedCustomer || null;
+  const cachedRouteCustomer = React.useMemo(() => {
+    if (!isEditMode || !id || typeof window === "undefined") return null;
+    try {
+      const raw = sessionStorage.getItem(`${CUSTOMER_EDIT_PRELOAD_PREFIX}${String(id).trim()}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }, [id, isEditMode]);
+  const candidateRouteCustomer = routeCustomer || cachedRouteCustomer;
+  const routeCustomerId = String(
+    candidateRouteCustomer?._id ||
+    candidateRouteCustomer?.id ||
+    candidateRouteCustomer?.customerId ||
+    ""
+  ).trim();
+  const preloadedEditCustomer =
+    isEditMode &&
+    candidateRouteCustomer &&
+    (!id || !routeCustomerId || routeCustomerId === String(id).trim())
+      ? candidateRouteCustomer
+      : null;
+  const [activeSaveAction, setActiveSaveAction] = useState<"save" | "saveAndSubscribe" | null>(null);
+  const [isLoading, setIsLoading] = useState(isEditMode && !preloadedEditCustomer);
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState("other-details");
   const [showMoreDetails, setShowMoreDetails] = useState(false);
   const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false);
   const [currencySearch, setCurrencySearch] = useState("");
   const currencyDropdownRef = useRef<HTMLDivElement>(null);
+  const [isTaxRateDropdownOpen, setIsTaxRateDropdownOpen] = useState(false);
+  const [taxRateSearch, setTaxRateSearch] = useState("");
+  const taxRateDropdownRef = useRef<HTMLDivElement>(null);
   const [isAccountsReceivableDropdownOpen, setIsAccountsReceivableDropdownOpen] = useState(false);
   const [accountsReceivableSearch, setAccountsReceivableSearch] = useState("");
   const accountsReceivableDropdownRef = useRef<HTMLDivElement>(null);
@@ -123,6 +325,12 @@ export default function NewCustomer() {
   const [isCustomerLanguageDropdownOpen, setIsCustomerLanguageDropdownOpen] = useState(false);
   const customerLanguageDropdownRef = useRef<HTMLDivElement>(null);
   const [isHelpSidebarOpen, setIsHelpSidebarOpen] = useState(false);
+  const [existingCustomerData, setExistingCustomerData] = useState<any | null>(null);
+  const editCustomerQuery = useCustomerDetailQuery(id, {
+    enabled: isEditMode && Boolean(id),
+    initialCustomer: preloadedEditCustomer,
+  });
+  const saveCustomerMutation = useSaveCustomerMutation();
 
   const [isWorkPhonePrefixDropdownOpen, setIsWorkPhonePrefixDropdownOpen] = useState(false);
   const [workPhonePrefixSearch, setWorkPhonePrefixSearch] = useState("");
@@ -133,8 +341,10 @@ export default function NewCustomer() {
   const mobilePrefixRef = useRef<HTMLDivElement>(null);
 
   const [isDisplayNameManuallyEdited, setIsDisplayNameManuallyEdited] = useState(false);
-  const [isUploadDropdownOpen, setIsUploadDropdownOpen] = useState(false);
-  const uploadDropdownRef = useRef<HTMLDivElement>(null);
+  const [priceLists, setPriceLists] = useState<any[]>([]);
+  const [isPriceListDropdownOpen, setIsPriceListDropdownOpen] = useState(false);
+  const [priceListSearch, setPriceListSearch] = useState("");
+  const priceListDropdownRef = useRef<HTMLDivElement>(null);
   const [showExtendedContactColumns, setShowExtendedContactColumns] = useState(false);
   const [isDocumentsModalOpen, setIsDocumentsModalOpen] = useState(false);
   const [selectedInbox, setSelectedInbox] = useState("files");
@@ -142,7 +352,7 @@ export default function NewCustomer() {
   const [selectedDocuments, setSelectedDocuments] = useState<any[]>([]);
   const [availableDocuments, setAvailableDocuments] = useState<any[]>([]);
   const [isCloudPickerOpen, setIsCloudPickerOpen] = useState(false);
-  const [selectedCloudProvider, setSelectedCloudProvider] = useState("taban");
+  const [selectedCloudProvider, setSelectedCloudProvider] = useState("zoho");
   const [cloudSearchQuery, setCloudSearchQuery] = useState("");
   const [selectedCloudFiles, setSelectedCloudFiles] = useState<any[]>([]);
   const [isNewCurrencyModalOpen, setIsNewCurrencyModalOpen] = useState(false);
@@ -161,27 +371,28 @@ export default function NewCustomer() {
 
   // Customer Number Settings State
   const [enableCustomerNumbers, setEnableCustomerNumbers] = useState(false);
-  const [customerNumberPrefix, setCustomerNumberPrefix] = useState("so-");
-  const [customerNumberStart, setCustomerNumberStart] = useState("1002");
+  const [customerNumberPrefix, setCustomerNumberPrefix] = useState("CUS-");
+  const [customerNumberStart, setCustomerNumberStart] = useState("0001");
   const [isCustomerNumberSettingsModalOpen, setIsCustomerNumberSettingsModalOpen] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isCustomerNumberManuallyEdited, setIsCustomerNumberManuallyEdited] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [availableTaxes, setAvailableTaxes] = useState<any[]>([]);
-  const [isNewTaxModalOpen, setIsNewTaxModalOpen] = useState(false);
 
   const loadTaxes = useCallback(async () => {
     try {
-      const response: any = await taxesAPI.getAll({ status: "active" });
-      const rawTaxes = Array.isArray(response) ? response : (response?.data || []);
-      const normalized = (Array.isArray(rawTaxes) ? rawTaxes : [])
+      const response: any = await taxesAPI.getAll();
+      const rows = Array.isArray(response?.data) ? response.data : (Array.isArray(response) ? response : []);
+      const normalized = rows
+        .filter((t: any) => t?.isActive !== false && t?.active !== false)
         .map((t: any) => ({
           ...t,
           id: String(t?._id || t?.id || t?.tax_id || ""),
         }))
         .filter((t: any) => t.id);
       setAvailableTaxes(normalized);
+
     } catch (error) {
-      console.error("Error fetching taxes:", error);
       setAvailableTaxes([]);
     }
   }, []);
@@ -190,7 +401,125 @@ export default function NewCustomer() {
     loadTaxes();
   }, [loadTaxes]);
 
-  
+  const loadPriceLists = useCallback(() => {
+    const normalize = (rows: any[]) => {
+      const parsed = Array.isArray(rows) ? rows : [];
+      const normalized = parsed
+        .map((row: any) => {
+          const id = String(row?.id || row?._id || "").trim();
+          const name = String(row?.name || "").trim();
+          const pricingScheme = String(row?.pricingScheme || "").trim();
+          const currency = String(row?.currency || "").trim() || "-";
+          const status = String(
+            row?.status ?? (row?.isActive === false || row?.active === false ? "Inactive" : "Active")
+          ).trim();
+
+          return {
+            id,
+            name,
+            pricingScheme,
+            currency,
+            status,
+            isActive: row?.isActive,
+            active: row?.active,
+          };
+        })
+        .filter((row: any) => row.id && row.name)
+        .filter((row: any) => {
+          const status = String(row?.status || "").toLowerCase().trim();
+          if (status === "inactive") return false;
+          if (row?.isActive === false) return false;
+          if (row?.active === false) return false;
+          return true;
+        })
+        .map((row: any) => ({
+          id: row.id,
+          name: row.name,
+          currency: row.currency,
+          pricingScheme: row.pricingScheme,
+        }));
+
+      setPriceLists(normalized);
+    };
+
+    const load = async () => {
+      // 1) Instant local fallback (offline + faster UI)
+      try {
+        const raw = localStorage.getItem(PRICE_LISTS_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        normalize(parsed);
+      } catch (error) {
+        console.error("Error reading cached price lists for customer:", error);
+        normalize([]);
+      }
+
+      // 2) Refresh from backend and keep localStorage in sync
+      try {
+        const response: any = await priceListsAPI.list({ limit: 5000 });
+        const rows = response?.success ? response?.data : null;
+        if (Array.isArray(rows)) {
+          localStorage.setItem(PRICE_LISTS_STORAGE_KEY, JSON.stringify(rows));
+          normalize(rows);
+        }
+      } catch (error) {
+        console.error("Error loading price lists from API for customer:", error);
+      }
+    };
+
+    load();
+  }, []);
+
+  useEffect(() => {
+    loadPriceLists();
+
+    const onStorageChange = (event: StorageEvent) => {
+      if (!event.key || event.key === PRICE_LISTS_STORAGE_KEY) {
+        loadPriceLists();
+      }
+    };
+    const onWindowFocus = () => loadPriceLists();
+
+    window.addEventListener("storage", onStorageChange);
+    window.addEventListener("focus", onWindowFocus);
+    return () => {
+      window.removeEventListener("storage", onStorageChange);
+      window.removeEventListener("focus", onWindowFocus);
+    };
+  }, [loadPriceLists]);
+
+  const [availableReportingTags, setAvailableReportingTags] = useState<any[]>([]);
+  const [isReportingTagsLoading, setIsReportingTagsLoading] = useState(false);
+
+  const applyExistingCustomerToForm = useCallback((customer: any) => {
+    setExistingCustomerData(customer);
+    setFormData(buildFormDataFromCustomer(customer));
+    setIsDisplayNameManuallyEdited(Boolean(customer.displayName || customer.name));
+  }, [errors]);
+
+  const loadReportingTags = useCallback(async () => {
+    setIsReportingTagsLoading(true);
+    try {
+      const tags = await loadCustomerReportingTags();
+      setAvailableReportingTags(tags);
+    } catch (error) {
+      console.error("Error loading reporting tags:", error);
+      setAvailableReportingTags([]);
+    } finally {
+      setIsReportingTagsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadReportingTags();
+  }, [loadReportingTags]);
+
+  useEffect(() => {
+    if (activeTab === "reporting-tags") {
+      loadReportingTags();
+    }
+  }, [activeTab, loadReportingTags]);
+
+
 
   // Contact person dropdown states
   const [openContactDropdown, setOpenContactDropdown] = useState<{ id: number, type: 'work' | 'mobile' } | null>(null);
@@ -199,6 +528,7 @@ export default function NewCustomer() {
   const closeAllDropdowns = () => {
     setOpenContactDropdown(null);
     setIsCurrencyDropdownOpen(false);
+    setIsTaxRateDropdownOpen(false);
     setIsAccountsReceivableDropdownOpen(false);
     setIsBillingCountryDropdownOpen(false);
     setIsShippingCountryDropdownOpen(false);
@@ -208,7 +538,8 @@ export default function NewCustomer() {
     setIsCustomerLanguageDropdownOpen(false);
     setIsWorkPhonePrefixDropdownOpen(false);
     setIsMobilePrefixDropdownOpen(false);
-    setIsUploadDropdownOpen(false);
+    setIsPriceListDropdownOpen(false);
+    setTaxRateSearch("");
   };
 
 
@@ -234,6 +565,7 @@ export default function NewCustomer() {
     accountsReceivable: "",
     openingBalance: "",
     paymentTerms: "due-on-receipt",
+    priceListId: "",
     enablePortal: false,
     customerOwner: "",
     websiteUrl: "",
@@ -272,7 +604,6 @@ export default function NewCustomer() {
   useEffect(() => {
     if (location.state?.clonedData && !isEditMode) {
       const cloned = location.state.clonedData;
-      console.log("Populating form with cloned data:", cloned);
 
       const workPhoneData = splitPhoneNumber(cloned.workPhone || "", "+358");
       const mobileData = cloned.mobile ? splitPhoneNumber(cloned.mobile, "+252") : { prefix: "+252", number: "" };
@@ -298,6 +629,7 @@ export default function NewCustomer() {
         accountsReceivable: cloned.accountsReceivable || "",
         openingBalance: cloned.openingBalance || "",
         paymentTerms: cloned.paymentTerms || "due-on-receipt",
+        priceListId: cloned.priceListId || "",
         enablePortal: cloned.enablePortal || false,
         customerOwner: cloned.customerOwner || "",
         websiteUrl: cloned.websiteUrl || "",
@@ -348,6 +680,20 @@ export default function NewCustomer() {
     }
   }, [location.state, isEditMode]);
 
+  useEffect(() => {
+    if (preloadedEditCustomer) {
+      applyExistingCustomerToForm(preloadedEditCustomer);
+      setIsLoading(false);
+
+      if (isEditMode && id && typeof window !== "undefined") {
+        try {
+          sessionStorage.removeItem(`${CUSTOMER_EDIT_PRELOAD_PREFIX}${String(id).trim()}`);
+        } catch {
+        }
+      }
+    }
+  }, [applyExistingCustomerToForm, id, isEditMode, preloadedEditCustomer]);
+
 
 
 
@@ -367,7 +713,6 @@ export default function NewCustomer() {
 
           if (response.ok) {
             const data = await response.json();
-            console.log('Fetched settings:', data);
             if (data.success && data.data) {
               // Set default customer type if available
               if (data.data.defaultCustomerType) {
@@ -380,21 +725,15 @@ export default function NewCustomer() {
               // Handle Customer Number settings
               if (data.data.enableCustomerNumbers !== undefined) {
                 setEnableCustomerNumbers(data.data.enableCustomerNumbers);
-                setCustomerNumberPrefix(data.data.customerNumberPrefix || "so-");
-                setCustomerNumberStart(data.data.customerNumberStart || "1002");
-
-                if (data.data.enableCustomerNumbers && !isEditMode) {
-                  setFormData(prev => ({
-                    ...prev,
-                    customerNumber: `${data.data.customerNumberPrefix || "so-"}${data.data.customerNumberStart || "1002"}`
-                  }));
-                }
               }
+              const prefPrefix = data.data.customerNumberPrefix || "CUS-";
+              const prefStart = data.data.customerNumberStart || "0001";
+              setCustomerNumberPrefix(prefPrefix);
+              setCustomerNumberStart(prefStart);
             }
           }
         } catch (error) {
-          console.error('Error loading default customer type:', error);
-          // If error, keep default "business"
+          // Keep default "business" on any settings load failure
         }
       };
 
@@ -406,26 +745,48 @@ export default function NewCustomer() {
   useEffect(() => {
     const fetchCurrencies = async () => {
       try {
-        const response = await currenciesAPI.getAll({ isActive: true });
-        if (response && response.success) {
-          setAvailableCurrencies(response.data);
-          const base = response.data.find((c: any) => c.isBaseCurrency);
-          if (base) setBaseCurrency(base);
+        const getData = (res: any) => (Array.isArray(res?.data) ? res.data : []);
+        let response = await currenciesAPI.getAll({ isActive: true });
+        let data = getData(response);
 
-          // Set default currency if not in edit mode
-          if (!isEditMode && response.data.length > 0) {
-            if (base) {
-              setFormData(prev => ({ ...prev, currency: base.code, exchangeRate: "1.00" }));
-            } else if (response.data.some(c => c.code === "USD")) {
-              setFormData(prev => ({ ...prev, currency: "USD", exchangeRate: "1.00" }));
-            } else {
-              setFormData(prev => ({ ...prev, currency: response.data[0].code, exchangeRate: "1.00" }));
-            }
+        if (!response?.success || data.length === 0) {
+          const fallbackResponse = await currenciesAPI.getAll({ limit: 1000 });
+          const fallbackData = getData(fallbackResponse);
+          if (fallbackResponse?.success && fallbackData.length > 0) {
+            response = fallbackResponse;
+            data = fallbackData;
           }
         }
-      } catch (error) {
-        console.error("Error fetching currencies:", error);
-      }
+
+        if (!response?.success || data.length === 0) {
+          const fallbackResponse = await currenciesAPI.getAll();
+          const fallbackData = getData(fallbackResponse);
+          if (fallbackResponse?.success && fallbackData.length > 0) {
+            response = fallbackResponse;
+            data = fallbackData;
+          }
+        }
+
+        if (!data.length) {
+          setAvailableCurrencies([]);
+          return;
+        }
+
+        setAvailableCurrencies(data);
+        const base = data.find((c: any) => Boolean(c?.isBaseCurrency || c?.is_base_currency || c?.isBase));
+        if (base) setBaseCurrency(base);
+
+        // Set default currency if not in edit mode
+        if (!isEditMode && data.length > 0) {
+          if (base) {
+            setFormData(prev => ({ ...prev, currency: base.code, exchangeRate: "1.00" }));
+          } else if (data.some((c: any) => c.code === "USD")) {
+            setFormData(prev => ({ ...prev, currency: "USD", exchangeRate: "1.00" }));
+          } else {
+            setFormData(prev => ({ ...prev, currency: data[0].code, exchangeRate: "1.00" }));
+          }
+        }
+      } catch (error) { }
     };
     fetchCurrencies();
   }, [isEditMode]);
@@ -462,21 +823,209 @@ export default function NewCustomer() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type, checked } = e.target as any;
+    const resolvedValue =
+      type === "checkbox"
+        ? checked
+        : sanitizeTypedFieldValue(name, String(value ?? ""));
+
     setFormData((prev: typeof formData) => ({
       ...prev,
-      [name]: type === "checkbox" ? checked : value
+      [name]: resolvedValue
     }));
     if (name && errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: "" }));
     }
+    if (name === "enablePortal" && !checked && errors.email) {
+      setErrors((prev) => {
+        if (!prev.email) return prev;
+        const next = { ...prev };
+        delete next.email;
+        return next;
+      });
+    }
     // Track if display name is manually edited
     if (name === "displayName") {
       setIsDisplayNameManuallyEdited(true);
+    } else if (name === "customerNumber") {
+      setIsCustomerNumberManuallyEdited(true);
     } else if (name === "firstName" || name === "lastName" || name === "companyName") {
       // Reset manual edit flag when these fields change so display name can auto-update
       setIsDisplayNameManuallyEdited(false);
     }
   };
+
+  const handleEmailBlur = useCallback(() => {
+    const trimmedEmail = String(formData.email || "").trim();
+    setErrors((prev) => {
+      if (!trimmedEmail) {
+        if (!prev.email) return prev;
+        const next = { ...prev };
+        delete next.email;
+        return next;
+      }
+
+      if (isValidEmailAddress(trimmedEmail)) {
+        if (!prev.email) return prev;
+        const next = { ...prev };
+        delete next.email;
+        return next;
+      }
+
+      return { ...prev, email: "Please enter a valid email address." };
+    });
+  }, [formData.email]);
+
+  const updateContactPersonField = useCallback((contactId: number, fieldName: string, fieldValue: string) => {
+    const sanitizedValue = sanitizeTypedFieldValue(fieldName, fieldValue);
+    setFormData(prev => ({
+      ...prev,
+      contactPersons: prev.contactPersons.map(cp =>
+        cp.id === contactId ? { ...cp, [fieldName]: sanitizedValue } : cp
+      )
+    }));
+    const contactNameErrorKey = getContactPersonErrorKey(contactId, "name");
+    const contactEmailErrorKey = getContactPersonErrorKey(contactId, "email");
+    if ((fieldName === "firstName" || fieldName === "lastName") && errors[contactNameErrorKey]) {
+      setErrors((prev) => {
+        if (!prev[contactNameErrorKey]) return prev;
+        const next = { ...prev };
+        delete next[contactNameErrorKey];
+        return next;
+      });
+    }
+    if (fieldName === "email" && errors[contactEmailErrorKey]) {
+      setErrors((prev) => {
+        if (!prev[contactEmailErrorKey]) return prev;
+        const next = { ...prev };
+        delete next[contactEmailErrorKey];
+        return next;
+      });
+    }
+  }, [errors]);
+
+  const validateCustomerForm = useCallback((resolvedCustomerNumber: string) => {
+    const nextErrors: { [key: string]: string } = {};
+    const customerType = trimValue(formData.customerType);
+    const displayName = trimValue(formData.displayName);
+    const email = trimValue(formData.email);
+
+    if (!customerType) {
+      nextErrors.customerType = "Customer Type is required.";
+    }
+    if (!displayName) {
+      nextErrors.displayName = "Display Name is required.";
+    }
+    if (formData.enablePortal && !email) {
+      nextErrors.email = "Email Address is required when portal access is enabled.";
+    } else if (email && !isValidEmailAddress(email)) {
+      nextErrors.email = "Please enter a valid email address.";
+    }
+    if (enableCustomerNumbers && !trimValue(resolvedCustomerNumber)) {
+      nextErrors.customerNumber = "Customer Number is required.";
+    }
+
+    availableReportingTags.forEach((tag: any) => {
+      const tagId = String(tag?._id || tag?.id || "").trim();
+      const isMandatory = Boolean(
+        tag?.isMandatory || tag?.mandatory || tag?.required || tag?.is_required || tag?.isMandatoryTag
+      );
+      if (!tagId || !isMandatory) return;
+      const selectedTag = Array.isArray(formData.reportingTags)
+        ? formData.reportingTags.find((rt: any) => rt.tagId === tagId || rt.id === tagId)
+        : null;
+      if (!trimValue(selectedTag?.value)) {
+        nextErrors[getReportingTagErrorKey(tagId)] = `${trimValue(tag?.name) || "Reporting Tag"} is required.`;
+      }
+    });
+
+    (Array.isArray(formData.contactPersons) ? formData.contactPersons : []).forEach((contact: any, index: number) => {
+      if (!hasContactPersonData(contact)) return;
+      const contactId = String(contact?.id || index).trim();
+      if (!contactId) return;
+      if (!trimValue(contact?.firstName) && !trimValue(contact?.lastName)) {
+        nextErrors[getContactPersonErrorKey(contactId, "name")] =
+          "Enter a first name or last name for this contact person.";
+      }
+      const contactEmail = trimValue(contact?.email);
+      if (contactEmail && !isValidEmailAddress(contactEmail)) {
+        nextErrors[getContactPersonErrorKey(contactId, "email")] =
+          "Please enter a valid contact person email address.";
+      }
+    });
+
+    return nextErrors;
+  }, [availableReportingTags, enableCustomerNumbers, formData]);
+
+  const focusValidationError = useCallback((errorKey: string) => {
+    const selectorValue = escapeAttributeSelectorValue(errorKey);
+    const focusTarget = () => {
+      const element = document.querySelector(
+        `[name="${selectorValue}"], [data-validation-key="${selectorValue}"]`
+      ) as HTMLElement | null;
+      if (!element) return;
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      const focusable =
+        (element.matches("input, select, textarea, button") ? element : null) ||
+        (element.querySelector("input, select, textarea, button") as HTMLElement | null);
+      focusable?.focus?.();
+    };
+
+    if (errorKey.startsWith("contactPerson:")) {
+      setActiveTab("contact-persons");
+      if (typeof window !== "undefined") {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(focusTarget);
+        });
+      }
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(focusTarget);
+    } else {
+      focusTarget();
+    }
+  }, []);
+
+  const { filteredTaxGroups: filteredCustomerTaxGroups, selectedTaxOption: selectedCustomerTaxOption } = useTaxDropdownStyle({
+    taxes: availableTaxes,
+    search: taxRateSearch,
+    selectedTaxId: formData.taxRate,
+  });
+
+  const applyNextCustomerNumber = useCallback(
+    async (force = false) => {
+      if (isEditMode) return;
+      if (!enableCustomerNumbers && !force) {
+        setFormData((prev) => ({ ...prev, customerNumber: "" }));
+        setErrors((prev) => ({ ...prev, customerNumber: "" }));
+        return;
+      }
+      if (!force && isCustomerNumberManuallyEdited) return;
+      try {
+        const nextNumber = await customersAPI.getNextCustomerNumber({
+          prefix: customerNumberPrefix,
+          start: customerNumberStart,
+        });
+        setFormData((prev) => ({ ...prev, customerNumber: nextNumber }));
+        if (force) setIsCustomerNumberManuallyEdited(false);
+        setErrors((prev) => ({ ...prev, customerNumber: "" }));
+      } catch {
+        // Ignore formatting failures; validation handles missing values.
+      }
+    },
+    [
+      isEditMode,
+      enableCustomerNumbers,
+      isCustomerNumberManuallyEdited,
+      customerNumberPrefix,
+      customerNumberStart,
+    ]
+  );
+
+  useEffect(() => {
+    applyNextCustomerNumber(false);
+  }, [applyNextCustomerNumber]);
 
   // Auto-update display name when firstName, lastName, or companyName changes
   useEffect(() => {
@@ -510,14 +1059,14 @@ export default function NewCustomer() {
 
     // Validate file count
     if (formData.documents.length + files.length > 10) {
-      alert("You can upload a maximum of 10 files");
+      toast.error("You can upload a maximum of 10 files");
       return;
     }
 
     // Validate file sizes (10MB each)
     const invalidFiles = files.filter(file => file.size > 10 * 1024 * 1024);
     if (invalidFiles.length > 0) {
-      alert(`Some files exceed 10MB limit. Maximum file size is 10MB.`);
+      toast.error("Some files exceed 10MB limit. Maximum file size is 10MB.");
       return;
     }
 
@@ -596,158 +1145,111 @@ export default function NewCustomer() {
 
   // Load customer data when in edit mode
   useEffect(() => {
-    const loadCustomerData = async () => {
-      if (isEditMode && id) {
-        setIsLoading(true);
-        try {
-          console.log("Loading customer for edit with ID:", id);
-          const response = await customersAPI.getById(id);
-          console.log("Customer API response:", response);
-
-          if (response && response.success && response.data) {
-            const customer = response.data;
-            const workPhoneData = splitPhoneNumber(customer.workPhone, "+358");
-            const mobileData = splitPhoneNumber(customer.mobile, "+252");
-
-            const contactPersons = (customer.contactPersons || []).map((cp: any) => {
-              const cpWorkPhoneData = splitPhoneNumber(cp.workPhone || cp.phone || "", "+358");
-              const cpMobileData = splitPhoneNumber(cp.mobile || "", "+252");
-              return {
-                ...cp,
-                workPhonePrefix: cpWorkPhoneData.prefix,
-                workPhone: cpWorkPhoneData.number,
-                mobilePrefix: cpMobileData.prefix,
-                mobile: cpMobileData.number
-              };
-            });
-
-            setFormData({
-              customerType: customer.customerType || "business",
-              salutation: customer.salutation || "",
-              firstName: customer.firstName || "",
-              lastName: customer.lastName || "",
-              companyName: customer.companyName || "",
-              displayName: customer.displayName || customer.name || "",
-              email: customer.email || "",
-              workPhonePrefix: workPhoneData.prefix,
-              workPhone: workPhoneData.number,
-              mobilePrefix: mobileData.prefix,
-              mobile: mobileData.number,
-              customerLanguage: customer.customerLanguage || "english",
-              taxRate: customer.taxRate || "",
-              companyId: customer.companyId || "",
-              locationCode: customer.locationCode || "",
-              currency: customer.currency || "USD",
-              accountsReceivable: customer.accountsReceivable || "",
-              openingBalance: customer.receivables?.toString() || customer.openingBalance || "",
-              paymentTerms: customer.paymentTerms || "due-on-receipt",
-              enablePortal: customer.enablePortal || false,
-              customerOwner: customer.customerOwner || "",
-              websiteUrl: customer.websiteUrl || "",
-              department: customer.department || "",
-              designation: customer.designation || "",
-              xHandle: customer.xHandle || "",
-              skypeName: customer.skypeName || "",
-              facebook: customer.facebook || "",
-              billingAttention: customer.billingAddress?.attention || customer.billingAttention || "",
-              billingCountry: customer.billingAddress?.country || customer.billingCountry || "",
-              billingStreet1: customer.billingAddress?.street1 || customer.billingStreet1 || "",
-              billingStreet2: customer.billingAddress?.street2 || customer.billingStreet2 || "",
-              billingCity: customer.billingAddress?.city || customer.billingCity || "",
-              billingState: customer.billingAddress?.state || customer.billingState || "",
-              billingZipCode: customer.billingAddress?.zipCode || customer.billingZipCode || "",
-              billingPhone: customer.billingAddress?.phone || customer.billingPhone || "",
-              billingFax: customer.billingAddress?.fax || customer.billingFax || "",
-              shippingAttention: customer.shippingAddress?.attention || customer.shippingAttention || "",
-              shippingCountry: customer.shippingAddress?.country || customer.shippingCountry || "",
-              shippingStreet1: customer.shippingAddress?.street1 || customer.shippingStreet1 || "",
-              shippingStreet2: customer.shippingAddress?.street2 || customer.shippingStreet2 || "",
-              shippingCity: customer.shippingAddress?.city || customer.shippingCity || "",
-              shippingState: customer.shippingAddress?.state || customer.shippingState || "",
-              shippingZipCode: customer.shippingAddress?.zipCode || customer.shippingZipCode || "",
-              shippingPhone: customer.shippingAddress?.phone || customer.shippingPhone || "",
-              shippingFax: customer.shippingAddress?.fax || customer.shippingFax || "",
-              documents: customer.documents || [],
-              contactPersons: contactPersons,
-              customFields: customer.customFields || {},
-              reportingTags: customer.reportingTags || [],
-              remarks: customer.remarks || customer.notes || "",
-              exchangeRate: customer.exchangeRate || "1.00",
-              customerNumber: customer.customerNumber || ""
-            });
-            setIsLoading(false);
-          } else {
-            console.error("Customer not found with ID:", id);
-            alert("Customer not found. You can still edit the form, but changes won't be saved to an existing customer.");
-            setIsLoading(false);
-          }
-        } catch (error: any) {
-          console.error("Error loading customer:", error);
-          alert("Error loading customer: " + (error?.message || 'Unknown error. Please check console.'));
-          setIsLoading(false);
-        }
-      } else {
-        setIsLoading(false);
-      }
-    };
-
-    loadCustomerData();
-  }, [isEditMode, id]);
-
-  const handleSave = async () => {
-    // Validation
-    const errors: { [key: string]: string } = {};
-    if (!formData.displayName?.trim()) {
-      errors.displayName = "Display Name is required.";
-    }
-    if (enableCustomerNumbers && !formData.customerNumber?.trim()) {
-      errors.customerNumber = "Customer Number is required.";
-    }
-
-    if (Object.keys(errors).length > 0) {
-      setErrors(errors);
-      // Scroll to the error
-      const firstErrorField = Object.keys(errors)[0];
-      const errorElement = document.querySelector(`[name="${firstErrorField}"]`);
-      if (errorElement) {
-        errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        (errorElement as HTMLElement).focus();
-      }
+    if (!isEditMode) {
+      setExistingCustomerData(null);
+      setIsLoading(false);
       return;
     }
 
+    if (editCustomerQuery.data) {
+      applyExistingCustomerToForm(editCustomerQuery.data);
+      setIsLoading(false);
+      return;
+    }
+
+    if (editCustomerQuery.isError) {
+      if (!preloadedEditCustomer) {
+        toast.error(
+          "Error loading customer: " +
+            ((editCustomerQuery.error as Error | undefined)?.message || "Unknown error.")
+        );
+        setExistingCustomerData(null);
+      }
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(Boolean(editCustomerQuery.isPending || editCustomerQuery.isFetching) && !preloadedEditCustomer);
+  }, [
+    applyExistingCustomerToForm,
+    editCustomerQuery.data,
+    editCustomerQuery.error,
+    editCustomerQuery.isError,
+    editCustomerQuery.isFetching,
+    editCustomerQuery.isPending,
+    isEditMode,
+    preloadedEditCustomer,
+  ]);
+
+  const handleSave = async (saveAction: "save" | "saveAndSubscribe" = "save") => {
+    let resolvedCustomerNumber = String(formData.customerNumber || "").trim();
+    if (!isEditMode && enableCustomerNumbers && !resolvedCustomerNumber) {
+      try {
+        resolvedCustomerNumber = await customersAPI.getNextCustomerNumber({
+          prefix: customerNumberPrefix,
+          start: customerNumberStart,
+        });
+        setFormData((prev) => ({ ...prev, customerNumber: resolvedCustomerNumber }));
+        setIsCustomerNumberManuallyEdited(false);
+      } catch {
+        // Ignore; validation handles missing values.
+      }
+    }
+
+    const validationErrors = validateCustomerForm(resolvedCustomerNumber);
+
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      focusValidationError(Object.keys(validationErrors)[0]);
+      return;
+    }
+
+    setErrors({});
+    setActiveSaveAction(saveAction);
     setIsSaving(true);
 
     try {
       // Process file uploads
       const processedDocuments = [];
-      if (formData.documents && formData.documents.length > 0) {
-        for (const doc of formData.documents) {
-          if (doc.file) {
-            // New file upload
-            try {
-              const uploadResponse = await documentsAPI.upload(doc.file);
-              if (uploadResponse.success && uploadResponse.data) {
-                processedDocuments.push({
-                  name: doc.name,
-                  url: uploadResponse.data.url,
-                  uploadedAt: new Date()
-                });
-              }
-            } catch (error) {
-              console.error("Error uploading file:", doc.name, error);
-              // Optimistically continue or alert? Continuing for now.
-            }
+            if (formData.documents && formData.documents.length > 0) {
+              for (const doc of formData.documents) {
+                if (doc.file) {
+                  // New file upload
+                  try {
+                    const uploadResponse = await documentsAPI.upload(doc.file);
+                    if (uploadResponse.success && uploadResponse.data) {
+                      const document = uploadResponse.data as any;
+                      processedDocuments.push({
+                        documentId: document.documentId || document.id || document._id,
+                        name: doc.name,
+                        size: document.size || doc.file.size,
+                        mimeType: document.mimeType || doc.file.type || "application/octet-stream",
+                        url: document.viewUrl || document.url || document.contentUrl || document.previewUrl || "",
+                        viewUrl: document.viewUrl || document.url || document.contentUrl || document.previewUrl || "",
+                        downloadUrl: document.downloadUrl || document.url || document.contentUrl || "",
+                        uploadedAt: document.uploadedAt || new Date().toISOString()
+                      });
+                    }
+                  } catch (error) {
+                    // Optimistically continue or alert? Continuing for now.
+                  }
           } else {
             // Existing file
             processedDocuments.push({
+              documentId: doc.documentId || doc.id || doc._id,
               name: doc.name,
-              url: doc.url || doc.base64 || '',
-              uploadedAt: doc.uploadedAt || new Date()
+              size: doc.size || 0,
+              mimeType: doc.mimeType || doc.type || "application/octet-stream",
+              url: doc.viewUrl || doc.url || doc.contentUrl || doc.previewUrl || doc.base64 || '',
+              viewUrl: doc.viewUrl || doc.url || doc.contentUrl || doc.previewUrl || doc.base64 || '',
+              downloadUrl: doc.downloadUrl || doc.url || doc.contentUrl || '',
+              uploadedAt: doc.uploadedAt || new Date().toISOString()
             });
           }
         }
       }
+
+      const selectedPriceListRecord = priceLists.find((priceList: any) => String(priceList?.id || "").trim() === String(formData.priceListId || "").trim());
 
       // Prepare customer data for saving (matching API structure)
       const customerData = {
@@ -765,7 +1267,7 @@ export default function NewCustomer() {
         xHandle: formData.xHandle || '',
         skypeName: formData.skypeName || '',
         facebook: formData.facebook || '',
-        customerNumber: formData.customerNumber || '',
+        customerNumber: enableCustomerNumbers ? (resolvedCustomerNumber || "") : "",
         customerLanguage: formData.customerLanguage || 'english',
         taxRate: formData.taxRate || '',
         exchangeRate: parseFloat(formData.exchangeRate || "1"),
@@ -773,6 +1275,9 @@ export default function NewCustomer() {
         locationCode: formData.locationCode || '',
         currency: formData.currency || 'KES',
         paymentTerms: formData.paymentTerms || 'due-on-receipt',
+        priceListId: String(formData.priceListId || '').trim(),
+        priceListName: String(selectedPriceListRecord?.name || '').trim(),
+        priceList: String(selectedPriceListRecord?.name || '').trim(),
         department: formData.department || '',
         designation: formData.designation || '',
         accountsReceivable: formData.accountsReceivable || '',
@@ -821,33 +1326,67 @@ export default function NewCustomer() {
         reportingTags: formData.reportingTags || []
       };
 
-      console.log('Saving customer data:', customerData);
-      let response;
+      let savedCustomer;
 
       if (isEditMode && id) {
-        console.log('Updating customer with ID:', id);
-        response = await customersAPI.update(id, customerData);
+        const mergedCustomerData = existingCustomerData
+          ? {
+            ...existingCustomerData,
+            ...customerData,
+            billingAddress: {
+              ...(existingCustomerData.billingAddress || {}),
+              ...(customerData.billingAddress || {}),
+            },
+            shippingAddress: {
+              ...(existingCustomerData.shippingAddress || {}),
+              ...(customerData.shippingAddress || {}),
+            },
+            contactPersons: customerData.contactPersons,
+            documents: customerData.documents,
+            customFields: customerData.customFields,
+            reportingTags: customerData.reportingTags,
+          }
+          : customerData;
+        savedCustomer = await saveCustomerMutation.mutateAsync({
+          id,
+          data: mergedCustomerData,
+        });
       } else {
-        console.log('Creating new customer');
-        response = await customersAPI.create(customerData);
+        savedCustomer = await saveCustomerMutation.mutateAsync({
+          data: customerData,
+        });
       }
 
-      console.log('Save response:', response);
+      if (savedCustomer) {
+        const normalizedSavedCustomer = normalizeCustomerForRouteState(
+          savedCustomer || {
+            ...(existingCustomerData || {}),
+            ...customerData,
+          },
+          savedCustomer?._id || savedCustomer?.id || id
+        );
+        const savedCustomerId = String(normalizedSavedCustomer?._id || normalizedSavedCustomer?.id || id || "").trim();
+        toast.success(isEditMode ? "Customer updated successfully." : "Customer created successfully.");
 
-      if (response && response.success) {
-        console.log('Customer saved successfully:', response.data);
+        if (isEditMode && savedCustomerId && typeof window !== "undefined") {
+          try {
+            sessionStorage.setItem(
+              `${CUSTOMER_EDIT_PRELOAD_PREFIX}${savedCustomerId}`,
+              JSON.stringify(normalizedSavedCustomer)
+            );
+          } catch {
+          }
+        }
 
-        // Ensure the customer data has name properly set
-        const savedCustomer = response.data;
-        console.log('Saved customer name:', savedCustomer.name || savedCustomer.displayName || savedCustomer.companyName);
-
-        const isEmbeddedQuickAction = new URLSearchParams(location.search).get("embed") === "1";
+        const searchParams = new URLSearchParams(location.search);
+        const isEmbeddedQuickAction =
+          searchParams.get("embed") === "1" || searchParams.get("quickAction") === "1";
         if (!isEditMode && isEmbeddedQuickAction && window.parent && window.parent !== window) {
           window.parent.postMessage(
             {
               type: "quick-action-created",
               entity: "customer",
-              data: savedCustomer
+              data: normalizedSavedCustomer
             },
             window.location.origin
           );
@@ -856,37 +1395,116 @@ export default function NewCustomer() {
         // Dispatch custom event to notify Customers component and CustomerDetail component
         const event = new CustomEvent("customersUpdated", {
           detail: {
-            customer: savedCustomer,
+            customer: normalizedSavedCustomer,
             action: isEditMode ? 'updated' : 'created'
           }
         });
         window.dispatchEvent(event);
 
+        if (saveAction === "saveAndSubscribe") {
+          const customerId = normalizedSavedCustomer?._id || normalizedSavedCustomer?.id;
+          const customerName = normalizedSavedCustomer?.name || normalizedSavedCustomer?.displayName || normalizedSavedCustomer?.companyName || "Customer";
+          navigate("/sales/subscriptions/new", { state: { customerId, customerName } });
+          return;
+        }
+
         // Navigate back
         setTimeout(() => {
           const returnTo = location.state?.returnTo;
+          const returnState = {
+            ...(location.state || {}),
+            customer: normalizedSavedCustomer,
+            customerJustSaved: true,
+          };
           if (returnTo) {
-            navigate(returnTo);
+            navigate(returnTo, { state: returnState });
           } else if (isEditMode && id) {
             // If editing, navigate back to customer detail page
-            navigate(`/sales/customers/${id}`);
+            navigate(`/sales/customers/${id}`, {
+              state: {
+                customer: normalizedSavedCustomer,
+                customerJustSaved: true,
+              }
+            });
           } else {
             navigate("/sales/customers");
           }
         }, 100);
       } else {
-        throw new Error(response?.message || 'Failed to save customer');
+        throw new Error('Failed to save customer');
       }
     } catch (error: any) {
-      console.error("Error saving customer:", error);
-      alert("Failed to save customer: " + (error.message || 'Unknown error. Please check console.'));
+      toast.error("Failed to save customer: " + (error.message || "Unknown error."));
     } finally {
       setIsSaving(false);
+      setActiveSaveAction(null);
     }
   };
 
   const handleCancel = () => {
+    const searchParams = new URLSearchParams(location.search);
+    const isEmbeddedQuickAction =
+      searchParams.get("embed") === "1" || searchParams.get("quickAction") === "1";
+    const returnTo = routeState?.returnTo;
+
+    if (isEmbeddedQuickAction && window.parent && window.parent !== window) {
+      window.parent.postMessage(
+        {
+          type: "quick-action-cancel",
+          entity: "customer"
+        },
+        window.location.origin
+      );
+      return;
+    }
+
+    if (returnTo) {
+      navigate(returnTo, { state: routeState });
+      return;
+    }
+
     navigate("/sales/customers");
+  };
+
+  const handleSaveCustomerNumberSettings = async () => {
+    setIsSavingSettings(true);
+    try {
+      const token = getToken();
+      if (token) {
+        const currentRes = await fetch(`${API_BASE_URL}/settings/customers-vendors`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const currentData = currentRes.ok ? await currentRes.json() : { data: {} };
+
+        const payload = {
+          ...(currentData.data || {}),
+          enableCustomerNumbers: true,
+          customerNumberPrefix,
+          customerNumberStart
+        };
+
+        await fetch(`${API_BASE_URL}/settings/customers-vendors`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+      }
+
+      setEnableCustomerNumbers(true);
+      await applyNextCustomerNumber(true);
+      setIsCustomerNumberSettingsModalOpen(false);
+    } catch (error: any) {
+      toast.error("Error saving customer number settings: " + (error?.message || "Unknown error."));
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  const handleSaveAndSubscribe = () => {
+    void handleSave("saveAndSubscribe");
   };
 
   const handleCopyBillingAddress = () => {
@@ -956,11 +1574,10 @@ export default function NewCustomer() {
           setBaseCurrency(savedCurrency);
         }
       } else {
-        alert(response?.message || "Failed to save currency");
+        toast.error((response as any)?.message || "Failed to save currency");
       }
-    } catch (error) {
-      console.error("Error saving currency:", error);
-      alert("Error saving currency: " + (error.message || "Unknown error"));
+    } catch (error: any) {
+      toast.error("Error saving currency: " + (error.message || "Unknown error"));
     }
   };
 
@@ -976,14 +1593,31 @@ export default function NewCustomer() {
     setAccountsReceivableSearch("");
   };
 
+  const allCountryNames = Array.from(
+    new Set([...countries, ...Object.keys(countryData)])
+  ).sort((a, b) => a.localeCompare(b));
+  const normalizeCountryName = (value: string) =>
+    value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const getFallbackStatesByCountryName = (countryName: string) => {
+    if (!countryName) return [];
+    const normalized = normalizeCountryName(countryName.trim());
+    const fallbackKey = Object.keys(countryData).find(
+      (key) => normalizeCountryName(key) === normalized
+    );
+    return fallbackKey ? countryData[fallbackKey] : [];
+  };
+  const getStatesByCountryName = (countryName: string) => {
+    return getFallbackStatesByCountryName(countryName);
+  };
+
   const filteredCountries = (searchTerm: string) => {
-    return countries.filter(country =>
+    return allCountryNames.filter((country) =>
       country.toLowerCase().includes(searchTerm.toLowerCase())
     );
   };
 
   const handleBillingCountrySelect = (country: string) => {
-    const states = (countryData as any)[country] || [];
+    const states = getStatesByCountryName(country);
     setFormData(prev => ({
       ...prev,
       billingCountry: country,
@@ -998,7 +1632,7 @@ export default function NewCustomer() {
   };
 
   const handleShippingCountrySelect = (country: string) => {
-    const states = (countryData as any)[country] || [];
+    const states = getStatesByCountryName(country);
     setFormData(prev => ({
       ...prev,
       shippingCountry: country,
@@ -1013,7 +1647,7 @@ export default function NewCustomer() {
   };
 
   const filteredStates = (searchTerm: string, country: string) => {
-    const countryStates = (countryData as any)[country] || [];
+    const countryStates = getStatesByCountryName(country);
     return countryStates.filter((state: string) =>
       state.toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -1043,565 +1677,618 @@ export default function NewCustomer() {
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
+      const targetElement = event.target as Element | null;
       if (currencyDropdownRef.current && !currencyDropdownRef.current.contains(target)) {
         setIsCurrencyDropdownOpen(false);
         setCurrencySearch("");
       }
-      if (accountsReceivableDropdownRef.current && !accountsReceivableDropdownRef.current.contains(event.target)) {
+      if (taxRateDropdownRef.current && !taxRateDropdownRef.current.contains(target)) {
+        setIsTaxRateDropdownOpen(false);
+        setTaxRateSearch("");
+      }
+      if (accountsReceivableDropdownRef.current && !accountsReceivableDropdownRef.current.contains(target)) {
         setIsAccountsReceivableDropdownOpen(false);
         setAccountsReceivableSearch("");
       }
-      if (billingCountryDropdownRef.current && !billingCountryDropdownRef.current.contains(event.target)) {
+      if (billingCountryDropdownRef.current && !billingCountryDropdownRef.current.contains(target)) {
         setIsBillingCountryDropdownOpen(false);
         setBillingCountrySearch("");
       }
-      if (shippingCountryDropdownRef.current && !shippingCountryDropdownRef.current.contains(event.target)) {
+      if (shippingCountryDropdownRef.current && !shippingCountryDropdownRef.current.contains(target)) {
         setIsShippingCountryDropdownOpen(false);
         setShippingCountrySearch("");
       }
-      if (billingStateDropdownRef.current && !billingStateDropdownRef.current.contains(event.target)) {
+      if (billingStateDropdownRef.current && !billingStateDropdownRef.current.contains(target)) {
         setIsBillingStateDropdownOpen(false);
         setBillingStateSearch("");
       }
-      if (shippingStateDropdownRef.current && !shippingStateDropdownRef.current.contains(event.target)) {
+      if (shippingStateDropdownRef.current && !shippingStateDropdownRef.current.contains(target)) {
         setIsShippingStateDropdownOpen(false);
         setShippingStateSearch("");
       }
-      if (displayNameDropdownRef.current && !displayNameDropdownRef.current.contains(event.target)) {
+      if (displayNameDropdownRef.current && !displayNameDropdownRef.current.contains(target)) {
         setIsDisplayNameDropdownOpen(false);
       }
-      if (customerLanguageDropdownRef.current && !customerLanguageDropdownRef.current.contains(event.target)) {
+      if (customerLanguageDropdownRef.current && !customerLanguageDropdownRef.current.contains(target)) {
         setIsCustomerLanguageDropdownOpen(false);
       }
+      if (workPhonePrefixRef.current && !workPhonePrefixRef.current.contains(target)) {
+        setIsWorkPhonePrefixDropdownOpen(false);
+        setWorkPhonePrefixSearch("");
+      }
+      if (mobilePrefixRef.current && !mobilePrefixRef.current.contains(target)) {
+        setIsMobilePrefixDropdownOpen(false);
+        setMobilePrefixSearch("");
+      }
+      if (priceListDropdownRef.current && !priceListDropdownRef.current.contains(target)) {
+        setIsPriceListDropdownOpen(false);
+        setPriceListSearch("");
+      }
 
-      if (uploadDropdownRef.current && !uploadDropdownRef.current.contains(event.target)) {
-        setIsUploadDropdownOpen(false);
+      if (
+        openContactDropdown &&
+        (!targetElement || !targetElement.closest('[data-contact-phone-dropdown="true"]'))
+      ) {
+        setOpenContactDropdown(null);
+        setContactDropdownSearch("");
       }
     };
 
-    if (isCurrencyDropdownOpen || isAccountsReceivableDropdownOpen || isBillingCountryDropdownOpen || isShippingCountryDropdownOpen || isBillingStateDropdownOpen || isShippingStateDropdownOpen || isDisplayNameDropdownOpen || isCustomerLanguageDropdownOpen || isUploadDropdownOpen) {
+    if (
+      isCurrencyDropdownOpen ||
+      isTaxRateDropdownOpen ||
+      isAccountsReceivableDropdownOpen ||
+      isBillingCountryDropdownOpen ||
+      isShippingCountryDropdownOpen ||
+      isBillingStateDropdownOpen ||
+      isShippingStateDropdownOpen ||
+      isDisplayNameDropdownOpen ||
+      isCustomerLanguageDropdownOpen ||
+      isWorkPhonePrefixDropdownOpen ||
+      isMobilePrefixDropdownOpen ||
+      isPriceListDropdownOpen ||
+      openContactDropdown
+    ) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isCurrencyDropdownOpen, isAccountsReceivableDropdownOpen, isBillingCountryDropdownOpen, isShippingCountryDropdownOpen, isBillingStateDropdownOpen, isShippingStateDropdownOpen, isDisplayNameDropdownOpen, isCustomerLanguageDropdownOpen, isUploadDropdownOpen]);
+  }, [
+    isCurrencyDropdownOpen,
+    isTaxRateDropdownOpen,
+    isAccountsReceivableDropdownOpen,
+    isBillingCountryDropdownOpen,
+    isShippingCountryDropdownOpen,
+    isBillingStateDropdownOpen,
+    isShippingStateDropdownOpen,
+    isDisplayNameDropdownOpen,
+    isCustomerLanguageDropdownOpen,
+    isWorkPhonePrefixDropdownOpen,
+    isMobilePrefixDropdownOpen,
+    isPriceListDropdownOpen,
+    openContactDropdown,
+  ]);
 
   const selectedCustomerLanguage = customerLanguageOptions.find(l => l.value === formData.customerLanguage) || customerLanguageOptions[0];
   const selectedCurrency = availableCurrencies.find(c => c.code === formData.currency) ||
     availableCurrencies.find(c => c.isBaseCurrency) ||
     (availableCurrencies.length > 0 ? availableCurrencies[0] : { code: formData.currency || "USD", name: "United States Dollar" });
+  const getCurrencyLabel = (currency: any) => {
+    const name = typeof currency?.name === "string" ? currency.name.trim() : "";
+    return name || currency?.code || formData.currency || "USD";
+  };
+  const getCurrencySymbol = (currency: any) => {
+    const symbol = typeof currency?.symbol === "string" ? currency.symbol.trim() : "";
+    return symbol || currency?.code || formData.currency || "USD";
+  };
+  const selectedCurrencyLabel = getCurrencyLabel(selectedCurrency);
+  const selectedCurrencySymbol = getCurrencySymbol(selectedCurrency);
+  const selectedCustomerTaxLabel = selectedCustomerTaxOption
+    ? taxLabel(selectedCustomerTaxOption.raw) || `${selectedCustomerTaxOption.name} [${selectedCustomerTaxOption.rate}%]`
+    : "Select a Tax";
+  const hasCustomerTaxes = filteredCustomerTaxGroups.some((group) => group.options.length > 0);
+  const embeddedSearchParams = new URLSearchParams(location.search);
+  const isEmbeddedQuickAction =
+    embeddedSearchParams.get("embed") === "1" || embeddedSearchParams.get("quickAction") === "1";
+
+  const contactPersonsGridTemplate = showExtendedContactColumns
+    ? "minmax(0,0.55fr) minmax(0,0.8fr) minmax(0,0.8fr) minmax(0,1.35fr) minmax(0,1.75fr) minmax(0,1.75fr) minmax(0,1.15fr) minmax(0,1fr) minmax(0,1fr) 52px"
+    : "minmax(0,0.58fr) minmax(0,0.85fr) minmax(0,0.85fr) minmax(0,1.45fr) minmax(0,1.85fr) minmax(0,1.85fr) 52px";
+  const pageContentMaxWidthClass =
+    activeTab === "contact-persons"
+      ? "max-w-none"
+      : "max-w-4xl";
 
 
 
 
-
-  if (isLoading) {
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-        <div className="bg-white rounded-lg shadow-xl p-8">
-          <h1 className="text-2xl font-semibold text-gray-900">Loading...</h1>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="w-full h-screen flex flex-col overflow-hidden bg-gray-50">
+    <div className="w-full min-h-full flex flex-col bg-gray-50">
       {/* Header */}
-      <div className="border-b border-gray-200 bg-white px-6 py-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900 m-0">{isEditMode ? "Edit Customer" : "New Customer"}</h1>
+      <div className="sticky top-0 z-20 flex items-center justify-between border-b border-gray-200 bg-white/95 px-4 sm:px-6 py-3 sm:py-4 backdrop-blur supports-[backdrop-filter]:bg-white/90">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 m-0">{isEditMode ? "Edit Customer" : "New Customer"}</h1>
+          {isEditMode && isLoading && (
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Syncing customer...
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={handleCancel}
+          className={`w-8 h-8 flex items-center justify-center rounded border transition-colors ${
+            isEmbeddedQuickAction
+              ? "border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600"
+              : "border-gray-200 text-gray-500 hover:border-red-200 hover:bg-red-50 hover:text-red-500"
+          }`}
+          aria-label="Close customer form"
+        >
+          <X size={18} />
+        </button>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 overflow-y-auto relative bg-gray-50">
-          <div className="w-full max-w-4xl px-6 py-8">
+      <div className="flex-1 flex">
+        <div className="flex-1 relative bg-gray-50 overflow-x-hidden">
+          <div className={`w-full ${pageContentMaxWidthClass} px-4 sm:px-6 py-5 sm:py-8 pb-24 overflow-x-hidden`}>
 
             <div>
-              {/* Customer Type */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
-                  Customer Type
-                  <HelpTooltip text="Customers can be of two types: Business and Individual. Use Business if the customer is a company or organization, and Individual if they are a private person.">
-                    <Info size={14} className="text-gray-400 cursor-help" />
-                  </HelpTooltip>
-                </label>
-                <div className="flex gap-6">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="customerType"
-                      value="business"
-                      checked={formData.customerType === "business"}
-                      onChange={handleChange}
-                      className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                    />
-                    <span className="text-sm text-gray-700">Business</span>
+              <div className="space-y-6 pb-12">
+                {/* Customer Type */}
+                <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                  <label className={`text-[13px] font-medium flex items-center gap-1 ${errors.customerType ? "text-red-600" : "text-gray-700"}`}>
+                    Customer Type
+                    <HelpTooltip text="Customers can be of two types: Business and Individual. Use Business if the customer is a company or organization, and Individual if they are a private person.">
+                      <Info size={14} className="text-gray-400 cursor-help" />
+                    </HelpTooltip>
                   </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="customerType"
-                      value="individual"
-                      checked={formData.customerType === "individual"}
-                      onChange={handleChange}
-                      className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                    />
-                    <span className="text-sm text-gray-700">Individual</span>
+                  <div data-validation-key="customerType">
+                    <div className="flex items-center gap-6">
+                      <label className="flex items-center gap-2 cursor-pointer group">
+                        <input
+                          type="radio"
+                          name="customerType"
+                          value="business"
+                          checked={formData.customerType === "business"}
+                          onChange={handleChange}
+                          className="w-4 h-4 accent-[#0f4752] text-[#0f4752] border-gray-300 focus:ring-[#0f4752] cursor-pointer"
+                        />
+                        <span className="text-[13px] text-gray-700 group-hover:text-gray-900 transition-colors">Business</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer group">
+                        <input
+                          type="radio"
+                          name="customerType"
+                          value="individual"
+                          checked={formData.customerType === "individual"}
+                          onChange={handleChange}
+                          className="w-4 h-4 accent-[#0f4752] text-[#0f4752] border-gray-300 focus:ring-[#0f4752] cursor-pointer"
+                        />
+                        <span className="text-[13px] text-gray-700 group-hover:text-gray-900 transition-colors">Individual</span>
+                      </label>
+                    </div>
+                    {errors.customerType && (
+                      <p className="mt-1 text-xs text-red-500 font-medium">{errors.customerType}</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Primary Contact */}
+                <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                  <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
+                    Primary Contact
+                    <HelpTooltip text="The primary contact will receive all emails related to transactions. You can add multiple contact persons below or from this customer's details page.">
+                      <Info size={14} className="text-gray-400 cursor-help" />
+                    </HelpTooltip>
                   </label>
+                  <div className="flex gap-2 max-w-xl min-w-0">
+                    <select
+                      name="salutation"
+                      value={formData.salutation}
+                      onChange={handleChange}
+                      className="w-32 px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                    >
+                      <option value="">Salutation</option>
+                      <option value="mr">Mr.</option>
+                      <option value="mrs">Mrs.</option>
+                      <option value="ms">Ms.</option>
+                      <option value="dr">Dr.</option>
+                    </select>
+                    <input
+                      type="text"
+                      name="firstName"
+                      value={formData.firstName}
+                      onChange={handleChange}
+                      placeholder="First Name"
+                      className="flex-1 min-w-0 px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                    />
+                    <input
+                      type="text"
+                      name="lastName"
+                      value={formData.lastName}
+                      onChange={handleChange}
+                      placeholder="Last Name"
+                      className="flex-1 min-w-0 px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              {/* Primary Contact */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
-                  Primary Contact
-                  <HelpTooltip text="The primary contact will receive all emails related to transactions. You can add multiple contact persons below or from this customer's details page.">
-                    <Info size={14} className="text-gray-400 cursor-help" />
-                  </HelpTooltip>
-                </label>
-                <div className="flex items-center gap-3">
-                  <select
-                    name="salutation"
-                    value={formData.salutation}
-                    onChange={handleChange}
-                    className="px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">Select</option>
-                    <option value="mr">Mr.</option>
-                    <option value="mrs">Mrs.</option>
-                    <option value="ms">Ms.</option>
-                    <option value="dr">Dr.</option>
-                  </select>
-                  <input
-                    type="text"
-                    name="firstName"
-                    value={formData.firstName}
-                    onChange={handleChange}
-                    placeholder="First Name"
-                    className="px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                  <input
-                    type="text"
-                    name="lastName"
-                    value={formData.lastName}
-                    onChange={handleChange}
-                    placeholder="Last Name"
-                    className="px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
+                {/* Company Name */}
+                <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                  <label className="text-[13px] font-medium text-gray-700">Company Name</label>
+                  <div className="max-w-md">
+                    <input
+                      type="text"
+                      name="companyName"
+                      value={formData.companyName}
+                      onChange={handleChange}
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              {/* Company Name */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Company Name</label>
-                <input
-                  type="text"
-                  name="companyName"
-                  value={formData.companyName}
-                  onChange={handleChange}
-                  placeholder=""
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              {/* Display Name */}
-              <div className="mb-6" ref={displayNameDropdownRef}>
-                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
-                  <span>Display Name</span><span className="text-red-500 ml-0.5">*</span>
-                  <HelpTooltip text="This name will be displayed on all the transactions (invoices, quotes, etc.) you create for this customer.">
-                    <Info size={14} className="text-gray-400 cursor-help" />
-                  </HelpTooltip>
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    name="displayName"
-                    value={formData.displayName}
-                    onChange={handleChange}
-                    placeholder="Select or type to add"
-                    className={`w-full px-3 py-2 pr-8 border rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.displayName ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
-                    required
-                    onFocus={(e) => {
-                      if (errors.displayName) {
-                        setErrors(prev => {
-                          const newErrors = { ...prev };
-                          delete newErrors.displayName;
-                          return newErrors;
-                        });
-                      }
-                      closeAllDropdowns();
-                      setIsDisplayNameDropdownOpen(true);
-                      // Auto-generate display name from current first name, last name, and company name if empty
-                      if (!formData.displayName || !isDisplayNameManuallyEdited) {
-                        let generatedName = "";
-                        if (formData.companyName && formData.companyName.trim()) {
-                          generatedName = formData.companyName.trim();
-                        } else {
-                          const firstName = formData.firstName ? formData.firstName.trim() : "";
-                          const lastName = formData.lastName ? formData.lastName.trim() : "";
-                          if (firstName && lastName) {
-                            generatedName = `${firstName} ${lastName}`;
-                          } else if (firstName) {
-                            generatedName = firstName;
-                          } else if (lastName) {
-                            generatedName = lastName;
+                {/* Display Name */}
+                <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center" ref={displayNameDropdownRef}>
+                  <label className="text-[13px] font-medium text-red-600 flex items-center gap-1">
+                    Display Name<span className="text-red-500">*</span>
+                    <HelpTooltip text="This name will be displayed on all the transactions (invoices, quotes, etc.) you create for this customer.">
+                      <Info size={14} className="text-gray-400 cursor-help" />
+                    </HelpTooltip>
+                  </label>
+                  <div className="relative max-w-md">
+                    <input
+                      type="text"
+                      name="displayName"
+                      value={formData.displayName}
+                      onChange={handleChange}
+                      placeholder="Select or type to add"
+                      className={`w-full px-3 py-1.5 pr-8 border rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] bg-white ${errors.displayName ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                      required
+                      onFocus={(e) => {
+                        if (errors.displayName) {
+                          setErrors(prev => {
+                            const newErrors = { ...prev };
+                            delete newErrors.displayName;
+                            return newErrors;
+                          });
+                        }
+                        closeAllDropdowns();
+                        setIsDisplayNameDropdownOpen(true);
+                        if (!formData.displayName || !isDisplayNameManuallyEdited) {
+                          let generatedName = "";
+                          if (formData.companyName && formData.companyName.trim()) {
+                            generatedName = formData.companyName.trim();
+                          } else {
+                            const firstName = formData.firstName ? formData.firstName.trim() : "";
+                            const lastName = formData.lastName ? formData.lastName.trim() : "";
+                            if (firstName && lastName) {
+                              generatedName = `${firstName} ${lastName}`;
+                            } else if (firstName) {
+                              generatedName = firstName;
+                            } else if (lastName) {
+                              generatedName = lastName;
+                            }
+                          }
+                          if (generatedName) {
+                            setFormData(prev => ({ ...prev, displayName: generatedName }));
                           }
                         }
-                        if (generatedName) {
-                          setFormData(prev => ({ ...prev, displayName: generatedName }));
-                        }
-                      }
-                    }}
-                  />
-                  <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                  {isDisplayNameDropdownOpen && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md shadow-lg z-50">
-                      {(() => {
-                        const firstName = formData.firstName ? formData.firstName.trim() : "";
-                        const lastName = formData.lastName ? formData.lastName.trim() : "";
-                        const companyName = formData.companyName ? formData.companyName.trim() : "";
+                      }}
+                    />
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    {isDisplayNameDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded shadow-lg z-50">
+                        {(() => {
+                          const firstName = formData.firstName ? formData.firstName.trim() : "";
+                          const lastName = formData.lastName ? formData.lastName.trim() : "";
+                          const companyName = formData.companyName ? formData.companyName.trim() : "";
+                          const options = [];
+                          if (firstName && lastName) options.push(`${firstName} ${lastName}`);
+                          if (lastName && firstName) options.push(`${lastName} ${firstName}`);
+                          if (companyName) options.push(companyName);
 
-                        const options = [];
-
-                        // Option 1: First Name + Last Name
-                        if (firstName && lastName) {
-                          options.push(`${firstName} ${lastName}`);
-                        }
-
-                        // Option 2: Last Name + First Name
-                        if (lastName && firstName) {
-                          options.push(`${lastName} ${firstName}`);
-                        }
-
-                        // Option 3: Company Name
-                        if (companyName) {
-                          options.push(companyName);
-                        }
-
-                        return options.length > 0 ? (
-                          options.map((option, index) => (
-                            <div
-                              key={index}
-                              onClick={() => {
-                                setFormData(prev => ({ ...prev, displayName: option }));
-                                setIsDisplayNameManuallyEdited(true);
-                                setIsDisplayNameDropdownOpen(false);
-                              }}
-                              className="px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 text-gray-700"
-                            >
-                              {option}
+                          return options.length > 0 ? (
+                            options.map((option, index) => (
+                              <div
+                                key={index}
+                                onClick={() => {
+                                  setFormData(prev => ({ ...prev, displayName: option }));
+                                  setIsDisplayNameManuallyEdited(true);
+                                  setIsDisplayNameDropdownOpen(false);
+                                }}
+                                className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-gray-100 text-gray-700"
+                              >
+                                {option}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="px-3 py-1.5 text-[13px] text-gray-500">
+                              Enter First Name, Last Name, or Company Name to see options
                             </div>
-                          ))
-                        ) : (
-                          <div className="px-3 py-2 text-sm text-gray-500">
-                            Enter First Name, Last Name, or Company Name to see options
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  )}
-                  {errors.displayName && (
-                    <p className="mt-1 text-xs text-red-500 font-medium animate-pulse">{errors.displayName}</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Email Address */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
-                  Email Address
-                  <HelpTooltip text={<span><span className="font-bold">Privacy Info:</span> This data will be stored without encryption and will be visible only to your organisation users who have the required permission.</span>}>
-                    <Info size={14} className="text-gray-400 cursor-help" />
-                  </HelpTooltip>
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">@</span>
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    placeholder=""
-                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              {/* Customer Number Section */}
-              {enableCustomerNumbers && (
-                <div className="mb-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-red-600">
-                      Customer Number<span className="text-red-500 ml-0.5">*</span>
-                    </label>
+                          );
+                        })()}
+                      </div>
+                    )}
+                    {errors.displayName && (
+                      <p className="mt-1 text-xs text-red-500 font-medium">{errors.displayName}</p>
+                    )}
                   </div>
+                </div>
 
-                  <div className="flex items-center gap-2">
-                    <div className="relative flex-1">
-                      <input
-                        type="text"
-                        name="customerNumber"
-                        value={formData.customerNumber}
-                        onChange={handleChange}
-                        className={`w-full px-3 py-2 border rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-blue-50/30 ${errors.customerNumber ? "border-red-500 bg-red-50" : "border-blue-300"}`}
-                        required
-                      />
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setIsCustomerNumberSettingsModalOpen(true)}
-                          className="text-blue-600 hover:text-blue-700"
+                {/* Email Address */}
+                <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                  <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
+                    Email Address
+                    <HelpTooltip text={<span><span className="font-bold">Privacy Info:</span> This data will be stored without encryption and will be visible only to your organisation users who have the required permission.</span>}>
+                      <Info size={14} className="text-gray-400 cursor-help" />
+                    </HelpTooltip>
+                  </label>
+                  <div className="relative max-w-md">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                      <Mail size={12} />
+                    </div>
+                    <input
+                      type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      onBlur={handleEmailBlur}
+                      placeholder="Enter email address"
+                      className={`w-full pl-9 pr-3 py-1.5 border rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] ${
+                        errors.email ? "border-red-500 bg-red-50" : "border-gray-300"
+                      }`}
+                    />
+                    {errors.email && (
+                      <p className="mt-1 text-xs text-red-500 font-medium">{errors.email}</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Customer Number */}
+                <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                  <label className="text-[13px] font-medium text-red-600">
+                    Customer Number<span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative max-w-md">
+                    <input
+                      type="text"
+                      name="customerNumber"
+                      value={formData.customerNumber}
+                      onChange={handleChange}
+                      readOnly
+                      className={`w-full pr-10 px-3 py-1.5 border rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] bg-gray-50 cursor-default ${errors.customerNumber ? "border-red-500 bg-red-50" : "border-gray-300"}`}
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomerNumberSettingsModalOpen(true)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[#156372] hover:opacity-80"
+                      aria-label="Open customer number settings"
+                    >
+                      <Settings size={14} />
+                    </button>
+                    {errors.customerNumber && (
+                      <p className="mt-1 text-xs text-red-500 font-medium">{errors.customerNumber}</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Phone */}
+                <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                  <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
+                    Phone
+                    <HelpTooltip text={<span><span className="font-bold">Privacy Info:</span> This data will be stored without encryption and will be visible only to your organisation users who have the required permission.</span>}>
+                      <Info size={14} className="text-gray-400 cursor-help" />
+                    </HelpTooltip>
+                  </label>
+                  <div className="flex flex-wrap gap-4 max-w-xl">
+                    {/* Work Phone */}
+                    <div className="flex items-center border border-gray-300 rounded bg-white w-64">
+                      <div className="relative" ref={workPhonePrefixRef}>
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const wasOpen = isWorkPhonePrefixDropdownOpen;
+                            closeAllDropdowns();
+                            setIsWorkPhonePrefixDropdownOpen(!wasOpen);
+                          }}
+                          className="flex items-center gap-1 px-2 py-1.5 border-r border-gray-300 text-[13px] cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-100 min-w-[70px] justify-between"
                         >
-                          <Settings size={16} />
-                        </button>
-                        <button type="button" className="text-blue-600 hover:text-blue-700">
-                          <RefreshCw size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  {errors.customerNumber && (
-                    <p className="mt-1 text-xs text-red-500 font-medium animate-pulse">{errors.customerNumber}</p>
-                  )}
-                </div>
-              )}
-
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
-                  Phone
-                  <HelpTooltip text={<span><span className="font-bold">Privacy Info:</span> This data will be stored without encryption and will be visible only to your organisation users who have the required permission.</span>}>
-                    <Info size={14} className="text-gray-400 cursor-help" />
-                  </HelpTooltip>
-                </label>
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Work Phone */}
-                  <div className="flex items-center border border-gray-300 rounded-md focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 bg-white">
-                    <div className="relative" ref={workPhonePrefixRef}>
-                      <div
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const wasOpen = isWorkPhonePrefixDropdownOpen;
-                          closeAllDropdowns();
-                          setIsWorkPhonePrefixDropdownOpen(!wasOpen);
-                        }}
-                        className={`flex items-center gap-1 px-3 py-2 border-r border-gray-300 text-sm cursor-pointer transition-colors min-w-[90px] justify-between rounded-l-md ${isWorkPhonePrefixDropdownOpen ? "bg-white ring-2 ring-inset ring-blue-500" : "bg-gray-50 text-gray-600 hover:bg-gray-100"}`}
-                      >
-                        <span className={`font-medium ${isWorkPhonePrefixDropdownOpen ? "text-blue-600" : "text-gray-700"}`}>{formData.workPhonePrefix}</span>
-                        <ChevronDown size={14} className={`text-gray-400 transition-transform ${isWorkPhonePrefixDropdownOpen ? "rotate-180 text-blue-500" : ""}`} />
-                      </div>
-
-                      {isWorkPhonePrefixDropdownOpen && (
-                        <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-200 rounded-md shadow-xl z-[1000] flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                          <div className="p-2 border-b border-gray-100">
-                            <div className="relative">
-                              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                          <span className="font-medium text-gray-700">{formData.workPhonePrefix}</span>
+                          <ChevronDown size={12} className={`text-gray-400 transition-transform ${isWorkPhonePrefixDropdownOpen ? "rotate-180" : ""}`} />
+                        </div>
+                        {isWorkPhonePrefixDropdownOpen && (
+                          <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded shadow-xl z-[1000] flex flex-col overflow-hidden">
+                            <div className="p-2 border-b border-gray-100">
                               <input
                                 type="text"
                                 value={workPhonePrefixSearch}
                                 onChange={(e) => setWorkPhonePrefixSearch(e.target.value)}
                                 placeholder="Search"
-                                className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded focus:border-blue-500 focus:outline-none bg-gray-50/50"
+                                className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:border-[#156372] outline-none"
                                 autoFocus
                               />
                             </div>
+                            <div className="max-h-48 overflow-y-auto">
+                              {filteredWorkPhonePrefixes.map((cp, idx) => (
+                                <div
+                                  key={idx}
+                                  onClick={() => {
+                                    setFormData((prev: typeof formData) => ({ ...prev, workPhonePrefix: cp.code }));
+                                    setIsWorkPhonePrefixDropdownOpen(false);
+                                    setWorkPhonePrefixSearch("");
+                                  }}
+                                  className={`px-3 py-1.5 text-[12px] flex items-center gap-2 cursor-pointer hover:bg-gray-50 ${formData.workPhonePrefix === cp.code ? "bg-blue-50 text-[#156372]" : "text-gray-700"}`}
+                                >
+                                  <span className="font-medium">{cp.code}</span>
+                                  <span className="truncate opacity-70">{cp.name}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                          <div className="max-h-64 overflow-y-auto">
-                            {filteredWorkPhonePrefixes.map((cp, idx) => (
-                              <div
-                                key={idx}
-                                onClick={() => {
-                                  setFormData((prev: typeof formData) => ({ ...prev, workPhonePrefix: cp.code }));
-                                  setIsWorkPhonePrefixDropdownOpen(false);
-                                  setWorkPhonePrefixSearch("");
-                                }}
-                                className={`px-4 py-2.5 text-sm flex items-center gap-4 cursor-pointer hover:bg-gray-50 transition-colors ${formData.workPhonePrefix === cp.code ? "bg-blue-50" : ""}`}
-                              >
-                                <span className="w-12 font-medium text-gray-900">{cp.code}</span>
-                                <span className="flex-1 text-gray-600 truncate">{cp.name}</span>
-                                {formData.workPhonePrefix === cp.code && <Check size={14} className="text-blue-600" />}
-                              </div>
-                            ))}
-                            {filteredWorkPhonePrefixes.length === 0 && (
-                              <div className="p-6 text-center text-sm text-gray-400 font-medium">No results found</div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    <input
-                      type="text"
-                      name="workPhone"
-                      value={formData.workPhone}
-                      onChange={handleChange}
-                      placeholder="Work Phone"
-                      className="flex-1 px-3 py-2 text-sm text-gray-700 border-none focus:outline-none bg-transparent"
-                    />
-                  </div>
-
-                  {/* Mobile Phone */}
-                  <div className="flex items-center border border-gray-300 rounded-md focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 bg-white">
-                    <div className="relative" ref={mobilePrefixRef}>
-                      <div
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const wasOpen = isMobilePrefixDropdownOpen;
-                          closeAllDropdowns();
-                          setIsMobilePrefixDropdownOpen(!wasOpen);
-                        }}
-                        className={`flex items-center gap-1 px-3 py-2 border-r border-gray-300 text-sm cursor-pointer transition-colors min-w-[90px] justify-between rounded-l-md ${isMobilePrefixDropdownOpen ? "bg-white ring-2 ring-inset ring-blue-500" : "bg-gray-50 text-gray-600 hover:bg-gray-100"}`}
-                      >
-                        <span className={`font-medium ${isMobilePrefixDropdownOpen ? "text-blue-600" : "text-gray-700"}`}>{formData.mobilePrefix}</span>
-                        <ChevronDown size={14} className={`text-gray-400 transition-transform ${isMobilePrefixDropdownOpen ? "rotate-180 text-blue-500" : ""}`} />
+                        )}
                       </div>
+                      <input
+                        type="text"
+                        name="workPhone"
+                        value={formData.workPhone}
+                        onChange={handleChange}
+                        placeholder="Work Phone"
+                        inputMode="numeric"
+                        className="flex-1 px-3 py-1.5 text-[13px] text-gray-700 outline-none bg-transparent"
+                      />
+                    </div>
 
-                      {isMobilePrefixDropdownOpen && (
-                        <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-200 rounded-md shadow-xl z-[1000] flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                          <div className="p-2 border-b border-gray-100">
-                            <div className="relative">
-                              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    {/* Mobile Phone */}
+                    <div className="flex items-center border border-gray-300 rounded bg-white w-64">
+                      <div className="relative" ref={mobilePrefixRef}>
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const wasOpen = isMobilePrefixDropdownOpen;
+                            closeAllDropdowns();
+                            setIsMobilePrefixDropdownOpen(!wasOpen);
+                          }}
+                          className="flex items-center gap-1 px-2 py-1.5 border-r border-gray-300 text-[13px] cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-100 min-w-[70px] justify-between"
+                        >
+                          <span className="font-medium text-gray-700">{formData.mobilePrefix}</span>
+                          <ChevronDown size={12} className={`text-gray-400 transition-transform ${isMobilePrefixDropdownOpen ? "rotate-180" : ""}`} />
+                        </div>
+                        {isMobilePrefixDropdownOpen && (
+                          <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded shadow-xl z-[1000] flex flex-col overflow-hidden">
+                            <div className="p-2 border-b border-gray-100">
                               <input
                                 type="text"
                                 value={mobilePrefixSearch}
                                 onChange={(e) => setMobilePrefixSearch(e.target.value)}
                                 placeholder="Search"
-                                className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded focus:border-blue-500 focus:outline-none bg-gray-50/50"
+                                className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:border-[#156372] outline-none"
                                 autoFocus
                               />
                             </div>
+                            <div className="max-h-48 overflow-y-auto">
+                              {filteredMobilePrefixes.map((cp, idx) => (
+                                <div
+                                  key={idx}
+                                  onClick={() => {
+                                    setFormData((prev: typeof formData) => ({ ...prev, mobilePrefix: cp.code }));
+                                    setIsMobilePrefixDropdownOpen(false);
+                                    setMobilePrefixSearch("");
+                                  }}
+                                  className={`px-3 py-1.5 text-[12px] flex items-center gap-2 cursor-pointer hover:bg-gray-50 ${formData.mobilePrefix === cp.code ? "bg-blue-50 text-[#156372]" : "text-gray-700"}`}
+                                >
+                                  <span className="font-medium">{cp.code}</span>
+                                  <span className="truncate opacity-70">{cp.name}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                          <div className="max-h-64 overflow-y-auto">
-                            {filteredMobilePrefixes.map((cp, idx) => (
-                              <div
-                                key={idx}
-                                onClick={() => {
-                                  setFormData((prev: typeof formData) => ({ ...prev, mobilePrefix: cp.code }));
-                                  setIsMobilePrefixDropdownOpen(false);
-                                  setMobilePrefixSearch("");
-                                }}
-                                className={`px-4 py-2.5 text-sm flex items-center gap-4 cursor-pointer hover:bg-gray-50 transition-colors ${formData.mobilePrefix === cp.code ? "bg-blue-50" : ""}`}
-                              >
-                                <span className="w-12 font-medium text-gray-900">{cp.code}</span>
-                                <span className="flex-1 text-gray-600 truncate">{cp.name}</span>
-                                {formData.mobilePrefix === cp.code && <Check size={14} className="text-blue-600" />}
-                              </div>
-                            ))}
-                            {filteredMobilePrefixes.length === 0 && (
-                              <div className="p-6 text-center text-sm text-gray-400 font-medium">No results found</div>
-                            )}
-                          </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        name="mobile"
+                        value={formData.mobile}
+                        onChange={handleChange}
+                        placeholder="Mobile"
+                        inputMode="numeric"
+                        className="flex-1 px-3 py-1.5 text-[13px] text-gray-700 outline-none bg-transparent"
+                      />
                     </div>
-                    <input
-                      type="text"
-                      name="mobile"
-                      value={formData.mobile}
-                      onChange={handleChange}
-                      placeholder="Mobile"
-                      className="flex-1 px-3 py-2 text-sm text-gray-700 border-none focus:outline-none bg-transparent"
-                    />
                   </div>
                 </div>
-              </div>
 
-              {/* Customer Language */}
-              <div className="mb-6" ref={customerLanguageDropdownRef}>
-                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
-                  Customer Language
-                  <HelpTooltip text="The selected language will be used for the customer portal and all email communications.">
-                    <Info size={14} className="text-gray-400 cursor-help" />
-                  </HelpTooltip>
-                </label>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const wasOpen = isCustomerLanguageDropdownOpen;
-                      closeAllDropdowns();
-                      setIsCustomerLanguageDropdownOpen(!wasOpen);
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 bg-white flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <span>{selectedCustomerLanguage.label}</span>
-                    <ChevronDown size={16} className={`text-gray-400 transition-transform ${isCustomerLanguageDropdownOpen ? "rotate-180" : ""}`} />
-                  </button>
-                  {isCustomerLanguageDropdownOpen && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md shadow-lg z-50 max-h-60 overflow-y-auto">
-                      {customerLanguageOptions.map((lang) => (
-                        <div
-                          key={lang.value}
-                          onClick={() => {
-                            setFormData(prev => ({ ...prev, customerLanguage: lang.value }));
-                            setIsCustomerLanguageDropdownOpen(false);
-                          }}
-                          className={`px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 ${formData.customerLanguage === lang.value ? "bg-blue-50 text-blue-600" : "text-gray-700"}`}
-                        >
-                          {lang.label}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                {/* Customer Language */}
+                <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center mb-10" ref={customerLanguageDropdownRef}>
+                  <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
+                    Customer Language
+                    <HelpTooltip text="The selected language will be used for the customer portal and all email communications.">
+                      <Info size={14} className="text-gray-400 cursor-help" />
+                    </HelpTooltip>
+                  </label>
+                  <div className="relative max-w-md">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const wasOpen = isCustomerLanguageDropdownOpen;
+                        closeAllDropdowns();
+                        setIsCustomerLanguageDropdownOpen(!wasOpen);
+                      }}
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 bg-white flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                    >
+                      <span>{selectedCustomerLanguage.label}</span>
+                      <ChevronDown size={14} className={`text-gray-400 transition-transform ${isCustomerLanguageDropdownOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {isCustomerLanguageDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded shadow-lg z-50 max-h-60 overflow-y-auto">
+                        {customerLanguageOptions.map((lang) => (
+                          <div
+                            key={lang.value}
+                            onClick={() => {
+                              setFormData(prev => ({ ...prev, customerLanguage: lang.value }));
+                              setIsCustomerLanguageDropdownOpen(false);
+                            }}
+                            className={`px-3 py-1.5 text-[13px] cursor-pointer hover:bg-gray-100 ${formData.customerLanguage === lang.value ? "bg-blue-50 text-blue-600" : "text-gray-700"}`}
+                          >
+                            {lang.label}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
+
               </div>
 
               {/* Tabs */}
-              <div className="flex gap-0 mb-6 border-b border-gray-200">
-                <button
-                  className={`px-4 py-2 text-sm transition-colors border-b-2 ${activeTab === "other-details" ? "text-gray-900 border-blue-600 font-medium" : "text-gray-600 hover:text-gray-900 border-transparent"}`}
-                  onClick={() => setActiveTab("other-details")}
-                >
-                  Other Details
-                </button>
-                <button
-                  className={`px-4 py-2 text-sm transition-colors border-b-2 ${activeTab === "address" ? "text-gray-900 border-blue-600 font-medium" : "text-gray-600 hover:text-gray-900 border-transparent"}`}
-                  onClick={() => setActiveTab("address")}
-                >
-                  Address
-                </button>
-                <button
-                  className={`px-4 py-2 text-sm transition-colors border-b-2 ${activeTab === "contact-persons" ? "text-gray-900 border-blue-600 font-medium" : "text-gray-600 hover:text-gray-900 border-transparent"}`}
-                  onClick={() => {
-                    setActiveTab("contact-persons");
-                    // Add an empty contact person if none exists
-                    if (formData.contactPersons.length === 0) {
-                      const newContact = {
-                        id: Date.now(),
-                        salutation: "",
-                        firstName: "",
-                        lastName: "",
-                        email: "",
-                        workPhonePrefix: "+358",
-                        workPhone: "",
-                        mobilePrefix: "+252",
-                        mobile: "",
-                        skypeName: "",
-                        designation: "",
-                        department: ""
-                      };
-                      setFormData(prev => ({
-                        ...prev,
-                        contactPersons: [newContact]
-                      }));
-                    }
-                  }}
-                >
-                  Contact Persons
-                </button>
-                <button
-                  className={`px-4 py-2 text-sm transition-colors border-b-2 ${activeTab === "reporting-tags" ? "text-gray-900 border-blue-600 font-medium" : "text-gray-600 hover:text-gray-900 border-transparent"}`}
-                  onClick={() => setActiveTab("reporting-tags")}
-                >
-                  Reporting Tags
-                </button>
-                <button
-                  className={`px-4 py-2 text-sm transition-colors border-b-2 ${activeTab === "remarks" ? "text-gray-900 border-blue-600 font-medium" : "text-gray-600 hover:text-gray-900 border-transparent"}`}
-                  onClick={() => setActiveTab("remarks")}
-                >
-                  Remarks
-                </button>
+              <div className="flex gap-2 mb-6 border-b border-gray-200 overflow-x-auto whitespace-nowrap">
+                {[
+                  { id: "other-details", label: "Other Details" },
+                  { id: "address", label: "Address" },
+                  { id: "contact-persons", label: "Contact Persons" },
+                  { id: "custom-fields", label: "Custom Fields" },
+                  { id: "reporting-tags", label: "Reporting Tags" },
+                  { id: "remarks", label: "Remarks" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    className={`shrink-0 px-4 py-2.5 text-[13px] transition-all border-b-2 font-medium ${activeTab === tab.id ? "text-[#156372] border-[#156372]" : "text-gray-500 hover:text-gray-700 border-transparent"}`}
+                    onClick={() => {
+                      if (tab.id === "contact-persons") {
+                        setActiveTab("contact-persons");
+                        if (formData.contactPersons.length === 0) {
+                          const newContact = {
+                            id: Date.now(),
+                            salutation: "",
+                            firstName: "",
+                            lastName: "",
+                            email: "",
+                            workPhonePrefix: "+358",
+                            workPhone: "",
+                            mobilePrefix: "+252",
+                            mobile: "",
+                            skypeName: "",
+                            designation: "",
+                            department: ""
+                          };
+                          setFormData(prev => ({
+                            ...prev,
+                            contactPersons: [newContact]
+                          }));
+                        }
+                      } else {
+                        setActiveTab(tab.id);
+                      }
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
 
               {/* Tab Content */}
@@ -1609,45 +2296,106 @@ export default function NewCustomer() {
                 {activeTab === "other-details" && (
                   <div className="space-y-6">
                     {/* Tax Rate */}
-                    <div className="grid grid-cols-[200px_1fr] gap-4 items-start">
-                      <label className="text-[13px] text-gray-600 pt-2 flex items-center gap-1">
+                    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-start">
+                      <label className="text-[13px] font-medium text-gray-700 pt-1.5 flex items-center gap-1">
                         Tax Rate
                         <HelpTooltip text="To associate more than one tax, you need to create a tax group in Settings.">
                           <Info size={14} className="text-gray-400 cursor-help" />
                         </HelpTooltip>
                       </label>
-                      <div className="w-full max-w-md">
-                        <div className="flex items-center gap-2">
-                          <select
-                            name="taxRate"
-                            value={formData.taxRate}
-                            onChange={handleChange}
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors"
-                          >
-                            <option value="">Select a Tax</option>
-                            {availableTaxes.map((tax) => (
-                              <option key={tax.id} value={tax.id}>
-                                {tax.name} ({tax.rate}%)
-                              </option>
-                            ))}
-                          </select>
+                      <div className="w-full max-w-md" ref={taxRateDropdownRef}>
+                        <div className="relative">
                           <button
                             type="button"
-                            onClick={() => setIsNewTaxModalOpen(true)}
-                            className="px-3 py-2 text-xs font-medium text-blue-700 border border-blue-200 rounded-md hover:bg-blue-50 transition-colors whitespace-nowrap"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const wasOpen = isTaxRateDropdownOpen;
+                              closeAllDropdowns();
+                              setIsTaxRateDropdownOpen(!wasOpen);
+                            }}
+                            className="h-[34px] w-full rounded border border-gray-300 bg-white px-3 text-left text-[13px] transition-colors hover:border-gray-400 outline-none"
+                            style={isTaxRateDropdownOpen ? { borderColor: "#156372" } : {}}
                           >
-                            + New Tax
+                            <div className="flex items-center justify-between gap-2">
+                              <span className={formData.taxRate ? "text-[#1f2937]" : "text-[#6b7280]"}>
+                                {selectedCustomerTaxLabel}
+                              </span>
+                              <ChevronDown
+                                size={14}
+                                className={`transition-transform ${isTaxRateDropdownOpen ? "rotate-180" : ""}`}
+                                style={{ color: "#156372" }}
+                              />
+                            </div>
                           </button>
+                          {isTaxRateDropdownOpen && (
+                            <div className="absolute left-0 top-full z-[9999] mt-1 w-full rounded-xl border border-[#d6dbe8] bg-white p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
+                              <div className="p-2">
+                                <div
+                                  className="flex items-center gap-2 rounded-lg border bg-slate-50/50 px-3 py-1.5 transition-all focus-within:bg-white"
+                                  style={{ borderColor: "#156372" }}
+                                >
+                                  <Search size={14} className="text-slate-400" />
+                                  <input
+                                    type="text"
+                                    value={taxRateSearch}
+                                    onChange={(e) => setTaxRateSearch(e.target.value)}
+                                    placeholder="Search..."
+                                    className="w-full border-none bg-transparent text-[13px] text-slate-700 outline-none placeholder:text-slate-400"
+                                    autoFocus
+                                  />
+                                </div>
+                              </div>
+                              <div className="max-h-64 overflow-y-auto py-1 custom-scrollbar">
+                                {!hasCustomerTaxes ? (
+                                  <div className="px-4 py-3 text-center text-[13px] text-slate-400">No taxes found</div>
+                                ) : (
+                                  filteredCustomerTaxGroups.map((group) => {
+                                    return (
+                                      <React.Fragment key={group.label}>
+                                        <div className="mt-2 px-4 py-1.5 text-black text-[10px] font-bold uppercase tracking-wider">
+                                          {group.label}
+                                        </div>
+                                        <div className="mt-1 space-y-0.5">
+                                          {group.options.map((tax) => {
+                                            const selected = String(formData.taxRate || "") === String(tax.id || "");
+                                            const label = taxLabel(tax.raw) || `${tax.name} [${tax.rate}%]`;
+                                            return (
+                                              <button
+                                                key={tax.id}
+                                                type="button"
+                                                onClick={() => {
+                                                  setFormData((prev) => ({ ...prev, taxRate: tax.id }));
+                                                  setIsTaxRateDropdownOpen(false);
+                                                  setTaxRateSearch("");
+                                                }}
+                                                className={`flex w-full items-center justify-between rounded-lg px-4 py-2 text-[13px] transition-colors ${
+                                                  selected ? "font-semibold bg-[#156372]/5 text-[#156372]" : "text-slate-600 hover:bg-slate-50"
+                                                }`}
+                                              >
+                                                <span>{label}</span>
+                                                {selected && <Check size={14} className="text-[#156372]" />}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </React.Fragment>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <p className="mt-1.5 text-[11px] text-gray-500 leading-relaxed">
+                        <p className="mt-2 text-[11px] text-gray-500 leading-relaxed font-medium">
                           To associate more than one tax, you need to create a tax group in Settings.
                         </p>
                       </div>
+
                     </div>
 
                     {/* Company ID */}
-                    <div className="grid grid-cols-[200px_1fr] gap-4 items-center">
-                      <label className="text-[13px] text-gray-600 flex items-center gap-1">
+                    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                      <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
                         Company ID
                         <HelpTooltip text="The unique identification number of the company.">
                           <Info size={14} className="text-gray-400 cursor-help" />
@@ -1659,14 +2407,14 @@ export default function NewCustomer() {
                           name="companyId"
                           value={formData.companyId}
                           onChange={handleChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors"
+                          className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] hover:border-gray-400 transition-colors"
                         />
                       </div>
                     </div>
 
                     {/* Currency */}
-                    <div className="grid grid-cols-[200px_1fr] gap-4 items-center" ref={currencyDropdownRef}>
-                      <label className="text-[13px] text-gray-600 flex items-center gap-1">
+                    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center" ref={currencyDropdownRef}>
+                      <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
                         Currency
                         <HelpTooltip text="The currency in which you want to track transactions for this customer.">
                           <Info size={14} className="text-gray-400 cursor-help" />
@@ -1681,10 +2429,10 @@ export default function NewCustomer() {
                             closeAllDropdowns();
                             setIsCurrencyDropdownOpen(!wasOpen);
                           }}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 bg-white flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                          className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 bg-white flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] transition-colors"
                         >
-                          <span className="text-gray-700">{selectedCurrency.code} - {selectedCurrency.name}</span>
-                          <ChevronDown size={16} className={`text-gray-400 transition-transform ${isCurrencyDropdownOpen ? "rotate-180" : ""}`} />
+                          <span className="text-gray-700">{selectedCurrencyLabel}</span>
+                          <ChevronDown size={14} className={`text-gray-400 transition-transform ${isCurrencyDropdownOpen ? "rotate-180" : ""}`} />
                         </button>
 
                         {isCurrencyDropdownOpen && (
@@ -1707,7 +2455,7 @@ export default function NewCustomer() {
                                   onClick={() => handleCurrencySelect(currency)}
                                   className={`px-4 py-2.5 text-[13px] cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors ${formData.currency === currency.code ? "bg-blue-50 text-blue-600 font-medium" : "text-gray-700"}`}
                                 >
-                                  <span>{currency.code} - {currency.name}</span>
+                                  <span>{getCurrencyLabel(currency)}</span>
                                   {formData.currency === currency.code && (
                                     <Check size={16} className="text-blue-500" />
                                   )}
@@ -1737,8 +2485,8 @@ export default function NewCustomer() {
                     </div>
 
                     {/* Accounts Receivable */}
-                    <div className="grid grid-cols-[200px_1fr] gap-4 items-center">
-                      <label className="text-[13px] text-gray-600 flex items-center gap-1">
+                    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                      <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
                         Accounts Receivable
                         <HelpTooltip text="The asset account where the money owed by this customer will be tracked.">
                           <Info size={14} className="text-gray-400 cursor-help" />
@@ -1753,12 +2501,12 @@ export default function NewCustomer() {
                             closeAllDropdowns();
                             setIsAccountsReceivableDropdownOpen(!wasOpen);
                           }}
-                          className="w-full px-3 py-2 border border-blue-500 rounded-md text-sm text-gray-700 bg-white flex items-center justify-between hover:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors shadow-sm"
+                          className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 bg-white flex items-center justify-between hover:border-[#156372]/30 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] transition-colors"
                         >
                           <span className={selectedAccount ? "text-gray-900" : "text-gray-400"}>
                             {selectedAccount ? selectedAccount.name : "Select an account"}
                           </span>
-                          <ChevronDown size={16} className={`text-blue-500 transition-transform ${isAccountsReceivableDropdownOpen ? "rotate-180" : ""}`} />
+                          <ChevronDown size={14} className={`text-gray-400 transition-transform ${isAccountsReceivableDropdownOpen ? "rotate-180" : ""}`} />
                         </button>
 
                         {isAccountsReceivableDropdownOpen && (
@@ -1802,18 +2550,19 @@ export default function NewCustomer() {
                     </div>
 
                     {/* Opening Balance */}
-                    <div className="grid grid-cols-[200px_1fr] gap-4 items-center">
-                      <label className="text-[13px] text-gray-600">Opening Balance</label>
+                    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                      <label className="text-[13px] font-medium text-gray-700">Opening Balance</label>
                       <div className="w-full max-w-md flex">
-                        <div className="flex items-center justify-center px-3 py-2 border border-r-0 border-gray-300 rounded-l-md bg-white text-sm text-gray-500 min-w-[50px] font-medium transition-colors">
-                          {(formData.currency || "USD").substring(0, 3)}
+                        <div className="flex items-center justify-center px-3 py-1.5 border border-r-0 border-gray-300 rounded-l bg-gray-50 text-[13px] text-gray-500 min-w-[50px] font-medium transition-colors">
+                          {selectedCurrencySymbol}
                         </div>
                         <input
                           type="number"
                           name="openingBalance"
                           value={formData.openingBalance}
                           onChange={handleChange}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-r-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors"
+                          inputMode="decimal"
+                          className="flex-1 px-3 py-1.5 border border-gray-300 rounded-r text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] hover:border-gray-400 transition-colors"
                           step="0.01"
                         />
                       </div>
@@ -1821,7 +2570,7 @@ export default function NewCustomer() {
 
                     {/* Exchange Rate - Only shown if currency is NOT base currency */}
                     {baseCurrency && formData.currency !== baseCurrency.code && (
-                      <div className="grid grid-cols-[200px_1fr] gap-4 items-center">
+                      <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
                         <label className="text-sm font-medium text-gray-700">Exchange Rate</label>
                         <div className="w-full max-w-md flex items-center gap-2">
                           <div className="flex-1">
@@ -1830,6 +2579,7 @@ export default function NewCustomer() {
                               name="exchangeRate"
                               value={formData.exchangeRate}
                               onChange={handleChange}
+                              inputMode="decimal"
                               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                               step="0.0001"
                             />
@@ -1846,9 +2596,88 @@ export default function NewCustomer() {
                       </div>
                     )}
 
+                    {/* Price List */}
+                    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                      <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
+                        Price List
+                        <HelpTooltip text="Select a price list to associate with this customer. This will be used to determine item rates in transactions.">
+                          <Info size={14} className="text-gray-400 cursor-help" />
+                        </HelpTooltip>
+                      </label>
+                      <div className="w-full max-w-md relative" ref={priceListDropdownRef}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const wasOpen = isPriceListDropdownOpen;
+                            closeAllDropdowns();
+                            setIsPriceListDropdownOpen(!wasOpen);
+                          }}
+                          className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 bg-white flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] transition-colors"
+                        >
+                          <span className={formData.priceListId ? "text-gray-900" : "text-gray-400"}>
+                            {formData.priceListId ? (priceLists.find(p => p.id === formData.priceListId)?.name || "Select a Price List") : "Select a Price List"}
+                          </span>
+                          <ChevronDown size={14} className={`text-gray-400 transition-transform ${isPriceListDropdownOpen ? "rotate-180" : ""}`} />
+                        </button>
+
+                        {isPriceListDropdownOpen && (
+                          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-80 overflow-hidden flex flex-col">
+                            <div className="flex items-center gap-2 p-3 bg-white border-b border-gray-100">
+                              <Search size={18} className="text-gray-400 flex-shrink-0" />
+                              <input
+                                type="text"
+                                placeholder="Search"
+                                value={priceListSearch}
+                                onChange={(e) => setPriceListSearch(e.target.value)}
+                                className="flex-1 border-none outline-none text-[13px] text-gray-700 bg-transparent placeholder-gray-400"
+                                autoFocus
+                              />
+                            </div>
+                            <div className="max-h-60 overflow-y-auto custom-scrollbar">
+                              <div
+                                onClick={() => {
+                                  setFormData(prev => ({ ...prev, priceListId: "" }));
+                                  setIsPriceListDropdownOpen(false);
+                                }}
+                                className={`px-4 py-2.5 text-[13px] cursor-pointer flex items-center hover:bg-gray-50 transition-colors ${!formData.priceListId ? "bg-blue-50 text-blue-600 font-medium" : "text-gray-700"}`}
+                              >
+                                None
+                              </div>
+                              {priceLists
+                                .filter(p => p.name.toLowerCase().includes(priceListSearch.toLowerCase()))
+                                .map((p) => (
+                                  <div
+                                    key={p.id}
+                                    onClick={() => {
+                                      setFormData(prev => ({ ...prev, priceListId: p.id }));
+                                      setIsPriceListDropdownOpen(false);
+                                    }}
+                                    className={`px-4 py-2.5 text-[13px] cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors ${formData.priceListId === p.id ? "bg-blue-50 text-blue-600 font-medium" : "text-gray-700"}`}
+                                  >
+                                    <div className="flex flex-col">
+                                      <span>{p.name}</span>
+                                      <span className="text-[11px] text-gray-400">{p.pricingScheme} {p.currency !== "-" ? `(${p.currency})` : ""}</span>
+                                    </div>
+                                    {formData.priceListId === p.id && (
+                                      <Check size={16} className="text-blue-500" />
+                                    )}
+                                  </div>
+                                ))}
+                              {priceLists.filter(p => p.name.toLowerCase().includes(priceListSearch.toLowerCase())).length === 0 && (
+                                <div className="px-4 py-3 text-sm text-gray-500 text-center italic">
+                                  No price lists found
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
                     {/* Payment Terms */}
-                    <div className="grid grid-cols-[200px_1fr] gap-4 items-center">
-                      <label className="text-[13px] text-gray-600">Payment Terms</label>
+                    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                      <label className="text-[13px] font-medium text-gray-700">Payment Terms</label>
                       <div className="w-full max-w-md">
                         <PaymentTermsDropdown
                           value={formData.paymentTerms}
@@ -1860,8 +2689,8 @@ export default function NewCustomer() {
                     </div>
 
                     {/* Enable Portal */}
-                    <div className="grid grid-cols-[200px_1fr] gap-4 items-center">
-                      <label className="text-[13px] text-gray-600 flex items-center gap-1">
+                    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                      <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
                         Enable Portal?
                         <HelpTooltip text="Allow this customer to access your client portal to view their transactions and make payments.">
                           <Info size={14} className="text-gray-400 cursor-help" />
@@ -1873,15 +2702,15 @@ export default function NewCustomer() {
                           name="enablePortal"
                           checked={formData.enablePortal}
                           onChange={handleChange}
-                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          className="w-4 h-4 text-[#156372] border-gray-300 rounded focus:ring-[#156372]"
                         />
-                        <span className="text-sm text-gray-700">Allow portal access for this customer</span>
+                        <span className="text-[13px] text-gray-700">Allow portal access for this customer</span>
                       </label>
                     </div>
 
                     {/* Documents */}
-                    <div className="grid grid-cols-[200px_1fr] gap-4 items-start" ref={uploadDropdownRef}>
-                      <label className="text-[13px] text-gray-600 pt-2">Documents</label>
+                    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-start">
+                      <label className="text-[13px] font-medium text-gray-700 pt-2">Documents</label>
                       <div className="w-full max-w-md">
                         <input
                           type="file"
@@ -1891,54 +2720,14 @@ export default function NewCustomer() {
                           style={{ display: "none" }}
                           accept="*/*"
                         />
-                        <div className="relative inline-flex items-center">
-                          <div className="flex items-center border border-gray-300 rounded-md overflow-hidden bg-white hover:border-gray-400 transition-colors shadow-sm">
-                            <button
-                              type="button"
-                              onClick={handleUploadClick}
-                              className="flex items-center gap-2 px-4 py-2 border-r border-gray-300 bg-white text-sm text-gray-600 font-medium hover:bg-gray-50 transition-colors"
-                            >
-                              <Upload size={16} className="text-gray-400" />
-                              Upload File
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const wasOpen = isUploadDropdownOpen;
-                                closeAllDropdowns();
-                                setIsUploadDropdownOpen(!wasOpen);
-                              }}
-                              className="px-2 py-2 bg-white hover:bg-gray-50 transition-colors text-gray-400"
-                            >
-                              <ChevronDown size={14} className={`transition-transform duration-200 ${isUploadDropdownOpen ? 'rotate-180' : ''}`} />
-                            </button>
-                          </div>
-                          {isUploadDropdownOpen && (
-                            <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-[100] py-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleUploadClick();
-                                  setIsUploadDropdownOpen(false);
-                                }}
-                                className="w-full text-left px-4 py-2 text-[13px] text-gray-700 hover:bg-gray-50 font-medium transition-colors"
-                              >
-                                Attach From Desktop
-                              </button>
-                              <button
-                                type="button"
-                                className="w-full text-left px-4 py-2 text-[13px] text-gray-700 hover:bg-gray-50 font-medium transition-colors"
-                                onClick={() => {
-                                  setIsDocumentsModalOpen(true);
-                                  setIsUploadDropdownOpen(false);
-                                }}
-                              >
-                                Attach From Documents
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={handleUploadClick}
+                          className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-600 shadow-sm transition-colors hover:border-gray-400 hover:bg-gray-50"
+                        >
+                          <Upload size={16} className="text-gray-400" />
+                          Attach File
+                        </button>
                         <p className="mt-1.5 text-[11px] text-gray-500">
                           You can upload a maximum of 10 files, 10MB each
                         </p>
@@ -1965,7 +2754,7 @@ export default function NewCustomer() {
                     </div>
 
                     {/* Add more details link */}
-                    <div className="grid grid-cols-[200px_1fr] gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4">
                       <div />
                       <div>
                         <button
@@ -1986,52 +2775,52 @@ export default function NewCustomer() {
                     {showMoreDetails && (
                       <div className="space-y-6 pt-6 border-t border-gray-100 mt-6 animate-in fade-in slide-in-from-top-2 duration-300">
                         {/* Website URL */}
-                        <div className="grid grid-cols-[200px_1fr] gap-4 items-center">
-                          <label className="text-[13px] text-gray-600">Website URL</label>
+                        <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                          <label className="text-[13px] font-medium text-gray-700">Website URL</label>
                           <div className="w-full max-w-md relative">
-                            <Globe size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <Globe size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                             <input
                               type="text"
                               name="websiteUrl"
                               value={formData.websiteUrl}
                               onChange={handleChange}
                               placeholder="ex: www.zylker.com"
-                              className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors"
+                              className="w-full pl-9 pr-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] hover:border-gray-400 transition-colors"
                             />
                           </div>
                         </div>
 
                         {/* Department */}
-                        <div className="grid grid-cols-[200px_1fr] gap-4 items-center">
-                          <label className="text-[13px] text-gray-600">Department</label>
+                        <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                          <label className="text-[13px] font-medium text-gray-700">Department</label>
                           <div className="w-full max-w-md">
                             <input
                               type="text"
                               name="department"
                               value={formData.department}
                               onChange={handleChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] hover:border-gray-400 transition-colors"
                             />
                           </div>
                         </div>
 
                         {/* Designation */}
-                        <div className="grid grid-cols-[200px_1fr] gap-4 items-center">
-                          <label className="text-[13px] text-gray-600">Designation</label>
+                        <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                          <label className="text-[13px] font-medium text-gray-700">Designation</label>
                           <div className="w-full max-w-md">
                             <input
                               type="text"
                               name="designation"
                               value={formData.designation}
                               onChange={handleChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] hover:border-gray-400 transition-colors"
                             />
                           </div>
                         </div>
 
                         {/* X (Twitter) */}
-                        <div className="grid grid-cols-[200px_1fr] gap-4 items-center">
-                          <label className="text-[13px] text-gray-600">X (Twitter)</label>
+                        <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                          <label className="text-[13px] font-medium text-gray-700">X (Twitter)</label>
                           <div className="w-full max-w-md relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-900 font-bold text-base select-none">ð•</span>
                             <input
@@ -2040,14 +2829,14 @@ export default function NewCustomer() {
                               value={formData.xHandle}
                               onChange={handleChange}
                               placeholder="twitter.com/"
-                              className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors"
+                              className="w-full pl-10 pr-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] hover:border-gray-400 transition-colors"
                             />
                           </div>
                         </div>
 
                         {/* Skype Name/Number */}
-                        <div className="grid grid-cols-[200px_1fr] gap-4 items-center">
-                          <label className="text-[13px] text-gray-600">Skype Name/Number</label>
+                        <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                          <label className="text-[13px] font-medium text-gray-700">Skype Name/Number</label>
                           <div className="w-full max-w-md relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-500 font-bold text-base select-none">S</span>
                             <input
@@ -2055,14 +2844,14 @@ export default function NewCustomer() {
                               name="skypeName"
                               value={formData.skypeName}
                               onChange={handleChange}
-                              className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors"
+                              className="w-full pl-10 pr-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] hover:border-gray-400 transition-colors"
                             />
                           </div>
                         </div>
 
                         {/* Facebook */}
-                        <div className="grid grid-cols-[200px_1fr] gap-4 items-center">
-                          <label className="text-[13px] text-gray-600">Facebook</label>
+                        <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                          <label className="text-[13px] font-medium text-gray-700">Facebook</label>
                           <div className="w-full max-w-md relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600 font-bold text-base select-none">f</span>
                             <input
@@ -2071,7 +2860,7 @@ export default function NewCustomer() {
                               value={formData.facebook}
                               onChange={handleChange}
                               placeholder="facebook.com/"
-                              className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors"
+                              className="w-full pl-10 pr-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] hover:border-gray-400 transition-colors"
                             />
                           </div>
                         </div>
@@ -2089,26 +2878,28 @@ export default function NewCustomer() {
 
                 {activeTab === "address" && (
                   <div className="mt-6">
-                    <div className="grid grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                       {/* Billing Address */}
                       <div className="space-y-6">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Billing Address</h3>
+                        <h3 className="text-[15px] font-semibold text-gray-800 mb-6">Billing Address</h3>
 
-                        <div className="mb-6">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Attention</label>
-                          <input
-                            type="text"
-                            name="billingAttention"
-                            value={formData.billingAttention}
-                            onChange={handleChange}
-                            placeholder="Enter attention"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
+                        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-4 items-center mb-5">
+                          <label className="text-[13px] font-medium text-gray-700">Attention</label>
+                          <div className="w-full max-w-sm">
+                            <input
+                              type="text"
+                              name="billingAttention"
+                              value={formData.billingAttention}
+                              onChange={handleChange}
+                              placeholder="Enter attention"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                            />
+                          </div>
                         </div>
 
-                        <div className="mb-6" ref={billingCountryDropdownRef}>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Country/Region</label>
-                          <div className="relative">
+                        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-4 items-center mb-5" ref={billingCountryDropdownRef}>
+                          <label className="text-[13px] font-medium text-gray-700">Country/Region</label>
+                          <div className="w-full max-w-sm relative">
                             <button
                               type="button"
                               onClick={(e) => {
@@ -2117,10 +2908,10 @@ export default function NewCustomer() {
                                 closeAllDropdowns();
                                 setIsBillingCountryDropdownOpen(!wasOpen);
                               }}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 bg-white flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 bg-white flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
                             >
                               <span>{formData.billingCountry || "Select or type to add"}</span>
-                              <ChevronDown size={16} className={`new-customer-currency-chevron ${isBillingCountryDropdownOpen ? "open" : ""}`} />
+                              <ChevronDown size={14} className={`text-gray-400 transition-transform ${isBillingCountryDropdownOpen ? "rotate-180" : ""}`} />
                             </button>
 
                             {isBillingCountryDropdownOpen && (
@@ -2155,42 +2946,45 @@ export default function NewCustomer() {
                           </div>
                         </div>
 
-                        <div className="mb-6">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
-                          <input
-                            type="text"
-                            name="billingStreet1"
-                            value={formData.billingStreet1}
-                            onChange={handleChange}
-                            placeholder="Street 1"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            style={{ marginBottom: "8px" }}
-                          />
-                          <input
-                            type="text"
-                            name="billingStreet2"
-                            value={formData.billingStreet2}
-                            onChange={handleChange}
-                            placeholder="Street 2"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
+                        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-4 items-start mb-5">
+                          <label className="text-[13px] font-medium text-gray-700 pt-1.5">Address</label>
+                          <div className="w-full max-w-sm space-y-2">
+                            <input
+                              type="text"
+                              name="billingStreet1"
+                              value={formData.billingStreet1}
+                              onChange={handleChange}
+                              placeholder="Street 1"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                            />
+                            <input
+                              type="text"
+                              name="billingStreet2"
+                              value={formData.billingStreet2}
+                              onChange={handleChange}
+                              placeholder="Street 2"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                            />
+                          </div>
                         </div>
 
-                        <div className="mb-6">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
-                          <input
-                            type="text"
-                            name="billingCity"
-                            value={formData.billingCity}
-                            onChange={handleChange}
-                            placeholder="Enter city"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
+                        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-4 items-center mb-5">
+                          <label className="text-[13px] font-medium text-gray-700">City</label>
+                          <div className="w-full max-w-sm">
+                            <input
+                              type="text"
+                              name="billingCity"
+                              value={formData.billingCity}
+                              onChange={handleChange}
+                              placeholder="Enter city"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                            />
+                          </div>
                         </div>
 
-                        <div className="mb-6" ref={billingStateDropdownRef}>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">State</label>
-                          <div className="relative">
+                        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-4 items-center mb-5" ref={billingStateDropdownRef}>
+                          <label className="text-[13px] font-medium text-gray-700">State</label>
+                          <div className="w-full max-w-sm relative">
                             <button
                               type="button"
                               onClick={(e) => {
@@ -2199,10 +2993,10 @@ export default function NewCustomer() {
                                 closeAllDropdowns();
                                 setIsBillingStateDropdownOpen(!wasOpen);
                               }}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 bg-white flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 bg-white flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
                             >
                               <span>{formData.billingState || "Select or type to add"}</span>
-                              <ChevronDown size={16} className={`text-gray-400 transition-transform ${isBillingStateDropdownOpen ? "rotate-180" : ""}`} />
+                              <ChevronDown size={14} className={`text-gray-400 transition-transform ${isBillingStateDropdownOpen ? "rotate-180" : ""}`} />
                             </button>
 
                             {isBillingStateDropdownOpen && (
@@ -2236,7 +3030,7 @@ export default function NewCustomer() {
                                       )}
                                     </div>
                                   ))}
-                                  {formData.billingCountry && (!countryData[formData.billingCountry] || countryData[formData.billingCountry].length === 0) && (
+                                  {formData.billingCountry && filteredStates("", formData.billingCountry).length === 0 && (
                                     <div className="px-3 py-4 text-center text-sm text-gray-400">
                                       No states found for {formData.billingCountry}
                                     </div>
@@ -2252,71 +3046,86 @@ export default function NewCustomer() {
                           </div>
                         </div>
 
-                        <div className="mb-6">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">ZIP Code</label>
-                          <input
-                            type="text"
-                            name="billingZipCode"
-                            value={formData.billingZipCode}
-                            onChange={handleChange}
-                            placeholder="Enter ZIP code"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
+                        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-4 items-center mb-5">
+                          <label className="text-[13px] font-medium text-gray-700">ZIP Code</label>
+                          <div className="w-full max-w-sm">
+                            <input
+                              type="text"
+                              name="billingZipCode"
+                              value={formData.billingZipCode}
+                              onChange={handleChange}
+                              placeholder="Enter ZIP code"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                            />
+                          </div>
                         </div>
 
-                        <div className="mb-6">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
-                          <input
-                            type="text"
-                            name="billingPhone"
-                            value={formData.billingPhone}
-                            onChange={handleChange}
-                            placeholder="Enter phone"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
+                        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-4 items-center mb-5">
+                          <label className="text-[13px] font-medium text-gray-700">Phone</label>
+                          <div className="w-full max-w-sm">
+                            <input
+                              type="text"
+                              name="billingPhone"
+                              value={formData.billingPhone}
+                              onChange={handleChange}
+                              placeholder="Enter phone"
+                              inputMode="numeric"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                            />
+                          </div>
                         </div>
 
-                        <div className="mb-6">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Fax Number</label>
-                          <input
-                            type="text"
-                            name="billingFax"
-                            value={formData.billingFax}
-                            onChange={handleChange}
-                            placeholder="Enter fax number"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
+                        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-4 items-center">
+                          <label className="text-[13px] font-medium text-gray-700">Fax Number</label>
+                          <div className="w-full max-w-sm">
+                            <input
+                              type="text"
+                              name="billingFax"
+                              value={formData.billingFax}
+                              onChange={handleChange}
+                              placeholder="Enter fax number"
+                              inputMode="numeric"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                            />
+                          </div>
                         </div>
                       </div>
 
                       {/* Shipping Address */}
                       <div className="space-y-6">
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="text-lg font-semibold text-gray-900 mb-4">Shipping Address</h3>
+                        <div className="flex items-center justify-between mb-6">
+                          <h3 className="text-[15px] font-semibold text-gray-800">Shipping Address</h3>
                           <button
                             type="button"
                             onClick={handleCopyBillingAddress}
-                            className="text-sm text-blue-600 hover:text-blue-700 hover:underline cursor-pointer"
+                            className="text-[12px] text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
                           >
-                            ( â†“ Copy billing address )
+                            <span className="opacity-70">(</span>
+                            <RefreshCw size={10} className="mr-0.5" />
+                            Copy billing address
+                            <span className="opacity-70">)</span>
                           </button>
                         </div>
 
-                        <div className="mb-6">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Attention</label>
-                          <input
-                            type="text"
-                            name="shippingAttention"
-                            value={formData.shippingAttention}
-                            onChange={handleChange}
-                            placeholder="Enter attention"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
+                        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-4 items-center mb-5">
+                          <label className="text-[13px] font-medium text-gray-700">Attention</label>
+                          <div className="w-full max-w-sm">
+                            <input
+                              type="text"
+                              name="shippingAttention"
+                              value={formData.shippingAttention}
+                              onChange={handleChange}
+                              placeholder="Enter attention"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                            />
+                          </div>
                         </div>
 
-                        <div className="mb-6" ref={shippingCountryDropdownRef}>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Country/Region</label>
-                          <div className="relative">
+                        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-4 items-center mb-5" ref={shippingCountryDropdownRef}>
+                          <label className="text-[13px] font-medium text-gray-700">Country/Region</label>
+                          <div className="w-full max-w-sm relative">
                             <button
                               type="button"
                               onClick={(e) => {
@@ -2325,22 +3134,22 @@ export default function NewCustomer() {
                                 closeAllDropdowns();
                                 setIsShippingCountryDropdownOpen(!wasOpen);
                               }}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 bg-white flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 bg-white flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
                             >
                               <span>{formData.shippingCountry || "Select or type to add"}</span>
-                              <ChevronDown size={16} className={`text-gray-400 transition-transform ${isShippingCountryDropdownOpen ? "rotate-180" : ""}`} />
+                              <ChevronDown size={14} className={`text-gray-400 transition-transform ${isShippingCountryDropdownOpen ? "rotate-180" : ""}`} />
                             </button>
 
                             {isShippingCountryDropdownOpen && (
-                              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md shadow-lg z-50 max-h-60 overflow-hidden">
+                              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded shadow-lg z-50 max-h-60 overflow-hidden">
                                 <div className="flex items-center gap-2 p-2 border-b border-gray-200">
-                                  <Search size={16} className="text-gray-400 flex-shrink-0" />
+                                  <Search size={14} className="text-gray-400 flex-shrink-0" />
                                   <input
                                     type="text"
                                     placeholder="Search"
                                     value={shippingCountrySearch}
                                     onChange={(e) => setShippingCountrySearch(e.target.value)}
-                                    className="flex-1 border-none outline-none text-sm text-gray-700"
+                                    className="flex-1 border-none outline-none text-[13px] text-gray-700"
                                     autoFocus
                                   />
                                 </div>
@@ -2349,12 +3158,10 @@ export default function NewCustomer() {
                                     <div
                                       key={country}
                                       onClick={() => handleShippingCountrySelect(country)}
-                                      className={`px-3 py-2 text-sm cursor-pointer flex items-center justify-between hover:bg-gray-100 ${formData.shippingCountry === country ? "bg-blue-50 text-blue-600" : "text-gray-700"}`}
+                                      className={`px-3 py-1.5 text-[13px] cursor-pointer flex items-center justify-between hover:bg-gray-100 ${formData.shippingCountry === country ? "bg-blue-50 text-blue-600" : "text-gray-700"}`}
                                     >
                                       <span>{country}</span>
-                                      {formData.shippingCountry === country && (
-                                        <Check size={16} className="text-blue-600" />
-                                      )}
+                                      {formData.shippingCountry === country && <Check size={14} className="text-blue-600" />}
                                     </div>
                                   ))}
                                 </div>
@@ -2363,42 +3170,45 @@ export default function NewCustomer() {
                           </div>
                         </div>
 
-                        <div className="mb-6">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
-                          <input
-                            type="text"
-                            name="shippingStreet1"
-                            value={formData.shippingStreet1}
-                            onChange={handleChange}
-                            placeholder="Street 1"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            style={{ marginBottom: "8px" }}
-                          />
-                          <input
-                            type="text"
-                            name="shippingStreet2"
-                            value={formData.shippingStreet2}
-                            onChange={handleChange}
-                            placeholder="Street 2"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
+                        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-4 items-start mb-5">
+                          <label className="text-[13px] font-medium text-gray-700 pt-1.5">Address</label>
+                          <div className="w-full max-w-sm space-y-2">
+                            <input
+                              type="text"
+                              name="shippingStreet1"
+                              value={formData.shippingStreet1}
+                              onChange={handleChange}
+                              placeholder="Street 1"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                            />
+                            <input
+                              type="text"
+                              name="shippingStreet2"
+                              value={formData.shippingStreet2}
+                              onChange={handleChange}
+                              placeholder="Street 2"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                            />
+                          </div>
                         </div>
 
-                        <div className="mb-6">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
-                          <input
-                            type="text"
-                            name="shippingCity"
-                            value={formData.shippingCity}
-                            onChange={handleChange}
-                            placeholder="Enter city"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
+                        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-4 items-center mb-5">
+                          <label className="text-[13px] font-medium text-gray-700">City</label>
+                          <div className="w-full max-w-sm">
+                            <input
+                              type="text"
+                              name="shippingCity"
+                              value={formData.shippingCity}
+                              onChange={handleChange}
+                              placeholder="Enter city"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                            />
+                          </div>
                         </div>
 
-                        <div className="mb-6" ref={shippingStateDropdownRef}>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">State</label>
-                          <div className="relative">
+                        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-4 items-center mb-5" ref={shippingStateDropdownRef}>
+                          <label className="text-[13px] font-medium text-gray-700">State</label>
+                          <div className="w-full max-w-sm relative">
                             <button
                               type="button"
                               onClick={(e) => {
@@ -2407,27 +3217,22 @@ export default function NewCustomer() {
                                 closeAllDropdowns();
                                 setIsShippingStateDropdownOpen(!wasOpen);
                               }}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 bg-white flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 bg-white flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
                             >
                               <span>{formData.shippingState || "Select or type to add"}</span>
-                              <ChevronDown size={16} className={`new-customer-currency-chevron ${isShippingStateDropdownOpen ? "open" : ""}`} />
+                              <ChevronDown size={14} className={`text-gray-400 transition-transform ${isShippingStateDropdownOpen ? "rotate-180" : ""}`} />
                             </button>
 
                             {isShippingStateDropdownOpen && (
-                              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md shadow-lg z-50 max-h-60 overflow-hidden">
+                              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded shadow-lg z-50 max-h-60 overflow-hidden">
                                 <div className="flex items-center gap-2 p-2 border-b border-gray-200">
-                                  <Search size={16} className="text-gray-400 flex-shrink-0" />
+                                  <Search size={14} className="text-gray-400 flex-shrink-0" />
                                   <input
                                     type="text"
-                                    placeholder="Search or type to add"
+                                    placeholder="Search"
                                     value={shippingStateSearch}
                                     onChange={(e) => setShippingStateSearch(e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' && shippingStateSearch) {
-                                        handleShippingStateSelect(shippingStateSearch);
-                                      }
-                                    }}
-                                    className="flex-1 border-none outline-none text-sm text-gray-700"
+                                    className="flex-1 border-none outline-none text-[13px] text-gray-700"
                                     autoFocus
                                   />
                                 </div>
@@ -2436,69 +3241,67 @@ export default function NewCustomer() {
                                     <div
                                       key={state}
                                       onClick={() => handleShippingStateSelect(state)}
-                                      className={`px-3 py-2 text-sm cursor-pointer flex items-center justify-between hover:bg-gray-100 ${formData.shippingState === state ? "bg-blue-50 text-blue-600" : "text-gray-700"}`}
+                                      className={`px-3 py-1.5 text-[13px] cursor-pointer flex items-center justify-between hover:bg-gray-100 ${formData.shippingState === state ? "bg-blue-50 text-blue-600" : "text-gray-700"}`}
                                     >
                                       <span>{state}</span>
-                                      {formData.shippingState === state && (
-                                        <Check size={16} className="text-blue-600" />
-                                      )}
+                                      {formData.shippingState === state && <Check size={14} className="text-blue-600" />}
                                     </div>
                                   ))}
-                                  {formData.shippingCountry && (!countryData[formData.shippingCountry] || countryData[formData.shippingCountry].length === 0) && (
-                                    <div className="px-3 py-4 text-center text-sm text-gray-400">
-                                      No states found for {formData.shippingCountry}
-                                    </div>
-                                  )}
-                                  {!formData.shippingCountry && (
-                                    <div className="px-3 py-4 text-center text-sm text-gray-400">
-                                      Please select a country first
-                                    </div>
-                                  )}
                                 </div>
                               </div>
                             )}
                           </div>
                         </div>
 
-                        <div className="mb-6">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">ZIP Code</label>
-                          <input
-                            type="text"
-                            name="shippingZipCode"
-                            value={formData.shippingZipCode}
-                            onChange={handleChange}
-                            placeholder="Enter ZIP code"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
+                        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-4 items-center mb-5">
+                          <label className="text-[13px] font-medium text-gray-700">ZIP Code</label>
+                          <div className="w-full max-w-sm">
+                            <input
+                              type="text"
+                              name="shippingZipCode"
+                              value={formData.shippingZipCode}
+                              onChange={handleChange}
+                              placeholder="Enter ZIP code"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                            />
+                          </div>
                         </div>
 
-                        <div className="mb-6">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
-                          <input
-                            type="text"
-                            name="shippingPhone"
-                            value={formData.shippingPhone}
-                            onChange={handleChange}
-                            placeholder="Enter phone"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
+                        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-4 items-center mb-5">
+                          <label className="text-[13px] font-medium text-gray-700">Phone</label>
+                          <div className="w-full max-w-sm">
+                            <input
+                              type="text"
+                              name="shippingPhone"
+                              value={formData.shippingPhone}
+                              onChange={handleChange}
+                              placeholder="Enter phone"
+                              inputMode="numeric"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                            />
+                          </div>
                         </div>
 
-                        <div className="mb-6">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Fax Number</label>
-                          <input
-                            type="text"
-                            name="shippingFax"
-                            value={formData.shippingFax}
-                            onChange={handleChange}
-                            placeholder="Enter fax number"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
+                        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-4 items-center">
+                          <label className="text-[13px] font-medium text-gray-700">Fax Number</label>
+                          <div className="w-full max-w-sm">
+                            <input
+                              type="text"
+                              name="shippingFax"
+                              value={formData.shippingFax}
+                              onChange={handleChange}
+                              placeholder="Enter fax number"
+                              inputMode="numeric"
+                              className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Note Section */}
+                    {false && (
                     <div className="mt-8 p-4 bg-white border-l-4 border-[#f09c2a] flex flex-col gap-2">
                       <div className="text-[13px] font-semibold text-gray-900">Note:</div>
                       <div className="space-y-1.5">
@@ -2512,20 +3315,19 @@ export default function NewCustomer() {
                         </div>
                       </div>
                     </div>
+                    )}
                   </div>
                 )}
 
                 {activeTab === "contact-persons" && (
                   <div className="mt-6">
                     {/* Table Structure */}
-                    <div className="border border-gray-200 rounded-md scrollbar-hide">
+                    <div className="border border-gray-200 rounded-md overflow-visible">
                       {/* Table Header */}
                       <div
-                        className="bg-gray-50 border-b border-gray-200 grid gap-4 px-4 py-3 items-center"
+                        className="bg-gray-50 border-b border-gray-200 grid gap-4 px-4 py-3 items-center w-full"
                         style={{
-                          gridTemplateColumns: showExtendedContactColumns
-                            ? '90px 1fr 1fr 1.5fr 1.3fr 1.3fr 1fr 1fr 1fr 50px'
-                            : '90px 1fr 1fr 1.5fr 1.3fr 1.3fr 50px'
+                          gridTemplateColumns: contactPersonsGridTemplate,
                         }}
                       >
                         <div className="text-xs font-semibold text-gray-700 uppercase">SALUTATION</div>
@@ -2550,14 +3352,19 @@ export default function NewCustomer() {
                           No contact persons added yet. Click the button below to add one.
                         </div>
                       ) : (
-                        formData.contactPersons.map((contact, index) => (
+                        formData.contactPersons.map((contact, index) => {
+                          const contactNameErrorKey = getContactPersonErrorKey(contact.id, "name");
+                          const contactEmailErrorKey = getContactPersonErrorKey(contact.id, "email");
+                          const contactRowErrors = [errors[contactNameErrorKey], errors[contactEmailErrorKey]].filter(Boolean);
+
+                          return (
+                          <React.Fragment key={contact.id}>
                           <div
-                            key={contact.id}
-                            className="grid gap-4 px-4 py-3 border-b border-gray-200 last:border-b-0 hover:bg-gray-50 items-start"
+                            className={`grid gap-4 px-4 py-3 border-b border-gray-200 hover:bg-gray-50 items-start w-full ${
+                              openContactDropdown?.id === contact.id ? "relative z-20" : ""
+                            }`}
                             style={{
-                              gridTemplateColumns: showExtendedContactColumns
-                                ? '90px 1fr 1fr 1.5fr 1.3fr 1.3fr 1fr 1fr 1fr 50px'
-                                : '90px 1fr 1fr 1.5fr 1.3fr 1.3fr 50px'
+                              gridTemplateColumns: contactPersonsGridTemplate,
                             }}
                           >
                             {/* Salutation */}
@@ -2571,7 +3378,7 @@ export default function NewCustomer() {
                                     );
                                     setFormData(prev => ({ ...prev, contactPersons: updated }));
                                   }}
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none"
+                                  className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none"
                                 >
                                   <option value=""></option>
                                   <option value="Mr.">Mr.</option>
@@ -2588,44 +3395,41 @@ export default function NewCustomer() {
                             <input
                               type="text"
                               value={contact.firstName}
-                              onChange={(e) => {
-                                const updated = formData.contactPersons.map(cp =>
-                                  cp.id === contact.id ? { ...cp, firstName: e.target.value } : cp
-                                );
-                                setFormData(prev => ({ ...prev, contactPersons: updated }));
-                              }}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              data-validation-key={contactNameErrorKey}
+                              onChange={(e) => updateContactPersonField(contact.id, "firstName", e.target.value)}
+                              className={`w-full px-2.5 py-2 border rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                                errors[contactNameErrorKey] ? "border-red-500 bg-red-50" : "border-gray-300"
+                              }`}
                             />
 
                             {/* Last Name */}
                             <input
                               type="text"
                               value={contact.lastName}
-                              onChange={(e) => {
-                                const updated = formData.contactPersons.map(cp =>
-                                  cp.id === contact.id ? { ...cp, lastName: e.target.value } : cp
-                                );
-                                setFormData(prev => ({ ...prev, contactPersons: updated }));
-                              }}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              data-validation-key={contactNameErrorKey}
+                              onChange={(e) => updateContactPersonField(contact.id, "lastName", e.target.value)}
+                              className={`w-full px-2.5 py-2 border rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                                errors[contactNameErrorKey] ? "border-red-500 bg-red-50" : "border-gray-300"
+                              }`}
                             />
 
                             {/* Email */}
                             <input
                               type="email"
                               value={contact.email}
-                              onChange={(e) => {
-                                const updated = formData.contactPersons.map(cp =>
-                                  cp.id === contact.id ? { ...cp, email: e.target.value } : cp
-                                );
-                                setFormData(prev => ({ ...prev, contactPersons: updated }));
-                              }}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              data-validation-key={contactEmailErrorKey}
+                              onChange={(e) => updateContactPersonField(contact.id, "email", e.target.value)}
+                              className={`w-full px-3 py-2 border rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                                errors[contactEmailErrorKey] ? "border-red-500 bg-red-50" : "border-gray-300"
+                              }`}
                             />
 
                             {/* Work Phone */}
-                            <div className="flex items-center border border-gray-300 rounded-md focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 bg-white">
-                              <div className="relative">
+                            <div className="flex min-w-0 items-center border border-gray-300 rounded-md focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 bg-white">
+                              <div
+                                data-contact-phone-dropdown="true"
+                                className={`relative ${openContactDropdown?.id === contact.id && openContactDropdown?.type === 'work' ? "z-30" : ""}`}
+                              >
                                 <div
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -2636,14 +3440,14 @@ export default function NewCustomer() {
                                       setContactDropdownSearch("");
                                     }
                                   }}
-                                  className={`flex items-center gap-1 px-2 py-2 border-r border-gray-300 text-sm cursor-pointer transition-colors min-w-[70px] justify-between rounded-l-md ${openContactDropdown?.id === contact.id && openContactDropdown?.type === 'work' ? "bg-white" : "bg-gray-50 text-gray-600 hover:bg-gray-100"}`}
+                                  className={`flex items-center gap-1 px-2 py-2 border-r border-gray-300 text-sm cursor-pointer transition-colors min-w-[74px] justify-between rounded-l-md ${openContactDropdown?.id === contact.id && openContactDropdown?.type === 'work' ? "bg-white" : "bg-gray-50 text-gray-600 hover:bg-gray-100"}`}
                                 >
                                   <span className="font-medium text-gray-700">{contact.workPhonePrefix || "+358"}</span>
                                   <ChevronDown size={12} className="text-gray-400" />
                                 </div>
 
                                 {openContactDropdown?.id === contact.id && openContactDropdown?.type === 'work' && (
-                                  <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-md shadow-xl z-[100] flex flex-col overflow-hidden">
+                                  <div className="absolute bottom-full left-0 mb-1 w-64 bg-white border border-gray-200 rounded-md shadow-xl z-[1200] flex flex-col overflow-hidden">
                                     <div className="p-2 border-b border-gray-100">
                                       <input
                                         type="text"
@@ -2682,19 +3486,18 @@ export default function NewCustomer() {
                               <input
                                 type="text"
                                 value={contact.workPhone}
-                                onChange={(e) => {
-                                  const updated = formData.contactPersons.map(cp =>
-                                    cp.id === contact.id ? { ...cp, workPhone: e.target.value } : cp
-                                  );
-                                  setFormData(prev => ({ ...prev, contactPersons: updated }));
-                                }}
-                                className="flex-1 w-full px-2 py-2 text-sm text-gray-700 border-none focus:outline-none bg-transparent"
+                                onChange={(e) => updateContactPersonField(contact.id, "workPhone", e.target.value)}
+                                inputMode="numeric"
+                                className="flex-1 min-w-0 px-2.5 py-2 text-sm text-gray-700 border-none focus:outline-none bg-transparent"
                               />
                             </div>
 
                             {/* Mobile */}
-                            <div className="flex items-center border border-gray-300 rounded-md focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 bg-white">
-                              <div className="relative">
+                            <div className="flex min-w-0 items-center border border-gray-300 rounded-md focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 bg-white">
+                              <div
+                                data-contact-phone-dropdown="true"
+                                className={`relative ${openContactDropdown?.id === contact.id && openContactDropdown?.type === 'mobile' ? "z-30" : ""}`}
+                              >
                                 <div
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -2705,14 +3508,14 @@ export default function NewCustomer() {
                                       setContactDropdownSearch("");
                                     }
                                   }}
-                                  className={`flex items-center gap-1 px-2 py-2 border-r border-gray-300 text-sm cursor-pointer transition-colors min-w-[70px] justify-between rounded-l-md ${openContactDropdown?.id === contact.id && openContactDropdown?.type === 'mobile' ? "bg-white" : "bg-gray-50 text-gray-600 hover:bg-gray-100"}`}
+                                  className={`flex items-center gap-1 px-2 py-2 border-r border-gray-300 text-sm cursor-pointer transition-colors min-w-[74px] justify-between rounded-l-md ${openContactDropdown?.id === contact.id && openContactDropdown?.type === 'mobile' ? "bg-white" : "bg-gray-50 text-gray-600 hover:bg-gray-100"}`}
                                 >
                                   <span className="font-medium text-gray-700">{contact.mobilePrefix || "+252"}</span>
                                   <ChevronDown size={12} className="text-gray-400" />
                                 </div>
 
                                 {openContactDropdown?.id === contact.id && openContactDropdown?.type === 'mobile' && (
-                                  <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-md shadow-xl z-[100] flex flex-col overflow-hidden">
+                                  <div className="absolute bottom-full left-0 mb-1 w-64 bg-white border border-gray-200 rounded-md shadow-xl z-[1200] flex flex-col overflow-hidden">
                                     <div className="p-2 border-b border-gray-100">
                                       <input
                                         type="text"
@@ -2751,13 +3554,9 @@ export default function NewCustomer() {
                               <input
                                 type="text"
                                 value={contact.mobile}
-                                onChange={(e) => {
-                                  const updated = formData.contactPersons.map(cp =>
-                                    cp.id === contact.id ? { ...cp, mobile: e.target.value } : cp
-                                  );
-                                  setFormData(prev => ({ ...prev, contactPersons: updated }));
-                                }}
-                                className="flex-1 w-full px-2 py-2 text-sm text-gray-700 border-none focus:outline-none bg-transparent"
+                                onChange={(e) => updateContactPersonField(contact.id, "mobile", e.target.value)}
+                                inputMode="numeric"
+                                className="flex-1 min-w-0 px-2.5 py-2 text-sm text-gray-700 border-none focus:outline-none bg-transparent"
                               />
                             </div>
 
@@ -2767,34 +3566,19 @@ export default function NewCustomer() {
                                 <input
                                   type="text"
                                   value={contact.skypeName}
-                                  onChange={(e) => {
-                                    const updated = formData.contactPersons.map(cp =>
-                                      cp.id === contact.id ? { ...cp, skypeName: e.target.value } : cp
-                                    );
-                                    setFormData(prev => ({ ...prev, contactPersons: updated }));
-                                  }}
+                                  onChange={(e) => updateContactPersonField(contact.id, "skypeName", e.target.value)}
                                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                 />
                                 <input
                                   type="text"
                                   value={contact.designation}
-                                  onChange={(e) => {
-                                    const updated = formData.contactPersons.map(cp =>
-                                      cp.id === contact.id ? { ...cp, designation: e.target.value } : cp
-                                    );
-                                    setFormData(prev => ({ ...prev, contactPersons: updated }));
-                                  }}
+                                  onChange={(e) => updateContactPersonField(contact.id, "designation", e.target.value)}
                                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                 />
                                 <input
                                   type="text"
                                   value={contact.department}
-                                  onChange={(e) => {
-                                    const updated = formData.contactPersons.map(cp =>
-                                      cp.id === contact.id ? { ...cp, department: e.target.value } : cp
-                                    );
-                                    setFormData(prev => ({ ...prev, contactPersons: updated }));
-                                  }}
+                                  onChange={(e) => updateContactPersonField(contact.id, "department", e.target.value)}
                                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                 />
                               </>
@@ -2812,10 +3596,17 @@ export default function NewCustomer() {
                               <button
                                 type="button"
                                 onClick={() => {
+                                  const contactId = String(contact.id || index).trim();
                                   setFormData(prev => ({
                                     ...prev,
                                     contactPersons: prev.contactPersons.filter(cp => cp.id !== contact.id)
                                   }));
+                                  setErrors((prev) => {
+                                    const next = { ...prev };
+                                    delete next[getContactPersonErrorKey(contactId, "name")];
+                                    delete next[getContactPersonErrorKey(contactId, "email")];
+                                    return next;
+                                  });
                                 }}
                                 className="flex items-center justify-center w-6 h-6 rounded-full border border-red-500 text-red-500 hover:bg-red-50 transition-colors"
                                 title="Delete contact person"
@@ -2824,7 +3615,13 @@ export default function NewCustomer() {
                               </button>
                             </div>
                           </div>
-                        ))
+                          {contactRowErrors.length > 0 && (
+                            <div className="border-b border-gray-200 px-4 pb-3 text-xs font-medium text-red-500">
+                              {contactRowErrors[0]}
+                            </div>
+                          )}
+                          </React.Fragment>
+                        )})
                       )}
                     </div>
 
@@ -2857,96 +3654,157 @@ export default function NewCustomer() {
                   </div>
                 )}
 
+                {activeTab === "custom-fields" && (
+                  <div className="mt-6">
+                    <div className="py-12 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-lg bg-gray-50/50">
+                      <div className="p-3 bg-gray-100 rounded-full mb-3">
+                        <Plus size={24} className="text-gray-400" />
+                      </div>
+                      <p className="text-[13px] text-gray-600 font-medium mb-1">No custom fields found</p>
+                      <p className="text-[11px] text-gray-500 text-center max-w-xs px-6">
+                        Custom fields allow you to record additional information about your customers. 
+                        Go to <span className="text-[#156372] font-semibold">Settings &gt; Preferences &gt; Customers</span> to add them.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {activeTab === "reporting-tags" && (
-                  <div className="mt-6">
-                    <div className="mb-6">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Reporting Tags</label>
-                      <p className="text-sm text-gray-600 mt-2">
-                        Add reporting tags to categorize and filter this customer in reports. You can add multiple tags.
-                      </p>
-                      <div className="mb-4">
-                        <input
-                          type="text"
-                          placeholder="Type and press Enter to add a tag"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                            const target = e.target as HTMLInputElement;
-                            if (e.key === "Enter" && target.value.trim()) {
-                              if (!formData.reportingTags.includes(target.value.trim())) {
-                                setFormData((prev: typeof formData) => ({
-                                  ...prev,
-                                  reportingTags: [...prev.reportingTags, target.value.trim()]
-                                }));
-                              }
-                              target.value = "";
-                            }
-                          }}
-                        />
+                  <div className="mt-6 space-y-6">
+                    {isReportingTagsLoading ? (
+                      <div className="py-12 flex flex-col items-center justify-center">
+                        <Loader2 className="w-8 h-8 animate-spin text-[#156372] mb-2" />
+                        <p className="text-sm text-gray-500">Loading reporting tags...</p>
                       </div>
-                    </div>
-                    {formData.reportingTags.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {formData.reportingTags.map((tag, index) => (
-                          <div key={index} className="flex items-center gap-2 px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full text-sm">
-                            <span>{tag}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFormData(prev => ({
-                                  ...prev,
-                                  reportingTags: prev.reportingTags.filter((_, i) => i !== index)
-                                }));
-                              }}
-                              className="flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800 transition-colors"
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ))}
+                    ) : availableReportingTags.length > 0 ? (
+                      <div className="space-y-6">
+                        {availableReportingTags.map((tag) => {
+                          const tagId = tag._id || tag.id;
+                          const currentTag = Array.isArray(formData.reportingTags)
+                            ? formData.reportingTags.find((rt: any) => rt.tagId === tagId || rt.id === tagId)
+                            : null;
+                          const selectedVal = currentTag?.value || "";
+
+                          const normalizedTagOptions = Array.isArray(tag.options) ? tag.options : [];
+                          const selectedOptionMissing = selectedVal && !normalizedTagOptions.includes(selectedVal);
+                          const options = [
+                            ...normalizedTagOptions.map((opt: string) => ({ value: opt, label: opt })),
+                            ...(selectedOptionMissing ? [{ value: selectedVal, label: selectedVal }] : []),
+                          ];
+
+                          return (
+                            <div key={tagId} className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
+                              <label className={`text-[13px] font-medium flex items-center gap-1 ${tag.isMandatory ? 'text-red-500' : 'text-gray-700'}`}>
+                                {tag.name} {tag.isMandatory && <span className="ml-0.5">*</span>}
+                                {tag.description && (
+                                  <HelpTooltip text={tag.description}>
+                                    <Info size={14} className="text-gray-400 cursor-help" />
+                                  </HelpTooltip>
+                                )}
+                              </label>
+                              <div className="w-full max-w-md" data-validation-key={getReportingTagErrorKey(tagId)}>
+                                <SearchableDropdown
+                                  value={selectedVal}
+                                  options={options}
+                                  onChange={(value) => {
+                                    setFormData(prev => {
+                                      const existing = Array.isArray(prev.reportingTags) ? prev.reportingTags : [];
+                                      const filtered = existing.filter((rt: any) => rt.tagId !== tagId && rt.id !== tagId);
+                                      const updated = value
+                                        ? [...filtered, { tagId, id: tagId, name: tag.name, value }]
+                                        : filtered;
+                                      return { ...prev, reportingTags: updated };
+                                    });
+                                    const tagErrorKey = getReportingTagErrorKey(tagId);
+                                    if (errors[tagErrorKey]) {
+                                      setErrors((prev) => {
+                                        if (!prev[tagErrorKey]) return prev;
+                                        const next = { ...prev };
+                                        delete next[tagErrorKey];
+                                        return next;
+                                      });
+                                    }
+                                  }}
+                                  placeholder="Select report tag"
+                                  accentColor="#156372"
+                                  showClear={Boolean(selectedVal)}
+                                  onClear={() => {
+                                    setFormData(prev => {
+                                      const existing = Array.isArray(prev.reportingTags) ? prev.reportingTags : [];
+                                      const updated = existing.filter((rt: any) => rt.tagId !== tagId && rt.id !== tagId);
+                                      return { ...prev, reportingTags: updated };
+                                    });
+                                    const tagErrorKey = getReportingTagErrorKey(tagId);
+                                    if (errors[tagErrorKey]) {
+                                      setErrors((prev) => {
+                                        if (!prev[tagErrorKey]) return prev;
+                                        const next = { ...prev };
+                                        delete next[tagErrorKey];
+                                        return next;
+                                      });
+                                    }
+                                  }}
+                                  inputClassName={errors[getReportingTagErrorKey(tagId)] ? "border-red-500 bg-red-50 hover:border-red-500 focus:border-red-500" : ""}
+                                />
+                                {errors[getReportingTagErrorKey(tagId)] && (
+                                  <p className="mt-1 text-xs text-red-500 font-medium">{errors[getReportingTagErrorKey(tagId)]}</p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="py-12 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-lg bg-gray-50/50">
+                        <p className="text-[13px] text-gray-600 font-medium mb-1">No reporting tags available</p>
+                        <p className="text-[11px] text-gray-500 text-center max-w-xs px-6">
+                          Reporting tags help you categorize your transactions for better reporting.
+                        </p>
                       </div>
                     )}
                   </div>
                 )}
 
                 {activeTab === "remarks" && (
-                  <div className="mt-6">
-                    <div className="mb-6">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Remarks</label>
-                      <p className="text-sm text-gray-600 mt-2">
-                        Add any additional notes or remarks about this customer. This information is for internal use only.
-                      </p>
-                      <textarea
-                        name="remarks"
-                        value={formData.remarks}
-                        onChange={handleChange}
-                        placeholder="Enter remarks or notes about this customer..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
-                        rows={8}
-                      />
+                  <div className="mt-6 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-start pb-10">
+                      <label className="text-[13px] font-medium text-gray-700 pt-1.5 flex items-center gap-1">
+                        Remarks
+                        <HelpTooltip text="Add any additional remarks or notes for this customer. These will be visible only to your organisation users.">
+                          <Info size={14} className="text-gray-400 cursor-help" />
+                        </HelpTooltip>
+                      </label>
+                      <div className="w-full max-w-2xl">
+                        <textarea
+                          name="remarks"
+                          value={formData.remarks}
+                          onChange={handleChange}
+                          rows={6}
+                          placeholder="Enter remarks (visible only to your organisation)"
+                          className="w-full px-3 py-2 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] hover:border-gray-400 transition-colors"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center gap-3 pt-6 mt-6">
+              <div className="mt-10 pt-6 border-t border-gray-100 flex items-center gap-2 pb-6">
                 <button
                   type="button"
-                  onClick={handleSave}
-                  disabled={isSaving}
-                  className={`px-6 py-2.5 text-white border-none rounded-md text-sm font-medium cursor-pointer transition-all flex items-center gap-2 ${isSaving ? 'opacity-70 cursor-not-allowed' : ''}`}
-                  style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                  onMouseEnter={(e) => !isSaving && (e.currentTarget.style.opacity = "0.9")}
-                  onMouseLeave={(e) => !isSaving && (e.currentTarget.style.opacity = "1")}
+                  onClick={() => void handleSave("save")}
+                  disabled={isSaving || (isEditMode && isLoading && !existingCustomerData)}
+                  className="px-5 py-2 bg-[#156372] text-white rounded text-[13px] font-semibold hover:bg-[#0f4f5a] transition-all disabled:opacity-70 flex items-center gap-2 shadow-sm"
                 >
-                  {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {isSaving ? 'Saving...' : 'Save'}
+                  {isSaving && activeSaveAction === "save" && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Save
                 </button>
                 <button
                   type="button"
                   onClick={handleCancel}
-                  className="px-6 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-md text-sm font-medium cursor-pointer transition-all hover:bg-gray-50 hover:border-gray-400"
+                  disabled={isSaving}
+                  className="px-5 py-2 bg-white text-gray-600 border border-gray-300 rounded text-[13px] font-semibold hover:bg-gray-50 hover:text-gray-800 transition-all disabled:opacity-70 shadow-sm"
                 >
                   Cancel
                 </button>
@@ -3258,7 +4116,7 @@ export default function NewCustomer() {
                 <div className="w-[180px] bg-white border-r border-gray-200 flex flex-col overflow-y-auto">
                   <div className="p-2">
                     {[
-                      { id: "taban", name: "Taban Books Drive", icon: Grid3x3 },
+                      { id: "zoho", name: "Zoho WorkDrive", icon: Grid3x3 },
                       { id: "gdrive", name: "Google Drive", icon: HardDrive },
                       { id: "dropbox", name: "Dropbox", icon: Box },
                       { id: "box", name: "Box", icon: Square },
@@ -3342,7 +4200,7 @@ export default function NewCustomer() {
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books. The use and transfer of information received from Google APIs to Taban Books will adhere to{" "}
+                          and understand that the rights to use this product do not come from Zoho. The use and transfer of information received from Google APIs to Zoho will adhere to{" "}
                           <a
                             href="#"
                             className="text-blue-600 underline hover:text-blue-700"
@@ -3367,7 +4225,7 @@ export default function NewCustomer() {
                         className="px-8 py-3 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
                         onClick={() => {
                           window.open(
-                            "https://accounts.google.com/v3/signin/accountchooser?access_type=offline&approval_prompt=force&client_id=932402265855-3k3mfquq4o5kh60o8tnc9mhgn9h77717.apps.googleusercontent.com&redirect_uri=https%3A%2F%2Fapps.tabanbooks.com%2Fauth%2Fgoogle&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive&state=3a3b0106a0c2d908b369a75ad93185c0aa431c64497733bda2d375130c4da610d88104c252c552adc1dee9d6167ad6bb8d2258113b9dce48b47ca4a970314a1fa7b51df3a7716016ac37be9e7d4d9f21077f946b82dc039ae2f08b7be79117042545529cf82d67d58ef6426621f5b5f885af900571347968d419f6d1a5abe3e7e1a3a4d04a433a6b3c5173f68c0c5bea&dsh=S557386361%3A1766903862725658&o2v=1&service=lso&flowName=GeneralOAuthFlow&opparams=%253F&continue=https%3A%2F%2Faccounts.google.com%2Fsignin%2Foauth%2Fconsent%3Fauthuser%3Dunknown%26part%3DAJi8hAP8z-36EGAbjuuLEd2uWDyjQgraM1HNpjnJVe4mUhXhPOQkoJHNKZG6WoCFPPrb5EDYGeFuyF3TI7jUSvDUIwBbk0PGoZLgn4Jt5TdOWWzFyQf6jLfEXhnKHaHRvCzRofERa0CbAnwAUviCEIRh6OE8GWAy3xDGHH6VltpKe7vSGjJfzwkDnAckJm1v9fghFiv7u6_xqfZlF8iB26QlWNE86HHYqzyIP3N9LKEh0NWNZAdiV__IdSu_RqOJPYoHDRNRRsyctIbVsj3CDhUyCADZvROzoeQI9VvIqJSiWLTxE7royBXKDDS96rJYovyIQ79hC_n_aNjoPVUD9jfp5cnJkn_rkGpzetwAYJTRSKhP8gM5YlFdK2Pfp2uT6ZHzVAOYmlyeCX4dc1IsyRtinTLx5WyAUPR_QcLPQzuQcRPvtjL23ZvKxoexvKp3t4zX_HTFKMrduT4G6ojAd7C-kurnZ1Wx6g%26flowName%3DGeneralOAuthFlow%26as%3DS557386361%253A1766903862725658%26client_id%3D932402265855-3k3mfquq4o5kh60o8tnc9mhgn9h77717.apps.googleusercontent.com%26requestPath%3D%252Fsignin%252Foauth%252Fconsent%23&app_domain=https%3A%2F%2Fapps.tabanbooks.com",
+                            "https://accounts.google.com/v3/signin/accountchooser?access_type=offline&approval_prompt=force&client_id=932402265855-3k3mfquq4o5kh60o8tnc9mhgn9h77717.apps.googleusercontent.com&redirect_uri=https%3A%2F%2Fgadgets.zoho.com%2Fauth%2Fgoogle&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive&state=3a3b0106a0c2d908b369a75ad93185c0aa431c64497733bda2d375130c4da610d88104c252c552adc1dee9d6167ad6bb8d2258113b9dce48b47ca4a970314a1fa7b51df3a7716016ac37be9e7d4d9f21077f946b82dc039ae2f08b7be79117042545529cf82d67d58ef6426621f5b5f885af900571347968d419f6d1a5abe3e7e1a3a4d04a433a6b3c5173f68c0c5bea&dsh=S557386361%3A1766903862725658&o2v=1&service=lso&flowName=GeneralOAuthFlow&opparams=%253F&continue=https%3A%2F%2Faccounts.google.com%2Fsignin%2Foauth%2Fconsent%3Fauthuser%3Dunknown%26part%3DAJi8hAP8z-36EGAbjuuLEd2uWDyjQgraM1HNpjnJVe4mUhXhPOQkoJHNKZG6WoCFPPrb5EDYGeFuyF3TI7jUSvDUIwBbk0PGoZLgn4Jt5TdOWWzFyQf6jLfEXhnKHaHRvCzRofERa0CbAnwAUviCEIRh6OE8GWAy3xDGHH6VltpKe7vSGjJfzwkDnAckJm1v9fghFiv7u6_xqfZlF8iB26QlWNE86HHYqzyIP3N9LKEh0NWNZAdiV__IdSu_RqOJPYoHDRNRRsyctIbVsj3CDhUyCADZvROzoeQI9VvIqJSiWLTxE7royBXKDDS96rJYovyIQ79hC_n_aNjoPVUD9jfp5cnJkn_rkGpzetwAYJTRSKhP8gM5YlFdK2Pfp2uT6ZHzVAOYmlyeCX4dc1IsyRtinTLx5WyAUPR_QcLPQzuQcRPvtjL23ZvKxoexvKp3t4zX_HTFKMrduT4G6ojAd7C-kurnZ1Wx6g%26flowName%3DGeneralOAuthFlow%26as%3DS557386361%253A1766903862725658%26client_id%3D932402265855-3k3mfquq4o5kh60o8tnc9mhgn9h77717.apps.googleusercontent.com%26requestPath%3D%252Fsignin%252Foauth%252Fconsent%23&app_domain=https%3A%2F%2Fgadgets.zoho.com",
                             "_blank"
                           );
                         }}
@@ -3423,7 +4281,7 @@ export default function NewCustomer() {
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books.
+                          and understand that the rights to use this product do not come from Zoho.
                         </p>
                       </div>
 
@@ -3432,7 +4290,7 @@ export default function NewCustomer() {
                         className="px-8 py-3 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
                         onClick={() => {
                           window.open(
-                            "https://www.dropbox.com/oauth2/authorize?response_type=code&client_id=ovpkm9147d63ifh&redirect_uri=https://apps.tabanbooks.com/dropbox/auth/v2/saveToken&state=190d910cedbc107e58195259f79a434d05c66c88e1e6eaa0bc585c6a0fddb159871ede64adb4d5da61c107ca7cbb7bae891c80e9c69cf125faaaf622ab58f37c5b1d42b42c7f3add07d92465295564a6c5bd98228654cce8ff68da24941db6f0aab9a60398ac49e41b3ec211acfd5bcc&force_reapprove=true&token_access_type=offline",
+                            "https://www.dropbox.com/oauth2/authorize?response_type=code&client_id=ovpkm9147d63ifh&redirect_uri=https://gadgets.zoho.com/dropbox/auth/v2/saveToken&state=190d910cedbc107e58195259f79a434d05c66c88e1e6eaa0bc585c6a0fddb159871ede64adb4d5da61c107ca7cbb7bae891c80e9c69cf125faaaf622ab58f37c5b1d42b42c7f3add07d92465295564a6c5bd98228654cce8ff68da24941db6f0aab9a60398ac49e41b3ec211acfd5bcc&force_reapprove=true&token_access_type=offline",
                             "_blank"
                           );
                         }}
@@ -3478,7 +4336,7 @@ export default function NewCustomer() {
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books.
+                          and understand that the rights to use this product do not come from Zoho.
                         </p>
                       </div>
 
@@ -3487,7 +4345,7 @@ export default function NewCustomer() {
                         className="px-8 py-3 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
                         onClick={() => {
                           window.open(
-                            "https://account.box.com/api/oauth2/authorize?response_type=code&client_id=f95f6ysfm8vg1q3g84m0xyyblwnj3tr5&redirect_uri=https%3A%2F%2Fapps.tabanbooks.com%2Fauth%2Fbox&state=37e352acfadd37786b1d388fb0f382baa59c9246f4dda329361910db55643700578352e4636bde8a0743bd3060e51af0ee338a34b2080bbd53a337f46b0995e28facbeff76d7efaf8db4493a0ef77be45364e38816d94499fba739987744dd1f6f5c08f84c0a11b00e075d91d7ea5c6d",
+                            "https://account.box.com/api/oauth2/authorize?response_type=code&client_id=f95f6ysfm8vg1q3g84m0xyyblwnj3tr5&redirect_uri=https%3A%2F%2Fgadgets.zoho.com%2Fauth%2Fbox&state=37e352acfadd37786b1d388fb0f382baa59c9246f4dda329361910db55643700578352e4636bde8a0743bd3060e51af0ee338a34b2080bbd53a337f46b0995e28facbeff76d7efaf8db4493a0ef77be45364e38816d94499fba739987744dd1f6f5c08f84c0a11b00e075d91d7ea5c6d",
                             "_blank"
                           );
                         }}
@@ -3527,7 +4385,7 @@ export default function NewCustomer() {
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books.
+                          and understand that the rights to use this product do not come from Zoho.
                         </p>
                       </div>
 
@@ -3536,7 +4394,7 @@ export default function NewCustomer() {
                         className="px-8 py-3 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
                         onClick={() => {
                           window.open(
-                            "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=0ecabec7-1fac-433f-a968-9985926b51c3&state=e0b1053c9465a9cb98fea7eea99d3074930c6c5607a21200967caf2db861cf9df77442c92e8565087c2a339614e18415cbeb95d59c63605cee4415353b2c44da13c6b9f34bca1fcd3abdd630595133a5232ddb876567bedbe620001a59c9989df94c3823476d0eef4363b351e8886c5563f56bc9d39db9f3db7c37cd1ad827c5.%5E.US&redirect_uri=https%3A%2F%2Fapps.tabanbooks.com%2Ftpa%2Foffice365&response_type=code&prompt=select_account&scope=Files.Read%20User.Read%20offline_access&sso_reload=true",
+                            "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=0ecabec7-1fac-433f-a968-9985926b51c3&state=e0b1053c9465a9cb98fea7eea99d3074930c6c5607a21200967caf2db861cf9df77442c92e8565087c2a339614e18415cbeb95d59c63605cee4415353b2c44da13c6b9f34bca1fcd3abdd630595133a5232ddb876567bedbe620001a59c9989df94c3823476d0eef4363b351e8886c5563f56bc9d39db9f3db7c37cd1ad827c5.%5E.US&redirect_uri=https%3A%2F%2Fgadgets.zoho.com%2Ftpa%2Foffice365&response_type=code&prompt=select_account&scope=Files.Read%20User.Read%20offline_access&sso_reload=true",
                             "_blank"
                           );
                         }}
@@ -3544,7 +4402,7 @@ export default function NewCustomer() {
                         Authenticate OneDrive
                       </button>
                     </div>
-                  ) : selectedCloudProvider === "taban" || selectedCloudProvider === "gdrive" || selectedCloudProvider === "dropbox" || selectedCloudProvider === "box" ? (
+                  ) : selectedCloudProvider === "zoho" || selectedCloudProvider === "gdrive" || selectedCloudProvider === "dropbox" || selectedCloudProvider === "box" ? (
                     /* Functional Cloud Picker Content */
                     <div className="w-full flex-1 overflow-hidden flex flex-col">
                       {/* Search bar inside picker */}
@@ -3652,7 +4510,7 @@ export default function NewCustomer() {
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books.
+                          and understand that the rights to use this product do not come from Zoho.
                         </p>
                       </div>
 
@@ -3670,7 +4528,7 @@ export default function NewCustomer() {
                       </button>
                     </div>
                   ) : (
-                    /* Default Content for Taban Books Drive */
+                    /* Default Content for Zoho WorkDrive */
                     <div className="flex flex-col items-center justify-center">
                       {/* Illustration Area - Using a placeholder illustration */}
                       <div className="relative w-full max-w-md h-64 mb-6 flex items-center justify-center">
@@ -3728,7 +4586,7 @@ export default function NewCustomer() {
 
                       {/* Description Text */}
                       <p className="text-sm text-gray-600 text-center mb-6 max-w-md">
-                        Taban Books Drive is an online file sync, storage and content collaboration platform.
+                        Zoho WorkDrive is an online file sync, storage and content collaboration platform.
                       </p>
 
                       {/* Set up your team button */}
@@ -3736,7 +4594,7 @@ export default function NewCustomer() {
                         className="px-6 py-2.5 bg-green-600 text-white rounded-md text-sm font-semibold hover:bg-green-700 transition-colors shadow-sm"
                         onClick={() => {
                           window.open(
-                            "https://drive.tabanbooks.com/home/onboard/createteamwithsoid?org_id=909892451&service_name=TabanBooks",
+                            "https://workdrive.zoho.com/home/onboard/createteamwithsoid?org_id=909892451&service_name=ZohoBooks",
                             "_blank"
                           );
                         }}
@@ -3772,162 +4630,79 @@ export default function NewCustomer() {
 
       {/* Customer Number Settings Modal */}
       {isCustomerNumberSettingsModalOpen && createPortal(
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm shadow-2xl">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 leading-tight">Customer Number Settings</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Configure how customer IDs are generated</p>
-              </div>
-              <button
-                onClick={() => setIsCustomerNumberSettingsModalOpen(false)}
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="p-8 space-y-8">
-              <div className="space-y-4">
-                <div className="flex items-start gap-4 p-4 bg-blue-50/50 rounded-xl border border-blue-100 shadow-sm transition-all hover:shadow-md">
-                  <div className="pt-1">
-                    <div className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${enableCustomerNumbers ? 'bg-blue-600' : 'bg-gray-200'}`}
-                      onClick={() => setEnableCustomerNumbers(!enableCustomerNumbers)}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${enableCustomerNumbers ? 'translate-x-5' : 'translate-x-0'}`}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex-1">
-                    <label className="text-sm font-bold text-gray-900 select-none cursor-pointer flex items-center gap-2" onClick={() => setEnableCustomerNumbers(!enableCustomerNumbers)}>
-                      Enable Customer Numbers
-                      {!enableCustomerNumbers && <span className="bg-orange-100 text-orange-700 text-[10px] px-1.5 py-0.5 rounded-full uppercase tracking-wider font-bold">Recommended</span>}
-                    </label>
-                    <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                      Custom identifiers help you track customers more efficiently. Once enabled, this field becomes mandatory across all sales transactions.
-                    </p>
-                  </div>
-                </div>
-
-                {enableCustomerNumbers && (
-                  <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-inner space-y-6 animate-in slide-in-from-top-4 duration-300">
-                    <div className="grid grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <label className="block text-sm font-semibold text-gray-700">Prefix</label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            value={customerNumberPrefix}
-                            onChange={(e) => setCustomerNumberPrefix(e.target.value)}
-                            placeholder="so-"
-                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all hover:border-gray-400 bg-gray-50/30"
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="block text-sm font-semibold text-gray-700">Starting Number</label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            value={customerNumberStart}
-                            onChange={(e) => setCustomerNumberStart(e.target.value)}
-                            placeholder="1002"
-                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all hover:border-gray-400 bg-gray-50/30"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-blue-50/30 p-4 rounded-lg flex items-center gap-3 border border-blue-50">
-                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                        <Info size={16} className="text-blue-600" />
-                      </div>
-                      <div className="text-xs text-gray-600">
-                        <span className="font-semibold block text-gray-900">Preview:</span>
-                        The next customer will be assigned ID: <span className="font-bold text-blue-700">{customerNumberPrefix}{customerNumberStart}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-gray-50 px-6 py-5 border-t border-gray-200 flex items-center justify-end gap-3 rounded-b-xl">
+        <div className="fixed inset-0 z-[1000] flex items-start justify-center px-3 pt-3 pb-4 sm:px-4 sm:pt-4 bg-black/25 backdrop-blur-[2px]">
+          <div className="bg-white rounded-md shadow-xl w-full max-w-[620px] max-h-[calc(100vh-24px)] overflow-y-auto">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-medium text-gray-800">
+                Configure Customer Numbers Preferences
+              </h3>
               <button
                 type="button"
                 onClick={() => setIsCustomerNumberSettingsModalOpen(false)}
-                className="px-5 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all active:scale-95 shadow-sm"
+                className="w-6 h-6 flex items-center justify-center border border-blue-500 rounded-sm text-red-500 hover:bg-red-50"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="px-5 py-4">
+              <p className="text-sm text-gray-600 max-w-[520px] mb-6 leading-relaxed">
+                Customer numbers will be auto-generated based on the preferences below. For each new customer that is created, the number after the prefix will be incremented by 1.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 mb-5 max-w-[460px]">
+                <div>
+                  <label className="block text-sm text-gray-700 mb-2">Prefix</label>
+                  <input
+                    type="text"
+                    value={customerNumberPrefix}
+                    onChange={(e) => setCustomerNumberPrefix(e.target.value)}
+                    placeholder="CUS-"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 mb-2">Next Number</label>
+                  <input
+                    type="text"
+                    value={customerNumberStart}
+                    onChange={(e) => setCustomerNumberStart(sanitizeDigitsOnlyValue(e.target.value))}
+                    placeholder="0001"
+                    inputMode="numeric"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-[#fdf4ec] border border-[#f6e4d3] rounded-md p-4 mb-4">
+                <p className="text-sm text-gray-700 leading-relaxed">
+                  Note: If you want to change only this customer's number without affecting the current series, you can edit it directly from the Customer Number field after closing this popup.
+                </p>
+              </div>
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-200 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={handleSaveCustomerNumberSettings}
+                disabled={isSavingSettings}
+                className="px-4 py-2 bg-[#156372] text-white text-sm rounded-md hover:bg-[#0f4f5a] disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {isSavingSettings && <Loader2 className="w-4 h-4 animate-spin" />}
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsCustomerNumberSettingsModalOpen(false)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 text-sm border border-gray-300 rounded-md hover:bg-gray-200"
               >
                 Cancel
-              </button>
-              <button
-                type="button"
-                disabled={isSavingSettings}
-                onClick={async () => {
-                  setIsSavingSettings(true);
-                  try {
-                    const token = getToken();
-                    // First get current settings
-                    const currentRes = await fetch(`${API_BASE_URL}/settings/customers-vendors`, {
-                      headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    const currentData = await currentRes.json();
-
-                    const payload = {
-                      ...(currentData.data || {}),
-                      enableCustomerNumbers,
-                      customerNumberPrefix,
-                      customerNumberStart
-                    };
-
-                    const response = await fetch(`${API_BASE_URL}/settings/customers-vendors`, {
-                      method: 'PUT',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                      },
-                      body: JSON.stringify(payload)
-                    });
-
-                    if (response.ok) {
-                      if (enableCustomerNumbers && !isEditMode) {
-                        setFormData(prev => ({
-                          ...prev,
-                          customerNumber: `${customerNumberPrefix}${customerNumberStart}`
-                        }));
-                      }
-                      setIsCustomerNumberSettingsModalOpen(false);
-                    }
-                  } catch (error) {
-                    console.error("Error saving settings:", error);
-                  } finally {
-                    setIsSavingSettings(false);
-                  }
-                }}
-                className={`px-6 py-2 text-sm font-bold text-white rounded-lg transition-all active:scale-95 shadow-md flex items-center gap-2 ${enableCustomerNumbers ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-gray-800 hover:bg-gray-900'}`}
-              >
-                {isSavingSettings && <Loader2 className="w-4 h-4 animate-spin text-white/70" />}
-                {enableCustomerNumbers ? 'Save Changes' : 'Confirm Disable'}
               </button>
             </div>
           </div>
         </div>,
         document.body
       )}
-      <NewTaxModal
-        isOpen={isNewTaxModalOpen}
-        onClose={() => setIsNewTaxModalOpen(false)}
-        onCreated={async (tax) => {
-          const createdTax = tax?.tax || tax?.data || tax;
-          const taxId = String(createdTax?._id || createdTax?.id || createdTax?.tax_id || "");
-          await loadTaxes();
-          if (taxId) {
-            setFormData((prev) => ({ ...prev, taxRate: taxId }));
-          }
-          setIsNewTaxModalOpen(false);
-        }}
-      />
     </div>
   );
 }

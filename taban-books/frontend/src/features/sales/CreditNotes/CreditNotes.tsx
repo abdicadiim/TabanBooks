@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { toast } from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import LoadingSpinner from "../../../components/LoadingSpinner";
-import { getCreditNotes, getCustomViews, deleteCustomView, getCreditNoteById, updateCreditNote } from "../salesModel";
-import FieldCustomization from "../shared/FieldCustomization";
+import { getCustomViews, deleteCustomView, getCreditNoteById, updateCreditNote, getCustomers, deleteCreditNote } from "../salesModel";
+import CreditNotesCustomizeColumnsModal, { CreditNotesColumnOption } from "./CreditNotesCustomizeColumnsModal";
 import { settingsAPI, currenciesAPI } from "../../../services/api";
 import { downloadCreditNotesPdf } from "./creditNotePdf";
 import {
@@ -15,33 +16,45 @@ import {
   RefreshCw,
   Search,
   Star,
-  Play,
-  ArrowLeft,
+  Grid3x3,
   X,
-  DollarSign,
-  Users,
   FileText,
   Square,
   CheckSquare,
-  Pencil,
   Upload,
   Download,
   RotateCcw,
   Trash2,
   Eye,
-  Check
+  Check,
+  SlidersHorizontal
 } from "lucide-react";
+import { useCreditNotesListQuery } from "./creditNoteQueries";
+
+const FieldCustomization: React.FC<any> = () => null;
 
 const defaultCreditNoteViews = [
   "All",
-  "Draft",
-  "Locked",
-  "Pending Approval",
-  "Approved",
   "Open",
   "Closed",
-  "Void"
+  "Void",
+  "Draft"
 ];
+
+const CREDIT_NOTES_LIST_COLUMNS: CreditNotesColumnOption[] = [
+  { key: "date", label: "Date" },
+  { key: "location", label: "Location" },
+  { key: "creditNoteNumber", label: "Credit Note#" },
+  { key: "referenceNumber", label: "Reference Number" },
+  { key: "customerName", label: "Customer Name" },
+  { key: "invoiceNumber", label: "Invoice#" },
+  { key: "status", label: "Status" },
+  { key: "amount", label: "Amount" },
+  { key: "balance", label: "Balance" },
+  { key: "salesPerson", label: "Sales person" }
+];
+
+const CREDIT_NOTES_COLUMNS_STORAGE_KEY = "billing_credit_notes_visible_columns_v1";
 
 interface CreditNote {
   id: string;
@@ -57,6 +70,10 @@ interface CreditNote {
   total?: number;
   amount?: number;
   balance?: number;
+  location?: string;
+  salesPerson?: string;
+  salesperson?: string;
+  salesPersonName?: string;
   currency?: string;
   refunded?: boolean;
   createdTime?: string | number | Date;
@@ -88,7 +105,6 @@ export default function CreditNotes() {
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  const [viewSearchQuery, setViewSearchQuery] = useState("");
   const [customViews, setCustomViews] = useState(() => getCustomViews().filter(v => v.type === "credit-notes"));
 
   // Initialize with empty array, fetch in useEffect
@@ -96,6 +112,8 @@ export default function CreditNotes() {
   const [filteredCreditNotes, setFilteredCreditNotes] = useState<CreditNote[]>([]);
   const [selectedCreditNotes, setSelectedCreditNotes] = useState<string[]>([]);
   const [isBulkUpdateModalOpen, setIsBulkUpdateModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeletingCreditNotes, setIsDeletingCreditNotes] = useState(false);
   const [bulkUpdateField, setBulkUpdateField] = useState("");
   const [bulkUpdateValue, setBulkUpdateValue] = useState("");
   const [isBulkUpdateFieldDropdownOpen, setIsBulkUpdateFieldDropdownOpen] = useState(false);
@@ -103,8 +121,24 @@ export default function CreditNotes() {
   const [activeSortField, setActiveSortField] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [isFieldCustomizationOpen, setIsFieldCustomizationOpen] = useState(false);
+  const [isCustomizeColumnsOpen, setIsCustomizeColumnsOpen] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(CREDIT_NOTES_COLUMNS_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const allowed = new Set(CREDIT_NOTES_LIST_COLUMNS.map((c) => c.key));
+        const filtered = parsed.filter((k: string) => allowed.has(k));
+        if (filtered.length > 0) return filtered;
+      }
+    } catch (_error) {
+      // ignore parse issues and use defaults
+    }
+    return CREDIT_NOTES_LIST_COLUMNS.map((c) => c.key);
+  });
   const [availableCurrencies, setAvailableCurrencies] = useState<CurrencyListItem[]>([]);
   const [organizationProfile, setOrganizationProfile] = useState<any>(null);
+  const [customerNameMap, setCustomerNameMap] = useState<Record<string, string>>({});
   const [baseCurrency, setBaseCurrency] = useState("USD");
   const [isPreferencesModalOpen, setIsPreferencesModalOpen] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
@@ -161,6 +195,75 @@ export default function CreditNotes() {
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const bulkUpdateFieldDropdownRef = useRef<HTMLDivElement>(null);
 
+  const getCreditNoteReferenceNumber = (note: any) =>
+    String(
+      note?.referenceNumber ??
+      note?.reference ??
+      note?.referenceNo ??
+      note?.refNumber ??
+      note?.ref ??
+      ""
+    ).trim();
+
+  const getCreditNoteFieldValue = React.useCallback(
+    (note: CreditNote, fieldName: string) => {
+    const fieldMap: Record<string, any> = {
+      "Date": note.creditNoteDate || note.date || "",
+      "Credit Note#": note.creditNoteNumber || note.id || "",
+      "Reference Number": getCreditNoteReferenceNumber(note),
+      "Customer Name": note.customerName || note.customer || "",
+      "Invoice#": note.invoiceNumber || "",
+      "Status": note.status || "open",
+      "Amount": note.total || note.amount || 0,
+      "Balance": note.balance || note.total || note.amount || 0
+    };
+    return fieldMap[fieldName] !== undefined ? fieldMap[fieldName] : "";
+  }, [customerNameMap]);
+
+  const evaluateCriterion = React.useCallback((fieldValue: any, comparator: string, value: any) => {
+    const fieldStr = String(fieldValue || "").toLowerCase();
+    const valueStr = String(value || "").toLowerCase();
+
+    switch (comparator) {
+      case "is": return fieldStr === valueStr;
+      case "is not": return fieldStr !== valueStr;
+      case "starts with": return fieldStr.startsWith(valueStr);
+      case "contains": return fieldStr.includes(valueStr);
+      case "doesn't contain": return !fieldStr.includes(valueStr);
+      case "is in": return valueStr.split(",").map(v => v.trim()).includes(fieldStr);
+      case "is not in": return !valueStr.split(",").map(v => v.trim()).includes(fieldStr);
+      case "is empty": return !fieldValue || fieldStr === "";
+      case "is not empty": return fieldValue && fieldStr !== "";
+      default: return true;
+    }
+  }, []);
+
+  const applyFilters = React.useCallback(
+    (allCreditNotes: CreditNote[], status: string, views: any[] = customViews) => {
+    let filtered = allCreditNotes;
+
+    const customView = views.find(v => v.name === status);
+    if (customView && customView.criteria) {
+      filtered = filtered.filter(note => {
+        return customView.criteria.every((criterion: any) => {
+          if (!criterion.field || !criterion.comparator) return true;
+          const fieldValue = getCreditNoteFieldValue(note, criterion.field);
+          return evaluateCriterion(fieldValue, criterion.comparator, criterion.value);
+        });
+      });
+      setFilteredCreditNotes(filtered);
+      return;
+    }
+
+    if (status !== "All") {
+      filtered = filtered.filter(note => {
+        const noteStatus = (note.status || "open").toLowerCase();
+        return noteStatus === status.toLowerCase();
+      });
+    }
+    setFilteredCreditNotes(filtered);
+  }, [evaluateCriterion, getCreditNoteFieldValue]);
+
   // Credit Notes search dropdowns
   const [isItemNameCreditNoteDropdownOpen, setIsItemNameCreditNoteDropdownOpen] = useState(false);
   const itemNameCreditNoteDropdownRef = useRef<HTMLDivElement>(null);
@@ -174,6 +277,7 @@ export default function CreditNotes() {
   const customerNameCreditNoteDropdownRef = useRef<HTMLDivElement>(null);
   const [isTaxExemptionsCreditNoteDropdownOpen, setIsTaxExemptionsCreditNoteDropdownOpen] = useState(false);
   const taxExemptionsCreditNoteDropdownRef = useRef<HTMLDivElement>(null);
+  const isColumnVisible = (key: string) => visibleColumns.includes(key);
 
   const sortOptions = [
     "Created Time",
@@ -282,55 +386,98 @@ export default function CreditNotes() {
     return { valid: true, message: "", normalizedValue: trimmed };
   };
 
+  const isLikelyMongoId = (value: any) => /^[a-f0-9]{24}$/i.test(String(value || "").trim());
+  const pickCustomerDisplayName = (customer: any) => {
+    if (!customer || typeof customer !== "object") return "";
+    const first = String(customer?.firstName || customer?.firstname || "").trim();
+    const last = String(customer?.lastName || customer?.lastname || "").trim();
+    const fullFromParts = [first, last].filter(Boolean).join(" ").trim();
+    const candidates = [
+      customer?.displayName,
+      customer?.customerName,
+      customer?.companyName,
+      customer?.name,
+      customer?.fullName,
+      customer?.contactName,
+      fullFromParts
+    ];
+    const picked = candidates.find((v) => String(v || "").trim() && !isLikelyMongoId(v));
+    return String(picked || "").trim();
+  };
+  const buildCustomerNameMap = (customers: any[]) =>
+    (Array.isArray(customers) ? customers : []).reduce((acc: Record<string, string>, c: any) => {
+      const id = String(c?.id || c?._id || c?.customerId || "").trim();
+      const name = pickCustomerDisplayName(c);
+      if (id && name) acc[id] = name;
+      return acc;
+    }, {});
+
+  const creditNotesQuery = useCreditNotesListQuery();
+
   const refreshData = async () => {
-    setIsRefreshing(true);
-    try {
-      const allCreditNotes = await getCreditNotes();
-      const allCustomViews = getCustomViews().filter(v => v.type === "credit-notes");
-      setCreditNotes(allCreditNotes);
-      setCustomViews(allCustomViews);
-      applyFilters(allCreditNotes, selectedStatus, allCustomViews);
-    } catch (error) {
-      console.error("Error refreshing data:", error);
-    } finally {
-      setIsRefreshing(false);
-      setHasLoadedOnce(true);
-    }
+    if (creditNotesQuery.isFetching) return;
+    await creditNotesQuery.refetch();
   };
 
   useEffect(() => {
-    const initialLoad = async () => {
+    const loadCustomers = async () => {
       try {
-        const allCreditNotes = await getCreditNotes();
-        const allCustomViews = getCustomViews().filter(v => v.type === "credit-notes");
-        if (Array.isArray(allCreditNotes)) {
-          setCreditNotes(allCreditNotes);
-          // Only apply filters if we have data
-          applyFilters(allCreditNotes, selectedStatus, allCustomViews);
-        } else {
-          setCreditNotes([]);
-          setFilteredCreditNotes([]);
-        }
-        setCustomViews(allCustomViews);
-
-      } catch (error) {
-        console.error("Error loading credit notes:", error);
-        setCreditNotes([]);
-        setFilteredCreditNotes([]);
-      } finally {
-        setHasLoadedOnce(true);
+        const customers = await getCustomers();
+        setCustomerNameMap(buildCustomerNameMap(customers));
+      } catch (_error) {
+        console.error("Failed to load customers for credit notes");
       }
     };
 
-    initialLoad();
+    void loadCustomers();
+  }, []);
 
-    window.addEventListener('focus', initialLoad);
-    window.addEventListener('storage', initialLoad);
-    return () => {
-      window.removeEventListener('focus', initialLoad);
-      window.removeEventListener('storage', initialLoad);
+  useEffect(() => {
+    const handleStorage = (_event: StorageEvent) => {
+      creditNotesQuery.refetch();
     };
-  }, [selectedStatus]);
+
+    const handleFocus = () => creditNotesQuery.refetch();
+
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [creditNotesQuery]);
+
+  useEffect(() => {
+    if (creditNotesQuery.isFetching) {
+      setIsRefreshing(true);
+      return;
+    }
+
+    const data = Array.isArray(creditNotesQuery.data) ? creditNotesQuery.data : [];
+    if (creditNotesQuery.data) {
+      const views = getCustomViews().filter((v) => v.type === "credit-notes");
+      const hasCustomViewDiff =
+        views.length !== customViews.length ||
+        views.some((view, index) => String(view?.id || view?.name) !== String(customViews[index]?.id || customViews[index]?.name));
+      if (hasCustomViewDiff) {
+        setCustomViews(views);
+      }
+      setCreditNotes(data);
+      applyFilters(data, selectedStatus, views);
+      setHasLoadedOnce(true);
+      setIsRefreshing(false);
+    } else if (creditNotesQuery.isError) {
+      setIsRefreshing(false);
+      setCreditNotes([]);
+      setFilteredCreditNotes([]);
+    }
+  }, [creditNotesQuery.data, creditNotesQuery.isFetching, creditNotesQuery.isError, selectedStatus, applyFilters, customViews]);
+
+  useEffect(() => {
+    if (creditNotes.length > 0) {
+      applyFilters(creditNotes, selectedStatus, customViews);
+    }
+  }, [creditNotes, selectedStatus, customViews, applyFilters]);
 
   useEffect(() => {
     const loadOrganizationProfile = async () => {
@@ -453,64 +600,6 @@ export default function CreditNotes() {
     };
   }, [selectedCreditNotes]);
 
-  const getCreditNoteFieldValue = (note: CreditNote, fieldName: string) => {
-    const fieldMap: Record<string, any> = {
-      "Date": note.creditNoteDate || note.date || "",
-      "Credit Note#": note.creditNoteNumber || note.id || "",
-      "Reference Number": note.referenceNumber || "",
-      "Customer Name": note.customerName || note.customer || "",
-      "Invoice#": note.invoiceNumber || "",
-      "Status": note.status || "open",
-      "Amount": note.total || note.amount || 0,
-      "Balance": note.balance || note.total || note.amount || 0
-    };
-    return fieldMap[fieldName] !== undefined ? fieldMap[fieldName] : "";
-  };
-
-  const evaluateCriterion = (fieldValue: any, comparator: string, value: any) => {
-    const fieldStr = String(fieldValue || "").toLowerCase();
-    const valueStr = String(value || "").toLowerCase();
-
-    switch (comparator) {
-      case "is": return fieldStr === valueStr;
-      case "is not": return fieldStr !== valueStr;
-      case "starts with": return fieldStr.startsWith(valueStr);
-      case "contains": return fieldStr.includes(valueStr);
-      case "doesn't contain": return !fieldStr.includes(valueStr);
-      case "is in": return valueStr.split(",").map(v => v.trim()).includes(fieldStr);
-      case "is not in": return !valueStr.split(",").map(v => v.trim()).includes(fieldStr);
-      case "is empty": return !fieldValue || fieldStr === "";
-      case "is not empty": return fieldValue && fieldStr !== "";
-      default: return true;
-    }
-  };
-
-  const applyFilters = (allCreditNotes: CreditNote[], status: string, views: any[] = customViews) => {
-    let filtered = allCreditNotes;
-
-    // Check if it's a custom view
-    const customView = views.find(v => v.name === status);
-    if (customView && customView.criteria) {
-      filtered = filtered.filter(note => {
-        return customView.criteria.every((criterion: any) => {
-          if (!criterion.field || !criterion.comparator) return true;
-          const fieldValue = getCreditNoteFieldValue(note, criterion.field);
-          return evaluateCriterion(fieldValue, criterion.comparator, criterion.value);
-        });
-      });
-      setFilteredCreditNotes(filtered);
-      return;
-    }
-
-    if (status !== "All") {
-      filtered = filtered.filter(note => {
-        const noteStatus = (note.status || "open").toLowerCase();
-        return noteStatus === status.toLowerCase();
-      });
-    }
-    setFilteredCreditNotes(filtered);
-  };
-
   const formatDate = (dateString: any) => {
     if (!dateString) return "-";
     try {
@@ -534,6 +623,24 @@ export default function CreditNotes() {
     return `${currency}${numAmount.toFixed(2)}`;
   };
 
+  const getCreditNoteCustomerName = (note: any) => {
+    const fromNested = pickCustomerDisplayName(note?.customer);
+    if (fromNested && String(fromNested).trim()) return String(fromNested).trim();
+
+    const raw = String(note?.customerName || "").trim();
+    const isLikelyId = isLikelyMongoId(raw);
+    if (raw && !isLikelyId) return raw;
+
+    const customerId = String(
+      note?.customerId ||
+      note?.customer?._id ||
+      note?.customer?.id ||
+      (typeof note?.customer === "string" ? note.customer : "") ||
+      ""
+    ).trim();
+    return customerNameMap[customerId] || "-";
+  };
+
   const handleRefreshList = () => {
     if (!isRefreshing) {
       refreshData();
@@ -545,7 +652,7 @@ export default function CreditNotes() {
     setIsMoreMenuOpen(false);
 
     // Toggle direction if clicking the same field
-    let newDirection = "desc";
+    let newDirection: "desc" | "asc" = "desc";
     if (activeSortField === sortOption) {
       newDirection = sortDirection === "desc" ? "asc" : "desc";
     }
@@ -579,12 +686,12 @@ export default function CreditNotes() {
           bValue = (b.customerName || b.customer || "").toLowerCase();
           break;
         case "Amount":
-          aValue = parseFloat(a.total || a.amount || 0);
-          bValue = parseFloat(b.total || b.amount || 0);
+          aValue = parseFloat(String(a.total || a.amount || 0));
+          bValue = parseFloat(String(b.total || b.amount || 0));
           break;
         case "Balance":
-          aValue = parseFloat(a.balance || a.total || a.amount || 0);
-          bValue = parseFloat(b.balance || b.total || b.amount || 0);
+          aValue = parseFloat(String(a.balance || a.total || a.amount || 0));
+          bValue = parseFloat(String(b.balance || b.total || b.amount || 0));
           break;
         default:
           return 0;
@@ -638,7 +745,7 @@ export default function CreditNotes() {
     }
 
     if (dataToExport.length === 0) {
-      alert("No data to export.");
+      toast("No data to export.");
       return;
     }
 
@@ -648,7 +755,7 @@ export default function CreditNotes() {
       ...dataToExport.map(note => [
         formatDate(note.creditNoteDate || note.date),
         note.creditNoteNumber || note.id,
-        note.referenceNumber || "",
+        getCreditNoteReferenceNumber(note),
         note.customerName || note.customer || "",
         note.invoiceNumber || "",
         (note.status || "open").toUpperCase(),
@@ -676,7 +783,7 @@ export default function CreditNotes() {
   //   setCreditNotes(allCreditNotes);
   //   applyFilters(allCreditNotes, selectedStatus);
   //   // Visual feedback
-  //   alert("List refreshed successfully.");
+  //   toast("List refreshed successfully.");
   // };
 
   const handlePreferences = () => {
@@ -688,7 +795,7 @@ export default function CreditNotes() {
     setIsMoreMenuOpen(false);
     // Reset any stored column widths in localStorage if they exist
     localStorage.removeItem("creditNoteColumnWidths");
-    alert("Column widths have been reset to default.");
+    toast("Column widths have been reset to default.");
   };
 
   const handleSelectAll = () => {
@@ -717,18 +824,18 @@ export default function CreditNotes() {
 
   const handleBulkUpdateSubmit = async () => {
     if (!selectedBulkFieldConfig) {
-      alert("Please select a field to update.");
+      toast("Please select a field to update.");
       return;
     }
 
     if (selectedCreditNotes.length === 0) {
-      alert("Please select at least one credit note to update.");
+      toast("Please select at least one credit note to update.");
       return;
     }
 
     const normalized = validateAndNormalizeBulkValue(selectedBulkFieldConfig, String(bulkUpdateValue ?? ""));
     if (!normalized.valid) {
-      alert(normalized.message);
+      toast(normalized.message);
       return;
     }
 
@@ -746,9 +853,7 @@ export default function CreditNotes() {
         throw new Error("None of the selected credit notes could be updated.");
       }
 
-      const refreshed = await getCreditNotes();
-      setCreditNotes(refreshed);
-      applyFilters(refreshed, selectedStatus);
+      await refreshData();
 
       setSelectedCreditNotes([]);
       setIsBulkUpdateModalOpen(false);
@@ -756,13 +861,13 @@ export default function CreditNotes() {
       setBulkUpdateValue("");
 
       if (failedCount > 0) {
-        alert(`Updated ${successCount} credit note(s). ${failedCount} could not be updated.`);
+        toast(`Updated ${successCount} credit note(s). ${failedCount} could not be updated.`);
       } else {
-        alert(`Successfully updated ${successCount} credit note(s).`);
+        toast(`Successfully updated ${successCount} credit note(s).`);
       }
     } catch (error: any) {
       console.error("Error bulk updating credit notes:", error);
-      alert(error?.message || "Failed to bulk update credit notes.");
+      toast(error?.message || "Failed to bulk update credit notes.");
     }
   };
 
@@ -772,10 +877,51 @@ export default function CreditNotes() {
     setBulkUpdateValue("");
   };
 
+  const handleOpenDeleteModal = () => {
+    if (selectedCreditNotes.length === 0) {
+      toast("Please select at least one credit note to delete.");
+      return;
+    }
+
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (selectedCreditNotes.length === 0) {
+      setIsDeleteModalOpen(false);
+      return;
+    }
+
+    setIsDeletingCreditNotes(true);
+    try {
+      const results = await Promise.allSettled(
+        selectedCreditNotes.map((creditNoteId) => deleteCreditNote(creditNoteId))
+      );
+
+      const successCount = results.filter((result) => result.status === "fulfilled").length;
+      const failedCount = results.length - successCount;
+
+      await refreshData();
+      setSelectedCreditNotes([]);
+      setIsDeleteModalOpen(false);
+
+      if (failedCount > 0) {
+        toast(`Deleted ${successCount} credit note(s). ${failedCount} could not be deleted.`);
+      } else {
+        toast(`Deleted ${successCount} credit note(s).`);
+      }
+    } catch (error: any) {
+      console.error("Error deleting credit notes:", error);
+      toast(error?.message || "Failed to delete credit notes.");
+    } finally {
+      setIsDeletingCreditNotes(false);
+    }
+  };
+
   const handleDownloadPDF = async () => {
     const selectedNotes = creditNotes.filter(note => selectedCreditNotes.includes(note.id));
     if (selectedNotes.length === 0) {
-      alert("Please select at least one credit note to download as PDF.");
+      toast("Please select at least one credit note to download as PDF.");
       return;
     }
 
@@ -786,7 +932,7 @@ export default function CreditNotes() {
     try {
       const fullNotes = (
         await Promise.all(selectedNotes.map((note) => getCreditNoteById(note.id)))
-      ).filter(Boolean) as CreditNote[];
+      ).filter(Boolean) as any[];
 
       await downloadCreditNotesPdf({
         notes: fullNotes,
@@ -796,24 +942,12 @@ export default function CreditNotes() {
       });
     } catch (error) {
       console.error("Error downloading credit notes PDF:", error);
-      alert("Failed to generate PDF. Please try again.");
+      toast("Failed to generate PDF. Please try again.");
     }
   };
 
   const handleDelete = () => {
-    if (selectedCreditNotes.length === 0) {
-      alert("Please select at least one credit note to delete.");
-      return;
-    }
-
-    if (window.confirm(`Are you sure you want to delete ${selectedCreditNotes.length} credit note(s)?`)) {
-      // TODO: Implement actual deletion logic
-      const remainingNotes = creditNotes.filter(note => !selectedCreditNotes.includes(note.id));
-      setCreditNotes(remainingNotes);
-      setFilteredCreditNotes(remainingNotes);
-      setSelectedCreditNotes([]);
-      alert("Credit notes deleted successfully.");
-    }
+    handleOpenDeleteModal();
   };
 
   const handleViewSelect = (view: string) => {
@@ -844,13 +978,32 @@ export default function CreditNotes() {
     }
   };
 
-  const filteredDefaultViews = defaultCreditNoteViews.filter(view =>
-    view.toLowerCase().includes(viewSearchQuery.toLowerCase())
-  );
-
-  const filteredCustomViews = customViews.filter(view =>
-    view.name.toLowerCase().includes(viewSearchQuery.toLowerCase())
-  );
+  const renderViewOption = (label: string, value: string, isFavorite = false) => {
+    const isSelected = value === "All" ? selectedView === "All Credit Notes" : isViewSelected(value);
+    return (
+      <div
+        key={value}
+        onClick={() => handleViewSelect(value)}
+        className={`group flex items-center justify-between px-4 py-2.5 cursor-pointer transition-colors hover:bg-blue-50 ${
+          isSelected ? "bg-white" : "text-gray-700"
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          {isSelected ? (
+            <span className="inline-flex items-center rounded-lg bg-gray-100 px-2 py-0.5 text-sm font-medium text-gray-900">
+              {label}
+            </span>
+          ) : (
+            <span className="text-sm font-medium text-gray-900">{label}</span>
+          )}
+        </div>
+        <Star
+          size={14}
+          className={isFavorite ? "text-yellow-400 fill-yellow-400" : "text-gray-300"}
+        />
+      </div>
+    );
+  };
 
   const isViewSelected = (view: string) => {
     if (view === "All") {
@@ -859,8 +1012,23 @@ export default function CreditNotes() {
     return selectedStatus === view;
   };
 
+  useEffect(() => {
+    localStorage.setItem(CREDIT_NOTES_COLUMNS_STORAGE_KEY, JSON.stringify(visibleColumns));
+  }, [visibleColumns]);
+
+  useEffect(() => {
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, []);
+
   return (
-    <div className="w-full min-h-screen bg-gray-50">
+    <div className="w-full h-full min-h-0 bg-white flex flex-col overflow-hidden overflow-x-hidden">
       {/* Header - Show Bulk Actions Bar when items are selected, otherwise show normal header */}
       {selectedCreditNotes.length > 0 ? (
         <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white">
@@ -914,86 +1082,8 @@ export default function CreditNotes() {
               {/* Dropdown Menu */}
               {isViewDropdownOpen && (
                 <div className="absolute top-full left-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 min-w-[300px] overflow-hidden flex flex-col max-h-[500px]">
-                  {/* Search Bar */}
-                  <div className="flex items-center gap-2 p-3 border-b border-gray-100 bg-gray-50/50">
-                    <Search size={16} className="text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Search views..."
-                      value={viewSearchQuery}
-                      onChange={(e) => setViewSearchQuery(e.target.value)}
-                      onMouseEnter={(e) => (e.target as HTMLElement).style.backgroundColor = "#F9FAFB"}
-                      onMouseLeave={(e) => (e.target as HTMLElement).style.backgroundColor = "white"}
-                      className="flex-1 text-sm bg-transparent focus:outline-none placeholder-gray-400 font-medium"
-                    />
-                  </div>
-
-                  {/* View Options Scroll Area */}
-                  <div className="flex-1 overflow-y-auto custom-scrollbar pt-2">
-                    {/* Default Views */}
-                    <div className="px-3 pb-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-white">
-                      System Views
-                    </div>
-                    {filteredDefaultViews.map((view) => (
-                      <div
-                        key={view}
-                        onClick={() => handleViewSelect(view)}
-                        className={`group px-4 py-2.5 cursor-pointer hover:bg-blue-50 flex items-center justify-between transition-all ${isViewSelected(view) ? "bg-blue-50/50 text-blue-600" : "text-gray-700 font-medium"
-                          }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <Eye size={16} className={isViewSelected(view) ? "text-blue-500" : "text-gray-400 opacity-40"} />
-                          <span className="text-sm">{view}</span>
-                        </div>
-                        {isViewSelected(view) && <Check size={14} className="text-blue-600" />}
-                      </div>
-                    ))}
-
-                    {/* Custom Views */}
-                    {filteredCustomViews.length > 0 && (
-                      <div className="mt-4">
-                        <div className="px-3 pb-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-white">
-                          Custom Views
-                        </div>
-                        {filteredCustomViews.map((view) => (
-                          <div
-                            key={view.id}
-                            onClick={() => handleViewSelect(view.name)}
-                            className={`group px-4 py-2.5 cursor-pointer hover:bg-blue-50 flex items-center justify-between transition-all ${isViewSelected(view.name) ? "bg-blue-50/50 text-blue-600" : "text-gray-700 font-medium"
-                              }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <Star
-                                size={14}
-                                className={view.isFavorite ? "text-yellow-400 fill-yellow-400" : "text-gray-300"}
-                              />
-                              <span className="text-sm truncate max-w-[160px]">{view.name}</span>
-                            </div>
-                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button
-                                onClick={(e) => handleDeleteCustomView(view.id, e)}
-                                className="p-1.5 hover:bg-red-50 text-gray-300 hover:text-red-500 rounded"
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                              {isViewSelected(view.name) && <Check size={14} className="text-blue-600" />}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Footer Actions */}
-                  <div
-                    onClick={() => {
-                      setIsViewDropdownOpen(false);
-                      navigate("/sales/credit-notes/custom-view/new");
-                    }}
-                    className="mt-2 flex items-center justify-center gap-2 p-4 border-t border-gray-100 bg-white text-blue-600 text-sm font-bold cursor-pointer hover:bg-gray-50 transition-all active:scale-[0.98]"
-                  >
-                    <Plus size={18} strokeWidth={3} />
-                    New Custom View
+                  <div className="flex-1 overflow-y-auto custom-scrollbar py-2">
+                    {defaultCreditNoteViews.map((view) => renderViewOption(view, view))}
                   </div>
                 </div>
               )}
@@ -1002,7 +1092,7 @@ export default function CreditNotes() {
             {/* Action Buttons */}
             <div className="flex items-center gap-3">
               <button
-                className="cursor-pointer transition-all bg-gradient-to-r from-[#156372] to-[#0D4A52] text-white px-6 py-2 rounded-lg hover:opacity-90 active:scale-95 flex items-center gap-2 text-sm font-bold shadow-md"
+                className="cursor-pointer transition-all bg-gradient-to-r from-[#156372] to-[#0D4A52] text-white px-6 py-2 rounded-lg border-[#0D4A52] border-b-[4px] hover:brightness-110 hover:-translate-y-[1px] hover:border-b-[6px] active:border-b-[2px] active:brightness-90 active:translate-y-[2px] flex items-center gap-2 text-sm font-bold shadow-md"
                 onClick={handleCreateNewCreditNote}
               >
                 <Plus size={16} strokeWidth={3} />
@@ -1010,22 +1100,22 @@ export default function CreditNotes() {
               </button>
               <div className="relative" ref={moreMenuRef}>
                 <button
-                  className="p-2 bg-white border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors"
+                  className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
                   onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
                 >
                   <MoreVertical size={18} />
                 </button>
 
                 {isMoreMenuOpen && (
-                  <div className="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px] z-[1000] overflow-visible">
+                  <div className="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[220px] z-[1000] overflow-visible py-1">
                     {/* Sort by */}
-                    <div className="relative flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-all text-sm text-gray-700 group hover:bg-gray-50">
-                      <ArrowUpDown size={16} className="text-blue-600 flex-shrink-0" />
-                      <span className="flex-1 font-medium">Sort by</span>
-                      <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />
+                    <div className="relative flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-all text-sm text-gray-700 group hover:bg-[#3b82f6] hover:text-white">
+                      <ArrowUpDown size={16} className="text-[#156372] flex-shrink-0 group-hover:text-white" />
+                      <span className="flex-1 font-medium text-[13px]">Sort by</span>
+                      <ChevronRight size={16} className="text-gray-400 flex-shrink-0 group-hover:text-white" />
 
                       {/* Sort by Submenu */}
-                      <div className="absolute top-0 right-full mr-1.5 w-[180px] bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-[99999] pointer-events-none opacity-0 translate-x-2.5 transition-all group-hover:pointer-events-auto group-hover:opacity-100 group-hover:translate-x-0">
+                      <div className="absolute top-0 right-full mr-1.5 w-[220px] bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-[99999] pointer-events-none opacity-0 translate-x-2.5 transition-all group-hover:pointer-events-auto group-hover:opacity-100 group-hover:translate-x-0">
                         {sortOptions.map((option) => {
                           const isActive = activeSortField === option;
                           return (
@@ -1036,7 +1126,7 @@ export default function CreditNotes() {
                                 handleSort(option);
                                 setIsMoreMenuOpen(false);
                               }}
-                              className={`flex items-center justify-between py-2.5 px-3.5 mx-2 text-sm transition-all rounded-md ${isActive ? "bg-blue-600 text-white" : "text-gray-700 hover:bg-gray-100"
+                              className={`flex items-center justify-between py-2.5 px-3.5 mx-2 text-sm transition-all rounded-md ${isActive ? "bg-[#3b82f6] text-white" : "text-gray-700 hover:bg-gray-100"
                                 }`}
                             >
                               <span>{option}</span>
@@ -1054,8 +1144,8 @@ export default function CreditNotes() {
 
                     {/* Import */}
                     <div className="relative flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-all text-sm text-gray-700 group hover:bg-gray-50">
-                      <Download size={16} className="text-blue-600 flex-shrink-0" />
-                      <span className="flex-1 font-medium">Import</span>
+                      <Download size={16} className="text-[#156372] flex-shrink-0" />
+                      <span className="flex-1 font-medium text-[13px]">Import</span>
                       <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />
 
                       {/* Import Submenu */}
@@ -1068,9 +1158,9 @@ export default function CreditNotes() {
                               handleImport(option);
                               setIsMoreMenuOpen(false);
                             }}
-                            className="flex items-center py-2.5 px-4 text-sm text-gray-700 cursor-pointer transition-all whitespace-nowrap hover:bg-blue-600 hover:text-white"
+                            className="flex items-center py-2.5 px-4 text-sm text-gray-700 cursor-pointer transition-all whitespace-nowrap hover:bg-gray-50"
                           >
-                            {option}
+                            <span className="text-[13px]">{option}</span>
                           </div>
                         ))}
                       </div>
@@ -1078,8 +1168,8 @@ export default function CreditNotes() {
 
                     {/* Export */}
                     <div className="relative flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-all text-sm text-gray-700 group hover:bg-gray-50">
-                      <Upload size={16} className="text-blue-600 flex-shrink-0" />
-                      <span className="flex-1 font-medium">Export</span>
+                      <Upload size={16} className="text-[#156372] flex-shrink-0" />
+                      <span className="flex-1 font-medium text-[13px]">Export</span>
                       <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />
 
                       {/* Export Submenu */}
@@ -1092,15 +1182,15 @@ export default function CreditNotes() {
                               handleExport(option);
                               setIsMoreMenuOpen(false);
                             }}
-                            className="flex items-center py-2.5 px-4 text-sm text-gray-700 cursor-pointer transition-all whitespace-nowrap hover:bg-blue-600 hover:text-white"
+                            className="flex items-center py-2.5 px-4 text-sm text-gray-700 cursor-pointer transition-all whitespace-nowrap hover:bg-gray-50"
                           >
-                            {option}
+                            <span className="text-[13px]">{option}</span>
                           </div>
                         ))}
                       </div>
                     </div>
 
-                    <div className="h-px bg-gray-200 my-1"></div>
+                    <div className="h-px bg-gray-100 my-1"></div>
 
                     {/* Preferences */}
                     <div
@@ -1110,18 +1200,29 @@ export default function CreditNotes() {
                         setIsMoreMenuOpen(false);
                       }}
                     >
-                      <Settings size={16} className="text-blue-600 flex-shrink-0" />
-                      <span className="flex-1 font-medium">Preferences</span>
+                      <Settings size={16} className="text-[#156372] flex-shrink-0" />
+                      <span className="flex-1 font-medium text-[13px]">Preferences</span>
                     </div>
 
-                    <div className="h-px bg-gray-200 my-1"></div>
+                    <div
+                      className="flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-colors text-sm text-gray-700 hover:bg-gray-50"
+                      onClick={() => {
+                        setIsFieldCustomizationOpen(true);
+                        setIsMoreMenuOpen(false);
+                      }}
+                    >
+                      <Grid3x3 size={16} className="text-[#156372] flex-shrink-0" />
+                      <span className="flex-1 font-medium text-[13px]">Manage Custom Fields</span>
+                    </div>
+
+                    <div className="h-px bg-gray-100 my-1"></div>
 
                     <div
                       className={`flex items-center gap-3 py-2.5 px-4 cursor-pointer transition-colors text-sm text-gray-700 hover:bg-gray-50 ${isRefreshing ? "opacity-50 cursor-not-allowed" : ""}`}
                       onClick={() => handleRefreshList()}
                     >
-                      <RefreshCw size={16} className={`text-blue-600 flex-shrink-0 ${isRefreshing ? "animate-spin" : ""}`} />
-                      <span className="flex-1 font-medium">Refresh List</span>
+                      <RefreshCw size={16} className={`text-[#156372] flex-shrink-0 ${isRefreshing ? "animate-spin" : ""}`} />
+                      <span className="flex-1 font-medium text-[13px]">Refresh List</span>
                     </div>
 
                     {/* Reset Column Width */}
@@ -1132,8 +1233,8 @@ export default function CreditNotes() {
                         setIsMoreMenuOpen(false);
                       }}
                     >
-                      <RotateCcw size={16} className="text-blue-600 flex-shrink-0" />
-                      <span className="flex-1 font-medium">Reset Column Width</span>
+                      <RotateCcw size={16} className="text-[#156372] flex-shrink-0" />
+                      <span className="flex-1 font-medium text-[13px]">Reset Column Width</span>
                     </div>
                   </div>
                 )}
@@ -1146,42 +1247,44 @@ export default function CreditNotes() {
       {/* Bulk Update Modal */}
       {isBulkUpdateModalOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
+          className="fixed inset-0 z-[2100] flex items-start justify-center bg-black/40 pt-16 overflow-y-auto"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleBulkUpdateCancel();
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-900">Bulk Update Credit Notes</h2>
+          <div className="w-full max-w-md mx-4 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+              <h2 className="text-[15px] font-semibold text-slate-800">Bulk Update Credit Notes</h2>
               <button
-                className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
+                type="button"
+                className="h-7 w-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                 onClick={handleBulkUpdateCancel}
+                aria-label="Close bulk update modal"
               >
-                <X size={20} />
+                <X size={14} />
               </button>
             </div>
-            <div className="p-6">
-              <p className="text-sm text-gray-600 mb-4">
+            <div className="px-5 py-4">
+              <p className="mb-4 text-sm text-slate-600">
                 Choose a field from the dropdown and update with new information.
               </p>
               <div className="space-y-4">
                 <div className="relative" ref={bulkUpdateFieldDropdownRef}>
                   <button
-                    className="w-full flex items-center justify-between px-4 py-3 border-2 border-gray-200 rounded-lg bg-white text-gray-700 hover:border-blue-500 transition-colors"
+                    className="w-full flex items-center justify-between rounded-md border border-slate-300 bg-white px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:border-slate-400"
                     onClick={() => setIsBulkUpdateFieldDropdownOpen(!isBulkUpdateFieldDropdownOpen)}
                   >
-                    <span className="text-sm font-medium">{selectedBulkFieldConfig?.label || "Select a field"}</span>
-                    <ChevronDown size={16} />
+                    <span className="font-medium">{selectedBulkFieldConfig?.label || "Select a field"}</span>
+                    <ChevronDown size={16} className="text-slate-500" />
                   </button>
                   {isBulkUpdateFieldDropdownOpen && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
+                    <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
                       {bulkUpdateFieldOptions.map((option) => (
                         <div
                           key={option.value}
-                          className="p-3 cursor-pointer hover:bg-blue-50 text-sm text-gray-700 transition-colors"
+                          className="cursor-pointer px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50"
                           onClick={() => handleBulkUpdateFieldSelect(option.value)}
                         >
                           {option.label}
@@ -1192,7 +1295,7 @@ export default function CreditNotes() {
                 </div>
                 {selectedBulkFieldConfig?.type === "select" ? (
                   <select
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                    className="w-full rounded-md border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition-all focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
                     value={bulkUpdateValue}
                     onChange={(e) => setBulkUpdateValue(e.target.value)}
                   >
@@ -1205,7 +1308,7 @@ export default function CreditNotes() {
                   </select>
                 ) : selectedBulkFieldConfig?.type === "textarea" ? (
                   <textarea
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none"
+                    className="w-full resize-none rounded-md border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition-all focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
                     placeholder={selectedBulkFieldConfig?.placeholder || "Enter new value"}
                     value={bulkUpdateValue}
                     onChange={(e) => setBulkUpdateValue(e.target.value)}
@@ -1214,29 +1317,80 @@ export default function CreditNotes() {
                 ) : (
                   <input
                     type={selectedBulkFieldConfig?.type === "date" ? "date" : "text"}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                    className="w-full rounded-md border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition-all focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
                     placeholder={selectedBulkFieldConfig?.placeholder || "Enter new value"}
                     value={bulkUpdateValue}
                     onChange={(e) => setBulkUpdateValue(e.target.value)}
-                    onMouseEnter={(e) => (e.target as HTMLElement).style.backgroundColor = "#E5E7EB"}
-                    onMouseLeave={(e) => (e.target as HTMLElement).style.backgroundColor = "#F3F4F6"}
                   />
                 )}
               </div>
-              <p className="mt-4 text-xs text-gray-500">
-                <strong className="text-gray-700">Note:</strong> All the selected credit notes will be updated with the new information and you cannot undo this action.
+              <p className="mt-4 text-xs text-slate-500">
+                <strong className="text-slate-700">Note:</strong> All the selected credit notes will be updated with the new information and you cannot undo this action.
               </p>
             </div>
-            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-3">
               <button
-                className="px-6 py-2 bg-gradient-to-r from-[#156372] to-[#0D4A52] text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-all shadow-sm"
+                className="rounded-md border border-slate-300 bg-white px-4 py-1.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                onClick={handleBulkUpdateCancel}
+              >
+                Cancel
+              </button>
+              <button
+                className="rounded-md bg-[#156372] px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-[#0D4A52]"
                 onClick={handleBulkUpdateSubmit}
               >
                 Update
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Credit Notes Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <div
+          className="fixed inset-0 z-[2100] flex items-start justify-center bg-black/40 pt-16 overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isDeletingCreditNotes) {
+              setIsDeleteModalOpen(false);
+            }
+          }}
+        >
+          <div className="w-full max-w-md mx-4 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-red-100 text-[12px] font-bold text-red-600">
+                !
+              </div>
+              <h3 className="flex-1 text-[15px] font-semibold text-slate-800">
+                Delete {selectedCreditNotes.length > 1 ? `${selectedCreditNotes.length} credit notes?` : "credit note?"}
+              </h3>
               <button
-                className="px-6 py-2 bg-white border-2 border-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors"
-                onClick={handleBulkUpdateCancel}
+                type="button"
+                className="h-7 w-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                onClick={() => setIsDeleteModalOpen(false)}
+                aria-label="Close delete modal"
+                disabled={isDeletingCreditNotes}
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="px-5 py-3 text-[13px] text-slate-600">
+              Are you sure you want to delete {selectedCreditNotes.length > 1 ? `these ${selectedCreditNotes.length} credit notes` : "this credit note"}? This action cannot be undone.
+            </div>
+            <div className="flex items-center justify-start gap-2 border-t border-slate-100 px-5 py-3">
+              <button
+                type="button"
+                className="rounded-md bg-red-600 px-4 py-1.5 text-[12px] text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={handleConfirmDelete}
+                disabled={isDeletingCreditNotes}
+              >
+                {isDeletingCreditNotes ? "Deleting..." : "Delete"}
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-slate-300 px-4 py-1.5 text-[12px] text-slate-700 transition-colors hover:bg-slate-50"
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={isDeletingCreditNotes}
               >
                 Cancel
               </button>
@@ -1245,131 +1399,29 @@ export default function CreditNotes() {
         </div>
       )}
 
-      <div className="p-6 relative">
-
-        {hasLoadedOnce && !isRefreshing && creditNotes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            {/* Video Tutorial Card */}
-            <div className="mb-8">
-              <div className="relative bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-8 shadow-lg mb-4">
-                <div className="flex flex-col items-center justify-center">
-                  <button className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center hover:bg-opacity-30 transition-all mb-4">
-                    <Play size={24} fill="#ffffff" />
-                  </button>
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center">
-                      <span className="text-blue-600 font-bold text-lg">TB</span>
-                    </div>
-                    <div className="text-white font-semibold text-lg">Taban Books</div>
-                  </div>
-                </div>
-              </div>
-              <div className="text-lg font-semibold text-gray-900">How to create a credit note</div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex items-center gap-4 mb-4">
-              <button
-                className="px-6 py-3 bg-gradient-to-r from-[#156372] to-[#0D4A52] text-white rounded-lg text-sm font-semibold uppercase hover:opacity-90 transition-all shadow-md"
-                onClick={handleCreateNewCreditNote}
-              >
-                CREATE NEW CREDIT NOTE
-              </button>
-            </div>
-
-            {/* Import Link */}
-            <button
-              className="px-6 py-3 text-blue-600 hover:text-blue-700 text-sm font-semibold underline"
-              onClick={handleImportCreditNotes}
-            >
-              Import Credit Notes
-            </button>
-
-            {/* Life Cycle Section */}
-            <div className="mt-12 mb-8">
-              <h3 className="text-lg font-semibold text-gray-900 mb-6 text-center">Life cycle of a Credit Note</h3>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
-                  {/* Left Side - Starting Points */}
-                  <div className="space-y-4">
-                    <div className="flex flex-col items-center p-4 bg-red-50 border-2 border-red-200 rounded-lg">
-                      <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-2">
-                        <ArrowLeft size={20} className="text-red-600" />
-                      </div>
-                      <div className="text-xs font-semibold text-red-700 text-center">PRODUCT RETURNED</div>
-                    </div>
-                    <div className="h-8 w-px bg-gray-300 mx-auto"></div>
-                    <div className="flex flex-col items-center p-4 bg-red-50 border-2 border-red-200 rounded-lg">
-                      <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-2">
-                        <X size={20} className="text-red-600" />
-                      </div>
-                      <div className="text-xs font-semibold text-red-700 text-center">ORDER CANCELLED</div>
-                    </div>
-                  </div>
-
-                  {/* Center - Credit Notes */}
-                  <div className="flex justify-center">
-                    <div className="flex flex-col items-center p-6 bg-blue-50 border-2 border-blue-200 rounded-lg">
-                      <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-3">
-                        <FileText size={24} className="text-blue-600" />
-                      </div>
-                      <div className="text-sm font-semibold text-blue-700 text-center">CREDIT NOTES</div>
-                    </div>
-                  </div>
-
-                  {/* Right Side - Outcomes */}
-                  <div className="space-y-4">
-                    <div className="flex flex-col items-center p-4 bg-green-50 border-2 border-green-200 rounded-lg">
-                      <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-2">
-                        <DollarSign size={20} className="text-green-600" />
-                      </div>
-                      <div className="text-xs font-semibold text-green-700 text-center">REFUND</div>
-                    </div>
-                    <div className="flex flex-col items-center p-4 bg-green-50 border-2 border-green-200 rounded-lg">
-                      <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-2">
-                        <Users size={20} className="text-green-600" />
-                      </div>
-                      <div className="text-xs font-semibold text-green-700 text-center">CREDITS</div>
-                    </div>
-                    <div className="h-8 w-px bg-gray-300 mx-auto"></div>
-                    <div className="flex flex-col items-center p-4 bg-green-50 border-2 border-green-200 rounded-lg">
-                      <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-2">
-                        <FileText size={20} className="text-green-600" />
-                      </div>
-                      <div className="text-xs font-semibold text-green-700 text-center">APPLY TO FUTURE INVOICES</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Features Section */}
-            <div className="mt-8">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">In the Credit Notes module, you can:</h3>
-              <ul className="space-y-3 max-w-2xl mx-auto">
-                <li className="flex items-start gap-3">
-                  <span className="text-green-600 font-bold text-lg mt-0.5">✓</span>
-                  <span className="text-gray-700">Issue refunds and credits to your customers and apply them to invoices</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-green-600 font-bold text-lg mt-0.5">✓</span>
-                  <span className="text-gray-700">
-                    Record and manage excess payments as credits.{" "}
-                    <a href="#" className="text-blue-600 hover:text-blue-700 underline">Learn More</a>
-                  </span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
-                    <th className="p-4 text-left">
+      <div className="flex-1 min-h-0 w-full overflow-y-auto custom-scrollbar">
+        <div className="relative w-full min-w-0">
+          <div className="w-full bg-white overflow-hidden">
+            <div className="w-full min-w-0 overflow-x-auto">
+              <table className="min-w-full w-full text-left border-collapse">
+                <thead className="sticky top-0 z-10 bg-[#f6f7fb] border-b border-[#e6e9f2]">
+                <tr className="text-[10px] font-semibold text-[#7b8494] uppercase tracking-wider">
+                  <th className="px-4 py-3 w-16 min-w-[64px]">
+                    <div className="flex items-center gap-2">
                       <button
-                        className="p-1 hover:bg-gray-200 rounded transition-colors"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsCustomizeColumnsOpen(true);
+                        }}
+                        className="h-6 w-6 flex items-center justify-center rounded border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                        title="Customize Columns"
+                      >
+                        <SlidersHorizontal size={13} className="text-[#1b5e6a]" />
+                      </button>
+                      <div className="h-5 w-px bg-gray-200" />
+                      <button
+                        className="h-4 w-4 flex items-center justify-center hover:bg-gray-200 rounded transition-colors"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleSelectAll();
@@ -1381,62 +1433,71 @@ export default function CreditNotes() {
                           <Square size={16} className="text-gray-400" />
                         )}
                       </button>
-                    </th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                      <button className="flex items-center gap-2 hover:text-blue-600 transition-colors">
+                    </div>
+                  </th>
+                  {isColumnVisible("date") && <th className="px-4 py-3 text-left">
+                    <button className="flex items-center gap-2 hover:text-blue-600 transition-colors">
                         DATE
                       </button>
-                    </th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                      <button className="flex items-center gap-2 hover:text-blue-600 transition-colors">
+                  </th>}
+                  {isColumnVisible("location") && <th className="px-4 py-3 text-left">LOCATION</th>}
+                  {isColumnVisible("creditNoteNumber") && <th className="px-4 py-3 text-left">
+                    <button className="flex items-center gap-2 hover:text-blue-600 transition-colors">
                         CREDIT NOTE#
                         <ArrowUpDown size={14} className="text-gray-400" />
                       </button>
-                    </th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">REFERENCE NUMBER</th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">CUSTOMER NAME</th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">INVOICE#</th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">STATUS</th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">AMOUNT</th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">BALANCE</th>
-                    <th className="p-4 text-left">
+                  </th>}
+                  {isColumnVisible("referenceNumber") && <th className="px-4 py-3 text-left">REFERENCE NUMBER</th>}
+                  {isColumnVisible("customerName") && <th className="px-4 py-3 text-left">CUSTOMER NAME</th>}
+                  {isColumnVisible("invoiceNumber") && <th className="px-4 py-3 text-left">INVOICE#</th>}
+                  {isColumnVisible("status") && <th className="px-4 py-3 text-left">STATUS</th>}
+                  {isColumnVisible("amount") && <th className="px-4 py-3 text-left">AMOUNT</th>}
+                  {isColumnVisible("balance") && <th className="px-4 py-3 text-left">BALANCE</th>}
+                  {isColumnVisible("salesPerson") && <th className="px-4 py-3 text-left">SALES PERSON</th>}
+                  <th className="px-4 py-3 text-left bg-[#f6f7fb]">
                       <button
                         onClick={() => setShowSearchModal(true)}
                         className="cursor-pointer hover:text-gray-700"
                       >
                         <Search size={16} className="text-gray-500" />
                       </button>
-                    </th>
-                    <th className="p-4 text-left"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isRefreshing || !hasLoadedOnce ? (
-                    Array(5).fill(0).map((_, index) => (
-                      <tr key={`skeleton-${index}`} className="border-b border-gray-100">
-                        <td className="p-4">
-                          <div className="w-4 h-4 bg-gray-200 rounded animate-pulse"></div>
-                        </td>
-                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-24"></div></td>
-                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-32"></div></td>
-                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-24"></div></td>
-                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-32"></div></td>
-                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-24"></div></td>
-                        <td className="p-4"><div className="h-6 bg-gray-200 rounded animate-pulse w-20"></div></td>
-                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-20"></div></td>
-                        <td className="p-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-20"></div></td>
-                        <td className="p-4"></td>
-                        <td className="p-4"></td>
-                      </tr>
-                    ))
-                  ) : filteredCreditNotes.length === 0 ? (
-                    <tr>
-                      <td colSpan="11" className="p-8 text-center text-gray-500">
-                        No credit notes found matching the selected filter.
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {isRefreshing || !hasLoadedOnce ? (
+                  Array(5).fill(0).map((_, index) => (
+                    <tr key={`skeleton-${index}`} className="animate-pulse border-b border-gray-50">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="h-6 w-6 shrink-0" aria-hidden />
+                          <span className="h-5 w-px shrink-0 bg-transparent" aria-hidden />
+                          <div className="w-4 h-4 bg-gray-100 rounded"></div>
+                        </div>
                       </td>
+                      {isColumnVisible("date") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
+                      {isColumnVisible("location") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
+                      {isColumnVisible("creditNoteNumber") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-32"></div></td>}
+                      {isColumnVisible("referenceNumber") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
+                      {isColumnVisible("customerName") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-32"></div></td>}
+                      {isColumnVisible("invoiceNumber") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
+                      {isColumnVisible("status") && <td className="px-4 py-3"><div className="h-6 bg-gray-100 rounded w-20"></div></td>}
+                      {isColumnVisible("amount") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-20"></div></td>}
+                      {isColumnVisible("balance") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-20"></div></td>}
+                      {isColumnVisible("salesPerson") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
+                      <td className="px-4 py-3"></td>
                     </tr>
-                  ) : (
-                    filteredCreditNotes.map((note) => (
+                  ))
+                ) : filteredCreditNotes.length === 0 ? (
+                  <tr>
+                    <td colSpan={visibleColumns.length + 2} className="px-4 py-8 text-center text-gray-500 text-sm">
+                      No credit notes found matching the selected filter.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredCreditNotes.map((note) => {
+                    const isSelected = selectedCreditNotes.includes(note.id);
+                    return (
                       <tr
                         key={note.id}
                         onClick={(e) => {
@@ -1445,31 +1506,37 @@ export default function CreditNotes() {
                             navigate(`/sales/credit-notes/${note.id}`);
                           }
                         }}
-                        className="border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer"
+                        className="group transition-all hover:bg-slate-50/50 cursor-pointer"
+                        style={isSelected ? { backgroundColor: "#1b5e6a1A" } : {}}
                       >
-                        <td className="p-4">
-                          <button
-                            className="p-1 hover:bg-gray-200 rounded transition-colors"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedCreditNotes(prev =>
-                                prev.includes(note.id)
-                                  ? prev.filter(id => id !== note.id)
-                                  : [...prev, note.id]
-                              );
-                            }}
-                          >
-                            {selectedCreditNotes.includes(note.id) ? (
-                              <CheckSquare size={16} fill="#6b7280" color="#6b7280" />
-                            ) : (
-                              <Square size={16} className="text-gray-400" />
-                            )}
-                          </button>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="h-6 w-6 shrink-0" aria-hidden />
+                            <span className="h-5 w-px shrink-0 bg-transparent" aria-hidden />
+                            <button
+                              className="h-4 w-4 flex items-center justify-center hover:bg-gray-200 rounded transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedCreditNotes(prev =>
+                                  prev.includes(note.id)
+                                    ? prev.filter(id => id !== note.id)
+                                    : [...prev, note.id]
+                                );
+                              }}
+                            >
+                              {selectedCreditNotes.includes(note.id) ? (
+                                <CheckSquare size={16} fill="#6b7280" color="#6b7280" />
+                              ) : (
+                                <Square size={16} className="text-gray-400" />
+                              )}
+                            </button>
+                          </div>
                         </td>
-                        <td className="p-4 text-gray-900">{formatDate(note.creditNoteDate || note.date)}</td>
-                        <td className="p-4">
+                        {isColumnVisible("date") && <td className="px-4 py-3 text-[13px] text-slate-600">{formatDate(note.creditNoteDate || note.date)}</td>}
+                        {isColumnVisible("location") && <td className="px-4 py-3 text-[13px] text-slate-600">{note.location || "-"}</td>}
+                        {isColumnVisible("creditNoteNumber") && <td className="px-4 py-3">
                           <span
-                            className="text-blue-600 hover:text-blue-700 hover:underline font-medium cursor-pointer"
+                            className="text-[13px] font-medium text-[#156372] hover:underline cursor-pointer"
                             onClick={(e) => {
                               e.stopPropagation();
                               navigate(`/sales/credit-notes/${note.id}`);
@@ -1477,13 +1544,13 @@ export default function CreditNotes() {
                           >
                             {note.creditNoteNumber || note.id}
                           </span>
-                        </td>
-                        <td className="p-4 text-gray-900">{note.referenceNumber || ""}</td>
-                        <td className="p-4 text-gray-900">{note.customerName || note.customer?.displayName || note.customer?.companyName || (typeof note.customer === 'string' ? note.customer : "")}</td>
-                        <td className="p-4 text-gray-900">{note.invoiceNumber || ""}</td>
-                        <td className="p-4">
+                        </td>}
+                        {isColumnVisible("referenceNumber") && <td className="px-4 py-3 text-[13px] text-slate-600">{getCreditNoteReferenceNumber(note)}</td>}
+                        {isColumnVisible("customerName") && <td className="px-4 py-3 text-[13px] text-slate-600">{getCreditNoteCustomerName(note)}</td>}
+                        {isColumnVisible("invoiceNumber") && <td className="px-4 py-3 text-[13px] text-slate-600">{note.invoiceNumber || ""}</td>}
+                        {isColumnVisible("status") && <td className="px-4 py-3">
                           <span
-                            className={`text-xs font-semibold ${(note.status || "open").toLowerCase() === "open"
+                            className={`text-[11px] font-semibold ${(note.status || "open").toLowerCase() === "open"
                               ? "text-green-700"
                               : (note.status || "open").toLowerCase() === "closed"
                                 ? "text-gray-700"
@@ -1494,30 +1561,20 @@ export default function CreditNotes() {
                           >
                             {(note.status || "open").toUpperCase()}
                           </span>
-                        </td>
-                        <td className="p-4 text-gray-900 font-semibold">{formatCurrency(note.total || note.amount || 0, note.currency)}</td>
-                        <td className="p-4 text-gray-900">{formatCurrency(note.balance || note.total || note.amount || 0, note.currency)}</td>
-                        <td className="p-4"></td>
-                        <td className="p-4">
-                          <button
-                            className="p-2 hover:bg-blue-50 rounded-lg text-gray-600 hover:text-blue-600 transition-colors"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/sales/credit-notes/${note.id}/edit`);
-                            }}
-                            title="Edit Credit Note"
-                          >
-                            <Pencil size={16} />
-                          </button>
-                        </td>
+                        </td>}
+                        {isColumnVisible("amount") && <td className="px-4 py-3 text-[13px] text-slate-600 font-semibold">{formatCurrency(note.total || note.amount || 0, note.currency)}</td>}
+                        {isColumnVisible("balance") && <td className="px-4 py-3 text-[13px] text-slate-600">{formatCurrency(note.balance || note.total || note.amount || 0, note.currency)}</td>}
+                        {isColumnVisible("salesPerson") && <td className="px-4 py-3 text-[13px] text-slate-600">{note.salesPerson || note.salesperson || note.salesPersonName || "-"}</td>}
+                        <td className="px-4 py-3"></td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
+                    );
+                  })
+                )}
+              </tbody>
               </table>
             </div>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Search Modal */}
@@ -1906,12 +1963,20 @@ export default function CreditNotes() {
         </div>
       )}
 
+      <CreditNotesCustomizeColumnsModal
+        open={isCustomizeColumnsOpen}
+        columns={CREDIT_NOTES_LIST_COLUMNS}
+        value={visibleColumns}
+        onClose={() => setIsCustomizeColumnsOpen(false)}
+        onSave={(nextVisibleColumns) => {
+          setVisibleColumns(nextVisibleColumns);
+          setIsCustomizeColumnsOpen(false);
+        }}
+      />
+
       {/* Field Customization Modal */}
       {isFieldCustomizationOpen && (
-        <FieldCustomization
-          featureType="credit-notes"
-          onClose={() => setIsFieldCustomizationOpen(false)}
-        />
+        <FieldCustomization onClose={() => setIsFieldCustomizationOpen(false)} />
       )}
 
       {/* Preferences Modal */}
@@ -1993,7 +2058,7 @@ export default function CreditNotes() {
                 <button
                   onClick={() => {
                     // TODO: Save preferences to localStorage or backend
-                    alert("Preferences saved successfully!");
+                    toast("Preferences saved successfully!");
                     setIsPreferencesModalOpen(false);
                   }}
                   className="px-6 py-2 bg-red-600 text-white rounded-md text-sm font-medium cursor-pointer hover:bg-red-700"
@@ -2008,4 +2073,6 @@ export default function CreditNotes() {
     </div>
   );
 }
+
+
 

@@ -31,13 +31,22 @@ const ImportQuantityPreview = lazy(() => import("../features/inventory/ImportQua
 const ImportValueMapFields = lazy(() => import("../features/inventory/ImportValueMapFields"));
 const ImportValuePreview = lazy(() => import("../features/inventory/ImportValuePreview"));
 
-const SalesPage = lazy(() => import("../features/sales/SalesPage"));
-const AccountsReceivableDashboard = lazy(() =>
-  import("../features/sales/accounts-receivable").then((module) => ({
-    default: module.AccountsReceivableDashboard,
-  })),
-);
-const AccountsReceivableLedger = lazy(() => import("../features/sales/accounts-receivable/AccountsReceivableLedger"));
+const SalesPage = lazy(() => import("../features/sales/SalesRoutes"));
+function AccountsReceivableDashboard() {
+  return (
+    <div className="min-h-[40vh] flex items-center justify-center text-sm text-gray-500">
+      Accounts receivable is not available in this sales module build.
+    </div>
+  );
+}
+
+function AccountsReceivableLedger() {
+  return (
+    <div className="min-h-[40vh] flex items-center justify-center text-sm text-gray-500">
+      Accounts receivable ledger is not available in this sales module build.
+    </div>
+  );
+}
 
 const PurchasesPage = lazy(() => import("../features/purchases/PurchasesPage"));
 const TimeTrackingPage = lazy(() => import("../features/timeTracking/TimeTrackingPage"));

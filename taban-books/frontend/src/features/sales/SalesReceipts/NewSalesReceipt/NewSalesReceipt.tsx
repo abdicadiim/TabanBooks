@@ -1,13 +1,15 @@
-﻿// @ts-nocheck
-import React, { useState, useRef, useEffect } from "react";
+// @ts-nocheck
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { PAYMENT_MODE_OPTIONS } from "../../../../utils/paymentModes";
+import { toast } from "react-hot-toast";
 import {
   X,
   Search,
   ChevronDown,
+  ChevronUp,
   Plus,
+  PlusCircle,
   Info,
   Upload,
   Settings,
@@ -24,25 +26,200 @@ import {
   File,
   Copy,
   Grid3x3,
+  Edit2,
   Image as ImageIcon,
-  Loader2
+  Loader2,
+  MapPin,
+  BriefcaseBusiness,
+  Tag,
+  ClipboardList
 } from "lucide-react";
-import { saveSalesReceipt, getSalesReceiptById, updateSalesReceipt, getCustomers, getCustomersFromAPI } from "../../salesModel";
-import { salesReceiptsAPI, currenciesAPI, salespersonsAPI, itemsAPI, transactionNumberSeriesAPI, chartOfAccountsAPI, taxesAPI, paymentModesAPI } from "../../../../services/api";
+import { saveSalesReceipt, getSalesReceiptById, updateSalesReceipt, getCustomers, getCustomersFromAPI, buildTaxOptionGroups, taxLabel } from "../../salesModel";
+import { salesReceiptsAPI, currenciesAPI, salespersonsAPI, itemsAPI, transactionNumberSeriesAPI, chartOfAccountsAPI, taxesAPI, paymentModesAPI, reportingTagsAPI } from "../../../../services/api";
 import { getAllDocuments } from "../../../../utils/documentStorage";
 import { useCurrency } from "../../../../hooks/useCurrency";
-import TabanSelect from "../../../../components/TabanSelect";
+import ZohoSelect from "../../../../components/ZohoSelect";
 import PaymentModeDropdown from "../../../../components/PaymentModeDropdown";
-import { API_BASE_URL, getToken } from "../../../../services/auth";
+import { API_BASE_URL, getCurrentUser, getToken } from "../../../../services/auth";
+import NewTaxQuickModal from "../../../../components/tax/NewTaxQuickModal";
+import { fetchItemsList } from "../../Product-Calalog/items/itemQueries";
 
 // Salespersons will be loaded from database
 
 // Items will be loaded from database
 
-const paymentModes = [...PAYMENT_MODE_OPTIONS];
+const paymentModes = ["Cash", "Check", "Credit Card", "Bank Transfer", "Bank Remittance", "Other"];
 // Deposit accounts will be loaded from database
 
 const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const PRICE_LISTS_STORAGE_KEY = "inv_price_lists_v1";
+
+const formatPriceListDisplayLabel = (row) => {
+  const name = String(row?.name || "").trim();
+  if (!name) return "";
+
+  const pricingScheme = String(row?.pricingScheme || "").trim();
+  const rawMarkup = String(row?.markup ?? "").trim();
+  const markupType = String(row?.markupType || "").trim();
+  const normalizedMarkup = rawMarkup
+    ? rawMarkup.includes("%")
+      ? rawMarkup
+      : `${rawMarkup}%`
+    : "";
+  const detail = normalizedMarkup
+    ? `${normalizedMarkup} ${markupType || "Markup"}`.trim()
+    : pricingScheme;
+
+  return detail ? `${name} [ ${detail} ]` : name;
+};
+
+const readStoredLocationOptions = () => {
+  try {
+    const raw = localStorage.getItem("taban_locations_cache");
+    const rows = raw ? JSON.parse(raw) : [];
+    const names = Array.isArray(rows)
+      ? rows
+          .map((row) => String(row?.name || row?.locationName || row?.title || "").trim())
+          .filter(Boolean)
+      : [];
+    return names.length > 0 ? Array.from(new Set(names)) : ["Head Office"];
+  } catch {
+    return ["Head Office"];
+  }
+};
+
+const sanitizeNumericInput = (value: any) => {
+  const raw = String(value ?? "");
+  const cleaned = raw.replace(/[^0-9.]/g, "");
+  const [whole, ...rest] = cleaned.split(".");
+  if (!whole && rest.length === 0) return "";
+  if (rest.length === 0) return whole;
+  return `${whole || "0"}.${rest.join("").replace(/\./g, "")}`;
+};
+
+const blockInvalidNumericKeys = (event: React.KeyboardEvent<HTMLInputElement>) => {
+  if (["e", "E", "+", "-"].includes(event.key)) {
+    event.preventDefault();
+  }
+};
+
+const hasSelectedReceiptItems = (items: any[]) =>
+  Array.isArray(items) && items.some((item) => String(item?.itemId || "").trim());
+
+const normalizeReportingTagOptions = (tag) => {
+  const sourceOptions = Array.isArray(tag?.options)
+    ? tag.options
+    : Array.isArray(tag?.values)
+      ? tag.values
+      : Array.isArray(tag?.choices)
+        ? tag.choices
+        : [];
+
+  const seen = new Set();
+  return sourceOptions
+    .map((option, index) => {
+      if (typeof option === "string") {
+        const value = option.trim();
+        if (!value) return null;
+        return { key: `${value}-${index}`, label: value, value };
+      }
+
+      const value = String(option?.value || option?.name || option?.label || option?.title || "").trim();
+      if (!value) return null;
+      return {
+        key: String(option?.id || option?._id || `${value}-${index}`),
+        label: String(option?.label || option?.name || option?.title || value),
+        value,
+      };
+    })
+    .filter(Boolean)
+    .filter((option) => {
+      const dedupeKey = option.value.toLowerCase();
+      if (seen.has(dedupeKey)) return false;
+      seen.add(dedupeKey);
+      return true;
+    });
+};
+
+const normalizeReportingTagAppliesTo = (tag) => {
+  const rawAppliesTo = Array.isArray(tag?.appliesTo)
+    ? tag.appliesTo
+    : Array.isArray(tag?.modules)
+      ? tag.modules
+      : Array.isArray(tag?.moduleNames)
+        ? tag.moduleNames
+        : Array.isArray(tag?.entities)
+          ? tag.entities
+          : [];
+
+  return rawAppliesTo
+    .map((value) => String(value || "").toLowerCase().trim())
+    .filter(Boolean);
+};
+
+const isReportingTagMandatory = (tag) =>
+  Boolean(
+    tag?.isMandatory ||
+    tag?.mandatory ||
+    tag?.required ||
+    tag?.isRequired ||
+    tag?.is_required
+  );
+
+const normalizeCatalogEntry = (row, fallbackType = "item", index = 0) => {
+  const entityType = "item";
+  const sourceId = String(
+    row?.sourceId ||
+    row?.id ||
+    row?._id ||
+    row?.itemId ||
+    `${entityType}-${index}`
+  ).trim();
+  const name = String(row?.name || row?.itemName || row?.title || "").trim();
+  if (!name) return null;
+  const sku = String(row?.sku || row?.itemCode || row?.code || "").trim();
+  const rate = Number(row?.sellingPrice ?? row?.costPrice ?? row?.price ?? row?.rate ?? 0) || 0;
+
+  return {
+    ...row,
+    entityType,
+    itemEntityType: entityType,
+    sourceType: entityType,
+    sourceId,
+    id: sourceId,
+    name,
+    sku,
+    code: sku,
+    rate,
+    stockOnHand: Number(row?.stockOnHand ?? row?.quantityOnHand ?? row?.stockQuantity ?? 0) || 0,
+    unit: String(row?.unit || row?.unitOfMeasure || "pcs"),
+    description: String(row?.salesDescription || row?.description || ""),
+    status: row?.status || "active",
+  };
+};
+
+const extractApiRows = (response) => {
+  const candidates = [
+    response,
+    response?.data,
+    response?.data?.data,
+    response?.data?.data?.items,
+    response?.data?.data?.rows,
+    response?.data?.data?.results,
+    response?.data?.items,
+    response?.data?.rows,
+    response?.data?.results,
+    response?.items,
+    response?.rows,
+    response?.results,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+
+  return [];
+};
 
 const formatDate = (date) => {
   if (!date) return "";
@@ -53,23 +230,56 @@ const formatDate = (date) => {
   return `${day} ${month} ${year}`;
 };
 
+const getCreatedByValue = (value) => {
+  if (!value) return "";
+  if (typeof value === "string" || typeof value === "number") return String(value).trim();
+  if (typeof value === "object") {
+    return String(
+      value.name ||
+      value.displayName ||
+      value.fullName ||
+      value.username ||
+      value.userName ||
+      value.email ||
+      value.id ||
+      value._id ||
+      ""
+    ).trim();
+  }
+  return String(value).trim();
+};
+
+const getCurrentUserLabel = () => getCreatedByValue(getCurrentUser()) || "System";
+
 export default function NewSalesReceipt() {
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams();
   const isEditMode = !!id;
-  const { baseCurrency, symbol } = useCurrency();
-  const currencySymbol = symbol || "$";
+  const { baseCurrency, symbol, baseCurrencyCode } = useCurrency();
+  const currencySymbol = baseCurrencyCode || baseCurrency.code || symbol || "$";
   const [saveLoading, setSaveLoading] = useState(null);
+  const [locationOptions, setLocationOptions] = useState(() => readStoredLocationOptions());
+  const [availableReportingTags, setAvailableReportingTags] = useState([]);
+  const [catalogPriceLists, setCatalogPriceLists] = useState([]);
+  const [priceListSearch, setPriceListSearch] = useState("");
+  const [isPriceListDropdownOpen, setIsPriceListDropdownOpen] = useState(false);
 
   // Get item data from navigation state (when coming from item detail page)
   const itemFromState = location.state?.item || null;
   const clonedDataFromState = location.state?.clonedData || null;
+  const receiptFromState = location.state?.receipt || location.state?.salesReceipt || null;
 
   const [formData, setFormData] = useState({
     customerName: "",
     receiptDate: formatDate(new Date()),
-    receiptNumber: "SR-00001",
+    selectedLocation: "Head Office",
+    reportingTags: [],
+    selectedPriceList: "",
+    receiptNumber: transactionNumberSeriesAPI.getCachedNextNumber({
+      module: "Sales Receipt",
+      locationName: "Head Office",
+    }) || "",
     salesperson: "",
     taxInclusive: "Tax Inclusive",
     items: [
@@ -79,9 +289,11 @@ export default function NewSalesReceipt() {
     discount: 0,
     discountType: "percent",
     shippingCharges: 0,
+    shippingChargeTax: "",
     adjustment: 0,
     roundOff: 0,
     total: 0,
+    createdBy: "",
     currency: "",
     notes: "",
     termsAndConditions: "",
@@ -91,13 +303,106 @@ export default function NewSalesReceipt() {
     depositToAccountId: "",
     referenceNumber: ""
   });
+  const normalizedReportingTags = useMemo(
+    () =>
+      (Array.isArray(availableReportingTags) ? availableReportingTags : []).map((tag, index) => ({
+        ...tag,
+        key: String(tag?.id || tag?._id || tag?.name || tag?.title || `reporting-tag-${index}`),
+        label: String(tag?.name || tag?.title || tag?.label || `Reporting Tag ${index + 1}`),
+        options: normalizeReportingTagOptions(tag),
+        isMandatory: isReportingTagMandatory(tag),
+      })),
+    [availableReportingTags]
+  );
   const hasAppliedCloneRef = useRef(false);
   const hasLoadedEditDataRef = useRef(false);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
 
+  const loadCatalogPriceLists = () => {
+    try {
+      const raw = localStorage.getItem(PRICE_LISTS_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) {
+        setCatalogPriceLists([]);
+        return;
+      }
+
+      const normalized = parsed
+        .map((row) => ({
+          id: String(row?.id || row?._id || row?.name || ""),
+          name: String(row?.name || "").trim(),
+          pricingScheme: String(row?.pricingScheme || "").trim(),
+          currency: String(row?.currency || "").trim(),
+          status: String(row?.status || "Active").trim(),
+          displayLabel: formatPriceListDisplayLabel(row),
+        }))
+        .filter((row) => row.name)
+        .filter((row) => row.status.toLowerCase() !== "inactive");
+
+      setCatalogPriceLists(normalized);
+    } catch (error) {
+      console.error("Error loading price lists for sales receipt:", error);
+      setCatalogPriceLists([]);
+    }
+  };
+
+  useEffect(() => {
+    loadCatalogPriceLists();
+
+    const handleStorageChange = (event) => {
+      if (!event.key || event.key === PRICE_LISTS_STORAGE_KEY) {
+        loadCatalogPriceLists();
+      }
+    };
+
+    const handleWindowFocus = () => loadCatalogPriceLists();
+
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("focus", handleWindowFocus);
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, []);
+
+  const selectedPriceListOption = catalogPriceLists.find((option) => option.name === formData.selectedPriceList);
+  const selectedPriceListDisplay =
+    selectedPriceListOption?.displayLabel || formData.selectedPriceList || "Select Price List";
+  const filteredPriceListOptions = catalogPriceLists.filter((option) => {
+    const search = priceListSearch.toLowerCase().trim();
+    if (!search) return true;
+    return (
+      option.name.toLowerCase().includes(search) ||
+      option.displayLabel.toLowerCase().includes(search) ||
+      option.pricingScheme.toLowerCase().includes(search) ||
+      option.currency.toLowerCase().includes(search)
+    );
+  });
+
   useEffect(() => {
     hasLoadedEditDataRef.current = false;
   }, [id, isEditMode]);
+
+  useEffect(() => {
+    const syncLocations = () => {
+      const nextLocations = readStoredLocationOptions();
+      setLocationOptions(nextLocations);
+      setFormData((prev) => ({
+        ...prev,
+        selectedLocation: nextLocations.includes(prev.selectedLocation)
+          ? prev.selectedLocation
+          : (nextLocations[0] || "Head Office"),
+      }));
+    };
+
+    syncLocations();
+    window.addEventListener("storage", syncLocations);
+    window.addEventListener("focus", syncLocations);
+    return () => {
+      window.removeEventListener("storage", syncLocations);
+      window.removeEventListener("focus", syncLocations);
+    };
+  }, []);
 
   useEffect(() => {
     if (isEditMode || !clonedDataFromState || hasAppliedCloneRef.current) return;
@@ -128,6 +433,8 @@ export default function NewSalesReceipt() {
       ...prev,
       customerName: cloned.customerName || cloned.customer?.displayName || cloned.customer?.name || prev.customerName,
       receiptDate: toDisplayDate(cloned.receiptDate || cloned.date, prev.receiptDate),
+      selectedLocation: cloned.selectedLocation || cloned.location || prev.selectedLocation,
+      reportingTags: Array.isArray(cloned.reportingTags) ? cloned.reportingTags : prev.reportingTags,
       salesperson: cloned.salesperson || prev.salesperson,
       taxInclusive: cloned.taxInclusive || prev.taxInclusive,
       items: mappedItems || prev.items,
@@ -148,6 +455,7 @@ export default function NewSalesReceipt() {
   }, [clonedDataFromState, isEditMode]);
 
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
+  const [isCustomerInlineSearchMode, setIsCustomerInlineSearchMode] = useState(false);
   const [isDiscountTypeDropdownOpen, setIsDiscountTypeDropdownOpen] = useState(false);
   const discountTypeDropdownRef = useRef(null);
   const [openDiscountDropdowns, setOpenDiscountDropdowns] = useState({});
@@ -171,6 +479,7 @@ export default function NewSalesReceipt() {
   const [isSalespersonDropdownOpen, setIsSalespersonDropdownOpen] = useState(false);
   const [salespersonSearch, setSalespersonSearch] = useState("");
   const [selectedSalesperson, setSelectedSalesperson] = useState(null);
+  const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
   const [isNewSalespersonQuickActionOpen, setIsNewSalespersonQuickActionOpen] = useState(false);
   const [salespersonQuickActionBaseIds, setSalespersonQuickActionBaseIds] = useState<string[]>([]);
   const [isRefreshingSalespersonsQuickAction, setIsRefreshingSalespersonsQuickAction] = useState(false);
@@ -179,17 +488,27 @@ export default function NewSalesReceipt() {
   const [isReloadingSalespersonFrame, setIsReloadingSalespersonFrame] = useState(false);
   const [isTaxInclusiveDropdownOpen, setIsTaxInclusiveDropdownOpen] = useState(false);
   const [taxInclusiveSearch, setTaxInclusiveSearch] = useState("");
+  const [openReportingTagDropdowns, setOpenReportingTagDropdowns] = useState({});
+  const [reportingTagSearches, setReportingTagSearches] = useState({});
   const [openItemDropdowns, setOpenItemDropdowns] = useState({});
   const [itemSearches, setItemSearches] = useState({});
   const [openTaxDropdowns, setOpenTaxDropdowns] = useState({});
+  const [isNewTaxQuickModalOpen, setIsNewTaxQuickModalOpen] = useState(false);
+  const [newTaxTargetItemId, setNewTaxTargetItemId] = useState(null);
   const [taxSearches, setTaxSearches] = useState({});
   const [isPaymentModeDropdownOpen, setIsPaymentModeDropdownOpen] = useState(false);
   const [isDepositToDropdownOpen, setIsDepositToDropdownOpen] = useState(false);
+  const [isShippingChargeTaxDropdownOpen, setIsShippingChargeTaxDropdownOpen] = useState(false);
+  const [shippingChargeTaxSearch, setShippingChargeTaxSearch] = useState("");
   const [isReceiptDatePickerOpen, setIsReceiptDatePickerOpen] = useState(false);
   const [receiptDateCalendar, setReceiptDateCalendar] = useState(new Date());
   const [isManageSalespersonsModalOpen, setIsManageSalespersonsModalOpen] = useState(false);
   const [manageSalespersonSearch, setManageSalespersonSearch] = useState("");
+  const [isNewSalespersonFormOpen, setIsNewSalespersonFormOpen] = useState(false);
+  const [newSalespersonData, setNewSalespersonData] = useState({ name: "", email: "" });
   const [selectedSalespersonsForManage, setSelectedSalespersonsForManage] = useState([]);
+  const [manageSalespersonMenuOpen, setManageSalespersonMenuOpen] = useState<string | null>(null);
+  const [manageSalespersonMenuPosition, setManageSalespersonMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [isBulkAddModalOpen, setIsBulkAddModalOpen] = useState(false);
   const [bulkAddSearch, setBulkAddSearch] = useState("");
   const [bulkSelectedItems, setBulkSelectedItems] = useState([]);
@@ -201,6 +520,10 @@ export default function NewSalesReceipt() {
   const [scanInput, setScanInput] = useState("");
   const [showAdditionalInformation, setShowAdditionalInformation] = useState(false);
   const [itemsWithAdditionalInfo, setItemsWithAdditionalInfo] = useState(new Set());
+  const [activeAccountDropdownItemId, setActiveAccountDropdownItemId] = useState(null);
+  const [activeReportingDropdownItemId, setActiveReportingDropdownItemId] = useState(null);
+  const [additionalInfoSearch, setAdditionalInfoSearch] = useState("");
+  const [itemReportingTagDraftValues, setItemReportingTagDraftValues] = useState({});
   const [showNewHeaderInput, setShowNewHeaderInput] = useState(false);
   const [newHeaderText, setNewHeaderText] = useState("");
   const [newHeaderItemId, setNewHeaderItemId] = useState(null);
@@ -208,22 +531,29 @@ export default function NewSalesReceipt() {
 
   const customerDropdownRef = useRef(null);
   const salespersonDropdownRef = useRef(null);
+  const locationDropdownRef = useRef(null);
   const taxInclusiveDropdownRef = useRef(null);
+  const reportingTagDropdownRefs = useRef({});
   const paymentModeDropdownRef = useRef(null);
   const depositToDropdownRef = useRef(null);
+  const shippingChargeTaxDropdownRef = useRef(null);
   const receiptDatePickerRef = useRef(null);
   const itemDropdownRefs = useRef({});
+  const itemDropdownPortalRefs = useRef({});
   const taxDropdownRefs = useRef({});
   const fileInputRef = useRef(null);
   const uploadDropdownRef = useRef(null);
+  const priceListDropdownRef = useRef(null);
   const bulkActionsRef = useRef(null);
   const itemMenuRefs = useRef({});
+  const additionalInfoMenuRef = useRef(null);
+  const additionalInfoReportingRef = useRef(null);
 
   // New States for Upload/Documents Modal
   const [isUploadDropdownOpen, setIsUploadDropdownOpen] = useState(false);
   const [isDocumentsModalOpen, setIsDocumentsModalOpen] = useState(false);
   const [isCloudPickerOpen, setIsCloudPickerOpen] = useState(false);
-  const [selectedCloudProvider, setSelectedCloudProvider] = useState("taban");
+  const [selectedCloudProvider, setSelectedCloudProvider] = useState("zoho");
   const [documentSearch, setDocumentSearch] = useState("");
   const [cloudSearchQuery, setCloudSearchQuery] = useState("");
   const [selectedCloudFiles, setSelectedCloudFiles] = useState([]);
@@ -252,11 +582,107 @@ export default function NewSalesReceipt() {
     return `${baseName} [${rate}%]`;
   };
 
-  const findTaxById = (taxId) => {
-    if (!taxId) return undefined;
-    const normalized = String(taxId);
-    return taxes.find((t) => String(t.id || t._id || "") === normalized);
+  const parseTaxRate = (value) => {
+    const numeric = parseFloat(String(value ?? "").replace(/[^0-9.-]/g, ""));
+    return Number.isFinite(numeric) ? numeric : 0;
   };
+
+  const getTaxBySelection = (value) => {
+    const valueStr = String(value ?? "").trim();
+    if (!valueStr) return null;
+
+    const byId = taxes.find((t) => String(t.id || t._id || "").trim() === valueStr);
+    if (byId) return byId;
+
+    const byName = taxes.find((t) => {
+      const taxName = String(t.name || t.taxName || "").trim().toLowerCase();
+      return taxName && taxName === valueStr.toLowerCase();
+    });
+    if (byName) return byName;
+
+    const numericRate = parseTaxRate(valueStr);
+    if (numericRate > 0) {
+      const byRate = taxes.find((t) => parseTaxRate(t.rate) === numericRate);
+      if (byRate) return byRate;
+    }
+
+    return null;
+  };
+
+  const findTaxById = (taxId) => getTaxBySelection(taxId);
+
+  const getNormalizedTaxId = (taxObj) => {
+    if (!taxObj) return "";
+    return String(taxObj?.id || taxObj?._id || taxObj?.taxId || "").trim();
+  };
+
+  const defaultTaxId = useMemo(() => {
+    const activeRows = (taxes || []).filter((tax) => {
+      if (!tax) return false;
+      const status = String(tax?.status || "").toLowerCase();
+      if (status === "inactive") return false;
+      if (tax?.active === false || tax?.isActive === false) return false;
+      const name = String(tax?.name || tax?.taxName || "").trim();
+      return Boolean(name);
+    });
+
+    const preferred =
+      activeRows.find((tax) => Boolean(tax?.isDefault || tax?.default)) ||
+      activeRows[0] ||
+      taxes?.[0] ||
+      null;
+
+    return preferred ? getNormalizedTaxId(preferred) : "";
+  }, [taxes]);
+
+  const getCustomerTaxMeta = (customer) => {
+    const raw = String(
+      customer?.taxRate ??
+      customer?.taxId ??
+      customer?.defaultTaxId ??
+      customer?.tax ??
+      customer?.taxName ??
+      ""
+    ).trim();
+    if (!raw) return { taxId: "", taxRate: 0 };
+    const taxObj = getTaxBySelection(raw);
+    if (!taxObj) return { taxId: "", taxRate: 0 };
+    return { taxId: getNormalizedTaxId(taxObj), taxRate: parseTaxRate(taxObj.rate) };
+  };
+
+  const getTaxMetaById = (taxId) => {
+    const taxObj = getTaxBySelection(taxId);
+    if (!taxObj) return { taxId: "", taxRate: 0 };
+    return { taxId: getNormalizedTaxId(taxObj), taxRate: parseTaxRate(taxObj.rate) };
+  };
+
+  const getItemTaxMeta = (item: any) => {
+    const raw = String(
+      item?.taxId ??
+      item?.tax ??
+      item?.taxName ??
+      ""
+    ).trim();
+    const taxObj = raw ? getTaxBySelection(raw) : null;
+    if (taxObj) {
+      return { taxId: getNormalizedTaxId(taxObj), taxRate: parseTaxRate(taxObj.rate) };
+    }
+
+    const taxRate = parseTaxRate(item?.taxRate ?? item?.taxInfo?.taxRate ?? item?.salesTaxRate);
+    return { taxId: "", taxRate };
+  };
+
+  const shippingChargeTaxOption = useMemo(
+    () => findTaxById(formData.shippingChargeTax),
+    [formData.shippingChargeTax, taxes]
+  );
+
+  const shippingChargeTaxAmount = useMemo(() => {
+    const shippingAmount = showShippingCharges ? (parseFloat(formData.shippingCharges) || 0) : 0;
+    const taxRate = Number(shippingChargeTaxOption?.rate || 0);
+    if (shippingAmount <= 0 || taxRate <= 0) return 0;
+    return Number((shippingAmount * taxRate / 100).toFixed(2));
+  }, [formData.shippingCharges, shippingChargeTaxOption, showShippingCharges]);
 
   const getItemComputation = (item, taxInclusiveMode = formData.taxInclusive) => {
     const quantity = parseFloat(item.quantity) || 0;
@@ -268,8 +694,8 @@ export default function NewSalesReceipt() {
       ? (lineBase * discount / 100)
       : discount;
     const afterDiscount = Math.max(0, lineBase - lineDiscount);
-    const taxOption = findTaxById(item.tax);
-    const taxRate = Number(taxOption?.rate || 0);
+    const taxOption = getTaxBySelection(item.tax);
+    const taxRate = Number(taxOption?.rate || item?.taxRate || 0);
     const taxAmount = taxRate > 0
       ? (taxInclusiveMode === "Tax Inclusive"
         ? (afterDiscount - (afterDiscount / (1 + taxRate / 100)))
@@ -367,15 +793,64 @@ export default function NewSalesReceipt() {
           })));
         }
 
+        try {
+          const reportingTagsResponse = await reportingTagsAPI.getAll();
+          const reportingTagRows = Array.isArray(reportingTagsResponse)
+            ? reportingTagsResponse
+            : (reportingTagsResponse?.data || []);
+          const fallbackReportingTags = (() => {
+            try {
+              const raw = localStorage.getItem("taban_books_reporting_tags");
+              const parsed = raw ? JSON.parse(raw) : [];
+              return Array.isArray(parsed) ? parsed : [];
+            } catch {
+              return [];
+            }
+          })();
+          const sourceReportingTags = reportingTagRows.length > 0 ? reportingTagRows : fallbackReportingTags;
+          const activeReportingTags = sourceReportingTags.filter((tag: any) => String(tag?.status || "active").toLowerCase() !== "inactive");
+          const salesScopedReportingTags = activeReportingTags.filter((tag: any) => {
+            const appliesTo = normalizeReportingTagAppliesTo(tag);
+            return appliesTo.some((entry) => entry.includes("sales") || entry.includes("receipt"));
+          });
+          setAvailableReportingTags(salesScopedReportingTags.length > 0 ? salesScopedReportingTags : activeReportingTags);
+        } catch (reportingTagError) {
+          console.error("Error loading reporting tags:", reportingTagError);
+          setAvailableReportingTags([]);
+        }
+
         // Load taxes
         const normalizeTaxes = (rows = []) =>
           rows.map((t) => ({
+            ...t,
             id: t.id || t._id,
             _id: t._id || t.id,
             name: t.name || "Tax",
             rate: Number(t.rate || 0),
             type: t.type || "both",
-            isActive: t.isActive !== false
+            isActive: t.isActive !== false,
+            isDefault: Boolean(t.isDefault || t.default),
+            default: Boolean(t.default || t.isDefault),
+            status: t.status || (t.isActive === false ? "inactive" : "active"),
+            active: t.active !== false,
+            isCompound: Boolean(t.isCompound || t.is_compound),
+            is_compound: Boolean(t.isCompound || t.is_compound),
+            isGroup: Boolean(t.isGroup || t.is_group),
+            is_group: Boolean(t.isGroup || t.is_group),
+            taxGroup: Boolean(t.taxGroup || t.isTaxGroup || t.is_tax_group),
+            isTaxGroup: Boolean(t.taxGroup || t.isTaxGroup || t.is_tax_group),
+            is_tax_group: Boolean(t.taxGroup || t.isTaxGroup || t.is_tax_group),
+            kind: t.kind,
+            taxType: t.taxType || t.tax_type,
+            tax_type: t.tax_type || t.taxType,
+            groupTaxes: Array.isArray(t.groupTaxes) ? t.groupTaxes : t.groupTaxes,
+            groupTaxesIds: Array.isArray(t.groupTaxesIds) ? t.groupTaxesIds : t.groupTaxesIds,
+            groupTaxIds: Array.isArray(t.groupTaxIds) ? t.groupTaxIds : t.groupTaxIds,
+            group_taxes: Array.isArray(t.group_taxes) ? t.group_taxes : t.group_taxes,
+            group_tax_ids: Array.isArray(t.group_tax_ids) ? t.group_tax_ids : t.group_tax_ids,
+            associatedTaxes: Array.isArray(t.associatedTaxes) ? t.associatedTaxes : t.associatedTaxes,
+            associated_taxes: Array.isArray(t.associated_taxes) ? t.associated_taxes : t.associated_taxes,
+            children: Array.isArray(t.children) ? t.children : t.children
           }));
 
         let loadedTaxes = [];
@@ -401,11 +876,39 @@ export default function NewSalesReceipt() {
 
         setTaxes(loadedTaxes);
 
-        // Load items
-        const itemsResponse = await itemsAPI.getAll();
-        if (itemsResponse && itemsResponse.data) {
-          setItems(itemsResponse.data);
+        // Load items into the catalog
+        const catalogRows: any[] = [];
+
+        try {
+          let itemRows: any[] = [];
+
+          try {
+            const directItemsResponse = await itemsAPI.getAll({ limit: 1000, per_page: 1000, page: 1 });
+            itemRows = extractApiRows(directItemsResponse);
+          } catch (directError) {
+            console.error("Direct database item load failed for sales receipt:", directError);
+          }
+
+          if (!Array.isArray(itemRows) || itemRows.length === 0) {
+            itemRows = await fetchItemsList();
+          }
+          catalogRows.push(
+            ...itemRows
+              .map((row: any, index: number) => normalizeCatalogEntry(row, "item", index))
+              .filter((row: any) => row && String(row.status || "active").toLowerCase() !== "inactive")
+          );
+        } catch (error) {
+          console.error("Error loading items for sales receipt:", error);
         }
+
+        const uniqueCatalog = new Map<string, any>();
+        catalogRows.forEach((entry) => {
+          const key = `${String(entry?.sourceId || entry?.id || entry?.name || "")}`;
+          if (key && !key.endsWith(":")) {
+            uniqueCatalog.set(key, entry);
+          }
+        });
+        setItems(Array.from(uniqueCatalog.values()));
 
         // Load deposit accounts (Cash and Bank accounts)
         const accountsResponse = await chartOfAccountsAPI.getAccounts({ limit: 1000 });
@@ -423,7 +926,7 @@ export default function NewSalesReceipt() {
                 name.includes('undeposited');
             })
             .map(acc => {
-              // Normalize for grouping in TabanSelect
+              // Normalize for grouping in ZohoSelect
               let type = acc.account_type || acc.accountType || 'Other';
               const nameLower = (acc.accountName || acc.name || "").toLowerCase();
               if (nameLower.includes('cash') || nameLower.includes('petty') || nameLower.includes('undeposited') || type === 'cash') {
@@ -475,20 +978,17 @@ export default function NewSalesReceipt() {
 
         // Load next sales receipt number
         if (!isEditMode) {
-          const numberSeriesResponse = await transactionNumberSeriesAPI.getAll();
-          if (numberSeriesResponse && numberSeriesResponse.data) {
-            const salesReceiptSeries = numberSeriesResponse.data.find(
-              series => series.module === 'sales_receipt' || (series.name || "").toLowerCase().includes('sales receipt')
-            );
-            if (salesReceiptSeries) {
-              const nextNumber = await transactionNumberSeriesAPI.getNextNumber(salesReceiptSeries.id);
-              if (nextNumber && nextNumber.data) {
-                setFormData(prev => ({
-                  ...prev,
-                  receiptNumber: nextNumber.data.next_number
-                }));
-              }
-            }
+          const nextNumberResponse = await salesReceiptsAPI.getNextNumber();
+          const nextNumber =
+            nextNumberResponse?.data?.nextNumber ||
+            nextNumberResponse?.data?.next_number ||
+            nextNumberResponse?.data?.receiptNumber ||
+            nextNumberResponse?.nextNumber;
+          if (nextNumber) {
+            setFormData(prev => ({
+              ...prev,
+              receiptNumber: String(nextNumber).trim()
+            }));
           }
         }
 
@@ -551,6 +1051,7 @@ export default function NewSalesReceipt() {
       }
       if (!showShippingCharges && Number(next.shippingCharges || 0) !== 0) {
         next.shippingCharges = 0;
+        next.shippingChargeTax = "";
         changed = true;
       }
       if (!showAdjustment && Number(next.adjustment || 0) !== 0) {
@@ -674,26 +1175,49 @@ export default function NewSalesReceipt() {
       if (salespersonDropdownRef.current && !salespersonDropdownRef.current.contains(event.target)) {
         setIsSalespersonDropdownOpen(false);
       }
+      if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target)) {
+        setIsLocationDropdownOpen(false);
+      }
       if (taxInclusiveDropdownRef.current && !taxInclusiveDropdownRef.current.contains(event.target)) {
         setIsTaxInclusiveDropdownOpen(false);
       }
+      Object.keys(openReportingTagDropdowns).forEach((tagKey) => {
+        if (openReportingTagDropdowns[tagKey]) {
+          const ref = reportingTagDropdownRefs.current[tagKey];
+          if (ref && ref.current && !ref.current.contains(event.target)) {
+            setOpenReportingTagDropdowns((prev) => ({ ...prev, [tagKey]: false }));
+            setReportingTagSearches((prev) => ({ ...prev, [tagKey]: "" }));
+          }
+        }
+      });
       if (paymentModeDropdownRef.current && !paymentModeDropdownRef.current.contains(event.target)) {
         setIsPaymentModeDropdownOpen(false);
       }
       if (depositToDropdownRef.current && !depositToDropdownRef.current.contains(event.target)) {
         setIsDepositToDropdownOpen(false);
       }
-      if (receiptDatePickerRef.current && !receiptDatePickerRef.current.contains(event.target)) {
-        setIsReceiptDatePickerOpen(false);
+      if (shippingChargeTaxDropdownRef.current && !shippingChargeTaxDropdownRef.current.contains(event.target)) {
+        setIsShippingChargeTaxDropdownOpen(false);
       }
-      if (discountTypeDropdownRef.current && !discountTypeDropdownRef.current.contains(event.target)) {
+        if (receiptDatePickerRef.current && !receiptDatePickerRef.current.contains(event.target)) {
+          setIsReceiptDatePickerOpen(false);
+        }
+        if (priceListDropdownRef.current && !priceListDropdownRef.current.contains(event.target)) {
+          setIsPriceListDropdownOpen(false);
+        }
+        if (discountTypeDropdownRef.current && !discountTypeDropdownRef.current.contains(event.target)) {
         setIsDiscountTypeDropdownOpen(false);
       }
 
       Object.keys(openItemDropdowns).forEach(itemId => {
         if (openItemDropdowns[itemId]) {
           const ref = itemDropdownRefs.current[itemId];
-          if (ref && ref.current && !ref.current.contains(event.target)) {
+          const portalRef = itemDropdownPortalRefs.current[itemId];
+          const anchorElement = ref?.current || ref;
+          const portalElement = portalRef?.current || portalRef;
+          const clickedInsideAnchor = anchorElement && typeof anchorElement.contains === "function" && anchorElement.contains(event.target);
+          const clickedInsidePortal = portalElement && typeof portalElement.contains === "function" && portalElement.contains(event.target);
+          if (!clickedInsideAnchor && !clickedInsidePortal) {
             setOpenItemDropdowns(prev => ({ ...prev, [itemId]: false }));
           }
         }
@@ -729,12 +1253,20 @@ export default function NewSalesReceipt() {
           setOpenItemMenuId(null);
         }
       }
+
+      if (additionalInfoMenuRef.current && !additionalInfoMenuRef.current.contains(event.target)) {
+        setActiveAccountDropdownItemId(null);
+        setAdditionalInfoSearch("");
+      }
+      if (additionalInfoReportingRef.current && !additionalInfoReportingRef.current.contains(event.target)) {
+        setActiveReportingDropdownItemId(null);
+      }
     };
 
-    const hasOpenDropdown = isCustomerDropdownOpen || isSalespersonDropdownOpen ||
-      isTaxInclusiveDropdownOpen || isPaymentModeDropdownOpen || isDepositToDropdownOpen ||
-      isReceiptDatePickerOpen || Object.values(openItemDropdowns).some(Boolean) || Object.values(openTaxDropdowns).some(Boolean) ||
-      isDiscountTypeDropdownOpen;
+      const hasOpenDropdown = isCustomerDropdownOpen || isSalespersonDropdownOpen || isLocationDropdownOpen ||
+        isTaxInclusiveDropdownOpen || isPaymentModeDropdownOpen || isDepositToDropdownOpen || isShippingChargeTaxDropdownOpen || isPriceListDropdownOpen ||
+        isReceiptDatePickerOpen || Object.values(openItemDropdowns).some(Boolean) || Object.values(openTaxDropdowns).some(Boolean) || Object.values(openReportingTagDropdowns).some(Boolean) ||
+      isDiscountTypeDropdownOpen || activeAccountDropdownItemId !== null || activeReportingDropdownItemId !== null;
 
     if (hasOpenDropdown) {
       document.addEventListener("mousedown", handleClickOutside);
@@ -743,7 +1275,7 @@ export default function NewSalesReceipt() {
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isCustomerDropdownOpen, isSalespersonDropdownOpen, isTaxInclusiveDropdownOpen, isPaymentModeDropdownOpen, isDepositToDropdownOpen, isReceiptDatePickerOpen, openItemDropdowns, openTaxDropdowns]);
+    }, [isCustomerDropdownOpen, isSalespersonDropdownOpen, isLocationDropdownOpen, isTaxInclusiveDropdownOpen, isPaymentModeDropdownOpen, isDepositToDropdownOpen, isShippingChargeTaxDropdownOpen, isPriceListDropdownOpen, isReceiptDatePickerOpen, openItemDropdowns, openTaxDropdowns, openReportingTagDropdowns, activeAccountDropdownItemId, activeReportingDropdownItemId]);
 
   // Set item from navigation state (when coming from item detail page)
   useEffect(() => {
@@ -832,13 +1364,26 @@ export default function NewSalesReceipt() {
       if (isEditMode && id) {
         if (!isDataLoaded || hasLoadedEditDataRef.current) return;
         try {
-          const receipt = await getSalesReceiptById(id);
+          const stateReceiptId = String(receiptFromState?.id || receiptFromState?._id || "").trim();
+          const currentReceiptId = String(id || "").trim();
+          let receipt = await getSalesReceiptById(id);
+          if (!receipt && stateReceiptId && stateReceiptId === currentReceiptId) {
+            // Fallback to navigation state if API detail temporarily fails.
+            receipt = receiptFromState;
+          }
           if (!receipt) return;
 
           const mappedItems = Array.isArray(receipt.items) && receipt.items.length > 0
             ? receipt.items.map((line, index) => {
-              const itemId = toEntityId(line?.item || line?.itemId);
-              const matchedItem = items.find((itemRow) => String(itemRow.id || itemRow._id || "") === itemId);
+              const itemId = toEntityId(
+                line?.item ||
+                line?.itemId ||
+                line?.item_id ||
+                line?.product ||
+                line?.productId ||
+                line?.product_id
+              );
+              const matchedItem = items?.find((itemRow) => String(itemRow?.id || itemRow?._id || "") === itemId);
               const quantity = toFiniteNumber(line?.quantity, 1) || 1;
               const rate = toFiniteNumber(line?.unitPrice ?? line?.rate ?? line?.price, 0);
               const discount = toFiniteNumber(line?.discount, 0);
@@ -846,7 +1391,16 @@ export default function NewSalesReceipt() {
               return {
                 id: Date.now() + index + Math.floor(Math.random() * 1000),
                 itemId,
-                itemDetails: String(line?.name || line?.itemDetails || matchedItem?.name || line?.description || "").trim(),
+                itemDetails: String(
+                  line?.name ||
+                  line?.itemDetails ||
+                  line?.itemName ||
+                  line?.item?.name ||
+                  line?.product?.name ||
+                  matchedItem?.name ||
+                  line?.description ||
+                  ""
+                ).trim(),
                 quantity,
                 rate,
                 discount,
@@ -857,12 +1411,12 @@ export default function NewSalesReceipt() {
                 description: line?.description || ""
               };
             })
-            : [
+            : prev.items && prev.items.length > 0 ? prev.items : [
               { id: 1, itemDetails: "", quantity: 1, rate: 0, discount: 0, discountType: "percent", tax: "", amount: 0 }
             ];
 
-          const customerObject = typeof receipt.customer === "object" ? receipt.customer : null;
-          const customerId = String(receipt.customerId || customerObject?._id || customerObject?.id || receipt.customer || "").trim();
+          const customerObject = typeof receipt.customer === "object" && receipt.customer !== null ? receipt.customer : null;
+          const customerId = String(receipt.customerId || customerObject?._id || customerObject?.id || (typeof receipt.customer === "string" ? receipt.customer : "") || "").trim();
           const customerName = String(
             receipt.customerName ||
             customerObject?.displayName ||
@@ -870,74 +1424,89 @@ export default function NewSalesReceipt() {
             customerObject?.name ||
             ""
           ).trim();
+          const fallbackCustomerLabel = typeof receipt.customer === "string" ? receipt.customer : "";
+          const normalizedCustomerLabel = (customerName || fallbackCustomerLabel || "").trim();
 
-          const matchedCustomer = customers.find((customer) => {
-            const idMatch = customerId && String(customer.id || customer._id || "") === customerId;
-            const nameMatch = customerName && String(customer.name || "").trim().toLowerCase() === customerName.toLowerCase();
+          const matchedCustomer = customers?.find((customer) => {
+            const idMatch = customerId && String(customer?.id || customer?._id || "") === customerId;
+            const nameMatch = customerName && String(customer?.name || "").trim().toLowerCase() === customerName.toLowerCase();
             return idMatch || nameMatch;
           });
 
           const salespersonName = String(
-            typeof receipt.salesperson === "object"
+            typeof receipt.salesperson === "object" && receipt.salesperson !== null
               ? (receipt.salesperson?.name || receipt.salesperson?.displayName || "")
               : (receipt.salesperson || "")
           ).trim();
-          const matchedSalesperson = salespersons.find((sp) =>
-            String(sp.name || "").trim().toLowerCase() === salespersonName.toLowerCase()
+          const matchedSalesperson = salespersons?.find((sp) =>
+            String(sp?.name || "").trim().toLowerCase() === salespersonName.toLowerCase()
           );
 
           const depositAccountId = toEntityId(receipt.depositToAccount || receipt.depositToAccountId);
-          const matchedDepositAccount = depositAccounts.find((account) => {
-            const accountId = String(account.id || account._id || "");
-            const accountName = String(account.accountName || account.name || "").trim().toLowerCase();
+          const matchedDepositAccount = depositAccounts?.find((account) => {
+            const accountId = String(account?.id || account?._id || "");
+            const accountName = String(account?.accountName || account?.name || "").trim().toLowerCase();
             const depositName = String(receipt.depositTo || "").trim().toLowerCase();
             return (depositAccountId && accountId === depositAccountId) || (depositName && accountName === depositName);
           });
 
-          setFormData((prev) => ({
-            ...prev,
-            customerName: matchedCustomer?.name || customerName || prev.customerName,
-            receiptDate: receipt.date ? formatDate(receipt.date) : (receipt.receiptDate ? formatDate(receipt.receiptDate) : prev.receiptDate),
-            receiptNumber: receipt.receiptNumber || prev.receiptNumber,
-            salesperson: matchedSalesperson?.name || salespersonName || prev.salesperson,
-            taxInclusive: receipt.taxInclusive || prev.taxInclusive,
+          setFormData((currPrev) => ({
+            ...currPrev,
+            customerName: matchedCustomer?.name || normalizedCustomerLabel || currPrev.customerName,
+            receiptDate: receipt.date ? formatDate(receipt.date) : (receipt.receiptDate ? formatDate(receipt.receiptDate) : currPrev.receiptDate),
+            selectedLocation: receipt.selectedLocation || receipt.location || currPrev.selectedLocation,
+            reportingTags: Array.isArray(receipt.reportingTags) ? receipt.reportingTags : currPrev.reportingTags,
+            receiptNumber: receipt.receiptNumber || receipt.salesReceiptNumber || currPrev.receiptNumber,
+            salesperson: matchedSalesperson?.name || salespersonName || currPrev.salesperson,
+            taxInclusive: receipt.taxInclusive || currPrev.taxInclusive,
             items: mappedItems,
-            subTotal: toFiniteNumber(receipt.subtotal ?? receipt.subTotal, prev.subTotal),
-            discount: toFiniteNumber(receipt.discount, prev.discount),
-            discountType: String(receipt.discountType || prev.discountType || "percent").toLowerCase().includes("amount") ? "amount" : "percent",
-            shippingCharges: toFiniteNumber(receipt.shippingCharges, prev.shippingCharges),
-            adjustment: toFiniteNumber(receipt.adjustment, prev.adjustment),
-            roundOff: toFiniteNumber(receipt.roundOff, prev.roundOff),
-            total: toFiniteNumber(receipt.total ?? receipt.amount, prev.total),
-            currency: receipt.currency || prev.currency,
-            notes: receipt.notes || prev.notes,
-            termsAndConditions: receipt.termsAndConditions || receipt.terms || prev.termsAndConditions,
-            paymentMode: receipt.paymentMode || receipt.paymentMethod || prev.paymentMode,
-            depositTo: matchedDepositAccount?.accountName || matchedDepositAccount?.name || receipt.depositTo || prev.depositTo,
-            depositToAccountId: matchedDepositAccount?.id || matchedDepositAccount?._id || depositAccountId || prev.depositToAccountId,
-            referenceNumber: receipt.referenceNumber || receipt.reference || receipt.paymentReference || prev.referenceNumber
+            subTotal: toFiniteNumber(receipt.subtotal ?? receipt.subTotal, currPrev.subTotal),
+            discount: toFiniteNumber(receipt.discount, currPrev.discount),
+            discountType: String(receipt.discountType || currPrev.discountType || "percent").toLowerCase().includes("amount") ? "amount" : "percent",
+            shippingCharges: toFiniteNumber(receipt.shippingCharges, currPrev.shippingCharges),
+            shippingChargeTax: receipt.shippingChargeTax || receipt.shippingTax || currPrev.shippingChargeTax,
+            adjustment: toFiniteNumber(receipt.adjustment, currPrev.adjustment),
+            roundOff: toFiniteNumber(receipt.roundOff, currPrev.roundOff),
+            total: toFiniteNumber(receipt.total ?? receipt.amount, currPrev.total),
+            createdBy: getCreatedByValue(receipt.createdBy) || currPrev.createdBy,
+            currency: receipt.currency || currPrev.currency,
+            notes: receipt.notes || currPrev.notes,
+            termsAndConditions: receipt.termsAndConditions || receipt.terms || currPrev.termsAndConditions,
+            paymentMode: receipt.paymentMode || receipt.paymentMethod || currPrev.paymentMode,
+            depositTo: matchedDepositAccount?.accountName || matchedDepositAccount?.name || receipt.depositTo || currPrev.depositTo,
+            depositToAccountId: matchedDepositAccount?.id || matchedDepositAccount?._id || depositAccountId || currPrev.depositToAccountId,
+            referenceNumber: receipt.referenceNumber || receipt.reference || receipt.paymentReference || currPrev.referenceNumber
           }));
 
           if (matchedCustomer) {
             setSelectedCustomer(matchedCustomer);
-          } else if (customerName) {
+          } else if (normalizedCustomerLabel) {
             setSelectedCustomer({
               id: customerId || undefined,
               _id: customerId || undefined,
-              name: customerName,
+              name: normalizedCustomerLabel,
               email: receipt.customerEmail || customerObject?.email || ""
-            });
+            } as any);
           }
 
           if (matchedSalesperson) {
             setSelectedSalesperson(matchedSalesperson);
           } else if (salespersonName) {
-            setSelectedSalesperson({ name: salespersonName });
+            setSelectedSalesperson({ name: salespersonName } as any);
+          }
+
+          if (receipt.depositToAccountId && depositAccounts.length > 0) {
+            const acc = depositAccounts.find((a: any) => String(a.id || a._id) === String(receipt.depositToAccountId || ""));
+            if (acc) {
+               setFormData(prev => ({ ...prev, depositTo: acc.accountName || acc.name }));
+            }
           }
 
           hasLoadedEditDataRef.current = true;
         } catch (error) {
           console.error("Error loading receipt data:", error);
+          // Try to set some identifier so the user knows it at least partially loaded
+          // but an error occurred
         }
       } else {
         // Fetch next receipt number for new receipt
@@ -956,6 +1525,55 @@ export default function NewSalesReceipt() {
     };
     loadReceiptData();
   }, [isEditMode, id, isDataLoaded, customers, salespersons, taxes, items, depositAccounts]);
+
+  useEffect(() => {
+    if (hasLoadedEditDataRef.current) return;
+    if (isEditMode) return;
+
+    const state = location.state as any;
+    if (!state || state.source) return;
+
+    const customerId = String(state.customerId || state.customer?._id || state.customer?.id || "").trim();
+    const customerName = String(
+      state.customerName ||
+        state.customer?.displayName ||
+        state.customer?.companyName ||
+        state.customer?.name ||
+        ""
+    ).trim();
+
+    if (!customerId && !customerName) return;
+
+    const matchedCustomer =
+      (customerId
+        ? customers.find((customer) => String(customer.id || customer._id || "") === customerId)
+        : null) ||
+      customers.find(
+        (customer) =>
+          String(customer.name || customer.displayName || customer.companyName || "").trim().toLowerCase() ===
+          customerName.toLowerCase()
+      );
+
+    if (matchedCustomer) {
+      setSelectedCustomer(matchedCustomer);
+      setFormData((prev) => ({
+        ...prev,
+        customerName: matchedCustomer.name || matchedCustomer.displayName || customerName || prev.customerName,
+      }));
+    } else {
+      setSelectedCustomer({
+        id: customerId || undefined,
+        _id: customerId || undefined,
+        name: customerName,
+        displayName: customerName,
+        companyName: customerName,
+      } as any);
+      setFormData((prev) => ({
+        ...prev,
+        customerName: customerName || prev.customerName,
+      }));
+    }
+  }, [location.state, customers, isEditMode]);
 
   // Helper to recalculate totals
   const calculateTotalsHelper = (items, discount, discountType, shipping, adjustment) => {
@@ -976,7 +1594,7 @@ export default function NewSalesReceipt() {
 
     const shippingAmount = showShippingCharges ? (parseFloat(shipping) || 0) : 0;
     const adjustmentAmount = showAdjustment ? (parseFloat(adjustment) || 0) : 0;
-    const totalBeforeRound = grossItemsTotal - discountAmount + shippingAmount + adjustmentAmount;
+    const totalBeforeRound = grossItemsTotal - discountAmount + shippingAmount + shippingChargeTaxAmount + adjustmentAmount;
     const roundOff = 0;
     const total = totalBeforeRound + roundOff;
 
@@ -993,7 +1611,85 @@ export default function NewSalesReceipt() {
     setFormData(prev => ({ ...prev, customerName }));
     setIsCustomerDropdownOpen(false);
     setCustomerSearch("");
+    setIsCustomerInlineSearchMode(false);
   };
+
+  const customerTaxAppliedRef = useRef<{
+    customerId: string;
+    taxApplied: boolean;
+  }>({ customerId: "", taxApplied: false });
+
+  useEffect(() => {
+    if (!selectedCustomer) {
+      customerTaxAppliedRef.current = { customerId: "", taxApplied: false };
+      return;
+    }
+
+    const selectedCustomerId = String((selectedCustomer as any)?.id || (selectedCustomer as any)?._id || "").trim();
+    if (!selectedCustomerId) return;
+
+    if (customerTaxAppliedRef.current.customerId !== selectedCustomerId) {
+      customerTaxAppliedRef.current = { customerId: selectedCustomerId, taxApplied: false };
+    }
+
+    if (customerTaxAppliedRef.current.taxApplied) return;
+
+    const customerTaxMeta = getCustomerTaxMeta(selectedCustomer);
+    const fallbackDefaultTax = defaultTaxId ? getTaxMetaById(defaultTaxId) : { taxId: "", taxRate: 0 };
+
+    if (!customerTaxMeta.taxId && !fallbackDefaultTax.taxId) return;
+
+    setFormData((prev) => {
+      const updatedItems = (prev.items || []).map((row: any) => {
+        if (customerTaxMeta.taxId) {
+          const currentTaxId = String(row?.tax || "").trim();
+          const currentTaxRate = parseTaxRate(row?.taxRate);
+          if (currentTaxId === customerTaxMeta.taxId && currentTaxRate === customerTaxMeta.taxRate) return row;
+          return { ...row, tax: customerTaxMeta.taxId, taxRate: customerTaxMeta.taxRate };
+        }
+
+        const currentTaxId = String(row?.tax || "").trim();
+        const currentTaxRate = parseTaxRate(row?.taxRate);
+        if (currentTaxId || currentTaxRate > 0) return row;
+
+        const rowItem = row?.itemId
+          ? availableItems.find((item: any) => {
+              const rowItemId = String(row?.itemId || "").trim();
+              const sourceId = String(item?.sourceId || item?.id || item?._id || "").trim();
+              return rowItemId && sourceId === rowItemId;
+            })
+          : null;
+        const rowItemTaxMeta = rowItem ? getItemTaxMeta(rowItem) : { taxId: "", taxRate: 0 };
+        if (rowItemTaxMeta.taxId || rowItemTaxMeta.taxRate > 0) {
+          return { ...row, tax: rowItemTaxMeta.taxId, taxRate: rowItemTaxMeta.taxRate };
+        }
+
+        if (fallbackDefaultTax.taxId) {
+          return { ...row, tax: fallbackDefaultTax.taxId, taxRate: fallbackDefaultTax.taxRate };
+        }
+
+        return row;
+      });
+
+      const { subTotal, roundOff, total } = calculateTotalsHelper(
+        updatedItems,
+        prev.discount,
+        prev.discountType,
+        prev.shippingCharges,
+        prev.adjustment
+      );
+
+      return {
+        ...prev,
+        items: updatedItems,
+        subTotal,
+        roundOff,
+        total
+      };
+    });
+
+    customerTaxAppliedRef.current.taxApplied = true;
+  }, [selectedCustomer, defaultTaxId, taxes]);
 
   const handleSalespersonSelect = (salesperson: any) => {
     const salespersonName = salesperson?.name || "";
@@ -1052,6 +1748,75 @@ export default function NewSalesReceipt() {
     }));
     setSalespersons(normalizedSalespersons);
     return normalizedSalespersons;
+  };
+
+  const filteredManageSalespersons = salespersons.filter((salesperson) => {
+    const term = (manageSalespersonSearch || "").toLowerCase().trim();
+    if (!term) return true;
+    return (
+      String(salesperson.name || "").toLowerCase().includes(term) ||
+      String(salesperson.email || "").toLowerCase().includes(term)
+    );
+  });
+
+  const handleNewSalespersonChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = event.target;
+    setNewSalespersonData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSaveAndSelectSalesperson = async () => {
+    if (!newSalespersonData.name.trim()) {
+      toast.error("Please enter a name for the salesperson.");
+      return;
+    }
+
+    try {
+      const response = await salespersonsAPI.create({
+        name: newSalespersonData.name.trim(),
+        email: newSalespersonData.email.trim() || "",
+        phone: ""
+      });
+
+      if (response && response.success && response.data) {
+        const savedSalesperson = response.data;
+        await reloadSalespersonsForSalesReceipt();
+        setSelectedSalesperson(savedSalesperson);
+        setFormData((prev) => ({ ...prev, salesperson: savedSalesperson.name }));
+        setNewSalespersonData({ name: "", email: "" });
+        setIsNewSalespersonFormOpen(false);
+        setIsManageSalespersonsModalOpen(false);
+        setIsSalespersonDropdownOpen(false);
+      } else {
+        toast.error("Failed to save salesperson. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error saving salesperson:", error);
+      toast.error("Error saving salesperson. Please try again.");
+    }
+  };
+
+  const handleCancelNewSalesperson = () => {
+    setIsNewSalespersonFormOpen(false);
+    setNewSalespersonData({ name: "", email: "" });
+  };
+
+  const handleDeleteSalesperson = async (salespersonId: string) => {
+    if (!window.confirm("Are you sure you want to delete this salesperson?")) {
+      return;
+    }
+
+    try {
+      const response = await salespersonsAPI.delete(salespersonId);
+      if (response && response.success) {
+        await reloadSalespersonsForSalesReceipt();
+        setSelectedSalespersonsForManage((prev) => prev.filter((id) => id !== salespersonId));
+      } else {
+        toast.error("Failed to delete salesperson.");
+      }
+    } catch (error) {
+      console.error("Error deleting salesperson:", error);
+      toast.error("Error deleting salesperson. Please try again.");
+    }
   };
 
   const openCustomerQuickAction = async () => {
@@ -1119,14 +1884,32 @@ export default function NewSalesReceipt() {
     setFormData(prev => {
       const updatedItems = prev.items.map(item => {
         if (item.id === itemId) {
+          const entityType = String(product.entityType || product.itemEntityType || "item").toLowerCase();
+          const selectedCustomerTax = selectedCustomer ? getCustomerTaxMeta(selectedCustomer) : { taxId: "", taxRate: 0 };
+          const itemTaxMeta = getItemTaxMeta(product);
+          const fallbackDefaultTax = defaultTaxId ? getTaxMetaById(defaultTaxId) : { taxId: "", taxRate: 0 };
+          const resolvedTaxMeta = selectedCustomerTax.taxId || selectedCustomerTax.taxRate > 0
+            ? selectedCustomerTax
+            : (itemTaxMeta.taxId || itemTaxMeta.taxRate > 0
+              ? itemTaxMeta
+              : fallbackDefaultTax);
           const updatedItem = {
             ...item,
-            itemId: product.id || product._id,
+            itemId: product.sourceId || product.id || product._id,
             itemDetails: product.name,
             rate: product.sellingPrice || product.rate || 0,
             sku: product.sku,
-            stockOnHand: product.stockQuantity ?? product.stock_on_hand ?? product.stockOnHand ?? 0
+            stockOnHand: product.stockQuantity ?? product.stock_on_hand ?? product.stockOnHand ?? 0,
+            unit: product.unit || "",
+            description: item.description || "",
+            warehouseLocation: item.warehouseLocation || formData.selectedLocation || "Head Office",
+            entityType,
+            itemEntityType: entityType,
           };
+          if (resolvedTaxMeta.taxId || resolvedTaxMeta.taxRate > 0) {
+            updatedItem.tax = resolvedTaxMeta.taxId;
+            updatedItem.taxRate = resolvedTaxMeta.taxRate;
+          }
           updatedItem.amount = calculateItemAmount(updatedItem, prev.taxInclusive);
           return updatedItem;
         }
@@ -1182,11 +1965,23 @@ export default function NewSalesReceipt() {
   };
 
   const handleAddItem = () => {
+    const selectedCustomerTax = selectedCustomer ? getCustomerTaxMeta(selectedCustomer) : { taxId: "", taxRate: 0 };
+    const fallbackDefaultTax = defaultTaxId ? getTaxMetaById(defaultTaxId) : { taxId: "", taxRate: 0 };
     setFormData(prev => ({
       ...prev,
       items: [
         ...prev.items,
-        { id: Date.now() + Math.floor(Math.random() * 1000), itemDetails: "", quantity: 1, rate: 0, discount: 0, discountType: "percent", tax: "", amount: 0 }
+        {
+          id: Date.now() + Math.floor(Math.random() * 1000),
+          itemDetails: "",
+          quantity: 1,
+          rate: 0,
+          discount: 0,
+          discountType: "percent",
+          tax: selectedCustomerTax.taxId || fallbackDefaultTax.taxId || "",
+          taxRate: selectedCustomerTax.taxRate || fallbackDefaultTax.taxRate || 0,
+          amount: 0
+        }
       ]
     }));
   };
@@ -1247,13 +2042,37 @@ export default function NewSalesReceipt() {
 
   const getFilteredItems = (itemId) => {
     const searchTerm = itemSearches[itemId] || "";
+    const activeItems = items.filter((item) => String(item.entityType || item.itemEntityType || "item").toLowerCase() === "item" && String(item.status || "active").toLowerCase() !== "inactive");
     // If no search term, show available items
-    if (!searchTerm) return items;
+    if (!searchTerm) return activeItems;
     const term = searchTerm.toLowerCase();
-    return items.filter(item =>
+    return activeItems.filter(item =>
       (item.name || '').toLowerCase().includes(term) ||
       (item.sku || '').toLowerCase().includes(term)
     );
+  };
+
+  const getItemDropdownPosition = (itemId) => {
+    const ref = itemDropdownRefs.current[itemId];
+    const element = ref?.current || ref;
+    if (!element || typeof element.getBoundingClientRect !== "function") return null;
+
+    const rect = element.getBoundingClientRect();
+    const dropdownHeight = 320;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const spaceBelow = viewportHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const shouldOpenAbove = spaceBelow < 220 && spaceAbove > spaceBelow;
+    const availableHeight = shouldOpenAbove
+      ? Math.max(180, Math.min(dropdownHeight, spaceAbove - 12))
+      : Math.max(180, Math.min(dropdownHeight, spaceBelow - 12));
+
+    return {
+      top: shouldOpenAbove ? Math.max(8, rect.top - availableHeight - 4) : rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+      maxHeight: availableHeight,
+    };
   };
 
   const getFilteredTaxes = (itemId) => {
@@ -1298,21 +2117,27 @@ export default function NewSalesReceipt() {
     if (bulkSelectedItems.length === 0) return;
 
     setFormData(prev => {
+      const selectedCustomerTax = selectedCustomer ? getCustomerTaxMeta(selectedCustomer) : { taxId: "", taxRate: 0 };
+      const fallbackDefaultTax = defaultTaxId ? getTaxMetaById(defaultTaxId) : { taxId: "", taxRate: 0 };
       const newItems = bulkSelectedItems.map((selectedItem, index) => {
         const quantity = selectedItem.quantity || 1;
         const rate = selectedItem.rate || 0;
-        const taxId = "";
-        const taxOption = taxes.find(t => (t.id || t._id) === taxId);
-        const taxRate = taxOption ? taxOption.rate : 0;
+        const itemTaxMeta = getItemTaxMeta(selectedItem);
+        const resolvedTaxMeta = selectedCustomerTax.taxId || selectedCustomerTax.taxRate > 0
+          ? selectedCustomerTax
+          : (itemTaxMeta.taxId || itemTaxMeta.taxRate > 0
+            ? itemTaxMeta
+            : fallbackDefaultTax);
         const subAmt = quantity * rate;
-        const amount = subAmt + (subAmt * taxRate / 100);
+        const amount = subAmt + (subAmt * (resolvedTaxMeta.taxRate || 0) / 100);
         return {
           id: Date.now() + index + Math.floor(Math.random() * 1000),
-          itemId: selectedItem.id || selectedItem._id,
+          itemId: selectedItem.sourceId || selectedItem.id || selectedItem._id,
           itemDetails: selectedItem.name,
           quantity: quantity,
           rate: rate,
-          tax: "",
+          tax: resolvedTaxMeta.taxId || "",
+          taxRate: resolvedTaxMeta.taxRate || 0,
           amount: amount,
           stockOnHand: selectedItem.stockQuantity ?? selectedItem.stock_on_hand ?? selectedItem.stockOnHand ?? 0
         };
@@ -1388,12 +2213,14 @@ export default function NewSalesReceipt() {
     const normalizedItems = (formData.items || []).map((item) => {
       const matchedItem = items.find((itemRow) => {
         const rowId = String(itemRow.id || itemRow._id || "");
+        const rowSourceId = String(itemRow.sourceId || itemRow.source_id || "");
         const rowName = String(itemRow.name || "").trim().toLowerCase();
-        return rowId === String(item.itemId || "") || rowName === String(item.itemDetails || "").trim().toLowerCase();
+        const currentId = String(item.itemId || "");
+        return rowId === currentId || rowSourceId === currentId || rowName === String(item.itemDetails || "").trim().toLowerCase();
       });
 
-      const taxOption = taxes.find((tax) => String(tax.id || tax._id || "") === String(item.tax || ""));
-      const taxRate = Number(taxOption?.rate || 0);
+      const taxOption = getTaxBySelection(item.tax);
+      const taxRate = Number(taxOption?.rate || item?.taxRate || 0);
       const quantity = Number(item.quantity || 0);
       const rate = Number(item.rate || 0);
       const discount = showItemDiscount ? Number(item.discount || 0) : 0;
@@ -1413,7 +2240,8 @@ export default function NewSalesReceipt() {
       }
 
       return {
-        item: item.itemId || matchedItem?.id || matchedItem?._id,
+        item: item.itemId || matchedItem?.sourceId || matchedItem?.id || matchedItem?._id,
+        itemEntityType: matchedItem?.entityType || matchedItem?.itemEntityType || item.entityType || item.itemEntityType || "item",
         name: item.itemDetails,
         description: item.description || "",
         quantity,
@@ -1438,6 +2266,9 @@ export default function NewSalesReceipt() {
       customerName: matchedCustomer?.name || formData.customerName,
       customerEmail,
       salesperson: selectedSalesperson?.name || formData.salesperson,
+      location: formData.selectedLocation || "Head Office",
+      selectedLocation: formData.selectedLocation || "Head Office",
+      reportingTags: Array.isArray(formData.reportingTags) ? formData.reportingTags : [],
       date: normalizedDate,
       receiptDate: normalizedDate,
       status: statusValue,
@@ -1448,75 +2279,148 @@ export default function NewSalesReceipt() {
       discount: showTransactionDiscount ? Number(formData.discount || 0) : 0,
       discountType: showTransactionDiscount ? formData.discountType : "percent",
       shippingCharges: showShippingCharges ? Number(formData.shippingCharges || 0) : 0,
+      shippingChargeTax: showShippingCharges ? (formData.shippingChargeTax || "") : "",
       adjustment: showAdjustment ? Number(formData.adjustment || 0) : 0,
       depositTo: formData.depositTo,
       depositToAccount: formData.depositToAccountId || matchedDepositAccount?.id || matchedDepositAccount?._id,
+      createdBy: formData.createdBy || getCurrentUserLabel(),
       items: normalizedItems
     };
 
     return { receiptData, customerEmail };
   };
 
-  const buildSalesReceiptEmailBody = (receipt) => {
-    const receiptNumber = receipt?.receiptNumber || "SR-00001";
-    const receiptDate = formatDate(receipt?.receiptDate || receipt?.date || new Date());
-    const currency = String(receipt?.currency || baseCurrency || "USD").toUpperCase();
-    const amountPaid = `${currency}${Number(receipt?.total ?? 0).toFixed(2)}`;
-    const customerName = receipt?.customerName || "Customer";
-    const note = String(receipt?.notes || "").trim();
+  const validateBeforeSave = () => {
+    if (!hasSelectedReceiptItems(formData.items)) {
+      toast.error("Please select at least one item before saving the sales receipt.");
+      return false;
+    }
 
-    return `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #111827;">
-        <p style="font-size: 14px; line-height: 1.6; margin: 0 0 18px 0;">Dear ${customerName},</p>
-        <p style="font-size: 14px; line-height: 1.6; margin: 0 0 24px 0;">Please find attached the sales receipt for your recent purchase.</p>
+    const missingItems = (formData.items || []).filter((item) => !String(item?.itemId || "").trim());
+    if (missingItems.length > 0) {
+      toast.error("Please select an item for every receipt line before saving.");
+      return false;
+    }
 
-        <div style="background-color: #f8f7e9; border: 1px solid #e5e2cc; border-radius: 4px; padding: 34px 30px; margin: 26px 0;">
-          <div style="text-align: center;">
-            <div style="font-size: 34px; font-weight: 700; color: #111827; margin-bottom: 8px;">Amount Paid</div>
-            <div style="font-size: 46px; font-weight: 700; color: #22c55e; letter-spacing: 0.3px;">${amountPaid}</div>
-          </div>
+    return true;
+  };
 
-          <div style="border-top: 1px solid #ddd8bc; margin: 24px 0;"></div>
+  const reserveReceiptNumberForSave = async () => {
+    try {
+      const response = await salesReceiptsAPI.getNextNumber();
+      const nextNumber =
+        response?.data?.nextNumber ||
+        response?.data?.next_number ||
+        response?.data?.receiptNumber ||
+        response?.nextNumber ||
+        "";
+      return String(nextNumber || "").trim();
+    } catch (error) {
+      return "";
+    }
+  };
 
-          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-            <tr>
-              <td style="padding: 8px 0; color: #111827;">Receipt Number</td>
-              <td style="padding: 8px 0; color: #111827; text-align: right;">${receiptNumber}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0; color: #111827;">Receipt Date</td>
-              <td style="padding: 8px 0; color: #111827; text-align: right;">${receiptDate}</td>
-            </tr>
-          </table>
+  const resolveReceiptIdFromReceiptNumber = async (receiptNumber: string) => {
+    const target = String(receiptNumber || "").trim();
+    if (!target) return "";
+    try {
+      const listResponse: any = await salesReceiptsAPI.getAll({
+        limit: 100000,
+        _cacheBust: Date.now(),
+      });
+      const rows = Array.isArray(listResponse?.data)
+        ? listResponse.data
+        : Array.isArray(listResponse?.data?.data)
+          ? listResponse.data.data
+          : [];
+      const match = [...rows].reverse().find(
+        (row: any) => String(row?.receiptNumber || "").trim() === target,
+      );
+      return String(match?.id || match?._id || "").trim();
+    } catch {
+      return "";
+    }
+  };
 
-          <div style="border-top: 1px solid #ddd8bc; margin: 24px 0 20px;"></div>
+  const extractSavedReceiptId = async (savedReceipt: any, fallbackReceiptData: any) => {
+    const directId = String(
+      savedReceipt?.id ||
+      savedReceipt?._id ||
+      savedReceipt?.receiptId ||
+      savedReceipt?.data?.id ||
+      savedReceipt?.data?._id ||
+      savedReceipt?.data?.receiptId ||
+      id ||
+      ""
+    ).trim();
+    if (directId) return directId;
 
-          <div>
-            <div style="font-size: 14px; font-weight: 700; color: #111827; margin-bottom: 6px;">Note:</div>
-            <div style="font-size: 14px; color: #374151; line-height: 1.55;">${note || "-"}</div>
-          </div>
-        </div>
+    const receiptNumber = String(
+      savedReceipt?.receiptNumber ||
+      savedReceipt?.data?.receiptNumber ||
+      fallbackReceiptData?.receiptNumber ||
+      ""
+    ).trim();
+    if (receiptNumber) {
+      return await resolveReceiptIdFromReceiptNumber(receiptNumber);
+    }
 
-        <div style="margin-top: 18px;">
-          <p style="font-size: 14px; margin: 0 0 4px 0;">Regards,</p>
-          <p style="font-size: 14px; margin: 0; font-weight: 700;">Taban Enterprise</p>
-        </div>
-      </div>
-    `;
+    return "";
   };
 
   const handleSave = async () => {
     try {
+      if (!validateBeforeSave()) return;
       setSaveLoading("draft");
-      const { receiptData } = buildReceiptPayload("paid");
+      let receiptData = buildReceiptPayload("paid").receiptData;
+      if (!isEditMode) {
+        const reservedNumber = await reserveReceiptNumberForSave();
+        if (reservedNumber) {
+          receiptData = { ...receiptData, receiptNumber: reservedNumber };
+          setFormData((prev) => ({ ...prev, receiptNumber: reservedNumber }));
+        }
+      }
       const savedReceipt = isEditMode
         ? await updateSalesReceipt(id, receiptData)
         : await saveSalesReceipt(receiptData);
-      const receiptId = savedReceipt?.id || savedReceipt?._id || id;
-      navigate(`/sales/sales-receipts/${receiptId}`);
+      const receiptId = await extractSavedReceiptId(savedReceipt, receiptData);
+      toast.success("Sales receipt saved successfully.");
+      if (receiptId) {
+        navigate(`/sales/sales-receipts/${receiptId}`, {
+          state: { receiptData: savedReceipt },
+        });
+      } else {
+        navigate("/sales/sales-receipts", {
+          state: { receiptData: savedReceipt },
+        });
+      }
     } catch (error) {
-      console.error("Error saving sales receipt:", error);
-      alert("Failed to save sales receipt. Please try again.");
+      const errorMessage = String((error as any)?.message || (error as any)?.response?.message || "");
+      const isDuplicate = /duplicate|already exists|e11000|receiptnumber/i.test(errorMessage);
+      if (!isEditMode && isDuplicate) {
+        try {
+          const retryNumber = await reserveReceiptNumberForSave();
+          if (retryNumber) {
+            const retryPayload = { ...buildReceiptPayload("paid").receiptData, receiptNumber: retryNumber };
+            setFormData((prev) => ({ ...prev, receiptNumber: retryNumber }));
+            const savedReceipt = await saveSalesReceipt(retryPayload);
+            const receiptId = await extractSavedReceiptId(savedReceipt, retryPayload);
+            toast.success("Sales receipt saved successfully.");
+            if (receiptId) {
+              navigate(`/sales/sales-receipts/${receiptId}`, {
+                state: { receiptData: savedReceipt },
+              });
+            } else {
+              navigate("/sales/sales-receipts", {
+                state: { receiptData: savedReceipt },
+              });
+            }
+            return;
+          }
+        } catch (retryError) {
+        }
+      }
+      toast.error(errorMessage || "Failed to save sales receipt. Please try again.");
     } finally {
       setSaveLoading(null);
     }
@@ -1524,38 +2428,79 @@ export default function NewSalesReceipt() {
 
   const handleSaveAndSend = async () => {
     try {
+      if (!validateBeforeSave()) return;
       setSaveLoading("send");
-      const { receiptData, customerEmail } = buildReceiptPayload("paid");
+      let receiptData = buildReceiptPayload("paid").receiptData;
+      if (!isEditMode) {
+        const reservedNumber = await reserveReceiptNumberForSave();
+        if (reservedNumber) {
+          receiptData = { ...receiptData, receiptNumber: reservedNumber };
+          setFormData((prev) => ({ ...prev, receiptNumber: reservedNumber }));
+        }
+      }
       const savedReceipt = isEditMode
         ? await updateSalesReceipt(id, receiptData)
         : await saveSalesReceipt(receiptData);
 
-      const receiptId = savedReceipt?.id || savedReceipt?._id || id;
+      const receiptId = await extractSavedReceiptId(savedReceipt, receiptData);
+      const receiptNumber = savedReceipt?.receiptNumber || receiptData.receiptNumber;
+      const emailReceipt = {
+        ...receiptData,
+        ...savedReceipt,
+        receiptNumber,
+        total: Number(savedReceipt?.total ?? receiptData.total ?? 0),
+        currency: savedReceipt?.currency || receiptData.currency || baseCurrency || "USD"
+      };
 
-      if (customerEmail) {
-        const receiptNumber = savedReceipt?.receiptNumber || receiptData.receiptNumber;
-        const emailReceipt = {
-          ...receiptData,
-          ...savedReceipt,
-          receiptNumber,
-          total: Number(savedReceipt?.total ?? receiptData.total ?? 0),
-          currency: savedReceipt?.currency || receiptData.currency || baseCurrency || "USD"
-        };
-
-        await salesReceiptsAPI.sendEmail(receiptId, {
-          to: customerEmail,
-          subject: `Sales Receipt ${receiptNumber}`,
-          body: buildSalesReceiptEmailBody(emailReceipt),
-          attachSystemPDF: true
+      if (receiptId) {
+        navigate(`/sales/sales-receipts/${receiptId}/send-email`, {
+          state: {
+            receiptData: emailReceipt
+          }
         });
       } else {
-        alert("Sales receipt saved, but customer email is missing so email was not sent.");
+        navigate("/sales/sales-receipts", {
+          state: { receiptData: emailReceipt }
+        });
       }
-
-      navigate(`/sales/sales-receipts/${receiptId}`);
+      toast.success("Sales receipt saved and ready to send.");
     } catch (error) {
-      console.error("Error saving/sending sales receipt:", error);
-      alert("Failed to save and send sales receipt. Please try again.");
+      const errorMessage = String((error as any)?.message || (error as any)?.response?.message || "");
+      const isDuplicate = /duplicate|already exists|e11000|receiptnumber/i.test(errorMessage);
+      if (!isEditMode && isDuplicate) {
+        try {
+          const retryNumber = await reserveReceiptNumberForSave();
+          if (retryNumber) {
+            const retryPayload = { ...buildReceiptPayload("paid").receiptData, receiptNumber: retryNumber };
+            setFormData((prev) => ({ ...prev, receiptNumber: retryNumber }));
+            const savedReceipt = await saveSalesReceipt(retryPayload);
+            const receiptId = await extractSavedReceiptId(savedReceipt, retryPayload);
+            const receiptNumber = savedReceipt?.receiptNumber || retryPayload.receiptNumber;
+            const emailReceipt = {
+              ...retryPayload,
+              ...savedReceipt,
+              receiptNumber,
+              total: Number(savedReceipt?.total ?? retryPayload.total ?? 0),
+              currency: savedReceipt?.currency || retryPayload.currency || baseCurrency || "USD"
+            };
+
+            if (receiptId) {
+              navigate(`/sales/sales-receipts/${receiptId}/send-email`, {
+                state: {
+                  receiptData: emailReceipt
+                }
+              });
+            } else {
+              navigate("/sales/sales-receipts", {
+                state: { receiptData: emailReceipt }
+              });
+            }
+            toast.success("Sales receipt saved and ready to send.");
+            return;
+          }
+        } catch {}
+      }
+      toast.error(errorMessage || "Failed to save and send sales receipt. Please try again.");
     } finally {
       setSaveLoading(null);
     }
@@ -1564,12 +2509,12 @@ export default function NewSalesReceipt() {
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files);
     if (formData.documents.length + files.length > 10) {
-      alert("You can upload a maximum of 10 files");
+      toast.error("You can upload a maximum of 10 files");
       return;
     }
     const invalidFiles = files.filter(file => file.size > 10 * 1024 * 1024);
     if (invalidFiles.length > 0) {
-      alert(`Some files exceed 10MB limit. Maximum file size is 10MB.`);
+      toast.error(`Some files exceed 10MB limit. Maximum file size is 10MB.`);
       return;
     }
     const newFiles = files.map(file => ({
@@ -1619,10 +2564,10 @@ export default function NewSalesReceipt() {
   const handleAttachFromCloud = (service) => {
     if (service) {
       // Handle specific cloud service
-      alert(`${service.charAt(0).toUpperCase() + service.slice(1)} integration - Coming soon! This will allow you to connect and select files from ${service}.`);
+      toast.info(`${service.charAt(0).toUpperCase() + service.slice(1)} integration - Coming soon! This will allow you to connect and select files from ${service}.`);
     } else {
       // Generic cloud option
-      alert("Cloud storage integration - Coming soon! This will allow you to connect and select files from cloud storage services.");
+      toast.info("Cloud storage integration - Coming soon! This will allow you to connect and select files from cloud storage services.");
     }
     setIsUploadDropdownOpen(false);
   };
@@ -1660,14 +2605,40 @@ export default function NewSalesReceipt() {
     (item.sku || '').toLowerCase().includes((itemSearches[1] || "").toLowerCase())
   ) : [];
 
+  const groupedAccountOptions = [
+    { group: "Other Current Asset", options: ["Advance Tax", "Employee Advance", "Prepaid Expenses", "Retention Receivable"] },
+    { group: "Fixed Asset", options: ["Furniture and Equipment"] },
+    { group: "Other Current Liability", options: ["Employee Reimbursements", "Opening Balance Adjustments", "Retention Payable", "Unearned Revenue"] },
+    { group: "Equity", options: ["Drawings", "Opening Balance Offset", "Owner's Equity"] },
+    { group: "Income", options: ["Discount", "General Income", "Interest Income", "Late Fee Income", "Other Charges", "Sales", "Shipping Charge"] },
+    { group: "Expense", options: ["Advertising And Marketing", "Automobile Expense", "Bad Debt", "Bank Fees and Charges", "Consultant Expense", "Credit Card Charges", "Depreciation Expense", "IT and Internet Expenses", "Janitorial Expense", "Lodging", "Meals and Entertainment", "Office Supplies", "Other Expenses", "Postage", "Printing and Stationery", "Purchase Discounts", "Rent Expense", "Repairs and Maintenance", "Salaries and Employee Wages", "sdff", "Telephone Expense", "Travel Expense", "Uncategorized"] },
+    { group: "Cost Of Goods Sold", options: ["Cost of Goods Sold"] },
+  ];
+  const filteredGroupedAccountOptions = groupedAccountOptions
+    .map((group) => ({
+      ...group,
+      options: group.options.filter((option) =>
+        option.toLowerCase().includes(String(additionalInfoSearch || "").toLowerCase().trim())
+      ),
+    }))
+    .filter((group) => group.options.length > 0);
+
+  const getItemReportingTagsSummary = (item) => {
+    const selectedCount = Array.isArray(item?.reportingTags)
+      ? item.reportingTags.filter((entry) => String(entry?.value || "").trim()).length
+      : 0;
+    const totalCount = Math.max(1, normalizedReportingTags.length);
+    return `Reporting Tags : ${selectedCount} out of ${totalCount} selected.`;
+  };
+
   return (
 
-    <div className="w-full min-h-screen bg-white flex flex-col">
+    <div className="w-full h-screen overflow-hidden bg-[#f8fafc] flex flex-col">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-[100]">
+      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <FileText size={20} className="text-gray-900" />
-          <h1 className="text-[17px] font-bold text-gray-900">New Sales Receipt</h1>
+          <h1 className="text-[17px] font-bold text-gray-900">{isEditMode ? "Edit Sales Receipt" : "New Sales Receipt"}</h1>
         </div>
         <button
           className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
@@ -1677,237 +2648,415 @@ export default function NewSalesReceipt() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-white pb-24">
-        <div className="w-full px-8 py-10">
-          {/* Form Fields Section */}
-          <div className="max-w-4xl space-y-7">
-            {/* Customer Name */}
-            <div className="grid grid-cols-[200px_1fr] gap-x-6 items-center">
-              <label className="text-sm font-medium text-gray-600">Customer Name</label>
-              <div className="relative" ref={customerDropdownRef}>
-                <div className="flex items-center">
-                  <div className="relative group flex-1">
-                    <input
-                      type="text"
-                      className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-l text-sm focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] transition-all pr-12 hover:border-gray-400"
-                      placeholder="Select Customer"
-                      value={formData.customerName}
-                      onChange={(e) => {
-                        setFormData(prev => ({ ...prev, customerName: e.target.value }));
-                        setCustomerSearch(e.target.value);
-                        setIsCustomerDropdownOpen(true);
-                      }}
-                      onFocus={() => setIsCustomerDropdownOpen(true)}
-                    />
-                    <div className="absolute right-0 top-0 h-full flex items-center pr-3 gap-2">
-                      <ChevronDown size={14} className="text-gray-400" />
-                      <div className="w-[1px] h-4 bg-gray-200" />
-                      <div className="p-1 cursor-pointer hover:bg-gray-100 rounded text-gray-500">
-                        <Settings size={14} />
-                      </div>
+        <div className="flex-1 overflow-y-auto bg-white pb-72">
+        <div className="w-full px-5 py-4">
+          <div className="w-full overflow-visible border border-[#e5e7eb] bg-white">
+            <div className="border-b border-[#eceef2] bg-[#f3f4f6] px-5 py-5">
+              <div className="grid grid-cols-[140px_minmax(0,560px)] items-start gap-x-6 gap-y-5">
+                <label className="pt-3 text-[13px] font-medium text-[#374151]">Customer Name</label>
+                <div className="relative" ref={customerDropdownRef}>
+                  {isCustomerInlineSearchMode ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        className="h-9 w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-[#111827] outline-none transition-all placeholder:text-[#9ca3af] hover:border-[#156372] focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
+                        placeholder="Type the customer's name"
+                        value={formData.customerName}
+                        onChange={(e) => {
+                          setFormData(prev => ({ ...prev, customerName: e.target.value }));
+                          setCustomerSearch(e.target.value);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="text-gray-500 transition-colors hover:text-[#156372]"
+                        onClick={() => setCustomerSearchModalOpen(true)}
+                        title="Advanced customer search"
+                      >
+                        <Search size={15} />
+                      </button>
                     </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="px-3 py-1.5 text-white rounded-r border-none transition-colors flex items-center justify-center h-[34px] cursor-pointer"
-                    style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                    onMouseEnter={(e) => e.target.style.opacity = "0.9"}
-                    onMouseLeave={(e) => e.target.style.opacity = "1"}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCustomerSearchModalOpen(true);
-                    }}
-                  >
-                    <Search size={16} />
-                  </button>
-                </div>
-                {isCustomerDropdownOpen && filteredCustomers.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-xl z-50 max-h-60 overflow-y-auto py-1">
-                    {filteredCustomers.map(customer => (
-                      <div
-                        key={customer.id}
-                        className="px-4 py-2 text-sm text-gray-700 cursor-pointer transition-colors flex items-center gap-2"
-                        onMouseEnter={(e) => e.target.style.backgroundColor = "rgba(21, 99, 114, 0.1)"}
-                        onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="h-9 flex-1 rounded-md border border-gray-300 bg-white px-3 text-left text-sm text-[#111827] flex items-center justify-between hover:border-[#156372]"
                         onClick={() => {
-                          handleCustomerSelect(customer);
+                          setIsCustomerDropdownOpen((prev) => !prev);
+                          setCustomerSearch("");
                         }}
                       >
-                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ backgroundColor: "rgba(21, 99, 114, 0.2)", color: "#156372" }}>
-                          {customer.name.charAt(0).toUpperCase()}
+                        <span className={formData.customerName ? "text-[#111827]" : "text-gray-400"}>{formData.customerName || "Select Customer"}</span>
+                        {isCustomerDropdownOpen ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+                      </button>
+                      <button
+                        type="button"
+                        className="text-[#94a3b8] transition-colors hover:text-[#64748b]"
+                        onClick={() => {
+                          setSelectedCustomer(null);
+                          setFormData((prev) => ({ ...prev, customerName: "" }));
+                          setCustomerSearch("");
+                          setIsCustomerDropdownOpen(false);
+                        }}
+                        title="Clear customer"
+                      >
+                        <X size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        className="text-[#156372] transition-colors hover:text-[#0D4A52]"
+                        onClick={() => {
+                          setIsCustomerInlineSearchMode(true);
+                          setIsCustomerDropdownOpen(false);
+                        }}
+                        title="Search mode"
+                      >
+                        <Search size={15} />
+                      </button>
+                    </div>
+                  )}
+                  {isCustomerDropdownOpen && (
+                    <div className="absolute top-full left-0 z-50 mt-2 w-full overflow-hidden rounded-lg border border-[#dbe2ea] bg-white shadow-[0_18px_36px_rgba(15,23,42,0.12)]">
+                      <div className="border-b border-[#eef2f7] p-1.5">
+                        <div className="relative">
+                          <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-[#94a3b8]" />
+                          <input
+                            type="text"
+                            placeholder="Search"
+                            value={customerSearch}
+                            onChange={(e) => setCustomerSearch(e.target.value)}
+                            className="h-8 w-full rounded border border-slate-200 pl-7 pr-2 text-sm focus:border-slate-300 focus:outline-none focus:ring-1 focus:ring-slate-200"
+                          />
                         </div>
-                        {customer.name}
                       </div>
-                    ))}
-
-                    <div
-                      className="px-4 py-2 text-sm cursor-pointer font-medium border-t border-gray-100 flex items-center gap-2"
-                      style={{ color: "#156372" }}
-                      onMouseEnter={(e) => e.target.style.backgroundColor = "rgba(21, 99, 114, 0.1)"}
-                      onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
-                      onClick={() => {
-                        setIsCustomerDropdownOpen(false);
-                        openCustomerQuickAction();
-                      }}
-                    >
-                      <Plus size={14} />
-                      New Customer
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Receipt Date */}
-            <div className="grid grid-cols-[200px_1fr] gap-x-6 items-center">
-              <label className="text-sm font-medium text-red-500">Receipt Date*</label>
-              <div className="max-w-[320px] relative" ref={receiptDatePickerRef}>
-                <input
-                  type="text"
-                  className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] transition-all hover:border-gray-400 cursor-pointer"
-                  value={formData.receiptDate}
-                  readOnly
-                  onClick={() => setIsReceiptDatePickerOpen(!isReceiptDatePickerOpen)}
-                />
-                {isReceiptDatePickerOpen && (
-                  <div className="absolute top-full left-0 mt-2 bg-white border border-gray-200 rounded shadow-2xl z-50 w-72 p-4">
-                    <div className="flex items-center justify-between mb-4">
+                      <div className="max-h-72 overflow-y-auto p-1.5">
+                        {filteredCustomers.length > 0 ? (
+                          filteredCustomers.map(customer => {
+                            const customerId = String(customer?.id || customer?._id || "");
+                            const selectedId = String(selectedCustomer?.id || selectedCustomer?._id || "");
+                            const isSelected = customerId && selectedId && customerId === selectedId;
+                            return (
+                              <button
+                                key={customer.id}
+                                type="button"
+                                className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm ${isSelected ? "bg-slate-100 text-slate-900" : "text-[#334155] hover:bg-slate-50"}`}
+                                onClick={() => handleCustomerSelect(customer)}
+                              >
+                                <div className={`flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-semibold ${isSelected ? "bg-slate-200 text-slate-700" : "bg-[#e2e8f0] text-[#64748b]"}`}>
+                                  {customer.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate">
+                                    {customer.name}
+                                    {(customer.customerCode || customer.customerNumber) ? (
+                                      <span className={`ml-1 ${isSelected ? "text-slate-600" : "text-[#64748b]"}`}>
+                                        | {customer.customerCode || customer.customerNumber}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <div className={`mt-0.5 truncate text-xs ${isSelected ? "text-slate-600" : "text-[#64748b]"}`}>
+                                    {customer.email || "-"} | {(customer.companyName || customer.contactName || "-")}
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <div className="px-3 py-4 text-sm text-[#64748b]">No customers found.</div>
+                        )}
+                      </div>
                       <button
-                        onClick={(e) => { e.stopPropagation(); navigateMonth("prev"); }}
-                        className="p-1 hover:bg-gray-100 rounded-full text-gray-600 transition-colors"
+                        type="button"
+                        className="flex w-full items-center gap-2 border-t border-[#eef2f7] px-4 py-3 text-sm font-medium text-[#156372] hover:bg-slate-50"
+                        onClick={() => {
+                          setIsCustomerDropdownOpen(false);
+                          openCustomerQuickAction();
+                        }}
                       >
-                        <ChevronDown className="transform rotate-90" size={18} />
-                      </button>
-                      <span className="font-bold text-gray-800 text-sm">{months[receiptDateCalendar.getMonth()]} {receiptDateCalendar.getFullYear()}</span>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); navigateMonth("next"); }}
-                        className="p-1 hover:bg-gray-100 rounded-full text-gray-600 transition-colors"
-                      >
-                        <ChevronDown className="transform -rotate-90" size={18} />
+                        <Plus size={14} />
+                        New Customer
                       </button>
                     </div>
-                    <div className="grid grid-cols-7 gap-1 mb-2">
-                      {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
-                        <div key={day} className="text-[11px] font-bold text-center py-1 text-gray-400 uppercase">
-                          {day}
-                        </div>
-                      ))}
-                    </div>
-                    <div className="grid grid-cols-7 gap-1">
-                      {getDaysInMonth(receiptDateCalendar).map((day, idx) => (
-                        <button
-                          key={idx}
-                          className={`text-xs w-8 h-8 rounded flex items-center justify-center transition-all ${day.month !== "current" ? "text-gray-300" : "text-gray-700"
-                            } ${formData.receiptDate === formatDate(day.fullDate) ? "text-white font-bold cursor-pointer" : ""}`}
-                          style={formData.receiptDate === formatDate(day.fullDate) ? { background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" } : {}}
-                          onMouseEnter={(e) => {
-                            if (formData.receiptDate === formatDate(day.fullDate)) {
-                              e.target.style.opacity = "0.9";
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (formData.receiptDate === formatDate(day.fullDate)) {
-                              e.target.style.opacity = "1";
-                            }
-                          }}
-                          onClick={(e) => { e.stopPropagation(); handleDateSelect(day.fullDate); }}
-                        >
-                          {day.date}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Sales Receipt# */}
-            <div className="grid grid-cols-[200px_1fr] gap-x-6 items-center">
-              <label className="text-sm font-medium text-red-500">Sales Receipt#*</label>
-              <div className="max-w-[240px] relative">
-                <input
-                  type="text"
-                  className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] transition-all pr-10 hover:border-gray-400"
-                  value={formData.receiptNumber}
-                  onChange={(e) => setFormData(prev => ({ ...prev, receiptNumber: e.target.value }))}
-                />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center border rounded p-0.5 cursor-pointer" style={{ borderColor: "#156372", backgroundColor: "rgba(21, 99, 114, 0.1)" }}>
-                  <Settings size={12} style={{ color: "#156372" }} />
+                  )}
                 </div>
-              </div>
-            </div>
 
-            {/* Salesperson */}
-            <div className="grid grid-cols-[200px_1fr] gap-x-6 items-center">
-              <label className="text-sm font-medium text-gray-600">Salesperson</label>
-              <div className="max-w-[320px] relative" ref={salespersonDropdownRef}>
-                <div className="relative group">
+                <label className="pt-2 text-[13px] font-medium text-[#ef4444]">Receipt Date*</label>
+                <div className="relative max-w-[332px]" ref={receiptDatePickerRef}>
                   <input
                     type="text"
-                    className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] transition-all pr-10 hover:border-gray-400"
-                    placeholder="Select or Add Salesperson"
-                    value={selectedSalesperson?.name || formData.salesperson}
-                    onChange={(e) => {
-                      setFormData(prev => ({ ...prev, salesperson: e.target.value }));
-                      setSalespersonSearch(e.target.value);
-                      setIsSalespersonDropdownOpen(true);
-                    }}
-                    onFocus={() => setIsSalespersonDropdownOpen(true)}
+                    className="h-9 w-full cursor-pointer rounded-md border border-[#cbd5e1] bg-white px-3 text-sm text-[#111827] outline-none transition-all focus:border-[#3b82f6] focus:ring-1 focus:ring-[#3b82f6]"
+                    value={formData.receiptDate}
+                    readOnly
+                    onClick={() => setIsReceiptDatePickerOpen(!isReceiptDatePickerOpen)}
                   />
-                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                </div>
-                {isSalespersonDropdownOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-xl z-50 max-h-60 overflow-y-auto py-1">
-                    {salespersons
-                      .filter(sp => (sp.name || '').toLowerCase().includes(salespersonSearch.toLowerCase()))
-                      .map(salesperson => (
-                        <div
-                          key={salesperson.id || salesperson._id}
-                          className="px-4 py-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 flex items-center gap-2"
-                          onClick={() => {
-                            handleSalespersonSelect(salesperson);
-                          }}
+                  {isReceiptDatePickerOpen && (
+                    <div className="absolute top-full left-0 z-50 mt-2 w-72 rounded-lg border border-[#dbe2ea] bg-white p-4 shadow-[0_18px_36px_rgba(15,23,42,0.12)]">
+                      <div className="mb-4 flex items-center justify-between">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); navigateMonth("prev"); }}
+                          className="rounded-full p-1 text-gray-600 transition-colors hover:bg-gray-100"
                         >
-                          <div className="w-5 h-5 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-[10px]">
-                            {(salesperson.name || '').charAt(0)}
+                          <ChevronDown className="rotate-90 transform" size={18} />
+                        </button>
+                        <span className="text-sm font-bold text-gray-800">{months[receiptDateCalendar.getMonth()]} {receiptDateCalendar.getFullYear()}</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); navigateMonth("next"); }}
+                          className="rounded-full p-1 text-gray-600 transition-colors hover:bg-gray-100"
+                        >
+                          <ChevronDown className="-rotate-90 transform" size={18} />
+                        </button>
+                      </div>
+                      <div className="mb-2 grid grid-cols-7 gap-1">
+                        {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
+                          <div key={day} className="py-1 text-center text-[11px] font-bold uppercase text-[#ef4444]">
+                            {day}
                           </div>
-                          {salesperson.name}
-                        </div>
-                      ))}
-                    <div
-                      className="px-4 py-2 text-sm text-[#156372] cursor-pointer hover:bg-[rgba(21,99,114,0.1)] font-medium border-t border-gray-100 flex items-center gap-2 mt-1"
-                      onClick={() => setIsManageSalespersonsModalOpen(true)}
-                    >
-                      <Plus size={14} />
-                      Set up Salespersons
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-7 gap-1">
+                        {getDaysInMonth(receiptDateCalendar).map((day, idx) => (
+                          <button
+                            key={idx}
+                            className={`flex h-8 w-8 items-center justify-center rounded text-xs transition-all ${day.month !== "current" ? "text-gray-300" : "text-gray-700"} ${formData.receiptDate === formatDate(day.fullDate) ? "cursor-pointer bg-[#d92d20] font-bold text-white" : ""}`}
+                            onClick={(e) => { e.stopPropagation(); handleDateSelect(day.fullDate); }}
+                          >
+                            {day.date}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="border-b border-[#eceef2] bg-[#f8fafc] px-5 py-5">
+              <div className="grid grid-cols-[140px_minmax(0,560px)] items-start gap-x-6 gap-y-5">
+                <label className="pt-2 text-[13px] font-medium text-[#374151]">Location</label>
+                <div className="flex-1 max-w-xs relative" ref={locationDropdownRef}>
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm text-gray-700 flex justify-between items-center bg-white cursor-pointer focus:outline-none"
+                    onClick={() => setIsLocationDropdownOpen((prev) => !prev)}
+                  >
+                    <span className={formData.selectedLocation ? "text-gray-900" : "text-gray-400"}>
+                      {formData.selectedLocation || "Head Office"}
+                    </span>
+                    <ChevronDown size={14} className="text-gray-400" />
+                  </button>
+                  {isLocationDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg z-50 flex flex-col overflow-hidden">
+                      <div className="max-h-60 overflow-y-auto">
+                        {locationOptions.map((option, index) => {
+                          return (
+                            <button
+                              key={`${option}-${index}`}
+                              type="button"
+                              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 cursor-pointer truncate"
+                              onClick={() => {
+                                setFormData((prev) => ({ ...prev, selectedLocation: option }));
+                                setIsLocationDropdownOpen(false);
+                              }}
+                            >
+                              {option}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <label className="pt-2 text-[13px] font-medium text-[#ef4444]">Sales Receipt#*</label>
+                <div className="relative max-w-[262px]">
+                  <input
+                    type="text"
+                    className="h-9 w-full rounded-md border border-[#cbd5e1] bg-white px-3 pr-10 text-sm text-[#111827] outline-none transition-all focus:border-[#3b82f6] focus:ring-1 focus:ring-[#3b82f6]"
+                    value={formData.receiptNumber}
+                    onChange={(e) => setFormData(prev => ({ ...prev, receiptNumber: e.target.value }))}
+                  />
+                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded border border-[#bfdbfe] bg-[#eff6ff] p-0.5 text-[#2563eb]">
+                    <Settings size={12} />
                   </div>
-                )}
+                </div>
+              </div>
+            </div>
+
+            <div className="border-b border-[#eceef2] bg-white px-5 py-5">
+              <div className="grid grid-cols-[140px_minmax(0,560px)] items-start gap-x-6 gap-y-5">
+                <label className="pt-2 text-[13px] font-medium text-[#374151]">Salesperson</label>
+                <div className="flex-1 max-w-xs relative" ref={salespersonDropdownRef}>
+                  <div
+                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm text-gray-700 flex justify-between items-center bg-white cursor-pointer"
+                    onClick={() => {
+                      setIsSalespersonDropdownOpen((prev) => !prev);
+                      setSalespersonSearch("");
+                    }}
+                  >
+                    <span className={selectedSalesperson?.name || formData.salesperson ? "text-gray-900" : "text-gray-400"}>
+                      {selectedSalesperson?.name || formData.salesperson || "Select or Add Salesperson"}
+                    </span>
+                    <ChevronDown size={14} className="text-gray-400" />
+                  </div>
+                  {isSalespersonDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg z-50 flex flex-col">
+                      <div className="flex items-center gap-2 p-2 border-b border-gray-200">
+                        <Search size={14} className="text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search"
+                          value={salespersonSearch}
+                          onChange={(e) => setSalespersonSearch(e.target.value)}
+                          className="flex-1 text-sm focus:outline-none"
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
+                      <div className="max-h-60 overflow-y-auto">
+                        {filteredSalespersons.length > 0 ? (
+                          filteredSalespersons.map((salesperson) => (
+                            <div
+                              key={salesperson.id || salesperson._id}
+                              className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 cursor-pointer truncate"
+                              onClick={() => handleSalespersonSelect(salesperson)}
+                            >
+                              {salesperson.name}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="px-4 py-2 text-xs text-gray-500 italic">No salespersons found</div>
+                        )}
+                      </div>
+                      <div
+                        className="p-3 border-t border-gray-100 flex items-center gap-2 text-[#156372] hover:bg-gray-50 cursor-pointer text-sm font-medium"
+                        onClick={() => {
+                          setIsManageSalespersonsModalOpen(true);
+                          setIsSalespersonDropdownOpen(false);
+                        }}
+                      >
+                        <PlusCircle size={16} />
+                        <span>Manage Salespersons</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {normalizedReportingTags.length > 0 ? (
+                  normalizedReportingTags.map((tag) => {
+                    const currentValue =
+                      (Array.isArray(formData.reportingTags) ? formData.reportingTags : []).find(
+                        (entry) =>
+                          String(entry?.tagId || "") === String(tag.id || tag._id || tag.key) ||
+                          String(entry?.name || "") === tag.label
+                      )?.value || "";
+                    const openState = Boolean(openReportingTagDropdowns[String(tag.key)]);
+                    const searchValue = String(reportingTagSearches[String(tag.key)] || "").trim().toLowerCase();
+                    const options = [{ label: "None", value: "" }, ...(Array.isArray(tag.options) ? tag.options : [])];
+                    const filteredOptions = searchValue
+                      ? options.filter((option) => String(option.label || option.value || "").toLowerCase().includes(searchValue))
+                      : options;
+
+                    return (
+                      <React.Fragment key={tag.key}>
+                        <label className="pt-2 text-[13px] font-medium text-[#ef4444]">{tag.label}</label>
+                        <div className="max-w-[262px] relative" ref={(el) => { reportingTagDropdownRefs.current[String(tag.key)] = el; }}>
+                          <button
+                            type="button"
+                            className="w-full px-3 py-2 border border-gray-300 rounded text-sm text-gray-700 flex justify-between items-center bg-white cursor-pointer hover:border-[#156372]"
+                            onClick={() => {
+                              setOpenReportingTagDropdowns((prev) => ({ ...prev, [String(tag.key)]: !prev[String(tag.key)] }));
+                              setReportingTagSearches((prev) => ({ ...prev, [String(tag.key)]: "" }));
+                            }}
+                          >
+                            <span className={currentValue ? "text-gray-900" : "text-gray-400"}>
+                              {currentValue || "None"}
+                            </span>
+                            <ChevronDown size={14} className="text-gray-400" />
+                          </button>
+                          {openState && (
+                            <div className="absolute left-0 top-full z-50 mt-1 w-full overflow-hidden rounded border border-gray-200 bg-white shadow-lg">
+                              <div className="flex items-center gap-2 border-b border-gray-200 p-2">
+                                <Search size={14} className="text-gray-400" />
+                                <input
+                                  type="text"
+                                  placeholder="Search"
+                                  value={String(reportingTagSearches[String(tag.key)] || "")}
+                                  onChange={(e) => setReportingTagSearches((prev) => ({ ...prev, [String(tag.key)]: e.target.value }))}
+                                  className="flex-1 text-sm focus:outline-none"
+                                  autoFocus
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </div>
+                              <div className="max-h-60 overflow-y-auto">
+                                {filteredOptions.length > 0 ? (
+                                  filteredOptions.map((option, index) => {
+                                    const selected = String(currentValue || "") === String(option.value || "");
+                                    return (
+                                      <button
+                                        key={`${String(tag.key)}-${index}`}
+                                        type="button"
+                                        className={`w-full px-4 py-2 text-left text-sm ${selected ? "bg-gray-50 text-gray-900 font-medium" : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"}`}
+                                        onClick={() => {
+                                          setFormData((prev) => {
+                                            const nextReportingTags = Array.isArray(prev.reportingTags)
+                                              ? prev.reportingTags.filter(
+                                                  (entry) =>
+                                                    String(entry?.tagId || "") !== String(tag.id || tag._id || tag.key) &&
+                                                    String(entry?.name || "") !== tag.label
+                                                )
+                                              : [];
+
+                                            if (String(option.value || "")) {
+                                              nextReportingTags.push({
+                                                tagId: tag.id || tag._id || tag.key,
+                                                value: String(option.value || ""),
+                                                name: tag.label,
+                                              });
+                                            }
+
+                                            return { ...prev, reportingTags: nextReportingTags };
+                                          });
+                                          setOpenReportingTagDropdowns((prev) => ({ ...prev, [String(tag.key)]: false }));
+                                          setReportingTagSearches((prev) => ({ ...prev, [String(tag.key)]: "" }));
+                                        }}
+                                      >
+                                        {option.label || option.value || "None"}
+                                      </button>
+                                    );
+                                  })
+                                ) : (
+                                  <div className="px-4 py-3 text-sm text-gray-500">No options found</div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </React.Fragment>
+                    );
+                  })
+                ) : null}
               </div>
             </div>
           </div>
 
-          <div className="mt-14">
+            <div className="mt-4 w-full max-w-[1120px] pr-12">
             {/* Item Table Header */}
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-gray-900 font-bold text-sm">Item Table</h3>
+            <div className="mb-0 flex items-center justify-between rounded-t-md border border-b-0 border-[#e5e7eb] bg-[#f8fafc] px-4 py-3">
+              <h3 className="text-sm font-semibold text-gray-900">Item Table</h3>
               <div className="flex items-center gap-3">
                 <button
-                  className="px-4 py-2 text-white border-none rounded-lg text-sm font-semibold transition-all flex items-center gap-2"
-                  style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                  onMouseEnter={(e) => e.target.style.opacity = "0.9"}
-                  onMouseLeave={(e) => e.target.style.opacity = "1"}
+                  className="flex items-center gap-1.5 text-[12px] font-medium text-[#2563eb] transition-colors hover:text-[#1d4ed8]"
                   onClick={() => setIsScanModeOpen(true)}
                 >
-                  <ScanLine size={16} />
+                  <ScanLine size={14} />
                   Scan Item
                 </button>
                 <div className="relative" ref={bulkActionsRef}>
                   <button
-                    className="px-4 py-2 bg-white border-2 border-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors flex items-center gap-2"
+                    className="flex items-center gap-1.5 text-[12px] font-medium text-[#2563eb] transition-colors hover:text-[#1d4ed8]"
                     onClick={() => setIsBulkActionsOpen(!isBulkActionsOpen)}
                   >
-                    <CheckSquare size={16} />
+                    <CheckSquare size={14} />
                     Bulk Actions
                   </button>
                   {isBulkActionsOpen && (
@@ -1917,7 +3066,7 @@ export default function NewSalesReceipt() {
                           ? "text-white"
                           : "text-gray-700 hover:bg-gray-50"
                           }`}
-                        style={isBulkUpdateMode ? { background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" } : {}}
+                        style={isBulkUpdateMode ? { background: "linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)" } : {}}
                         onMouseEnter={(e) => {
                           if (isBulkUpdateMode) {
                             e.target.style.opacity = "0.9";
@@ -1951,7 +3100,7 @@ export default function NewSalesReceipt() {
                           setIsBulkActionsOpen(false);
                         }}
                       >
-                        Show All Additional Information
+                        {showAdditionalInformation ? "Hide All Additional Information" : "Show All Additional Information"}
                       </div>
                     </div>
                   )}
@@ -1996,7 +3145,7 @@ export default function NewSalesReceipt() {
                     }
                   }}
                   placeholder="Scan or type item name/SKU and press Enter"
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#2563eb] focus:border-[#2563eb]"
                   autoFocus
                 />
               </div>
@@ -2008,22 +3157,22 @@ export default function NewSalesReceipt() {
                 <div className="flex items-center gap-3">
                   <button
                     className="px-4 py-2 text-white border-none rounded-md text-sm font-medium cursor-pointer transition-all"
-                    style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+                    style={{ background: "linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)" }}
                     onMouseEnter={(e) => e.target.style.opacity = "0.9"}
                     onMouseLeave={(e) => e.target.style.opacity = "1"}
                     onClick={() => {
-                      alert("Update Reporting Tags functionality");
+                      toast.info("Update Reporting Tags functionality");
                     }}
                   >
                     Update Reporting Tags
                   </button>
                   <button
                     className="px-4 py-2 text-white border-none rounded-md text-sm font-medium cursor-pointer transition-all"
-                    style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+                    style={{ background: "linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)" }}
                     onMouseEnter={(e) => e.target.style.opacity = "0.9"}
                     onMouseLeave={(e) => e.target.style.opacity = "1"}
                     onClick={() => {
-                      alert("Update Account functionality");
+                      toast.info("Update Account functionality");
                     }}
                   >
                     Update Account
@@ -2034,7 +3183,7 @@ export default function NewSalesReceipt() {
                     setIsBulkUpdateMode(false);
                     setBulkSelectedItemIds([]);
                   }}
-                  className="p-1 text-[#156372] hover:text-[#0D4A52] hover:bg-gray-100 rounded transition-colors"
+                  className="p-1 text-[#2563eb] hover:text-[#1d4ed8] hover:bg-gray-100 rounded transition-colors"
                 >
                   <X size={20} />
                 </button>
@@ -2056,8 +3205,8 @@ export default function NewSalesReceipt() {
                             handleDeselectAllItems();
                           }
                         }}
-                        className="w-4 h-4 text-[#156372] border-gray-300 rounded focus:ring-[#156372] cursor-pointer"
-                        style={{ accentColor: "#156372" }}
+                        className="w-4 h-4 text-[#2563eb] border-gray-300 rounded focus:ring-[#2563eb] cursor-pointer"
+                        style={{ accentColor: "#2563eb" }}
                       />
                     </th>
                   )}
@@ -2087,8 +3236,8 @@ export default function NewSalesReceipt() {
                             type="checkbox"
                             checked={bulkSelectedItemIds.includes(item.id)}
                             onChange={() => handleToggleItemSelection(item.id)}
-                            className="w-4 h-4 text-[#156372] border-gray-300 rounded focus:ring-[#156372] cursor-pointer"
-                            style={{ accentColor: "#156372" }}
+                            className="w-4 h-4 text-[#2563eb] border-gray-300 rounded focus:ring-[#2563eb] cursor-pointer"
+                            style={{ accentColor: "#2563eb" }}
                           />
                         </td>
                       )}
@@ -2102,109 +3251,196 @@ export default function NewSalesReceipt() {
                             itemDropdownRefs.current[item.id].current = el;
                           }}
                         >
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 bg-gray-200 rounded flex items-center justify-center flex-shrink-0">
-                              <ImageIcon size={14} className="text-gray-400" />
-                            </div>
-                            <input
-                              type="text"
-                              placeholder="Type or click to select an item"
-                              value={item.itemDetails}
-                              onChange={(e) => {
-                                handleItemChange(item.id, "itemDetails", e.target.value);
-                                setItemSearches(prev => ({ ...prev, [item.id]: e.target.value }));
-                                setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }));
-                              }}
-                              onFocus={() => setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }))}
-                              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
-                            />
-                            {item.sku && (
-                              <div className="mt-1 text-xs text-[#156372] font-semibold ml-8">
-                                Stock on Hand: {item.stockOnHand ?? 0}
-                              </div>
-                            )}
-                          </div>
-
-                          {openItemDropdowns[item.id] && (
-                            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-80 overflow-y-auto">
-                              {getFilteredItems(item.id).length > 0 ? (
-                                getFilteredItems(item.id).map((productItem, idx) => (
-                                  <div
-                                    key={`${productItem.id || productItem._id}-${idx}`}
-                                    className={`p-3 cursor-pointer hover:bg-gray-50 flex items-center gap-3 border-b border-gray-100 ${selectedItemIds[item.id] === productItem.id ? "bg-gray-50" : ""
-                                      }`}
-                                    onClick={() => {
-                                      handleProductSelect(item.id, productItem);
-                                      setOpenItemDropdowns(prev => ({ ...prev, [item.id]: false }));
+                          {item.itemId ? (
+                            <div className="space-y-3">
+                              <div className="flex items-start gap-2">
+                                <div className="mt-0.5 w-8 h-8 bg-gray-100 rounded flex items-center justify-center flex-shrink-0 border border-gray-200">
+                                  <ImageIcon size={16} className="text-gray-400" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-sm text-gray-900 truncate">{item.itemDetails}</div>
+                                  <div className="text-xs text-slate-500 truncate">SKU: {item.sku || "-"}</div>
+                                </div>
+                                <div className="flex items-center gap-1 text-gray-400 pt-0.5">
+                                  <button
+                                    type="button"
+                                    className="hover:text-gray-600 transition-colors"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenItemMenuId(openItemMenuId === item.id ? null : item.id);
                                     }}
                                   >
-                                    <div className="w-8 h-8 rounded-full text-white flex items-center justify-center text-sm font-medium flex-shrink-0" style={{ backgroundColor: "#156372" }}>
-                                      {productItem.name.charAt(0).toUpperCase()}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-sm font-medium text-gray-900 truncate">{productItem.name}</div>
-                                      <div className="text-xs text-gray-500 truncate">
-                                        SKU: {productItem.sku} â€¢ Rate: {formData.currency} {(productItem.rate || 0).toFixed(2)}
-                                      </div>
-                                    </div>
-                                    <div className="text-right flex-shrink-0">
-                                      <div className="text-xs text-gray-500">Stock on Hand</div>
-                                      <div className="text-xs font-medium text-gray-700">
-                                        {/* Handle various potential field names for stock */}
-                                        {(productItem.stockQuantity ?? productItem.stock_on_hand ?? productItem.stockOnHand ?? 0).toFixed(2)} {productItem.unit}
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))
-                              ) : (
-                                <div className="p-4 text-center text-sm text-gray-500">
-                                  {itemSearches[item.id] ? "No items found" : "No items available"}
+                                    <MoreVertical size={14} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="hover:text-red-500 transition-colors"
+                                    onClick={() => {
+                                      handleItemChange(item.id, "itemId", "");
+                                      handleItemChange(item.id, "itemDetails", "");
+                                      handleItemChange(item.id, "sku", "");
+                                    }}
+                                  >
+                                    <X size={13} />
+                                  </button>
                                 </div>
-                              )}
-                              <button
-                                className="flex items-center gap-2 px-4 py-3 border-t border-gray-200 bg-gray-50 text-sm font-medium cursor-pointer hover:bg-gray-100 w-full transition-colors"
-                                style={{ color: "#156372" }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenItemDropdowns(prev => ({ ...prev, [item.id]: false }));
-                                  navigate("/items", { state: { showNewItem: true, returnTo: window.location.pathname } });
+                              </div>
+                              <textarea
+                                placeholder="Add a description to your item"
+                                value={item.description || ""}
+                                onChange={(e) => handleItemChange(item.id, "description", e.target.value)}
+                                rows={2}
+                                className="w-full px-3 py-2 border border-gray-100 rounded-md text-sm text-gray-700 bg-[#f7f8fb] focus:outline-none focus:ring-1 focus:ring-[#2563eb] focus:border-[#2563eb] resize-none"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 bg-gray-200 rounded flex items-center justify-center flex-shrink-0">
+                                <ImageIcon size={14} className="text-gray-400" />
+                              </div>
+                              <input
+                                type="text"
+                                placeholder="Type or click to select an item"
+                                value={item.itemDetails}
+                                onChange={(e) => {
+                                  handleItemChange(item.id, "itemDetails", e.target.value);
+                                  setItemSearches(prev => ({ ...prev, [item.id]: e.target.value }));
+                                  setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }));
                                 }}
-                              >
-                                <Plus size={16} />
-                                Add New Item
-                              </button>
+                                onFocus={() => setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }))}
+                                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#2563eb] focus:border-[#2563eb]"
+                              />
                             </div>
                           )}
+
+                          {openItemDropdowns[item.id] && (() => {
+                            const dropdownPosition = getItemDropdownPosition(item.id);
+                            if (!dropdownPosition) return null;
+
+                            return createPortal(
+                              <div
+                                ref={el => {
+                                  if (!itemDropdownPortalRefs.current[item.id]) {
+                                    itemDropdownPortalRefs.current[item.id] = { current: null };
+                                  }
+                                  itemDropdownPortalRefs.current[item.id].current = el;
+                                }}
+                                className="fixed z-[9999] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl"
+                                style={{
+                                  top: dropdownPosition.top,
+                                  left: dropdownPosition.left,
+                                  width: dropdownPosition.width,
+                                  maxHeight: dropdownPosition.maxHeight,
+                                }}
+                              >
+                                <div className="overflow-y-auto" style={{ maxHeight: dropdownPosition.maxHeight - 49 }}>
+                                  {getFilteredItems(item.id).length > 0 ? (
+                                    getFilteredItems(item.id).map((productItem, idx) => {
+                                      const isHighlighted =
+                                        idx === 0 ||
+                                        selectedItemIds[item.id] === (productItem.id || productItem._id);
+                                      return (
+                                        <button
+                                          type="button"
+                                          key={`${productItem.id || productItem._id}-${idx}`}
+                                          className={`w-full border-b border-gray-100 p-3 text-left transition-colors ${isHighlighted ? "bg-gray-50 text-gray-900" : "text-gray-800 hover:bg-[#f8fafc]"
+                                            }`}
+                                          onClick={() => {
+                                            handleProductSelect(item.id, productItem);
+                                            setOpenItemDropdowns(prev => ({ ...prev, [item.id]: false }));
+                                          }}
+                                        >
+                                          <div className="flex items-center gap-2 truncate text-[14px] font-semibold leading-5">
+                                            <span className="truncate">{productItem.name}</span>
+                                          </div>
+                                          <div className={`mt-0.5 truncate text-xs ${isHighlighted ? "text-gray-600" : "text-slate-500"}`}>
+                                            SKU: {productItem.sku || "-"} Rate: {formData.currency}{(productItem.rate || productItem.sellingPrice || 0).toFixed(2)}
+                                          </div>
+                                        </button>
+                                      );
+                                    })
+                                  ) : (
+                                    <div className="p-4 text-center text-sm text-gray-500">
+                                      {itemSearches[item.id] ? "No items found" : "No items available"}
+                                    </div>
+                                  )}
+                                </div>
+                                <button
+                                  className="flex w-full cursor-pointer items-center gap-2 border-t border-gray-200 bg-white px-4 py-3 text-sm font-medium transition-colors hover:bg-[#f8fafc]"
+                                  style={{ color: "#2563eb" }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenItemDropdowns(prev => ({ ...prev, [item.id]: false }));
+                                    navigate("/items", { state: { showNewItem: true, returnTo: window.location.pathname } });
+                                  }}
+                                >
+                                  <Plus size={16} />
+                                  Add New Item
+                                </button>
+                              </div>,
+                              document.body
+                            );
+                          })()}
+
                         </div>
                       </td>
-                      <td className="p-3">
+                      <td className="p-3 align-top">
                         <input
                           type="number"
+                          inputMode="decimal"
+                          onKeyDown={blockInvalidNumericKeys}
                           value={item.quantity}
-                          onChange={(e) => handleItemChange(item.id, "quantity", parseFloat(e.target.value) || 0)}
-                          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
+                          onChange={(e) => handleItemChange(item.id, "quantity", sanitizeNumericInput(e.target.value))}
+                          className={`w-full px-3 py-2 text-sm text-gray-800 focus:outline-none ${item.itemId ? "border border-transparent bg-transparent text-center" : "border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-[#2563eb] focus:border-[#2563eb]"}`}
                           min="0"
                           step="0.01"
                         />
+                        {item.itemId ? (
+                          <div className="mt-1 text-center text-xs text-gray-600">{item.unit || "dz"}</div>
+                        ) : null}
+                        {item.itemId ? (
+                          <div className="mt-3 flex items-center gap-1 text-sm text-[#1f3f79]">
+                            <MapPin size={13} className="text-[#2563eb]" />
+                            <select
+                              value={item.warehouseLocation || formData.selectedLocation || "Head Office"}
+                              onChange={(e) => handleItemChange(item.id, "warehouseLocation", e.target.value)}
+                              className="rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700 outline-none transition-all hover:border-[#156372] focus:border-[#156372] focus:ring-1 focus:ring-[#156372] appearance-none pr-6"
+                            >
+                              {locationOptions.map((option, index) => (
+                                <option key={`${option}-${index}`} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                            <ChevronDown size={12} className="text-gray-400" />
+                          </div>
+                        ) : null}
                       </td>
-                      <td className="p-3">
+                      <td className="p-3 align-top">
                         <input
                           type="number"
+                          inputMode="decimal"
+                          onKeyDown={blockInvalidNumericKeys}
                           value={item.rate}
-                          onChange={(e) => handleItemChange(item.id, "rate", parseFloat(e.target.value) || 0)}
-                          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
+                          onChange={(e) => handleItemChange(item.id, "rate", sanitizeNumericInput(e.target.value))}
+                          className={`w-full px-3 py-2 text-sm text-gray-700 focus:outline-none ${item.itemId ? "border border-transparent bg-transparent text-right" : "border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-[#2563eb] focus:border-[#2563eb]"}`}
                           min="0"
                           step="0.01"
                         />
+                        {item.itemId ? (
+                          <div className="mt-3 text-center text-xs text-[#2563eb]">Recent Transactions</div>
+                        ) : null}
                       </td>
                       {showItemDiscount && (
                       <td className="p-3">
-                        <div className="flex items-center border-2 border-gray-200 rounded-lg bg-white overflow-hidden focus-within:ring-2 focus-within:ring-[#156372] focus-within:border-[#156372] h-[38px]">
+                        <div className="flex items-center border-2 border-gray-200 rounded-lg bg-white overflow-hidden focus-within:ring-2 focus-within:ring-[#2563eb] focus-within:border-[#2563eb] h-[38px]">
                           <input
                             type="number"
+                            inputMode="decimal"
+                            onKeyDown={blockInvalidNumericKeys}
                             className="w-full px-2 py-2 text-sm text-right focus:outline-none"
                             value={item.discount}
-                            onChange={(e) => handleItemChange(item.id, "discount", parseFloat(e.target.value) || 0)}
+                            onChange={(e) => handleItemChange(item.id, "discount", sanitizeNumericInput(e.target.value))}
                             min="0"
                             step="0.01"
                           />
@@ -2220,7 +3456,7 @@ export default function NewSalesReceipt() {
                             {openDiscountDropdowns[item.id] && (
                               <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded shadow-xl z-50 py-1 min-w-[50px]">
                                 <div
-                                  className={`px-2 py-2 text-xs cursor-pointer hover:bg-gray-50 flex items-center justify-between ${item.discountType === "percent" ? "text-[#156372] font-bold bg-[rgba(21,99,114,0.1)]" : "text-gray-700"}`}
+                                  className={`px-2 py-2 text-xs cursor-pointer hover:bg-gray-50 flex items-center justify-between ${item.discountType === "percent" ? "text-[#2563eb] font-bold bg-[rgba(21,99,114,0.1)]" : "text-gray-700"}`}
                                   onClick={() => {
                                     handleItemChange(item.id, "discountType", "percent");
                                     setOpenDiscountDropdowns(prev => ({ ...prev, [item.id]: false }));
@@ -2230,7 +3466,7 @@ export default function NewSalesReceipt() {
                                   {item.discountType === "percent" && <Check size={10} />}
                                 </div>
                                 <div
-                                  className={`px-2 py-2 text-xs cursor-pointer hover:bg-gray-50 flex items-center justify-between ${item.discountType === "amount" ? "text-[#156372] font-bold bg-[rgba(21,99,114,0.1)]" : "text-gray-700"}`}
+                                  className={`px-2 py-2 text-xs cursor-pointer hover:bg-gray-50 flex items-center justify-between ${item.discountType === "amount" ? "text-[#2563eb] font-bold bg-[rgba(21,99,114,0.1)]" : "text-gray-700"}`}
                                   onClick={() => {
                                     handleItemChange(item.id, "discountType", "amount");
                                     setOpenDiscountDropdowns(prev => ({ ...prev, [item.id]: false }));
@@ -2248,7 +3484,7 @@ export default function NewSalesReceipt() {
                       <td className="p-3 relative overflow-visible">
                         <div className="relative" ref={el => taxDropdownRefs.current[item.id] = el}>
                           <button
-                            className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm text-left flex items-center justify-between hover:bg-white hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] bg-white"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-left flex items-center justify-between bg-white shadow-sm transition hover:border-[#156372] hover:bg-gray-50 focus:outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
                             onClick={() => setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
                           >
                             <span className="truncate text-gray-700">
@@ -2279,57 +3515,86 @@ export default function NewSalesReceipt() {
                             </div>
                           </button>
                           {openTaxDropdowns[item.id] && (
-                            <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-[2500] py-2 w-[240px]">
-                              <div className="px-2 pb-2">
-                                <div className="relative">
-                                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                  <input
-                                    type="text"
-                                    value={taxSearches[item.id] || ""}
-                                    onChange={(e) => setTaxSearches(prev => ({ ...prev, [item.id]: e.target.value }))}
-                                    placeholder="Search"
-                                    className="w-full pl-9 pr-3 py-2 border border-[#3b82f6] rounded-md text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#3b82f6] focus:border-[#3b82f6]"
-                                  />
-                                </div>
-                              </div>
-                              <div className="px-3 pb-1 text-xs font-semibold text-gray-500">Tax</div>
-                              <div className="max-h-44 overflow-y-auto">
-                                {getFilteredTaxes(item.id).length > 0 ? (
-                                  getFilteredTaxes(item.id).map(tax => {
-                                    const taxId = tax.id || tax._id;
-                                    const isSelected = String(item.tax || "") === String(taxId || "");
-                                    return (
-                                      <button
-                                        key={taxId}
-                                        type="button"
-                                        className={`w-full px-3 py-2 text-sm text-left flex items-center justify-between transition-colors ${isSelected ? "bg-[#3b82f6] text-white" : "text-gray-700 hover:bg-gray-50"}`}
-                                        onClick={() => {
-                                          handleItemChange(item.id, "tax", taxId);
-                                          setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: false }));
-                                        }}
-                                      >
-                                        <span>{getTaxDisplayLabel(tax)}</span>
-                                        {isSelected && <Check size={14} />}
-                                      </button>
-                                    );
-                                  })
-                                ) : (
-                                  <div className="px-3 py-2 text-sm text-gray-500">No taxes found</div>
-                                )}
-                              </div>
-                              <button
-                                type="button"
-                                className="w-full mt-1 px-3 py-2 text-sm text-[#3b82f6] hover:bg-blue-50 flex items-center gap-2 border-t border-gray-100"
-                                onClick={() => {
-                                  setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: false }));
-                                  navigate("/settings/taxes/new", {
-                                    state: { returnTo: window.location.pathname }
-                                  });
-                                }}
-                              >
-                                <Plus size={14} />
-                                New Tax
-                              </button>
+                            <div className="absolute top-full left-0 z-[2500] mt-1 w-72 rounded-lg border border-gray-200 bg-white p-1 shadow-lg animate-in fade-in zoom-in-95 duration-100">
+                              {(() => {
+                                const searchValue = taxSearches[item.id] || "";
+                                const taxGroups = buildTaxOptionGroups(taxes);
+                                const filteredTaxGroups = searchValue.trim()
+                                  ? taxGroups
+                                      .map((group) => ({
+                                        ...group,
+                                        options: group.options.filter((tax) =>
+                                          `${tax.name} [${tax.rate}%]`.toLowerCase().includes(searchValue.trim().toLowerCase())
+                                        ),
+                                      }))
+                                      .filter((group) => group.options.length > 0)
+                                  : taxGroups;
+                                const hasTaxes = filteredTaxGroups.length > 0;
+
+                                return (
+                                  <>
+                                    <div className="p-2">
+                                      <div className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 transition-all focus-within:border-[#156372] focus-within:ring-1 focus-within:ring-[#156372]">
+                                        <Search size={14} className="text-gray-400" />
+                                        <input
+                                          type="text"
+                                          value={searchValue}
+                                          onChange={(e) => setTaxSearches(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                          placeholder="Search..."
+                                          className="w-full border-none bg-transparent text-[13px] text-gray-700 outline-none placeholder:text-gray-400"
+                                          autoFocus
+                                        />
+                                      </div>
+                                    </div>
+                                    <div className="max-h-64 overflow-y-auto py-1 custom-scrollbar">
+                                      {!hasTaxes ? (
+                                        <div className="px-4 py-3 text-center text-[13px] text-gray-400">No taxes found</div>
+                                      ) : (
+                                        filteredTaxGroups.map((group) => (
+                                          <div key={group.label} className="pb-1">
+                                            <div className="px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-widest text-gray-600">
+                                              {group.label}
+                                            </div>
+                                            {group.options.map((tax) => {
+                                              const taxId = tax.id;
+                                              const label = taxLabel(tax.raw ?? tax);
+                                              const selected = String(item.tax || "") === taxId;
+                                              return (
+                                                <button
+                                                  key={taxId}
+                                                  type="button"
+                                                  className={`w-full px-4 py-2 text-left text-[13px] ${selected
+                                                    ? "bg-gray-50 text-gray-900 font-medium"
+                                                    : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                                                  }`}
+                                                  onClick={() => {
+                                                    handleItemChange(item.id, "tax", taxId);
+                                                    setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: false }));
+                                                  }}
+                                                >
+                                                  {label}
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="w-full border-t border-gray-200 px-4 py-2 text-left text-[#156372] text-[13px] font-medium flex items-center gap-2 hover:bg-gray-50"
+                                      onClick={() => {
+                                        setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: false }));
+                                        setNewTaxTargetItemId(item.id);
+                                        setIsNewTaxQuickModalOpen(true);
+                                      }}
+                                    >
+                                      <Plus size={14} />
+                                      New Tax
+                                    </button>
+                                  </>
+                                );
+                              })()}
                             </div>
                           )}
                         </div>
@@ -2364,7 +3629,7 @@ export default function NewSalesReceipt() {
                                     ? "text-white"
                                     : "text-gray-700 hover:bg-gray-50"
                                     }`}
-                                  style={itemsWithAdditionalInfo.has(item.id) ? { backgroundColor: "#156372" } : {}}
+                                  style={itemsWithAdditionalInfo.has(item.id) ? { backgroundColor: "#2563eb" } : {}}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setItemsWithAdditionalInfo(prev => {
@@ -2444,6 +3709,180 @@ export default function NewSalesReceipt() {
                         </div>
                       </td>
                     </tr>
+                    {itemsWithAdditionalInfo.has(item.id) && (
+                      <tr className="border-b border-gray-100 bg-[#f8fafc]">
+                        <td colSpan={99} className="px-3 py-2">
+                          <div className="flex flex-wrap items-center gap-5 text-[13px] text-slate-600">
+                            <div className="relative" ref={activeAccountDropdownItemId === item.id ? additionalInfoMenuRef : undefined}>
+                              <button
+                                type="button"
+                                className={`inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition-all hover:border-[#156372] hover:text-gray-900 ${activeAccountDropdownItemId === item.id ? "border-[#156372]" : ""}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAdditionalInfoSearch("");
+                                  setActiveAccountDropdownItemId((prev) => (prev === item.id ? null : item.id));
+                                }}
+                              >
+                                <BriefcaseBusiness size={13} className="text-gray-500" />
+                                <span className={String(item?.account || "").trim() ? "text-gray-900" : "text-gray-400"}>
+                                  {String(item?.account || "").trim() || "Select an account"}
+                                </span>
+                                <ChevronDown size={12} className="text-gray-400" />
+                              </button>
+                              {activeAccountDropdownItemId === item.id && (
+                                <div className="absolute left-0 top-full z-[170] mt-1 w-[280px] overflow-hidden rounded border border-gray-200 bg-white shadow-lg">
+                                  <div className="flex items-center gap-2 border-b border-gray-200 p-2">
+                                    <Search size={14} className="text-gray-400" />
+                                    <div className="relative flex-1">
+                                      <input
+                                        type="text"
+                                        placeholder="Search"
+                                        value={additionalInfoSearch}
+                                        onChange={(e) => setAdditionalInfoSearch(e.target.value)}
+                                        className="w-full text-sm focus:outline-none"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="max-h-56 overflow-y-auto py-1">
+                                    {filteredGroupedAccountOptions.length > 0 ? (
+                                      filteredGroupedAccountOptions.map((group) => (
+                                        <div key={group.group}>
+                                          <div className="px-4 py-2 text-sm font-semibold text-gray-700">{group.group}</div>
+                                          {group.options.map((option) => (
+                                            <button
+                                              key={option}
+                                              type="button"
+                                              className={`w-full px-4 py-2 text-left text-sm ${String(item?.account || "").trim() === option ? "bg-[#156372] text-white" : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"}`}
+                                              onClick={() => {
+                                                setFormData((prev) => ({
+                                                  ...prev,
+                                                  items: prev.items.map((line) =>
+                                                    line.id === item.id ? { ...line, account: option } : line
+                                                  ),
+                                                }));
+                                                setActiveAccountDropdownItemId(null);
+                                                setAdditionalInfoSearch("");
+                                              }}
+                                            >
+                                              {option}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      ))
+                                    ) : (
+                                      <div className="px-3 py-2 text-sm text-slate-500">NO RESULTS FOUND</div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="relative border-l border-slate-300 pl-5" ref={activeReportingDropdownItemId === item.id ? additionalInfoReportingRef : undefined}>
+                              <button
+                                type="button"
+                                className={`inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-700 shadow-sm transition hover:border-[#156372] hover:bg-gray-50 hover:text-gray-900 ${activeReportingDropdownItemId === item.id ? "border-[#156372]" : ""}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const existing = Array.isArray(item?.reportingTags) ? item.reportingTags : [];
+                                  const initialValues = {};
+                                  normalizedReportingTags.forEach((tag) => {
+                                    const tagId = String(tag?.id || tag?._id || tag?.key || "");
+                                    const existingTag = existing.find((entry) =>
+                                      String(entry?.tagId || "") === tagId ||
+                                      String(entry?.name || "") === String(tag?.label || "")
+                                    );
+                                    initialValues[String(tag.key)] = existingTag?.value ? String(existingTag.value) : "";
+                                  });
+                                  setItemReportingTagDraftValues(initialValues);
+                                  setActiveReportingDropdownItemId((prev) => (prev === item.id ? null : item.id));
+                                }}
+                              >
+                                <Tag size={13} className="text-gray-500" />
+                                <span className={activeReportingDropdownItemId === item.id ? "text-gray-900" : "text-gray-700"}>
+                                  {getItemReportingTagsSummary(item)}
+                                </span>
+                                <ChevronDown size={12} className="text-gray-400" />
+                              </button>
+                              {activeReportingDropdownItemId === item.id && (
+                                <div className="absolute left-0 top-full z-[170] mt-1 w-[420px] rounded-lg border border-gray-200 bg-white shadow-lg">
+                                  <div className="border-b border-gray-200 px-4 py-3 text-sm font-semibold text-gray-800">Reporting Tags</div>
+                                  <div className="space-y-4 px-4 py-4">
+                                    {normalizedReportingTags.length === 0 ? (
+                                      <p className="text-sm text-gray-500">No reporting tags found.</p>
+                                    ) : (
+                                      normalizedReportingTags.map((tag) => (
+                                        <div key={String(tag.key)} className="space-y-2">
+                                          <label className="block text-sm text-[#ef4444]">
+                                            {tag.label}{tag.isMandatory ? " *" : ""}
+                                          </label>
+                                          <select
+                                            className="h-10 w-full rounded border border-gray-300 bg-white px-3 text-sm text-gray-700 outline-none transition-all hover:border-[#156372] focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
+                                            value={itemReportingTagDraftValues[String(tag.key)] ?? ""}
+                                            onChange={(e) =>
+                                              setItemReportingTagDraftValues((prev) => ({ ...prev, [String(tag.key)]: e.target.value }))
+                                            }
+                                          >
+                                            <option value="">None</option>
+                                            {(Array.isArray(tag.options) ? tag.options : []).map((option, idx) => (
+                                              <option key={`${String(tag.key)}-${idx}`} value={String(option?.value || "")}>
+                                                {String(option?.label || option?.value || "")}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                      ))
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-3 border-t border-gray-200 px-4 py-3">
+                                    <button
+                                      type="button"
+                                      className="rounded-md bg-[#156372] px-4 py-1.5 text-sm font-medium text-white hover:bg-[#0D4A52]"
+                                      onClick={() => {
+                                        const missingMandatory = normalizedReportingTags.some((tag) => {
+                                          if (!tag.isMandatory) return false;
+                                          const value = String(itemReportingTagDraftValues[String(tag.key)] || "").trim();
+                                          return !value;
+                                        });
+                                        if (missingMandatory) {
+                                          toast.error("Please select all mandatory reporting tags.");
+                                          return;
+                                        }
+                                        const mapped = normalizedReportingTags
+                                          .map((tag) => {
+                                            const value = String(itemReportingTagDraftValues[String(tag.key)] || "").trim();
+                                            if (!value) return null;
+                                            return {
+                                              tagId: String(tag?.id || tag?._id || tag?.key || ""),
+                                              name: String(tag?.label || ""),
+                                              value,
+                                            };
+                                          })
+                                          .filter(Boolean);
+                                        setFormData((prev) => ({
+                                          ...prev,
+                                          items: prev.items.map((line) =>
+                                            line.id === item.id ? { ...line, reportingTags: mapped } : line
+                                          ),
+                                        }));
+                                        setActiveReportingDropdownItemId(null);
+                                      }}
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="rounded-md border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                                      onClick={() => setActiveReportingDropdownItemId(null)}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                     {newHeaderItemId === item.id && showNewHeaderInput && (
                       <tr>
                         <td colSpan={isBulkUpdateMode ? 7 : 6} className="p-3">
@@ -2468,7 +3907,7 @@ export default function NewSalesReceipt() {
                                   setNewHeaderItemId(null);
                                 }
                               }}
-                              className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
+                              className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#2563eb] focus:border-[#2563eb]"
                               autoFocus
                             />
                             <button
@@ -2493,7 +3932,7 @@ export default function NewSalesReceipt() {
             <div className="flex items-center gap-4 mt-4">
               <button
                 className="px-4 py-2 rounded-md text-sm font-semibold transition-colors flex items-center gap-2"
-                style={{ backgroundColor: "rgba(21, 99, 114, 0.1)", color: "#156372" }}
+                style={{ backgroundColor: "rgba(21, 99, 114, 0.1)", color: "#2563eb" }}
                 onMouseEnter={(e) => e.target.style.backgroundColor = "rgba(21, 99, 114, 0.15)"}
                 onMouseLeave={(e) => e.target.style.backgroundColor = "rgba(21, 99, 114, 0.1)"}
                 onClick={handleAddItem}
@@ -2504,14 +3943,14 @@ export default function NewSalesReceipt() {
               <button
                 onClick={() => setIsBulkAddModalOpen(true)}
                 className="px-4 py-2 rounded-md text-sm font-semibold transition-colors flex items-center gap-2 border"
-                style={{ backgroundColor: "rgba(21, 99, 114, 0.1)", color: "#156372", borderColor: "#156372" }}
+                style={{ backgroundColor: "rgba(21, 99, 114, 0.1)", color: "#2563eb", borderColor: "#2563eb" }}
                 onMouseEnter={(e) => {
                   e.target.style.backgroundColor = "rgba(21, 99, 114, 0.15)";
-                  e.target.style.borderColor = "#0D4A52";
+                  e.target.style.borderColor = "#1d4ed8";
                 }}
                 onMouseLeave={(e) => {
                   e.target.style.backgroundColor = "rgba(21, 99, 114, 0.1)";
-                  e.target.style.borderColor = "#156372";
+                  e.target.style.borderColor = "#2563eb";
                 }}
               >
                 <CheckSquare size={16} />
@@ -2521,18 +3960,18 @@ export default function NewSalesReceipt() {
           </div>
 
           {/* Summary and Notes Section */}
-          <div className="mt-10 grid grid-cols-1 lg:grid-cols-[1fr_520px] gap-10">
+          <div className="mt-10 w-full max-w-[1120px] pr-12 grid grid-cols-1 lg:grid-cols-[1fr_520px] gap-10">
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-2">Notes</label>
               <textarea
-                className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] resize-none h-24 hover:border-gray-400"
+                className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#2563eb] focus:border-[#2563eb] resize-none h-24 hover:border-gray-400"
                 value={formData.notes}
                 onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
               />
               <div className="text-[11px] text-gray-500 mt-1">Will be displayed on the sales receipt</div>
             </div>
 
-            <div className="bg-[#fafafa] border border-gray-200 rounded-md p-6">
+            <div className="bg-[#f3f4f6] border border-[#e5e7eb] rounded-xl p-6">
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-bold text-gray-700">Sub Total</span>
@@ -2561,7 +4000,7 @@ export default function NewSalesReceipt() {
                         {isDiscountTypeDropdownOpen && (
                           <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded shadow-xl z-50 py-1 min-w-[50px]">
                             <div
-                              className={`px-3 py-1.5 text-xs cursor-pointer hover:bg-gray-50 flex items-center justify-between ${formData.discountType === "percent" ? "text-[#156372] font-bold bg-[rgba(21,99,114,0.1)]" : "text-gray-700"}`}
+                              className={`px-3 py-1.5 text-xs cursor-pointer hover:bg-gray-50 flex items-center justify-between ${formData.discountType === "percent" ? "text-[#2563eb] font-bold bg-[rgba(21,99,114,0.1)]" : "text-gray-700"}`}
                               onClick={() => {
                                 handleSummaryChange("discountType", "percent");
                                 setIsDiscountTypeDropdownOpen(false);
@@ -2571,7 +4010,7 @@ export default function NewSalesReceipt() {
                               {formData.discountType === "percent" && <Check size={10} />}
                             </div>
                             <div
-                              className={`px-3 py-1.5 text-xs cursor-pointer hover:bg-gray-50 flex items-center justify-between ${formData.discountType === "amount" ? "text-[#156372] font-bold bg-[rgba(21,99,114,0.1)]" : "text-gray-700"}`}
+                              className={`px-3 py-1.5 text-xs cursor-pointer hover:bg-gray-50 flex items-center justify-between ${formData.discountType === "amount" ? "text-[#2563eb] font-bold bg-[rgba(21,99,114,0.1)]" : "text-gray-700"}`}
                               onClick={() => {
                                 handleSummaryChange("discountType", "amount");
                                 setIsDiscountTypeDropdownOpen(false);
@@ -2595,21 +4034,127 @@ export default function NewSalesReceipt() {
                 )}
 
                 {showShippingCharges && (
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm text-gray-600">Shipping Charge</span>
-                    <input
-                      type="number"
-                      className="w-20 px-2 py-0.5 border border-gray-300 rounded text-sm text-right focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
-                      value={formData.shippingCharges}
-                      onChange={(e) => handleSummaryChange("shippingCharges", parseFloat(e.target.value) || 0)}
-                    />
-                    <div className="border border-gray-400 rounded-full p-0.5">
-                      <Info size={10} className="text-gray-500" />
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-gray-600">Shipping Charge</span>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          onKeyDown={blockInvalidNumericKeys}
+                          className="w-20 px-2 py-0.5 border border-gray-300 rounded text-sm text-right focus:outline-none focus:ring-1 focus:ring-[#2563eb] focus:border-[#2563eb]"
+                          value={formData.shippingCharges}
+                          onChange={(e) => handleSummaryChange("shippingCharges", sanitizeNumericInput(e.target.value))}
+                        />
+                        <div className="border border-gray-400 rounded-full p-0.5">
+                          <Info size={10} className="text-gray-500" />
+                        </div>
+                      </div>
+                      <span className="text-sm text-gray-900">{parseFloat(formData.shippingCharges).toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center gap-3 pl-4">
+                      <span className="text-sm text-gray-600">Shipping Charge Tax</span>
+                      <div className="relative" ref={shippingChargeTaxDropdownRef}>
+                        <button
+                          type="button"
+                          className="flex h-9 min-w-[180px] items-center justify-between rounded border border-gray-300 bg-white px-3 text-sm text-gray-700 shadow-sm transition hover:border-[#156372] hover:bg-gray-50 focus:outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
+                          onClick={() => {
+                            setIsShippingChargeTaxDropdownOpen((prev) => !prev);
+                            setShippingChargeTaxSearch("");
+                          }}
+                        >
+                          <span className="truncate">
+                            {formData.shippingChargeTax ? getTaxDisplayLabel(findTaxById(formData.shippingChargeTax)) : "Select a Tax"}
+                          </span>
+                          <ChevronDown size={14} className={`text-gray-400 transition-transform ${isShippingChargeTaxDropdownOpen ? "rotate-180" : ""}`} />
+                        </button>
+                        {isShippingChargeTaxDropdownOpen && (
+                          <div className="absolute left-0 top-full z-[2500] mt-1 w-72 rounded-lg border border-gray-200 bg-white p-1 shadow-lg animate-in fade-in zoom-in-95 duration-100">
+                            {(() => {
+                              const searchValue = shippingChargeTaxSearch || "";
+                              const taxGroups = buildTaxOptionGroups(taxes);
+                              const filteredTaxGroups = searchValue.trim()
+                                ? taxGroups
+                                    .map((group) => ({
+                                      ...group,
+                                      options: group.options.filter((tax) =>
+                                        `${tax.name} [${tax.rate}%]`.toLowerCase().includes(searchValue.trim().toLowerCase())
+                                      ),
+                                    }))
+                                    .filter((group) => group.options.length > 0)
+                                : taxGroups;
+                              const hasTaxes = filteredTaxGroups.length > 0;
+
+                              return (
+                                <>
+                                  <div className="p-2">
+                                    <div className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 transition-all focus-within:border-[#156372] focus-within:ring-1 focus-within:ring-[#156372]">
+                                      <Search size={14} className="text-gray-400" />
+                                      <input
+                                        type="text"
+                                        value={searchValue}
+                                        onChange={(e) => setShippingChargeTaxSearch(e.target.value)}
+                                        placeholder="Search..."
+                                        className="w-full border-none bg-transparent text-[13px] text-gray-700 outline-none placeholder:text-gray-400"
+                                        autoFocus
+                                      />
+                                    </div>
+                                    </div>
+                                    <div className="max-h-64 overflow-y-auto py-1 custom-scrollbar">
+                                      {!hasTaxes ? (
+                                        <div className="px-4 py-3 text-center text-[13px] text-gray-400">No taxes found</div>
+                                      ) : (
+                                        filteredTaxGroups.map((group) => (
+                                          <div key={group.label} className="pb-1">
+                                            <div className="px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-widest text-gray-600">
+                                              {group.label}
+                                            </div>
+                                            {group.options.map((tax) => {
+                                              const taxId = tax.id;
+                                              const label = taxLabel(tax.raw ?? tax);
+                                              const selected = String(formData.shippingChargeTax || "") === taxId;
+                                              return (
+                                                <button
+                                                  key={taxId}
+                                                  type="button"
+                                                  className={`w-full px-4 py-2 text-left text-[13px] ${selected
+                                                    ? "bg-gray-50 text-gray-900 font-medium"
+                                                    : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                                                  }`}
+                                                  onClick={() => {
+                                                    setFormData((prev) => ({ ...prev, shippingChargeTax: taxId }));
+                                                    setIsShippingChargeTaxDropdownOpen(false);
+                                                  }}
+                                                >
+                                                  {label}
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+                                    <button
+                                    type="button"
+                                    className="w-full border-t border-gray-200 px-4 py-2 text-left text-[#156372] text-[13px] font-medium flex items-center gap-2 hover:bg-gray-50"
+                                    onClick={() => {
+                                      setIsShippingChargeTaxDropdownOpen(false);
+                                      setIsNewTaxQuickModalOpen(true);
+                                      setNewTaxTargetItemId(null);
+                                    }}
+                                  >
+                                    <Plus size={14} />
+                                    New Tax
+                                  </button>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        )}
+                      </div>
+                      <span className="ml-auto text-sm text-gray-900">{shippingChargeTaxAmount.toFixed(2)}</span>
                     </div>
                   </div>
-                  <span className="text-sm text-gray-900">{parseFloat(formData.shippingCharges).toFixed(2)}</span>
-                </div>
                 )}
 
                 {showAdjustment && (
@@ -2620,9 +4165,11 @@ export default function NewSalesReceipt() {
                     </div>
                     <input
                       type="number"
-                      className="w-20 px-2 py-0.5 border border-gray-300 rounded text-sm text-right focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                      inputMode="decimal"
+                      onKeyDown={blockInvalidNumericKeys}
+                      className="w-20 px-2 py-0.5 border border-gray-300 rounded text-sm text-right focus:outline-none focus:ring-1 focus:ring-[#2563eb] focus:border-[#2563eb]"
                       value={formData.adjustment}
-                      onChange={(e) => handleSummaryChange("adjustment", parseFloat(e.target.value) || 0)}
+                      onChange={(e) => handleSummaryChange("adjustment", sanitizeNumericInput(e.target.value))}
                     />
                     <div className="border border-gray-400 rounded-full p-0.5">
                       <Info size={10} className="text-gray-500" />
@@ -2657,12 +4204,12 @@ export default function NewSalesReceipt() {
             </div>
           </div>
 
-          <div className="mt-8 grid grid-cols-1 lg:grid-cols-[1fr_520px] gap-10">
+          <div className="mt-8 w-full max-w-[1120px] pr-12 grid grid-cols-1 lg:grid-cols-[1fr_520px] gap-10">
             {/* Terms & Conditions */}
             <div>
               <div className="text-sm font-medium text-gray-900 mb-2">Terms & Conditions</div>
               <textarea
-                className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] resize-none h-24 hover:border-gray-400"
+                className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#2563eb] focus:border-[#2563eb] resize-none h-24 hover:border-gray-400"
                 placeholder="Enter the terms and conditions of your business to be displayed in your transaction"
                 value={formData.termsAndConditions}
                 onChange={(e) => setFormData(prev => ({ ...prev, termsAndConditions: e.target.value }))}
@@ -2671,20 +4218,17 @@ export default function NewSalesReceipt() {
 
             {/* Attach Files */}
             <div ref={uploadDropdownRef}>
-              <div className="text-sm font-medium text-gray-900 mb-2">Attach File(s) to Sales Receipt</div>
-              <div className="flex items-center gap-2">
-                <div className="relative">
+              <div className="mb-1.5 block text-[12px] font-medium text-slate-800">Attach File(s) to Sales Receipt</div>
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    className={`px-4 py-2 text-sm border rounded-md bg-white text-gray-700 cursor-pointer flex items-center gap-1 ${isUploadDropdownOpen
-                      ? "border-[#156372] border-dashed"
-                      : "border-gray-300 border-solid"
-                      }`}
+                    className="inline-flex h-8 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-[13px] font-medium text-[#1f3f79] transition hover:bg-slate-50"
                     onClick={() => setIsUploadDropdownOpen(!isUploadDropdownOpen)}
                   >
-                    <Upload size={16} />
+                    <Upload size={15} className="text-slate-500" />
                     Upload File
-                    <ChevronDown size={14} />
+                    <ChevronDown size={13} className="text-slate-400" />
                   </button>
                   {isUploadDropdownOpen && (
                     <div className="absolute top-full left-0 mt-2 bg-white rounded-lg shadow-md border border-gray-200 min-w-[220px] z-[100] py-1">
@@ -2692,7 +4236,7 @@ export default function NewSalesReceipt() {
                         type="button"
                         className="px-4 py-2 text-sm text-gray-900 cursor-pointer border-none bg-transparent w-full text-left flex items-center"
                         onMouseEnter={(e) => {
-                          e.target.style.backgroundColor = "#156372";
+                          e.target.style.backgroundColor = "#2563eb";
                           e.target.style.color = "#fff";
                         }}
                         onMouseLeave={(e) => {
@@ -2707,7 +4251,7 @@ export default function NewSalesReceipt() {
                         type="button"
                         className="px-4 py-2 text-sm text-gray-900 cursor-pointer border-none bg-transparent w-full text-left flex items-center"
                         onMouseEnter={(e) => {
-                          e.target.style.backgroundColor = "#156372";
+                          e.target.style.backgroundColor = "#2563eb";
                           e.target.style.color = "#fff";
                         }}
                         onMouseLeave={(e) => {
@@ -2721,7 +4265,7 @@ export default function NewSalesReceipt() {
                       <div className="px-4 py-2">
                         <button
                           type="button"
-                          className="text-sm text-gray-900 cursor-pointer border-none bg-transparent w-full text-left hover:bg-[#156372] hover:text-white flex items-center"
+                          className="text-sm text-gray-900 cursor-pointer border-none bg-transparent w-full text-left hover:bg-gray-50 hover:text-gray-900 flex items-center"
                           onClick={() => handleAttachFromCloud()}
                         >
                           Attach From Cloud
@@ -2742,9 +4286,9 @@ export default function NewSalesReceipt() {
                   <button
                     type="button"
                     className="flex items-center gap-2 px-4 py-2 text-white rounded-md text-sm font-medium transition-colors"
-                    style={{ backgroundColor: "#156372" }}
-                    onMouseEnter={(e) => e.target.style.backgroundColor = "#0D4A52"}
-                    onMouseLeave={(e) => e.target.style.backgroundColor = "#156372"}
+                    style={{ backgroundColor: "#2563eb" }}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = "#1d4ed8"}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = "#2563eb"}
                   >
                     <Paperclip size={16} />
                     {formData.documents.length}
@@ -2781,7 +4325,7 @@ export default function NewSalesReceipt() {
             </div>
           </div>
           {/* Payment Details Section */}
-          <div className="mt-14 border-t border-gray-200 pt-10 relative z-[200]">
+          <div className="mt-10 border-t border-gray-200 pt-8 relative z-0">
             <h3 className="text-sm font-bold text-gray-900 mb-6">Payment Details</h3>
             <div className="flex items-center gap-12">
               <div className="flex items-center gap-6 flex-1 max-w-[500px]">
@@ -2790,6 +4334,7 @@ export default function NewSalesReceipt() {
                   <PaymentModeDropdown
                     value={formData.paymentMode}
                     onChange={(val) => setFormData(prev => ({ ...prev, paymentMode: val }))}
+                    selectClassName="cursor-pointer"
                   />
                 </div>
               </div>
@@ -2797,7 +4342,7 @@ export default function NewSalesReceipt() {
               <div className="flex items-center gap-6 flex-1 max-w-[500px]">
                 <label className="text-sm font-medium text-red-500 whitespace-nowrap">Deposit To*</label>
                 <div className="flex-1">
-                  <TabanSelect
+                  <ZohoSelect
                     value={formData.depositTo}
                     options={depositAccounts}
                     onChange={(val) => {
@@ -2811,6 +4356,7 @@ export default function NewSalesReceipt() {
                     placeholder="Select Deposit Account"
                     direction="up"
                     groupBy="account_type"
+                    className="h-9 w-full rounded border border-gray-300 bg-white px-3 text-sm text-gray-700 outline-none transition-all hover:border-[#156372] focus:border-[#156372] focus:ring-1 focus:ring-[#156372] cursor-pointer"
                   />
                 </div>
               </div>
@@ -2820,7 +4366,7 @@ export default function NewSalesReceipt() {
               <label className="text-sm font-medium text-gray-600 whitespace-nowrap">Reference#</label>
               <input
                 type="text"
-                className="flex-1 px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] hover:border-gray-400 transition-colors"
+                className="flex-1 px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#2563eb] focus:border-[#2563eb] hover:border-gray-400 transition-colors"
                 value={formData.referenceNumber}
                 onChange={(e) => setFormData(prev => ({ ...prev, referenceNumber: e.target.value }))}
               />
@@ -2828,42 +4374,23 @@ export default function NewSalesReceipt() {
           </div>
 
           {/* Footer Fixed Action Buttons */}
-          <div className="fixed bottom-0 left-[260px] right-0 bg-white border-t border-gray-200 px-8 py-3 flex items-center gap-3 z-[100] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+          <div className="fixed bottom-0 left-[260px] right-0 bg-white border-t border-l border-gray-200 px-6 py-3 flex items-center gap-3 z-[100] shadow-[0_-2px_8px_rgba(15,23,42,0.08)]">
             <button
               disabled={saveLoading !== null}
-              className={`px-4 py-2 text-white rounded text-[13px] font-bold transition-colors shadow-sm cursor-pointer border-none flex items-center gap-2 ${saveLoading ? "opacity-70 cursor-not-allowed" : ""}`}
-              style={{ background: "#156372" }}
-              onMouseEnter={(e) => { if (!saveLoading) e.target.style.backgroundColor = "#0D4A52"; }}
-              onMouseLeave={(e) => { if (!saveLoading) e.target.style.backgroundColor = "#156372"; }}
+              className={`px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded text-[13px] font-semibold transition-colors shadow-sm cursor-pointer flex items-center gap-2 ${saveLoading ? "opacity-70 cursor-not-allowed" : ""}`}
               onClick={handleSave}
             >
-              {saveLoading === "draft" ? <Loader2 size={14} className="animate-spin" /> : null}
-              {saveLoading === "draft" ? "Saving..." : "Save as Paid"}
+              Save
             </button>
-            <div className="flex items-center">
-              <button
-                disabled={saveLoading !== null}
-                className={`px-4 py-2 text-white rounded-l text-[13px] font-bold transition-colors shadow-sm cursor-pointer border-none flex items-center gap-2 ${saveLoading ? "opacity-70 cursor-not-allowed" : ""}`}
-                style={{ background: "#156372" }}
-                onMouseEnter={(e) => { if (!saveLoading) e.target.style.backgroundColor = "#0D4A52"; }}
-                onMouseLeave={(e) => { if (!saveLoading) e.target.style.backgroundColor = "#156372"; }}
-                onClick={handleSaveAndSend}
-              >
-                {saveLoading === "send" ? <Loader2 size={14} className="animate-spin" /> : null}
-                {saveLoading === "send" ? "Saving..." : "Save as Paid & Send"}
-              </button>
-              <button
-                className="px-2 py-2 text-white rounded-r border-l border-[#0D4A52] transition-colors cursor-pointer"
-                style={{ background: "#156372" }}
-                onMouseEnter={(e) => { if (!saveLoading) e.target.style.backgroundColor = "#0D4A52"; }}
-                onMouseLeave={(e) => { if (!saveLoading) e.target.style.backgroundColor = "#156372"; }}
-                disabled={saveLoading !== null}
-              >
-                <ChevronDown size={14} />
-              </button>
-            </div>
             <button
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded text-[13px] font-bold hover:bg-gray-50 transition-colors"
+              disabled={saveLoading !== null}
+              className={`px-4 py-2 bg-[#156372] border border-[#156372] text-white rounded text-[13px] font-semibold hover:bg-[#0D4A52] transition-colors shadow-sm cursor-pointer flex items-center gap-2 ${saveLoading ? "opacity-70 cursor-not-allowed" : ""}`}
+              onClick={handleSaveAndSend}
+            >
+              Save and Send
+            </button>
+            <button
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded text-[13px] font-semibold hover:bg-gray-50 transition-colors"
               onClick={() => navigate("/sales/sales-receipts")}
             >
               Cancel
@@ -2873,111 +4400,271 @@ export default function NewSalesReceipt() {
       </div>
 
       {/* Manage Salespersons Modal */}
-      {
-        isManageSalespersonsModalOpen && (
+      {isManageSalespersonsModalOpen && createPortal(
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000]"
+          onClick={() => setIsManageSalespersonsModalOpen(false)}
+        >
           <div
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                setIsManageSalespersonsModalOpen(false);
-              }
-            }}
+            className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-              <div className="flex items-center justify-between p-4 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-900">Manage Salespersons</h2>
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900">Manage Salespersons</h2>
+              <button
+                onClick={() => setIsManageSalespersonsModalOpen(false)}
+                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {selectedSalespersonsForManage.length > 0 ? (
+              <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+                <div className="flex items-center gap-2">
+                  <button className="px-3 py-1.5 bg-white border border-gray-300 rounded text-sm text-gray-700 hover:bg-gray-50 shadow-sm">
+                    Merge
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setManageSalespersonMenuPosition({ top: rect.bottom, left: rect.left });
+                      setManageSalespersonMenuOpen("BULK_ACTIONS");
+                    }}
+                    className="px-3 py-1.5 bg-white border border-gray-300 rounded text-sm text-gray-700 hover:bg-gray-50 shadow-sm flex items-center gap-2"
+                  >
+                    More Actions
+                    <ChevronDown size={14} />
+                  </button>
+                </div>
                 <button
-                  className="p-2 hover:bg-gray-100 rounded-md text-gray-600 hover:text-gray-900"
-                  onClick={() => setIsManageSalespersonsModalOpen(false)}
+                  onClick={() => setSelectedSalespersonsForManage([])}
+                  className="text-gray-400 hover:text-gray-600"
                 >
                   <X size={20} />
                 </button>
               </div>
-
-              <div className="p-4 flex-1 overflow-y-auto">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="flex-1 relative">
-                    <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                    <input
-                      type="text"
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
-                      placeholder="Search Salesperson"
-                      value={manageSalespersonSearch}
-                      onChange={(e) => setManageSalespersonSearch(e.target.value)}
-                    />
-                  </div>
-                  <button
-                    className="px-4 py-2 text-white border-none rounded-md text-sm font-medium flex items-center gap-2 cursor-pointer transition-all"
-                    style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                    onMouseEnter={(e) => e.target.style.opacity = "0.9"}
-                    onMouseLeave={(e) => e.target.style.opacity = "1"}
-                    onClick={() => {
-                      openSalespersonQuickAction();
-                    }}
-                  >
-                    <Plus size={16} />
-                    New Salesperson
-                  </button>
+            ) : (
+              <div className="p-6 border-b border-gray-200 flex items-center gap-3">
+                <div className="flex-1 relative">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search Salesperson"
+                    value={manageSalespersonSearch}
+                    onChange={(e) => setManageSalespersonSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#156372]"
+                  />
                 </div>
+                <button
+                  onClick={() => {
+                    setIsNewSalespersonFormOpen(true);
+                    setManageSalespersonSearch("");
+                    setManageSalespersonMenuOpen(null);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#156372] text-white rounded-md"
+                >
+                  <Plus size={16} />
+                  New Salesperson
+                </button>
+              </div>
+            )}
 
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
-                  <table className="w-full border-collapse text-sm">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200">
-                        <th className="p-3 text-left">
-                          <input
-                            type="checkbox"
-                            className="w-4 h-4 border-gray-300 rounded focus:ring-[#156372]"
-                            style={{ accentColor: "#156372" }}
-                            checked={selectedSalespersonsForManage.length === salespersons.length && salespersons.length > 0}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedSalespersonsForManage(salespersons.map(sp => sp.id || sp._id));
-                              } else {
-                                setSelectedSalespersonsForManage([]);
-                              }
-                            }}
-                          />
-                        </th>
-                        <th className="p-3 text-left text-xs font-semibold text-gray-700 uppercase">SALESPERSON NAME</th>
-                        <th className="p-3 text-left text-xs font-semibold text-gray-700 uppercase">EMAIL</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {salespersons
-                        .filter(sp =>
-                          (sp.name || '').toLowerCase().includes(manageSalespersonSearch.toLowerCase()) ||
-                          (sp.email || '').toLowerCase().includes(manageSalespersonSearch.toLowerCase())
-                        )
-                        .map(salesperson => (
-                          <tr key={salesperson.id || salesperson._id} className="border-b border-gray-200 hover:bg-gray-50">
-                            <td className="p-3">
+            <div className="flex-1 overflow-y-auto p-6">
+              {isNewSalespersonFormOpen && (
+                <div className="mb-6 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Add New Salesperson</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                      <input
+                        type="text"
+                        name="name"
+                        value={newSalespersonData.name}
+                        onChange={handleNewSalespersonChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#156372]"
+                        placeholder="Enter name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                      <input
+                        type="email"
+                        name="email"
+                        value={newSalespersonData.email}
+                        onChange={handleNewSalespersonChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#156372]"
+                        placeholder="Enter email"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleSaveAndSelectSalesperson}
+                        className="flex-1 px-4 py-2 bg-[#156372] text-white rounded-md"
+                      >
+                        Add
+                      </button>
+                      <button
+                        onClick={handleCancelNewSalesperson}
+                        className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <table className="w-full">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300 text-[#156372] focus:ring-[#156372]"
+                        checked={filteredManageSalespersons.length > 0 && selectedSalespersonsForManage.length === filteredManageSalespersons.length}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedSalespersonsForManage(filteredManageSalespersons.map(s => s.id || s._id));
+                          } else {
+                            setSelectedSalespersonsForManage([]);
+                          }
+                        }}
+                      />
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">SALESPERSON NAME</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">EMAIL</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredManageSalespersons.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
+                        {manageSalespersonSearch ? "No salespersons found" : "No salespersons available"}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredManageSalespersons.map((salesperson) => {
+                      const salespersonId = salesperson.id || salesperson._id;
+                      return (
+                        <tr key={salespersonId} className="group hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center">
                               <input
                                 type="checkbox"
-                                className="w-4 h-4 border-gray-300 rounded focus:ring-[#156372]"
-                                style={{ accentColor: "#156372" }}
-                                checked={selectedSalespersonsForManage.includes(salesperson.id)}
+                                className="rounded border-gray-300 text-[#156372] focus:ring-[#156372]"
+                                checked={selectedSalespersonsForManage.includes(salespersonId)}
                                 onChange={(e) => {
                                   if (e.target.checked) {
-                                    setSelectedSalespersonsForManage(prev => [...prev, salesperson.id]);
+                                    setSelectedSalespersonsForManage(prev => [...prev, salespersonId]);
                                   } else {
-                                    setSelectedSalespersonsForManage(prev => prev.filter(id => id !== salesperson.id));
+                                    setSelectedSalespersonsForManage(prev => prev.filter(id => id !== salespersonId));
                                   }
                                 }}
                               />
-                            </td>
-                            <td className="p-3 text-gray-900">{salesperson.name}</td>
-                            <td className="p-3 text-gray-900">{salesperson.email}</td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {salesperson.name}
+                            {salesperson.status === "inactive" && (
+                              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                                Inactive
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{salesperson.email || ""}</td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="hidden group-hover:flex items-center justify-end gap-2">
+                              <button className="p-1 text-gray-500 hover:text-[#156372] hover:bg-gray-100 rounded">
+                                <Edit2 size={16} />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setManageSalespersonMenuPosition({ top: rect.bottom, left: rect.right });
+                                  setManageSalespersonMenuOpen(manageSalespersonMenuOpen === salespersonId ? null : salespersonId);
+                                }}
+                                className={`p-1 text-gray-500 hover:text-[#156372] hover:bg-gray-100 rounded ${manageSalespersonMenuOpen === salespersonId ? "bg-gray-100 text-[#156372]" : ""}`}
+                              >
+                                <MoreVertical size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
+
+            {manageSalespersonMenuOpen && manageSalespersonMenuPosition && createPortal(
+              <>
+                <div
+                  className="fixed inset-0 z-[10000]"
+                  onClick={() => setManageSalespersonMenuOpen(null)}
+                />
+                <div
+                  className="fixed bg-white rounded-md shadow-lg z-[10001] border border-gray-100 py-1 w-48"
+                  style={{
+                    top: manageSalespersonMenuPosition.top,
+                    left: manageSalespersonMenuOpen === "BULK_ACTIONS" ? manageSalespersonMenuPosition.left : manageSalespersonMenuPosition.left - 192
+                  }}
+                >
+                  {manageSalespersonMenuOpen === "BULK_ACTIONS" ? (
+                    <>
+                      <button
+                        onClick={() => setManageSalespersonMenuOpen(null)}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                      >
+                        Mark as Active
+                      </button>
+                      <button
+                        onClick={() => setManageSalespersonMenuOpen(null)}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                      >
+                        Mark as Inactive
+                      </button>
+                      <button
+                        onClick={() => {
+                          setManageSalespersonMenuOpen(null);
+                        }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                      >
+                        Mark as Inactive
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (typeof manageSalespersonMenuOpen === "string" || typeof manageSalespersonMenuOpen === "number") {
+                            handleDeleteSalesperson(manageSalespersonMenuOpen);
+                          }
+                          setManageSalespersonMenuOpen(null);
+                        }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>,
+              document.body
+            )}
           </div>
-        )
-      }
+        </div>,
+        document.body
+      )}
       {/* Choose from Documents Modal */}
       {
         isDocumentsModalOpen && (
@@ -3013,7 +4700,7 @@ export default function NewSalesReceipt() {
                         ? "text-white shadow-lg"
                         : "text-gray-600 hover:bg-gray-200"
                         }`}
-                      style={selectedInbox === inbox.id ? { background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" } : {}}
+                      style={selectedInbox === inbox.id ? { background: "linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)" } : {}}
                       onMouseEnter={(e) => {
                         if (selectedInbox === inbox.id) {
                           e.target.style.opacity = "0.9";
@@ -3039,7 +4726,7 @@ export default function NewSalesReceipt() {
                       <input
                         type="text"
                         placeholder="Search documents by name..."
-                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] focus:bg-white transition-all"
+                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563eb] focus:border-[#2563eb] focus:bg-white transition-all"
                         value={documentSearch}
                         onChange={(e) => setDocumentSearch(e.target.value)}
                       />
@@ -3083,11 +4770,11 @@ export default function NewSalesReceipt() {
                             ? ""
                             : "border-gray-100 hover:border-gray-200 hover:bg-gray-50"
                             }`}
-                          style={selectedDocuments.includes(doc.id) ? { borderColor: "#156372", backgroundColor: "rgba(21, 99, 114, 0.1)" } : {}}
+                          style={selectedDocuments.includes(doc.id) ? { borderColor: "#2563eb", backgroundColor: "rgba(21, 99, 114, 0.1)" } : {}}
                         >
                           <div className="flex items-center gap-4">
                             <div className={`p-2 rounded-lg ${selectedDocuments.includes(doc.id) ? 'text-white' : 'bg-gray-100 text-gray-500 group-hover:bg-white'}`}
-                              style={selectedDocuments.includes(doc.id) ? { background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" } : {}}>
+                              style={selectedDocuments.includes(doc.id) ? { background: "linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)" } : {}}>
                               <FileText size={20} />
                             </div>
                             <div>
@@ -3103,7 +4790,7 @@ export default function NewSalesReceipt() {
                             ? "text-white"
                             : "border-gray-300 group-hover:border-gray-400"
                             }`}
-                            style={selectedDocuments.includes(doc.id) ? { background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)", borderColor: "#156372" } : {}}>
+                            style={selectedDocuments.includes(doc.id) ? { background: "linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)", borderColor: "#2563eb" } : {}}>
                             {selectedDocuments.includes(doc.id) && <Check size={14} />}
                           </div>
                         </div>
@@ -3138,7 +4825,7 @@ export default function NewSalesReceipt() {
                   }}
                   disabled={selectedDocuments.length === 0}
                   className="px-8 py-2.5 text-white border-none rounded-xl text-sm font-bold shadow-lg transition-all cursor-pointer"
-                  style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+                  style={{ background: "linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)" }}
                   onMouseEnter={(e) => {
                     if (selectedDocuments.length > 0) e.target.style.opacity = "0.9";
                   }}
@@ -3175,7 +4862,7 @@ export default function NewSalesReceipt() {
                 <div className="w-64 bg-gray-50 border-r border-gray-100 p-4 flex flex-col justify-between">
                   <div className="space-y-2">
                     {[
-                      { id: 'taban', name: 'Taban Books Drive' },
+                      { id: 'zoho', name: 'Zoho WorkDrive' },
                       { id: 'gdrive', name: 'Google Drive' },
                       { id: 'dropbox', name: 'Dropbox' },
                       { id: 'box', name: 'Box' },
@@ -3189,7 +4876,7 @@ export default function NewSalesReceipt() {
                           ? 'text-white shadow-lg'
                           : 'text-slate-600 hover:bg-white hover:shadow-sm'
                           }`}
-                        style={selectedCloudProvider === provider.id ? { background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" } : {}}
+                        style={selectedCloudProvider === provider.id ? { background: "linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)" } : {}}
                         onMouseEnter={(e) => {
                           if (selectedCloudProvider === provider.id) {
                             e.target.style.opacity = "0.9";
@@ -3211,7 +4898,7 @@ export default function NewSalesReceipt() {
                   <div className="p-4 bg-white rounded-xl border border-gray-100 shadow-sm">
                     <div className="flex items-center gap-2 mb-2">
                       <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(21, 99, 114, 0.1)" }}>
-                        <Zap size={14} style={{ color: "#156372" }} />
+                        <Zap size={14} style={{ color: "#2563eb" }} />
                       </div>
                       <span className="text-xs font-bold text-slate-800">Pro Tip</span>
                     </div>
@@ -3257,9 +4944,9 @@ export default function NewSalesReceipt() {
                           <a
                             href="#"
                             className="underline"
-                            style={{ color: "#156372" }}
-                            onMouseEnter={(e) => e.target.style.color = "#0D4A52"}
-                            onMouseLeave={(e) => e.target.style.color = "#156372"}
+                            style={{ color: "#2563eb" }}
+                            onMouseEnter={(e) => e.target.style.color = "#1d4ed8"}
+                            onMouseLeave={(e) => e.target.style.color = "#2563eb"}
                             onClick={(e) => e.preventDefault()}
                           >
                             terms of use
@@ -3268,20 +4955,20 @@ export default function NewSalesReceipt() {
                           <a
                             href="#"
                             className="underline"
-                            style={{ color: "#156372" }}
-                            onMouseEnter={(e) => e.target.style.color = "#0D4A52"}
-                            onMouseLeave={(e) => e.target.style.color = "#156372"}
+                            style={{ color: "#2563eb" }}
+                            onMouseEnter={(e) => e.target.style.color = "#1d4ed8"}
+                            onMouseLeave={(e) => e.target.style.color = "#2563eb"}
                             onClick={(e) => e.preventDefault()}
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books. The use and transfer of information received from Google APIs to Taban Books will adhere to{" "}
+                          and understand that the rights to use this product do not come from Zoho. The use and transfer of information received from Google APIs to Zoho will adhere to{" "}
                           <a
                             href="#"
                             className="underline"
-                            style={{ color: "#156372" }}
-                            onMouseEnter={(e) => e.target.style.color = "#0D4A52"}
-                            onMouseLeave={(e) => e.target.style.color = "#156372"}
+                            style={{ color: "#2563eb" }}
+                            onMouseEnter={(e) => e.target.style.color = "#1d4ed8"}
+                            onMouseLeave={(e) => e.target.style.color = "#2563eb"}
                             onClick={(e) => e.preventDefault()}
                           >
                             Google API Services User Data Policy
@@ -3290,9 +4977,9 @@ export default function NewSalesReceipt() {
                           <a
                             href="#"
                             className="underline"
-                            style={{ color: "#156372" }}
-                            onMouseEnter={(e) => e.target.style.color = "#0D4A52"}
-                            onMouseLeave={(e) => e.target.style.color = "#156372"}
+                            style={{ color: "#2563eb" }}
+                            onMouseEnter={(e) => e.target.style.color = "#1d4ed8"}
+                            onMouseLeave={(e) => e.target.style.color = "#2563eb"}
                             onClick={(e) => e.preventDefault()}
                           >
                             Limited Use Requirements
@@ -3304,7 +4991,7 @@ export default function NewSalesReceipt() {
                       {/* Authenticate Google Button */}
                       <button
                         className="px-8 py-3 text-white rounded-md text-sm font-semibold shadow-sm cursor-pointer transition-all"
-                        style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+                        style={{ background: "linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)" }}
                         onMouseEnter={(e) => e.target.style.opacity = "0.9"}
                         onMouseLeave={(e) => e.target.style.opacity = "1"}
                         onClick={() => {
@@ -3347,9 +5034,9 @@ export default function NewSalesReceipt() {
                           <a
                             href="#"
                             className="underline"
-                            style={{ color: "#156372" }}
-                            onMouseEnter={(e) => e.target.style.color = "#0D4A52"}
-                            onMouseLeave={(e) => e.target.style.color = "#156372"}
+                            style={{ color: "#2563eb" }}
+                            onMouseEnter={(e) => e.target.style.color = "#1d4ed8"}
+                            onMouseLeave={(e) => e.target.style.color = "#2563eb"}
                             onClick={(e) => e.preventDefault()}
                           >
                             terms of use
@@ -3358,21 +5045,21 @@ export default function NewSalesReceipt() {
                           <a
                             href="#"
                             className="underline"
-                            style={{ color: "#156372" }}
-                            onMouseEnter={(e) => e.target.style.color = "#0D4A52"}
-                            onMouseLeave={(e) => e.target.style.color = "#156372"}
+                            style={{ color: "#2563eb" }}
+                            onMouseEnter={(e) => e.target.style.color = "#1d4ed8"}
+                            onMouseLeave={(e) => e.target.style.color = "#2563eb"}
                             onClick={(e) => e.preventDefault()}
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books.
+                          and understand that the rights to use this product do not come from Zoho.
                         </p>
                       </div>
 
                       {/* Authenticate Dropbox Button */}
                       <button
                         className="px-8 py-3 text-white rounded-md text-sm font-semibold shadow-sm cursor-pointer transition-all"
-                        style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+                        style={{ background: "linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)" }}
                         onMouseEnter={(e) => e.target.style.opacity = "0.9"}
                         onMouseLeave={(e) => e.target.style.opacity = "1"}
                         onClick={() => {
@@ -3407,9 +5094,9 @@ export default function NewSalesReceipt() {
                           <a
                             href="#"
                             className="underline"
-                            style={{ color: "#156372" }}
-                            onMouseEnter={(e) => e.target.style.color = "#0D4A52"}
-                            onMouseLeave={(e) => e.target.style.color = "#156372"}
+                            style={{ color: "#2563eb" }}
+                            onMouseEnter={(e) => e.target.style.color = "#1d4ed8"}
+                            onMouseLeave={(e) => e.target.style.color = "#2563eb"}
                             onClick={(e) => e.preventDefault()}
                           >
                             terms of use
@@ -3418,21 +5105,21 @@ export default function NewSalesReceipt() {
                           <a
                             href="#"
                             className="underline"
-                            style={{ color: "#156372" }}
-                            onMouseEnter={(e) => e.target.style.color = "#0D4A52"}
-                            onMouseLeave={(e) => e.target.style.color = "#156372"}
+                            style={{ color: "#2563eb" }}
+                            onMouseEnter={(e) => e.target.style.color = "#1d4ed8"}
+                            onMouseLeave={(e) => e.target.style.color = "#2563eb"}
                             onClick={(e) => e.preventDefault()}
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books.
+                          and understand that the rights to use this product do not come from Zoho.
                         </p>
                       </div>
 
                       {/* Authenticate Box Button */}
                       <button
                         className="px-8 py-3 text-white rounded-md text-sm font-semibold shadow-sm cursor-pointer transition-all"
-                        style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+                        style={{ background: "linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)" }}
                         onMouseEnter={(e) => e.target.style.opacity = "0.9"}
                         onMouseLeave={(e) => e.target.style.opacity = "1"}
                         onClick={() => {
@@ -3464,9 +5151,9 @@ export default function NewSalesReceipt() {
                           <a
                             href="#"
                             className="underline"
-                            style={{ color: "#156372" }}
-                            onMouseEnter={(e) => e.target.style.color = "#0D4A52"}
-                            onMouseLeave={(e) => e.target.style.color = "#156372"}
+                            style={{ color: "#2563eb" }}
+                            onMouseEnter={(e) => e.target.style.color = "#1d4ed8"}
+                            onMouseLeave={(e) => e.target.style.color = "#2563eb"}
                             onClick={(e) => e.preventDefault()}
                           >
                             terms of use
@@ -3475,21 +5162,21 @@ export default function NewSalesReceipt() {
                           <a
                             href="#"
                             className="underline"
-                            style={{ color: "#156372" }}
-                            onMouseEnter={(e) => e.target.style.color = "#0D4A52"}
-                            onMouseLeave={(e) => e.target.style.color = "#156372"}
+                            style={{ color: "#2563eb" }}
+                            onMouseEnter={(e) => e.target.style.color = "#1d4ed8"}
+                            onMouseLeave={(e) => e.target.style.color = "#2563eb"}
                             onClick={(e) => e.preventDefault()}
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books.
+                          and understand that the rights to use this product do not come from Zoho.
                         </p>
                       </div>
 
                       {/* Authenticate OneDrive Button */}
                       <button
                         className="px-8 py-3 text-white rounded-md text-sm font-semibold shadow-sm cursor-pointer transition-all"
-                        style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+                        style={{ background: "linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)" }}
                         onMouseEnter={(e) => e.target.style.opacity = "0.9"}
                         onMouseLeave={(e) => e.target.style.opacity = "1"}
                         onClick={() => {
@@ -3502,7 +5189,7 @@ export default function NewSalesReceipt() {
                         Authenticate OneDrive
                       </button>
                     </div>
-                  ) : selectedCloudProvider === "taban" || selectedCloudProvider === "gdrive" || selectedCloudProvider === "dropbox" || selectedCloudProvider === "box" ? (
+                  ) : selectedCloudProvider === "zoho" || selectedCloudProvider === "gdrive" || selectedCloudProvider === "dropbox" || selectedCloudProvider === "box" ? (
                     /* Functional Cloud Picker Content */
                     <div className="w-full flex-1 overflow-hidden flex flex-col">
                       {/* Search bar inside picker */}
@@ -3511,7 +5198,7 @@ export default function NewSalesReceipt() {
                         <input
                           type="text"
                           placeholder={`Search in ${selectedCloudProvider}...`}
-                          className="w-full pl-10 pr-3 py-2 border border-gray-200 rounded-md text-sm outline-none focus:border-[#156372] transition-all font-medium text-slate-700"
+                          className="w-full pl-10 pr-3 py-2 border border-gray-200 rounded-md text-sm outline-none focus:border-[#2563eb] transition-all font-medium text-slate-700"
                           value={cloudSearchQuery}
                           onChange={(e) => setCloudSearchQuery(e.target.value)}
                         />
@@ -3546,12 +5233,12 @@ export default function NewSalesReceipt() {
                                   ? ''
                                   : 'bg-white border-transparent hover:bg-slate-50'
                                   }`}
-                                style={selectedCloudFiles.find(sf => sf.id === file.id) ? { backgroundColor: "rgba(21, 99, 114, 0.1)", borderColor: "#156372" } : {}}
+                                style={selectedCloudFiles.find(sf => sf.id === file.id) ? { backgroundColor: "rgba(21, 99, 114, 0.1)", borderColor: "#2563eb" } : {}}
                               >
                                 <div className="w-[60%] flex items-center gap-3">
                                   <div className={`w-8 h-8 rounded flex items-center justify-center ${selectedCloudFiles.find(sf => sf.id === file.id) ? '' : 'bg-slate-100 text-slate-500'
                                     }`}
-                                    style={selectedCloudFiles.find(sf => sf.id === file.id) ? { backgroundColor: "rgba(21, 99, 114, 0.2)", color: "#156372" } : {}}>
+                                    style={selectedCloudFiles.find(sf => sf.id === file.id) ? { backgroundColor: "rgba(21, 99, 114, 0.2)", color: "#2563eb" } : {}}>
                                     <FileText size={16} />
                                   </div>
                                   <span className="text-[14px] font-medium text-slate-700">{file.name}</span>
@@ -3595,9 +5282,9 @@ export default function NewSalesReceipt() {
                           <a
                             href="#"
                             className="underline"
-                            style={{ color: "#156372" }}
-                            onMouseEnter={(e) => e.target.style.color = "#0D4A52"}
-                            onMouseLeave={(e) => e.target.style.color = "#156372"}
+                            style={{ color: "#2563eb" }}
+                            onMouseEnter={(e) => e.target.style.color = "#1d4ed8"}
+                            onMouseLeave={(e) => e.target.style.color = "#2563eb"}
                             onClick={(e) => e.preventDefault()}
                           >
                             terms of use
@@ -3606,14 +5293,14 @@ export default function NewSalesReceipt() {
                           <a
                             href="#"
                             className="underline"
-                            style={{ color: "#156372" }}
-                            onMouseEnter={(e) => e.target.style.color = "#0D4A52"}
-                            onMouseLeave={(e) => e.target.style.color = "#156372"}
+                            style={{ color: "#2563eb" }}
+                            onMouseEnter={(e) => e.target.style.color = "#1d4ed8"}
+                            onMouseLeave={(e) => e.target.style.color = "#2563eb"}
                             onClick={(e) => e.preventDefault()}
                           >
                             privacy policy
                           </a>{" "}
-                          and understand that the rights to use this product do not come from Taban Books.
+                          and understand that the rights to use this product do not come from Zoho.
                         </p>
                       </div>
 
@@ -3631,7 +5318,7 @@ export default function NewSalesReceipt() {
                       </button>
                     </div>
                   ) : (
-                    /* Default Content for Taban Books Drive */
+                    /* Default Content for Zoho WorkDrive */
                     <div className="flex flex-col items-center justify-center">
                       <div className="relative w-full max-w-md h-64 mb-6 flex items-center justify-center">
                         <div className="relative w-full h-full">
@@ -3639,7 +5326,7 @@ export default function NewSalesReceipt() {
                             <div className="relative">
                               <div className="w-24 h-32 bg-gray-300 rounded-lg mb-2"></div>
                               <div className="absolute -top-8 left-1/2 transform -translate-x-1/2">
-                                <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: "#156372" }}>
+                                <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: "#2563eb" }}>
                                   <Plus size={20} className="text-white" />
                                 </div>
                               </div>
@@ -3675,24 +5362,24 @@ export default function NewSalesReceipt() {
                             </div>
                           </div>
                           <div className="absolute top-4 left-8 w-3 h-3 bg-yellow-400 rounded-full"></div>
-                          <div className="absolute top-12 right-12 w-4 h-4 transform rotate-45" style={{ backgroundColor: "#156372" }}></div>
+                          <div className="absolute top-12 right-12 w-4 h-4 transform rotate-45" style={{ backgroundColor: "#2563eb" }}></div>
                           <div className="absolute bottom-8 left-12 w-2 h-2 bg-purple-400 rounded-full"></div>
                           <div className="absolute bottom-16 right-8 w-3 h-3 bg-pink-400 transform rotate-45"></div>
                         </div>
                       </div>
 
                       <p className="text-sm text-gray-600 text-center mb-6 max-w-md">
-                        Taban Books Drive is an online file sync, storage and content collaboration platform.
+                        Zoho WorkDrive is an online file sync, storage and content collaboration platform.
                       </p>
 
                       <button
                         className="px-6 py-2.5 text-white rounded-md text-sm font-semibold shadow-sm cursor-pointer transition-all"
-                        style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+                        style={{ background: "linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)" }}
                         onMouseEnter={(e) => e.target.style.opacity = "0.9"}
                         onMouseLeave={(e) => e.target.style.opacity = "1"}
                         onClick={() => {
                           window.open(
-                            "https://drive.tabanbooks.com",
+                            "https://workdrive.zoho.com",
                             "_blank"
                           );
                         }}
@@ -3731,7 +5418,7 @@ export default function NewSalesReceipt() {
                     setSelectedCloudFiles([]);
                   }}
                   className={`px-6 py-2 text-white rounded-md text-sm font-medium transition-all cursor-pointer ${selectedCloudFiles.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+                  style={{ background: "linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)" }}
                   onMouseEnter={(e) => {
                     if (selectedCloudFiles.length > 0) e.target.style.opacity = "0.9";
                   }}
@@ -3773,7 +5460,7 @@ export default function NewSalesReceipt() {
                       placeholder="Type to search or scan the barcode of the item."
                       value={bulkAddSearch}
                       onChange={(e) => setBulkAddSearch(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#2563eb] focus:border-[#2563eb]"
                     />
                   </div>
                 </div>
@@ -3799,7 +5486,7 @@ export default function NewSalesReceipt() {
                             Stock on Hand {item.stockOnHand.toFixed(2)} {item.unit}
                           </div>
                           {isSelected && (
-                            <div className="mt-2 w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: "#156372" }}>
+                            <div className="mt-2 w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: "#2563eb" }}>
                               <Check size={16} className="text-white" />
                             </div>
                           )}
@@ -3835,7 +5522,7 @@ export default function NewSalesReceipt() {
                           <div className="flex-1">
                             <div className="font-medium text-gray-900">{selectedItem.name}</div>
                             <div className="text-xs text-gray-500 mt-1">
-                              SKU: {selectedItem.sku} â€¢ {formData.currency}{selectedItem.rate.toFixed(2)}
+                              SKU: {selectedItem.sku} • {formData.currency}{selectedItem.rate.toFixed(2)}
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -3844,7 +5531,7 @@ export default function NewSalesReceipt() {
                               min="1"
                               value={selectedItem.quantity || 1}
                               onChange={(e) => handleBulkItemQuantityChange(selectedItem.id, e.target.value)}
-                              className="w-16 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
+                              className="w-16 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#2563eb] focus:border-[#2563eb]"
                               onClick={(e) => e.stopPropagation()}
                             />
                             <button
@@ -3868,9 +5555,9 @@ export default function NewSalesReceipt() {
             <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200">
               <button
                 className="px-6 py-2 text-white rounded-md text-sm font-medium disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                style={{ backgroundColor: "#156372" }}
-                onMouseEnter={(e) => !e.target.disabled && (e.target.style.backgroundColor = "#0D4A52")}
-                onMouseLeave={(e) => !e.target.disabled && (e.target.style.backgroundColor = "#156372")}
+                style={{ backgroundColor: "#2563eb" }}
+                onMouseEnter={(e) => !e.target.disabled && (e.target.style.backgroundColor = "#1d4ed8")}
+                onMouseLeave={(e) => !e.target.disabled && (e.target.style.backgroundColor = "#2563eb")}
                 onClick={handleAddBulkItems}
                 disabled={bulkSelectedItems.length === 0}
               >
@@ -3904,7 +5591,7 @@ export default function NewSalesReceipt() {
                 type="button"
                 onClick={() => setCustomerSearchModalOpen(false)}
                 className="w-8 h-8 text-white rounded flex items-center justify-center cursor-pointer transition-all"
-                style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+                style={{ background: "linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)" }}
                 onMouseEnter={(e) => e.target.style.opacity = "0.9"}
                 onMouseLeave={(e) => e.target.style.opacity = "1"}
               >
@@ -3934,7 +5621,7 @@ export default function NewSalesReceipt() {
                             setCustomerSearchCriteria(criteria);
                             setCustomerSearchCriteriaOpen(false);
                           }}
-                          className="w-full px-4 py-2 text-sm text-left text-gray-700 hover:bg-indigo-600 hover:text-white"
+                          className="w-full px-4 py-2 text-sm text-left text-gray-700 hover:bg-gray-50 hover:text-gray-900"
                         >
                           {criteria}
                         </button>
@@ -3954,7 +5641,7 @@ export default function NewSalesReceipt() {
                   type="button"
                   onClick={handleCustomerSearch}
                   className="px-6 py-2 text-white rounded-md font-medium cursor-pointer transition-all"
-                  style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+                  style={{ background: "linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)" }}
                   onMouseEnter={(e) => e.target.style.opacity = "0.9"}
                   onMouseLeave={(e) => e.target.style.opacity = "1"}
                 >
@@ -3993,7 +5680,7 @@ export default function NewSalesReceipt() {
                           setCustomerSearchResults([]);
                         }}
                       >
-                        <td className="px-4 py-3 text-sm hover:underline" style={{ color: "#156372" }} onMouseEnter={(e) => e.target.style.color = "#0D4A52"} onMouseLeave={(e) => e.target.style.color = "#156372"}>
+                        <td className="px-4 py-3 text-sm hover:underline" style={{ color: "#2563eb" }} onMouseEnter={(e) => e.target.style.color = "#1d4ed8"} onMouseLeave={(e) => e.target.style.color = "#2563eb"}>
                           {customer.displayName || customer.name || ""}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900">{customer.email || ""}</td>
@@ -4079,7 +5766,7 @@ export default function NewSalesReceipt() {
               </div>
               <button
                 type="button"
-                className="w-8 h-8 bg-[#156372] text-white rounded flex items-center justify-center"
+                className="w-8 h-8 bg-[#2563eb] text-white rounded flex items-center justify-center"
                 onClick={() => {
                   setIsNewCustomerQuickActionOpen(false);
                   reloadCustomersForSalesReceipt();
@@ -4150,7 +5837,7 @@ export default function NewSalesReceipt() {
               </div>
               <button
                 type="button"
-                className="w-8 h-8 bg-[#156372] text-white rounded flex items-center justify-center"
+                className="w-8 h-8 bg-[#2563eb] text-white rounded flex items-center justify-center"
                 onClick={() => {
                   setIsNewSalespersonQuickActionOpen(false);
                   reloadSalespersonsForSalesReceipt();
@@ -4178,8 +5865,34 @@ export default function NewSalesReceipt() {
         </div>,
         document.body
       )}
+
+      <NewTaxQuickModal
+        open={isNewTaxQuickModalOpen}
+        onClose={() => {
+          setIsNewTaxQuickModalOpen(false);
+          setNewTaxTargetItemId(null);
+        }}
+        onCreated={(createdTax) => {
+          const taxOption = {
+            id: createdTax.id || createdTax._id,
+            _id: createdTax._id || createdTax.id,
+            name: createdTax.name,
+            rate: Number(createdTax.rate || 0),
+            type: "tax",
+            isActive: createdTax.isActive !== false,
+          };
+          setTaxes(prev => {
+            const exists = prev.some(t => String(t.id || t._id || "") === String(taxOption.id || taxOption._id || ""));
+            return exists ? prev : [taxOption, ...prev];
+          });
+          if (newTaxTargetItemId !== null && newTaxTargetItemId !== undefined) {
+            handleItemChange(newTaxTargetItemId, "tax", String(taxOption.id || taxOption._id || ""));
+          }
+          setIsNewTaxQuickModalOpen(false);
+          setNewTaxTargetItemId(null);
+        }}
+      />
     </div >
   );
 }
-
 
