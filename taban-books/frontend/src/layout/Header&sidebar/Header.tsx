@@ -130,33 +130,6 @@ export default function Header() {
     setSearchQuery(new URLSearchParams(location.search).get("search") || "");
   }, [location.pathname, location.search]);
 
-  useEffect(() => {
-    const query = searchQuery.trim();
-    const currentOption = searchOptions.find((option) => option.label === searchScope) || searchOptions[0];
-
-    if (!query) {
-      const currentUrl = `${location.pathname}${location.search}`;
-      if (currentUrl !== currentOption.path) {
-        const timeout = window.setTimeout(() => {
-          navigate(currentOption.path, { replace: true });
-        }, 0);
-
-        return () => window.clearTimeout(timeout);
-      }
-      return;
-    }
-
-    const targetUrl = `${currentOption.path}?search=${encodeURIComponent(query)}`;
-    const currentUrl = `${location.pathname}${location.search}`;
-    if (currentUrl === targetUrl) return;
-
-    const timeout = window.setTimeout(() => {
-      navigate(targetUrl, { replace: true });
-    }, 250);
-
-    return () => window.clearTimeout(timeout);
-  }, [location.pathname, location.search, navigate, searchQuery, searchScope]);
-
   const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
