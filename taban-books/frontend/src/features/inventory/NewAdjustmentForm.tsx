@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import toast from "react-hot-toast";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import type { Item } from "../items/itemsModel";
-import { accountantAPI, inventoryAdjustmentsAPI, itemsAPI } from "../../services/api";
+import { accountantAPI, inventoryAdjustmentsAPI, itemsAPI, locationsAPI } from "../../services/api";
 import { AdjustmentFormActions } from "./new-adjustment-form/AdjustmentFormActions";
 import { AdjustmentFormFields } from "./new-adjustment-form/AdjustmentFormFields";
 import { AdjustmentItemsSection } from "./new-adjustment-form/AdjustmentItemsSection";
@@ -15,6 +15,7 @@ import type {
   CustomReason,
   DeleteReasonModalState,
   ItemRow,
+  LocationItem,
 } from "./new-adjustment-form/types";
 import {
   DEFAULT_ADJUSTMENT_ACCOUNT,
@@ -52,6 +53,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
     date: getTodayDate(),
     account: DEFAULT_ADJUSTMENT_ACCOUNT,
     reason: "",
+    location: "",
     description: "",
   });
   const [itemRows, setItemRows] = useState<ItemRow[]>([createEmptyItemRow(1)]);
@@ -96,6 +98,10 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
   const [accountSearch, setAccountSearch] = useState("");
   const accountDropdownRef = useRef<HTMLDivElement>(null);
   const [accountCategories, setAccountCategories] = useState<AccountCategories>({});
+  const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
+  const [locationSearch, setLocationSearch] = useState("");
+  const locationDropdownRef = useRef<HTMLDivElement>(null);
+  const [locationItems, setLocationItems] = useState<LocationItem[]>([]);
 
   useEffect(() => {
     if (propItems.length > 0) {
@@ -156,6 +162,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
           date: formattedDate,
           account: adjustment.account || DEFAULT_ADJUSTMENT_ACCOUNT,
           reason: adjustment.reason || "",
+          location: adjustment.location || adjustment.locationName || "",
           description: adjustment.description || adjustment.notes || "",
         });
 
@@ -198,6 +205,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
       date: cloned.date || getTodayDate(),
       account: cloned.account || DEFAULT_ADJUSTMENT_ACCOUNT,
       reason: cloned.reason || "",
+      location: cloned.location || "",
       description: cloned.description || "",
     });
 
@@ -266,6 +274,21 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
   }, []);
 
   useEffect(() => {
+    const fetchLocations = async () => {
+      try {
+        const response = await locationsAPI.getAll();
+        const locations = Array.isArray(response) ? response : response?.data || [];
+        setLocationItems(locations);
+      } catch (error) {
+        console.error("Error fetching locations:", error);
+        setLocationItems([{ name: "Head Office" }]);
+      }
+    };
+
+    void fetchLocations();
+  }, []);
+
+  useEffect(() => {
     setItemRows((previousRows) =>
       previousRows.map((row) => {
         if (!row.selectedItem) {
@@ -314,6 +337,10 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
 
       if (accountDropdownRef.current && !accountDropdownRef.current.contains(event.target as Node)) {
         setAccountDropdownOpen(false);
+      }
+
+      if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target as Node)) {
+        setLocationDropdownOpen(false);
       }
 
       if (datePickerRef.current && !datePickerRef.current.contains(event.target as Node)) {
@@ -677,6 +704,9 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
     if (!formData.reason.trim()) {
       nextErrors.reason = true;
     }
+    if (!formData.location.trim()) {
+      nextErrors.location = true;
+    }
     if (!itemRows.some((row) => row.selectedItem)) {
       nextErrors.items = true;
     }
@@ -728,6 +758,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
     const payload = {
       date: parseDateString(formData.date),
       reason: formData.reason,
+      location: formData.location,
       notes: formData.description || "",
       description: formData.description || "",
       status,
@@ -823,6 +854,19 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
       setSearch: setAccountSearch,
       select: handleAccountSelect,
     },
+    locations: {
+      open: locationDropdownOpen,
+      search: locationSearch,
+      items: locationItems,
+      ref: locationDropdownRef,
+      toggle: () => setLocationDropdownOpen((previous) => !previous),
+      setSearch: setLocationSearch,
+      select: (location: string) => {
+        updateField("location", location);
+        setLocationDropdownOpen(false);
+        setLocationSearch("");
+      },
+    },
     reasons: {
       open: reasonDropdownOpen,
       search: reasonSearch,
@@ -916,8 +960,8 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
 
   return (
     <NewAdjustmentFormProvider value={contextValue}>
-      <div className="bg-white min-h-screen">
-        <div className="max-w-full m-0 p-3 md:p-6 overflow-x-hidden">
+      <div className="bg-[#f6f7fb] min-h-screen">
+        <div className="max-w-full m-0 p-3 md:p-6 overflow-x-hidden bg-[#f6f7fb]">
           <div className="flex items-start justify-between mb-8">
             <h1 className="text-[28px] font-bold text-black m-0">
               {isEditMode ? "Edit Adjustment" : "New Adjustment"}
@@ -934,7 +978,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
           </div>
 
           <div className="-mx-3 md:-mx-6 py-2">
-            <hr className="border-t border-gray-200" />
+            <hr className="border-t border-transparent" />
           </div>
 
           <form

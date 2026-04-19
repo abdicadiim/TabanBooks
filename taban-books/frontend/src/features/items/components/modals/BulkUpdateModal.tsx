@@ -38,8 +38,14 @@ const BulkUpdateModal = ({ onClose, onUpdate, selectedCount }: BulkUpdateModalPr
 
     const selectedFieldConfig = fields.find(f => f.value === field);
 
+    const controlClass =
+        "w-full h-11 px-4 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 outline-none transition-all shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+
+    const controlFocusClass =
+        "focus:border-blue-500 focus:ring-4 focus:ring-blue-100 focus:shadow-[0_0_0_1px_rgba(59,130,246,0.15)]";
+
     const renderInput = () => {
-        if (!selectedFieldConfig) return <input disabled className="w-full px-4 py-2 border border-gray-200 rounded-md bg-gray-50" />;
+        if (!selectedFieldConfig) return <input disabled className={`${controlClass} bg-slate-50 text-slate-400`} />;
 
         switch (selectedFieldConfig.type) {
             case "number":
@@ -49,7 +55,7 @@ const BulkUpdateModal = ({ onClose, onUpdate, selectedCount }: BulkUpdateModalPr
                         step="0.01"
                         value={value}
                         onChange={(e) => setValue(e.target.value)}
-                        className="w-full px-4 py-2 border border-blue-400 rounded-md text-sm focus:ring-4 focus:ring-blue-100 outline-none shadow-[0_0_10px_rgba(59,130,246,0.1)] transition-all"
+                        className={`${controlClass} ${controlFocusClass}`}
                         placeholder="0.00"
                     />
                 );
@@ -58,7 +64,7 @@ const BulkUpdateModal = ({ onClose, onUpdate, selectedCount }: BulkUpdateModalPr
                     <select
                         value={value}
                         onChange={(e) => setValue(e.target.value)}
-                        className="w-full px-4 py-2 border border-blue-400 rounded-md text-sm focus:ring-4 focus:ring-blue-100 outline-none shadow-[0_0_10px_rgba(59,130,246,0.1)] transition-all"
+                        className={`${controlClass} ${controlFocusClass} appearance-none bg-[url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 4 4 4 4-4'/%3E%3C/svg%3E\")] bg-no-repeat bg-[right_1rem_center] pr-10`}
                     >
                         <option value="">Select Account</option>
                         {accounts.map((acc: any) => (
@@ -73,7 +79,7 @@ const BulkUpdateModal = ({ onClose, onUpdate, selectedCount }: BulkUpdateModalPr
                     <select
                         value={value}
                         onChange={(e) => setValue(e.target.value)}
-                        className="w-full px-4 py-2 border border-blue-400 rounded-md text-sm focus:ring-4 focus:ring-blue-100 outline-none shadow-[0_0_10px_rgba(59,130,246,0.1)] transition-all"
+                        className={`${controlClass} ${controlFocusClass} appearance-none bg-[url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 4 4 4 4-4'/%3E%3C/svg%3E\")] bg-no-repeat bg-[right_1rem_center] pr-10`}
                     >
                         <option value="">Select Option</option>
                         {selectedFieldConfig.options?.map((opt) => (
@@ -89,18 +95,18 @@ const BulkUpdateModal = ({ onClose, onUpdate, selectedCount }: BulkUpdateModalPr
                         type="text"
                         value={value}
                         onChange={(e) => setValue(e.target.value)}
-                        className="w-full px-4 py-2 border border-blue-400 rounded-md text-sm focus:ring-4 focus:ring-blue-100 outline-none shadow-[0_0_10px_rgba(59,130,246,0.1)] transition-all"
+                        className={`${controlClass} ${controlFocusClass}`}
                     />
                 );
         }
     };
 
     return (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[2000] backdrop-blur-[2px] animate-in fade-in duration-200">
-            <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full mx-4 overflow-hidden border border-gray-100 animate-in zoom-in-95 duration-200">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+        <div className="fixed inset-0 bg-slate-950/50 flex items-center justify-center z-[2000] backdrop-blur-[3px] animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-[0_30px_90px_-30px_rgba(15,23,42,0.45)] max-w-lg w-full mx-4 overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
                     <h2 className="text-lg font-semibold text-slate-800">Bulk Update Items</h2>
-                    <button onClick={onClose} className="rounded-full p-1 hover:bg-gray-200 transition-colors">
+                    <button onClick={onClose} className="rounded-full p-1 hover:bg-slate-200/70 transition-colors">
                         <X size={20} className="text-red-500" />
                     </button>
                 </div>
@@ -118,7 +124,7 @@ const BulkUpdateModal = ({ onClose, onUpdate, selectedCount }: BulkUpdateModalPr
                                     setField(e.target.value);
                                     setValue("");
                                 }}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none appearance-none bg-no-repeat bg-[right_1rem_center] transition-all"
+                                className={`${controlClass} ${controlFocusClass} appearance-none bg-[url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 4 4 4 4-4'/%3E%3C/svg%3E\")] bg-no-repeat bg-[right_1rem_center] pr-10`}
                                 style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 4 4 4 4-4'/%3E%3C/svg%3E")` }}
                             >
                                 <option value="">Select a field</option>
@@ -139,17 +145,17 @@ const BulkUpdateModal = ({ onClose, onUpdate, selectedCount }: BulkUpdateModalPr
                     </div>
                 </div>
 
-                <div className="px-6 py-4 bg-gray-50/50 border-t border-gray-100 flex gap-3">
+                <div className="px-6 py-4 bg-slate-50/70 border-t border-slate-100 flex gap-3">
                     <button
                         onClick={() => onUpdate(field, value)}
-                        className="px-6 py-2 bg-blue-600 text-white rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
+                        className="px-6 py-2 bg-[#1b5e6a] text-white rounded-xl text-sm font-semibold hover:brightness-110 transition-colors shadow-sm disabled:opacity-50"
                         disabled={!field || !value}
                     >
                         Update
                     </button>
                     <button
                         onClick={onClose}
-                        className="px-6 py-2 bg-white border border-gray-300 rounded-md text-sm font-semibold text-slate-700 hover:bg-gray-50 transition-colors"
+                        className="px-6 py-2 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
                     >
                         Cancel
                     </button>

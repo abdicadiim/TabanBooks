@@ -211,7 +211,14 @@ export default function TabanSelect({
                                                 setSearchTerm("");
                                             }}
                                             className={`w-full px-4 py-2.5 text-[13px] text-left flex items-center transition-all group/item ${isSelected ? "" : "text-slate-600"}`}
+                                            onMouseEnter={(e) => {
+                                                if (!isSelected) e.currentTarget.style.backgroundColor = "#eef8f9";
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                if (!isSelected) e.currentTarget.style.backgroundColor = "transparent";
+                                            }}
                                             style={{
+                                                backgroundColor: isSelected ? "#eef8f9" : "transparent",
                                                 color: isSelected ? uiAccent : undefined,
                                                 fontWeight: isSelected ? 600 : 400
                                             }}
@@ -256,8 +263,10 @@ export default function TabanSelect({
                                     onAddNew();
                                     setIsOpen(false);
                                 }}
-                                className="w-full px-4 py-3 text-[13px] font-medium flex items-center gap-2 hover:bg-slate-50 transition-colors"
+                                className="w-full px-4 py-3 text-[13px] font-medium flex items-center gap-2 transition-colors"
                                 style={{ color: uiAccent }}
+                                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#eef8f9"; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
                             >
                                 <Plus size={18} className="text-white rounded-full p-0.5" strokeWidth={3} style={{ backgroundColor: uiAccent }} />
                                 {addNewLabel}

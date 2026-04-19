@@ -38,6 +38,7 @@ export interface InventoryAdjustmentRow extends Record<string, any> {
 export interface InventoryAdjustmentsProps {
   rows: InventoryAdjustmentRow[];
   onRowClick?: (row: InventoryAdjustmentRow) => void;
+  onCreateNew?: () => void;
   selectedItems?: string[];
   onSelectAll?: (checked: boolean) => void;
   onSelectItem?: (id: string, checked: boolean) => void;

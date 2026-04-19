@@ -1,5 +1,6 @@
 // src/features/items/ItemsPage.tsx
 import React, { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import { itemsAPI, tagAssignmentsAPI } from "../../services/api";
 import { Item, DeleteConfirmModal } from "./itemsModel";
@@ -15,6 +16,7 @@ import { useCurrency } from "../../hooks/useCurrency";
 import { usePermissions } from "../../hooks/usePermissions";
 
 function ItemsPageContent() {
+  const location = useLocation();
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [view, setView] = useState<string>("list"); // list | new | detail | edit
@@ -63,6 +65,14 @@ function ItemsPageContent() {
     fetchItems();
   }, [permissionsLoading, canViewItems]);
 
+  useEffect(() => {
+    if (location.pathname === "/items") {
+      setView("list");
+      setSelectedId(null);
+      setClonedItem(null);
+    }
+  }, [location.pathname]);
+
   const selectedItem = useMemo(
     () => items.find((x: Item) => x.id === selectedId || x._id === selectedId) || null,
     [items, selectedId]
@@ -77,23 +87,28 @@ function ItemsPageContent() {
       const response = await itemsAPI.create(data);
       const newItem = response.data || response;
       const itemId = newItem._id || newItem.id;
+      const normalizedNewItem = {
+        ...newItem,
+        images: Array.isArray(newItem.images) ? newItem.images : (newItem.image ? [newItem.image] : []),
+        id: newItem.id || newItem._id || itemId,
+        active: newItem.active !== undefined ? newItem.active : newItem.isActive,
+      };
 
       if (tagIds && tagIds.length > 0 && itemId) {
-        try {
-          await tagAssignmentsAPI.assignTags({
-            entityType: "Item",
-            entityId: itemId,
-            tagIds: tagIds,
-          });
-        } catch (tagError) {
+        void tagAssignmentsAPI.assignTags({
+          entityType: "Item",
+          entityId: itemId,
+          tagIds: tagIds,
+        }).catch((tagError) => {
           console.error("Failed to assign tags:", tagError);
-        }
+        });
       }
 
-      await fetchItems();
+      setItems(prev => [normalizedNewItem, ...prev]);
       setView("list");
       setClonedItem(null);
       toast.success("Item created successfully");
+      void fetchItems();
     } catch (error: any) {
       console.error("Failed to create item:", error);
       toast.error("Failed to create item: " + (error.message || "Unknown error"));
@@ -244,6 +259,21 @@ function ItemsPageContent() {
               items={items}
               selectedId={selectedId}
               onSelect={(id: string) => { setSelectedId(id); setView("detail"); window.scrollTo(0, 0); }}
+              onFilterChange={(viewName: string) => {
+                if (viewName === "All") return;
+                const selected = items.find((x: Item) => x.id === selectedId || x._id === selectedId);
+                if (!selected) return;
+
+                const isInactive = selected.active === false || selected.isActive === false || selected.status === "Inactive";
+                const shouldHideDetail =
+                  (viewName === "Active Items" && isInactive) ||
+                  (viewName === "Inactive Items" && !isInactive);
+
+                if (shouldHideDetail) {
+                  setSelectedId(null);
+                  setView("list");
+                }
+              }}
               onNew={() => { if (canCreateItems) { setView("new"); setSelectedId(null); } }}
               baseCurrency={baseCurrency}
               onBulkMarkActive={handleBulkMarkActive}

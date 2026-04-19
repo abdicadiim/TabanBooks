@@ -9,6 +9,7 @@ interface ItemSidebarProps {
     items: Item[];
     selectedId: string | null;
     onSelect: (id: string) => void;
+    onFilterChange?: (view: string) => void;
     onNew: () => void;
     baseCurrency?: any;
     onBulkMarkActive: (ids: string[]) => Promise<void>;
@@ -24,6 +25,7 @@ export default function ItemSidebar({
     items,
     selectedId,
     onSelect,
+    onFilterChange,
     onNew,
     onBulkMarkActive,
     onBulkMarkInactive,
@@ -210,7 +212,11 @@ export default function ItemSidebar({
                                 {["All", "Active Items", "Inactive Items"].map((view) => (
                                     <button
                                         key={view}
-                                        onClick={() => { setFilterType(view); setViewDropdownOpen(false); }}
+                                        onClick={() => {
+                                            setFilterType(view);
+                                            setViewDropdownOpen(false);
+                                            onFilterChange?.(view);
+                                        }}
                                         className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterType === view ? 'bg-teal-50 text-teal-700 font-medium' : 'text-slate-600 hover:bg-teal-50/50'}`}
                                     >
                                         {view}
@@ -323,12 +329,12 @@ export default function ItemSidebar({
                         <div
                             key={id}
                             onClick={() => onSelect(id || "")}
-                            className={`px-4 py-3 cursor-pointer border-b border-gray-50 transition-colors ${isSelected ? "bg-[#f0f4ff]" : "hover:bg-gray-50"}`}
+                            className={`px-3 py-3 cursor-pointer border-b border-gray-50 transition-colors ${isSelected ? "bg-[#f0f4ff]" : "hover:bg-gray-50"}`}
                         >
                             <div className="flex items-start gap-3">
                                 <input
                                     type="checkbox"
-                                    className="h-4 w-4 rounded border-gray-300 pointer-events-auto mt-1 accent-blue-600"
+                                    className="h-[15px] w-[15px] shrink-0 rounded border-gray-300 pointer-events-auto mt-1 accent-[#1b5e6a]"
                                     checked={isChecked}
                                     onChange={(e) => {
                                         e.stopPropagation();
@@ -341,11 +347,11 @@ export default function ItemSidebar({
                                         <h3 className={`text-sm font-medium truncate ${isSelected ? "text-slate-900" : "text-slate-700"}`}>
                                             {it.name}
                                         </h3>
-                                        <span className="text-xs font-semibold text-slate-900 ml-2">
+                                        <span className="text-xs font-semibold text-slate-900 ml-2 shrink-0">
                                             {fmtMoney(it.sellingPrice || 0, currencySymbol)}
                                         </span>
                                     </div>
-                                    <p className="text-[11px] text-slate-500 mt-0.5">
+                                    <p className="text-[11px] text-slate-500 mt-1">
                                         SKU: {it.sku || "N/A"}
                                     </p>
                                 </div>

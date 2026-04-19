@@ -610,13 +610,13 @@ function InventoryPageContent() {
   // Show split view only when adjustment is selected
   if (selectedAdjustment) {
     return (
-      <div className="flex flex-col md:flex-row h-[calc(100vh-40px)] bg-white p-3 md:p-6 gap-3 md:gap-6 overflow-hidden">
+      <div className="flex flex-col md:flex-row min-h-[calc(100vh-40px)] p-3 md:p-6 gap-3 md:gap-6 overflow-visible bg-[#f6f7fb]">
         {/* Left Panel - List */}
-        <div className="w-full md:w-[400px] md:border-r border-gray-200 bg-white flex flex-col overflow-hidden md:shrink-0">
+        <div className="w-full md:w-[400px] md:border-r border-gray-200 flex flex-col overflow-visible md:shrink-0 bg-transparent">
           {/* Header */}
           <div className="p-4 border-b border-gray-200 min-h-[65px] flex items-center">
             {selectedItems.length > 0 ? (
-              <div className="flex items-center justify-between w-full bg-white">
+              <div className="flex items-center justify-between w-full">
                 <div className="flex items-center gap-2">
                   <div className="relative" ref={sidebarMoreMenuRef}>
                     <button
@@ -695,7 +695,7 @@ function InventoryPageContent() {
                               setSortMenuOpen(!sortMenuOpen);
                               setImportMenuOpen(false);
                             }}
-                            className={`px-3 py-2 text-sm font-medium cursor-pointer flex items-center justify-between group transition-colors ${sortMenuOpen ? "bg-[#156372] text-white" : "text-gray-800 hover:bg-[#156372] hover:text-white"}`}
+                            className={`px-3 py-2 text-sm font-medium cursor-pointer flex items-center justify-between group transition-colors ${sortMenuOpen ? "bg-[#156372] text-white" : "text-gray-800 hover:bg-gray-300 hover:text-gray-900"}`}
                           >
                             <div className="flex items-center gap-2">
                               <ArrowUpDown size={14} className={sortMenuOpen ? "text-white" : "text-gray-500 group-hover:text-white"} />
@@ -724,7 +724,7 @@ function InventoryPageContent() {
                                       setSortMenuOpen(false);
                                       setSidebarMoreMenuOpen(false);
                                     }}
-                                    className={`px-3 py-2 text-[13px] cursor-pointer flex items-center justify-between border-b border-gray-50 last:border-0 transition-colors ${isSelected ? "bg-[#156372] text-white" : "text-gray-700 hover:bg-gray-50"}`}
+                                    className={`px-3 py-2 text-[13px] cursor-pointer flex items-center justify-between border-b border-gray-50 last:border-0 transition-colors ${isSelected ? "bg-[#156372] text-white" : "text-gray-700 hover:bg-gray-300 hover:text-gray-900"}`}
                                   >
                                     <span>{option}</span>
                                     {isSelected && (sortOrder === "asc" ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
@@ -743,7 +743,7 @@ function InventoryPageContent() {
                               setImportMenuOpen(!importMenuOpen);
                               setSortMenuOpen(false);
                             }}
-                            className={`px-3 py-2 text-sm font-medium cursor-pointer flex items-center justify-between group transition-colors ${importMenuOpen ? "bg-[#156372] text-white" : "text-gray-800 hover:bg-[#156372] hover:text-white"}`}
+                            className={`px-3 py-2 text-sm font-medium cursor-pointer flex items-center justify-between group transition-colors ${importMenuOpen ? "bg-[#156372] text-white" : "text-gray-800 hover:bg-gray-300 hover:text-gray-900"}`}
                           >
                             <div className="flex items-center gap-2">
                               <Download size={14} className={importMenuOpen ? "text-white" : "text-gray-500 group-hover:text-white"} />
@@ -764,7 +764,7 @@ function InventoryPageContent() {
                                     setSidebarMoreMenuOpen(false);
                                     navigate(option.includes('Quantity') ? "/inventory/import/quantity" : "/inventory/import/value");
                                   }}
-                                  className={`px-4 py-2.5 text-[13px] text-gray-700 cursor-pointer transition-colors hover:bg-gray-50 border-b border-gray-50 last:border-0`}
+                                  className={`px-4 py-2.5 text-[13px] text-gray-700 cursor-pointer transition-colors hover:bg-gray-300 hover:text-gray-900 border-b border-gray-50 last:border-0`}
                                 >
                                   {option}
                                 </div>
@@ -779,7 +779,7 @@ function InventoryPageContent() {
                             setSidebarMoreMenuOpen(false);
                             setIsExportModalOpen(true);
                           }}
-                          className="px-3 py-2 text-sm font-medium cursor-pointer flex items-center gap-2 border-t border-gray-100 text-gray-800 hover:bg-[#156372] hover:text-white group transition-colors"
+                          className="px-3 py-2 text-sm font-medium cursor-pointer flex items-center gap-2 border-t border-gray-100 text-gray-800 hover:bg-gray-300 hover:text-gray-900 group transition-colors"
                         >
                           <Upload size={14} className="text-gray-500 group-hover:text-white" />
                           <span>Export Adjustments</span>
@@ -792,7 +792,7 @@ function InventoryPageContent() {
                             setSidebarMoreMenuOpen(false);
                             await fetchAdjustments(true);
                           }}
-                          className="px-3 py-2 text-sm font-medium cursor-pointer flex items-center gap-2 border-t border-gray-100 text-gray-800 hover:bg-[#156372] hover:text-white group transition-colors"
+                          className="px-3 py-2 text-sm font-medium cursor-pointer flex items-center gap-2 border-t border-gray-100 text-gray-800 hover:bg-gray-300 hover:text-gray-900 group transition-colors"
                         >
                           <RefreshCw size={14} className="text-gray-500 group-hover:text-white" />
                           <span>Refresh List</span>
@@ -899,25 +899,38 @@ function InventoryPageContent() {
                 )
               }
             </div >
-            <div className="relative inline-block" ref={periodDropdownRef}>
+            <div className="relative inline-block align-top z-30" ref={periodDropdownRef}>
               <button
-                onClick={() => setPeriodDropdownOpen(!periodDropdownOpen)}
-                className="px-2 py-1 text-xs border border-gray-300 rounded bg-white text-gray-900 cursor-pointer flex items-center gap-1 hover:border-gray-400"
+                onClick={() => {
+                  const nextOpen = !periodDropdownOpen;
+                  setPeriodDropdownOpen(nextOpen);
+                  if (nextOpen && periodDropdownRef.current) {
+                    const rect = periodDropdownRef.current.getBoundingClientRect();
+                    setPeriodMenuPos({
+                      top: rect.bottom + 6,
+                      left: rect.left,
+                      width: rect.width
+                    });
+                  } else {
+                    setPeriodMenuPos(null);
+                  }
+                }}
+                className="px-3 py-[5px] text-[13px] border border-gray-300 rounded-md bg-white text-gray-900 cursor-pointer flex items-center gap-2 min-w-[100px] justify-between hover:border-gray-400"
               >
                 <span>Period: {selectedPeriod}</span>
-                {periodDropdownOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                {periodDropdownOpen ? <ChevronUp size={14} className="text-gray-500" /> : <ChevronDown size={14} className="text-gray-500" />}
               </button>
               {periodDropdownOpen && (
                 <div style={{
-                  position: "absolute",
-                  top: "100%",
-                  left: 0,
-                  marginTop: "4px",
+                  position: "fixed",
+                  top: `${periodMenuPos?.top ?? 0}px`,
+                  left: `${periodMenuPos?.left ?? 0}px`,
+                  width: `${periodMenuPos?.width ?? 160}px`,
                   backgroundColor: "#ffffff",
                   border: "1px solid #d1d5db",
                   borderRadius: "6px",
                   boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-                  zIndex: 1000,
+                  zIndex: 3000,
                   minWidth: "160px",
                   overflow: "hidden"
                 }}>
@@ -931,7 +944,7 @@ function InventoryPageContent() {
                       style={{
                         padding: "8px 12px",
                         cursor: "pointer",
-                        fontSize: "14px",
+                        fontSize: "13px",
                         color: selectedPeriod === option ? "#156372" : "#1f2937",
                         backgroundColor: selectedPeriod === option ? "rgba(21, 99, 114, 0.1)" : "transparent",
                         borderLeft: selectedPeriod === option ? "3px solid #156372" : "3px solid transparent",
@@ -998,7 +1011,7 @@ function InventoryPageContent() {
         </div >
 
         {/* Right Panel - Detail */}
-        < div className="flex-1 overflow-hidden min-h-0 flex flex-col bg-white rounded-lg border border-gray-200 shadow-sm relative z-0" >
+        < div className="flex-1 overflow-visible min-h-0 flex flex-col bg-transparent relative z-0" >
           <AdjustmentDetail
             adjustment={selectedAdjustment}
             onClose={() => setSelectedAdjustment(null)}
@@ -1041,10 +1054,11 @@ function InventoryPageContent() {
   };
 
   return (
-    <div className="w-full bg-white min-h-screen p-3 md:p-6 overflow-x-hidden">
+    <div className="w-full min-h-screen overflow-x-hidden bg-transparent">
+      <div className="sticky top-0 z-40 -mx-0 bg-white/95 backdrop-blur-sm border-b border-gray-200 px-3 md:px-6 pt-3 md:pt-6 pb-4">
       {/* Selection Bar - Above Header */}
       {selectedItems.length > 0 && (
-        <div className="bg-white rounded-lg border border-gray-200 p-2 pl-3 mb-5 flex items-center justify-between shadow-sm h-[52px]">
+        <div className="rounded-lg border border-gray-200 p-2 pl-3 mb-5 flex items-center justify-between shadow-sm h-[52px] bg-transparent">
           <div className="flex items-center gap-3">
             <button
               onClick={handleDeleteSelected}
@@ -1071,7 +1085,7 @@ function InventoryPageContent() {
 
       {/* Header */}
       {selectedItems.length === 0 && (
-        <div className="flex flex-row flex-wrap justify-between items-center gap-3 mb-5 pb-4">
+      <div className="flex flex-row flex-wrap justify-between items-center gap-3 mb-5 pb-4 bg-transparent">
           <h1 className="flex-1 min-w-0 text-xl sm:text-2xl md:text-[28px] font-bold text-black m-0">
             Inventory Adjustments
           </h1>
@@ -1170,7 +1184,7 @@ function InventoryPageContent() {
                         setSortMenuOpen(!sortMenuOpen);
                         setImportMenuOpen(false);
                       }}
-                      className={`px-3 py-2.5 text-sm font-medium cursor-pointer flex items-center justify-between group transition-colors ${sortMenuOpen ? "bg-[#156372] text-white" : "text-gray-800 hover:bg-[#156372] hover:text-white"
+                      className={`px-3 py-2.5 text-sm font-medium cursor-pointer flex items-center justify-between group transition-colors ${sortMenuOpen ? "bg-[#156372] text-white" : "text-gray-800 hover:bg-gray-300 hover:text-gray-900"
                         }`}
                     >
                       <div className="flex items-center gap-2">
@@ -1265,7 +1279,7 @@ function InventoryPageContent() {
                         setImportMenuOpen(!importMenuOpen);
                         setSortMenuOpen(false);
                       }}
-                      className={`px-3 py-2.5 text-sm font-medium cursor-pointer flex items-center justify-between border-t border-gray-200 group transition-colors ${importMenuOpen ? "bg-[#156372] text-white" : "text-gray-800 hover:bg-[#156372] hover:text-white"
+                      className={`px-3 py-2.5 text-sm font-medium cursor-pointer flex items-center justify-between border-t border-gray-200 group transition-colors ${importMenuOpen ? "bg-[#156372] text-white" : "text-gray-800 hover:bg-gray-300 hover:text-gray-900"
                         }`}
                     >
                       <div className="flex items-center gap-2">
@@ -1346,7 +1360,7 @@ function InventoryPageContent() {
                       setMoreMenuOpen(false);
                       setIsExportModalOpen(true);
                     }}
-                    className="px-3 py-2.5 text-sm cursor-pointer flex items-center justify-between border-t border-gray-200 text-gray-800 hover:bg-[#156372] hover:text-white group transition-colors"
+                    className="px-3 py-2.5 text-sm cursor-pointer flex items-center justify-between border-t border-gray-200 text-gray-800 hover:bg-gray-300 hover:text-gray-900 group transition-colors"
                   >
                     <div className="flex items-center gap-2">
                       <Upload size={16} className="text-gray-500 group-hover:text-white" />
@@ -1362,7 +1376,7 @@ function InventoryPageContent() {
                       const inventorySettingsPath = "/settings/inventory-adjustments";
                       navigate(inventorySettingsPath);
                     }}
-                    className="px-3 py-2.5 text-sm cursor-pointer flex items-center gap-2 border-t border-gray-200 text-gray-800 hover:bg-[#156372] hover:text-white group transition-colors"
+                    className="px-3 py-2.5 text-sm cursor-pointer flex items-center gap-2 border-t border-gray-200 text-gray-800 hover:bg-gray-300 hover:text-gray-900 group transition-colors"
                   >
                     <Settings size={16} className="text-gray-500 group-hover:text-white" />
                     <span>Preferences</span>
@@ -1379,7 +1393,7 @@ function InventoryPageContent() {
                       // Fetch fresh data from database with toast notification
                       await fetchAdjustments(true);
                     }}
-                    className="px-3 py-2.5 text-sm cursor-pointer flex items-center gap-2 border-t border-gray-200 text-gray-800 hover:bg-[#156372] hover:text-white group transition-colors"
+                    className="px-3 py-2.5 text-sm cursor-pointer flex items-center gap-2 border-t border-gray-200 text-gray-800 hover:bg-gray-300 hover:text-gray-900 group transition-colors"
                   >
                     <RefreshCw size={16} className="text-gray-500 group-hover:text-white" />
                     <span>Refresh List</span>
@@ -1392,12 +1406,12 @@ function InventoryPageContent() {
       )}
 
       {/* Filters */}
-      <div className="flex gap-3 mb-5 items-center">
-        <div className="flex items-center gap-2">
+      <div className="relative z-20 flex flex-wrap gap-3 mb-5 items-center bg-transparent py-1">
+        <div className="relative z-20 flex items-center gap-2">
           <label className="text-[13px] text-gray-500 font-medium">
             Filter By :
           </label>
-          <div style={{ position: "relative", display: "inline-block" }} ref={typeDropdownRef}>
+          <div className="relative inline-block align-top" ref={typeDropdownRef}>
             <button
               onClick={() => setTypeDropdownOpen(!typeDropdownOpen)}
               style={{
@@ -1431,14 +1445,13 @@ function InventoryPageContent() {
             {typeDropdownOpen && (
               <div style={{
                 position: "absolute",
-                top: "100%",
+                top: "calc(100% + 6px)",
                 left: 0,
-                marginTop: "4px",
                 backgroundColor: "#ffffff",
                 border: "1px solid #d1d5db",
                 borderRadius: "6px",
                 boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-                zIndex: 1000,
+                zIndex: 1001,
                 minWidth: "160px",
                 overflow: "hidden"
               }}>
@@ -1594,8 +1607,8 @@ function InventoryPageContent() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative inline-block" ref={periodDropdownRef}>
+        <div className="relative z-20 flex items-center gap-2">
+          <div className="relative inline-block align-top z-30" ref={periodDropdownRef}>
             <button
               onClick={() => setPeriodDropdownOpen(!periodDropdownOpen)}
               className="px-3 py-[5px] text-[13px] border border-gray-300 rounded-md bg-white text-gray-900 cursor-pointer flex items-center gap-2 min-w-[100px] justify-between hover:border-gray-400"
@@ -1610,14 +1623,13 @@ function InventoryPageContent() {
             {periodDropdownOpen && (
               <div style={{
                 position: "absolute",
-                top: "100%",
+                top: "calc(100% + 6px)",
                 left: 0,
-                marginTop: "4px",
                 backgroundColor: "#ffffff",
                 border: "1px solid #d1d5db",
                 borderRadius: "6px",
                 boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-                zIndex: 1000,
+                zIndex: 1001,
                 minWidth: "160px",
                 overflow: "hidden"
               }}>
@@ -1656,6 +1668,7 @@ function InventoryPageContent() {
           </div>
         </div>
       </div>
+      </div>
 
       {/* Content */}
       <InventoryAdjustments
@@ -1665,6 +1678,7 @@ function InventoryPageContent() {
             setSelectedAdjustment(adjustment);
           }
         }}
+        onCreateNew={() => navigate("/inventory/new")}
         selectedItems={selectedItems}
         onSelectAll={handleSelectAll}
         onSelectItem={handleSelectItem}

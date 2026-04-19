@@ -2,7 +2,7 @@ import { Calendar, Check, ChevronDown, ChevronUp, Search, Settings } from "lucid
 import { useNewAdjustmentFormContext } from "./context";
 
 export function AdjustmentFormFields() {
-  const { formData, errors, dates, accounts, reasons, updateField } = useNewAdjustmentFormContext();
+  const { formData, errors, dates, accounts, locations, reasons, updateField } = useNewAdjustmentFormContext();
 
   return (
     <div className="mb-8">
@@ -272,6 +272,66 @@ export function AdjustmentFormFields() {
               >
                 <Settings size={16} className="text-gray-500" />
                 <span>Manage Reasons</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row sm:items-start mb-5 gap-3 sm:gap-6">
+        <label className="text-sm font-medium text-gray-700 sm:min-w-[180px] pt-2">
+          <span className="text-red-500 font-medium">Location*</span>
+        </label>
+        <div className="relative inline-block" ref={locations.ref}>
+          <input
+            type="text"
+            value={formData.location}
+            readOnly
+            onClick={locations.toggle}
+            placeholder="Select a location"
+            className={`w-full sm:w-[300px] px-3 py-2 pr-8 border rounded-md text-sm outline-none bg-white cursor-pointer box-border focus:border-[#156372] focus:ring-2 focus:ring-[rgba(21,99,114,0.2)] transition-all ${errors.location ? "border-red-500 ring-red-500/20 ring-1" : "border-gray-300"}`}
+            required
+          />
+          {locations.open ? (
+            <ChevronUp size={16} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500" />
+          ) : (
+            <ChevronDown size={16} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500" />
+          )}
+
+          {locations.open && (
+            <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-md shadow-lg z-[1000] w-full sm:w-[300px] overflow-hidden flex flex-col">
+              <div className="p-2 border-b border-gray-200">
+                <div className="relative">
+                  <Search size={16} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search"
+                    value={locations.search}
+                    onChange={(event) => locations.setSearch(event.target.value)}
+                    onClick={(event) => event.stopPropagation()}
+                    className="w-full pl-8 pr-2 py-1.5 border border-gray-300 rounded text-sm outline-none box-border focus:border-[#156372] focus:ring-2 focus:ring-[rgba(21,99,114,0.2)]"
+                  />
+                </div>
+              </div>
+
+              <div className="max-h-[200px] overflow-y-auto">
+                {(locations.items || [])
+                  .map((location) => String(location.name || location.locationName || ""))
+                  .filter((name) => name.toLowerCase().includes(locations.search.toLowerCase()))
+                  .map((name) => {
+                    const isSelected = formData.location === name;
+                    return (
+                      <div
+                        key={name}
+                        onClick={() => locations.select(name)}
+                        className={`px-3 py-2 cursor-pointer text-sm flex items-center justify-between ${isSelected ? "text-white" : "text-gray-900 bg-transparent hover:bg-gray-50"}`}
+                        style={isSelected ? { background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" } : {}}
+                      >
+                        <span>{name}</span>
+                        {isSelected && <Check size={16} className="text-white" strokeWidth={2.5} />}
+                      </div>
+                    );
+                  })}
               </div>
             </div>
           )}

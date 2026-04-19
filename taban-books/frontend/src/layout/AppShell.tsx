@@ -13,6 +13,8 @@ export default function AppShell({ children }: { children?: React.ReactNode }) {
   const pathSegments = location?.pathname?.split("/") || [];
   const isEmbedded = new URLSearchParams(location.search).get("embed") === "1";
   const isReportsRoute = location.pathname.startsWith("/reports");
+  const isItemsRoute = location.pathname.startsWith("/items");
+  const isInventoryRoute = location.pathname.startsWith("/inventory");
 
   if (isEmbedded) {
     return (
@@ -23,20 +25,32 @@ export default function AppShell({ children }: { children?: React.ReactNode }) {
   }
 
   return (
+<<<<<<< Updated upstream
     <div className="min-h-screen bg-white text-slate-900 flex flex-col">
+=======
+    <div
+      className={`min-h-screen text-slate-900 flex flex-col ${
+        isInventoryRoute ? "bg-transparent" : "bg-slate-50"
+      }`}
+    >
+>>>>>>> Stashed changes
       <div className="flex-none z-[100]">
         <TopBar />
       </div>
 
-      <div className="flex flex-1 relative">
+      <div className={`flex flex-1 relative ${isInventoryRoute ? "bg-transparent" : ""}`}>
         {/* Left - Big Sidebar */}
         <Sidebar />
 
         {/* Page content */}
-        <main className="flex-1 transition-all duration-300 md:pl-[var(--sidebar-width)]">
+        <main
+          className={`flex-1 transition-all duration-300 md:pl-[var(--sidebar-width)] ${
+            isInventoryRoute ? "bg-transparent" : ""
+          }`}
+        >
           <div
             className={
-              isReportsRoute
+              isReportsRoute || isItemsRoute || isInventoryRoute
                 ? "w-full p-0"
                 : "mx-auto max-w-[1600px] p-4 md:pt-4 md:pr-4 md:pb-4 md:pl-0"
             }

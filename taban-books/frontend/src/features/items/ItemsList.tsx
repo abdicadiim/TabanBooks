@@ -94,6 +94,14 @@ const ItemsList = ({
   const [exportSubMenuOpen, setExportSubMenuOpen] = useState(false);
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [filterSearch, setFilterSearch] = useState("");
+  const [favoriteViews, setFavoriteViews] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("taban_items_favorite_views_v1");
+      return saved ? JSON.parse(saved) : ["Purchases"];
+    } catch {
+      return ["Purchases"];
+    }
+  });
   const [sortKey, setSortKey] = useState("name");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -152,6 +160,10 @@ const ItemsList = ({
   useEffect(() => {
     localStorage.setItem("taban_items_columns_v3", JSON.stringify(columns));
   }, [columns]);
+
+  useEffect(() => {
+    localStorage.setItem("taban_items_favorite_views_v1", JSON.stringify(favoriteViews));
+  }, [favoriteViews]);
 
   const [dbAccounts, setDbAccounts] = useState<any[]>([]);
   const [dbTaxes, setDbTaxes] = useState<any[]>([]);
@@ -249,6 +261,66 @@ const ItemsList = ({
     setColumns(prev => prev.map(c => c.key === key ? { ...c, width } : c));
   };
 
+  const FILTER_VIEWS: Record<string, string> = {
+    "All": "All",
+    "Active": "Active Items",
+    "Inactive": "Inactive Items",
+    "Low Stock": "Low Stock",
+    "Sales": "Sales",
+    "Purchases": "Purchases",
+    "Services": "Services",
+    "Taban CRM": "Taban CRM",
+    "Inventory Items": "Inventory Items",
+  };
+
+  const getFilterLabel = (view: string) => {
+    if (view === "All") return "All Items";
+    if (view === "Active Items") return "Active Items";
+    if (view === "Inactive Items") return "Inactive Items";
+    return view;
+  };
+
+  const getFilterKey = (view: string) => {
+    if (view === "Active") return "Active Items";
+    if (view === "Inactive") return "Inactive Items";
+    return view;
+  };
+
+  const SORT_OPTIONS: { label: string; key: string }[] = [
+    { label: "Name", key: "name" },
+    { label: "SKU", key: "sku" },
+    { label: "Purchase Rate", key: "purchaseRate" },
+    { label: "Rate", key: "rate" },
+    { label: "Stock On Hand", key: "stockOnHand" },
+    { label: "Last Modified Time", key: "updatedAt" },
+    { label: "Created Time", key: "createdAt" },
+  ];
+
+  const sortOptionMap = SORT_OPTIONS.reduce<Record<string, string>>((acc, option) => {
+    acc[option.label] = option.key;
+    return acc;
+  }, {});
+
+  const sortLabelByKey = SORT_OPTIONS.reduce<Record<string, string>>((acc, option) => {
+    acc[option.key] = option.label;
+    return acc;
+  }, {});
+
+  const toggleFavoriteView = (view: string) => {
+    const key = getFilterKey(view);
+    setFavoriteViews(prev =>
+      prev.includes(key) ? prev.filter(item => item !== key) : [...prev, key]
+    );
+  };
+
+  const viewOptions = [
+    "All", "Active", "Low Stock", "Inactive", "Sales", "Purchases", "Services", "Taban CRM", "Inventory Items"
+  ];
+  const sortedViewOptions = [
+    ...viewOptions.filter(view => favoriteViews.includes(getFilterKey(view))),
+    ...viewOptions.filter(view => !favoriteViews.includes(getFilterKey(view))),
+  ];
+
 
 
   useEffect(() => {
@@ -312,10 +384,8 @@ const ItemsList = ({
 
     // Sorting logic
     result.sort((a, b) => {
-      let valA = a[sortKey] || "";
-      let valB = b[sortKey] || "";
-      if (typeof valA === "string") valA = valA.toLowerCase();
-      if (typeof valB === "string") valB = valB.toLowerCase();
+      let valA = getSortValue(a, sortKey);
+      let valB = getSortValue(b, sortKey);
 
       if (valA < valB) return sortOrder === "asc" ? -1 : 1;
       if (valA > valB) return sortOrder === "asc" ? 1 : -1;
@@ -332,6 +402,40 @@ const ItemsList = ({
       setSortKey(key);
       setSortOrder("asc");
     }
+  };
+
+  const handleSortOptionSelect = (optionLabel: string) => {
+    const key = sortOptionMap[optionLabel];
+    if (!key) return;
+    if (sortKey === key) {
+      setSortOrder(prev => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortOrder("asc");
+    }
+    setSortSubMenuOpen(false);
+    setMoreDropdownOpen(false);
+  };
+
+  const getSortValue = (item: any, key: string) => {
+    const rawValue = item?.[key];
+
+    switch (key) {
+      case "purchaseRate":
+      case "rate":
+      case "stockOnHand":
+        return Number(String(rawValue ?? item?.[key === "stockOnHand" ? "stockQuantity" : key === "purchaseRate" ? "purchasePrice" : "sellPrice"] ?? 0).replace(/[^0-9.-]/g, "")) || 0;
+      case "updatedAt":
+      case "createdAt":
+        return rawValue ? new Date(rawValue).getTime() : 0;
+      default:
+        return String(rawValue ?? "").toLowerCase();
+    }
+  };
+
+  const getHeaderSortDirection = (key: string) => {
+    if (sortKey !== key) return null;
+    return sortOrder;
   };
 
   const toggleSelectAll = () => {
@@ -479,16 +583,16 @@ const ItemsList = ({
         </div>
       ) : (
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-          <div className="relative" ref={filterDropdownRef}>
-            <div
-              className="flex items-center gap-1 cursor-pointer group"
-              onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
-            >
-              <h1 className="text-base font-semibold text-slate-900 transition-colors" style={{ color: filterDropdownOpen ? accentColor : undefined }}>
-                {filterType === "All" ? "All Items" : filterType === "Active Items" ? "Active Items" : filterType}
+              <div className="relative" ref={filterDropdownRef}>
+                <div
+                  className="flex items-center gap-1 cursor-pointer group"
+                  onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
+                >
+                  <h1 className="text-base font-semibold text-slate-900 transition-colors" style={{ color: filterDropdownOpen ? accentColor : undefined }}>
+                {getFilterLabel(filterType)}
               </h1>
-              <ChevronDown size={14} className={`transition-transform duration-200 ${filterDropdownOpen ? 'rotate-180' : ''}`} style={{ color: accentColor }} />
-            </div>
+                  <ChevronDown size={14} className={`transition-transform duration-200 ${filterDropdownOpen ? 'rotate-180' : ''}`} style={{ color: accentColor }} />
+                </div>
 
             {filterDropdownOpen && (
               <div className="absolute top-full left-0 mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-2xl z-[100] py-2 animate-in fade-in zoom-in-95 duration-200">
@@ -505,16 +609,39 @@ const ItemsList = ({
                   </div>
                 </div>
                 <div className="max-h-80 overflow-y-auto py-1">
-                  {[
-                    "All", "Active", "Low Stock", "Inactive", "Sales", "Purchases", "Services", "Taban CRM", "Inventory Items"
-                  ].filter(v => v.toLowerCase().includes(filterSearch.toLowerCase())).map(view => (
-                    <button
-                      onClick={() => { setFilterType(view === "Active" ? "Active Items" : view === "Inactive" ? "Inactive Items" : view); setFilterDropdownOpen(false); }}
-                      className="flex items-center justify-between px-4 py-2 hover:bg-teal-50 cursor-pointer group/item transition-colors w-full"
-                    >
-                      <span className={`text-sm ${filterType.includes(view) ? 'text-teal-700 font-medium' : 'text-gray-700'}`}>{view}</span>
-                      <Star size={14} className="text-gray-300 hover:text-yellow-400 transition-colors" />
-                    </button>))}
+                  {sortedViewOptions.filter(v => v.toLowerCase().includes(filterSearch.toLowerCase())).map(view => {
+                    const resolvedView = getFilterKey(view);
+                    const isFavorite = favoriteViews.includes(resolvedView);
+                    const isActive = filterType === resolvedView;
+                    return (
+                      <div
+                        key={view}
+                        className="flex items-center justify-between px-4 py-2 hover:bg-teal-50 transition-colors w-full"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => { setFilterType(resolvedView); setFilterDropdownOpen(false); }}
+                          className="flex-1 text-left cursor-pointer group/item"
+                        >
+                          <span className={`text-sm ${isActive ? 'text-teal-700 font-medium' : 'text-gray-700'}`}>{view}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleFavoriteView(view);
+                          }}
+                          className="ml-3 rounded-full p-1 hover:bg-teal-50 transition-colors flex-shrink-0"
+                          aria-label={isFavorite ? `Unfavorite ${view}` : `Favorite ${view}`}
+                        >
+                          <Star
+                            size={14}
+                            className={isFavorite ? "text-yellow-400 fill-yellow-400" : "text-gray-300"}
+                          />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
                 {/* <div className="px-2 pt-2 border-t border-gray-100 mt-1">
                   <button
@@ -566,17 +693,16 @@ const ItemsList = ({
 
                       {sortSubMenuOpen && (
                         <div className="md:absolute md:top-0 md:right-full md:mr-2 md:w-52 relative w-full bg-white md:border border-gray-100 rounded-lg md:shadow-xl py-2 z-[115] md:animate-in md:fade-in md:slide-in-from-right-1 duration-200">
-                          {['Name', 'SKU', 'Purchase Rate', 'Last Modified Time', 'Created Time'].map((option) => {
-                            const keyMap: any = { 'Name': 'name', 'SKU': 'sku', 'Purchase Rate': 'purchaseRate', 'Last Modified Time': 'updatedAt', 'Created Time': 'createdAt' };
-                            const isActive = sortKey === keyMap[option];
+                          {SORT_OPTIONS.map((option) => {
+                            const isActive = sortKey === option.key;
                             return (
                               <button
-                                key={option}
-                                onClick={() => { setSortKey(keyMap[option]); setSortSubMenuOpen(false); }}
-                                className={`w-full flex items-center justify-between px-4 py-2 text-sm transition-colors ${isActive ? 'bg-[#1b5e6a] text-white font-bold' : 'text-slate-600 hover:bg-teal-50/50'}`}
+                                key={option.label}
+                                onClick={() => handleSortOptionSelect(option.label)}
+                                className={`w-full flex items-center justify-between px-4 py-2 text-sm transition-colors ${isActive ? 'bg-white text-[#1b5e6a] font-semibold border-l-4 border-[#1b5e6a] shadow-[inset_0_0_0_1px_rgba(27,94,106,0.08)]' : 'text-slate-600 hover:bg-teal-50/50'}`}
                               >
-                                <span style={isActive ? { color: 'white', fontWeight: 'bold' } : {}}>{option}</span>
-                                {isActive && <Plus size={14} className="rotate-45" style={{ color: 'white' }} />}
+                                <span style={isActive ? { color: '#1b5e6a', fontWeight: 600 } : {}}>{option.label}</span>
+                                {isActive && <span className="ml-3 h-1.5 w-1.5 rounded-full bg-[#1b5e6a]" />}
                               </button>
                             );
                           })}
@@ -670,8 +796,8 @@ const ItemsList = ({
         <table className="w-full text-left border-collapse">
           <thead className="bg-white sticky top-0 z-10 border-b border-gray-200 shadow-sm">
             <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-              <th className="px-4 py-3 w-16 min-w-[64px]">
-                <div className="flex items-center gap-2 relative">
+              <th className="px-4 py-3 w-[78px] min-w-[78px]">
+                <div className="flex items-center justify-start gap-1.5 relative">
                   <button
                     type="button"
                     onClick={(e) => {
@@ -698,16 +824,20 @@ const ItemsList = ({
                   key={col.key}
                   className={`px-4 py-3 relative group/header cursor-pointer select-none ${col.key !== 'name' && col.key !== 'rate' ? 'hidden md:table-cell' : ''}`}
                   style={{ width: col.width }}
-                  onClick={() => col.key === 'name' ? handleSort('name') : undefined}
+                  onClick={() => {
+                    if (sortLabelByKey[col.key]) {
+                      handleSort(col.key);
+                    }
+                  }}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1">
                       <span className="truncate text-slate-900 font-bold">{col.label}</span>
-                      {col.key === 'name' && (
+                      {sortLabelByKey[col.key] && (
                         <ArrowUpDown
                           size={10}
                           className="flex-shrink-0 transition-colors"
-                          style={{ color: sortKey === 'name' ? accentColor : undefined }}
+                          style={{ color: sortKey === col.key ? accentColor : undefined, transform: getHeaderSortDirection(col.key) === "desc" ? "rotate(180deg)" : "none" }}
                         />
                       )}
                     </div>
@@ -745,10 +875,8 @@ const ItemsList = ({
                     style={isSelected ? { backgroundColor: `#1b5e6a1A` } : {}} // 1A is approx 10% opacity
                     onClick={() => onSelect(id)}
                   >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="invisible group-hover:visible min-w-[8px]">
-                        </div>
+                    <td className="px-4 py-3 w-[78px] min-w-[78px]">
+                      <div className="flex items-center justify-start pl-7">
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -861,8 +989,9 @@ const ItemsList = ({
 
             {/* Columns List */}
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
-              {columns
+              {[...columns]
                 .filter(c => c.label.toLowerCase().includes(filterSearch.toLowerCase()))
+                .sort((a, b) => Number(b.visible) - Number(a.visible) || Number(a.key === 'name') - Number(b.key === 'name'))
                 .map((col, index) => (
                   <div
                     key={col.key}
@@ -873,7 +1002,7 @@ const ItemsList = ({
                       const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
                       handleReorder(dragIndex, index);
                     }}
-                    className={`flex items-center justify-between p-2 rounded-lg group transition-colors hover:bg-slate-50 ${col.pinned ? 'bg-slate-50/50' : ''}`}
+                    className={`flex items-center justify-between p-2 rounded-lg group transition-colors hover:bg-[#eef8f9] ${col.visible ? 'bg-[#eef8f9]/70' : ''} ${col.pinned ? 'ring-1 ring-[#1b5e6a]/10' : ''}`}
                   >
                     <div className="flex items-center gap-3">
                       <div className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-400 transition-colors">
@@ -884,11 +1013,11 @@ const ItemsList = ({
                         checked={col.visible}
                         disabled={col.key === 'name'}
                         onChange={() => handleToggleColumn(col.key)}
-                        className="cursor-pointer h-4 w-4 rounded border-gray-300 text-teal-700 focus:ring-teal-700 disabled:opacity-50"
+                        className="cursor-pointer h-4 w-4 rounded border-gray-300 text-[#1b5e6a] focus:ring-[#1b5e6a] disabled:opacity-50"
                       />
                       <div className="flex items-center gap-2">
                         {col.key === 'name' && <Lock size={12} className="text-slate-400" />}
-                        <span className={`text-sm font-medium ${col.visible ? 'text-slate-700' : 'text-slate-400'}`}>
+                        <span className={`text-sm font-medium ${col.visible ? 'text-slate-800' : 'text-slate-400'}`}>
                           {col.label}
                         </span>
                       </div>
@@ -896,7 +1025,7 @@ const ItemsList = ({
 
                     <button
                       onClick={() => handleTogglePin(col.key)}
-                      className={`p-1.5 rounded-md transition-all ${col.pinned ? 'text-teal-700 bg-teal-50' : 'text-slate-300 hover:text-slate-500 hover:bg-slate-100 opacity-0 group-hover:opacity-100'}`}
+                      className={`p-1.5 rounded-md transition-all ${col.pinned ? 'text-[#1b5e6a] bg-[#eef8f9]' : 'text-slate-300 hover:text-slate-500 hover:bg-slate-100 opacity-0 group-hover:opacity-100'}`}
                     >
                       {col.pinned ? <Pin size={16} fill="currentColor" /> : <Pin size={16} />}
                     </button>

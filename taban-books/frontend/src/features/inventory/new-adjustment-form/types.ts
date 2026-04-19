@@ -19,6 +19,7 @@ export interface AdjustmentFormData {
   date: string;
   account: string;
   reason: string;
+  location: string;
   description: string;
 }
 
@@ -40,3 +41,11 @@ export interface DeleteReasonModalState {
 }
 
 export type AccountCategories = Record<string, string[]>;
+
+export interface LocationItem {
+  _id?: string;
+  id?: string;
+  name?: string;
+  locationName?: string;
+  [key: string]: unknown;
+}

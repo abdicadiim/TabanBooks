@@ -19,13 +19,15 @@ import {
     ArrowUpDown
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { apiRequest, itemsAPI, tagAssignmentsAPI, invoicesAPI, billsAPI, inventoryAdjustmentsAPI } from "../../../services/api";
+import { apiRequest, itemsAPI, tagAssignmentsAPI, invoicesAPI, billsAPI, inventoryAdjustmentsAPI, reportsAPI, locationsAPI } from "../../../services/api";
 import { Item, Z, fmtMoney } from "../itemsModel";
 import LockItemModal from "./modals/LockItemModal";
 import OpeningStockModal from "./modals/OpeningStockModal";
 import AdjustStock from "./modals/AdjustStock";
 import ReorderPointModal from "./modals/ReorderPointModal";
 import { clearItemsSettingsCache, getItemsSettings } from "../../../utils/itemsSettings";
+import { useCurrency } from "../../../hooks/useCurrency";
+import { useOrganizationBranding } from "../../../hooks/useOrganizationBranding";
 
 interface ItemDetailsProps {
     item: Item;
@@ -70,8 +72,6 @@ const StatusCard = ({ label, value, onEdit, icon }: any) => (
     </div>
 );
 
-import { useCurrency } from "../../../hooks/useCurrency";
-
 export default function ItemDetails({
     item,
     onBack,
@@ -90,6 +90,7 @@ export default function ItemDetails({
 }: ItemDetailsProps) {
     const navigate = useNavigate();
     const { symbol: currencySymbol } = useCurrency();
+    const { accentColor } = useOrganizationBranding();
     const [activeTab, setActiveTab] = useState("overview");
     const [moreDropdownOpen, setMoreDropdownOpen] = useState(false);
     const [showAdjustStock, setShowAdjustStock] = useState(false);
@@ -98,6 +99,10 @@ export default function ItemDetails({
     const [showReorderPointModal, setShowReorderPointModal] = useState(false);
     const [transactions, setTransactions] = useState<any[]>([]);
     const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
+    const [locations, setLocations] = useState<any[]>([]);
+    const [isLoadingLocations, setIsLoadingLocations] = useState(false);
+    const [inventorySummary, setInventorySummary] = useState<any>(null);
+    const [stockViewMode, setStockViewMode] = useState<"accounting" | "physical">("accounting");
     const [txTypeFilter, setTxTypeFilter] = useState("Quotes");
     const [statusFilter, setStatusFilter] = useState("All");
     const [showTypeDropdown, setShowTypeDropdown] = useState(false);
@@ -225,6 +230,41 @@ export default function ItemDetails({
             void fetchTransactions();
         }
     }, [activeTab, item.id, item._id, txTypeFilter, statusFilter]);
+
+    useEffect(() => {
+        const loadLocationAndSummary = async () => {
+            if (activeTab !== "overview" && activeTab !== "locations") return;
+            setIsLoadingLocations(true);
+            try {
+                const [locRes, summaryRes] = await Promise.all([
+                    locationsAPI.getAll().catch(() => ({ data: [] })),
+                    reportsAPI.run("inventory_summary", {}).catch(() => null),
+                ]);
+
+                const locationData = Array.isArray(locRes?.data) ? locRes.data : (Array.isArray(locRes) ? locRes : []);
+                setLocations(locationData);
+
+                const rows = Array.isArray(summaryRes?.data?.rows)
+                    ? summaryRes.data.rows
+                    : Array.isArray(summaryRes?.data)
+                        ? summaryRes.data
+                        : [];
+                const matchedRow = rows.find((row: any) =>
+                    String(row.itemName || "").toLowerCase() === String(item.name || "").toLowerCase() ||
+                    String(row.sku || "").toLowerCase() === String(item.sku || "").toLowerCase()
+                );
+                setInventorySummary(matchedRow || null);
+            } catch (error) {
+                console.warn("Failed to load item overview summary", error);
+                setLocations([]);
+                setInventorySummary(null);
+            } finally {
+                setIsLoadingLocations(false);
+            }
+        };
+
+        void loadLocationAndSummary();
+    }, [activeTab, item.name, item.sku]);
 
     const getFirstAvailableValue = (source: any, fields: string[]) => {
         for (const field of fields) {
@@ -466,17 +506,26 @@ export default function ItemDetails({
                                 <MoreVertical size={18} className="text-gray-500" />
                             </button>
                             {moreDropdownOpen && (
-                                <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-50 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                                    <div className="p-3">
+                                <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                                    <div className="p-0">
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 handleClone();
                                                 setMoreDropdownOpen(false);
                                             }}
-                                            className="w-full px-4 py-2 text-sm text-center text-white bg-[#156372] rounded-md cursor-pointer hover:brightness-110 transition-all font-semibold mb-2 shadow-sm"
+                                            className="block w-full px-4 py-3 text-sm text-center text-white bg-[#156372] cursor-pointer hover:brightness-110 transition-all font-semibold shadow-sm"
                                         >
                                             Clone
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                void handleToggleActive();
+                                            }}
+                                            className="block w-full px-4 py-3 text-sm text-center text-gray-700 bg-transparent border-none cursor-pointer hover:bg-gray-50 transition-colors font-medium border-t border-gray-100"
+                                        >
+                                            {(item.active === false || item.isActive === false || item.status === "Inactive") ? "Mark as Active" : "Mark as Inactive"}
                                         </button>
                                         <button
                                             onClick={(e) => {
@@ -484,7 +533,7 @@ export default function ItemDetails({
                                                 onDelete(item.id || item._id || "");
                                                 setMoreDropdownOpen(false);
                                             }}
-                                            className="w-full px-4 py-2 text-sm text-center text-gray-700 bg-transparent border-none cursor-pointer hover:bg-gray-50 transition-colors font-medium"
+                                            className="block w-full px-4 py-3 text-sm text-center text-gray-700 bg-transparent border-none cursor-pointer hover:bg-gray-50 transition-colors font-medium border-t border-gray-100"
                                         >
                                             Delete
                                         </button>
@@ -502,7 +551,7 @@ export default function ItemDetails({
 
             {/* Tabs Bar - Scrollable on mobile */}
             <div className="flex items-center gap-4 sm:gap-8 px-6 border-b border-gray-100 overflow-x-auto no-scrollbar">
-                {["Overview", "Transactions", "History"].map(tab => (
+                {["Overview", "Locations", "Transactions", "History"].map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab.toLowerCase())}
@@ -711,6 +760,14 @@ export default function ItemDetails({
                                             label="Stock on Hand"
                                             value={parseFloat(String(item.stockQuantity || 0)).toFixed(2)}
                                         />
+                                        <StatusCard
+                                            label="Committed Stock"
+                                            value={parseFloat(String(inventorySummary?.committedStock ?? 0)).toFixed(2)}
+                                        />
+                                        <StatusCard
+                                            label="Available for Sale"
+                                            value={parseFloat(String((item.stockQuantity || 0) - (inventorySummary?.committedStock || 0))).toFixed(2)}
+                                        />
 
                                         {/* Mini metrics row */}
                                         <div className="flex border-b border-gray-100">
@@ -871,6 +928,66 @@ export default function ItemDetails({
                         </div>
                     </div>
                 )}
+
+                {activeTab === "locations" && (
+                    <div className="max-w-6xl mx-auto">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-lg font-semibold text-slate-900">Stock Locations</h2>
+                            <div className="inline-flex rounded-md overflow-hidden border border-blue-500 bg-white">
+                                <button
+                                    type="button"
+                                    onClick={() => setStockViewMode("accounting")}
+                                className={`px-4 py-1.5 text-sm transition-colors ${stockViewMode === "accounting" ? "text-white" : "bg-white hover:bg-blue-50"}`}
+                                style={stockViewMode === "accounting" ? { backgroundColor: accentColor } : { color: accentColor }}
+                                >
+                                    Accounting Stock
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setStockViewMode("physical")}
+                                    className={`px-4 py-1.5 text-sm transition-colors ${stockViewMode === "physical" ? "text-white" : "bg-white hover:bg-blue-50"}`}
+                                    style={stockViewMode === "physical" ? { backgroundColor: accentColor } : { color: accentColor }}
+                                >
+                                    Physical Stock
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                            {isLoadingLocations ? (
+                                <div className="p-8 text-center text-slate-500">Loading locations...</div>
+                            ) : (
+                                <table className="w-full text-sm">
+                                    <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
+                                        <tr>
+                                            <th className="text-left px-4 py-3">Location Name</th>
+                                            <th className="text-center px-4 py-3" colSpan={3}>
+                                              {stockViewMode === "accounting" ? "Accounting Stock" : "Physical Stock"}
+                                            </th>
+                                        </tr>
+                                        <tr className="border-t border-gray-200">
+                                            <th className="text-left px-4 py-2"></th>
+                                            <th className="text-right px-4 py-2">Stock On Hand</th>
+                                            <th className="text-right px-4 py-2">Committed Stock</th>
+                                            <th className="text-right px-4 py-2">Available for Sale</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(locations.length ? locations : [{ name: item.locationName || "Head Office" }]).map((loc: any, idx: number) => (
+                                            <tr key={loc._id || loc.id || idx} className="border-t border-gray-100">
+                                                <td className="px-4 py-3 text-slate-900">{loc.name || loc.locationName || "Head Office"}</td>
+                                                <td className="px-4 py-3 text-right">{parseFloat(String(item.stockQuantity || 0)).toFixed(2)}</td>
+                                                <td className="px-4 py-3 text-right">{parseFloat(String(inventorySummary?.committedStock ?? 0)).toFixed(2)}</td>
+                                                <td className="px-4 py-3 text-right">{parseFloat(String((item.stockQuantity || 0) - (inventorySummary?.committedStock || 0))).toFixed(2)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {activeTab === "history" && (
                     <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden p-8">
                         <div className="relative border-l-2 border-slate-100 pl-8 ml-4 space-y-12">

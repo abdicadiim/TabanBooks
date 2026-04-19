@@ -7,6 +7,7 @@ import type {
   CalendarDay,
   DeleteReasonModalState,
   ItemRow,
+  LocationItem,
 } from "./types";
 
 export interface NewAdjustmentFormContextValue {
@@ -35,6 +36,15 @@ export interface NewAdjustmentFormContextValue {
     toggle: () => void;
     setSearch: (value: string) => void;
     select: (account: string) => void;
+  };
+  locations: {
+    open: boolean;
+    search: string;
+    items: LocationItem[];
+    ref: RefObject<HTMLDivElement | null>;
+    toggle: () => void;
+    setSearch: (value: string) => void;
+    select: (location: string) => void;
   };
   reasons: {
     open: boolean;
