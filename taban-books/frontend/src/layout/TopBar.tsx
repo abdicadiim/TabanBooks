@@ -279,7 +279,7 @@ export default function TopBar() {
                         organizations.map((org, idx) => (
                           <div
                             key={org.id}
-                            className={`p-3 rounded-lg cursor-pointer hover:bg-slate-50 ${idx === 0 ? "bg-blue-50" : ""
+                            className={`p-3 rounded-lg cursor-pointer hover:bg-slate-100 ${idx === 0 ? "bg-slate-100" : ""
                               }`}
                             onClick={() => {
                               setOrgDropdownOpen(false);
@@ -378,7 +378,7 @@ export default function TopBar() {
                             <button
                               key={item.label}
                               onClick={() => handleQuickCreateClick(item.path)}
-                              className="w-full text-left px-2 py-1.5 rounded text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2"
+                              className="w-full text-left px-2 py-1.5 rounded text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 flex items-center gap-2"
                             >
                               <Plus size={12} className="text-slate-400" />
                               {item.label}

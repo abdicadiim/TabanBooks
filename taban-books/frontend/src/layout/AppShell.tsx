@@ -25,15 +25,11 @@ export default function AppShell({ children }: { children?: React.ReactNode }) {
   }
 
   return (
-<<<<<<< Updated upstream
-    <div className="min-h-screen bg-white text-slate-900 flex flex-col">
-=======
     <div
       className={`min-h-screen text-slate-900 flex flex-col ${
         isInventoryRoute ? "bg-transparent" : "bg-slate-50"
       }`}
     >
->>>>>>> Stashed changes
       <div className="flex-none z-[100]">
         <TopBar />
       </div>
