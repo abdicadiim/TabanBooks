@@ -15,6 +15,12 @@ export default function BulkUpdateModal({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const dropdownRef = useRef(null);
+  const dropdownTriggerRef = useRef(null);
+  const [dropdownPosition, setDropdownPosition] = useState({
+    top: 0,
+    left: 0,
+    width: 0,
+  });
   const normalizedFieldOptions = (Array.isArray(fieldOptions) ? fieldOptions : []).map((option) =>
     typeof option === "string" ? { value: option, label: option, type: "text" } : option
   );
@@ -28,6 +34,30 @@ export default function BulkUpdateModal({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!isDropdownOpen) return undefined;
+
+    const updateDropdownPosition = () => {
+      if (!dropdownTriggerRef.current) return;
+
+      const rect = dropdownTriggerRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + 8,
+        left: rect.left,
+        width: rect.width,
+      });
+    };
+
+    updateDropdownPosition();
+    window.addEventListener("resize", updateDropdownPosition);
+    window.addEventListener("scroll", updateDropdownPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateDropdownPosition);
+      window.removeEventListener("scroll", updateDropdownPosition, true);
+    };
+  }, [isDropdownOpen]);
 
   if (!isOpen) return null;
 
@@ -296,6 +326,7 @@ export default function BulkUpdateModal({
             {/* Custom Searchable Dropdown */}
             <div style={{ flex: 1, position: "relative" }} ref={dropdownRef}>
               <div
+                ref={dropdownTriggerRef}
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                 style={{
                   width: "100%",
@@ -326,101 +357,103 @@ export default function BulkUpdateModal({
                 />
               </div>
 
-              {isDropdownOpen && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "calc(100% + 8px)",
-                    left: 0,
-                    right: 0,
-                    backgroundColor: "#ffffff",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "10px",
-                    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
-                    zIndex: 10001,
-                    overflow: "hidden",
-                    display: "flex",
-                    flexDirection: "column",
-                  }}
-                >
-                  <div style={{ padding: "8px", borderBottom: "1px solid #f1f5f9" }}>
-                    <div style={{ position: "relative" }}>
-                      <Search
-                        size={16}
-                        style={{
-                          position: "absolute",
-                          left: "10px",
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          color: "#94a3b8"
-                        }}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Search"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        autoFocus
-                        style={{
-                          width: "100%",
-                          padding: "8px 12px 8px 34px",
-                          border: "1px solid #f1f5f9",
-                          backgroundColor: "#f8fafc",
-                          borderRadius: "6px",
-                          fontSize: "14px",
-                          outline: "none",
-                          color: "#1e293b",
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div style={{ maxHeight: "240px", overflowY: "auto", padding: "4px" }}>
-                    {filteredOptions.length > 0 ? (
-                      filteredOptions.map((option) => (
-                        <div
-                          key={option.value}
-                          onClick={() => {
-                            setSelectedField(option.value);
-                            setNewValue("");
-                            setIsDropdownOpen(false);
-                            setSearchTerm("");
-                          }}
+              {isDropdownOpen &&
+                createPortal(
+                  <div
+                    style={{
+                      position: "fixed",
+                      top: dropdownPosition.top,
+                      left: dropdownPosition.left,
+                      width: dropdownPosition.width,
+                      backgroundColor: "#ffffff",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "10px",
+                      boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+                      zIndex: 10002,
+                      overflow: "hidden",
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
+                  >
+                    <div style={{ padding: "8px", borderBottom: "1px solid #f1f5f9" }}>
+                      <div style={{ position: "relative" }}>
+                        <Search
+                          size={16}
                           style={{
-                            padding: "10px 12px",
-                            fontSize: "14px",
-                            cursor: "pointer",
-                            backgroundColor: selectedField === option.value ? "#156372" : "transparent",
-                            color: selectedField === option.value ? "#ffffff" : "#475569",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
+                            position: "absolute",
+                            left: "10px",
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            color: "#94a3b8"
+                          }}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Search"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          autoFocus
+                          style={{
+                            width: "100%",
+                            padding: "8px 12px 8px 34px",
+                            border: "1px solid #f1f5f9",
+                            backgroundColor: "#f8fafc",
                             borderRadius: "6px",
-                            transition: "background-color 0.15s",
-                            margin: "2px 0"
+                            fontSize: "14px",
+                            outline: "none",
+                            color: "#1e293b",
                           }}
-                          onMouseEnter={(e) => {
-                            if (selectedField !== option.value) {
-                              e.currentTarget.style.backgroundColor = "#f1f5f9";
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (selectedField !== option.value) {
-                              e.currentTarget.style.backgroundColor = "transparent";
-                            }
-                          }}
-                        >
-                          <span>{option.label}</span>
-                          {selectedField === option.value && <Check size={16} />}
-                        </div>
-                      ))
-                    ) : (
-                      <div style={{ padding: "20px", textAlign: "center", color: "#94a3b8", fontSize: "14px" }}>
-                        No results found
+                        />
                       </div>
-                    )}
-                  </div>
-                </div>
-              )}
+                    </div>
+                    <div style={{ maxHeight: "240px", overflowY: "auto", padding: "4px" }}>
+                      {filteredOptions.length > 0 ? (
+                        filteredOptions.map((option) => (
+                          <div
+                            key={option.value}
+                            onClick={() => {
+                              setSelectedField(option.value);
+                              setNewValue("");
+                              setIsDropdownOpen(false);
+                              setSearchTerm("");
+                            }}
+                            style={{
+                              padding: "10px 12px",
+                              fontSize: "14px",
+                              cursor: "pointer",
+                              backgroundColor: selectedField === option.value ? "#156372" : "transparent",
+                              color: selectedField === option.value ? "#ffffff" : "#475569",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              borderRadius: "6px",
+                              transition: "background-color 0.15s",
+                              margin: "2px 0"
+                            }}
+                            onMouseEnter={(e) => {
+                              if (selectedField !== option.value) {
+                                e.currentTarget.style.backgroundColor = "#f1f5f9";
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (selectedField !== option.value) {
+                                e.currentTarget.style.backgroundColor = "transparent";
+                              }
+                            }}
+                          >
+                            <span>{option.label}</span>
+                            {selectedField === option.value && <Check size={16} />}
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{ padding: "20px", textAlign: "center", color: "#94a3b8", fontSize: "14px" }}>
+                          No results found
+                        </div>
+                      )}
+                    </div>
+                  </div>,
+                  document.body
+                )}
             </div>
 
             <div style={{ flex: 1 }}>

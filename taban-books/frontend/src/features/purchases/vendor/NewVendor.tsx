@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useLocation, useParams } from "react-router-dom";
+import { toast } from "react-toastify";
 import { vendorsAPI, currenciesAPI, taxesAPI, accountsAPI } from "../../../services/api";
 import { useCurrency } from "../../../hooks/useCurrency";
 import NewCurrencyModal from "../../settings/organization-settings/setup-configurations/currencies/NewCurrencyModal";
@@ -217,6 +218,7 @@ export default function NewVendor() {
   const [activeTab, setActiveTab] = useState("Other Details");
   const [showMoreDetails, setShowMoreDetails] = useState(false);
   const [documents, setDocuments] = useState<DocumentAttachment[]>([]);
+  const [hasManualDisplayNameSelection, setHasManualDisplayNameSelection] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadDropdownOpen, setUploadDropdownOpen] = useState(false);
@@ -266,6 +268,38 @@ export default function NewVendor() {
   const [isShippingStateDropdownOpen, setIsShippingStateDropdownOpen] = useState(false);
   const [shippingStateSearch, setShippingStateSearch] = useState("");
   const shippingStateDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const parsePhoneValue = (value?: string) => {
+    const rawValue = String(value || "").trim();
+    if (!rawValue) {
+      return { code: "+254", number: "" };
+    }
+
+    const matchedEntry = countryPhoneCodes.find((entry) =>
+      rawValue === entry.code ||
+      rawValue.startsWith(`${entry.code} `) ||
+      rawValue.startsWith(`${entry.code}-`) ||
+      rawValue.startsWith(`${entry.code}(`)
+    );
+
+    if (matchedEntry) {
+      return {
+        code: matchedEntry.code,
+        number: rawValue.slice(matchedEntry.code.length).trim().replace(/^[-\s]+/, ""),
+      };
+    }
+
+    const genericMatch = rawValue.match(/^(\+\d+)\s*(.*)$/);
+    if (genericMatch) {
+      return {
+        code: genericMatch[1],
+        number: String(genericMatch[2] || "").trim().replace(/^[-\s]+/, ""),
+      };
+    }
+
+    return { code: "+254", number: rawValue };
+  };
+
   const countryOptions = useMemo(() => Object.keys(countryData), []);
   const billingStateOptions = useMemo(() => countryData[formData.billingCountry] || [], [formData.billingCountry]);
   const shippingStateOptions = useMemo(() => countryData[formData.shippingCountry] || [], [formData.shippingCountry]);
@@ -465,46 +499,58 @@ export default function NewVendor() {
           const response = await vendorsAPI.getById(id);
           if (response.success && response.data) {
             const vendorData = response.data;
+            const parsedWorkPhone = parsePhoneValue(vendorData.workPhone);
+            const parsedMobilePhone = parsePhoneValue(vendorData.mobile);
+
+            setWorkPhoneCode(parsedWorkPhone.code);
+            setMobilePhoneCode(parsedMobilePhone.code);
+            setHasManualDisplayNameSelection(false);
             setFormData(prev => ({
               ...prev,
-              displayName: vendorData.displayName || vendorData.name,
-              companyName: vendorData.companyName,
-              firstName: vendorData.firstName,
-              lastName: vendorData.lastName,
-              email: vendorData.email,
-              workPhone: vendorData.workPhone,
-              mobile: vendorData.mobile,
-              websiteUrl: vendorData.websiteUrl,
-              currency: vendorData.currency,
-              paymentTerms: vendorData.paymentTerms,
-              openingBalance: vendorData.openingBalance,
-              taxRate: vendorData.taxRate,
+              salutation: vendorData.salutation || "",
+              displayName: vendorData.displayName || vendorData.name || "",
+              companyName: vendorData.companyName || "",
+              firstName: vendorData.firstName || "",
+              lastName: vendorData.lastName || "",
+              email: vendorData.email || "",
+              workPhone: parsedWorkPhone.number,
+              mobile: parsedMobilePhone.number,
+              websiteUrl: vendorData.websiteUrl || "",
+              currency: vendorData.currency || "",
+              paymentTerms: vendorData.paymentTerms || "Due on Receipt",
+              openingBalance: vendorData.openingBalance || "",
+              taxRate: vendorData.taxRate || "",
               enableTDS: vendorData.enableTDS || false,
-              companyId: vendorData.companyId,
-              accountsPayable: vendorData.accountsPayable,
-              locationCode: vendorData.locationCode,
-              vendorLanguage: vendorData.vendorLanguage,
-              enablePortal: vendorData.enablePortal,
-              billingAttention: vendorData.billingAddress?.attention,
-              billingCountry: vendorData.billingAddress?.country,
-              billingStreet1: vendorData.billingAddress?.street1,
-              billingStreet2: vendorData.billingAddress?.street2,
-              billingCity: vendorData.billingAddress?.city,
-              billingState: vendorData.billingAddress?.state,
-              billingZipCode: vendorData.billingAddress?.zipCode,
-              billingPhone: vendorData.billingAddress?.phone,
-              billingFax: vendorData.billingAddress?.fax,
-              shippingAttention: vendorData.shippingAddress?.attention,
-              shippingCountry: vendorData.shippingAddress?.country,
-              shippingStreet1: vendorData.shippingAddress?.street1,
-              shippingStreet2: vendorData.shippingAddress?.street2,
-              shippingCity: vendorData.shippingAddress?.city,
-              shippingState: vendorData.shippingAddress?.state,
-              shippingZipCode: vendorData.shippingAddress?.zipCode,
-              shippingPhone: vendorData.shippingAddress?.phone,
-              shippingFax: vendorData.shippingAddress?.fax,
-              remarks: vendorData.remarks,
-              notes: vendorData.notes,
+              companyId: vendorData.companyId || "",
+              accountsPayable: vendorData.accountsPayable || "",
+              locationCode: vendorData.locationCode || "",
+              vendorLanguage: vendorData.vendorLanguage || "English",
+              enablePortal: !!vendorData.enablePortal,
+              billingAttention: vendorData.billingAddress?.attention || "",
+              billingCountry: vendorData.billingAddress?.country || "",
+              billingStreet1: vendorData.billingAddress?.street1 || "",
+              billingStreet2: vendorData.billingAddress?.street2 || "",
+              billingCity: vendorData.billingAddress?.city || "",
+              billingState: vendorData.billingAddress?.state || "",
+              billingZipCode: vendorData.billingAddress?.zipCode || "",
+              billingPhone: vendorData.billingAddress?.phone || "",
+              billingFax: vendorData.billingAddress?.fax || "",
+              shippingAttention: vendorData.shippingAddress?.attention || "",
+              shippingCountry: vendorData.shippingAddress?.country || "",
+              shippingStreet1: vendorData.shippingAddress?.street1 || "",
+              shippingStreet2: vendorData.shippingAddress?.street2 || "",
+              shippingCity: vendorData.shippingAddress?.city || "",
+              shippingState: vendorData.shippingAddress?.state || "",
+              shippingZipCode: vendorData.shippingAddress?.zipCode || "",
+              shippingPhone: vendorData.shippingAddress?.phone || "",
+              shippingFax: vendorData.shippingAddress?.fax || "",
+              remarks: vendorData.remarks || "",
+              notes: vendorData.notes || "",
+              department: vendorData.department || "",
+              designation: vendorData.designation || "",
+              xSocial: vendorData.xHandle || vendorData.xSocial || "",
+              skypeName: vendorData.skypeName || "",
+              facebook: vendorData.facebook || "",
             }));
             if (vendorData.contactPersons && vendorData.contactPersons.length > 0) {
               setContactPersons(vendorData.contactPersons);
@@ -526,6 +572,7 @@ export default function NewVendor() {
           firstName: cloned.firstName || "",
           lastName: cloned.lastName || "",
         }));
+        setHasManualDisplayNameSelection(false);
         if (cloned.formData && cloned.formData.contactPersons) {
           setContactPersons(cloned.formData.contactPersons);
         }
@@ -637,10 +684,15 @@ export default function NewVendor() {
     // Auto-generate display name options when firstName, lastName, or companyName changes
     if (name === "firstName" || name === "lastName" || name === "companyName") {
       const options = generateDisplayNameOptions(updatedData);
-      // If displayName is empty or matches a previous option, set it to the first option
-      if (!updatedData.displayName || options.includes(updatedData.displayName)) {
+      // Keep the list/detail name in sync with the edited contact/company fields
+      // unless the user explicitly picked a custom display name.
+      if (!hasManualDisplayNameSelection || !updatedData.displayName || options.includes(updatedData.displayName)) {
         updatedData.displayName = options[0] || "";
       }
+    }
+
+    if (name === "displayName") {
+      setHasManualDisplayNameSelection(true);
     }
 
     setFormData(updatedData);
@@ -691,8 +743,8 @@ export default function NewVendor() {
       lastName: formData.lastName || '',
       companyName: formData.companyName || '',
       email: formData.email || '',
-      workPhone: `${workPhoneCode} ${formData.workPhone || ''}`.trim(),
-      mobile: `${mobilePhoneCode} ${formData.mobile || ''}`.trim(),
+      workPhone: `${workPhoneCode} ${String(formData.workPhone || "").trim()}`.trim(),
+      mobile: `${mobilePhoneCode} ${String(formData.mobile || "").trim()}`.trim(),
       websiteUrl: formData.websiteUrl || '',
       xHandle: formData.xSocial || '',
       skypeName: formData.skypeName || '',
@@ -793,7 +845,9 @@ export default function NewVendor() {
       }
     } catch (error: unknown) {
       console.error('Error saving vendor:', error);
-      alert('Failed to save vendor: ' + (error instanceof Error ? error.message : 'Unknown error. Please check console.'));
+      toast.error(
+        `Failed to save vendor: ${error instanceof Error ? error.message : "Unknown error. Please check console."}`
+      );
       return; // Don't navigate if save failed
     } finally {
       setIsSaving(false);
@@ -892,8 +946,8 @@ export default function NewVendor() {
     formGroup: {
       marginBottom: "16px",
       display: "grid",
-      gridTemplateColumns: "200px 1fr",
-      gap: "24px",
+      gridTemplateColumns: "150px 1fr",
+      gap: "16px",
       alignItems: "flex-start",
     },
     formRow: {
@@ -1253,8 +1307,8 @@ export default function NewVendor() {
     },
     addressContainer: {
       display: "grid",
-      gridTemplateColumns: "1fr 1fr",
-      gap: "16px",
+      gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+      gap: "0",
     },
     addressSection: {
       border: "none",
@@ -1298,7 +1352,7 @@ export default function NewVendor() {
     noteSection: {
       marginTop: "24px",
       padding: "16px",
-      backgroundColor: "#fef3c7",
+      backgroundColor: "transparent",
       borderRadius: "6px",
       borderLeft: "4px solid #f59e0b",
     },
@@ -2505,6 +2559,8 @@ export default function NewVendor() {
                             top: "calc(100% + 4px)",
                             left: 0,
                             right: 0,
+                            width: "100%",
+                            maxWidth: "300px",
                             backgroundColor: "#fff",
                             border: "1px solid #d1d5db",
                             borderRadius: "6px",
@@ -2605,6 +2661,8 @@ export default function NewVendor() {
                             top: "calc(100% + 4px)",
                             left: 0,
                             right: 0,
+                            width: "100%",
+                            maxWidth: "300px",
                             backgroundColor: "#fff",
                             border: "1px solid #d1d5db",
                             borderRadius: "6px",
@@ -2731,6 +2789,8 @@ export default function NewVendor() {
                             top: "calc(100% + 4px)",
                             left: 0,
                             right: 0,
+                            width: "100%",
+                            maxWidth: "300px",
                             backgroundColor: "#fff",
                             border: "1px solid #d1d5db",
                             borderRadius: "6px",
@@ -2831,6 +2891,8 @@ export default function NewVendor() {
                             top: "calc(100% + 4px)",
                             left: 0,
                             right: 0,
+                            width: "100%",
+                            maxWidth: "300px",
                             backgroundColor: "#fff",
                             border: "1px solid #d1d5db",
                             borderRadius: "6px",

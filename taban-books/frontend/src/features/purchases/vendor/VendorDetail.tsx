@@ -6,6 +6,7 @@ import { getBills, getPaymentsMade, getVendorCredits, getExpenses, getPurchaseOr
 // Note: getVendors and updateVendor from purchasesModel.js are no longer used - using vendorsAPI instead
 import { getCustomers } from "../../sales/salesModel";
 import { vendorsAPI, profileAPI, chartOfAccountsAPI, billsAPI, expensesAPI, purchaseOrdersAPI, vendorCreditsAPI, paymentsMadeAPI, recurringBillsAPI, recurringExpensesAPI, projectsAPI, receiptsAPI, accountantAPI, invoicesAPI, customersAPI, paymentsReceivedAPI, quotesAPI, creditNotesAPI, salesReceiptsAPI } from "../../../services/api";
+import BulkUpdateModal from "../shared/BulkUpdateModal";
 import { getAllDocuments } from "../../../utils/documentStorage";
 import { useCurrency } from "../../../hooks/useCurrency";
 import {
@@ -13,7 +14,7 @@ import {
   Settings, User, Mail, Phone, MapPin, Globe,
   DollarSign, TrendingUp, Calendar, UserPlus,
   ChevronUp, ChevronRight, Sparkles, Bold, Italic, Underline,
-  Filter, ArrowUpDown, Search, ChevronLeft, Link2, Printer, FileText, FileSpreadsheet, Monitor, Check, Upload, Trash2, Folder, CreditCard, LayoutGrid, Cloud, Grid3x3, HardDrive, Box, Square
+  Filter, ArrowUpDown, Search, ChevronLeft, Link2, Printer, FileText, FileSpreadsheet, Monitor, Check, Upload, Trash2, Folder, CreditCard, LayoutGrid, Cloud, Grid3x3, HardDrive, Box, Square, Star
 } from "lucide-react";
 
 // Custom styles for purchases theme
@@ -210,6 +211,10 @@ export default function VendorDetail() {
   const [selectedVendors, setSelectedVendors] = useState<any[]>([]);
   const [isBulkActionsDropdownOpen, setIsBulkActionsDropdownOpen] = useState(false);
   const bulkActionsDropdownRef = useRef<HTMLDivElement>(null);
+  const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
+  const [selectedSidebarView, setSelectedSidebarView] = useState("All Vendors");
+  const [isSidebarViewDropdownOpen, setIsSidebarViewDropdownOpen] = useState(false);
+  const sidebarViewDropdownRef = useRef<HTMLDivElement>(null);
 
   // Additional state variables
   const [paymentsMade, setPaymentsMade] = useState<any[]>([]);
@@ -362,6 +367,115 @@ export default function VendorDetail() {
   const [availableDocuments, setAvailableDocuments] = useState<any[]>([]);
   const [cloudSearchQuery, setCloudSearchQuery] = useState("");
   const [selectedCloudFiles, setSelectedCloudFiles] = useState([]);
+
+  const vendorFieldOptions = [
+    {
+      value: "currency",
+      label: "Currency",
+      type: "select",
+      options: currencies.map((currency) => ({
+        value: currency.code,
+        label: `${currency.code} - ${currency.name}`,
+      })),
+    },
+    {
+      value: "paymentTerms",
+      label: "Payment Terms",
+      type: "select",
+      options: [
+        "Due on Receipt",
+        "Net 15",
+        "Net 30",
+        "Net 45",
+        "Net 60",
+        "Due end of the month",
+        "Due end of next month",
+      ],
+    },
+    {
+      value: "vendorLanguage",
+      label: "Vendor Language",
+      type: "select",
+      options: ["English", "Spanish", "French", "German"],
+    },
+    {
+      value: "accountsPayable",
+      label: "Account Payable",
+      type: "select",
+      options: paidThroughAccounts.length > 0
+        ? paidThroughAccounts.map((account: any) => ({
+            value: account._id || account.id || account.accountName || account.name,
+            label: account.accountName || account.name || "Account",
+          }))
+        : [
+            { value: "Accounts Payable", label: "Accounts Payable" },
+            { value: "Trade Payables", label: "Trade Payables" },
+            { value: "Creditors", label: "Creditors" },
+          ],
+    },
+    {
+      value: "openingBalance",
+      label: "Opening Balance",
+      type: "number",
+      step: "0.01",
+      placeholder: "0.00",
+    },
+    {
+      value: "openingBalanceDate",
+      label: "Opening Balance Date",
+      type: "date",
+    },
+  ];
+
+  const handleBulkUpdateSubmit = async (field: string, value: any, selectedOption?: any) => {
+    let normalizedValue = value;
+
+    if (selectedOption?.type === "number") {
+      const parsedNumber = Number(value);
+      if (Number.isNaN(parsedNumber)) {
+        toast.error("Please enter a valid number.");
+        return;
+      }
+      normalizedValue = parsedNumber;
+    }
+
+    try {
+      await vendorsAPI.bulkUpdate(selectedVendors, { [field]: normalizedValue });
+      toast.success(`Updated ${selectedVendors.length} vendor(s).`);
+      setIsBulkActionsDropdownOpen(false);
+      setSelectedVendors([]);
+      await loadVendors();
+      window.dispatchEvent(new Event("vendorSaved"));
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to bulk update vendors.");
+    }
+  };
+
+  const loadVendors = async () => {
+    try {
+      const response = await vendorsAPI.getAll();
+      const vendorsList = Array.isArray(response)
+        ? response
+        : (response?.data && Array.isArray(response.data)
+          ? response.data
+          : (response?.data?.data && Array.isArray(response.data.data) ? response.data.data : []));
+
+      setVendors(
+        (vendorsList || []).map((vend: any) => ({
+          ...vend,
+          id: String(vend?._id || vend?.id || ""),
+          _id: vend?._id || vend?.id || "",
+          name:
+            vend?.displayName ||
+            vend?.name ||
+            vend?.companyName ||
+            `${vend?.firstName || ""} ${vend?.lastName || ""}`.trim() ||
+            "Vendor",
+        }))
+      );
+    } catch (error) {
+    }
+  };
 
   // Action header bar state
   const [showActionHeader, setShowActionHeader] = useState(false);
@@ -852,17 +966,6 @@ export default function VendorDetail() {
       }
     };
 
-    // Load vendors for dropdown
-    const loadVendors = async () => {
-      try {
-        const response = await vendorsAPI.getAll();
-        if (response && response.data) {
-          setVendors(response.data);
-        }
-      } catch (error) {
-      }
-    };
-
     // Load the vendor details and the vendors list (vendor details must be fetched)
     // Also fetch organization profile for the statement header
     const fetchOrganizationProfile = async () => {
@@ -885,6 +988,136 @@ export default function VendorDetail() {
     loadVendors();
     fetchOrganizationProfile();
   }, [id, navigate]);
+
+  useEffect(() => {
+    const handleVendorRefresh = () => {
+      loadVendors();
+    };
+
+    window.addEventListener("vendorSaved", handleVendorRefresh);
+    window.addEventListener("focus", handleVendorRefresh);
+    window.addEventListener("storage", handleVendorRefresh);
+
+    return () => {
+      window.removeEventListener("vendorSaved", handleVendorRefresh);
+      window.removeEventListener("focus", handleVendorRefresh);
+      window.removeEventListener("storage", handleVendorRefresh);
+    };
+  }, []);
+
+  useEffect(() => {
+    const loadAccounts = async () => {
+      try {
+        const response = await chartOfAccountsAPI.getAccounts({ limit: 1000 });
+        const accounts = Array.isArray(response?.data)
+          ? response.data
+          : (Array.isArray(response) ? response : []);
+        setPaidThroughAccounts(accounts);
+      } catch (error) {
+        setPaidThroughAccounts([]);
+      }
+    };
+
+    loadAccounts();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (sidebarViewDropdownRef.current && !sidebarViewDropdownRef.current.contains(event.target as Node)) {
+        setIsSidebarViewDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const sidebarViewOptions = [
+    "All Vendors",
+    "Active Vendors",
+    "CRM Vendors",
+    "Duplicate Vendors",
+    "Inactive Vendors",
+    "Vendor Portal Enabled",
+    "Vendor Portal Disabled",
+  ];
+
+  const getSidebarFilteredVendors = () => {
+    if (selectedSidebarView === "All Vendors") {
+      return vendors;
+    }
+
+    if (selectedSidebarView === "Active Vendors") {
+      return vendors.filter((v: any) => String(v?.status || "active").toLowerCase() !== "inactive");
+    }
+
+    if (selectedSidebarView === "Inactive Vendors") {
+      return vendors.filter((v: any) => String(v?.status || "").toLowerCase() === "inactive");
+    }
+
+    if (selectedSidebarView === "CRM Vendors") {
+      return vendors.filter((v: any) => v?.crmSync === true || v?.formData?.crmSync === true);
+    }
+
+    if (selectedSidebarView === "Vendor Portal Enabled") {
+      return vendors.filter((v: any) => v?.enablePortal === true || v?.formData?.enablePortal === true);
+    }
+
+    if (selectedSidebarView === "Vendor Portal Disabled") {
+      return vendors.filter((v: any) => v?.enablePortal !== true && v?.formData?.enablePortal !== true);
+    }
+
+    if (selectedSidebarView === "Duplicate Vendors") {
+      const nameMap = new Map<string, string>();
+      const emailMap = new Map<string, string>();
+      const duplicates = new Set<string>();
+
+      vendors.forEach((v: any) => {
+        const vendorId = String(v?._id || v?.id || "");
+        const name = String(v?.displayName || v?.name || v?.companyName || "").trim().toLowerCase();
+        const email = String(v?.email || "").trim().toLowerCase();
+
+        if (name) {
+          if (nameMap.has(name)) {
+            duplicates.add(String(nameMap.get(name)));
+            duplicates.add(vendorId);
+          } else {
+            nameMap.set(name, vendorId);
+          }
+        }
+
+        if (email) {
+          if (emailMap.has(email)) {
+            duplicates.add(String(emailMap.get(email)));
+            duplicates.add(vendorId);
+          } else {
+            emailMap.set(email, vendorId);
+          }
+        }
+      });
+
+      return vendors.filter((v: any) => duplicates.has(String(v?._id || v?.id || "")));
+    }
+
+    return vendors;
+  };
+
+  const sidebarVendors = getSidebarFilteredVendors();
+  const sidebarVendorRows = sidebarVendors.length > 0
+    ? sidebarVendors
+    : (vendor
+      ? [{
+          ...vendor,
+          id: String(vendor?._id || vendor?.id || id || ""),
+          _id: vendor?._id || vendor?.id || id || "",
+          name:
+            vendor?.displayName ||
+            vendor?.name ||
+            vendor?.companyName ||
+            `${(vendor as any)?.firstName || ""} ${(vendor as any)?.lastName || ""}`.trim() ||
+            "Vendor",
+        }]
+      : []);
 
   useEffect(() => {
     const fetchCustomers = async () => {
@@ -2396,22 +2629,32 @@ export default function VendorDetail() {
 
   return (
     <div className="w-full h-screen flex bg-white overflow-hidden">
+      <BulkUpdateModal
+        isOpen={showBulkUpdateModal}
+        onClose={() => setShowBulkUpdateModal(false)}
+        title="Bulk Update Vendors"
+        fieldOptions={vendorFieldOptions}
+        onUpdate={handleBulkUpdateSubmit}
+        entityName="vendors"
+      />
+
       {/* Left Sidebar */}
       <div className="w-80 border-r border-gray-200 bg-white flex flex-col h-screen overflow-hidden">
         {selectedVendors.length > 0 ? (
           <>
             {/* Bulk Selection Header */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-teal-50">
-              <div className="flex items-center gap-3">
+            <div className="mx-3 mt-3 mb-2 flex items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-3 shadow-sm">
+              <div className="flex items-center gap-3 min-w-0">
                 <input
                   type="checkbox"
                   checked={selectedVendors.length === vendors.length}
                   onChange={handleSelectAllCustomers}
-                  className="w-4 h-4 cursor-pointer"
+                  className="w-4 h-4 cursor-pointer shrink-0"
                 />
+                <div className="h-6 w-px bg-gray-200 shrink-0" />
                 <div className="relative" ref={bulkActionsDropdownRef}>
                   <button
-                    className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-md text-sm text-gray-700 cursor-pointer hover:bg-gray-50"
+                    className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-md text-sm text-gray-700 cursor-pointer hover:bg-gray-50 whitespace-nowrap"
                     onClick={() => setIsBulkActionsDropdownOpen(!isBulkActionsDropdownOpen)}
                   >
                     Bulk Actions
@@ -2419,7 +2662,13 @@ export default function VendorDetail() {
                   </button>
                   {isBulkActionsDropdownOpen && (
                     <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[200px]">
-                      <div className="px-4 py-2 text-sm text-teal-700 font-medium cursor-pointer hover:bg-teal-50">
+                      <div
+                        className="px-4 py-2 text-sm text-teal-700 font-medium cursor-pointer hover:bg-teal-50"
+                        onClick={() => {
+                          setIsBulkActionsDropdownOpen(false);
+                          setShowBulkUpdateModal(true);
+                        }}
+                      >
                         Bulk Update
                       </div>
                       <div
@@ -2451,11 +2700,14 @@ export default function VendorDetail() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="flex items-center justify-center min-w-[24px] h-6 px-2 bg-[#156372] rounded text-xs font-semibold text-white">{selectedVendors.length}</span>
-                <span className="text-sm text-gray-700">Selected</span>
+              <div className="flex items-center gap-3 shrink-0">
+                <div className="h-6 w-px bg-gray-200 shrink-0" />
+                <span className="flex items-center justify-center min-w-[28px] h-7 px-2 rounded-full bg-[#eaf2ff] text-sm font-semibold text-[#4b88f5]">
+                  {selectedVendors.length}
+                </span>
+                <span className="text-sm text-gray-700 whitespace-nowrap">Selected</span>
                 <button
-                  className="p-1 text-gray-500 hover:text-gray-700 cursor-pointer"
+                  className="p-1 text-red-500 hover:text-red-600 cursor-pointer"
                   onClick={handleClearSelection}
                 >
                   <X size={18} />
@@ -2466,19 +2718,64 @@ export default function VendorDetail() {
         ) : (
           <>
             {/* Normal Header */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <button className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 cursor-pointer">
-                Active Vendors
-                <ChevronDown size={16} />
-              </button>
+            <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200 bg-white">
+              <div className="relative" ref={sidebarViewDropdownRef}>
+                <button
+                  type="button"
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[15px] font-semibold cursor-pointer ${isSidebarViewDropdownOpen ? "bg-[#f3f4ff]" : "bg-transparent"} text-gray-900`}
+                  onClick={() => setIsSidebarViewDropdownOpen((prev) => !prev)}
+                >
+                  <span>{selectedSidebarView}</span>
+                  <ChevronDown
+                    size={15}
+                    className={`text-[#2563eb] transition-transform ${isSidebarViewDropdownOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {isSidebarViewDropdownOpen && (
+                  <div className="absolute left-0 top-full z-50 mt-2 w-[300px] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.14)]">
+                    <div className="py-2">
+                      {sidebarViewOptions.map((view) => (
+                        <button
+                          key={view}
+                          type="button"
+                          className="flex w-full items-center justify-between px-4 py-3 text-left text-[15px] text-gray-700 hover:bg-gray-50 cursor-pointer"
+                          onClick={() => {
+                            setSelectedSidebarView(view);
+                            setIsSidebarViewDropdownOpen(false);
+                          }}
+                        >
+                          <span
+                            className={selectedSidebarView === view ? "rounded-xl border-2 border-[#3b82f6] px-3 py-1 text-[#374151]" : ""}
+                          >
+                            {view}
+                          </span>
+                          <Star size={15} className="text-gray-300" />
+                        </button>
+                      ))}
+                    </div>
+                    <div className="border-t border-gray-200 px-4 py-3 text-[15px] text-gray-500">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-2 cursor-pointer hover:text-[#2563eb]"
+                        onClick={() => setIsSidebarViewDropdownOpen(false)}
+                      >
+                        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#2563eb] text-white text-[12px] leading-none">+</span>
+                        <span>New Custom View</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 <button
-                  className="p-2 text-teal-700 hover:bg-teal-50 rounded-md cursor-pointer"
+                  className="w-8 h-8 inline-flex items-center justify-center rounded-md text-white cursor-pointer shadow-sm"
+                  style={{ background: purchasesTheme.primary }}
                   onClick={() => navigate("/purchases/vendors/new")}
                 >
                   <Plus size={16} />
                 </button>
-                <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-md cursor-pointer">
+                <button className="w-8 h-8 inline-flex items-center justify-center border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 rounded-md cursor-pointer shadow-sm">
                   <MoreVertical size={16} />
                 </button>
               </div>
@@ -2486,10 +2783,10 @@ export default function VendorDetail() {
           </>
         )}
         <div className="flex-1 overflow-y-auto">
-          {vendors.map((vend) => (
+          {sidebarVendorRows.map((vend) => (
             <div
               key={vend.id}
-              className={`flex items-center gap-3 p-3 cursor-pointer border-b border-gray-100 hover:bg-gray-50 ${vend.id === id ? "border-l-4" : ""}`}
+              className={`flex items-center gap-3 py-3 pr-3 pl-5 cursor-pointer border-b border-gray-100 hover:bg-gray-50 ${vend.id === id ? "border-l-4" : ""}`}
               style={vend.id === id ? { background: '#f0fdfa', borderLeftColor: purchasesTheme.secondary } : selectedVendors.includes(vend.id) ? { background: '#ccfbf1' } : {}}
               onClick={() => navigate(`/purchases/vendors/${vend.id}`)}
             >
@@ -2498,7 +2795,7 @@ export default function VendorDetail() {
                 checked={selectedVendors.includes(vend.id)}
                 onChange={(e) => handleVendorCheckboxChange(vend.id, e)}
                 onClick={(e) => e.stopPropagation()}
-                className="w-4 h-4 cursor-pointer"
+                className="w-4 h-4 cursor-pointer shrink-0"
               />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-gray-900 truncate">{vend.name}</div>
@@ -2742,49 +3039,6 @@ export default function VendorDetail() {
                   {tab}
                 </button>
               ))}
-            </div>
-          </div>
-        )}
-
-        {/* Action Bar - Shows when vendors are selected */}
-        {selectedVendors.length > 0 && (
-          <div className="px-6 py-4 border-b border-gray-200 bg-white">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <button
-                  className="px-3 py-1.5 text-sm font-medium bg-white border-2 rounded-md cursor-pointer hover:bg-teal-50"
-                  style={{ color: purchasesTheme.secondary, borderColor: purchasesTheme.secondary }}
-                  onClick={() => setIsBulkActionsDropdownOpen(!isBulkActionsDropdownOpen)}
-                >
-                  Bulk Update
-                </button>
-                <button className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50">
-                  Resume
-                </button>
-                <button className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50">
-                  Stop
-                </button>
-                <button className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50">
-                  Delete
-                </button>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold text-white" style={{ background: purchasesTheme.secondary }}>
-                    {selectedVendors.length}
-                  </div>
-                  <span className="text-sm font-medium text-gray-700">Selected</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">Esc</span>
-                  <button
-                    onClick={handleClearSelection}
-                    className="p-1 text-red-500 hover:bg-gray-100 rounded cursor-pointer"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
         )}
@@ -8040,4 +8294,3 @@ export default function VendorDetail() {
     </div >
   );
 }
-

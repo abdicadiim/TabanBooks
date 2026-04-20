@@ -41,10 +41,17 @@ const normalizeBrandAccentColor = (value: unknown): string => {
 // Placeholder - implement full CRUD operations
 export const getSettings = async (req: Request, res: Response): Promise<void> => {
   try {
-    const organization = await Organization.findById((req as any).user.organizationId);
+    const organizationId = (req as any).user?.organizationId;
+    if (!organizationId) {
+      res.status(401).json({ success: false, message: "Unauthorized" });
+      return;
+    }
+
+    const organization = await Organization.findById(organizationId);
     res.json({ success: true, data: organization });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("Error fetching settings:", error);
+    res.status(500).json({ success: false, message: error.message || "Failed to fetch settings" });
   }
 };
 

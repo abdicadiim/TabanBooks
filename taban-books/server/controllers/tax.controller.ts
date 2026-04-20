@@ -117,8 +117,13 @@ const isSalesTaxDisabled = async (organizationId: string): Promise<boolean> => {
  */
 export const getTaxes = async (req: Request, res: Response): Promise<void> => {
   try {
+    const organizationId = (req as any).user?.organizationId;
+    if (!organizationId) {
+      res.status(401).json({ success: false, message: "Unauthorized" });
+      return;
+    }
+
     const { type, status, forTransactions } = req.query;
-    const organizationId = (req as any).user.organizationId;
     const query: any = {
       organization: organizationId,
     };

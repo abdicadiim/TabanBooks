@@ -21,7 +21,6 @@ import {
   Star,
   Download,
   Upload,
-  Settings,
   RefreshCw,
   RotateCcw,
   ChevronRight,
@@ -43,6 +42,8 @@ import {
   Upload as UploadIcon,
   GitMerge,
   Edit,
+  Settings,
+  SlidersHorizontal,
 } from "lucide-react";
 
 // Custom styles for purchases theme
@@ -243,6 +244,30 @@ export default function Vendor() {
       id: getVendorId(vendor),
       _id: vendor?._id || vendor?.id || "",
     }));
+
+  const loadVendors = async () => {
+    try {
+      setIsRefreshing(true);
+      const response = await vendorsAPI.getAll();
+
+      const vendorsList = Array.isArray(response)
+        ? response
+        : (response.data && Array.isArray(response.data)
+          ? response.data
+          : (response.data?.data && Array.isArray(response.data.data) ? response.data.data : []));
+
+      const normalized = normalizeVendorsList(vendorsList);
+      setVendors(normalized);
+
+      try {
+        localStorage.setItem("vendors", JSON.stringify(normalized));
+      } catch (storageError) {
+      }
+    } catch (error) {
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
   const openSearchModalForCurrentContext = () => {
     setSearchModule("Vendors");
     setSearchFilter(selectedView || "All Vendors");
@@ -273,33 +298,7 @@ export default function Vendor() {
 
   // Load vendors from API on component mount and when location changes
   useEffect(() => {
-    const fetchVendors = async () => {
-      try {
-        setIsRefreshing(true);
-        const response = await vendorsAPI.getAll();
-
-        if (response) {
-          // The API returns { success: true, data: vendors }
-          // or in some cases it might return the array directly
-          const vendorsList = Array.isArray(response) ? response :
-            (response.data && Array.isArray(response.data) ? response.data :
-              (response.data?.data && Array.isArray(response.data.data) ? response.data.data : []));
-
-          setVendors(normalizeVendorsList(vendorsList));
-
-          // Sync to localStorage for other components that might still rely on it
-          try {
-            localStorage.setItem("vendors", JSON.stringify(normalizeVendorsList(vendorsList)));
-          } catch (storageError) {
-          }
-        }
-      } catch (error) {
-      } finally {
-        setIsRefreshing(false);
-      }
-    };
-
-    fetchVendors();
+    loadVendors();
   }, [location.pathname]);
 
   // Fail-safe for isRefreshing
@@ -447,31 +446,21 @@ export default function Vendor() {
 
   const filteredVendors = getSortedVendors(getFilteredVendors());
 
-  // Listen for storage changes to update vendors when a new one is added
-  // Removed to enforce API source of truth
-  /*
   useEffect(() => {
-    const handleStorageChange = () => {
-      const savedVendors = JSON.parse(localStorage.getItem("vendors") || "[]");
-      setVendors(savedVendors);
+    const handleVendorRefresh = () => {
+      loadVendors();
     };
 
-    // Listen for custom event when vendor is saved
-    window.addEventListener("vendorSaved", handleStorageChange);
-
-    // Also check on focus in case localStorage was updated in another tab
-    window.addEventListener("focus", handleStorageChange);
-
-    // Also listen for storage event (for cross-tab updates)
-    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("vendorSaved", handleVendorRefresh);
+    window.addEventListener("focus", handleVendorRefresh);
+    window.addEventListener("storage", handleVendorRefresh);
 
     return () => {
-      window.removeEventListener("vendorSaved", handleStorageChange);
-      window.removeEventListener("focus", handleStorageChange);
-      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("vendorSaved", handleVendorRefresh);
+      window.removeEventListener("focus", handleVendorRefresh);
+      window.removeEventListener("storage", handleVendorRefresh);
     };
   }, []);
-  */
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -574,6 +563,7 @@ export default function Vendor() {
       borderLeft: "none",
       borderRight: "none",
       boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
+      paddingLeft: "12px",
     },
     header: {
       padding: "16px 24px",
@@ -600,13 +590,13 @@ export default function Vendor() {
       margin: 0,
       display: "flex",
       alignItems: "center",
-      gap: "4px",
+      gap: "2px",
       flexWrap: "wrap",
     },
     statusText: {
       display: "inline-flex",
       alignItems: "center",
-      gap: "4px",
+      gap: "2px",
       color: "#111827",
       fontWeight: "700",
     },
@@ -732,13 +722,14 @@ export default function Vendor() {
       borderBottom: "1px solid #e5e7eb",
     },
     th: {
-      padding: "12px 16px",
+      padding: "12px 12px",
       textAlign: "left",
     },
     thContent: {
       display: "flex",
       alignItems: "center",
       gap: "8px",
+      minHeight: "24px",
     },
     thText: {
       fontSize: "12px",
@@ -761,7 +752,7 @@ export default function Vendor() {
       backgroundColor: "#f9fafb",
     },
     td: {
-      padding: "12px 16px",
+      padding: "12px 12px",
       fontSize: "14px",
     },
     tdEmpty: {
@@ -774,6 +765,8 @@ export default function Vendor() {
       width: "16px",
       height: "16px",
       cursor: "pointer",
+      display: "block",
+      margin: 0,
     },
     vendorLink: {
       color: purchasesTheme.secondary,
@@ -1029,10 +1022,10 @@ export default function Vendor() {
       right: "100%",
       top: 0,
       marginRight: "4px",
-      background: purchasesTheme.primary,
+      backgroundColor: "#ffffff",
       borderRadius: "8px",
       boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-      border: `1px solid ${purchasesTheme.secondary}`,
+      border: "1px solid #e5e7eb",
       minWidth: "200px",
       zIndex: 101,
       padding: "4px 0",
@@ -1051,7 +1044,7 @@ export default function Vendor() {
       textAlign: "left",
     },
     submenuItemSelected: {
-      backgroundColor: "rgba(21, 99, 114, 0.1)",
+      backgroundColor: "#eff6ff",
       color: purchasesTheme.secondary,
     },
   };
@@ -1536,6 +1529,7 @@ export default function Vendor() {
                     <button
                       style={styles.chevronButton}
                       onClick={() => setShowDropdown(!showDropdown)}
+                      className="ml-0.5"
                     >
                       {showDropdown ? (
                         <ChevronUp size={20} />
@@ -1614,13 +1608,13 @@ export default function Vendor() {
             <div style={styles.headerRight} className="vendor-header-right">
               <button
                 onClick={handleNewVendor}
-                className="vendor-new-button px-4 py-2 text-white rounded-md text-sm font-medium cursor-pointer transition-all hover:opacity-90"
-                style={{ background: purchasesTheme.primary }}
+                className="vendor-new-button inline-flex items-center justify-center gap-1.5 px-4 py-2 text-white rounded-md text-sm font-medium cursor-pointer transition-all hover:opacity-90"
+                style={{ background: purchasesTheme.primary, color: "#ffffff" }}
                 onMouseEnter={(e) => (e.target.style.opacity = "0.9")}
                 onMouseLeave={(e) => (e.target.style.opacity = "1")}
               >
-                <Plus size={16} />
-                New
+                <Plus size={16} className="shrink-0" />
+                <span className="text-white">New</span>
               </button>
 
               <div style={styles.moreDropdownWrapper} data-more-dropdown-wrapper>
@@ -1651,12 +1645,12 @@ export default function Vendor() {
                           color: "#111827",
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = purchasesTheme.primary;
-                          e.currentTarget.style.color = "#ffffff";
+                          e.currentTarget.style.background = "#f9fafb";
+                          e.currentTarget.style.color = "#111827";
                           const iconLeft = e.currentTarget.querySelector('[data-icon-left]');
                           const iconRight = e.currentTarget.querySelector('[data-icon-right]');
-                          if (iconLeft) iconLeft.style.color = "#ffffff";
-                          if (iconRight) iconRight.style.color = "#ffffff";
+                          if (iconLeft) iconLeft.style.color = "#6b7280";
+                          if (iconRight) iconRight.style.color = "#6b7280";
                         }}
                         onMouseLeave={(e) => {
                           e.currentTarget.style.background = "transparent";
@@ -1684,8 +1678,8 @@ export default function Vendor() {
                                 key={option}
                                 style={{
                                   ...styles.submenuItem,
-                                  backgroundColor: isSelected ? "rgba(255, 255, 255, 0.2)" : "transparent",
-                                  color: isSelected ? "#ffffff" : "rgba(255, 255, 255, 0.9)",
+                                  backgroundColor: isSelected ? "#eff6ff" : "transparent",
+                                  color: isSelected ? purchasesTheme.secondary : "#111827",
                                   ...(isSelected ? styles.submenuItemSelected : {}),
                                 }}
                                 onClick={() => {
@@ -1694,35 +1688,35 @@ export default function Vendor() {
                                   setShowMoreDropdown(false);
                                 }}
                                 onMouseEnter={(e) => {
-                                  e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.3)";
-                                  e.currentTarget.style.color = "#ffffff";
+                                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                                  e.currentTarget.style.color = purchasesTheme.secondary;
                                   // Update icon color if it exists
                                   const icon = e.currentTarget.querySelector('svg');
                                   const span = e.currentTarget.querySelector('span');
-                                  if (icon) icon.style.color = "#ffffff";
-                                  if (span) span.style.color = "#ffffff";
+                                  if (icon) icon.style.color = purchasesTheme.secondary;
+                                  if (span) span.style.color = purchasesTheme.secondary;
                                 }}
                                 onMouseLeave={(e) => {
                                   if (isSelected) {
-                                    e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.2)";
-                                    e.currentTarget.style.color = "#ffffff";
+                                    e.currentTarget.style.backgroundColor = "#eff6ff";
+                                    e.currentTarget.style.color = purchasesTheme.secondary;
                                     const icon = e.currentTarget.querySelector('svg');
                                     const span = e.currentTarget.querySelector('span');
-                                    if (icon) icon.style.color = "#ffffff";
-                                    if (span) span.style.color = "#ffffff";
+                                    if (icon) icon.style.color = purchasesTheme.secondary;
+                                    if (span) span.style.color = purchasesTheme.secondary;
                                   } else {
                                     e.currentTarget.style.backgroundColor = "transparent";
-                                    e.currentTarget.style.color = "rgba(255, 255, 255, 0.9)";
+                                    e.currentTarget.style.color = "#111827";
                                     const icon = e.currentTarget.querySelector('svg');
                                     const span = e.currentTarget.querySelector('span');
-                                    if (icon) icon.style.color = "rgba(255, 255, 255, 0.9)";
-                                    if (span) span.style.color = "rgba(255, 255, 255, 0.9)";
+                                    if (icon) icon.style.color = "#111827";
+                                    if (span) span.style.color = "#111827";
                                   }
                                 }}
                               >
                                 <span>{option}</span>
                                 {isSelected && (
-                                  <ChevronUp size={16} style={{ color: "#ffffff" }} />
+                                  <ChevronUp size={16} style={{ color: purchasesTheme.secondary }} />
                                 )}
                               </button>
                             );
@@ -1974,6 +1968,23 @@ export default function Vendor() {
             <tr>
               <th style={styles.th}>
                 <div style={styles.thContent}>
+                  <button
+                    type="button"
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      padding: 0,
+                      marginRight: "4px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#3b82f6",
+                      cursor: "pointer",
+                    }}
+                    title="Filter vendors"
+                  >
+                    <SlidersHorizontal size={14} />
+                  </button>
                   <input
                     type="checkbox"
                     checked={
@@ -1982,7 +1993,10 @@ export default function Vendor() {
                       filteredVendors.every(v => selectedVendors.includes(getVendorId(v)))
                     }
                     onChange={handleSelectAll}
-                    style={styles.checkbox}
+                    style={{
+                      ...styles.checkbox,
+                      marginLeft: "2px",
+                    }}
                   />
                 </div>
               </th>
@@ -2092,14 +2106,20 @@ export default function Vendor() {
                     }}
                   >
                     <td
-                      style={styles.td}
+                      style={{
+                        ...styles.td,
+                        paddingLeft: "24px",
+                      }}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <input
                         type="checkbox"
                         checked={selectedVendors.includes(vendorId)}
                         onChange={() => handleCheckboxChange(vendorId)}
-                        style={styles.checkbox}
+                        style={{
+                          ...styles.checkbox,
+                          marginLeft: "0",
+                        }}
                         onClick={(e) => e.stopPropagation()}
                       />
                     </td>
@@ -2139,75 +2159,75 @@ export default function Vendor() {
                       style={{
                         ...styles.td,
                         position: "relative",
-                        width: "40px"
+                        width: "40px",
+                        textAlign: "right",
                       }}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {hoveredRowId === vendorId && (
-                        <div style={{ position: "relative" }} data-row-dropdown>
-                          <div
+                      {(hoveredRowId === vendorId || openDropdownId === vendorId) && (
+                        <div style={{ position: "relative", display: "inline-flex" }} data-row-dropdown>
+                          <button
+                            type="button"
                             style={{
-                              position: "absolute",
-                              top: "50%",
-                              right: "0",
-                              transform: "translateY(-50%)",
-                              backgroundColor: "#ffffff",
+                              width: "24px",
+                              height: "24px",
+                              borderRadius: "50%",
                               border: `1px solid ${purchasesTheme.secondary}`,
-                              borderRadius: "6px",
-                              boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                              zIndex: 1000,
-                              padding: "8px 12px",
-                              display: "flex",
+                              background: purchasesTheme.primary,
+                              display: "inline-flex",
                               alignItems: "center",
-                              gap: "8px",
-                              whiteSpace: "nowrap",
+                              justifyContent: "center",
+                              color: "#ffffff",
                               cursor: "pointer",
-                              transition: "all 0.2s ease"
                             }}
                             onClick={(e) => {
                               e.stopPropagation();
-                              navigate(`/purchases/vendors/${vendorId}/edit`);
+                              setOpenDropdownId((currentId) => (currentId === vendorId ? null : vendorId));
                             }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = purchasesTheme.primary;
-                              e.currentTarget.style.borderColor = purchasesTheme.secondaryHover;
-                              const editIcon = e.currentTarget.querySelector('svg');
-                              const editText = e.currentTarget.querySelector('span');
-                              if (editIcon) editIcon.style.color = "#ffffff";
-                              if (editText) editText.style.color = "#ffffff";
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = "#ffffff";
-                              e.currentTarget.style.borderColor = purchasesTheme.secondary;
-                              const editIcon = e.currentTarget.querySelector('svg');
-                              const editText = e.currentTarget.querySelector('span');
-                              if (editIcon) editIcon.style.color = purchasesTheme.secondary;
-                              if (editText) editText.style.color = "#374151";
-                            }}
+                            title="Vendor actions"
                           >
-                            <Edit size={16} style={{ color: purchasesTheme.secondary }} />
-                            <span style={{
-                              fontSize: "14px",
-                              color: "#374151",
-                              fontWeight: "500"
-                            }}>Edit</span>
-                          </div>
-                          <button
-                            style={{
-                              background: "none",
-                              border: "none",
-                              cursor: "pointer",
-                              padding: "4px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              width: "24px",
-                              height: "24px",
-                              color: "#156372"
-                            }}
-                          >
-                            <ChevronDown size={16} style={{ color: "#156372" }} />
+                            <ChevronDown
+                              size={14}
+                              style={{
+                                transform: openDropdownId === vendorId ? "rotate(180deg)" : "rotate(0deg)",
+                                transition: "transform 0.2s ease",
+                              }}
+                            />
                           </button>
+
+                          {openDropdownId === vendorId && (
+                            <button
+                              type="button"
+                            style={{
+                              position: "absolute",
+                              top: "50%",
+                              right: "32px",
+                              transform: "translateY(-50%)",
+                              minWidth: "128px",
+                              padding: "10px 14px",
+                              borderRadius: "10px",
+                              border: `1px solid ${purchasesTheme.secondary}`,
+                              background: purchasesTheme.primary,
+                              boxShadow: "0 10px 25px rgba(15, 23, 42, 0.18)",
+                              display: "inline-flex",
+                              alignItems: "center",
+                                justifyContent: "center",
+                                gap: "8px",
+                                color: "#ffffff",
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenDropdownId(null);
+                                navigate(`/purchases/vendors/${vendorId}/edit`);
+                              }}
+                              title="Edit vendor"
+                            >
+                              <Edit size={15} />
+                              <span style={{ fontSize: "14px", fontWeight: "600", color: "#ffffff" }}>Edit</span>
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>

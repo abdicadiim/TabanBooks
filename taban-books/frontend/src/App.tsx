@@ -1,11 +1,13 @@
 import React, { useEffect } from "react";
 import { Toaster } from "react-hot-toast";
+import { ToastContainer } from "react-toastify";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import AppRoutes from "./routes/AppRoutes";
 import { API_BASE_URL } from "./services/auth";
 import type { Organization } from "./services/auth";
 import { AppBootstrapProvider, useAppBootstrap } from "./context/AppBootstrapContext";
 import { SettingsProvider } from "./lib/settings/SettingsContext";
+import "react-toastify/dist/ReactToastify.css";
 
 const DEFAULT_TITLE = "Taban Books";
 const queryClient = new QueryClient();
@@ -93,6 +95,18 @@ function AppContent() {
               },
             },
           }}
+        />
+        <ToastContainer
+          position="top-right"
+          autoClose={3000}
+          hideProgressBar={false}
+          newestOnTop
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+          theme="light"
         />
       </QueryClientProvider>
     </>

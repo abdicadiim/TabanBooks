@@ -198,15 +198,11 @@ export const getAllVendors = async (req: AuthRequest, res: Response): Promise<vo
       }
     });
   } catch (error: any) {
-    console.error('Error in getAllVendors:', error);
+    console.error("Error in getAllVendors:", error);
     res.status(500).json({
       success: false,
-      message: 'Error fetching vendors',
-<<<<<<< Updated upstream
-      error: error.message
-=======
-      error: error.message || 'Unknown error'
->>>>>>> Stashed changes
+      message: "Error fetching vendors",
+      error: error.message || "Unknown error",
     });
   }
 };
@@ -316,19 +312,98 @@ export const createVendor = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    const vendorData = {
+    // Mirror the customer flow: always ensure the vendor has a stable identity.
+    let displayName: string = String(req.body.displayName || req.body.name || "").trim();
+    if (!displayName) {
+      const firstName = String(req.body.firstName || "").trim();
+      const lastName = String(req.body.lastName || "").trim();
+      const companyName = String(req.body.companyName || "").trim();
+
+      if (firstName || lastName) {
+        displayName = `${firstName} ${lastName}`.trim();
+      } else if (companyName) {
+        displayName = companyName;
+      } else {
+        displayName = "Vendor";
+      }
+    }
+
+    const vendorData: any = {
       ...req.body,
-      organization: req.user.organizationId
+      displayName,
+      name: displayName,
+      organization: req.user.organizationId,
     };
 
+    // Remove UI helper fields and undefined values before persisting.
+    if (Object.prototype.hasOwnProperty.call(vendorData, "xSocial")) {
+      vendorData.xHandle = String(vendorData.xSocial || "").trim();
+      delete vendorData.xSocial;
+    }
+
+    Object.keys(vendorData).forEach((key) => {
+      if (vendorData[key] === undefined) {
+        delete vendorData[key];
+      }
+    });
+
+    if (vendorData.billingAddress && typeof vendorData.billingAddress === "object") {
+      vendorData.billingAddress = {
+        ...(vendorData.billingAddress || {}),
+      };
+    }
+
+    if (vendorData.shippingAddress && typeof vendorData.shippingAddress === "object") {
+      vendorData.shippingAddress = {
+        ...(vendorData.shippingAddress || {}),
+      };
+    }
+
+    if (Array.isArray(vendorData.contactPersons)) {
+      vendorData.contactPersons = vendorData.contactPersons
+        .filter((person: any) => person && String(person.firstName || "").trim())
+        .map((person: any) => ({
+          ...person,
+          salutation: String(person.salutation || "").trim(),
+          firstName: String(person.firstName || "").trim(),
+          lastName: String(person.lastName || "").trim(),
+          email: String(person.email || "").trim(),
+          workPhone: String(person.workPhone || "").trim(),
+          mobile: String(person.mobile || "").trim(),
+          designation: String(person.designation || "").trim(),
+          department: String(person.department || "").trim(),
+          skypeName: String(person.skypeName || "").trim(),
+        }));
+    }
+
     const vendor = await Vendor.create(vendorData);
-    res.status(201).json({ success: true, data: vendor });
+    res.status(201).json({ success: true, message: 'Vendor created successfully', data: vendor });
   } catch (error: any) {
     console.error('Error in createVendor:', error);
+
+    if (error?.name === "ValidationError") {
+      res.status(400).json({
+        success: false,
+        message: "Validation error",
+        error: error.message,
+        validationErrors: error.errors,
+      });
+      return;
+    }
+
+    if (error?.name === "CastError") {
+      res.status(400).json({
+        success: false,
+        message: "Invalid vendor data",
+        error: error.message,
+      });
+      return;
+    }
+
     res.status(500).json({
       success: false,
       message: 'Error creating vendor',
-      error: error.message
+      error: error.message || 'Unknown error',
     });
   }
 };
@@ -366,6 +441,7 @@ export const updateVendor = async (req: AuthRequest, res: Response): Promise<voi
     if (Object.prototype.hasOwnProperty.call(updateData, "isInactive")) delete updateData.isInactive;
     if (Object.prototype.hasOwnProperty.call(updateData, "_id")) delete updateData._id;
     if (Object.prototype.hasOwnProperty.call(updateData, "id")) delete updateData.id;
+    if (Object.prototype.hasOwnProperty.call(updateData, "organization")) delete updateData.organization;
 
     let existingVendor: any = null;
 
@@ -382,6 +458,35 @@ export const updateVendor = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
+    let displayName = String(updateData.displayName || updateData.name || existingVendor.displayName || existingVendor.name || "").trim();
+    if (!displayName) {
+      const firstName = String(updateData.firstName ?? existingVendor.firstName ?? "").trim();
+      const lastName = String(updateData.lastName ?? existingVendor.lastName ?? "").trim();
+      const companyName = String(updateData.companyName ?? existingVendor.companyName ?? "").trim();
+
+      if (firstName || lastName) {
+        displayName = `${firstName} ${lastName}`.trim();
+      } else if (companyName) {
+        displayName = companyName;
+      } else {
+        displayName = "Vendor";
+      }
+    }
+
+    updateData.displayName = displayName;
+    updateData.name = displayName;
+
+    if (Object.prototype.hasOwnProperty.call(updateData, "xSocial")) {
+      updateData.xHandle = String(updateData.xSocial || "").trim();
+      delete updateData.xSocial;
+    }
+
+    Object.keys(updateData).forEach((key) => {
+      if (updateData[key] === undefined) {
+        delete updateData[key];
+      }
+    });
+
     if (updateData.billingAddress && typeof updateData.billingAddress === "object") {
       updateData.billingAddress = {
         ...(existingVendor.billingAddress?.toObject?.() || existingVendor.billingAddress || {}),
@@ -394,6 +499,23 @@ export const updateVendor = async (req: AuthRequest, res: Response): Promise<voi
         ...(existingVendor.shippingAddress?.toObject?.() || existingVendor.shippingAddress || {}),
         ...updateData.shippingAddress,
       };
+    }
+
+    if (Array.isArray(updateData.contactPersons)) {
+      updateData.contactPersons = updateData.contactPersons
+        .filter((person: any) => person && String(person.firstName || "").trim())
+        .map((person: any) => ({
+          ...person,
+          salutation: String(person.salutation || "").trim(),
+          firstName: String(person.firstName || "").trim(),
+          lastName: String(person.lastName || "").trim(),
+          email: String(person.email || "").trim(),
+          workPhone: String(person.workPhone || "").trim(),
+          mobile: String(person.mobile || "").trim(),
+          designation: String(person.designation || "").trim(),
+          department: String(person.department || "").trim(),
+          skypeName: String(person.skypeName || "").trim(),
+        }));
     }
 
     let vendor = null;
