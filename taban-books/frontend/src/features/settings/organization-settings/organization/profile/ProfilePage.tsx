@@ -3,11 +3,13 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { Upload, Edit2, X, Search, HelpCircle, Send, Settings as SettingsIcon, Info, ChevronDown, Trash2 } from "lucide-react";
 import { toast } from "react-toastify";
+import hotToast from "react-hot-toast";
 import { TIMEZONES } from "../../../../../constants/timezones";
 import { currenciesAPI } from "../../../../../services/api";
 import { getToken } from "../../../../../services/auth";
 import { normalizeImageSrc } from "../../../../../utils/imageSources";
 import { readJsonStorage, safeSetJsonStorage } from "../../../../../utils/storage";
+import { useAppBootstrap } from "../../../../../context/AppBootstrapContext";
 
 type AnyRecord = Record<string, any>;
 type ClickAwayRef = React.RefObject<HTMLElement | null>;
@@ -29,6 +31,7 @@ type AdditionalField = {
 };
 
 const API_BASE_URL = '/api';
+const DEBUG_PROFILE = (globalThis as any).__TABAN_DEBUG_PROFILE__ === true;
 const DEFAULT_SYSTEM_SENDER_EMAIL = "message-service@sender.tabanbooks.com";
 const USER_STORAGE_KEYS = ["user", "current_user", "auth_user"];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -50,7 +53,20 @@ const getStoredUser = () => {
   return null;
 };
 
+const debugProfile = (...args: any[]) => {
+  if (DEBUG_PROFILE) {
+    console.debug("[ProfilePage]", ...args);
+  }
+};
+
 const readStoredOrgProfile = () => readJsonStorage<any>("org_profile", null);
+
+const bootstrapCurrencySelection = (baseCurrency: { code?: string; name?: string } | null | undefined) => {
+  const code = String(baseCurrency?.code || "").trim();
+  const name = String(baseCurrency?.name || "").trim();
+  if (!code) return null;
+  return `${code}${name ? ` - ${name}` : ""}`;
+};
 
 const INDUSTRIES = [
   "Agency or Sales House",
@@ -423,8 +439,7 @@ const MONTH_OPTIONS = [
 ];
 
 const getOrganizationEndpoint = () => {
-  const organizationId = String(getStoredUser()?.organizationId || "").trim();
-  return organizationId ? `${API_BASE_URL}/organizations/${organizationId}` : `${API_BASE_URL}/settings/organization/profile`;
+  return `${API_BASE_URL}/settings/organization/profile`;
 };
 
 const extractOrganizationResponse = (payload: any) => payload?.organization || payload?.data || null;
@@ -1128,20 +1143,30 @@ function DateFormatDropdown({ value, placeholder, onChange }: DropdownProps) {
 
 export default function ProfilePage() {
   const navigate = useNavigate();
+  const { organization: bootstrapOrganization, baseCurrency: bootstrapBaseCurrency } = useAppBootstrap();
+  const bootstrapOrgProfile = useMemo(() => bootstrapOrganization || readStoredOrgProfile(), [bootstrapOrganization]);
   const [currencyOptions, setCurrencyOptions] = useState<string[]>(() => readStoredCurrencyOptions());
   const [organizationDbId, setOrganizationDbId] = useState(() => {
-    const lp = readStoredOrgProfile();
-    return String(lp?.id || lp?._id || lp?.organizationId || getStoredUser()?.organizationId || "").trim();
+    return String(
+      bootstrapOrgProfile?.id ||
+      bootstrapOrgProfile?._id ||
+      bootstrapOrgProfile?.organizationId ||
+      getStoredUser()?.organizationId ||
+      readStoredOrgProfile()?.id ||
+      readStoredOrgProfile()?._id ||
+      readStoredOrgProfile()?.organizationId ||
+      "",
+    ).trim();
   });
   const [orgName, setOrgName] = useState(() => {
-    return readStoredOrgProfile()?.organizationName || "Taban enterprise";
+    return bootstrapOrgProfile?.organizationName || bootstrapOrgProfile?.name || readStoredOrgProfile()?.organizationName || "Taban enterprise";
   });
 
   const [industry, setIndustry] = useState(() => {
-    return readStoredOrgProfile()?.industry || "Agriculture";
+    return bootstrapOrgProfile?.industry || readStoredOrgProfile()?.industry || "Agriculture";
   });
   const [location, setLocation] = useState(() => {
-    return readStoredOrgProfile()?.location || "Somalia";
+    return bootstrapOrgProfile?.location || readStoredOrgProfile()?.location || "Somalia";
   });
 
   const [email, setEmail] = useState(() => {
@@ -1157,22 +1182,24 @@ export default function ProfilePage() {
     return storedUser?.email || "";
   });
   const [logoImage, setLogoImage] = useState<File | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string>("");
+  const [logoPreview, setLogoPreview] = useState<string>(() =>
+    normalizeImageSrc(String(bootstrapOrgProfile?.logo || readStoredOrgProfile()?.logo || ""), "")
+  );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [street1, setStreet1] = useState(() => {
-    return readStoredOrgProfile()?.street1 || "";
+    return bootstrapOrgProfile?.street1 || readStoredOrgProfile()?.street1 || "";
   });
   const [street2, setStreet2] = useState(() => {
-    return readStoredOrgProfile()?.street2 || "";
+    return bootstrapOrgProfile?.street2 || readStoredOrgProfile()?.street2 || "";
   });
   const [city, setCity] = useState(() => {
-    return readStoredOrgProfile()?.city || "";
+    return bootstrapOrgProfile?.city || readStoredOrgProfile()?.city || "";
   });
   const [zipCode, setZipCode] = useState(() => {
-    return readStoredOrgProfile()?.zipCode || "";
+    return bootstrapOrgProfile?.zipCode || readStoredOrgProfile()?.zipCode || "";
   });
   const [state, setState] = useState(() => {
-    return readStoredOrgProfile()?.state || "";
+    return bootstrapOrgProfile?.state || readStoredOrgProfile()?.state || "";
   });
 
   const [phone, setPhone] = useState("");
@@ -1184,17 +1211,23 @@ export default function ProfilePage() {
 
   // Additional fields
   const [baseCurrency, setBaseCurrency] = useState(() => {
-    return resolveCurrencySelection(null, readStoredCurrencyOptions());
+    return resolveCurrencySelection(
+      bootstrapCurrencySelection(bootstrapBaseCurrency) ||
+        bootstrapOrgProfile?.baseCurrency ||
+        readStoredOrgProfile()?.baseCurrency ||
+        null,
+      readStoredCurrencyOptions()
+    );
   });
   const [fiscalYear, setFiscalYear] = useState("January - December");
   const [startDate, setStartDate] = useState("1");
   const [reportBasis, setReportBasis] = useState("Accrual");
   const [orgLanguage, setOrgLanguage] = useState(() => {
-    return readStoredOrgProfile()?.language || "English";
+    return bootstrapOrgProfile?.language || bootstrapOrgProfile?.orgLanguage || readStoredOrgProfile()?.language || "English";
   });
   const [commLanguage, setCommLanguage] = useState("English");
   const [timeZone, setTimeZone] = useState(() => {
-    const stored = readStoredOrgProfile()?.timezone || null;
+    const stored = bootstrapOrgProfile?.timezone || bootstrapOrgProfile?.timeZone || readStoredOrgProfile()?.timezone || null;
     return resolveTimezoneSelection(stored);
   });
 
@@ -1226,6 +1259,66 @@ export default function ProfilePage() {
   const [editState, setEditState] = useState(state);
   const [editPhone, setEditPhone] = useState(phone);
   const [editFax, setEditFax] = useState(fax);
+
+  useEffect(() => {
+    if (!bootstrapOrgProfile) return;
+
+    const nextId = String(
+      bootstrapOrgProfile?.id ||
+      bootstrapOrgProfile?._id ||
+      bootstrapOrgProfile?.organizationId ||
+      ""
+    ).trim();
+    if (nextId && !organizationDbId) {
+      setOrganizationDbId(nextId);
+    }
+
+    const nextOrgName = String(bootstrapOrgProfile?.organizationName || bootstrapOrgProfile?.name || "").trim();
+    if (nextOrgName && (!orgName || orgName === "Taban enterprise")) {
+      setOrgName(nextOrgName);
+    }
+
+    const nextIndustry = String(bootstrapOrgProfile?.industry || "").trim();
+    if (nextIndustry && !industry) {
+      setIndustry(nextIndustry);
+    }
+
+    const nextLocation = String(bootstrapOrgProfile?.location || "").trim();
+    if (nextLocation && !location) {
+      setLocation(nextLocation);
+    }
+
+    const nextLogo = String(bootstrapOrgProfile?.logo || "").trim();
+    if (nextLogo && !logoPreview) {
+      setLogoPreview(normalizeImageSrc(nextLogo, ""));
+    }
+
+    const nextBaseCurrency = bootstrapCurrencySelection(bootstrapBaseCurrency) || String(bootstrapOrgProfile?.baseCurrency || "").trim();
+    if (nextBaseCurrency && (!baseCurrency || baseCurrency === DEFAULT_CURRENCY_OPTIONS[0])) {
+      setBaseCurrency(resolveCurrencySelection(nextBaseCurrency, readStoredCurrencyOptions()));
+    }
+
+    const nextLanguage = String(bootstrapOrgProfile?.language || bootstrapOrgProfile?.orgLanguage || "").trim();
+    if (nextLanguage && (!orgLanguage || orgLanguage === "English")) {
+      setOrgLanguage(nextLanguage);
+    }
+
+    const nextTimeZone = String(bootstrapOrgProfile?.timezone || bootstrapOrgProfile?.timeZone || "").trim();
+    if (nextTimeZone && !timeZone) {
+      setTimeZone(resolveTimezoneSelection(nextTimeZone));
+    }
+  }, [
+    bootstrapBaseCurrency,
+    bootstrapOrgProfile,
+    baseCurrency,
+    industry,
+    location,
+    logoPreview,
+    orgLanguage,
+    orgName,
+    organizationDbId,
+    timeZone,
+  ]);
 
   const handleOpenEditModal = () => {
     setEditStreet1(street1);
@@ -1598,13 +1691,36 @@ export default function ProfilePage() {
 
   // Save profile function
   const handleSave = async () => {
-    setIsSaving(true);
-
     try {
+      const fallbackBaseCurrency =
+        baseCurrency ||
+        bootstrapCurrencySelection(bootstrapBaseCurrency) ||
+        bootstrapOrgProfile?.baseCurrency ||
+        readStoredOrgProfile()?.baseCurrency ||
+        DEFAULT_CURRENCY_OPTIONS[0];
+      const resolvedBaseCurrency = resolveCurrencySelection(fallbackBaseCurrency, readStoredCurrencyOptions());
+      const baseCurrencyCode = extractCurrencyCode(resolvedBaseCurrency);
+
+      debugProfile("save-start", {
+        orgName,
+        industry,
+        location,
+        email,
+        website,
+        baseCurrency,
+        fallbackBaseCurrency,
+        resolvedBaseCurrency,
+        baseCurrencyCode,
+        timeZone,
+        paymentStubAddress,
+        additionalFieldsCount: additionalFields.length,
+        organizationDbId,
+      });
+
       const token = getToken();
       if (!token) {
         toast.error('Not authenticated. Please login again.');
-        setIsSaving(false);
+        debugProfile("save-abort", { reason: "missing-token" });
         return;
       }
 
@@ -1614,7 +1730,7 @@ export default function ProfilePage() {
         location,
         email,
         website,
-        baseCurrency,
+        baseCurrency: resolvedBaseCurrency,
         timeZone,
         paymentStubAddress,
         additionalFields,
@@ -1622,9 +1738,11 @@ export default function ProfilePage() {
 
       if (validationError) {
         toast.error(validationError);
-        setIsSaving(false);
+        debugProfile("save-abort", { reason: "validation-error", validationError });
         return;
       }
+
+      setIsSaving(true);
 
       // Convert logo to base64 if image file is selected
       let logoBase64 = logoPreview || "";
@@ -1646,6 +1764,7 @@ export default function ProfilePage() {
           });
         } catch (logoError: any) {
           toast.error(logoError.message || 'Error processing logo image.');
+          debugProfile("save-abort", { reason: "logo-processing-error", error: logoError });
           setIsSaving(false);
           return;
         }
@@ -1662,9 +1781,12 @@ export default function ProfilePage() {
 
       const profileData = {
         name: orgName,
+        legalName: "",
+        industry: industry,
         industry_type: industry,
         contact_name: primarySenderName || orgName,
         email: email,
+        phone: phone,
         website: website,
         logo: logoBase64,
         address: {
@@ -1677,16 +1799,29 @@ export default function ProfilePage() {
           phone: phone,
           fax: fax,
         },
-        currency_code: baseCurrency.split(' - ')[0],
+        currency: baseCurrencyCode,
+        currency_code: baseCurrencyCode,
+        baseCurrency: baseCurrencyCode,
         fiscal_year_start_month: startMonthName.toLowerCase(),
         fiscalYearStart: fStartDate.toISOString(),
+        fiscalYear: fiscalYear,
         reportBasis: reportBasis,
         orgLanguage: orgLanguage,
         commLanguage: commLanguage,
         language_code: getLanguageCode(orgLanguage) || "en",
+        timeZone: timeZone,
         time_zone: timeZone,
+        dateFormat: dateFormat,
         date_format: dateFormat,
+        dateSeparator: dateSeparator,
         field_separator: dateSeparator,
+        additionalFields: additionalFields
+          .map((field, index) => ({
+            index: index + 1,
+            label: String(field?.label || "").trim(),
+            value: String(field?.value || "").trim(),
+          }))
+          .filter((field) => field.label || field.value),
         custom_fields: additionalFields
           .map((field, index) => ({
             index: index + 1,
@@ -1695,10 +1830,18 @@ export default function ProfilePage() {
           }))
           .filter((field) => field.label || field.value),
         paymentStubAddress: paymentStubAddress,
+        remit_to_address: paymentStubAddress,
         showPaymentStubAddress: showPaymentStubAddress,
       };
 
-      console.log('Saving profile data:', profileData);
+      debugProfile("request-payload", {
+        keys: Object.keys(profileData),
+        organizationId: organizationDbId,
+        baseCurrency: profileData.baseCurrency,
+        timeZone: profileData.timeZone,
+        hasLogo: Boolean(profileData.logo),
+        additionalFieldsCount: profileData.additionalFields.length,
+      });
 
       const response = await fetch(getOrganizationEndpoint(), {
         method: 'PUT',
@@ -1707,6 +1850,12 @@ export default function ProfilePage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(profileData),
+      });
+
+      debugProfile("response-received", {
+        ok: response.ok,
+        status: response.status,
+        contentType: response.headers.get("content-type"),
       });
 
       // Check if response has content before parsing
@@ -1720,6 +1869,7 @@ export default function ProfilePage() {
           } catch (parseError) {
             console.error('JSON parse error:', parseError);
             toast.error('Invalid response from server. Please try again.');
+            debugProfile("save-abort", { reason: "json-parse-error", text });
             setIsSaving(false);
             return;
           }
@@ -1729,89 +1879,96 @@ export default function ProfilePage() {
       } else {
         const text = await response.text();
         toast.error(text || `Server error: ${response.status} ${response.statusText}`);
+        debugProfile("save-failed", {
+          status: response.status,
+          body: text,
+        });
         setIsSaving(false);
         return;
       }
 
       if (response.ok && (data?.success || data?.code === 0)) {
-        let syncedBaseCurrency = baseCurrency;
-        try {
-          syncedBaseCurrency = await syncBaseCurrencyWithCurrencyTable(baseCurrency);
-          setBaseCurrency(syncedBaseCurrency);
-        } catch (currencyError: any) {
-          console.error('Error syncing base currency:', currencyError);
-          toast.warn(currencyError?.message || 'Profile was saved, but the currencies table base currency could not be updated.');
-        }
+        hotToast.success("Profile saved successfully.");
+        debugProfile("save-success", {
+          responseMessage: data?.message,
+          responseKeys: data?.data ? Object.keys(data.data) : [],
+        });
 
-        toast.success("Profile saved successfully!");
+        let syncedBaseCurrency = resolvedBaseCurrency;
         try {
-          const localOrgProfile = {
-            organizationName: orgName,
-            industry: industry,
-            location: location,
-            street1: street1,
-            street2: street2,
-            city: city,
-            zipCode: zipCode,
-            state: state,
-            currency: syncedBaseCurrency,
-            language: orgLanguage,
-            timezone: timeZone,
-            email: email,
-            website: website,
-          };
-          safeSetJsonStorage("org_profile", localOrgProfile);
-
-          const existingOrgProfile = readStoredOrgProfile() || {};
-          const persistedLogo = typeof logoBase64 === "string" && logoBase64.startsWith("data:") ? "" : logoBase64;
-          const updatedOrgProfile = {
-            ...existingOrgProfile,
-            organizationName: orgName,
-            industry: industry,
-            location: location,
+          const responseProfile = (normalizeOrganizationPayload(data) || {}) as AnyRecord;
+          const persistedLogo = typeof responseProfile.logo === "string" && responseProfile.logo.startsWith("data:")
+            ? ""
+            : String(responseProfile.logo || (typeof logoBase64 === "string" ? logoBase64 : "") || "");
+          const persistedOrgProfile = {
+            ...responseProfile,
+            organizationName: responseProfile.name || orgName,
+            industry: responseProfile.industry || industry,
+            location: responseProfile.country || location,
             logo: persistedLogo,
             logoUrl: persistedLogo,
-            email: email,
-            website: website,
-            baseCurrency: syncedBaseCurrency.split(" - ")[0],
-            orgLanguage: orgLanguage,
-            timeZone: timeZone,
-            dateFormat: dateFormat,
-            dateSeparator: dateSeparator,
+            email: responseProfile.email || email,
+            website: responseProfile.website || website,
+            baseCurrency: String(responseProfile.baseCurrency || baseCurrencyCode || syncedBaseCurrency),
+            orgLanguage: responseProfile.orgLanguage || orgLanguage,
+            commLanguage: responseProfile.commLanguage || commLanguage,
+            timeZone: responseProfile.timeZone || timeZone,
+            dateFormat: responseProfile.dateFormat || dateFormat,
+            dateSeparator: responseProfile.dateSeparator || dateSeparator,
             address: {
-              ...(existingOrgProfile?.address || {}),
-              street1: street1,
-              street2: street2,
-              city: city,
-              zipCode: zipCode,
-              state: state,
+              ...(responseProfile.address || {}),
+              street1,
+              street2,
+              city,
+              zipCode,
+              state,
               country: location,
-              phone: phone,
-              fax: fax,
+              phone,
+              fax,
             },
           };
-          safeSetJsonStorage("organization_profile", updatedOrgProfile);
+          safeSetJsonStorage("org_profile", persistedOrgProfile);
+          safeSetJsonStorage("organization_profile", persistedOrgProfile);
 
           window.dispatchEvent(new CustomEvent("organizationProfileUpdated", {
-            detail: updatedOrgProfile,
+            detail: persistedOrgProfile,
           }));
 
           window.dispatchEvent(new CustomEvent("brandingUpdated", {
             detail: {
-              logo: logoBase64,
+              logo: persistedLogo,
             },
           }));
+
+          void syncBaseCurrencyWithCurrencyTable(baseCurrencyCode || syncedBaseCurrency)
+            .then((nextBaseCurrency) => {
+              syncedBaseCurrency = nextBaseCurrency;
+              setBaseCurrency(nextBaseCurrency);
+              debugProfile("base-currency-synced", { nextBaseCurrency });
+            })
+            .catch((currencyError: any) => {
+              console.error('Error syncing base currency:', currencyError);
+              debugProfile("base-currency-sync-failed", currencyError);
+              toast.warn(currencyError?.message || 'Profile was saved, but the currencies table base currency could not be updated.');
+            });
         } catch {
           // ignore local storage sync failures
+          debugProfile("save-local-sync-failed");
         }
       } else {
         toast.error(data.message || data.error || 'Failed to save profile. Please try again.');
+        debugProfile("save-failed", {
+          responseMessage: data?.message || data?.error,
+          data,
+        });
       }
     } catch (error: any) {
       console.error('Error saving profile:', error);
       toast.error('An error occurred while saving. Please try again.');
+      debugProfile("save-error", error);
     } finally {
       setIsSaving(false);
+      debugProfile("save-end");
     }
   };
 
@@ -2281,6 +2438,7 @@ export default function ProfilePage() {
       {/* Action Buttons */}
       <div className="sticky bottom-0 z-20 -mx-6 mt-8 flex items-center justify-start gap-3 bg-transparent px-6 py-4">
         <button
+          type="button"
           onClick={handleSave}
           disabled={isSaving}
           className="px-4 py-2 rounded-lg bg-[#0f5f6c] text-white text-sm font-medium hover:bg-[#176876] disabled:opacity-50 disabled:cursor-not-allowed"
@@ -2288,6 +2446,7 @@ export default function ProfilePage() {
           {isSaving ? 'Saving...' : 'Save'}
         </button>
         <button
+          type="button"
           onClick={() => window.history.back()}
           className="px-4 py-2 rounded-lg border border-gray-300 bg-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-300"
           disabled={isSaving}

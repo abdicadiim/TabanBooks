@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { Search, X, Building2, Users, Receipt, Settings as SettingsIcon, Palette, Zap, CreditCard, ShoppingCart, ShoppingBag, Puzzle, RefreshCw, Plug, Code, ChevronDown, ChevronRight } from "lucide-react";
-import { getToken, API_BASE_URL } from "../../services/auth";
 import { useSettings } from "../../lib/settings/SettingsContext";
-
-const ACCENT = "#156372";
+import { useAppBootstrap } from "../../context/AppBootstrapContext";
 
 const organizationSettings = [
   {
@@ -199,59 +197,38 @@ const extensionSettings = [
 
 export default function SettingsLayout({
   children,
-  accentColor: accentColorOverride,
 }: {
   children?: React.ReactNode;
-  accentColor?: string;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { settings } = useSettings();
+  const { branding: bootstrapBranding } = useAppBootstrap();
   const [searchQuery, setSearchQuery] = useState("");
   const [openSectionKey, setOpenSectionKey] = useState<string>("organization");
-  const [appearance, setAppearance] = useState("dark");
-  const [sidebarColors, setSidebarColors] = useState({
-    darkFrom: "#156372",
-    darkTo: "#156372",
-    lightFrom: "#f9fafb",
-    lightTo: "#f3f4f6",
-  });
+  const [appearance, setAppearance] = useState(() => bootstrapBranding?.appearance || "dark");
+  const [sidebarColors, setSidebarColors] = useState(() => ({
+    darkFrom: bootstrapBranding?.sidebarDarkFrom || "#156372",
+    darkTo: bootstrapBranding?.sidebarDarkTo || "#156372",
+    lightFrom: bootstrapBranding?.sidebarLightFrom || "#f9fafb",
+    lightTo: bootstrapBranding?.sidebarLightTo || "#f3f4f6",
+  }));
   const organizationName = String(settings?.general?.companyDisplayName || settings?.general?.schoolDisplayName || "").trim() || "Organization";
-  const accentColor = String(accentColorOverride || "#156372").trim();
+  const accentColor = String(bootstrapBranding?.accentColor || "#156372").trim();
   const isLightAccent = accentColor.toLowerCase() === "#ffffff" || accentColor.toLowerCase() === "#fff" || accentColor.toLowerCase() === "white";
   const activeSidebarColor = accentColor;
   const activeSidebarTextColor = isLightAccent ? "#1f2937" : "#ffffff";
-  const settingsStyle = { "--settings-accent": accentColor } as React.CSSProperties;
 
-  // Load branding data on mount
   useEffect(() => {
-    const loadBranding = async () => {
-      try {
-        const token = getToken();
-        if (!token) return;
-        const response = await fetch(`${API_BASE_URL}/settings/organization/branding`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.data) {
-            setAppearance(data.data.appearance || "dark");
-            setSidebarColors({
-              darkFrom: data.data.sidebarDarkFrom || "#156372",
-              darkTo: data.data.sidebarDarkTo || "#156372",
-              lightFrom: data.data.sidebarLightFrom || "#f9fafb",
-              lightTo: data.data.sidebarLightTo || "#f3f4f6",
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Error loading branding:', error);
-      }
-    };
-    loadBranding();
-  }, []);
+    if (!bootstrapBranding) return;
+    setAppearance(bootstrapBranding.appearance || "dark");
+    setSidebarColors({
+      darkFrom: bootstrapBranding.sidebarDarkFrom || "#156372",
+      darkTo: bootstrapBranding.sidebarDarkTo || "#156372",
+      lightFrom: bootstrapBranding.sidebarLightFrom || "#f9fafb",
+      lightTo: bootstrapBranding.sidebarLightTo || "#f3f4f6",
+    });
+  }, [bootstrapBranding]);
 
   // Listen to branding updated events
   useEffect(() => {
@@ -405,17 +382,17 @@ export default function SettingsLayout({
       <style>{`
         .settings-shell input[type="checkbox"],
         .settings-shell input[type="radio"] {
-          accent-color: var(--settings-accent);
+          accent-color: #94a3b8;
         }
 
         .settings-shell input[type="checkbox"]:focus,
         .settings-shell input[type="radio"]:focus {
-          outline-color: var(--settings-accent);
+          outline-color: #94a3b8;
         }
       `}</style>
       <div
         className="settings-shell fixed inset-0 bg-gray-50 flex flex-col"
-        style={{ marginLeft: 0, paddingLeft: 0, zIndex: 9999, ...settingsStyle }}
+        style={{ marginLeft: 0, paddingLeft: 0, zIndex: 9999 }}
       >
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar */}
@@ -489,13 +466,8 @@ export default function SettingsLayout({
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search settings ( / )"
-                    className="w-full h-10 pl-9 pr-4 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:border-transparent"
-                    style={
-                      {
-                        caretColor: accentColor,
-                        ["--tw-ring-color" as any]: accentColor,
-                      } as React.CSSProperties
-                    }
+                    className="w-full h-10 pl-9 pr-4 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-transparent"
+                    style={{ caretColor: "#334155" }}
                   />
                 </div>
               </div>

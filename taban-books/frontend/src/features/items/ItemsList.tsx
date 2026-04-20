@@ -87,6 +87,7 @@ const ItemsList = ({
   };
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("All");
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showSearch, setShowSearch] = useState(false);
   const [newTransactionOpen, setNewTransactionOpen] = useState(false);
@@ -400,6 +401,16 @@ const ItemsList = ({
     return result;
   }, [items, searchTerm, filterType, sortKey, sortOrder]);
 
+  const itemsPerPage = 6;
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / itemsPerPage));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * itemsPerPage;
+  const paginatedItems = filteredItems.slice(startIndex, startIndex + itemsPerPage);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterType, sortKey, sortOrder, items.length]);
+
   const handleSort = (key: string) => {
     if (sortKey === key) {
       setSortOrder(sortOrder === "asc" ? "desc" : "asc");
@@ -464,7 +475,7 @@ const ItemsList = ({
           <div className="flex flex-wrap items-center gap-2">
             {canEdit && (
               <button
-                className="px-3 py-1.5 border border-gray-300 rounded text-xs font-medium text-slate-700 hover:bg-[#1b5e6a] hover:text-white bg-white shadow-sm transition-colors"
+                className="px-3 py-1.5 border border-gray-300 rounded text-xs font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900 bg-white shadow-sm transition-colors"
                 onClick={() => onBulkUpdate(selectedIds)}
                 title="Bulk Update"
               >
@@ -486,31 +497,31 @@ const ItemsList = ({
                   <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-50 py-1 overflow-hidden">
                     <button
                       onClick={() => navigate('/sales/quotes/new')}
-                      className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-[#1b5e6a] hover:text-white transition-colors"
+                      className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                     >
                       Quote
                     </button>
                     <button
                       onClick={() => navigate('/sales/invoices/new')}
-                      className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-[#1b5e6a] hover:text-white transition-colors"
+                      className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                     >
                       Invoice
                     </button>
                     <button
                       onClick={() => navigate('/sales/sales-receipts/new')}
-                      className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-[#1b5e6a] hover:text-white transition-colors"
+                      className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                     >
                       Sales Receipt
                     </button>
                     <button
                       onClick={() => navigate('/purchases/purchase-orders/new')}
-                      className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-[#1b5e6a] hover:text-white transition-colors"
+                      className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                     >
                       Purchase Order
                     </button>
                     <button
                       onClick={() => navigate('/purchases/bills/new')}
-                      className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-[#1b5e6a] hover:text-white transition-colors"
+                      className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                     >
                       Bill
                     </button>
@@ -531,7 +542,7 @@ const ItemsList = ({
                     }
                   }}
                   disabled={isBulkActiveLoading}
-                  className="px-3 py-1.5 border border-gray-300 rounded text-xs font-medium text-slate-700 hover:bg-[#1b5e6a] hover:text-white bg-white shadow-sm transition-colors whitespace-nowrap flex items-center gap-1.5"
+                  className="px-3 py-1.5 border border-gray-300 rounded text-xs font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900 bg-white shadow-sm transition-colors whitespace-nowrap flex items-center gap-1.5"
                   title="Mark as Active"
                 >
                   {isBulkActiveLoading && <RefreshCw size={12} className="animate-spin" />}
@@ -547,7 +558,7 @@ const ItemsList = ({
                     }
                   }}
                   disabled={isBulkInactiveLoading}
-                  className="px-3 py-1.5 border border-gray-300 rounded text-xs font-medium text-slate-700 hover:bg-[#1b5e6a] hover:text-white bg-white shadow-sm transition-colors whitespace-nowrap flex items-center gap-1.5"
+                  className="px-3 py-1.5 border border-gray-300 rounded text-xs font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900 bg-white shadow-sm transition-colors whitespace-nowrap flex items-center gap-1.5"
                   title="Mark as Inactive"
                 >
                   {isBulkInactiveLoading && <RefreshCw size={12} className="animate-spin" />}
@@ -602,7 +613,7 @@ const ItemsList = ({
             {filterDropdownOpen && (
               <div className="absolute top-full left-0 mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-2xl z-[100] py-2 animate-in fade-in zoom-in-95 duration-200">
                 <div className="px-3 pb-2 border-b border-gray-100">
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-md border border-gray-200 focus-within:border-teal-400 focus-within:ring-1 focus-within:ring-teal-100 transition-all">
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-md border border-gray-200 focus-within:border-slate-300 focus-within:ring-1 focus-within:ring-slate-100 transition-all">
                     <Search size={14} className="text-gray-400" />
                     <input
                       autoFocus
@@ -621,14 +632,14 @@ const ItemsList = ({
                     return (
                       <div
                         key={view}
-                        className="flex items-center justify-between px-4 py-2 hover:bg-teal-50 transition-colors w-full"
+                        className="flex items-center justify-between px-4 py-2 hover:bg-slate-50 transition-colors w-full"
                       >
                         <button
                           type="button"
                           onClick={() => { setFilterType(resolvedView); setFilterDropdownOpen(false); }}
                           className="flex-1 text-left cursor-pointer group/item"
                         >
-                          <span className={`text-sm ${isActive ? 'text-teal-700 font-medium' : 'text-gray-700'}`}>{view}</span>
+                          <span className={`text-sm ${isActive ? 'text-slate-700 font-medium' : 'text-gray-700'}`}>{view}</span>
                         </button>
                         <button
                           type="button"
@@ -636,7 +647,7 @@ const ItemsList = ({
                             e.stopPropagation();
                             toggleFavoriteView(view);
                           }}
-                          className="ml-3 rounded-full p-1 hover:bg-teal-50 transition-colors flex-shrink-0"
+                          className="ml-3 rounded-full p-1 hover:bg-slate-50 transition-colors flex-shrink-0"
                           aria-label={isFavorite ? `Unfavorite ${view}` : `Favorite ${view}`}
                         >
                           <Star
@@ -651,9 +662,9 @@ const ItemsList = ({
                 {/* <div className="px-2 pt-2 border-t border-gray-100 mt-1">
                   <button
                     className="flex items-center gap-2 px-3 py-2 w-full text-sm font-medium hover:bg-gray-50 rounded-md transition-colors"
-                    style={{ color: '#1b5e6a' }}
+                    style={{ color: '#334155' }}
                   >
-                    <Plus size={16} className="text-white rounded-full p-0.5" strokeWidth={3} style={{ backgroundColor: '#1b5e6a' }} />
+                    <Plus size={16} className="text-white rounded-full p-0.5" strokeWidth={3} style={{ backgroundColor: '#334155' }} />
                     New Custom View
                   </button>
                 </div> */}
@@ -666,7 +677,7 @@ const ItemsList = ({
               {canCreate && (
                 <button
                   onClick={onNew}
-                  className="cursor-pointer transition-all bg-[#1b5e6a] text-white px-3 sm:px-4 py-1.5 rounded-lg border-[#0f4e5a] border-b-[4px] hover:brightness-110 hover:-translate-y-[1px] hover:border-b-[6px] active:border-b-[2px] active:brightness-90 active:translate-y-[2px] flex items-center gap-1 text-sm font-semibold"
+                  className="cursor-pointer transition-all bg-slate-700 text-white px-3 sm:px-4 py-1.5 rounded-lg border-slate-800 border-b-[4px] hover:brightness-110 hover:-translate-y-[1px] hover:border-b-[6px] active:border-b-[2px] active:brightness-90 active:translate-y-[2px] flex items-center gap-1 text-sm font-semibold"
                 >
                   <Plus size={16} strokeWidth={3} /> <span className="hidden sm:inline">New</span>
                 </button>
@@ -686,11 +697,11 @@ const ItemsList = ({
                     <div className="relative">
                       <button
                         onClick={() => { setSortSubMenuOpen(!sortSubMenuOpen); setExportSubMenuOpen(false); }}
-                        className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${sortSubMenuOpen ? 'text-white rounded-md mx-2 w-[calc(100%-16px)] shadow-sm' : 'text-slate-600 hover:bg-[#1b5e6a] hover:text-white'}`}
-                        style={sortSubMenuOpen ? { backgroundColor: '#1b5e6a' } : {}}
+                        className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${sortSubMenuOpen ? 'text-white rounded-md mx-2 w-[calc(100%-16px)] shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                        style={sortSubMenuOpen ? { backgroundColor: '#334155' } : {}}
                       >
                         <div className="flex items-center gap-3">
-                          <ArrowUpDown size={16} className={sortSubMenuOpen ? 'text-white' : ''} style={!sortSubMenuOpen ? { color: '#1b5e6a' } : {}} />
+                          <ArrowUpDown size={16} className={sortSubMenuOpen ? 'text-white' : ''} style={!sortSubMenuOpen ? { color: '#475569' } : {}} />
                           <span className="font-medium">Sort by</span>
                         </div>
                         <ChevronRight size={14} className={sortSubMenuOpen ? 'text-white' : 'text-slate-400'} />
@@ -704,10 +715,10 @@ const ItemsList = ({
                               <button
                                 key={option.label}
                                 onClick={() => handleSortOptionSelect(option.label)}
-                                className={`w-full flex items-center justify-between px-4 py-2 text-sm transition-colors ${isActive ? 'bg-white text-[#1b5e6a] font-semibold border-l-4 border-[#1b5e6a] shadow-[inset_0_0_0_1px_rgba(27,94,106,0.08)]' : 'text-slate-600 hover:bg-teal-50/50'}`}
+                                className={`w-full flex items-center justify-between px-4 py-2 text-sm transition-colors ${isActive ? 'bg-white text-slate-700 font-semibold border-l-4 border-slate-700 shadow-[inset_0_0_0_1px_rgba(71,85,105,0.08)]' : 'text-slate-600 hover:bg-slate-50'}`}
                               >
-                                <span style={isActive ? { color: '#1b5e6a', fontWeight: 600 } : {}}>{option.label}</span>
-                                {isActive && <span className="ml-3 h-1.5 w-1.5 rounded-full bg-[#1b5e6a]" />}
+                                <span style={isActive ? { color: '#334155', fontWeight: 600 } : {}}>{option.label}</span>
+                                {isActive && <span className="ml-3 h-1.5 w-1.5 rounded-full bg-slate-700" />}
                               </button>
                             );
                           })}
@@ -719,10 +730,10 @@ const ItemsList = ({
 
                     {/* Import Items */}
                     <button
-                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-600 hover:bg-[#1b5e6a] hover:text-white transition-colors group"
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors group"
                       onClick={() => { navigate('/items/import'); setMoreDropdownOpen(false); }}
                     >
-                      <Upload size={16} className="text-teal-600 group-hover:text-white" />
+                      <Upload size={16} className="text-slate-600 group-hover:text-slate-900" />
                       <span className="font-medium">Import Items</span>
                     </button>
 
@@ -730,11 +741,11 @@ const ItemsList = ({
                     <div className="relative">
                       <button
                         onClick={() => { setExportSubMenuOpen(!exportSubMenuOpen); setSortSubMenuOpen(false); }}
-                        className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${exportSubMenuOpen ? 'text-white rounded-md mx-2 w-[calc(100%-16px)] shadow-sm' : 'text-slate-600 hover:bg-[#1b5e6a] hover:text-white'}`}
-                        style={exportSubMenuOpen ? { backgroundColor: '#1b5e6a' } : {}}
+                        className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${exportSubMenuOpen ? 'text-white rounded-md mx-2 w-[calc(100%-16px)] shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                        style={exportSubMenuOpen ? { backgroundColor: '#334155' } : {}}
                       >
                         <div className="flex items-center gap-3">
-                          <Download size={16} className={exportSubMenuOpen ? 'text-white' : ''} style={!exportSubMenuOpen ? { color: '#1b5e6a' } : {}} />
+                          <Download size={16} className={exportSubMenuOpen ? 'text-white' : ''} style={!exportSubMenuOpen ? { color: '#475569' } : {}} />
                           <span className="font-medium">Export</span>
                         </div>
                         <ChevronRight size={14} className={exportSubMenuOpen ? 'text-white' : 'text-slate-400'} />
@@ -743,13 +754,13 @@ const ItemsList = ({
                       {exportSubMenuOpen && (
                         <div className="md:absolute md:top-0 md:right-full md:mr-2 md:w-52 relative w-full bg-white md:border border-gray-100 rounded-lg md:shadow-xl py-2 z-[115] md:animate-in md:fade-in md:slide-in-from-right-1 duration-200">
                           <button
-                            className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-[#1b5e6a] hover:text-white font-medium transition-colors"
+                            className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium transition-colors"
                             onClick={() => { setIsExportModalOpen(true); setExportSubMenuOpen(false); setMoreDropdownOpen(false); }}
                           >
                             Export Items
                           </button>
                           <button
-                            className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-[#1b5e6a] hover:text-white font-medium transition-colors"
+                            className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium transition-colors"
                             onClick={() => { setIsExportCurrentViewModalOpen(true); setExportSubMenuOpen(false); setMoreDropdownOpen(false); }}
                           >
                             Export Current View
@@ -762,31 +773,31 @@ const ItemsList = ({
 
                     {/* Preferences */}
                     <button
-                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-600 hover:bg-[#1b5e6a] hover:text-white transition-colors group"
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors group"
                       onClick={() => navigate('/settings/items')}
                     >
-                      <SlidersHorizontal size={16} className="text-teal-600 group-hover:text-white" />
+                      <SlidersHorizontal size={16} className="text-slate-600 group-hover:text-slate-900" />
                       <span className="font-medium">Preferences</span>
                     </button>
 
                     {/* Refresh List */}
                     <button
-                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-600 hover:bg-[#1b5e6a] hover:text-white transition-colors group"
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors group"
                       onClick={() => { onRefresh(); setMoreDropdownOpen(false); }}
                     >
-                      <RefreshCw size={16} className="text-teal-600 group-hover:text-white" />
+                      <RefreshCw size={16} className="text-slate-600 group-hover:text-slate-900" />
                       <span className="font-medium">Refresh List</span>
                     </button>
 
                     {/* Reset Column Width */}
                     <button
-                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-600 hover:bg-[#1b5e6a] hover:text-white transition-colors group"
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors group"
                       onClick={() => {
                         setColumns(DEFAULT_COLUMNS);
                         setMoreDropdownOpen(false);
                       }}
                     >
-                      <RotateCcw size={16} className="group-hover:text-white" style={{ color: accentColor }} />
+                      <RotateCcw size={16} className="group-hover:text-slate-900" style={{ color: accentColor }} />
                       <span className="font-medium">Reset Column Width</span>
                     </button>
                   </div>
@@ -848,7 +859,7 @@ const ItemsList = ({
                     </div>
                   </div>
                   <div
-                    className="absolute right-0 top-0 bottom-0 w-[2px] cursor-col-resize hover:bg-teal-400/50 group-hover/header:border-r border-gray-100"
+                    className="absolute right-0 top-0 bottom-0 w-[2px] cursor-col-resize hover:bg-slate-300/50 group-hover/header:border-r border-gray-100"
                     onMouseDown={(e) => startResizing(col.key, e)}
                     onClick={(e) => e.stopPropagation()}
                   />
@@ -870,14 +881,14 @@ const ItemsList = ({
             {isLoading ? (
               <TableRowSkeleton columns={visibleColumns} />
             ) : (
-              filteredItems.map(item => {
+              paginatedItems.map(item => {
                 const id = item.id || item._id;
                 const isSelected = selectedIds.includes(id);
                 return (
                   <tr
                     key={id}
                     className="group transition-all hover:bg-slate-50/50 cursor-pointer"
-                    style={isSelected ? { backgroundColor: `#1b5e6a1A` } : {}} // 1A is approx 10% opacity
+                    style={isSelected ? { backgroundColor: `#3341551A` } : {}} // 1A is approx 10% opacity
                     onClick={() => onSelect(id)}
                   >
                     <td className="px-4 py-3 w-[78px] min-w-[78px]">
@@ -887,7 +898,7 @@ const ItemsList = ({
                           checked={isSelected}
                           onChange={() => toggleSelectOne(id)}
                           onClick={(e) => e.stopPropagation()}
-                          style={{ accentColor: '#1b5e6a' }}
+                          style={{ accentColor: '#475569' }}
                           className="cursor-pointer h-4 w-4 rounded border-gray-300 transition-all focus:ring-0"
                         />
                       </div>
@@ -911,7 +922,7 @@ const ItemsList = ({
                                 <ImageIcon size={16} className="text-gray-400" />
                               </div>
                             )}
-                            <span className="text-[13px] font-medium text-[#1b5e6a] no-underline cursor-pointer truncate">{item.name}</span>
+                            <span className="text-[13px] font-medium text-slate-700 no-underline cursor-pointer truncate">{item.name}</span>
                           </div>
                         ) : col.key === 'purchaseRate' ? (
                           <span className="text-[13px] text-slate-600">{fmtMoney(item.costPrice || 0)}</span>
@@ -956,6 +967,40 @@ const ItemsList = ({
           </tbody>
         </table>
       </div>
+      <div className="flex items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 text-sm text-slate-600">
+        <div>
+          Showing {filteredItems.length === 0 ? 0 : startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredItems.length)} of {filteredItems.length} items
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+            disabled={safeCurrentPage === 1}
+            className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+              safeCurrentPage === 1
+                ? "cursor-not-allowed border-gray-200 text-gray-300"
+                : "border-gray-300 text-slate-700 hover:bg-gray-50"
+            }`}
+          >
+            Previous
+          </button>
+          <span className="min-w-[90px] text-center text-sm text-slate-700">
+            Page {safeCurrentPage} of {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+            disabled={safeCurrentPage >= totalPages}
+            className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+              safeCurrentPage >= totalPages
+                ? "cursor-not-allowed border-gray-200 text-gray-300"
+                : "border-gray-300 text-slate-700 hover:bg-gray-50"
+            }`}
+          >
+            Next
+          </button>
+        </div>
+      </div>
       {isCustomizeModalOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl w-[500px] max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -985,7 +1030,7 @@ const ItemsList = ({
                 <input
                   type="text"
                   placeholder="Search Columns"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400 transition-all"
                   value={filterSearch}
                   onChange={(e) => setFilterSearch(e.target.value)}
                 />
@@ -1007,7 +1052,7 @@ const ItemsList = ({
                       const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
                       handleReorder(dragIndex, index);
                     }}
-                    className={`flex items-center justify-between p-2 rounded-lg group transition-colors hover:bg-[#eef8f9] ${col.visible ? 'bg-[#eef8f9]/70' : ''} ${col.pinned ? 'ring-1 ring-[#1b5e6a]/10' : ''}`}
+                    className={`flex items-center justify-between p-2 rounded-lg group transition-colors hover:bg-slate-50 ${col.visible ? 'bg-slate-50/70' : ''} ${col.pinned ? 'ring-1 ring-slate-200' : ''}`}
                   >
                     <div className="flex items-center gap-3">
                       <div className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-400 transition-colors">
@@ -1018,7 +1063,7 @@ const ItemsList = ({
                         checked={col.visible}
                         disabled={col.key === 'name'}
                         onChange={() => handleToggleColumn(col.key)}
-                        className="cursor-pointer h-4 w-4 rounded border-gray-300 text-[#1b5e6a] focus:ring-[#1b5e6a] disabled:opacity-50"
+                        className="cursor-pointer h-4 w-4 rounded border-gray-300 text-slate-700 focus:ring-slate-300 disabled:opacity-50"
                       />
                       <div className="flex items-center gap-2">
                         {col.key === 'name' && <Lock size={12} className="text-slate-400" />}
@@ -1030,7 +1075,7 @@ const ItemsList = ({
 
                     <button
                       onClick={() => handleTogglePin(col.key)}
-                      className={`p-1.5 rounded-md transition-all ${col.pinned ? 'text-[#1b5e6a] bg-[#eef8f9]' : 'text-slate-300 hover:text-slate-500 hover:bg-slate-100 opacity-0 group-hover:opacity-100'}`}
+                      className={`p-1.5 rounded-md transition-all ${col.pinned ? 'text-slate-700 bg-slate-100' : 'text-slate-300 hover:text-slate-500 hover:bg-slate-100 opacity-0 group-hover:opacity-100'}`}
                     >
                       {col.pinned ? <Pin size={16} fill="currentColor" /> : <Pin size={16} />}
                     </button>
@@ -1048,7 +1093,7 @@ const ItemsList = ({
               </button>
               <button
                 onClick={() => setIsCustomizeModalOpen(false)}
-                className="px-6 py-2 bg-teal-900 text-white rounded-lg text-sm font-medium hover:bg-teal-950 shadow-sm shadow-teal-100 transition-all active:scale-95"
+                className="px-6 py-2 bg-slate-700 text-white rounded-lg text-sm font-medium hover:bg-slate-800 shadow-sm shadow-slate-100 transition-all active:scale-95"
               >
                 Save
               </button>

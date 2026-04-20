@@ -21,7 +21,7 @@ export default function SearchableDropdown({
   value,
   options,
   placeholder = "Select an option",
-  accentColor = "#1b5e6a",
+  accentColor = "#475569",
   onChange,
   showClear = false,
   onClear,

@@ -10,12 +10,38 @@ import {
   Calculator,
   BarChart3,
   FileText,
+  Copyright,
   ChevronRight,
   Home,
   Package,
   Menu,
 } from "lucide-react";
 import { useAppBootstrap } from "../../context/AppBootstrapContext";
+
+const normalizeHex = (input: string | undefined, fallback: string) => {
+  const value = String(input || "").trim();
+  return /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+};
+
+const hexToRgb = (hex: string) => {
+  const normalized = normalizeHex(hex, "#3b82f6");
+  return {
+    r: parseInt(normalized.slice(1, 3), 16),
+    g: parseInt(normalized.slice(3, 5), 16),
+    b: parseInt(normalized.slice(5, 7), 16),
+  };
+};
+
+const rgba = (hex: string, alpha: number) => {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
+const getContrastTextClass = (hex: string) => {
+  const { r, g, b } = hexToRgb(hex);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.62 ? "text-slate-900" : "text-white";
+};
 
 type MenuItem = {
   label: string;
@@ -109,7 +135,7 @@ const SIDEBAR_COLLAPSED_STORAGE_KEY = "taban-books-sidebar-collapsed";
 
 export default function Sidebar() {
   const location = useLocation();
-  const { currentUser, organization } = useAppBootstrap();
+  const { currentUser, organization, branding } = useAppBootstrap();
   const [openSection, setOpenSection] = useState<string | null>(null);
   const [flyoutSection, setFlyoutSection] = useState<{
     label: string;
@@ -126,6 +152,27 @@ export default function Sidebar() {
   const organizationName = String(organization?.name || currentUser?.organizationName || "Taban Enterprise");
   const roleLabel = String(currentUser?.role || "Owner").replace(/_/g, " ");
   const orgInitial = organizationName.trim().charAt(0).toUpperCase() || "T";
+  const isLightAppearance = String(branding?.appearance || "dark") === "light";
+  const accentColor = normalizeHex(branding?.accentColor, "#3b82f6");
+  const accentTextClass = getContrastTextClass(accentColor);
+  const accentForeground = accentTextClass === "text-white" ? "#ffffff" : "#111827";
+  const shellBackground = isLightAppearance
+    ? "#ffffff"
+    : "linear-gradient(180deg, #0f5f6c 0%, #156372 100%)";
+  const shellBorder = isLightAppearance
+    ? "border border-slate-200 shadow-[0_18px_35px_rgba(15,23,42,0.08)]"
+    : "shadow-[0_18px_35px_rgba(4,38,46,0.14)]";
+  const itemBaseClass = isLightAppearance
+    ? "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+    : "text-white/90 hover:bg-white/10 hover:text-white";
+  const itemActiveClass = accentTextClass;
+  const childBaseClass = isLightAppearance
+    ? "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+    : "text-white/75 hover:bg-white/8 hover:text-white";
+  const childActiveClass = accentTextClass;
+  const cardBg = isLightAppearance ? "bg-white" : "bg-white/10";
+  const cardText = isLightAppearance ? "text-slate-900" : "text-white";
+  const subText = isLightAppearance ? "text-slate-500" : "text-white/75";
 
   useEffect(() => {
     document.documentElement.style.setProperty("--sidebar-width", isCollapsed ? "96px" : "246px");
@@ -213,8 +260,9 @@ export default function Sidebar() {
           className={[
             "flex items-center rounded-[14px] py-3 text-[14px] font-semibold transition-all",
             isCollapsed ? "relative flex-col justify-center gap-1 px-2 py-3 text-center" : "gap-3 px-4",
-            isActiveParent ? "bg-[#3f86ff] text-white" : "text-white/90 hover:bg-white/10 hover:text-white",
+            isActiveParent ? itemActiveClass : itemBaseClass,
           ].join(" ")}
+          style={isActiveParent ? { backgroundColor: accentColor, color: accentForeground } : undefined}
         >
           <span className={isCollapsed ? "hidden" : "w-4 shrink-0"} />
           <Icon size={18} className="shrink-0" />
@@ -239,20 +287,21 @@ export default function Sidebar() {
           className={[
             "flex w-full items-center rounded-[14px] py-3 text-[14px] font-semibold transition-all",
             isCollapsed ? "relative flex-col justify-center gap-1 px-2 py-3 text-center" : "gap-3 px-4",
-            isActiveParent ? "bg-[#3f86ff] text-white" : "text-white/90 hover:bg-white/10 hover:text-white",
+            isActiveParent ? itemActiveClass : itemBaseClass,
           ].join(" ")}
+          style={isActiveParent ? { backgroundColor: accentColor, color: accentForeground } : undefined}
         >
           {isCollapsed ? (
             <ChevronRight
               size={10}
               className={`absolute right-2 top-1/2 -translate-y-1/2 rotate-45 transition-transform duration-200 ${
-                isActiveParent ? "text-white/80" : "text-white/35"
+                isActiveParent ? (accentTextClass === "text-white" ? "text-white/80" : "text-slate-900/70") : "text-white/35"
               }`}
             />
           ) : (
             <ChevronRight
               size={16}
-              className={`shrink-0 transition-transform duration-200 ${isOpen ? "rotate-90" : "rotate-0"} ${isActiveParent ? "text-white/90" : "text-white/70"}`}
+              className={`shrink-0 transition-transform duration-200 ${isOpen ? "rotate-90" : "rotate-0"} ${isActiveParent ? (accentTextClass === "text-white" ? "text-white/90" : "text-slate-900") : "text-white/70"}`}
             />
           )}
           <Icon size={18} className="shrink-0" />
@@ -262,7 +311,7 @@ export default function Sidebar() {
         </button>
 
         {!isCollapsed && isOpen && item.children?.length ? (
-          <div className="ml-4 space-y-1 border-l border-white/10 pl-4">
+          <div className={`ml-4 space-y-1 border-l pl-4 ${isLightAppearance ? "border-slate-200" : "border-white/10"}`}>
             {item.children.map((child) => {
               const isActiveChild = isRouteMatch(location.pathname, child.to);
               return (
@@ -271,8 +320,9 @@ export default function Sidebar() {
                   to={child.to}
                   className={[
                     "flex items-center rounded-[12px] px-3 py-2 text-[13px] font-medium transition-all",
-                    isActiveChild ? "bg-white/10 text-white" : "text-white/75 hover:bg-white/8 hover:text-white",
+                    isActiveChild ? childActiveClass : childBaseClass,
                   ].join(" ")}
+                  style={isActiveChild ? { backgroundColor: rgba(accentColor, 0.18), color: accentForeground } : undefined}
                 >
                   <span className="truncate">{child.label}</span>
                 </NavLink>
@@ -292,8 +342,9 @@ export default function Sidebar() {
 
     return (
       <div
-        className="fixed z-[95] overflow-hidden rounded-[20px] border border-white/10 bg-[#176876] shadow-[0_24px_45px_rgba(0,0,0,0.22)]"
+        className={`fixed z-[95] overflow-hidden rounded-[20px] border shadow-[0_24px_45px_rgba(0,0,0,0.22)] ${isLightAppearance ? "border-slate-200" : "border-white/10"}`}
         style={{
+          background: shellBackground,
           top: flyoutSection.top,
           left: flyoutSection.left,
           width: flyoutSection.width,
@@ -301,8 +352,8 @@ export default function Sidebar() {
         onMouseEnter={cancelFlyoutClose}
         onMouseLeave={closeFlyoutSoon}
       >
-        <div className="border-b border-white/10 px-3 py-2.5">
-          <div className="text-[11px] font-bold uppercase tracking-[0.26em] text-white/60">{item.label}</div>
+        <div className={`border-b px-3 py-2.5 ${isLightAppearance ? "border-slate-200" : "border-white/10"}`}>
+          <div className={`text-[11px] font-bold uppercase tracking-[0.26em] ${isLightAppearance ? "text-slate-500" : "text-white/60"}`}>{item.label}</div>
         </div>
         <div className="space-y-1 p-2.5">
           {item.children.map((child) => {
@@ -313,8 +364,9 @@ export default function Sidebar() {
                 to={child.to}
                 className={[
                   "flex items-center rounded-[12px] px-3 py-2 text-[13px] font-semibold transition-all",
-                  isActiveChild ? "bg-white text-[#0f5f6c]" : "text-white/90 hover:bg-white/10 hover:text-white",
+                  isActiveChild ? childActiveClass : childBaseClass,
                 ].join(" ")}
+                style={isActiveChild ? { backgroundColor: rgba(accentColor, 0.18), color: accentForeground } : undefined}
               >
                 <span className="truncate">{child.label}</span>
               </NavLink>
@@ -338,16 +390,16 @@ export default function Sidebar() {
         }
       `}</style>
       <aside
-        className="fixed left-3 top-3 bottom-3 z-[70] hidden overflow-visible rounded-[22px] shadow-[0_18px_35px_rgba(4,38,46,0.14)] md:flex md:flex-col transition-[width] duration-200"
+        className={`fixed left-3 top-3 bottom-3 z-[70] hidden overflow-visible rounded-[22px] md:flex md:flex-col transition-[width] duration-200 ${shellBorder}`}
         style={{
           width: isCollapsed ? "96px" : "246px",
-          background: "linear-gradient(180deg, #0f5f6c 0%, #156372 100%)",
+          background: shellBackground,
         }}
       >
         <div className={isCollapsed ? "px-2 pt-4" : "px-4 pt-4"}>
           {isCollapsed ? (
             <div className="flex justify-center">
-              <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 text-white font-bold">
+              <div className={`flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border font-bold ${isLightAppearance ? "border-slate-200 bg-slate-100 text-slate-700" : "border-white/20 bg-white/10 text-white"}`}>
                 {organization?.logo ? (
                   <img src={organization.logo} alt={organizationName} className="h-full w-full object-cover" />
                 ) : (
@@ -356,9 +408,9 @@ export default function Sidebar() {
               </div>
             </div>
           ) : (
-            <div className="rounded-[18px] border border-white/10 bg-white/10 px-3 py-2.5 text-white">
+            <div className={`rounded-[18px] border px-3 py-2.5 ${isLightAppearance ? "border-slate-200 bg-slate-50 text-slate-900" : "border-white/10 bg-white/10 text-white"}`}>
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-[#f9d34f] text-[#0f5f6c] font-bold">
+                <div className={`flex h-11 w-11 items-center justify-center overflow-hidden rounded-full font-bold ${isLightAppearance ? "bg-slate-200 text-slate-800" : "text-white"}`} style={isLightAppearance ? undefined : { background: "linear-gradient(180deg, #0f5f6c 0%, #156372 100%)" }}>
                   {organization?.logo ? (
                     <img src={organization.logo} alt={organizationName} className="h-full w-full object-cover" />
                   ) : (
@@ -366,9 +418,9 @@ export default function Sidebar() {
                   )}
                 </div>
                 <div className="min-w-0">
-                  <div className="truncate text-[17px] font-semibold leading-tight">{organizationName}</div>
-                  <div className="text-[12px] text-white/75">Inventory & Accounting</div>
-                  <div className="text-[11px] text-white/55">Role: {roleLabel}</div>
+                  <div className={`truncate text-[17px] font-semibold leading-tight ${cardText}`}>{organizationName}</div>
+                  <div className={`text-[12px] ${subText}`}>Inventory & Accounting</div>
+                  <div className={`text-[11px] ${isLightAppearance ? "text-slate-400" : "text-white/55"}`}>Role: {roleLabel}</div>
                 </div>
               </div>
             </div>
@@ -378,8 +430,9 @@ export default function Sidebar() {
             type="button"
             onClick={() => setIsCollapsed((current) => !current)}
             className={[
-              "mt-4 flex h-11 items-center justify-center rounded-[12px] border border-white/10 bg-white/10 text-white/90",
+              "mt-4 flex h-11 items-center justify-center rounded-[12px] border",
               isCollapsed ? "mx-auto w-11" : "w-full",
+              isLightAppearance ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "border-white/10 bg-white/10 text-white/90 hover:bg-white/15",
             ].join(" ")}
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
@@ -393,9 +446,12 @@ export default function Sidebar() {
           </div>
         </nav>
 
-        <div className="flex-none w-full border-t border-white/10 px-4 pb-4 pt-3 text-[11px] text-white/70 " style={{ display: isCollapsed ? "none" : "block" }}>
-          <div className="font-semibold text-white/85">Version 1.0.0</div>
-          <div className="mt-1">Copyright Taban Enterprise</div>
+        <div className={`flex-none w-full border-t px-4 pb-4 pt-3 text-[11px] ${isLightAppearance ? "border-slate-200 text-slate-500" : "border-white/10 text-white/70"}`} style={{ display: isCollapsed ? "none" : "block" }}>
+          <div className={`font-semibold ${isLightAppearance ? "text-slate-700" : "text-white/85"}`}>Version 1.0.0</div>
+          <div className="mt-1 flex items-center gap-1.5">
+            <Copyright size={12} />
+            <span>Taban Enterprise</span>
+          </div>
         </div>
       </aside>
       {renderFlyout()}

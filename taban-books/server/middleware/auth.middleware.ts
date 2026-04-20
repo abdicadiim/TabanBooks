@@ -38,6 +38,7 @@ const verificationExemptPrefixes = [
     "/api/auth/logout",
     "/api/auth/me",
     "/api/settings/organization/profile",
+    "/api/settings/organization/branding",
 ];
 
 const isVerificationExemptRequest = (requestPath: string): boolean =>

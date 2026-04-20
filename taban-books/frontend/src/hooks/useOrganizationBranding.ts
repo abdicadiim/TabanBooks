@@ -4,7 +4,7 @@ export function useOrganizationBranding() {
     const { branding, loading } = useAppBootstrap();
 
     return {
-        accentColor: branding.accentColor || "#3b82f6",
+        accentColor: "#475569",
         appearance: branding.appearance || "dark",
         isLoading: loading,
     };

@@ -24,7 +24,7 @@ import { useAppBootstrap } from "../../context/AppBootstrapContext";
 export default function Header() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { authenticated, currentUser, organization } = useAppBootstrap();
+  const { authenticated, currentUser, organization, branding } = useAppBootstrap();
   const [orgDropdownOpen, setOrgDropdownOpen] = useState(false);
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
@@ -42,6 +42,14 @@ export default function Header() {
   const orgName = String(organization?.name || "Organization");
   const orgLabel = orgName.trim().split(" ")[0] || orgName;
   const userInitial = orgName.trim().charAt(0).toUpperCase() || "T";
+  const isLightAppearance = String(branding?.appearance || "dark") === "light";
+  const headerBackground = isLightAppearance
+    ? "#ffffff"
+    : "linear-gradient(90deg, #0f5f6c 0%, #156372 100%)";
+  const headerText = isLightAppearance ? "text-slate-700" : "text-white/90";
+  const headerMuted = isLightAppearance ? "text-slate-500" : "text-white/60";
+  const controlSurface = isLightAppearance ? "bg-white border-slate-200" : "bg-white/10 border-white/15";
+  const controlText = isLightAppearance ? "text-slate-700" : "text-white/90";
 
   const quickCreateItems: Record<string, { label: string; path: string }[]> = {
     GENERAL: [
@@ -232,15 +240,19 @@ export default function Header() {
 
   return (
     <header
-      className="fixed top-3 left-3 right-3 z-[80] h-[68px] overflow-hidden rounded-[20px] border border-white/12 px-4 shadow-[0_16px_34px_rgba(4,38,46,0.16)] backdrop-blur-md md:left-[calc(var(--sidebar-width)+24px)]"
+      className={`fixed top-3 left-3 right-3 z-[80] h-[68px] overflow-hidden rounded-[20px] px-4 backdrop-blur-md md:left-[calc(var(--sidebar-width)+24px)] ${
+        isLightAppearance ? "border border-slate-200 shadow-[0_16px_34px_rgba(15,23,42,0.08)]" : "border border-white/12 shadow-[0_16px_34px_rgba(4,38,46,0.16)]"
+      }`}
       style={{
-        background: "linear-gradient(90deg, #0f5f6c 0%, #156372 100%)",
+        background: headerBackground,
       }}
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent_65%)]" />
+      {!isLightAppearance ? (
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent_65%)]" />
+      ) : null}
       <div className="relative flex h-full items-center justify-between gap-3">
         <form className="relative flex min-w-0 flex-1 items-center" ref={searchRef} onSubmit={handleSearchSubmit}>
-          <div className="flex h-11 w-full max-w-[420px] items-stretch overflow-hidden rounded-[14px] border border-white/15 bg-white/10 text-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] focus-within:ring-2 focus-within:ring-white/25">
+          <div className={`flex h-11 w-full max-w-[420px] items-stretch overflow-hidden rounded-[14px] border shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] focus-within:ring-2 ${controlSurface} ${isLightAppearance ? "text-slate-700 focus-within:ring-slate-200" : "text-white/90 focus-within:ring-white/25"}`}>
             <button
               type="button"
               onClick={() => {
@@ -248,7 +260,7 @@ export default function Header() {
                 setQuickCreateOpen(false);
                 setOrgDropdownOpen(false);
               }}
-              className="flex w-11 shrink-0 items-center justify-center text-white/85 transition-colors hover:bg-white/10 hover:text-white"
+              className={`flex w-11 shrink-0 items-center justify-center transition-colors ${isLightAppearance ? "text-slate-500 hover:bg-slate-100 hover:text-slate-700" : "text-white/85 hover:bg-white/10 hover:text-white"}`}
               aria-label="Search"
               title="Search"
             >
@@ -262,7 +274,7 @@ export default function Header() {
                 setQuickCreateOpen(false);
                 setOrgDropdownOpen(false);
               }}
-              className="flex w-8 shrink-0 items-center justify-center border-r border-white/10 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+              className={`flex w-8 shrink-0 items-center justify-center border-r transition-colors ${isLightAppearance ? "border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600" : "border-white/10 text-white/70 hover:bg-white/10 hover:text-white"}`}
               aria-label="Open search models"
               title="Open search models"
             >
@@ -273,7 +285,7 @@ export default function Header() {
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder={`Search in ${searchScope} ( / )`}
-              className="min-w-0 flex-1 bg-transparent px-3.5 py-2.5 text-[13px] text-white/85 outline-none placeholder:text-white/60"
+              className={`min-w-0 flex-1 bg-transparent px-3.5 py-2.5 text-[13px] outline-none ${isLightAppearance ? "text-slate-700 placeholder:text-slate-400" : "text-white/85 placeholder:text-white/60"}`}
             />
           </div>
 
@@ -285,14 +297,14 @@ export default function Header() {
                     key={option.label}
                     type="button"
                     onClick={() => handleSearchScopeChange(option)}
-                    className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-blue-50 ${
-                      searchScope === option.label ? "bg-blue-50" : ""
+                    className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-slate-100 ${
+                      searchScope === option.label ? "bg-slate-100" : ""
                     }`}
                   >
-                    <span className={searchScope === option.label ? "font-medium text-blue-600" : "text-slate-700"}>
+                    <span className={searchScope === option.label ? "font-medium text-slate-900" : "text-slate-700"}>
                       {option.label}
                     </span>
-                    {searchScope === option.label ? <Check size={16} className="text-blue-600" /> : null}
+                    {searchScope === option.label ? <Check size={16} className="text-slate-700" /> : null}
                   </button>
                 ))}
               </div>
@@ -315,7 +327,7 @@ export default function Header() {
                   return next;
                 });
               }}
-              className="flex h-11 items-center gap-1.5 rounded-[14px] bg-white/10 px-3.5 text-[13px] font-semibold text-white transition-colors hover:bg-white/15"
+              className={`flex h-11 items-center gap-1.5 rounded-[14px] px-3.5 text-[13px] font-semibold transition-colors ${isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15"}`}
               aria-label="Organizations"
             >
               <span className="max-w-[120px] truncate">{orgLabel}</span>
@@ -355,7 +367,7 @@ export default function Header() {
                             setOrgDropdownOpen(false);
                             navigate("/organizations/manage");
                           }}
-                          className="flex items-center gap-1.5 text-[12px] text-blue-600 hover:text-blue-700"
+                          className="flex items-center gap-1.5 text-[12px] text-slate-600 hover:text-slate-900"
                         >
                           <Settings size={13} />
                           Manage
@@ -400,7 +412,7 @@ export default function Header() {
                                 type="button"
                                 onClick={() => handleSwitchOrganization(org)}
                                 className={`w-full rounded-[18px] border px-3 py-3 text-left transition-colors ${
-                                  isActive ? "border-blue-200 bg-blue-50" : "border-transparent hover:bg-slate-50"
+                                  isActive ? "border-slate-300 bg-slate-50" : "border-transparent hover:bg-slate-50"
                                 }`}
                               >
                                 <div className="flex items-start gap-3">
@@ -448,7 +460,7 @@ export default function Header() {
 
                                   <div className="flex shrink-0 items-center pt-0.5">
                                     {isActive ? (
-                                      <div className="grid h-6 w-6 place-items-center rounded-full bg-blue-600 text-white">
+                                      <div className="grid h-6 w-6 place-items-center rounded-full bg-slate-700 text-white">
                                         <Check size={12} />
                                       </div>
                                     ) : (
@@ -475,11 +487,16 @@ export default function Header() {
                 setQuickCreateOpen((current) => !current);
                 setOrgDropdownOpen(false);
               }}
-              className="grid h-11 w-11 place-items-center rounded-[14px] bg-white/10 text-white transition-colors hover:bg-white/15"
+              className={`grid h-11 w-11 place-items-center rounded-[14px] transition-colors ${
+                isLightAppearance
+                  ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  : "text-white hover:bg-white/15"
+              }`}
+              style={!isLightAppearance ? { background: "linear-gradient(90deg, #0f5f6c 0%, #156372 100%)" } : undefined}
               aria-label="Quick Create"
               title="Quick Create"
             >
-              <Plus size={17} />
+              <Plus size={17} className={isLightAppearance ? "text-slate-700" : "text-white"} />
             </button>
 
             {quickCreateOpen && (
@@ -502,7 +519,7 @@ export default function Header() {
                             key={item.label}
                             type="button"
                             onClick={() => handleQuickCreateClick(item.path)}
-                            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] text-slate-700 hover:bg-blue-50 hover:text-blue-700"
+                            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] text-slate-700 hover:bg-slate-100 hover:text-slate-900"
                           >
                             <Plus size={12} className="text-slate-400" />
                             {item.label}
@@ -518,7 +535,7 @@ export default function Header() {
 
           <button
             type="button"
-            className="grid h-11 w-11 place-items-center rounded-[14px] bg-white/10 text-white transition-colors hover:bg-white/15"
+            className={`grid h-11 w-11 place-items-center rounded-[14px] transition-colors ${isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15"}`}
             aria-label="Users"
           >
             <Users size={16} />
@@ -526,7 +543,7 @@ export default function Header() {
 
           <button
             type="button"
-            className="grid h-11 w-11 place-items-center rounded-[14px] bg-white/10 text-white transition-colors hover:bg-white/15"
+            className={`grid h-11 w-11 place-items-center rounded-[14px] transition-colors ${isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15"}`}
             aria-label="Notifications"
           >
             <Bell size={16} />
@@ -535,7 +552,7 @@ export default function Header() {
           <button
             type="button"
             onClick={() => navigate("/settings")}
-            className="grid h-11 w-11 place-items-center rounded-[14px] bg-white/10 text-white transition-colors hover:bg-white/15"
+            className={`grid h-11 w-11 place-items-center rounded-[14px] transition-colors ${isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15"}`}
             aria-label="Settings"
             title="Settings"
           >
@@ -544,7 +561,8 @@ export default function Header() {
 
           <button
             type="button"
-            className="grid h-11 w-11 place-items-center rounded-[14px] bg-white text-[#0f5f6c] shadow-sm md:hidden"
+            className={`grid h-11 w-11 place-items-center rounded-[14px] shadow-sm md:hidden ${isLightAppearance ? "bg-white text-slate-700 border border-slate-200" : "text-white"}`}
+            style={!isLightAppearance ? { background: "linear-gradient(90deg, #0f5f6c 0%, #156372 100%)" } : undefined}
             aria-label={orgName}
           >
             {organization?.logo ? (
@@ -560,7 +578,7 @@ export default function Header() {
 
           <button
             type="button"
-            className="grid h-11 w-11 place-items-center rounded-[14px] bg-white/10 text-white transition-colors hover:bg-white/15"
+            className={`grid h-11 w-11 place-items-center rounded-[14px] transition-colors ${isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15"}`}
             aria-label="App launcher"
           >
             <Grid3x3 size={16} />

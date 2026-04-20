@@ -22,6 +22,22 @@ import {
   normalizeLanguageCode,
 } from "../services/organizationResource.service.js";
 
+const ACCENT_COLOR_MAP: Record<string, string> = {
+  white: "#ffffff",
+  blue: "#3b82f6",
+  green: "#10b981",
+  red: "#ef4444",
+  orange: "#f97316",
+  purple: "#a855f7",
+};
+
+const normalizeBrandAccentColor = (value: unknown): string => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "#ffffff";
+  const lower = raw.toLowerCase();
+  return ACCENT_COLOR_MAP[lower] || raw;
+};
+
 // Placeholder - implement full CRUD operations
 export const getSettings = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -98,10 +114,17 @@ export const updateOrganizationProfile = async (req: Request, res: Response): Pr
       body: req.body,
     });
 
+    const debugProfilePayload = (label: string, payload: any) => {
+      if (process.env.NODE_ENV === "development") {
+        console.log(`[settings.profile] ${label}`, payload);
+      }
+    };
+
     const {
       name,
       legalName,
       industry,
+      industry_type,
       email,
       phone,
       website,
@@ -109,19 +132,36 @@ export const updateOrganizationProfile = async (req: Request, res: Response): Pr
       address,
       currency,
       baseCurrency,
+      currency_code,
       fiscalYearStart,
       fiscalYear,
       reportBasis,
       orgLanguage,
       commLanguage,
       timeZone,
+      time_zone,
       dateFormat,
+      date_format,
       dateSeparator,
+      field_separator,
       companyIdType,
       companyIdValue,
+      contact_name,
       additionalFields,
+      custom_fields,
       paymentStubAddress,
+      remit_to_address,
       showPaymentStubAddress,
+      street_address1,
+      street_address2,
+      zip,
+      postalCode,
+      country,
+      countryIso,
+      city: bodyCity,
+      state: bodyState,
+      phone: bodyPhone,
+      fax: bodyFax,
     } = req.body;
     if (!organizationId) {
       res.status(401).json({
@@ -150,6 +190,7 @@ export const updateOrganizationProfile = async (req: Request, res: Response): Pr
       return;
     }
     await ensureOrganizationIdentity(organization);
+    const currentBaseCurrencyCode = String(organization.currency || "USD").trim().toUpperCase() || "USD";
 
     // Prepare update data
     const updateData: any = {
@@ -162,10 +203,12 @@ export const updateOrganizationProfile = async (req: Request, res: Response): Pr
 
     // Add fields if they are provided (including empty strings and null)
     if (legalName !== undefined) organizationUpdate.legalName = legalName || "";
-    if (industry !== undefined) {
-      updateData.industry = industry || "";
-      organizationUpdate.industryType = industry || "";
+    const resolvedIndustry = industry !== undefined ? industry : industry_type;
+    if (resolvedIndustry !== undefined) {
+      updateData.industry = resolvedIndustry || "";
+      organizationUpdate.industryType = resolvedIndustry || "";
     }
+    if (contact_name !== undefined) organizationUpdate.contactName = contact_name || "";
     if (email !== undefined) {
       const normalizedEmail = email ? email.toLowerCase().trim() : "";
       updateData.email = normalizedEmail;
@@ -187,9 +230,12 @@ export const updateOrganizationProfile = async (req: Request, res: Response): Pr
         updateData.logo = "";
       }
     }
-    if (currency !== undefined) updateData.currency = currency || "USD";
-    if (baseCurrency !== undefined) {
-      updateData.baseCurrency = String(baseCurrency || "USD").trim().toUpperCase() || "USD";
+    const resolvedBaseCurrency = baseCurrency !== undefined ? baseCurrency : currency_code;
+    if (currency !== undefined || currency_code !== undefined) {
+      updateData.currency = String(resolvedBaseCurrency || "USD").trim().toUpperCase() || "USD";
+    }
+    if (resolvedBaseCurrency !== undefined) {
+      updateData.baseCurrency = String(resolvedBaseCurrency || "USD").trim().toUpperCase() || "USD";
       organizationUpdate.currency = updateData.baseCurrency;
     }
     if (fiscalYearStart !== undefined) {
@@ -206,16 +252,19 @@ export const updateOrganizationProfile = async (req: Request, res: Response): Pr
       organizationUpdate.languageCode = normalizeLanguageCode(orgLanguage);
     }
     if (commLanguage !== undefined) updateData.commLanguage = commLanguage || "English";
-    if (timeZone !== undefined) {
-      updateData.timeZone = timeZone || "UTC";
+    const resolvedTimeZone = timeZone !== undefined ? timeZone : time_zone;
+    if (resolvedTimeZone !== undefined) {
+      updateData.timeZone = resolvedTimeZone || "UTC";
       organizationUpdate.timeZone = updateData.timeZone;
     }
-    if (dateFormat !== undefined) {
-      updateData.dateFormat = dateFormat || "dd-MM-yyyy";
+    const resolvedDateFormat = dateFormat !== undefined ? dateFormat : date_format;
+    if (resolvedDateFormat !== undefined) {
+      updateData.dateFormat = resolvedDateFormat || "dd-MM-yyyy";
       organizationUpdate.dateFormat = updateData.dateFormat;
     }
-    if (dateSeparator !== undefined) {
-      updateData.dateSeparator = normalizeFieldSeparator(dateSeparator || "-", dateFormat || organization.dateFormat);
+    const resolvedDateSeparator = dateSeparator !== undefined ? dateSeparator : field_separator;
+    if (resolvedDateSeparator !== undefined) {
+      updateData.dateSeparator = normalizeFieldSeparator(resolvedDateSeparator || "-", resolvedDateFormat || organization.dateFormat);
       organizationUpdate.fieldSeparator = updateData.dateSeparator;
     }
     if (companyIdType !== undefined) {
@@ -226,24 +275,70 @@ export const updateOrganizationProfile = async (req: Request, res: Response): Pr
       updateData.companyIdValue = companyIdValue || "";
       organizationUpdate.companyIdValue = updateData.companyIdValue;
     }
-    if (additionalFields !== undefined) updateData.additionalFields = Array.isArray(additionalFields) ? additionalFields : [];
-    if (paymentStubAddress !== undefined) updateData.paymentStubAddress = paymentStubAddress || "";
+    const resolvedAdditionalFields = additionalFields !== undefined ? additionalFields : custom_fields;
+    if (resolvedAdditionalFields !== undefined) updateData.additionalFields = Array.isArray(resolvedAdditionalFields) ? resolvedAdditionalFields : [];
+    const resolvedPaymentStubAddress = paymentStubAddress !== undefined ? paymentStubAddress : remit_to_address;
+    if (resolvedPaymentStubAddress !== undefined) updateData.paymentStubAddress = resolvedPaymentStubAddress || "";
     if (showPaymentStubAddress !== undefined) updateData.showPaymentStubAddress = showPaymentStubAddress || false;
 
-    // Handle address object
-    if (address !== undefined) {
+    const resolvedAddress = address && typeof address === "object" ? address : {};
+    const resolvedStreet1 =
+      resolvedAddress.street1 ??
+      resolvedAddress.street_address1 ??
+      resolvedAddress.streetAddress1 ??
+      street_address1 ??
+      "";
+    const resolvedStreet2 =
+      resolvedAddress.street2 ??
+      resolvedAddress.street_address2 ??
+      resolvedAddress.streetAddress2 ??
+      street_address2 ??
+      "";
+    const resolvedCity = resolvedAddress.city ?? bodyCity ?? "";
+    const resolvedState = resolvedAddress.state ?? bodyState ?? "";
+    const resolvedZip =
+      resolvedAddress.zipCode ??
+      resolvedAddress.zip ??
+      resolvedAddress.postalCode ??
+      zip ??
+      postalCode ??
+      "";
+    const resolvedCountry =
+      resolvedAddress.country ??
+      resolvedAddress.countryIso ??
+      country ??
+      countryIso ??
+      "";
+    const resolvedPhone = resolvedAddress.phone ?? bodyPhone ?? "";
+    const resolvedFax = resolvedAddress.fax ?? bodyFax ?? "";
+
+    // Handle address object and common aliases
+    if (
+      address !== undefined ||
+      street_address1 !== undefined ||
+      street_address2 !== undefined ||
+      zip !== undefined ||
+      postalCode !== undefined ||
+      country !== undefined ||
+      countryIso !== undefined ||
+      bodyCity !== undefined ||
+      bodyState !== undefined ||
+      bodyPhone !== undefined ||
+      bodyFax !== undefined
+    ) {
       updateData.address = {
-        street: address.street || "",
-        street1: address.street1 || "",
-        street2: address.street2 || "",
-        city: address.city || "",
-        state: address.state || "",
-        zipCode: address.zipCode || "",
-        country: address.country || "",
-        phone: address.phone || "",
-        fax: address.fax || "",
+        street: resolvedAddress.street || resolvedStreet1 || "",
+        street1: resolvedStreet1,
+        street2: resolvedStreet2,
+        city: resolvedCity,
+        state: resolvedState,
+        zipCode: resolvedZip,
+        country: resolvedCountry,
+        phone: resolvedPhone,
+        fax: resolvedFax,
       };
-      organizationUpdate.fax = address.fax || organization.fax || "";
+      organizationUpdate.fax = resolvedFax || organization.fax || "";
+      debugProfilePayload("address-resolved", updateData.address);
     }
 
     // Ensure organization is always set in updateData
@@ -279,8 +374,16 @@ export const updateOrganizationProfile = async (req: Request, res: Response): Pr
 
     const baseCurrencyDoc =
       baseCurrency !== undefined
-        ? await ensureOrganizationBaseCurrency(organizationId, updateData.baseCurrency)
+        ? await Currency.findOne({ organization: organizationId, code: updateData.baseCurrency }).lean()
         : await Currency.findOne({ organization: organizationId, isBaseCurrency: true }).lean();
+
+    const nextBaseCurrencyCode = String(updateData.baseCurrency || "").trim().toUpperCase() || currentBaseCurrencyCode;
+    const baseCurrencyChanged = baseCurrency !== undefined && nextBaseCurrencyCode !== currentBaseCurrencyCode;
+    if (baseCurrencyChanged) {
+      void ensureOrganizationBaseCurrency(organizationId, nextBaseCurrencyCode).catch((currencyError) => {
+        console.error("⚠️ Background base currency sync failed:", currencyError);
+      });
+    }
 
     console.log("✅ Profile saved successfully:", {
       profileId: profile._id,
@@ -296,7 +399,7 @@ export const updateOrganizationProfile = async (req: Request, res: Response): Pr
       data: buildMergedOrganizationProfile({
         organization,
         profile,
-        baseCurrency: baseCurrencyDoc,
+        baseCurrency: baseCurrencyDoc || (baseCurrency !== undefined ? { code: nextBaseCurrencyCode, isBaseCurrency: true } : undefined),
       }),
     });
   } catch (error: any) {
@@ -369,6 +472,11 @@ export const updateOrganizationProfile = async (req: Request, res: Response): Pr
 export const getOrganizationBranding = async (req: Request, res: Response): Promise<void> => {
   try {
     const organizationId = (req as any).user?.organizationId;
+    console.log("[BRANDING][GET] request", {
+      organizationId,
+      hasUser: Boolean((req as any).user),
+      path: req.originalUrl,
+    });
     if (!organizationId) {
       res.status(401).json({
         success: false,
@@ -377,26 +485,29 @@ export const getOrganizationBranding = async (req: Request, res: Response): Prom
       return;
     }
 
-    // Get branding settings
-    let branding = await Branding.findOne({ organization: organizationId });
+    // Read branding and profile in parallel so the page can render faster.
+    const [existingBranding, profile] = await Promise.all([
+      Branding.findOne({ organization: organizationId }).lean(),
+      Profile.findOne({ organization: organizationId }).lean(),
+    ]);
 
-    // Get profile to get logo
-    const profile = await Profile.findOne({ organization: organizationId });
+    let branding = existingBranding;
 
     // If branding doesn't exist, create default one
     if (!branding) {
       branding = await Branding.create({
         organization: organizationId,
         appearance: "dark",
-        accentColor: "#3b82f6",
+        accentColor: "#ffffff",
       });
     }
 
     // Convert "system" to "dark" for backward compatibility
-    const brandingData: any = branding.toObject();
+    const brandingData: any = typeof (branding as any).toObject === "function" ? (branding as any).toObject() : branding;
     if (brandingData.appearance === "system") {
       brandingData.appearance = "dark";
     }
+    brandingData.accentColor = normalizeBrandAccentColor(brandingData.accentColor);
 
     res.json({
       success: true,
@@ -404,6 +515,12 @@ export const getOrganizationBranding = async (req: Request, res: Response): Prom
         ...brandingData,
         logo: profile?.logo || "",
       },
+    });
+    console.log("[BRANDING][GET] success", {
+      organizationId,
+      appearance: brandingData.appearance,
+      accentColor: brandingData.accentColor,
+      hasLogo: Boolean(profile?.logo),
     });
   } catch (error: any) {
     console.error("Error fetching organization branding:", error);
@@ -429,6 +546,12 @@ export const updateOrganizationBranding = async (req: Request, res: Response): P
   try {
     const userId = (req as any).user?.userId;
     const organizationId = (req as any).user?.organizationId;
+    console.log("[BRANDING][PUT] request", {
+      organizationId,
+      userId,
+      bodyKeys: Object.keys(req.body || {}),
+      path: req.originalUrl,
+    });
 
     if (!organizationId) {
       res.status(401).json({
@@ -448,6 +571,7 @@ export const updateOrganizationBranding = async (req: Request, res: Response): P
       keepZohoBranding,
       logo, // Logo is stored in Profile, not Branding
     } = req.body;
+    const normalizedAccentColor = accentColor !== undefined ? normalizeBrandAccentColor(accentColor) : undefined;
 
     // Convert "system" to "dark" if provided
     const appearanceValue = appearance === "system" ? "dark" : appearance;
@@ -468,7 +592,7 @@ export const updateOrganizationBranding = async (req: Request, res: Response): P
     };
 
     if (appearance !== undefined) brandingUpdateData.appearance = appearanceValue;
-    if (accentColor !== undefined) brandingUpdateData.accentColor = accentColor;
+    if (accentColor !== undefined) brandingUpdateData.accentColor = normalizedAccentColor;
     if (sidebarDarkFrom !== undefined) brandingUpdateData.sidebarDarkFrom = sidebarDarkFrom;
     if (sidebarDarkTo !== undefined) brandingUpdateData.sidebarDarkTo = sidebarDarkTo;
     if (sidebarLightFrom !== undefined) brandingUpdateData.sidebarLightFrom = sidebarLightFrom;
@@ -520,11 +644,19 @@ export const updateOrganizationBranding = async (req: Request, res: Response): P
     // Get updated profile for logo
     const profile = await Profile.findOne({ organization: (req as any).user.organizationId });
 
+    console.log("✅ Branding saved successfully:", {
+      organizationId,
+      appearance: branding.appearance,
+      accentColor: branding.accentColor,
+      savedAt: new Date().toISOString(),
+    });
+
     res.json({
       success: true,
       message: "Organization branding updated successfully",
       data: {
         ...branding.toObject(),
+        accentColor: normalizeBrandAccentColor(branding.accentColor),
         logo: profile?.logo || "",
       },
     });

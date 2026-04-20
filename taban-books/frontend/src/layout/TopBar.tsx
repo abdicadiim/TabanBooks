@@ -23,7 +23,7 @@ import { useAppBootstrap } from "../context/AppBootstrapContext";
 
 export default function TopBar() {
   const navigate = useNavigate();
-  const { authenticated, currentUser, organization, resetBootstrap } = useAppBootstrap();
+  const { authenticated, currentUser, organization, resetBootstrap, branding } = useAppBootstrap();
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -45,6 +45,8 @@ export default function TopBar() {
   const [customerTypeQuery, setCustomerTypeQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("All");
   const [selectedCustomerType, setSelectedCustomerType] = useState("");
+  const isLightAppearance = String(branding?.appearance || "dark") === "light";
+  const headerBackground = isLightAppearance ? "#ffffff" : "linear-gradient(90deg, #0f5f6c 0%, #156372 100%)";
 
   // Handle logout
   const handleLogout = async () => {
@@ -210,7 +212,7 @@ export default function TopBar() {
 
   return (
     <>
-      <div className="relative z-[70] h-14 bg-white border-b border-slate-200">
+      <div className={`relative z-[70] h-14 ${isLightAppearance ? "bg-white border-b border-slate-200" : "border-b border-transparent"}`} style={{ background: headerBackground }}>
         <div className="h-full px-3 md:px-5 flex items-center justify-between gap-3">
           {/* Left: App icon + menu */}
           <div className="flex items-center gap-2 min-w-0 md:min-w-[220px]">
@@ -320,7 +322,7 @@ export default function TopBar() {
                                 </div>
                               </div>
                               {idx === 0 && (
-                                <div className="w-5 h-5 rounded-full text-white flex items-center justify-center bg-[linear-gradient(90deg,#156372_0%,#0D4A52_100%)]">
+                                <div className="w-5 h-5 rounded-full text-white flex items-center justify-center" style={{ background: isLightAppearance ? "#475569" : "linear-gradient(90deg, #0f5f6c 0%, #156372 100%)" }}>
                                   <Check size={12} className="text-white" />
                                 </div>
                               )}
@@ -345,10 +347,15 @@ export default function TopBar() {
                   setUserMenuOpen(false);
                   setOrgDropdownOpen(false);
                 }}
-                className="h-9 w-9 rounded-xl text-white flex items-center justify-center shadow-sm hover:opacity-90 transition-opacity bg-[linear-gradient(90deg,#156372_0%,#0D4A52_100%)]"
+                className={`h-9 w-9 rounded-xl flex items-center justify-center shadow-sm transition-colors ${
+                  isLightAppearance
+                    ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    : "text-white hover:opacity-90"
+                }`}
+                style={!isLightAppearance ? { background: "linear-gradient(90deg, #0f5f6c 0%, #156372 100%)" } : undefined}
                 title="Quick Create"
               >
-                <Plus size={18} />
+                <Plus size={18} className={isLightAppearance ? "text-slate-700" : "text-white"} />
               </button>
               {quickCreateOpen && (
                 <div className="absolute right-0 top-full mt-2 w-[700px] bg-white border border-slate-200 rounded-lg shadow-xl z-[100] p-4">
@@ -558,7 +565,7 @@ export default function TopBar() {
                                     setSearchTypeQuery("");
                                   }}
                                   className={`px-3 py-2 text-sm cursor-pointer flex items-center justify-between ${advancedSearchType === option
-                                    ? "bg-blue-600 text-white"
+                                    ? "bg-slate-700 text-white"
                                     : "text-gray-700 hover:bg-gray-50"
                                     }`}
                                 >
@@ -581,7 +588,7 @@ export default function TopBar() {
                           setFilterDropdownOpen(!filterDropdownOpen);
                           setSearchTypeDropdownOpen(false);
                         }}
-                        className="px-3 py-1.5 border border-blue-300 rounded-md text-sm outline-none cursor-pointer bg-white flex items-center gap-2 min-w-[150px] justify-between"
+                        className="px-3 py-1.5 border border-slate-300 rounded-md text-sm outline-none cursor-pointer bg-white flex items-center gap-2 min-w-[150px] justify-between"
                       >
                         <span>{advancedFilterType}</span>
                         {filterDropdownOpen ? (
@@ -630,7 +637,7 @@ export default function TopBar() {
                                     setFilterQuery("");
                                   }}
                                   className={`px-3 py-2 text-sm cursor-pointer flex items-center justify-between ${advancedFilterType === option
-                                    ? "bg-blue-600 text-white"
+                                    ? "bg-slate-700 text-white"
                                     : "text-gray-700 hover:bg-gray-50"
                                     }`}
                                 >
@@ -699,7 +706,7 @@ export default function TopBar() {
                             setStatusDropdownOpen(!statusDropdownOpen);
                             setCustomerTypeDropdownOpen(false);
                           }}
-                          className="w-full px-3 py-2 border border-blue-300 rounded-md text-sm outline-none cursor-pointer bg-white flex items-center justify-between"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm outline-none cursor-pointer bg-white flex items-center justify-between"
                         >
                           <span>{selectedStatus || "All"}</span>
                           {statusDropdownOpen ? (
@@ -734,12 +741,12 @@ export default function TopBar() {
                                       setStatusDropdownOpen(false);
                                       setStatusQuery("");
                                     }}
-                                    className={`px-3 py-2 text-sm cursor-pointer flex items-center justify-between ${selectedStatus === option
-                                      ? "bg-blue-600 text-white"
+                                  className={`px-3 py-2 text-sm cursor-pointer flex items-center justify-between ${selectedStatus === option
+                                      ? "bg-slate-700 text-white"
                                       : "text-gray-700 hover:bg-gray-50"
                                       }`}
-                                  >
-                                    <span>{option}</span>
+                                >
+                                  <span>{option}</span>
                                     {selectedStatus === option && (
                                       <Check size={16} className="text-white" />
                                     )}
@@ -774,7 +781,7 @@ export default function TopBar() {
                             setCustomerTypeDropdownOpen(!customerTypeDropdownOpen);
                             setStatusDropdownOpen(false);
                           }}
-                          className="w-full px-3 py-2 border border-blue-300 rounded-md text-sm outline-none cursor-pointer bg-white flex items-center justify-between text-left"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm outline-none cursor-pointer bg-white flex items-center justify-between text-left"
                         >
                           <span className={selectedCustomerType ? "text-gray-900" : "text-gray-400"}>
                             {selectedCustomerType || "Select customer type"}
@@ -811,12 +818,12 @@ export default function TopBar() {
                                       setCustomerTypeDropdownOpen(false);
                                       setCustomerTypeQuery("");
                                     }}
-                                    className={`px-3 py-2 text-sm cursor-pointer flex items-center justify-between ${selectedCustomerType === option
-                                      ? "bg-blue-600 text-white"
+                                  className={`px-3 py-2 text-sm cursor-pointer flex items-center justify-between ${selectedCustomerType === option
+                                      ? "bg-slate-700 text-white"
                                       : "text-gray-700 hover:bg-gray-50"
                                       }`}
-                                  >
-                                    <span>{option}</span>
+                                >
+                                  <span>{option}</span>
                                     {selectedCustomerType === option && (
                                       <Check size={16} className="text-white" />
                                     )}

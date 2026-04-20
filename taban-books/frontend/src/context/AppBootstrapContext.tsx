@@ -52,7 +52,7 @@ interface AppBootstrapContextValue {
 
 const DEFAULT_BRANDING: BootstrapBranding = {
   appearance: "dark",
-  accentColor: "#3b82f6",
+  accentColor: "#ffffff",
   sidebarDarkFrom: "#0f4e5a",
   sidebarDarkTo: "#156372",
   sidebarLightFrom: "#f9fafb",

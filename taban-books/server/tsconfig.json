@@ -4,6 +4,7 @@
     "module": "ESNext",
     "lib": ["ES2022"],
     "moduleResolution": "Node",
+    "ignoreDeprecations": "5.0",
     "rootDir": "./",
     "outDir": "./dist",
     "strict": false,
