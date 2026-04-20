@@ -452,6 +452,7 @@ export const customersAPI = {
   merge: (masterCustomerId: any, sourceCustomerIds: any[]) => apiRequest('/customers/merge', { method: 'POST', body: { masterCustomerId, sourceCustomerIds } }),
   sendStatement: (id: string, data: any) => apiRequest(`/customers/${id}/send-statement`, { method: 'POST', body: data }),
   search: (query: string) => apiRequest(`/customers/search?q=${encodeURIComponent(query)}`),
+  getNextCustomerNumber: (data: any) => apiRequest('/customers/next-number', { method: 'POST', body: data }),
 };
 
 // ============================================================================
@@ -651,6 +652,7 @@ export const vendorsAPI = {
   merge: (masterVendorId: any, sourceVendorIds: any[]) => apiRequest('/vendors/merge', { method: 'POST', body: { masterVendorId, sourceVendorIds } }),
   sendStatement: (id: string, data: any) => apiRequest(`/vendors/${id}/send-statement`, { method: 'POST', body: data }),
   search: (query: string) => apiRequest(`/vendors/search?q=${encodeURIComponent(query)}`),
+  getNextVendorNumber: (data: any) => apiRequest('/vendors/next-number', { method: 'POST', body: data }),
 };
 
 // ============================================================================

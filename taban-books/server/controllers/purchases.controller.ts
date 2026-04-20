@@ -202,6 +202,163 @@ export const getAllVendors = async (req: AuthRequest, res: Response): Promise<vo
     res.status(500).json({
       success: false,
       message: 'Error fetching vendors',
+
+// Get all vendors
+export const getAllVendors = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      res.status(503).json({
+        success: false,
+        message: 'Database not connected',
+        error: 'MongoDB connection is not established.'
+      });
+      return;
+    }
+
+    if (!req.user || !req.user.organizationId) {
+      res.status(401).json({
+        success: false,
+        message: 'Unauthorized - Organization ID required'
+      });
+      return;
+    }
+
+    const {
+      page = '1',
+      limit = '1000',
+      search = '',
+      status,
+      vendorType,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query as VendorQuery;
+
+    const query: any = {};
+    const orgId = req.user.organizationId;
+
+    // Build organization filter
+    let orgFilter: any = {};
+    if (mongoose.Types.ObjectId.isValid(orgId as string)) {
+      try {
+        const orgObjectId = new mongoose.Types.ObjectId(orgId as string);
+        orgFilter = {
+          $or: [
+            { organization: orgObjectId },
+            { organization: String(orgId) }
+          ]
+        };
+      } catch (conversionError: any) {
+        orgFilter = { organization: String(orgId) };
+      }
+    } else {
+      orgFilter = { organization: String(orgId) };
+    }
+
+    // Combine filters
+    const andConditions: any[] = [orgFilter];
+
+    if (search && search.trim()) {
+      andConditions.push({
+        $or: [
+          { displayName: { $regex: search.trim(), $options: 'i' } },
+          { companyName: { $regex: search.trim(), $options: 'i' } },
+          { email: { $regex: search.trim(), $options: 'i' } },
+          { firstName: { $regex: search.trim(), $options: 'i' } },
+          { lastName: { $regex: search.trim(), $options: 'i' } }
+        ]
+      });
+    }
+
+    if (andConditions.length > 1) {
+      query.$and = andConditions;
+    } else {
+      Object.assign(query, orgFilter);
+    }
+
+    if (status) query.status = status;
+    if (vendorType) query.vendorType = vendorType;
+
+    const validSortFields = ['createdAt', 'updatedAt', 'displayName', 'name', 'email', 'companyName'];
+    const safeSortBy = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
+    const sort: any = {};
+    sort[safeSortBy] = sortOrder === 'asc' ? 1 : -1;
+
+    const skip = Math.max(0, (parseInt(page) - 1) * parseInt(limit));
+    const limitValue = Math.max(1, Math.min(1000, parseInt(limit)));
+
+    const vendors = await Vendor.find(query)
+      .sort(sort)
+      .skip(skip)
+      .limit(limitValue)
+      .select('-__v')
+      .lean();
+
+    const total = await Vendor.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: vendors,
+      pagination: {
+        page: parseInt(page),
+        limit: limitValue,
+        total,
+        pages: Math.ceil(total / limitValue)
+      }
+    });
+  } catch (error: any) {
+    console.error('Error in getAllVendors:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching vendors',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get next vendor number
+ * POST /api/vendors/next-number
+ */
+export const getNextVendorNumber = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user || !req.user.organizationId) {
+      res.status(401).json({ success: false, message: "Unauthorized" });
+      return;
+    }
+
+    const { prefix = "VEN-", start = "0001" } = req.body;
+    const orgId = req.user.organizationId;
+
+    // Find the highest existing vendor number with this prefix
+    const latestVendor = await Vendor.findOne({
+      organization: orgId,
+      vendorNumber: { $regex: `^${escapeRegex(String(prefix))}` }
+    })
+    .sort({ vendorNumber: -1 })
+    .lean();
+
+    let nextNumber = start;
+    if (latestVendor && latestVendor.vendorNumber) {
+      const currentNumberStr = latestVendor.vendorNumber.replace(String(prefix), "");
+      const currentNumberInt = parseInt(currentNumberStr);
+      if (!isNaN(currentNumberInt)) {
+        const nextInt = currentNumberInt + 1;
+        nextNumber = nextInt.toString().padStart(start.length, "0");
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        number: `${prefix}${nextNumber}`,
+        nextNumber: `${prefix}${nextNumber}`
+      }
+    });
+  } catch (error: any) {
+    console.error("Error generating next vendor number:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error generating next vendor number",
       error: error.message
     });
   }
@@ -278,6 +435,10 @@ export const createVendor = async (req: AuthRequest, res: Response): Promise<voi
       error: error.message
     });
   }
+};
+
+const escapeRegex = (value: string): string => {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 };
 
 // Update vendor

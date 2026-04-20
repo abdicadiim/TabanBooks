@@ -427,6 +427,55 @@ export const getAllCustomers = async (req: AuthRequest, res: Response): Promise<
   }
 };
 
+/**
+ * Get next customer number
+ * POST /api/customers/next-number
+ */
+export const getNextCustomerNumber = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user || !req.user.organizationId) {
+      res.status(401).json({ success: false, message: "Unauthorized" });
+      return;
+    }
+
+    const { prefix = "CUS-", start = "0001" } = req.body;
+    const orgId = req.user.organizationId;
+
+    // Find the highest existing customer number with this prefix
+    const latestCustomer = await Customer.findOne({
+      organization: orgId,
+      customerNumber: { $regex: `^${escapeRegex(prefix)}` }
+    })
+    .sort({ customerNumber: -1 })
+    .lean();
+
+    let nextNumber = start;
+    if (latestCustomer && latestCustomer.customerNumber) {
+      const currentNumberStr = latestCustomer.customerNumber.replace(prefix, "");
+      const currentNumberInt = parseInt(currentNumberStr);
+      if (!isNaN(currentNumberInt)) {
+        const nextInt = currentNumberInt + 1;
+        nextNumber = nextInt.toString().padStart(start.length, "0");
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        number: `${prefix}${nextNumber}`,
+        nextNumber: `${prefix}${nextNumber}`
+      }
+    });
+  } catch (error: any) {
+    console.error("Error generating next customer number:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error generating next customer number",
+      error: error.message
+    });
+  }
+};
+
 // Get single customer by ID
 export const getCustomerById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

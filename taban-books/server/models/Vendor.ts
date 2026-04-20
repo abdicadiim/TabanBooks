@@ -58,6 +58,7 @@ export interface IVendor extends Document {
   xHandle?: string;
   skypeName?: string;
   facebook?: string;
+  vendorNumber?: string;
   contactNumber?: string;
   vendorLanguage?: string;
   taxRate?: string;
@@ -178,6 +179,7 @@ const vendorSchema = new Schema<IVendor>({
   xHandle: { type: String, default: '' },
   skypeName: { type: String, default: '' },
   facebook: { type: String, default: '' },
+  vendorNumber: { type: String, default: '' },
   contactNumber: { type: String, default: '' },
 
   // Business Details
@@ -255,6 +257,7 @@ vendorSchema.index({ organization: 1, email: 1 });
 vendorSchema.index({ organization: 1, companyName: 1 });
 vendorSchema.index({ organization: 1, status: 1 });
 vendorSchema.index({ organization: 1, createdAt: -1 });
+vendorSchema.index({ organization: 1, vendorNumber: 1 });
 
 // Legacy single indices (can keep or remove, keeping for safety)
 vendorSchema.index({ displayName: 1 });
