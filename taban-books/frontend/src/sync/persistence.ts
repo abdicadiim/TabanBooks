@@ -1,4 +1,5 @@
 import { attachVersionStamp, createVersionStamp, isPlainObject, type SyncVersionStamp } from "./versioning";
+import { callIndexedDbWorker } from "./indexedDbWorkerClient";
 
 export interface SyncStorageAdapter<TValue> {
   read: () => Promise<TValue | null>;
@@ -30,22 +31,26 @@ export type SyncPendingOperationRecord<TPayload = unknown> = {
 export type SyncBinaryAssetRecord = {
   key: string;
   resource: string;
+  resourceId?: string;
   itemId: string;
   fileHash: string;
   fileHashAlgorithm?: string;
-  blob: Blob;
+  blob: Blob | ArrayBuffer;
   mimeType?: string;
   updatedAt: string;
+  timestamp?: number;
   version_id?: string;
   last_updated?: string;
 };
 
 const SYNC_DB_NAME = "taban-sync-engine";
-const SYNC_DB_VERSION = 1;
+const SYNC_DB_VERSION = 2;
 const CACHE_STORE = "sync-cache";
 const PENDING_STORE = "sync-pending-operations";
 const BINARY_STORE = "sync-binary-assets";
 const BINARY_RESOURCE_INDEX = "by-resource";
+const BINARY_RESOURCE_ID_INDEX = "by-resource-id";
+const BINARY_TIMESTAMP_INDEX = "by-timestamp";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -159,9 +164,20 @@ function getDb() {
           pendingStore.createIndex(BINARY_RESOURCE_INDEX, "resource", { unique: false });
         }
 
+        let binaryStore: IDBObjectStore;
         if (!db.objectStoreNames.contains(BINARY_STORE)) {
-          const binaryStore = db.createObjectStore(BINARY_STORE, { keyPath: "key" });
+          binaryStore = db.createObjectStore(BINARY_STORE, { keyPath: "key" });
+        } else {
+          binaryStore = request.transaction!.objectStore(BINARY_STORE);
+        }
+        if (!binaryStore.indexNames.contains(BINARY_RESOURCE_INDEX)) {
           binaryStore.createIndex(BINARY_RESOURCE_INDEX, "resource", { unique: false });
+        }
+        if (!binaryStore.indexNames.contains(BINARY_RESOURCE_ID_INDEX)) {
+          binaryStore.createIndex(BINARY_RESOURCE_ID_INDEX, "resourceId", { unique: false });
+        }
+        if (!binaryStore.indexNames.contains(BINARY_TIMESTAMP_INDEX)) {
+          binaryStore.createIndex(BINARY_TIMESTAMP_INDEX, "timestamp", { unique: false });
         }
       };
 
@@ -259,9 +275,7 @@ function getSerializedSize(value: string) {
 }
 
 export async function readCacheValue<TValue>(key: string) {
-  const record = await withStore<SyncCacheRecord<TValue> | undefined>(CACHE_STORE, "readonly", (store) =>
-    wrapRequest(store.get(key)),
-  );
+  const record = await callIndexedDbWorker<SyncCacheRecord<TValue> | undefined>("cache.read", { key });
   if (!record) return null;
   return normalizeVersionedValue(record.value);
 }
@@ -269,27 +283,23 @@ export async function readCacheValue<TValue>(key: string) {
 export async function writeCacheValue<TValue>(key: string, value: TValue) {
   const nextValue = normalizeVersionedValue(value);
   const stamp = createVersionStamp();
-  await withStore<void>(CACHE_STORE, "readwrite", (store) =>
-    wrapRequest(
-      store.put({
-        key,
-        value: nextValue,
-        version_id: String((nextValue as Record<string, unknown>)?.version_id || stamp.version_id),
-        last_updated: String((nextValue as Record<string, unknown>)?.last_updated || stamp.last_updated),
-        updatedAt: Date.now(),
-      } satisfies SyncCacheRecord<TValue>),
-    ).then(() => undefined),
-  );
+  await callIndexedDbWorker<void>("cache.write", {
+    record: {
+      key,
+      value: nextValue,
+      version_id: String((nextValue as Record<string, unknown>)?.version_id || stamp.version_id),
+      last_updated: String((nextValue as Record<string, unknown>)?.last_updated || stamp.last_updated),
+      updatedAt: Date.now(),
+    } satisfies SyncCacheRecord<TValue>,
+  });
 }
 
 export async function clearCacheValue(key: string) {
-  await withStore<void>(CACHE_STORE, "readwrite", (store) => wrapRequest(store.delete(key)).then(() => undefined));
+  await callIndexedDbWorker<void>("cache.clear", { key });
 }
 
 export async function listPendingOperations<TPayload = unknown>(resource: string) {
-  const operations = await withStore<SyncPendingOperationRecord<TPayload>[]>(PENDING_STORE, "readonly", (store) =>
-    wrapRequest(store.index(BINARY_RESOURCE_INDEX).getAll(resource)),
-  );
+  const operations = await callIndexedDbWorker<SyncPendingOperationRecord<TPayload>[]>("pending.list", { resource });
   const fallbackStamp = createVersionStamp();
   return operations
     .map((operation) => ({
@@ -302,46 +312,78 @@ export async function listPendingOperations<TPayload = unknown>(resource: string
 
 export async function upsertPendingOperation<TPayload = unknown>(operation: SyncPendingOperationRecord<TPayload>) {
   const stamp = createVersionStamp();
-  await withStore<void>(PENDING_STORE, "readwrite", (store) =>
-    wrapRequest(
-      store.put({
-        ...operation,
-        version_id: operation.version_id || stamp.version_id,
-        last_updated: operation.last_updated || stamp.last_updated,
-      }),
-    ).then(() => undefined),
-  );
+  await callIndexedDbWorker<void>("pending.upsert", {
+    record: {
+      ...operation,
+      version_id: operation.version_id || stamp.version_id,
+      last_updated: operation.last_updated || stamp.last_updated,
+    },
+  });
 }
 
 export async function deletePendingOperation(operationId: string) {
-  await withStore<void>(PENDING_STORE, "readwrite", (store) => wrapRequest(store.delete(operationId)).then(() => undefined));
+  await callIndexedDbWorker<void>("pending.delete", { id: operationId });
 }
 
-export async function getBinaryAsset(key: string) {
-  return withStore<SyncBinaryAssetRecord | undefined>(BINARY_STORE, "readonly", (store) => wrapRequest(store.get(key)));
+export async function bulkUpsertPendingOperations<TPayload = unknown>(
+  operations: Array<SyncPendingOperationRecord<TPayload>>,
+) {
+  const stamp = createVersionStamp();
+  const records = (Array.isArray(operations) ? operations : []).map((operation) => ({
+    ...operation,
+    version_id: operation.version_id || stamp.version_id,
+    last_updated: operation.last_updated || stamp.last_updated,
+  }));
+  await callIndexedDbWorker<void>("pending.bulkUpsert", { records });
 }
 
-export async function listBinaryAssets(resource: string) {
-  return withStore<SyncBinaryAssetRecord[]>(BINARY_STORE, "readonly", (store) =>
-    wrapRequest(store.index(BINARY_RESOURCE_INDEX).getAll(resource)),
-  );
+export type SyncBinaryAssetMetadata = Omit<SyncBinaryAssetRecord, "blob">;
+
+export async function getBinaryAsset(key: string, options: { metadataOnly: true }): Promise<SyncBinaryAssetMetadata | undefined>;
+export async function getBinaryAsset(key: string, options?: { metadataOnly?: false }): Promise<SyncBinaryAssetRecord | undefined>;
+export async function getBinaryAsset(key: string, options?: { metadataOnly?: boolean }) {
+  return callIndexedDbWorker<SyncBinaryAssetRecord | SyncBinaryAssetMetadata | undefined>("binary.get", {
+    key,
+    metadataOnly: Boolean(options?.metadataOnly),
+  });
+}
+
+export async function listBinaryAssets(resource: string, options: { metadataOnly: true }): Promise<SyncBinaryAssetMetadata[]>;
+export async function listBinaryAssets(resource: string, options?: { metadataOnly?: false }): Promise<SyncBinaryAssetRecord[]>;
+export async function listBinaryAssets(resource: string, options?: { metadataOnly?: boolean }) {
+  return callIndexedDbWorker<Array<SyncBinaryAssetRecord | SyncBinaryAssetMetadata>>("binary.list", {
+    resource,
+    metadataOnly: options?.metadataOnly ?? true,
+  }) as Promise<any>;
 }
 
 export async function upsertBinaryAsset(record: SyncBinaryAssetRecord) {
   const stamp = createVersionStamp();
-  await withStore<void>(BINARY_STORE, "readwrite", (store) =>
-    wrapRequest(
-      store.put({
-        ...record,
-        version_id: record.version_id || stamp.version_id,
-        last_updated: record.last_updated || stamp.last_updated,
-      }),
-    ).then(() => undefined),
-  );
+  await callIndexedDbWorker<void>("binary.upsert", {
+    record: {
+      ...record,
+      resourceId: record.resourceId || record.resource,
+      timestamp: record.timestamp ?? (Date.parse(record.updatedAt || "") || Date.now()),
+      version_id: record.version_id || stamp.version_id,
+      last_updated: record.last_updated || stamp.last_updated,
+    },
+  });
+}
+
+export async function bulkUpsertBinaryAssets(records: SyncBinaryAssetRecord[]) {
+  const stamp = createVersionStamp();
+  const normalized = (Array.isArray(records) ? records : []).map((record) => ({
+    ...record,
+    resourceId: record.resourceId || record.resource,
+    timestamp: record.timestamp ?? (Date.parse(record.updatedAt || "") || Date.now()),
+    version_id: record.version_id || stamp.version_id,
+    last_updated: record.last_updated || stamp.last_updated,
+  }));
+  await callIndexedDbWorker<void>("binary.bulkUpsert", { records: normalized });
 }
 
 export async function deleteBinaryAsset(key: string) {
-  await withStore<void>(BINARY_STORE, "readwrite", (store) => wrapRequest(store.delete(key)).then(() => undefined));
+  await callIndexedDbWorker<void>("binary.delete", { key });
 }
 
 export function createSecureLocalStorageAdapter<TValue>(options: {

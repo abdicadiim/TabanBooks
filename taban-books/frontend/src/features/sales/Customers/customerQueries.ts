@@ -26,6 +26,8 @@ export type CustomersListQueryResult = {
     limit: number;
     pages: number;
   };
+  version_id?: string;
+  last_updated?: string;
 };
 
 const CUSTOMER_LIST_STALE_TIME_MS = 30 * 1000;
@@ -107,6 +109,8 @@ const toListQueryResult = (
       limit,
       pages,
     },
+    version_id: response?.version_id,
+    last_updated: response?.last_updated,
   };
 };
 
@@ -268,13 +272,13 @@ export const syncCustomerIntoCustomerQueries = (queryClient: QueryClient, custom
 
   queryClient.setQueryData(customerQueryKeys.detail(normalizedCustomer.id), normalizedCustomer);
 
-  const cachedListQueries = queryClient.getQueriesData({
+  const cachedListQueries = queryClient.getQueriesData<CustomersListQueryResult>({
     queryKey: customerQueryKeys.lists(),
   });
 
   cachedListQueries.forEach((query) => {
     const queryKey = query[0];
-    queryClient.setQueryData(queryKey, (existing: CustomersListQueryResult | undefined) =>
+    queryClient.setQueryData<CustomersListQueryResult>(queryKey, (existing) =>
       upsertCustomerInListResult(existing, normalizedCustomer, queryKey)
     );
   });
@@ -290,13 +294,13 @@ export const removeCustomerFromCustomerQueries = (queryClient: QueryClient, cust
     queryKey: customerQueryKeys.detail(normalizedCustomerId),
   });
 
-  const cachedListQueries = queryClient.getQueriesData({
+  const cachedListQueries = queryClient.getQueriesData<CustomersListQueryResult>({
     queryKey: customerQueryKeys.lists(),
   });
 
   cachedListQueries.forEach((query) => {
     const queryKey = query[0];
-    queryClient.setQueryData(queryKey, (existing: CustomersListQueryResult | undefined) =>
+    queryClient.setQueryData<CustomersListQueryResult>(queryKey, (existing) =>
       removeCustomerFromListResult(existing, normalizedCustomerId)
     );
   });
@@ -326,7 +330,6 @@ export const useCustomersListQuery = (
     queryFn: () => fetchCustomersList(normalizedParams),
     enabled: options?.enabled ?? true,
     staleTime: CUSTOMER_LIST_STALE_TIME_MS,
-    refetchOnMount: "always",
     placeholderData: keepPreviousData,
   });
 };
@@ -353,7 +356,6 @@ export const useCustomerDetailQuery = (
     queryFn: () => fetchCustomerDetail(normalizedCustomerId),
     enabled: (options?.enabled ?? true) && Boolean(normalizedCustomerId),
     staleTime: CUSTOMER_DETAIL_STALE_TIME_MS,
-    refetchOnMount: "always",
     placeholderData: options?.preferFresh
       ? undefined
       : () =>
@@ -363,9 +365,10 @@ export const useCustomerDetailQuery = (
   });
 
   useEffect(() => {
-    if (!detailQuery.data || detailQuery.isPlaceholderData) return;
+    const isPlaceholder = (detailQuery as any).isPlaceholderData;
+    if (!detailQuery.data || isPlaceholder) return;
     syncCustomerIntoCustomerQueries(queryClient, detailQuery.data);
-  }, [detailQuery.data, detailQuery.isPlaceholderData, queryClient]);
+  }, [detailQuery.data, (detailQuery as any).isPlaceholderData, queryClient]);
 
   return detailQuery;
 };
@@ -395,7 +398,7 @@ export const useSaveCustomerMutation = () => {
 
       return normalizedCustomer;
     },
-    onSuccess: async (savedCustomer) => {
+    onSuccess: async (savedCustomer: { id: string }) => {
       syncCustomerIntoCustomerQueries(queryClient, savedCustomer);
       await invalidateCustomerQueries(queryClient, savedCustomer.id);
     },

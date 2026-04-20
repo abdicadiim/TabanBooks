@@ -55,7 +55,7 @@ export default function Customers() {
   ]);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-72px)] w-full bg-white font-sans text-gray-800 antialiased relative overflow-hidden">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white font-sans text-gray-800 antialiased relative">
       <CustomersPageContent controller={controller} />
       {shouldRenderBulkUpdateModal ? (
         <Suspense fallback={null}>

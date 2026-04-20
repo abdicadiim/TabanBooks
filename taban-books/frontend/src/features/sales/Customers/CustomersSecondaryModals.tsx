@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { AlertTriangle, ChevronDown, Edit, Eye, EyeOff, Info, Loader2, Lock, Plus, Search, SlidersHorizontal, X } from "lucide-react";
 import { toast } from "react-hot-toast";
 
@@ -24,7 +24,7 @@ const toSerializableCustomerState = (value: any) => {
   }
 };
 
-export default function CustomersSecondaryModals({ controller }: { controller: any }) {
+export default function CustomersSecondaryModals({ controller }: { controller: import("./useCustomersPageController").CustomersPageController }) {
   const {
     activePreferencesTab,
     bulkConsolidatedAction,
@@ -688,7 +688,7 @@ export default function CustomersSecondaryModals({ controller }: { controller: a
 
       {/* Receivables Dropdown Overlay - Rendered outside table to avoid clipping */}
       {
-        openReceivablesDropdownId && displayedCustomers.find(c => c.id === openReceivablesDropdownId) && (
+        openReceivablesDropdownId && displayedCustomers.find((c: any) => c.id === openReceivablesDropdownId) && (
           <div
             ref={receivablesDropdownRef}
             className="fixed bg-transparent z-[10000]"
@@ -697,8 +697,8 @@ export default function CustomersSecondaryModals({ controller }: { controller: a
               left: `${receivablesDropdownPosition.left}px`
             }}
             onMouseEnter={() => {
-              const customer = displayedCustomers.find(c => c.id === openReceivablesDropdownId);
-              if (customer) setHoveredRowId(customer.id);
+              const customer = displayedCustomers.find((c: any) => c.id === openReceivablesDropdownId);
+              if (customer) setHoveredRowId(customer.id || null);
             }}
             onMouseLeave={() => {
               setOpenReceivablesDropdownId(null);
@@ -709,7 +709,7 @@ export default function CustomersSecondaryModals({ controller }: { controller: a
               onClick={(e) => {
                 e.stopPropagation();
                 if (openReceivablesDropdownId) {
-                  const customer = displayedCustomers.find(c => c.id === openReceivablesDropdownId);
+                  const customer = displayedCustomers.find((c: any) => c.id === openReceivablesDropdownId);
                   const customerId = String(
                     customer?._id || customer?.id || openReceivablesDropdownId || ""
                   ).trim();

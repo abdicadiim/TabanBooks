@@ -2563,15 +2563,9 @@ export default function SubscriptionQuote() {
           <button
             type="button"
             onClick={() => navigate("/sales/quotes/new")}
-            className="pb-3 text-[18px] text-slate-700 transition hover:text-slate-900"
-          >
-            Quote
-          </button>
-          <button
-            type="button"
             className="border-b-2 border-[#3b82f6] pb-3 text-[18px] font-semibold text-slate-900"
           >
-            Subscription Quote
+            Quote
           </button>
         </div>
         <button

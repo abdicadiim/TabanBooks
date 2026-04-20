@@ -3,7 +3,7 @@ import { ChevronDown, Mail } from "lucide-react";
 
 type CustomerDetailMailsTabProps = {
   mails: any[];
-  linkEmailDropdownRef: React.RefObject<HTMLDivElement>;
+  linkEmailDropdownRef: React.RefObject<HTMLDivElement | null>;
   isLinkEmailDropdownOpen: boolean;
   onToggleLinkEmailDropdown: () => void;
   onConnectZohoMail: () => void;

@@ -1,7 +1,8 @@
 ﻿import React from "react";
 import { ChevronDown, Search, X } from "lucide-react";
+import type { CustomersPageController } from "./useCustomersPageController";
 
-export default function CustomersSearchModal({ controller }: { controller: any }) {
+export default function CustomersSearchModal({ controller }: { controller: CustomersPageController }) {
   const {
     accountDropdownRef,
     adjustmentTypeDropdownRef,

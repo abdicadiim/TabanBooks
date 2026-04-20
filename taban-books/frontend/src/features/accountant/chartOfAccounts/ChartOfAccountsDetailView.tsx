@@ -58,6 +58,29 @@ const formatMoney = (value: number) =>
     maximumFractionDigits: 2,
   });
 
+const formatTransactionSourceType = (value: unknown): string => {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "Journal";
+  const map: Record<string, string> = {
+    invoice: "Invoice",
+    credit_note: "Credit Note",
+    payment_received: "Payment Received",
+    payment_made: "Payment Made",
+    sales_receipt: "Sales Receipt",
+    bill: "Bill",
+    expense: "Expense",
+    manual_journal: "Journal",
+    journal: "Journal",
+  };
+  if (map[raw]) return map[raw];
+  return raw
+    .replace(/_/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
 export function ChartOfAccountsDetailView({
   accountTransactions,
   accounts,
@@ -313,31 +336,40 @@ export function ChartOfAccountsDetailView({
             }}
           >
             <div>
-              <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 600, color: "#0f172a" }}>
+              <h3 style={{ margin: 0, fontSize: "24px", fontWeight: 500, color: "#111827" }}>
                 Recent Transactions
               </h3>
-              <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#64748b" }}>
-                Review the latest journal lines connected to this account.
-              </p>
             </div>
-            {accountTransactions.length > 0 && (
+            <div style={{ display: "flex", gap: "4px" }}>
               <button
                 type="button"
-                onClick={onOpenTransactionReport}
                 style={{
-                  borderRadius: "10px",
-                  border: "1px solid #cbd5e1",
-                  backgroundColor: "#ffffff",
-                  color: "#0f172a",
-                  padding: "10px 14px",
-                  fontSize: "13px",
-                  fontWeight: 600,
+                  border: "1px solid #0f766e",
+                  backgroundColor: "#f0fdfa",
+                  color: "#0f766e",
+                  padding: "4px 8px",
+                  borderRadius: "4px",
+                  fontSize: "12px",
                   cursor: "pointer",
                 }}
               >
-                Open Report
+                FCY
               </button>
-            )}
+              <button
+                type="button"
+                style={{
+                  border: "1px solid #cbd5e1",
+                  backgroundColor: "#ffffff",
+                  color: "#64748b",
+                  padding: "4px 8px",
+                  borderRadius: "4px",
+                  fontSize: "12px",
+                  cursor: "pointer",
+                }}
+              >
+                BCY
+              </button>
+            </div>
           </div>
 
           {isTransactionsLoading ? (
@@ -357,15 +389,16 @@ export function ChartOfAccountsDetailView({
               There are no transactions available for this account yet.
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <>
+              <div style={{ overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: "8px" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
-                  <tr style={{ borderBottom: "1px solid #e5e7eb", textAlign: "left" }}>
-                    <th style={{ padding: "12px 8px", fontSize: "12px", color: "#64748b" }}>Date</th>
-                    <th style={{ padding: "12px 8px", fontSize: "12px", color: "#64748b" }}>Details</th>
-                    <th style={{ padding: "12px 8px", fontSize: "12px", color: "#64748b" }}>Type</th>
-                    <th style={{ padding: "12px 8px", fontSize: "12px", color: "#64748b", textAlign: "right" }}>Debit</th>
-                    <th style={{ padding: "12px 8px", fontSize: "12px", color: "#64748b", textAlign: "right" }}>Credit</th>
+                  <tr style={{ borderBottom: "1px solid #e5e7eb", textAlign: "left", backgroundColor: "#f8fafc" }}>
+                    <th style={{ padding: "10px 16px", fontSize: "12px", color: "#64748b", textTransform: "uppercase" }}>Date</th>
+                    <th style={{ padding: "10px 16px", fontSize: "12px", color: "#64748b", textTransform: "uppercase" }}>Transaction Details</th>
+                    <th style={{ padding: "10px 16px", fontSize: "12px", color: "#64748b", textTransform: "uppercase" }}>Type</th>
+                    <th style={{ padding: "10px 16px", fontSize: "12px", color: "#64748b", textAlign: "right", textTransform: "uppercase" }}>Debit</th>
+                    <th style={{ padding: "10px 16px", fontSize: "12px", color: "#64748b", textAlign: "right", textTransform: "uppercase" }}>Credit</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -377,27 +410,24 @@ export function ChartOfAccountsDetailView({
                         style={{ borderBottom: "1px solid #f1f5f9", cursor: "pointer" }}
                         onClick={onOpenTransactionReport}
                       >
-                        <td style={{ padding: "14px 8px", fontSize: "14px", color: "#0f172a" }}>
+                        <td style={{ padding: "14px 16px", fontSize: "20px", color: "#111827", fontWeight: 400 }}>
                           {new Date(transaction.date).toLocaleDateString("en-GB", {
                             day: "2-digit",
-                            month: "short",
+                            month: "2-digit",
                             year: "numeric",
                           })}
                         </td>
-                        <td style={{ padding: "14px 8px", fontSize: "14px", color: "#334155" }}>
+                        <td style={{ padding: "14px 16px", fontSize: "20px", color: "#111827" }}>
                           <div>{transaction.description || transaction.reference || "Manual Journal"}</div>
-                          <div style={{ marginTop: "4px", fontSize: "12px", color: "#94a3b8" }}>
-                            {transaction.entryNumber}
-                          </div>
                         </td>
-                        <td style={{ padding: "14px 8px", fontSize: "14px", color: "#64748b" }}>
-                          Journal
+                        <td style={{ padding: "14px 16px", fontSize: "20px", color: "#111827" }}>
+                          {formatTransactionSourceType(transaction.sourceType || transaction.type)}
                         </td>
-                        <td style={{ padding: "14px 8px", fontSize: "14px", color: "#0f172a", textAlign: "right" }}>
-                          {line?.debit ? formatMoney(line.debit) : "--"}
+                        <td style={{ padding: "14px 16px", fontSize: "20px", color: "#111827", textAlign: "right" }}>
+                          {line?.debit ? `${currencyLabel}${formatMoney(line.debit)}` : ""}
                         </td>
-                        <td style={{ padding: "14px 8px", fontSize: "14px", color: "#0f172a", textAlign: "right" }}>
-                          {line?.credit ? formatMoney(line.credit) : "--"}
+                        <td style={{ padding: "14px 16px", fontSize: "20px", color: "#111827", textAlign: "right" }}>
+                          {line?.credit ? `${currencyLabel}${formatMoney(line.credit)}` : ""}
                         </td>
                       </tr>
                     );
@@ -418,6 +448,24 @@ export function ChartOfAccountsDetailView({
                 </tfoot>
               </table>
             </div>
+              <div style={{ marginTop: "12px" }}>
+                <button
+                  type="button"
+                  onClick={onOpenTransactionReport}
+                  style={{
+                    border: "none",
+                    background: "none",
+                    color: "#4f46e5",
+                    textDecoration: "underline",
+                    fontSize: "14px",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  Show more details
+                </button>
+              </div>
+            </>
           )}
         </div>
       </main>

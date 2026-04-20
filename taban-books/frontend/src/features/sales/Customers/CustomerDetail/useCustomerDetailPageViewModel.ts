@@ -1558,6 +1558,7 @@ export function useCustomerDetailPageViewModel(args: any) {
         primaryContact,
         resolvedPrimaryContactIndex,
         associatedTagLabels,
+        customerSubscriptions: [],
         toggleSection,
         openTransactionSection,
         toggleTransactionSection,

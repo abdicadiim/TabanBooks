@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Search } from "lucide-react";
 
 type ZohoSelectProps = {
   value: string;
@@ -9,6 +9,10 @@ type ZohoSelectProps = {
   direction?: "up" | "down";
   groupBy?: string;
   className?: string;
+  searchable?: boolean;
+  searchPlaceholder?: string;
+  selectedVariant?: "default" | "blue";
+  showSelectedCheck?: boolean;
 };
 
 const getOptionValue = (option: any) =>
@@ -25,8 +29,13 @@ export default function ZohoSelect({
   direction = "down",
   groupBy,
   className = "",
+  searchable = false,
+  searchPlaceholder = "Search",
+  selectedVariant = "default",
+  showSelectedCheck = false,
 }: ZohoSelectProps) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -40,13 +49,23 @@ export default function ZohoSelect({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const filteredOptions = useMemo(() => {
+    const term = String(search || "").trim().toLowerCase();
+    if (!term) return options || [];
+    return (options || []).filter((option) => {
+      const label = getOptionLabel(option).toLowerCase();
+      const val = getOptionValue(option).toLowerCase();
+      return label.includes(term) || val.includes(term);
+    });
+  }, [options, search]);
+
   const groupedOptions = useMemo(() => {
     if (!groupBy) {
-      return [{ group: "", items: options || [] }];
+      return [{ group: "", items: filteredOptions || [] }];
     }
 
     const groups = new Map<string, any[]>();
-    (options || []).forEach((option) => {
+    (filteredOptions || []).forEach((option) => {
       const groupName = String(option?.[groupBy] || "Other").trim() || "Other";
       if (!groups.has(groupName)) {
         groups.set(groupName, []);
@@ -55,7 +74,7 @@ export default function ZohoSelect({
     });
 
     return Array.from(groups.entries()).map(([group, items]) => ({ group, items }));
-  }, [groupBy, options]);
+  }, [filteredOptions, groupBy]);
 
   const selectedOption = useMemo(
     () => (options || []).find((option) => getOptionValue(option) === String(value || "")) || null,
@@ -63,6 +82,10 @@ export default function ZohoSelect({
   );
 
   const dropdownPlacement = direction === "up" ? "bottom-full mb-2" : "top-full mt-1";
+  const selectedClasses =
+    selectedVariant === "blue"
+      ? "bg-[#3B82F6] text-white hover:bg-[#3B82F6]"
+      : "bg-slate-100 text-slate-900";
 
   return (
     <div ref={wrapperRef} className="relative w-full">
@@ -83,6 +106,19 @@ export default function ZohoSelect({
 
       {open && (
         <div className={`absolute left-0 ${dropdownPlacement} z-[13000] w-full overflow-hidden rounded-md border border-gray-200 bg-white shadow-xl`}>
+          {searchable && (
+            <div className="border-b border-gray-100 bg-white px-3 py-2">
+              <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-2 py-1.5">
+                <Search size={14} className="text-gray-400" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={searchPlaceholder}
+                  className="w-full bg-transparent text-sm text-gray-700 outline-none placeholder:text-gray-400"
+                />
+              </div>
+            </div>
+          )}
           <div className="max-h-64 overflow-y-auto py-1">
             {groupedOptions.map(({ group, items }) => (
               <div key={group || "default"}>
@@ -98,15 +134,19 @@ export default function ZohoSelect({
                     <button
                       key={optionValue || getOptionLabel(option)}
                       type="button"
-                      className={`flex w-full items-center px-3 py-2 text-left text-sm hover:bg-slate-50 ${
-                        isSelected ? "bg-slate-100 text-slate-900" : "text-slate-700"
+                      className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-50 ${
+                        isSelected ? selectedClasses : "text-slate-700"
                       }`}
                       onClick={() => {
                         onChange(optionValue);
+                        setSearch("");
                         setOpen(false);
                       }}
                     >
                       <span className="truncate">{getOptionLabel(option)}</span>
+                      {showSelectedCheck && isSelected && (
+                        <Check size={16} className={selectedVariant === "blue" ? "text-white" : "text-slate-900"} />
+                      )}
                     </button>
                   );
                 })}

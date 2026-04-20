@@ -1,5 +1,12 @@
 {
     "compilerOptions": {
+        "ignoreDeprecations": "6.0",
+        "baseUrl": ".",
+        "paths": {
+            "@tanstack/react-query": [
+                "src/features/sales/salesModel.ts"
+            ]
+        },
         "target": "ESNext",
         "useDefineForClassFields": true,
         "lib": [

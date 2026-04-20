@@ -25,20 +25,9 @@ import { COUNTRY_PHONE_CODES, WORLD_COUNTRIES, getStatesByCountry } from "../../
 
 // Sample salespersons data - REMOVED: Now using backend API only
 
-// Sample items data - will be replaced by items from localStorage
-const defaultSampleItems = [
-  { id: "1", name: "iphone", sku: "Ip011", rate: 20.00, stockOnHand: 0.00, unit: "box" },
-  { id: "2", name: "laptop", sku: "Lp022", rate: 1500.00, stockOnHand: 5.00, unit: "piece" },
-  { id: "3", name: "keyboard", sku: "Kb033", rate: 45.00, stockOnHand: 12.00, unit: "piece" },
-  { id: "4", name: "mouse", sku: "Ms044", rate: 25.00, stockOnHand: 8.00, unit: "piece" },
-  { id: "5", name: "monitor", sku: "Mn055", rate: 300.00, stockOnHand: 3.00, unit: "piece" },
-];
-
 const PRICE_LISTS_STORAGE_KEY = "inv_price_lists_v1";
-  const PLANS_STORAGE_KEY = "inv_plans_v1";
-  const PLANS_STORAGE_KEYS = [PLANS_STORAGE_KEY, "taban_plans"];
-  const LS_LOCATIONS_ENABLED_KEY = "taban_locations_enabled";
-  const LS_LOCATIONS_CACHE_KEY = "taban_locations_cache";
+const LS_LOCATIONS_ENABLED_KEY = "taban_locations_enabled";
+const LS_LOCATIONS_CACHE_KEY = "taban_locations_cache";
 
 type CatalogPriceListOption = {
   id: string;
@@ -63,7 +52,6 @@ const NewQuote = () => {
   const { baseCurrencyCode } = useCurrency();
   const { quoteId } = useParams();
   const isEditMode = !!quoteId;
-  const isSubscriptionMode = location.pathname.includes("/sales/quotes/subscription/new");
   const clonedDataFromState = location.state?.clonedData || null;
   const readPersistedEditQuote = () => {
     if (!isEditMode || !quoteId || typeof window === "undefined") return null;
@@ -521,7 +509,6 @@ const NewQuote = () => {
   const bulkActionsRef = useRef(null);
   const [isTheseDropdownOpen, setIsTheseDropdownOpen] = useState(false);
   const [showAdditionalInformation, setShowAdditionalInformation] = useState(false);
-  const [additionalInfoItemIds, setAdditionalInfoItemIds] = useState<string[]>([]);
   const [isNewItemModalOpen, setIsNewItemModalOpen] = useState(false);
   const [newItemTargetRowId, setNewItemTargetRowId] = useState<string | number | null>(null);
   const [isReportingTagsModalOpen, setIsReportingTagsModalOpen] = useState(false);
@@ -605,8 +592,8 @@ const NewQuote = () => {
     return true;
   };
 
-  // Load items from localStorage
-  const [availableItems, setAvailableItems] = useState<any[]>(defaultSampleItems as any[]);
+  // Load items from the database
+  const [availableItems, setAvailableItems] = useState<any[]>([]);
 
   const loadCustomersForDropdown = async () => {
     try {
@@ -1244,21 +1231,126 @@ const NewQuote = () => {
           setSalespersons([]);
         }
 
-        const transformedItems = itemsResult.status === "fulfilled"
-          ? (itemsResult.value || []).map((item: any) => ({
-            ...item,
-            entityType: "item",
-            id: String(item._id || item.id || ""),
-            sourceId: String(item._id || item.id || ""),
-            name: String(item.name || "").trim(),
-            sku: String(item.sku || item.itemCode || "").trim(),
-            code: String(item.sku || item.itemCode || "").trim(),
-            rate: Number(item.sellingPrice || item.costPrice || item.rate || 0) || 0,
-            stockOnHand: Number(item.stockOnHand || item.quantityOnHand || item.stockQuantity || 0) || 0,
-            unit: item.unit || item.unitOfMeasure || "pcs",
-            description: item.salesDescription || item.description || ""
-          }))
-          : [];
+        const normalizeBoolean = (value: any): boolean | null => {
+          if (typeof value === "boolean") return value;
+          if (typeof value === "number") {
+            if (value === 1) return true;
+            if (value === 0) return false;
+          }
+          if (typeof value === "string") {
+            const normalized = value.trim().toLowerCase();
+            if (["true", "1", "yes", "y", "active", "enabled"].includes(normalized)) return true;
+            if (["false", "0", "no", "n", "inactive", "disabled", "archived"].includes(normalized)) return false;
+          }
+          return null;
+        };
+
+        const extractItemRows = (source: any): any[] => {
+          if (Array.isArray(source)) return source;
+          if (Array.isArray(source?.data)) return source.data;
+          if (Array.isArray(source?.items)) return source.items;
+          if (Array.isArray(source?.data?.items)) return source.data.items;
+          if (Array.isArray(source?.data?.data)) return source.data.data;
+          return [];
+        };
+
+        const mapActiveItems = (rows: any[]): any[] =>
+          (Array.isArray(rows) ? rows : [])
+          .filter((item: any) => {
+            if (!item) return false;
+
+            const status = String(item?.status || "").trim().toLowerCase();
+            if (status && ["inactive", "disabled", "archived"].includes(status)) return false;
+
+            const activeFlags = [
+              normalizeBoolean(item?.active),
+              normalizeBoolean(item?.isActive),
+              normalizeBoolean(item?.is_active),
+            ];
+            if (activeFlags.some((flag) => flag === false)) return false;
+
+            const hasName = String(
+              item?.name ||
+              item?.itemName ||
+              item?.item_name ||
+              item?.displayName ||
+              item?.title ||
+              item?.productName ||
+              ""
+            ).trim().length > 0;
+            return hasName;
+          })
+          .map((item: any, index: number) => {
+            const resolvedId = String(item?._id || item?.id || item?.itemId || item?.item_id || item?.sku || `item-${index}`);
+            const resolvedName = String(
+              item?.name ||
+              item?.itemName ||
+              item?.item_name ||
+              item?.displayName ||
+              item?.title ||
+              item?.productName ||
+              ""
+            ).trim();
+
+            return {
+              ...item,
+              entityType: "item",
+              id: resolvedId,
+              sourceId: resolvedId,
+              name: resolvedName,
+              sku: String(item?.sku || item?.itemCode || item?.code || "").trim(),
+              code: String(item?.sku || item?.itemCode || item?.code || "").trim(),
+              rate: Number(item?.sellingPrice || item?.salesPrice || item?.costPrice || item?.rate || item?.price || 0) || 0,
+              stockOnHand: Number(item?.stockOnHand || item?.quantityOnHand || item?.stockQuantity || item?.openingStock || 0) || 0,
+              unit: item?.unit || item?.unitOfMeasure || "pcs",
+              description: item?.salesDescription || item?.description || "",
+            };
+          });
+
+        const rawItemsValue =
+          itemsResult.status === "fulfilled"
+            ? itemsResult.value
+            : [];
+        const rawItemRows = extractItemRows(rawItemsValue);
+        let transformedItems = mapActiveItems(rawItemRows);
+
+        // Debug/fallback: mirror recurring-invoice behavior by directly requesting item rows
+        // when the shared loader returns an empty list.
+        if (transformedItems.length === 0) {
+          try {
+            const directRows: any[] = [];
+            let page = 1;
+            let totalPages = 1;
+            const limit = 100;
+            do {
+              const directItemsResponse = await itemsAPI.getAll({ page, limit, _ts: Date.now() });
+              const pageRows = extractItemRows(directItemsResponse);
+              if (pageRows.length > 0) {
+                directRows.push(...pageRows);
+              }
+              const pagesFromPagination = Number((directItemsResponse as any)?.pagination?.pages || 0);
+              if (pagesFromPagination > 0) {
+                totalPages = pagesFromPagination;
+              } else if (pageRows.length < limit) {
+                totalPages = page;
+              } else {
+                totalPages = page + 1;
+              }
+              page += 1;
+            } while (page <= totalPages && page <= 100);
+            const directMapped = mapActiveItems(directRows);
+            if (directMapped.length > 0) {
+              transformedItems = directMapped;
+            }
+            console.info("[NewQuote] Items debug", {
+              loaderRows: rawItemRows.length,
+              directRows: directRows.length,
+              activeRows: transformedItems.length,
+            });
+          } catch (directItemError) {
+            console.error("Error loading items directly for New Quote:", directItemError);
+          }
+        }
         if (itemsResult.status !== "fulfilled") {
           console.error("Error loading items:", itemsResult.reason);
         }
@@ -1302,29 +1394,13 @@ const NewQuote = () => {
           console.error("Error parsing plans from API response:", error);
         }
 
-        // Also load plans from localStorage caches (supports legacy keys)
-        try {
-          const mergedLocal: any[] = [];
-          PLANS_STORAGE_KEYS.forEach((key) => {
-            try {
-              const raw = localStorage.getItem(key);
-              const parsed = raw ? JSON.parse(raw) : [];
-              if (Array.isArray(parsed)) mergedLocal.push(...parsed);
-            } catch {
-              // ignore invalid key and continue
-            }
-          });
-          if (mergedLocal.length) {
-            transformedPlans.push(
-              ...mergedLocal.map(normalizePlanRow).filter((plan: any) => plan.name)
-            );
-          }
-        } catch (error) {
-          console.error("Error loading plans from localStorage:", error);
-        }
-
         transformedPlans = transformedPlans
-          .filter((plan: any) => String(plan?.status || "active").toLowerCase() !== "inactive")
+          .filter((plan: any) => {
+            const status = String(plan?.status || "").toLowerCase();
+            if (status === "inactive") return false;
+            if (plan?.isActive === false || plan?.is_active === false) return false;
+            return true;
+          })
           .filter((plan: any) => String(plan?.name || "").trim().length > 0);
 
         const combinedItemsAndPlans = [...transformedItems, ...transformedPlans];
@@ -1392,10 +1468,12 @@ const NewQuote = () => {
         }
 
         if (!resolvedSeriesRow) {
-          setQuotePrefix("");
-          setQuoteNextNumber("");
+          const fallbackPrefix = "QT-";
+          const fallbackNextDigits = "000001";
+          setQuotePrefix(fallbackPrefix);
+          setQuoteNextNumber(fallbackNextDigits);
           if (!isEditMode) {
-            setFormData(prev => ({ ...prev, quoteNumber: "" }));
+            setFormData(prev => ({ ...prev, quoteNumber: buildQuoteNumber(fallbackPrefix, fallbackNextDigits) }));
           }
         }
 
@@ -3588,6 +3666,53 @@ const NewQuote = () => {
     );
   };
 
+  const ensureQuoteItemsLoaded = async () => {
+    if (availableItems.length > 0) return;
+    try {
+      const loadedItems = await getItemsFromAPI();
+      const transformedItems = (loadedItems || [])
+        .filter((item: any) => {
+          const status = String(item?.status || "").toLowerCase();
+          if (status === "inactive") return false;
+          if (item?.isActive === false || item?.active === false || item?.is_active === false) return false;
+          return true;
+        })
+        .map((item: any, index: number) => ({
+          ...item,
+          entityType: "item",
+          id: String(item?._id || item?.id || item?.itemId || item?.item_id || item?.sku || `item-${index}`),
+          sourceId: String(item?._id || item?.id || item?.itemId || item?.item_id || item?.sku || `item-${index}`),
+          name: String(item?.name || item?.itemName || item?.item_name || item?.displayName || item?.title || "").trim(),
+          sku: String(item?.sku || item?.itemCode || item?.code || "").trim(),
+          code: String(item?.sku || item?.itemCode || item?.code || "").trim(),
+          rate: Number(item?.sellingPrice || item?.salesPrice || item?.costPrice || item?.rate || item?.price || 0) || 0,
+          stockOnHand: Number(item?.stockOnHand || item?.quantityOnHand || item?.stockQuantity || item?.openingStock || 0) || 0,
+          unit: item?.unit || item?.unitOfMeasure || "pcs",
+          description: item?.salesDescription || item?.description || "",
+        }))
+        .filter((item: any) => item.name);
+      setAvailableItems(transformedItems);
+      console.info("[NewQuote] ensureQuoteItemsLoaded", {
+        loadedRows: Array.isArray(loadedItems) ? loadedItems.length : 0,
+        activeRows: transformedItems.length,
+      });
+    } catch (error) {
+      console.error("Error ensuring quote items are loaded:", error);
+    }
+  };
+
+  const getSelectedItemForRow = (rowId: string | number) => {
+    const selectedUiId = selectedItemIds?.[rowId];
+    if (!selectedUiId) return null;
+    return availableItems.find((item: any) => String(item.id) === String(selectedUiId)) || null;
+  };
+
+  const formatItemStock = (item: any) => {
+    const stock = Number(item?.stockOnHand ?? item?.stock ?? item?.availableStock ?? 0) || 0;
+    const unit = String(item?.unit || item?.uom || (item?.entityType === "plan" ? "box" : "pcs")).trim() || "pcs";
+    return `${stock.toFixed(2)} ${unit}`;
+  };
+
   const resolveItemTaxId = (selectedItem: any): string => {
     const taxCandidates: any[] = [
       selectedItem?.taxInfo?.taxId,
@@ -4338,24 +4463,6 @@ const NewQuote = () => {
       const normalizedItem = normalizeItemForQuote(savedItem);
       setAvailableItems(prev => [...prev, normalizedItem]);
 
-      // Keep local cache in sync for immediate dropdown availability
-      try {
-        const savedItems = JSON.parse(localStorage.getItem("inv_items_v1") || "[]");
-        savedItems.push({
-          id: savedItem._id || savedItem.id,
-          name: savedItem.name,
-          sku: savedItem.sku || savedItem.itemCode,
-          sellingPrice: savedItem.sellingPrice ?? savedItem.rate ?? normalizedItem.rate,
-          costPrice: savedItem.costPrice ?? 0,
-          stockOnHand: savedItem.stockOnHand ?? 0,
-          unit: savedItem.unit || savedItem.unitOfMeasure || "pcs",
-          type: savedItem.type || "Goods"
-        });
-        localStorage.setItem("inv_items_v1", JSON.stringify(savedItems));
-      } catch {
-        // ignore local cache write errors
-      }
-
       if (newItemTargetRowId !== null && newItemTargetRowId !== undefined) {
         handleItemSelect(newItemTargetRowId, normalizedItem);
       }
@@ -4399,28 +4506,8 @@ const NewQuote = () => {
       description: newItemData.salesDescription || ""
     };
 
-    // Add to availableItems
+    // Add to availableItems for the current session
     setAvailableItems(prev => [...prev, newItem]);
-
-    // Also save to localStorage
-    const savedItems = JSON.parse(localStorage.getItem("inv_items_v1") || "[]");
-    const itemToSave = {
-      id: newItem.id,
-      name: newItem.name,
-      sku: newItem.sku,
-      sellingPrice: newItem.rate,
-      costPrice: newItem.costPrice || 0,
-      stockOnHand: newItem.stockOnHand || 0,
-      unit: newItem.unit,
-      type: newItem.type,
-      salesAccount: newItemData.salesAccount,
-      purchaseAccount: newItemData.purchaseAccount,
-      sellable: newItemData.sellable,
-      purchasable: newItemData.purchasable,
-      trackInventory: newItemData.trackInventory
-    };
-    savedItems.push(itemToSave);
-    localStorage.setItem("inv_items_v1", JSON.stringify(savedItems));
 
     // Reset form and close modal
     setNewItemData({
@@ -5301,24 +5388,17 @@ const NewQuote = () => {
 
   return (
     <>
-      <div className="w-full min-h-full bg-white flex flex-col">
+      <div className="w-full h-full min-h-0 bg-white flex flex-col overflow-hidden">
         {/* Header */}
         <div className="sticky top-0 z-40 bg-white">
           <div className="w-full px-8 h-16 flex justify-between items-center">
             <div className="h-full flex items-end gap-8">
               <button
                 type="button"
-                className={`h-full border-b-2 text-[18px] leading-none pb-3 font-medium transition-colors ${isSubscriptionMode ? "border-transparent text-gray-500 hover:text-gray-700" : "border-[#156372] text-gray-900"}`}
+                className="h-full border-b-2 text-[18px] leading-none pb-3 font-medium transition-colors border-[#156372] text-gray-900"
                 onClick={() => navigate("/sales/quotes/new")}
               >
                 Quote
-              </button>
-              <button
-                type="button"
-                className={`h-full border-b-2 text-[18px] leading-none pb-3 font-medium transition-colors ${isSubscriptionMode ? "border-[#156372] text-gray-900" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-                onClick={() => navigate("/sales/quotes/subscription/new")}
-              >
-                Subscription Quote
               </button>
             </div>
             <div className="flex items-center gap-3">
@@ -5333,7 +5413,7 @@ const NewQuote = () => {
         </div>
 
         {/* Content */}
-        <div className="w-full pb-28">
+        <div className="w-full flex-1 min-h-0 overflow-y-auto pb-28">
           {/* Form Fields Section */}
           <div className="bg-white overflow-visible">
             <div className="px-6 py-6 border-b border-gray-200 bg-[#f5f6f8]">
@@ -5978,78 +6058,141 @@ const NewQuote = () => {
                                   className="relative"
                                   ref={(el) => { itemDropdownRefs.current[String(item.id)] = el; }}
                                 >
-                                  <input
-                                    type="text"
-                                    value={item.itemDetails}
-                                    onChange={(e) => {
-                                      handleItemChange(item.id, 'itemDetails', e.target.value);
-                                      setItemSearches(prev => ({ ...prev, [item.id]: e.target.value }));
-                                      if (!openItemDropdowns[item.id]) {
-                                        setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }));
-                                      }
-                                    }}
-                                    onFocus={() => {
-                                      if (!openItemDropdowns[item.id]) {
-                                        setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }));
-                                      }
-                                    }}
-                                    placeholder="Type or click to select an item."
-                                    className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-sm bg-transparent font-medium text-gray-900"
-                                  />
+                                  {(() => {
+                                    const selectedItem = getSelectedItemForRow(item.id);
+                                    const itemLabel = selectedItem ? selectedItem.name : (item.itemDetails || "");
+                                    const skuLabel = selectedItem
+                                      ? `${selectedItem.entityType === "plan" ? "Code" : "SKU"}: ${selectedItem.code || selectedItem.sku || "-"}`
+                                      : "";
+                                    const rateLabel = selectedItem ? `Rate: ${formData.currency || ""}${Number(selectedItem.rate || 0).toFixed(2)}` : "";
+
+                                    return selectedItem ? (
+                                      <div className="rounded-md border border-transparent bg-white px-0 py-0 shadow-none">
+                                        <div className="flex items-start justify-between gap-3">
+                                          <button
+                                            type="button"
+                                            className="min-w-0 flex-1 text-left"
+                                            onClick={() => {
+                                              void ensureQuoteItemsLoaded();
+                                              setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }));
+                                            }}
+                                          >
+                                            <div className="truncate text-[14px] font-medium text-gray-900">
+                                              {itemLabel || "Select an item"}
+                                            </div>
+                                            <div className="mt-0.5 text-[11px] text-gray-500">
+                                              {skuLabel}{rateLabel ? ` · ${rateLabel}` : ""}
+                                            </div>
+                                          </button>
+                                        </div>
+                                        <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">
+                                          <span className="font-medium">Stock on Hand:</span>
+                                          <span>{formatItemStock(selectedItem)}</span>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <input
+                                        type="text"
+                                        value={item.itemDetails}
+                                        onChange={(e) => {
+                                          handleItemChange(item.id, 'itemDetails', e.target.value);
+                                          setItemSearches(prev => ({ ...prev, [item.id]: e.target.value }));
+                                          void ensureQuoteItemsLoaded();
+                                          if (!openItemDropdowns[item.id]) {
+                                            setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }));
+                                          }
+                                        }}
+                                        onFocus={() => {
+                                          void ensureQuoteItemsLoaded();
+                                          if (!openItemDropdowns[item.id]) {
+                                            setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }));
+                                          }
+                                        }}
+                                        placeholder="Type or click to select an item."
+                                        className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-sm bg-transparent font-medium text-gray-900"
+                                      />
+                                    );
+                                  })()}
                                   {openItemDropdowns[item.id] && (
-                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg z-[60] max-h-60 overflow-y-auto w-[400px]">
-                                      <div className="p-2 border-b border-gray-100 sticky top-0 bg-white">
-                                        <div className="flex items-center gap-2 px-2 py-1.5 bg-gray-50 rounded">
-                                          <Search size={14} className="text-gray-400" />
+                                    <div className="absolute left-0 top-full z-[9999] mt-1 w-[520px] max-w-[calc(100vw-48px)] rounded-xl border border-[#d6dbe8] bg-white p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
+                                      <div className="p-2">
+                                        <div
+                                          className="flex items-center gap-2 rounded-lg border bg-slate-50/50 px-3 py-1.5 transition-all focus-within:bg-white"
+                                          style={{ borderColor: "#156372" }}
+                                        >
+                                          <Search size={14} className="text-slate-400" />
                                           <input
                                             type="text"
-                                            placeholder="Search items or plans..."
-                                            className="flex-1 bg-transparent text-sm outline-none"
+                                            placeholder="Search..."
+                                            className="w-full border-none bg-transparent text-[13px] text-slate-700 outline-none placeholder:text-slate-400"
                                             value={itemSearches[item.id] || ""}
                                             onChange={(e) => setItemSearches(prev => ({ ...prev, [item.id]: e.target.value }))}
                                             autoFocus
                                           />
                                         </div>
                                       </div>
-                                      {getFilteredItems(item.id).map((availItem) => (
-                                        <div
-                                          key={availItem.id}
-                                          className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
-                                          onClick={() => handleItemSelect(item.id, availItem)}
-                                        >
-                                          <div className="font-medium flex items-center gap-2">
-                                            <span>{availItem.name}</span>
-                                            {availItem.entityType === "plan" ? (
-                                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#e6f4f7] text-[#156372]">Plan</span>
-                                            ) : null}
-                                          </div>
-                                          <div className="text-[11px] text-gray-500">
-                                            {availItem.entityType === "plan" ? "Code" : "SKU"}: {availItem.code || availItem.sku || "-"}
-                                          </div>
-                                        </div>
-                                      ))}
-                                      <div
-                                        className="px-4 py-2 text-sm text-[#156372] hover:bg-gray-50 cursor-pointer font-medium border-t border-gray-100"
+                                      <div className="max-h-64 overflow-y-auto py-1 custom-scrollbar">
+                                        {getFilteredItems(item.id).length === 0 ? (
+                                          <div className="px-4 py-3 text-center text-[13px] text-slate-400">No items found</div>
+                                        ) : (
+                                          getFilteredItems(item.id).map((availItem) => {
+                                            const selected = String(selectedItemIds?.[item.id] || "") === String(availItem.id);
+                                            const stockText = formatItemStock(availItem);
+                                            const skuText = `${availItem.entityType === "plan" ? "Code" : "SKU"}: ${availItem.code || availItem.sku || "-"}`;
+                                            const rateText = `Rate: ${formData.currency || ""}${Number(availItem.rate || 0).toFixed(2)}`;
+
+                                            return (
+                                              <button
+                                                key={availItem.id}
+                                                type="button"
+                                                onClick={() => handleItemSelect(item.id, availItem)}
+                                                className={`flex w-full items-start justify-between gap-4 px-4 py-2.5 text-left transition-colors ${
+                                                  selected ? "bg-[#4285f4] text-white" : "hover:bg-slate-50 text-slate-700"
+                                                }`}
+                                              >
+                                                <div className="min-w-0 flex-1">
+                                                  <div className={`truncate text-[13px] font-medium ${selected ? "text-white" : "text-slate-900"}`}>
+                                                    {availItem.name}
+                                                  </div>
+                                                  <div className={`mt-0.5 text-[11px] ${selected ? "text-white/90" : "text-slate-500"}`}>
+                                                    {skuText} {rateText}
+                                                  </div>
+                                                </div>
+                                                <div className={`min-w-[120px] text-right text-[11px] ${selected ? "text-white" : "text-slate-500"}`}>
+                                                  <div className="font-medium">Stock on Hand</div>
+                                                  <div className="mt-0.5 text-[13px] font-semibold">{stockText}</div>
+                                                </div>
+                                              </button>
+                                            );
+                                          })
+                                        )}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="w-full border-t border-gray-200 px-4 py-2 text-left text-[#156372] text-[13px] font-medium flex items-center gap-2 hover:bg-gray-50"
                                         onClick={() => {
                                           setNewItemTargetRowId(item.id);
                                           setIsNewItemModalOpen(true);
                                           setOpenItemDropdowns(prev => ({ ...prev, [item.id]: false }));
                                         }}
                                       >
-                                        + New Item
-                                      </div>
+                                        <PlusCircle size={14} />
+                                        Add New Item
+                                      </button>
                                     </div>
                                   )}
                                 </div>
-                                {(showAdditionalInformation || additionalInfoItemIds.includes(String(item.id))) && (
+                                <div className="mt-1">
+                                  <textarea
+                                    value={item.description || ""}
+                                    onChange={(e) => handleItemChange(item.id, 'description', e.target.value)}
+                                    placeholder="Add a description to your item"
+                                    className="w-full min-h-[52px] px-3 py-2 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded-md outline-none text-xs text-gray-500 resize-none bg-[#fafafa]"
+                                    rows={2}
+                                  />
+                                </div>
+                                {showAdditionalInformation && (
                                   <>
-                                    <textarea
-                                      value={item.description || ""}
-                                      onChange={(e) => handleItemChange(item.id, 'description', e.target.value)}
-                                      placeholder="Add a description to your item"
-                                      className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-xs text-gray-500 resize-none bg-transparent"
-                                      rows={2}
-                                    />
                                     <button
                                       type="button"
                                       className="mt-1 inline-flex items-center gap-2 text-xs text-gray-700 hover:text-[#156372]"
@@ -6084,6 +6227,16 @@ const NewQuote = () => {
                                 className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-sm text-center bg-transparent"
                                 step="0.01"
                               />
+                              {(() => {
+                                const selectedItem = getSelectedItemForRow(item.id);
+                                if (!selectedItem) return null;
+                                return (
+                                  <div className="mt-1 text-center text-[11px] leading-tight text-gray-600">
+                                    <div className="font-medium">Stock on Hand:</div>
+                                    <div>{formatItemStock(selectedItem)}</div>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           )}
                         </td>
@@ -6097,6 +6250,11 @@ const NewQuote = () => {
                                 className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-sm text-center bg-transparent"
                                 step="0.01"
                               />
+                              {getSelectedItemForRow(item.id) && (
+                                <button type="button" className="mt-1 text-[11px] text-[#4f74f0] hover:underline">
+                                  Recent Transactions
+                                </button>
+                              )}
                             </div>
                           )}
                         </td>
@@ -6117,23 +6275,28 @@ const NewQuote = () => {
                                   <>
                                     <button
                                       type="button"
-                                      className="w-full px-2 py-1.5 border border-gray-300 bg-white rounded outline-none text-sm text-left flex items-center justify-between hover:border-gray-400 transition-colors"
+                                      className="h-10 w-full rounded border border-[#156372] bg-white px-3 text-left text-[13px] transition-colors hover:border-gray-400 outline-none"
                                       onClick={() => setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
                                     >
-                                      <span className={displayLabel === "Select a Tax" ? "text-gray-500" : "text-gray-900"}>
-                                        {displayLabel}
-                                      </span>
-                                      <ChevronDown
-                                        size={14}
-                                        className={`transition-transform ${openTaxDropdowns[item.id] ? "rotate-180" : ""}`}
-                                        style={{ color: "#156372" }}
-                                      />
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className={displayLabel === "Select a Tax" ? "text-slate-500" : "text-slate-700"}>
+                                          {displayLabel}
+                                        </span>
+                                        <ChevronDown
+                                          size={14}
+                                          className={`transition-transform ${openTaxDropdowns[item.id] ? "rotate-180" : ""}`}
+                                          style={{ color: "#156372" }}
+                                        />
+                                      </div>
                                     </button>
 
                                     {openTaxDropdowns[item.id] && (
-                                      <div className="absolute left-0 top-full z-[9999] mt-1 w-72 rounded-xl border border-[#d6dbe8] bg-white p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
+                                      <div className="absolute left-0 top-full z-[9999] mt-1 w-[360px] rounded-xl border border-[#d6dbe8] bg-white p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
                                         <div className="p-2">
-                                          <div className="flex items-center gap-2 rounded-lg border bg-slate-50/50 px-3 py-1.5 transition-all focus-within:bg-white" style={{ borderColor: "#156372" }}>
+                                          <div
+                                            className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 transition-all focus-within:bg-white"
+                                            style={{ borderColor: "#156372" }}
+                                          >
                                             <Search size={14} className="text-slate-400" />
                                             <input
                                               type="text"
@@ -6151,47 +6314,50 @@ const NewQuote = () => {
                                           ) : (
                                             filteredGroups.map((group) => (
                                               <div key={group.label}>
-                                                <div className="px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-widest text-slate-700">
+                                                <div className="mt-2 px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-700">
                                                   {group.label}
                                                 </div>
-                                                {group.options.map((tax) => {
-                                                  const taxId = tax.id;
-                                                  const label = taxLabel(tax.raw ?? tax);
-                                                  const selected = String(item.tax || "") === taxId || Number(item.taxRate || 0) === tax.rate;
-                                                  return (
-                                                    <button
-                                                      key={taxId}
-                                                      type="button"
-                                                      onClick={() => {
-                                                        handleItemChange(item.id, "tax", taxId);
-                                                        setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: false }));
-                                                        setTaxSearches(prev => ({ ...prev, [item.id]: "" }));
-                                                      }}
-                                                      className={`w-full px-4 py-2 text-left text-[13px] ${selected
-                                                        ? "text-[#156372] font-medium hover:bg-gray-50 hover:text-gray-900"
-                                                        : "text-slate-700 hover:bg-gray-50 hover:text-gray-900"
+                                                <div className="mt-1 space-y-0.5">
+                                                  {group.options.map((tax) => {
+                                                    const taxId = tax.id;
+                                                    const label = taxLabel(tax.raw ?? tax);
+                                                    const selected = String(item.tax || "") === taxId || Number(item.taxRate || 0) === tax.rate;
+                                                    return (
+                                                      <button
+                                                        key={taxId}
+                                                        type="button"
+                                                        onClick={() => {
+                                                          handleItemChange(item.id, "tax", taxId);
+                                                          setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: false }));
+                                                          setTaxSearches(prev => ({ ...prev, [item.id]: "" }));
+                                                        }}
+                                                        className={`w-full rounded-lg px-4 py-2 text-left text-[13px] transition-colors ${
+                                                          selected
+                                                            ? "font-medium text-slate-900 bg-slate-50"
+                                                            : "text-slate-700 hover:bg-slate-50"
                                                         }`}
-                                                    >
-                                                      {label}
-                                                    </button>
-                                                  );
-                                                })}
+                                                      >
+                                                        {label}
+                                                      </button>
+                                                    );
+                                                  })}
+                                                </div>
                                               </div>
                                             ))
                                           )}
                                         </div>
-                                        <button
-                                          type="button"
-                                          className="w-full border-t border-gray-200 px-4 py-2 text-left text-[#156372] text-[13px] font-medium flex items-center gap-2 hover:bg-gray-50"
-                                          onClick={() => {
-                                            setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: false }));
-                                            setNewTaxTargetItemId(item.id);
-                                            setIsNewTaxQuickModalOpen(true);
-                                          }}
-                                        >
-                                          <PlusCircle size={14} />
-                                          New Tax
-                                        </button>
+                                      <button
+                                        type="button"
+                                        className="w-full border-t border-gray-200 px-4 py-2 text-left text-[#156372] text-[13px] font-medium flex items-center gap-2 hover:bg-gray-50"
+                                        onClick={() => {
+                                          setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: false }));
+                                          setNewTaxTargetItemId(item.id);
+                                          setIsNewTaxQuickModalOpen(true);
+                                        }}
+                                      >
+                                        <PlusCircle size={14} />
+                                        New Tax
+                                      </button>
                                       </div>
                                     )}
                                   </>
@@ -6239,7 +6405,6 @@ const NewQuote = () => {
                                   className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
                                   onClick={() => {
                                     setShowAdditionalInformation((prev) => !prev);
-                                    setAdditionalInfoItemIds([]);
                                     setOpenItemMenuId(null);
                                   }}
                                 >

@@ -19,7 +19,7 @@ import {
 } from "../sync/persistence";
 import { createVersionStamp } from "../sync/versioning";
 
-type DocumentRecord = {
+export type DocumentRecord = {
   id: string;
   name: string;
   type?: string;

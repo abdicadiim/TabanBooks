@@ -15,6 +15,7 @@ type SearchableDropdownProps = {
   showClear?: boolean;
   onClear?: () => void;
   disabled?: boolean;
+  className?: string;
 };
 
 export default function SearchableDropdown({
@@ -26,6 +27,7 @@ export default function SearchableDropdown({
   showClear = false,
   onClear,
   disabled = false,
+  className = "",
 }: SearchableDropdownProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -80,7 +82,7 @@ export default function SearchableDropdown({
         disabled={disabled}
         className={`flex h-10 w-full items-center gap-2 rounded-md border bg-white px-3 text-sm transition-colors ${
           disabled ? "cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400" : "border-gray-300"
-        }`}
+        } ${className}`}
         style={isOpen && !disabled ? { borderColor: accentColor, boxShadow: `0 0 0 1px ${accentColor}` } : undefined}
         onClick={() => {
           if (disabled) return;

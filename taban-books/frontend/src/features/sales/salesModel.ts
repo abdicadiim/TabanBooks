@@ -551,21 +551,33 @@ export const getInvoicesPaginated = async (params: any = {}): Promise<any> => {
       invoicesAPI.getAll(params),
       getCustomers({ limit: CUSTOMER_LOOKUP_LIMIT }).catch(() => []),
     ]);
-    if (response && response.success && response.data) {
+    if (response && response.success) {
+      const rows = Array.isArray(response?.data)
+        ? response.data
+        : Array.isArray(response?.items)
+          ? response.items
+          : Array.isArray(response?.data?.data)
+            ? response.data.data
+            : Array.isArray(response?.data?.items)
+              ? response.data.items
+              : Array.isArray(response?.payload?.data)
+                ? response.payload.data
+                : [];
       const customerNameLookup = buildCustomerNameLookup(customers);
-      const data = response.data.map((invoice: any) => ({
+      const data = rows.map((invoice: any) => ({
         ...invoice,
         id: invoice._id || invoice.id, // Ensure id exists
         customerName: resolveInvoiceCustomerName(invoice, customerNameLookup),
         status: invoice.status || "draft"
       }));
+      const pagination = response?.pagination || response?.data?.pagination || response?.meta?.pagination || null;
       return {
         data,
-        pagination: response.pagination || {
+        pagination: pagination || {
           total: data.length,
           page: 1,
-          limit: data.length,
-          pages: 1
+          limit: params?.limit || data.length || 50,
+          pages: 1,
         }
       };
     }
@@ -867,6 +879,63 @@ export interface RecurringInvoice extends Invoice {
   endsOn?: string;
   paymentTerms?: string;
   // Allow flexible additional properties from API
+  [key: string]: any;
+}
+
+export interface Expense {
+  id: string;
+  _id?: string;
+  date: string;
+  category: any;
+  categoryId?: string;
+  categoryName?: string;
+  amount: number;
+  currency: string;
+  vendor?: any;
+  vendorId?: string;
+  vendorName?: string;
+  customer?: any;
+  customerId?: string;
+  customerName?: string;
+  billable?: boolean;
+  status: string;
+  referenceNumber?: string;
+  notes?: string;
+  [key: string]: any;
+}
+
+export interface RecurringExpense {
+  id: string;
+  _id?: string;
+  profileName: string;
+  amount: number;
+  currency: string;
+  category: any;
+  categoryId?: string;
+  repeatEvery: number;
+  repeatUnit: string;
+  startDate: string;
+  endDate?: string;
+  status: string;
+  [key: string]: any;
+}
+
+export interface Bill {
+  id: string;
+  _id?: string;
+  billNumber: string;
+  vendor?: any;
+  vendorId?: string;
+  vendorName?: string;
+  date: string;
+  billDate?: string;
+  dueDate: string;
+  items: any[];
+  subtotal: number;
+  tax: number;
+  total: number;
+  status: string;
+  balanceDue: number;
   [key: string]: any;
 }
 
@@ -2296,8 +2365,16 @@ export const getItemsFromAPI = async (): Promise<any[]> => {
       const allItems: any[] = [];
 
       do {
-        const response = await itemsAPI.getAll({ page, limit });
-        const batch = Array.isArray(response?.data) ? response.data : [];
+        const response = await itemsAPI.getAll({ page, limit, _ts: Date.now() });
+        const batch = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response?.items)
+            ? response.items
+            : Array.isArray(response?.data?.items)
+              ? response.data.items
+              : Array.isArray(response?.data?.data)
+                ? response.data.data
+                : [];
         if (batch.length > 0) {
           allItems.push(...batch);
         }
@@ -2573,7 +2650,11 @@ export const keepPreviousData = Symbol("keepPreviousData");
 
 export type QueryClient = {
   getQueriesData<T = any>(filters?: { queryKey?: QueryKey }): Array<[readonly unknown[], T | undefined]>;
-  setQueryData<T = any>(queryKey: QueryKey, updater: T | ((previousData: T | undefined) => T)): T;
+  getQueryData<T = any>(queryKey: QueryKey): T | undefined;
+  setQueryData<T = any>(
+    queryKey: QueryKey,
+    updater: T | ((previousData: T | undefined) => T | undefined)
+  ): T | undefined;
   removeQueries(filters?: { queryKey?: QueryKey }): void;
   invalidateQueries(filters?: { queryKey?: QueryKey }): Promise<void>;
   prefetchQuery<T = any>(options: { queryKey: QueryKey; queryFn: () => Promise<T>; staleTime?: number }): Promise<T>;
@@ -2586,16 +2667,20 @@ const queryClient: QueryClient = {
       .filter((record) => isPrefixMatch(record.key, filters?.queryKey))
       .map((record) => [record.key, record.data as T | undefined]);
   },
-  setQueryData<T = any>(queryKey: QueryKey, updater: T | ((previousData: T | undefined) => T)) {
+  getQueryData<T = any>(queryKey: QueryKey) {
+    const record = queryCache.get(queryKeyToCacheId(queryKey));
+    return record?.data as T | undefined;
+  },
+  setQueryData<T = any>(queryKey: QueryKey, updater: T | ((previousData: T | undefined) => T | undefined)) {
     const record = getOrCreateQueryRecord(queryKey) as QueryRecord<T>;
     const previousData = record.data as T | undefined;
     const nextValue =
       typeof updater === "function"
-        ? (updater as (previousData: T | undefined) => T)(previousData)
+        ? (updater as (previousData: T | undefined) => T | undefined)(previousData)
         : updater;
 
     if (previousData === nextValue || stableStringify(previousData) === stableStringify(nextValue)) {
-      return previousData as T;
+      return previousData as T | undefined;
     }
 
     record.data = nextValue;

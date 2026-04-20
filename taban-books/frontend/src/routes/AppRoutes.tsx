@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import AppShell from "../layout/AppShell";
 import PermissionRoute from "../components/PermissionRoute";
@@ -32,6 +32,16 @@ const ImportValueMapFields = lazy(() => import("../features/inventory/ImportValu
 const ImportValuePreview = lazy(() => import("../features/inventory/ImportValuePreview"));
 
 const SalesPage = lazy(() => import("../features/sales/SalesRoutes"));
+
+function LegacyPaymentsReceivedRedirect() {
+  const location = useLocation();
+  const path = location.pathname || "";
+  const suffix = path.startsWith("/payments/payments-received")
+    ? path.slice("/payments/payments-received".length)
+    : "";
+  const next = `/sales/payments-received${suffix}${location.search || ""}${location.hash || ""}`;
+  return <Navigate to={next} replace />;
+}
 function AccountsReceivableDashboard() {
   return (
     <div className="min-h-[40vh] flex items-center justify-center text-sm text-gray-500">
@@ -309,6 +319,9 @@ export default function AppRoutes() {
             <Route path="/sales/*" element={<PermissionRoute anyOf={[{ module: "contacts", subModule: "customers", action: "view" }, { module: "sales", subModule: "invoices", action: "view" }, { module: "sales", subModule: "customerPayments", action: "view" }, { module: "sales", subModule: "quotes", action: "view" }, { module: "sales", subModule: "salesReceipt", action: "view" }, { module: "sales", subModule: "salesOrders", action: "view" }, { module: "sales", subModule: "creditNotes", action: "view" }]}><SalesPage /></PermissionRoute>} />
             <Route path="/sales/accounts-receivable" element={<PermissionRoute anyOf={[{ module: "sales", subModule: "invoices", action: "view" }]}><AccountsReceivableDashboard /></PermissionRoute>} />
             <Route path="/sales/accounts-receivable/ledger" element={<PermissionRoute anyOf={[{ module: "sales", subModule: "invoices", action: "view" }]}><AccountsReceivableLedger /></PermissionRoute>} />
+
+            {/* Backward compatibility: older links used /payments/payments-received/... */}
+            <Route path="/payments/payments-received/*" element={<LegacyPaymentsReceivedRedirect />} />
             <Route path="/purchases/*" element={<PermissionRoute anyOf={[{ module: "contacts", subModule: "vendors", action: "view" }, { module: "purchases", subModule: "bills", action: "view" }, { module: "purchases", subModule: "vendorPayments", action: "view" }, { module: "purchases", subModule: "expenses", action: "view" }, { module: "purchases", subModule: "purchaseOrders", action: "view" }, { module: "purchases", subModule: "vendorCredits", action: "view" }]}><PurchasesPage /></PermissionRoute>} />
             <Route path="/time-tracking/projects-guide" element={<PermissionRoute anyOf={[{ module: "timesheets", subModule: "projects", action: "view" }]}><ProjectsGuidePage /></PermissionRoute>} />
             <Route path="/time-tracking/*" element={<PermissionRoute anyOf={[{ module: "timesheets", subModule: "projects", action: "view" }]}><TimeTrackingPage /></PermissionRoute>} />

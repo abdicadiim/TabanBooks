@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { ChevronRight, MoreHorizontal, CheckCircle2, Info } from "lucide-react";
 import { login, checkUser, sendLoginOTP, verifyLoginOTP } from "../services/auth";
+import FullScreenLoader from "../components/FullScreenLoader";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -155,6 +156,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-[#fcfcfc] flex flex-col font-sans relative overflow-auto">
+      {loading ? <FullScreenLoader subtitle="Signing you in..." /> : null}
       {/* Background Pattern */}
       <div className="absolute inset-0 z-0 opacity-[0.03] pointer-events-none"
         style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>

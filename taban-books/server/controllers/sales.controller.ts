@@ -43,6 +43,11 @@ import Tax from "../models/Tax.js";
 import { isDebitNormalAccountType } from "../utils/chartOfAccounts.js";
 import { resolveOrganizationBankAccount, syncLinkedBankTransaction } from "../utils/bankTransactionSync.js";
 import {
+  applyResourceVersionHeaders,
+  buildResourceVersion,
+  requestMatchesResourceVersion,
+} from "../utils/resourceVersion.js";
+import {
   generateNextEstimateNumber,
   mapEstimateAddressToSnapshot,
   mapEstimateStatusToQuoteStatus,
@@ -211,6 +216,55 @@ export const getAllCustomers = async (req: AuthRequest, res: Response): Promise<
       sortBy = 'createdAt',
       sortOrder = 'desc'
     } = req.query as CustomerQuery;
+
+    // Conditional list versioning (SWR-friendly).
+    // We version the underlying customer collection and include the query params as "extra" so
+    // different list views can cache independently.
+    const orgIdRaw = String(req.user.organizationId || "").trim();
+    const orgFilterForVersion: any = mongoose.Types.ObjectId.isValid(orgIdRaw)
+      ? {
+          $or: [
+            { organization: new mongoose.Types.ObjectId(orgIdRaw) },
+            { organization: orgIdRaw },
+            { organization: null },
+            { organization: { $exists: false } },
+          ],
+        }
+      : {
+          $or: [
+            { organization: orgIdRaw },
+            { organization: null },
+            { organization: { $exists: false } },
+          ],
+        };
+
+    const [latestCustomer, customerCount] = await Promise.all([
+      Customer.findOne(orgFilterForVersion).sort({ updatedAt: -1 }).select("updatedAt").lean(),
+      Customer.countDocuments(orgFilterForVersion),
+    ]);
+
+    const versionState = buildResourceVersion("customers", [
+      {
+        key: "customers",
+        id: orgIdRaw,
+        updatedAt: (latestCustomer as any)?.updatedAt,
+        count: customerCount,
+        extra: JSON.stringify({
+          page,
+          limit,
+          search,
+          status: status ?? "",
+          customerType: customerType ?? "",
+          sortBy,
+          sortOrder,
+        }),
+      },
+    ]);
+    applyResourceVersionHeaders(res, versionState);
+    if (requestMatchesResourceVersion(req, versionState)) {
+      res.status(304).end();
+      return;
+    }
 
     // Build query
     const query: any = {};
@@ -387,7 +441,9 @@ export const getAllCustomers = async (req: AuthRequest, res: Response): Promise<
         page: pageNum,
         limit: limitNum,
         pages: Math.ceil(finalTotal / limitNum)
-      }
+      },
+      version_id: versionState.version_id,
+      last_updated: versionState.last_updated,
     });
   } catch (error: any) {
     console.error('Error in getAllCustomers:', error);
@@ -3047,6 +3103,25 @@ const findAccountByName = async (orgId: string, accountName: string): Promise<st
   }
 };
 
+const resolveAccountIdFromReference = async (
+  orgId: string,
+  accountRef: any,
+): Promise<string | null> => {
+  const normalized = String(accountRef || "").trim();
+  if (!normalized) return null;
+
+  if (mongoose.Types.ObjectId.isValid(normalized)) {
+    const byId = await ChartOfAccount.findOne({
+      _id: new mongoose.Types.ObjectId(normalized),
+      ...buildOrganizationFilter(orgId),
+      isActive: true,
+    }).lean();
+    if (byId?._id) return String(byId._id);
+  }
+
+  return findAccountByName(orgId, normalized);
+};
+
 // Helper function to create journal entry for invoice when sent
 const createInvoiceJournalEntry = async (
   invoice: any,
@@ -3054,33 +3129,105 @@ const createInvoiceJournalEntry = async (
   userId?: string
 ): Promise<mongoose.Types.ObjectId | null> => {
   try {
-    // Find Accounts Receivable account
-    const arAccountName = invoice.accountsReceivable || 'Accounts Receivable';
-    let arAccountId = await findAccountByName(orgId, arAccountName);
-
-    // Fallback to name search if ID not found
+    // 1) Resolve Accounts Receivable control account (must be a real COA account).
+    const arAccountName = String(invoice.accountsReceivable || "Accounts Receivable").trim();
+    let arAccountId = await resolveAccountIdFromReference(orgId, arAccountName);
     if (!arAccountId) {
-      console.warn(`[INVOICES] AR account "${arAccountName}" not found by name, trying wildcard`);
-      arAccountId = await findAccountByName(orgId, 'Accounts Receivable');
+      arAccountId = await findAccountByName(orgId, "Accounts Receivable");
     }
-
     if (!arAccountId) {
-      console.warn('[INVOICES] Accounts Receivable account not found, using default string');
+      throw new Error(
+        `Accounts Receivable account "${arAccountName}" was not found in Chart of Accounts for this organization.`,
+      );
     }
 
-    // Find Sales Income account (try multiple names)
-    let salesAccountId = await findAccountByName(orgId, 'Sales Income');
-    if (!salesAccountId) {
-      salesAccountId = await findAccountByName(orgId, 'Sales');
+    // 2) Build revenue credits grouped by selected item account.
+    const groupedRevenueCredits = new Map<string, number>();
+    const lineItems = Array.isArray(invoice.items) ? invoice.items : [];
+    for (const item of lineItems) {
+      const amount = Number(item?.amount || 0);
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+
+      let itemAccountId = await resolveAccountIdFromReference(
+        orgId,
+        item?.accountId || item?.account || item?.incomeAccount,
+      );
+      if (!itemAccountId) {
+        itemAccountId =
+          (await findAccountByName(orgId, "Sales Income")) ||
+          (await findAccountByName(orgId, "Sales")) ||
+          (await findAccountByName(orgId, "Income"));
+      }
+      if (!itemAccountId) {
+        throw new Error(
+          `No revenue account found for invoice item "${String(item?.itemDetails || item?.name || "").trim() || "line item"}".`,
+        );
+      }
+
+      groupedRevenueCredits.set(
+        itemAccountId,
+        Number((groupedRevenueCredits.get(itemAccountId) || 0) + amount),
+      );
     }
-    if (!salesAccountId) {
-      salesAccountId = await findAccountByName(orgId, 'Income');
+
+    const totalRevenueCredits = Array.from(groupedRevenueCredits.values()).reduce(
+      (sum, value) => sum + value,
+      0,
+    );
+
+    // 3) Tax line (if any) should credit tax payable liability.
+    const taxAmount = Number(invoice.tax || invoice.totalTax || 0) || 0;
+    let taxAccountId: string | null = null;
+    if (taxAmount > 0) {
+      taxAccountId =
+        (await findAccountByName(orgId, "Sales Tax Payable")) ||
+        (await findAccountByName(orgId, "Tax Payable"));
+      if (!taxAccountId) {
+        throw new Error(
+          "Tax amount exists on invoice, but no Sales Tax Payable / Tax Payable account was found.",
+        );
+      }
     }
-    if (!salesAccountId) {
-      console.warn('[INVOICES] Sales Income account not found, using default string');
+
+    // 4) AR debit must match sum of revenue credits + tax credits (balanced journal).
+    const arDebitAmount = Number((totalRevenueCredits + taxAmount).toFixed(2));
+    if (!Number.isFinite(arDebitAmount) || arDebitAmount <= 0) {
+      throw new Error("Invoice journal amount is invalid (zero or negative).");
     }
 
     const journalNumber = `JE-INV-${invoice.invoiceNumber}-${Date.now()}`;
+    const lines: any[] = [
+      {
+        account: arAccountId,
+        accountName: arAccountName,
+        description: `Invoice ${invoice.invoiceNumber}`,
+        debit: arDebitAmount,
+        credit: 0,
+      },
+    ];
+
+    for (const [accountId, creditAmount] of groupedRevenueCredits.entries()) {
+      const accountDoc = await ChartOfAccount.findById(accountId).lean();
+      lines.push({
+        account: accountId,
+        accountName: String(accountDoc?.name || accountDoc?.accountName || "Revenue"),
+        description: `Invoice ${invoice.invoiceNumber}`,
+        debit: 0,
+        credit: Number(creditAmount.toFixed(2)),
+      });
+    }
+
+    if (taxAccountId && taxAmount > 0) {
+      const taxAccountDoc = await ChartOfAccount.findById(taxAccountId).lean();
+      lines.push({
+        account: taxAccountId,
+        accountName: String(taxAccountDoc?.name || taxAccountDoc?.accountName || "Sales Tax Payable"),
+        description: `Sales Tax - Invoice ${invoice.invoiceNumber}`,
+        debit: 0,
+        credit: Number(taxAmount.toFixed(2)),
+      });
+    }
+
     const journalEntry = await JournalEntry.create({
       organization: orgId,
       entryNumber: journalNumber,
@@ -3092,22 +3239,7 @@ const createInvoiceJournalEntry = async (
       postedAt: new Date(),
       sourceId: invoice._id,
       sourceType: 'invoice',
-      lines: [
-        {
-          account: arAccountId || 'Accounts Receivable',
-          accountName: arAccountName,
-          description: `Invoice ${invoice.invoiceNumber}`,
-          debit: invoice.total || 0,
-          credit: 0,
-        },
-        {
-          account: salesAccountId || 'Sales Income',
-          accountName: 'Sales Income',
-          description: `Invoice ${invoice.invoiceNumber}`,
-          debit: 0,
-          credit: invoice.total || 0,
-        },
-      ],
+      lines,
     });
 
     // Update Chart of Account balances
@@ -3542,6 +3674,12 @@ export const createInvoice = async (req: AuthRequest, res: Response): Promise<vo
       balance: Number(req.body.total || 0) - Number(req.body.paidAmount || 0),
       journalEntryCreated: false,
     };
+
+    // Backward-compatible default: dueDate is required in the model.
+    // If the client doesn't send it, default to the invoice date (or "now").
+    if (!invoiceData.dueDate) {
+      invoiceData.dueDate = invoiceData.date || req.body.invoiceDate || Date.now();
+    }
 
     if (
       invoiceData.shippingChargeTax === undefined &&

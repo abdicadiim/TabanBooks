@@ -5,7 +5,6 @@ import {
   CustomersIndexRoute,
   ImportCustomersRoute,
   NewCustomerRoute,
-  NewCustomViewRoute,
   RequestReviewRoute,
   SendEmailStatementRoute,
 } from "./customerRouteLoaders";
@@ -34,7 +33,6 @@ export default function CustomersRoutes() {
       <Route index element={withSuspense(<CustomersIndexRoute />)} />
       <Route path="new" element={withSuspense(<NewCustomerRoute />)} />
       <Route path="import" element={withSuspense(<ImportCustomersRoute />)} />
-      <Route path="new-custom-view" element={withSuspense(<NewCustomViewRoute />)} />
       <Route path=":id/edit" element={withSuspense(<NewCustomerRoute />)} />
       <Route path=":id/request-review" element={withSuspense(<RequestReviewRoute />)} />
       <Route path=":id/send-email-statement" element={withSuspense(<SendEmailStatementRoute />)} />

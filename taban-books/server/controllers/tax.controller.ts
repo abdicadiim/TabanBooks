@@ -22,6 +22,11 @@ import BankTransaction from "../models/BankTransaction.js";
 import BankRule from "../models/BankRule.js";
 import Item from "../models/Item.js";
 import Organization from "../models/Organization.js";
+import {
+  applyResourceVersionHeaders,
+  buildResourceVersion,
+  requestMatchesResourceVersion,
+} from "../utils/resourceVersion.js";
 
 const getTaxUsageCount = async (organizationId: string, taxIds: string[], taxRates: number[]) => {
   const rateValues = taxRates.filter((rate) => !Number.isNaN(rate));
@@ -160,12 +165,55 @@ export const getTaxes = async (req: Request, res: Response): Promise<void> => {
     if (forTransactions === "true") {
       const salesTaxDisabled = await isSalesTaxDisabled(organizationId);
       if (salesTaxDisabled) {
+        const versionState = buildResourceVersion("settings-taxes", [
+          {
+            key: "taxes",
+            id: organizationId,
+            updatedAt: null,
+            count: 0,
+            extra: JSON.stringify({ type: type ?? "", status: status ?? "", forTransactions: "true" }),
+          },
+          {
+            key: "org-tax-flags",
+            id: organizationId,
+            updatedAt: null,
+            extra: "salesTaxDisabled:true",
+          },
+        ]);
+        applyResourceVersionHeaders(res, versionState);
+        if (requestMatchesResourceVersion(req, versionState)) {
+          res.status(304).end();
+          return;
+        }
         res.json({
           success: true,
           data: [],
+          version_id: versionState.version_id,
+          last_updated: versionState.last_updated,
         });
         return;
       }
+    }
+
+    const [latestTax, taxCount] = await Promise.all([
+      Tax.findOne(query).sort({ updatedAt: -1 }).select("updatedAt").lean(),
+      Tax.countDocuments(query),
+    ]);
+
+    const versionState = buildResourceVersion("settings-taxes", [
+      {
+        key: "taxes",
+        id: organizationId,
+        updatedAt: (latestTax as any)?.updatedAt,
+        count: taxCount,
+        extra: JSON.stringify({ type: type ?? "", status: status ?? "", forTransactions: forTransactions ?? "" }),
+      },
+    ]);
+    applyResourceVersionHeaders(res, versionState);
+
+    if (requestMatchesResourceVersion(req, versionState)) {
+      res.status(304).end();
+      return;
     }
 
     const taxes = await Tax.find(query).sort({ name: 1 });
@@ -173,6 +221,8 @@ export const getTaxes = async (req: Request, res: Response): Promise<void> => {
     res.json({
       success: true,
       data: taxes,
+      version_id: versionState.version_id,
+      last_updated: versionState.last_updated,
     });
   } catch (error: any) {
     console.error("Error fetching taxes:", error);

@@ -10,6 +10,7 @@ import {
   setOrganization as persistOrganization,
 } from "../services/auth";
 import { primePermissionsCache } from "../services/permissions";
+import { primeSWRCache } from "../sync/primeSWRCache";
 
 export interface BootstrapBranding {
   appearance: string;
@@ -156,12 +157,10 @@ export function AppBootstrapProvider({ children }: { children: React.ReactNode }
 
     const storedUser = getCurrentUser();
     const storedOrganization = getOrganization();
-    const cachedBootstrap = normalizeBootstrapCache(readSessionBootstrapCache());
-    const hasWarmBootstrapState = Boolean(
-      cachedBootstrap?.generalSettings || cachedBootstrap?.baseCurrency || storedOrganization,
-    );
 
-    if (reason !== "initial" || !hasWarmBootstrapState) {
+    // Show icon loader during startup/refresh flow.
+    const showBlockingLoader = reason === "initial" || reason === "session";
+    if (showBlockingLoader) {
       setLoading(true);
     }
 
@@ -218,10 +217,20 @@ export function AppBootstrapProvider({ children }: { children: React.ReactNode }
         version_id: bootstrap.version_id,
         last_updated: bootstrap.last_updated,
       });
+
+      // Prime key lists into LocalStorage/IndexedDB so subsequent navigations
+      // show cached data immediately (SWR-style).
+      if (showBlockingLoader) {
+        await primeSWRCache();
+      } else {
+        void primeSWRCache();
+      }
     } catch (error) {
       console.error("Error refreshing bootstrap data:", error);
     } finally {
-      setLoading(false);
+      if (showBlockingLoader) {
+        setLoading(false);
+      }
     }
   };
 

@@ -15,8 +15,8 @@ type CustomerDetailStatementTabProps = {
   isStatementPeriodDropdownOpen: boolean;
   isStatementFilterDropdownOpen: boolean;
   isStatementDownloading: boolean;
-  statementPeriodDropdownRef: React.RefObject<HTMLDivElement>;
-  statementFilterDropdownRef: React.RefObject<HTMLDivElement>;
+  statementPeriodDropdownRef: React.RefObject<HTMLDivElement | null>;
+  statementFilterDropdownRef: React.RefObject<HTMLDivElement | null>;
   onToggleStatementPeriodDropdown: () => void;
   onToggleStatementFilterDropdown: () => void;
   onSelectStatementPeriod: (value: string) => void;

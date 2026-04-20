@@ -48,7 +48,7 @@ import {
   Send
 } from "lucide-react";
 import { getQuoteById, getQuotes, updateQuote, deleteQuotes, getCustomers, getSalespersons, getProjects, getInvoices, saveInvoice, saveQuote } from "../../salesModel";
-import { currenciesAPI, documentsAPI, quotesAPI, senderEmailsAPI, settingsAPI, transactionNumberSeriesAPI } from "../../../../services/api";
+import { currenciesAPI, documentsAPI, senderEmailsAPI, settingsAPI, transactionNumberSeriesAPI } from "../../../../services/api";
 import { toast } from "react-hot-toast";
 import { resolveVerifiedPrimarySender } from "../../../../utils/emailSenderDisplay";
 import QuoteCommentsPanel from "./QuoteCommentsPanel";
@@ -2176,28 +2176,19 @@ const QuoteDetail = () => {
       const sourceQuoteNumber = String(quote.quoteNumber || "").trim();
       const prefixMatch = sourceQuoteNumber.match(/^([^\d]*\D-?)/);
       const quotePrefix = (prefixMatch?.[1] || "QT-").trim();
-
-      let nextQuoteNumber = "";
-      try {
-        const quoteNumberResponse: any = await quotesAPI.getNextNumber(quotePrefix);
-        if (quoteNumberResponse?.success && quoteNumberResponse?.data?.quoteNumber) {
-          nextQuoteNumber = String(quoteNumberResponse.data.quoteNumber);
-        }
-      } catch (error) {
-        console.error("Error getting next quote number for clone:", error);
-      }
-
-      if (!nextQuoteNumber) {
-        const existingQuotes = await getQuotes();
-        const prefixed = existingQuotes
-          .map((q: any) => String(q.quoteNumber || ""))
-          .filter((number) => number.startsWith(quotePrefix));
-        const maxSuffix = prefixed.reduce((max, number) => {
-          const suffix = parseInt(number.replace(quotePrefix, ""), 10);
-          return Number.isFinite(suffix) ? Math.max(max, suffix) : max;
-        }, 0);
-        nextQuoteNumber = `${quotePrefix}${String(maxSuffix + 1).padStart(6, "0")}`;
-      }
+      const quotePool = Array.isArray(allQuotes) && allQuotes.length > 0
+        ? allQuotes
+        : Array.isArray(preloadedQuotes)
+          ? preloadedQuotes
+          : [];
+      const prefixedNumbers = quotePool
+        .map((q: any) => String(q.quoteNumber || "").trim())
+        .filter((number) => number.startsWith(quotePrefix));
+      const maxSuffix = prefixedNumbers.reduce((max, number) => {
+        const suffix = parseInt(number.replace(quotePrefix, ""), 10);
+        return Number.isFinite(suffix) ? Math.max(max, suffix) : max;
+      }, 0);
+      const nextQuoteNumber = `${quotePrefix}${String(maxSuffix + 1).padStart(6, "0")}`;
 
       const sourceCustomerId = quote.customerId || (typeof quote.customer === "object" ? quote.customer?._id : quote.customer);
       if (!sourceCustomerId) {
@@ -2293,7 +2284,7 @@ const QuoteDetail = () => {
         throw new Error("Cloned quote was saved but no ID was returned.");
       }
 
-      await appendActivityLog(
+      void appendActivityLog(
         "Clone Quote",
         `Quote was duplicated as ${nextQuoteNumber}.`,
         "success"

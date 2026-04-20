@@ -71,10 +71,12 @@ const items: MenuItem[] = [
     children: [
       { label: "Customers", to: "/sales/customers" },
       { label: "Quotes", to: "/sales/quotes" },
+      { label: "Retainer Invoices", to: "/sales/retainer-invoices" },
       { label: "Sales Orders", to: "/sales/sales-orders" },
       { label: "Invoices", to: "/sales/invoices" },
-      { label: "Recurring Invoices", to: "/sales/recurring-invoices" },
       { label: "Sales Receipts", to: "/sales/sales-receipts" },
+      { label: "Recurring Invoices", to: "/sales/recurring-invoices" },
+      { label: "Payment Links", to: "/sales/payment-links" },
       { label: "Payments Received", to: "/sales/payments-received" },
       { label: "Credit Notes", to: "/sales/credit-notes" },
     ],

@@ -9,42 +9,76 @@ type PurchaseSection = {
 };
 
 type CustomerDetailPurchasesTabProps = {
-  isLoading: boolean;
-  customerCurrency?: string;
+  customer: any;
+  linkedVendor: any;
   linkedVendorPurchaseSections: Record<string, boolean>;
-  sections: PurchaseSection[];
+  toggleLinkedVendorPurchaseSection: (sectionKey: string) => void;
+  linkedVendorPurchases: any[];
+  linkedVendorPaymentsMade: any[];
+  linkedVendorPurchaseOrders: any[];
+  linkedVendorCredits: any[];
+  isLinkedVendorPurchasesLoading: boolean;
   formatCurrency: (amount: any, currency?: string) => string;
-  onToggleSection: (sectionKey: string) => void;
-  onNavigate: (path: string) => void;
+  navigate: (to: string, options?: any) => void;
 };
 
 export default function CustomerDetailPurchasesTab({
-  isLoading,
-  customerCurrency,
+  customer,
+  linkedVendor,
   linkedVendorPurchaseSections,
-  sections,
+  toggleLinkedVendorPurchaseSection,
+  linkedVendorPurchases,
+  linkedVendorPaymentsMade,
+  linkedVendorPurchaseOrders,
+  linkedVendorCredits,
+  isLinkedVendorPurchasesLoading,
   formatCurrency,
-  onToggleSection,
-  onNavigate,
+  navigate,
 }: CustomerDetailPurchasesTabProps) {
+  const sections: PurchaseSection[] = [
+    {
+      key: "bills",
+      label: "Bills",
+      rows: linkedVendorPurchases,
+      navigateTo: "/purchases/bills/",
+    },
+    {
+      key: "purchase_orders",
+      label: "Purchase Orders",
+      rows: linkedVendorPurchaseOrders,
+      navigateTo: "/purchases/purchase-orders/",
+    },
+    {
+      key: "vendor_credits",
+      label: "Vendor Credits",
+      rows: linkedVendorCredits,
+      navigateTo: "/purchases/vendor-credits/",
+    },
+    {
+      key: "payments_made",
+      label: "Payments Made",
+      rows: linkedVendorPaymentsMade,
+      navigateTo: "/purchases/payments-made/",
+    },
+  ];
   return (
     <div className="flex-1 min-h-0 p-6" style={{ paddingRight: 0 }}>
       <div className="mb-4 text-sm text-gray-600">Linked vendor transactions</div>
 
-      {isLoading && (
+      {isLinkedVendorPurchasesLoading && (
         <div className="bg-white rounded-lg border border-gray-200 px-6 py-10 text-sm text-gray-500 text-center">
           Loading linked vendor transactions...
         </div>
       )}
 
-      {!isLoading && (
+      {!isLinkedVendorPurchasesLoading && (
         <div className="space-y-4">
           {sections.map((section) => (
             <div key={section.key} className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
               <button
                 type="button"
                 className="w-full flex items-center gap-2 px-4 py-3 text-left text-gray-900 font-medium cursor-pointer hover:bg-gray-100"
-                onClick={() => onToggleSection(section.key)}
+                onClick={() => toggleLinkedVendorPurchaseSection(section.key)}
               >
                 {linkedVendorPurchaseSections[section.key] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                 {section.label}
@@ -72,7 +106,7 @@ export default function CustomerDetailPurchasesTab({
                         <div
                           key={rowId || `${section.key}-${index}`}
                           className="grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-100 text-sm hover:bg-gray-50 cursor-pointer"
-                          onClick={() => rowId && onNavigate(`${section.navigateTo}${rowId}`)}
+                          onClick={() => rowId && navigate(`${section.navigateTo}${rowId}`)}
                         >
                           <div className="col-span-3 text-gray-900">
                             {rowDate
@@ -85,7 +119,7 @@ export default function CustomerDetailPurchasesTab({
                           </div>
                           <div className="col-span-4 text-blue-600 font-medium">{rowNumber || "-"}</div>
                           <div className="col-span-3 text-gray-900">
-                            {formatCurrency(rowAmount, row.currency || customerCurrency || "USD")}
+                            {formatCurrency(rowAmount, row.currency || customer.currency || "USD")}
                           </div>
                           <div className="col-span-2 text-gray-600">{row.status || "-"}</div>
                         </div>

@@ -7,6 +7,11 @@ import { Request, Response } from "express";
 import Currency from "../models/Currency.js";
 import Organization from "../models/Organization.js";
 import mongoose from "mongoose";
+import {
+  applyResourceVersionHeaders,
+  buildResourceVersion,
+  requestMatchesResourceVersion,
+} from "../utils/resourceVersion.js";
 
 interface AuthRequest extends Request {
   user?: {
@@ -33,6 +38,27 @@ export const getCurrencies = async (req: AuthRequest, res: Response): Promise<vo
 
     if (req.query.isActive !== undefined) {
       query.isActive = req.query.isActive === 'true';
+    }
+
+    const [latestCurrency, currencyCount] = await Promise.all([
+      Currency.findOne(query).sort({ updatedAt: -1 }).select("updatedAt code").lean(),
+      Currency.countDocuments(query),
+    ]);
+
+    const versionState = buildResourceVersion("settings-currencies", [
+      {
+        key: "currencies",
+        id: req.user.organizationId,
+        updatedAt: (latestCurrency as any)?.updatedAt,
+        count: currencyCount,
+        extra: String(req.query.isActive ?? ""),
+      },
+    ]);
+    applyResourceVersionHeaders(res, versionState);
+
+    if (requestMatchesResourceVersion(req, versionState)) {
+      res.status(304).end();
+      return;
     }
 
     let currencies = await Currency.find(query).sort({ code: 1 });
@@ -68,6 +94,8 @@ export const getCurrencies = async (req: AuthRequest, res: Response): Promise<vo
     res.json({
       success: true,
       data: currencies,
+      version_id: versionState.version_id,
+      last_updated: versionState.last_updated,
     });
   } catch (error: any) {
     console.error('Error fetching currencies detailed:', error);

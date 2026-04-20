@@ -40,6 +40,7 @@ import {
   RotateCcw
 } from "lucide-react";
 import { getCustomers, getInvoiceById, updateInvoice, deleteInvoice, Invoice } from "../salesModel";
+import { invoicesAPI } from "../../../services/api";
 import { getInvoiceStatusDisplay } from "../../../utils/invoiceUtils";
 import { useCurrency } from "../../../hooks/useCurrency";
 import html2canvas from "html2canvas";
@@ -138,14 +139,12 @@ export default function Invoices() {
       invoice?.source ||
       ""
     ).toLowerCase();
-    const rawNumber = String(invoice?.invoiceNumber || invoice?.number || "").toUpperCase();
     return Boolean(
       invoice?.isRetainerInvoice ||
       invoice?.isRetainer ||
       invoice?.is_retainer ||
       invoice?.retainer ||
-      rawType.includes("retainer") ||
-      /^RET[-\d]/.test(rawNumber)
+      rawType.includes("retainer")
     );
   };
   const isDebitNoteRecord = (invoice: any) => {
@@ -503,8 +502,48 @@ export default function Invoices() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!invoiceListQuery.data) return;
-    setInvoices(stripRetainerInvoices(invoiceListQuery.data.data));
+    let cancelled = false;
+
+    const applyInvoiceRows = async () => {
+      if (!invoiceListQuery.data) return;
+
+      const queryRows = Array.isArray(invoiceListQuery.data.data) ? invoiceListQuery.data.data : [];
+      if (queryRows.length > 0) {
+        if (!cancelled) {
+          setInvoices(stripRetainerInvoices(queryRows));
+        }
+        return;
+      }
+
+      // Fallback: fetch directly from API when query layer resolves to empty.
+      try {
+        const response: any = await invoicesAPI.getAll({ page: 1, limit: FULL_INVOICE_LIST_LIMIT, _ts: Date.now() });
+        const directRows = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response?.items)
+            ? response.items
+            : Array.isArray(response?.data?.data)
+              ? response.data.data
+              : Array.isArray(response?.data?.items)
+                ? response.data.items
+                : [];
+
+        if (!cancelled) {
+          setInvoices(stripRetainerInvoices(directRows));
+        }
+      } catch (error) {
+        console.error("Invoice list fallback fetch failed:", error);
+        if (!cancelled) {
+          setInvoices([]);
+        }
+      }
+    };
+
+    void applyInvoiceRows();
+
+    return () => {
+      cancelled = true;
+    };
   }, [invoiceListQuery.data]);
 
   useEffect(() => {
@@ -718,7 +757,7 @@ export default function Invoices() {
   };
 
   const handleCreateNewRecurringInvoice = () => {
-    navigate("/sales/subscriptions/new");
+    navigate("/sales/recurring-invoices/new");
   };
 
   const handleCreateNewCreditNote = () => {
@@ -2372,6 +2411,26 @@ export default function Invoices() {
                       className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
                     >
                       Invoice
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleCreateNewRecurringInvoice();
+                        setIsNewDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                    >
+                      Recurring Invoice
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleCreateRetailInvoice();
+                        setIsNewDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                    >
+                      Create Retail Invoice
                     </button>
                     <button
                       type="button"

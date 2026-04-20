@@ -11,18 +11,22 @@ export default function AppShell() {
 
   if (isEmbedded) {
     return (
-      <div className="min-h-screen bg-white text-slate-900">
+      <div className="h-screen overflow-hidden bg-white text-slate-900">
         <Outlet />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white text-slate-900">
+    <div className="h-screen overflow-hidden bg-white text-slate-900">
       <Header />
       <Sidebar />
 
+<<<<<<< Updated upstream
       <main className="min-h-screen pt-[72px] pb-4 pl-0 pr-0 md:pl-[calc(var(--sidebar-width))]">
+=======
+      <main className="h-full box-border overflow-hidden pt-[110px] pl-4 pr-4 pb-4 md:pl-[calc(var(--sidebar-width)+24px)]">
+>>>>>>> Stashed changes
         <Outlet />
       </main>
     </div>

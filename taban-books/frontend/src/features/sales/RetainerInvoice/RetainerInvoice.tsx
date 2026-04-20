@@ -547,7 +547,6 @@ export default function RetainerInvoice() {
   const [viewSearchTerm, setViewSearchTerm] = useState("");
   const [favoriteViews, setFavoriteViews] = useState<Set<string>>(new Set());
   const [viewDropdownOpen, setViewDropdownOpen] = useState(false);
-  const [isNewDropdownOpen, setIsNewDropdownOpen] = useState(false);
   const [moreDropdownOpen, setMoreDropdownOpen] = useState(false);
   const [sortSubMenuOpen, setSortSubMenuOpen] = useState(false);
   const [exportSubMenuOpen, setExportSubMenuOpen] = useState(false);
@@ -577,7 +576,6 @@ export default function RetainerInvoice() {
   const [deleteRetainerIds, setDeleteRetainerIds] = useState<string[]>([]);
 
   const viewDropdownRef = useRef<HTMLDivElement>(null);
-  const newDropdownRef = useRef<HTMLDivElement>(null);
   const moreDropdownRef = useRef<HTMLDivElement>(null);
   const columnToolsRef = useRef<HTMLTableCellElement>(null);
   const selectAllCheckboxRef = useRef<HTMLInputElement>(null);
@@ -672,9 +670,6 @@ export default function RetainerInvoice() {
     const onDocClick = (event: MouseEvent) => {
       if (viewDropdownRef.current && !viewDropdownRef.current.contains(event.target as Node)) {
         setViewDropdownOpen(false);
-      }
-      if (newDropdownRef.current && !newDropdownRef.current.contains(event.target as Node)) {
-        setIsNewDropdownOpen(false);
       }
       if (moreDropdownRef.current && !moreDropdownRef.current.contains(event.target as Node)) {
         setMoreDropdownOpen(false);
@@ -1484,78 +1479,16 @@ export default function RetainerInvoice() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3 sm:gap-2">
-              <div className="relative flex items-center" ref={newDropdownRef}>
-                <button
-                  onClick={() => navigate("/sales/retainer-invoices/new")}
-                  className="h-[38px] cursor-pointer transition-all text-white pl-4 pr-3 rounded-l-lg border-[#0D4A52] border-b-[4px] hover:brightness-110 hover:-translate-y-[1px] hover:border-b-[6px] active:border-b-[2px] active:translate-y-[1px] text-sm font-semibold shadow-sm flex items-center justify-center gap-2"
-                  style={{ background: "linear-gradient(180deg, #156372 0%, #0D4A52 100%)" }}
-                  type="button"
-                >
-                  <Plus size={16} strokeWidth={3} />
-                  <span>New</span>
-                </button>
-
-                <div className="w-[1px] h-[38px] bg-white opacity-25 border-b-[4px] border-[#0D4A52]" />
-
-                <button
-                  type="button"
-                  onClick={() => setIsNewDropdownOpen((prev) => !prev)}
-                  className="h-[38px] cursor-pointer transition-all text-white px-2.5 rounded-r-lg border-[#0D4A52] border-b-[4px] hover:brightness-110 hover:-translate-y-[1px] hover:border-b-[6px] active:border-b-[2px] active:translate-y-[1px] shadow-sm flex items-center justify-center"
-                  style={{ background: "linear-gradient(180deg, #156372 0%, #0D4A52 100%)" }}
-                  aria-label="New menu"
-                >
-                  <ChevronDown
-                    size={14}
-                    className={`transition-transform duration-200 ${isNewDropdownOpen ? "rotate-180" : ""}`}
-                    strokeWidth={3}
-                  />
-                </button>
-
-                {isNewDropdownOpen && (
-                  <div className="absolute top-[calc(100%+8px)] right-0 w-56 bg-white border border-gray-200 rounded-lg shadow-xl z-[250] py-1.5 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigate("/sales/retainer-invoices/new");
-                        setIsNewDropdownOpen(false);
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
-                    >
-                      Retainer Invoice
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigate("/sales/invoices/new");
-                        setIsNewDropdownOpen(false);
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
-                    >
-                      Invoice
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigate("/sales/credit-notes/new");
-                        setIsNewDropdownOpen(false);
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
-                    >
-                      Credit Note
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigate("/sales/debit-notes/new");
-                        setIsNewDropdownOpen(false);
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
-                    >
-                      Debit Note
-                    </button>
-                  </div>
-                )}
-              </div>
+              <button
+                onClick={() => navigate("/sales/retainer-invoices/new")}
+                className="h-[38px] cursor-pointer transition-all text-white px-4 rounded-lg border-[#0D4A52] border-b-[4px] hover:brightness-110 hover:-translate-y-[1px] hover:border-b-[6px] active:border-b-[2px] active:translate-y-[1px] text-sm font-semibold shadow-sm inline-flex items-center justify-center gap-2"
+                style={{ background: "linear-gradient(180deg, #156372 0%, #0D4A52 100%)" }}
+                type="button"
+                aria-label="New retainer invoice"
+              >
+                <Plus size={16} strokeWidth={3} />
+                <span>New</span>
+              </button>
 
               <div className="relative" ref={moreDropdownRef}>
                 <button

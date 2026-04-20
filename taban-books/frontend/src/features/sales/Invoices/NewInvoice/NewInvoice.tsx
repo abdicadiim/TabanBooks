@@ -316,6 +316,8 @@ const [isScanModeOpen, setIsScanModeOpen] = useState(false);
 const [isShippingTaxDropdownOpen, setIsShippingTaxDropdownOpen] = useState(false);
 const isTaxExclusiveDropdownOpen = false;
 const [isAttachmentCountOpen, setIsAttachmentCountOpen] = useState(false);
+const [isAccountsReceivableDropdownOpen, setIsAccountsReceivableDropdownOpen] = useState(false);
+const [accountsReceivableSearch, setAccountsReceivableSearch] = useState("");
 const showNewHeaderInput = false;
 const hasAppliedBaseCurrencyRef = useRef(false);
 const [itemsWithAdditionalInfo, setItemsWithAdditionalInfo] = useState<Set<any>>(new Set());
@@ -501,12 +503,47 @@ const loadCatalogPriceLists = async () => {
 };
 const bulkSelectedItems: any[] = [];
 const [bulkSelectedItemIds, setBulkSelectedItemIds] = useState<any[]>([]);
-const accountsReceivableOptions = ["Accounts Receivable"];
+const [accountsReceivableOptions, setAccountsReceivableOptions] = useState<string[]>(["Accounts Receivable"]);
 const depositToOptions = ["Petty Cash"];
 const paymentModeOptions = ["Cash", "Bank Transfer", "Check"];
 const taxExclusiveOptions = ["Tax Exclusive", "Tax Inclusive"];
 const [invoiceDateCalendar, setInvoiceDateCalendar] = useState(() => new Date());
 const [dueDateCalendar, setDueDateCalendar] = useState(() => new Date());
+useEffect(() => {
+  const loadAccountsReceivableOptions = async () => {
+    try {
+      const response: any = await accountantAPI.getAccounts({ limit: 1000, isActive: true });
+      const rows = Array.isArray(response?.data || response) ? (response?.data || response) : [];
+
+      const receivableAccounts = rows
+        .filter((account: any) => {
+          const name = String(account?.accountName || account?.name || "").toLowerCase().trim();
+          const type = String(account?.accountType || account?.type || "").toLowerCase().trim();
+          return name.includes("receivable") || type.includes("receivable");
+        })
+        .map((account: any) => String(account?.accountName || account?.name || "").trim())
+        .filter(Boolean);
+
+      const uniqueOptions = Array.from(new Set(receivableAccounts));
+      if (uniqueOptions.length > 0) {
+        setAccountsReceivableOptions(uniqueOptions);
+        setFormData((prev) => ({
+          ...prev,
+          accountsReceivable: uniqueOptions.includes(prev.accountsReceivable)
+            ? prev.accountsReceivable
+            : uniqueOptions[0],
+        }));
+      } else {
+        setAccountsReceivableOptions(["Accounts Receivable"]);
+      }
+    } catch (error) {
+      console.error("Failed to load Accounts Receivable options:", error);
+      setAccountsReceivableOptions(["Accounts Receivable"]);
+    }
+  };
+
+  void loadAccountsReceivableOptions();
+}, []);
 const normalizeReportingTagOptions = (tag: any): string[] => {
   const rawOptions = Array.isArray(tag?.options) ? tag.options
     : Array.isArray(tag?.values) ? tag.values
@@ -727,6 +764,7 @@ const itemDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
 const taxDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
 const paymentModeDropdownRef = useRef<HTMLDivElement | null>(null);
 const paymentTermsDropdownRef = useRef<HTMLDivElement | null>(null);
+const accountsReceivableDropdownRef = useRef<HTMLDivElement | null>(null);
 const priceListDropdownRef = useRef<HTMLDivElement | null>(null);
 const salespersonDropdownRef = useRef<HTMLDivElement | null>(null);
 const shippingTaxDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -1851,23 +1889,8 @@ useEffect(() => {
   loadReportingTags();
 }, []);
 
-useEffect(() => {
-  loadCatalogPriceLists();
-
-  const onStorageChange = (event: StorageEvent) => {
-    if (!event.key || event.key === PRICE_LISTS_STORAGE_KEY) {
-      loadCatalogPriceLists();
-    }
-  };
-  const onWindowFocus = () => loadCatalogPriceLists();
-
-  window.addEventListener("storage", onStorageChange);
-  window.addEventListener("focus", onWindowFocus);
-  return () => {
-    window.removeEventListener("storage", onStorageChange);
-    window.removeEventListener("focus", onWindowFocus);
-  };
-}, []);
+// NOTE: Price lists API is not available in this project (404).
+// The invoice page no longer uses price lists, so avoid calling it.
 
 useEffect(() => {
   const nextLocations = readStoredLocationOptions();
@@ -1897,6 +1920,9 @@ useEffect(() => {
     if (attachmentCountDropdownRef.current && !attachmentCountDropdownRef.current.contains(event.target as Node)) {
       setIsAttachmentCountOpen(false);
     }
+    if (accountsReceivableDropdownRef.current && !accountsReceivableDropdownRef.current.contains(event.target as Node)) {
+      setIsAccountsReceivableDropdownOpen(false);
+    }
     Object.keys(openItemDropdowns).forEach((itemId) => {
       if (openItemDropdowns[itemId]) {
         const ref = itemDropdownRefs.current[itemId];
@@ -1906,11 +1932,11 @@ useEffect(() => {
       }
     });
   };
-  if (isSalespersonDropdownOpen || isCustomerDropdownOpen || isPriceListDropdownOpen || isBulkActionsOpen || isAttachmentCountOpen || Object.values(openItemDropdowns).some(Boolean)) {
+  if (isSalespersonDropdownOpen || isCustomerDropdownOpen || isPriceListDropdownOpen || isBulkActionsOpen || isAttachmentCountOpen || isAccountsReceivableDropdownOpen || Object.values(openItemDropdowns).some(Boolean)) {
     document.addEventListener("mousedown", handleOutside);
   }
   return () => document.removeEventListener("mousedown", handleOutside);
-}, [isSalespersonDropdownOpen, isCustomerDropdownOpen, isPriceListDropdownOpen, isBulkActionsOpen, isAttachmentCountOpen, openItemDropdowns]);
+}, [isSalespersonDropdownOpen, isCustomerDropdownOpen, isPriceListDropdownOpen, isBulkActionsOpen, isAttachmentCountOpen, isAccountsReceivableDropdownOpen, openItemDropdowns]);
 
 const handleItemSelect = (itemId: number | string, selectedItem: any) => {
   setFormData((prev) => {
@@ -1979,6 +2005,19 @@ const getFilteredItemOptions = (itemId: number | string) => {
     String(entry?.description || "").toLowerCase().includes(search)
   );
 };
+
+const getSelectedCatalogItemForRow = (row: any) => {
+  const selectedId = String(row?.itemId || "").trim();
+  if (!selectedId) return null;
+  return availableItems.find((entry: any) => {
+    const sourceId = String(entry?.sourceId || entry?.id || "").trim();
+    return sourceId && sourceId === selectedId;
+  }) || null;
+};
+
+const filteredAccountsReceivableOptions = accountsReceivableOptions.filter((option) =>
+  String(option || "").toLowerCase().includes(accountsReceivableSearch.toLowerCase().trim()),
+);
 
 const handleItemChange = (id: number | string, field: string, value: any) => {
   setFormData(prev => {
@@ -2172,7 +2211,7 @@ const buildInvoicePayload = (statusValue: string) => {
     transactionNumberSeriesName: invoiceSeriesRef.current?.name || undefined,
     transactionNumberSeriesPrefix: invoiceSeriesRef.current?.prefix || undefined,
     date: formData.invoiceDate || new Date().toISOString(),
-    dueDate: formData.dueDate,
+    dueDate: formData.dueDate || formData.invoiceDate || new Date().toISOString(),
     orderNumber: formData.orderNumber,
     receipt: formData.receipt,
     accountsReceivable: formData.accountsReceivable,
@@ -2440,6 +2479,11 @@ const handleSaveAndSend = async (overridingStatus?: string) => {
     // This avoids backend stock rejection during initial create when status is "sent".
     const statusForCreateOrUpdate = (!isEditMode && requestedStatus !== "draft") ? "draft" : requestedStatus;
     const { payload: invoiceData, customer } = buildInvoicePayload(statusForCreateOrUpdate);
+
+    // Backend requires dueDate. If UI hasn't set it yet, default to invoiceDate.
+    if (!invoiceData.dueDate) {
+      invoiceData.dueDate = invoiceData.invoiceDate || formData.invoiceDate;
+    }
     if (!isEditMode && invoiceNumberMode === "auto") {
       try {
         const latestNumber = await fetchLatestInvoiceNumber();
@@ -2522,7 +2566,7 @@ const handleCancel = () => {
 
 return (
   <>
-    <div className="w-full min-h-full bg-white flex flex-col">
+    <div className="w-full h-full min-h-0 bg-white flex flex-col overflow-hidden">
       {/* Header */}
       <div className="sticky top-0 z-40 flex-shrink-0 border-b border-gray-200 bg-white">
         <div className="w-full px-6 py-4 flex justify-between items-center">
@@ -2574,7 +2618,7 @@ return (
         </div>
       </div>
 
-      <div className="w-full bg-white pb-24">
+      <div className="w-full flex-1 min-h-0 bg-white pb-24 overflow-y-auto">
         <div className="w-full px-6 py-6 space-y-6">
           {/* Scan Mode Interface */}
           {isScanModeOpen && (
@@ -2984,6 +3028,75 @@ return (
               </div>
             </div>
 
+            {/* Accounts Receivable */}
+            <div className="flex items-center gap-6">
+              <label className="text-[13px] font-medium text-gray-600 w-[140px] flex-shrink-0">
+                Accounts Receivable
+              </label>
+              <div className="relative w-[320px]" ref={accountsReceivableDropdownRef}>
+                <button
+                  type="button"
+                  className="flex h-10 w-full items-center justify-between rounded-md border border-[#cfd8e3] bg-white px-3 text-left text-sm text-slate-700"
+                  onClick={() => {
+                    setIsAccountsReceivableDropdownOpen((prev) => !prev);
+                    setAccountsReceivableSearch("");
+                  }}
+                >
+                  <span className="truncate">{formData.accountsReceivable || "Accounts Receivable"}</span>
+                  <ChevronDown
+                    size={14}
+                    className={`text-slate-400 transition-transform ${isAccountsReceivableDropdownOpen ? "rotate-180 text-[#2563eb]" : ""}`}
+                  />
+                </button>
+
+                {isAccountsReceivableDropdownOpen && (
+                  <div className="absolute left-0 top-full z-[150] mt-1 w-full overflow-hidden rounded-xl border border-[#d6dbe8] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.14)]">
+                    <div className="border-b border-slate-100 p-2">
+                      <div className="relative">
+                        <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          value={accountsReceivableSearch}
+                          onChange={(e) => setAccountsReceivableSearch(e.target.value)}
+                          placeholder="Search"
+                          className="h-9 w-full rounded-md border border-[#3b82f6] bg-white pl-9 pr-3 text-[13px] text-slate-700 outline-none"
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+
+                    <div className="max-h-[240px] overflow-y-auto py-1">
+                      <div className="px-3 py-1 text-[11px] font-semibold text-slate-600">Accounts Receivable</div>
+                      {filteredAccountsReceivableOptions.length > 0 ? (
+                        filteredAccountsReceivableOptions.map((option) => {
+                          const isSelected = formData.accountsReceivable === option;
+                          return (
+                            <button
+                              key={option}
+                              type="button"
+                              className={`mx-2 flex w-[calc(100%-16px)] items-center justify-between rounded-md px-3 py-2 text-left text-[14px] ${
+                                isSelected ? "bg-[#4a89e8] text-white" : "text-slate-700 hover:bg-slate-50"
+                              }`}
+                              onClick={() => {
+                                setFormData((prev: any) => ({ ...prev, accountsReceivable: option }));
+                                setIsAccountsReceivableDropdownOpen(false);
+                                setAccountsReceivableSearch("");
+                              }}
+                            >
+                              <span className="truncate">{option}</span>
+                              {isSelected ? <Check size={14} /> : null}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className="px-3 py-2 text-[13px] text-slate-500">No accounts found</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
 
 
             {isCustomPaymentTerm && (
@@ -3141,72 +3254,6 @@ return (
                 <ChevronDown size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
               </div>
 
-              <div className="relative" ref={priceListDropdownRef}>
-                <button
-                  type="button"
-                  className="flex h-9 min-w-[160px] items-center justify-between rounded-md border border-transparent bg-white px-3 text-[13px] text-slate-500 shadow-sm ring-1 ring-slate-200 transition hover:text-slate-700"
-                  onClick={() => {
-                    loadCatalogPriceLists();
-                    setIsPriceListDropdownOpen((prev) => !prev);
-                    setPriceListSearch("");
-                  }}
-                >
-                  <span className="flex items-center gap-2">
-                    <ClipboardList size={13} className="text-slate-400" />
-                    {selectedPriceListDisplay}
-                  </span>
-                  {isPriceListDropdownOpen ? (
-                    <ChevronUp size={13} className="text-[#2563eb]" />
-                  ) : (
-                    <ChevronDown size={13} className="text-slate-400" />
-                  )}
-                </button>
-
-                {isPriceListDropdownOpen && (
-                  <div className="absolute left-0 top-full z-[90] mt-2 w-[240px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.14)]">
-                    <div className="border-b border-slate-100 p-2">
-                      <div className="relative">
-                        <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input
-                          type="text"
-                          value={priceListSearch}
-                          onChange={(e) => setPriceListSearch(e.target.value)}
-                          placeholder="Search"
-                          className="h-9 w-full rounded-md border border-[#3b82f6] bg-white pl-9 pr-3 text-[13px] text-slate-700 outline-none"
-                        />
-                      </div>
-                    </div>
-                    <div className="max-h-[260px] overflow-y-auto py-1">
-                      {filteredPriceListOptions.length > 0 ? (
-                        filteredPriceListOptions.map((option) => {
-                          const isSelected = ((formData as any).selectedPriceList || "") === option.name;
-                          return (
-                            <button
-                              key={option.id || option.name}
-                              type="button"
-                              className={`mx-2 flex w-[calc(100%-16px)] items-center justify-between rounded-md px-3 py-2 text-left text-[13px] ${
-                                isSelected
-                                  ? "bg-[#4a89e8] text-white"
-                                  : "text-slate-700 hover:bg-slate-50"
-                              }`}
-                              onClick={() => {
-                                setFormData((prev: any) => ({ ...prev, selectedPriceList: option.name }));
-                                setIsPriceListDropdownOpen(false);
-                                setPriceListSearch("");
-                              }}
-                            >
-                              <span className="truncate">{option.displayLabel}</span>
-                              {isSelected ? <Check size={14} /> : null}
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <div className="px-3 py-2 text-[13px] text-slate-500">No price lists found</div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
 
             <div className="overflow-visible rounded-xl border border-slate-200 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.06)]">
@@ -3363,48 +3410,81 @@ return (
                         </td>
                         <td className="w-[300px] max-w-[300px] px-3 py-4">
                           <div className="relative" ref={el => { itemDropdownRefs.current[item.id] = el; }}>
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded border border-slate-200 bg-slate-100">
-                                <ImageIcon size={16} className="text-slate-300" />
-                              </div>
-                              <input
-                                type="text"
-                                placeholder="Type or click to select an item."
-                                className="w-full border-none bg-transparent py-1 text-sm text-slate-700 outline-none placeholder:text-slate-400"
-                                value={item.itemDetails}
-                                onClick={() => toggleItemDropdown(item.id)}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  handleItemChange(item.id, "itemDetails", value);
-                                  setItemSearches((prev) => ({ ...prev, [String(item.id)]: value }));
-                                  setOpenItemDropdowns((prev) => ({ ...prev, [String(item.id)]: true }));
-                                }}
-                              />
-                            </div>
+                            {(() => {
+                              const selectedCatalogItem = getSelectedCatalogItemForRow(item);
+                              if (!selectedCatalogItem) {
+                                return (
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded border border-slate-200 bg-slate-100">
+                                      <ImageIcon size={16} className="text-slate-300" />
+                                    </div>
+                                    <input
+                                      type="text"
+                                      placeholder="Type or click to select an item."
+                                      className="w-full border-none bg-transparent py-1 text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                                      value={item.itemDetails}
+                                      onClick={() => toggleItemDropdown(item.id)}
+                                      onChange={(e) => {
+                                        const value = e.target.value;
+                                        handleItemChange(item.id, "itemDetails", value);
+                                        setItemSearches((prev) => ({ ...prev, [String(item.id)]: value }));
+                                        setOpenItemDropdowns((prev) => ({ ...prev, [String(item.id)]: true }));
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <button
+                                  type="button"
+                                  className="w-full text-left"
+                                  onClick={() => toggleItemDropdown(item.id)}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded border border-slate-200 bg-slate-100">
+                                      <ImageIcon size={16} className="text-slate-300" />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="truncate text-sm font-medium text-slate-800">
+                                        {selectedCatalogItem.name}
+                                      </div>
+                                      <div className="mt-0.5 text-[12px] text-slate-500">
+                                        SKU: {selectedCatalogItem.sku || selectedCatalogItem.code || "-"}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </button>
+                              );
+                            })()}
                             {openItemDropdowns[item.id] && (
-                              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-none z-[140] max-h-72 overflow-y-auto">
+                              <div className="absolute top-full left-0 right-0 mt-1 z-[140] overflow-hidden rounded-xl border border-[#d6dbe8] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.14)]">
                                 {getFilteredItemOptions(item.id).length === 0 ? (
                                   <div className="px-3 py-3 text-sm text-gray-500">No items found.</div>
                                 ) : (
                                   getFilteredItemOptions(item.id).map((p, pidx) => {
+                                    const isSelected = String(item.itemId || "") === String(p.sourceId || p.id || "");
                                     return (
                                       <button
                                         key={p.id || `prod-${pidx}`}
                                         type="button"
                                         onClick={() => handleItemSelect(item.id, p)}
-                                        className="w-full px-3 py-2 text-left border-b border-gray-100 last:border-b-0 hover:bg-slate-50 hover:text-slate-900 group/item transition-colors"
+                                        className={`w-full px-3 py-2.5 text-left border-b border-gray-100 last:border-b-0 group/item transition-colors ${
+                                          isSelected ? "bg-[#4a89e8] text-white" : "hover:bg-slate-50 text-slate-900"
+                                        }`}
                                       >
-                                        <div className="min-w-0">
-                                          <div className="flex items-center gap-2">
-                                            <div className="font-medium text-sm truncate">{p.name}</div>
-                                            {String(p.entityType || "").toLowerCase() === "plan" && (
-                                              <span className="inline-flex shrink-0 items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                                                Plan
-                                              </span>
-                                            )}
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="min-w-0">
+                                            <div className={`font-medium text-[15px] truncate ${isSelected ? "text-white" : ""}`}>{p.name}</div>
+                                            <div className={`mt-0.5 text-[12px] ${isSelected ? "text-blue-100" : "text-gray-500"}`}>
+                                              SKU: {p.code || p.sku || "-"} Rate: KES{Number(p.rate || 0).toFixed(2)}
+                                            </div>
                                           </div>
-                                          <div className="mt-1 text-xs text-gray-500 group-hover/item:text-slate-500">
-                                            Code: {p.code || p.sku || "-"}
+                                          <div className={`text-right text-[12px] ${isSelected ? "text-blue-100" : "text-slate-500"}`}>
+                                            <div>Stock on Hand</div>
+                                            <div className={`font-medium ${isSelected ? "text-white" : "text-[#1f7a5a]"}`}>
+                                              {Number(p.stockOnHand || 0).toFixed(2)} {p.unit || "pcs"}
+                                            </div>
                                           </div>
                                         </div>
                                       </button>

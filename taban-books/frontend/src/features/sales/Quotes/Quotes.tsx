@@ -274,6 +274,8 @@ export default function Quotes() {
     { key: "customerName", label: "Customer Name" },
     { key: "amount", label: "Amount" },
   ];
+  const MORE_MENU_WIDTH = 224;
+  const MORE_MENU_MARGIN = 16;
   const searchTypeOptions = [
     "Customers",
     "Items",
@@ -2169,11 +2171,11 @@ export default function Quotes() {
       {/* Header Section */}
       {selectedQuotes.length > 0 ? (
         <div
-          className="flex-none relative z-30 flex items-center justify-between px-6 py-6 border-b border-gray-100 bg-white overflow-visible"
+          className="flex-none relative z-30 flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white overflow-visible"
         >
           <div className="flex items-center gap-2 py-2.5">
             <button
-              className="px-4 py-2 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
+              className="px-3 py-1 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
               onClick={handleBulkUpdate}
             >
               Bulk Update
@@ -2186,19 +2188,19 @@ export default function Quotes() {
               Download PDF
             </button>
             <button
-              className="px-4 py-2 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
+              className="px-3 py-1 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
               onClick={handleBulkMarkAsSent}
             >
               Mark As Sent
             </button>
             <button
-              className="px-4 py-2 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
+              className="px-3 py-1 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
               onClick={handleBulkSubmitForApproval}
             >
               Submit for Approval
             </button>
             <button
-              className="px-4 py-2 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
+              className="px-3 py-1 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
               onClick={handleBulkDelete}
             >
               Delete
@@ -2225,13 +2227,13 @@ export default function Quotes() {
         </div>
       ) : (
         <div
-          className="flex-none flex items-center justify-between px-6 py-6 border-b border-gray-100 bg-white relative overflow-visible"
+          className="flex-none flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white relative overflow-visible"
         >
-          <div className="flex items-center gap-8 pl-4">
+          <div className="flex items-center gap-4">
             <div className="relative" ref={dropdownRef}>
               <button
                 type="button"
-                className="flex items-center gap-1.5 py-4 cursor-pointer group border-b-2 border-slate-900 -mb-[1px] bg-transparent outline-none"
+                className="flex items-center gap-1.5 py-1.5 cursor-pointer group border-b-2 border-slate-900 bg-transparent outline-none"
                 onClick={() => {
                   if (isDropdownOpen) {
                     setIsDropdownOpen(false);
@@ -2320,10 +2322,10 @@ export default function Quotes() {
             ) : null}
           </div>
 
-          <div className="flex items-center gap-3 mr-4">
+          <div className="flex items-center gap-3">
             <button
               onClick={handleCreateNewQuote}
-              className="inline-flex items-center gap-2 rounded-lg px-4 py-1.5 bg-[#156372] text-white text-sm font-semibold cursor-pointer hover:brightness-110 transition-all active:brightness-95 border-[#0D4A52] border-b-[4px] shadow-sm"
+              className="inline-flex items-center gap-2 rounded-lg px-4 py-1 bg-[#156372] text-white text-sm font-semibold cursor-pointer hover:brightness-110 transition-all active:brightness-95 border-[#0D4A52] border-b-[3px] shadow-sm"
               style={{ background: 'linear-gradient(90deg, #156372 0%, #0D4A52 100%)' }}
               aria-label="Create new quote"
             >
@@ -2342,9 +2344,14 @@ export default function Quotes() {
 
                   const rect = moreMenuRef.current?.getBoundingClientRect();
                   if (rect) {
+                    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+                    const clampedLeft = Math.min(
+                      Math.max(MORE_MENU_MARGIN, rect.left),
+                      Math.max(MORE_MENU_MARGIN, viewportWidth - MORE_MENU_MARGIN - MORE_MENU_WIDTH),
+                    );
                     setMoreMenuPosition({
                       top: rect.bottom + 8,
-                      left: rect.left,
+                      left: clampedLeft,
                     });
                   }
                   setIsMoreMenuOpen(true);
@@ -2477,9 +2484,9 @@ export default function Quotes() {
             className="flex-1 overflow-auto bg-white min-h-0"
           >
             <table className="w-full text-left border-collapse" style={{ minWidth: `${tableMinWidth}px` }}>
-              <thead className="bg-[#f6f7fb] sticky top-0 z-20 border-b border-[#e6e9f2]">
+              <thead className="bg-gray-50 sticky top-0 z-20 border-b border-gray-200">
                 <tr className="text-[10px] font-semibold text-[#7b8494] uppercase tracking-wider">
-                  <th className="w-16 px-4 py-3 text-left bg-[#f6f7fb]">
+                <th className="w-16 px-4 py-3 text-left bg-gray-50">
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -2506,7 +2513,7 @@ export default function Quotes() {
                     return (
                       <th
                         key={colKey}
-                        className="group/header relative px-4 py-3 text-left text-[11px] font-semibold text-[#7b8494] uppercase tracking-wider select-none bg-[#f6f7fb]"
+                        className="group/header relative px-4 py-3 text-left text-[11px] font-semibold text-[#7b8494] uppercase tracking-wider select-none bg-gray-50"
                         style={{
                           width: `${columnWidths[colKey] || 120}px`,
                           minWidth: `${columnWidths[colKey] || 120}px`,
@@ -2518,7 +2525,7 @@ export default function Quotes() {
                       </th>
                     );
                   })}
-                  <th className="w-10 px-4 py-3 text-right bg-[#f6f7fb] border-l border-transparent"></th>
+                  <th className="w-10 px-4 py-3 text-right bg-gray-50"></th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-[#eef1f6] animate-pulse">
@@ -2551,7 +2558,7 @@ export default function Quotes() {
             </table>
           </div>
         ) : sortedQuotes.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gray-50/30">
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-white">
             <div className="w-24 h-24 bg-white rounded-2xl shadow-sm flex items-center justify-center mb-6 border border-gray-100">
               <FileText size={48} className="text-gray-200" />
             </div>
@@ -2562,12 +2569,12 @@ export default function Quotes() {
           </div>
         ) : (
           <div
-            className="flex-1 overflow-auto bg-[#f6f7fb] min-h-0 custom-scrollbar"
+            className="flex-1 overflow-auto bg-white min-h-0 custom-scrollbar"
           >
             <table className="w-full text-left border-collapse" style={{ minWidth: `${tableMinWidth}px` }}>
-            <thead className="bg-[#f6f7fb] sticky top-0 z-20 border-b border-[#e6e9f2]">
+            <thead className="bg-gray-50 sticky top-0 z-20 border-b border-gray-200">
               <tr className="text-[10px] font-semibold text-[#7b8494] uppercase tracking-wider">
-                <th className="w-16 px-4 py-3 text-left bg-[#f6f7fb]">
+                <th className="w-16 px-4 py-3 text-left bg-gray-50">
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -2600,7 +2607,7 @@ export default function Quotes() {
                     return (
                       <th
                         key={colKey}
-                        className="group/header relative px-4 py-3 text-left text-[11px] font-semibold text-[#7b8494] uppercase tracking-wider select-none bg-white"
+                        className="group/header relative px-4 py-3 text-left text-[11px] font-semibold text-[#7b8494] uppercase tracking-wider select-none bg-gray-50"
                         style={{
                           width: `${columnWidths[colKey] || 120}px`,
                           minWidth: `${columnWidths[colKey] || 120}px`,
@@ -2613,7 +2620,7 @@ export default function Quotes() {
                       </th>
                     );
                   })}
-                  <th className="w-10 px-4 py-3 text-right bg-[#f6f7fb] border-l border-transparent">
+                  <th className="w-10 px-4 py-3 text-right bg-gray-50">
                     <button
                       type="button"
                       className="text-gray-400 hover:text-[#156372]"

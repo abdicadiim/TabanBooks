@@ -658,7 +658,7 @@ export default function NewCustomer() {
         shippingFax: cloned.shippingAddress?.fax || cloned.shippingFax || "",
         remarks: cloned.remarks || cloned.notes || "",
         exchangeRate: cloned.exchangeRate || "1.00",
-        contactPersons: (cloned.contactPersons || []).map((cp) => {
+        contactPersons: (cloned.contactPersons || []).map((cp: any) => {
           const cpWorkPhoneData = splitPhoneNumber(cp.workPhone || cp.phone || "", "+358");
           const cpMobileData = cp.mobile ? splitPhoneNumber(cp.mobile, "+252") : { prefix: "+252", number: "" };
           return {
@@ -1089,7 +1089,7 @@ export default function NewCustomer() {
     }
   };
 
-  const handleRemoveFile = (fileId) => {
+  const handleRemoveFile = (fileId: string | number) => {
     setFormData(prev => ({
       ...prev,
       documents: prev.documents.filter(doc => doc.id !== fileId)
@@ -1101,7 +1101,7 @@ export default function NewCustomer() {
   };
 
   // Helper function to parse file size string to bytes
-  const parseFileSize = (sizeStr) => {
+  const parseFileSize = (sizeStr: string | number) => {
     if (typeof sizeStr === 'number') return sizeStr;
     if (!sizeStr) return 0;
 
@@ -1111,7 +1111,7 @@ export default function NewCustomer() {
     const value = parseFloat(match[1]);
     const unit = match[2].toUpperCase();
 
-    const multipliers = { B: 1, KB: 1024, MB: 1024 * 1024, GB: 1024 * 1024 * 1024 };
+    const multipliers: { [key: string]: number } = { B: 1, KB: 1024, MB: 1024 * 1024, GB: 1024 * 1024 * 1024 };
     return Math.round(value * (multipliers[unit] || 1));
   };
 
@@ -1363,7 +1363,7 @@ export default function NewCustomer() {
             ...(existingCustomerData || {}),
             ...customerData,
           },
-          savedCustomer?._id || savedCustomer?.id || id
+          (savedCustomer as any)?._id || (savedCustomer as any)?.id || id
         );
         const savedCustomerId = String(normalizedSavedCustomer?._id || normalizedSavedCustomer?.id || id || "").trim();
         toast.success(isEditMode ? "Customer updated successfully." : "Customer created successfully.");
@@ -3744,7 +3744,7 @@ export default function NewCustomer() {
                                       });
                                     }
                                   }}
-                                  inputClassName={errors[getReportingTagErrorKey(tagId)] ? "border-red-500 bg-red-50 hover:border-red-500 focus:border-red-500" : ""}
+                                  className={errors[getReportingTagErrorKey(tagId)] ? "border-red-500 bg-red-50 hover:border-red-500 focus:border-red-500" : ""}
                                 />
                                 {errors[getReportingTagErrorKey(tagId)] && (
                                   <p className="mt-1 text-xs text-red-500 font-medium">{errors[getReportingTagErrorKey(tagId)]}</p>

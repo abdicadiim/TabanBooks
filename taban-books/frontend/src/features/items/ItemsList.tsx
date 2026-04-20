@@ -433,7 +433,7 @@ const ItemsList = ({
     setMoreDropdownOpen(false);
   };
 
-  const getSortValue = (item: any, key: string) => {
+  function getSortValue(item: any, key: string) {
     const rawValue = item?.[key];
 
     switch (key) {
@@ -447,7 +447,7 @@ const ItemsList = ({
       default:
         return String(rawValue ?? "").toLowerCase();
     }
-  };
+  }
 
   const getHeaderSortDirection = (key: string) => {
     if (sortKey !== key) return null;

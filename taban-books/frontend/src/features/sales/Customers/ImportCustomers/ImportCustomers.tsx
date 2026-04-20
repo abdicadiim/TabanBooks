@@ -1,14 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, Download, ChevronDown, ChevronUp, HelpCircle, Search, Check, Lightbulb, LayoutGrid, HardDrive, Box, Square, Cloud, ChevronUp as ChevronUpIcon, Users, FileText, Folder, Building2, Edit, ChevronLeft, Info, Loader2 } from "lucide-react";
-import { getAllDocuments, addDocument } from "../../../../utils/documentStorage";
-import { saveCustomer } from "../../salesModel";
+import { getAllDocuments, addDocument, DocumentRecord } from "../../../../utils/documentStorage";
+import { saveCustomer, Customer } from "../../salesModel";
 import { parseImportFile } from "../../utils/importFileParser";
 import { toast } from "react-hot-toast";
 
 export default function ImportCustomers() {
   const navigate = useNavigate();
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [duplicateHandling, setDuplicateHandling] = useState("skip");
   const [characterEncoding, setCharacterEncoding] = useState("UTF-8 (Unicode)");
   const [isEncodingDropdownOpen, setIsEncodingDropdownOpen] = useState(false);
@@ -18,12 +18,12 @@ export default function ImportCustomers() {
   const [isDocumentsModalOpen, setIsDocumentsModalOpen] = useState(false);
   const [selectedDocumentCategory, setSelectedDocumentCategory] = useState("allDocuments");
   const [documentSearch, setDocumentSearch] = useState("");
-  const [documents, setDocuments] = useState([]);
-  const [selectedDocuments, setSelectedDocuments] = useState([]);
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
   const [selectedCloudProvider, setSelectedCloudProvider] = useState("zoho");
   const [currentStep, setCurrentStep] = useState("configure"); // "configure", "mapFields", "preview"
   const [isLoading, setIsLoading] = useState(false);
-  const [fieldMappings, setFieldMappings] = useState({});
+  const [fieldMappings, setFieldMappings] = useState<Record<string, string>>({});
   const [previewData, setPreviewData] = useState({
     readyToImport: 1,
     skippedRecords: 0,
@@ -46,23 +46,23 @@ export default function ImportCustomers() {
     "Name",
     "Payment Terms",
     "Receivables",
-    "Shipping Country",
+    "Shipping Country",
     "Status",
     "Website",
     "Work Phone"
   ]);
-  const fileInputRef = useRef(null);
-  const encodingDropdownRef = useRef(null);
-  const fileSourceDropdownRef = useRef(null);
-  const dropAreaRef = useRef(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const encodingDropdownRef = useRef<HTMLDivElement>(null);
+  const fileSourceDropdownRef = useRef<HTMLDivElement>(null);
+  const dropAreaRef = useRef<HTMLDivElement>(null);
 
   // Handle click outside for dropdowns
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (encodingDropdownRef.current && !encodingDropdownRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (encodingDropdownRef.current && !encodingDropdownRef.current.contains(event.target as Node)) {
         setIsEncodingDropdownOpen(false);
       }
-      if (fileSourceDropdownRef.current && !fileSourceDropdownRef.current.contains(event.target)) {
+      if (fileSourceDropdownRef.current && !fileSourceDropdownRef.current.contains(event.target as Node)) {
         setIsFileSourceDropdownOpen(false);
       }
     };
@@ -89,12 +89,12 @@ export default function ImportCustomers() {
     "ASCII"
   ];
 
-  const handleFileSelect = (event) => {
-    const file = event.target.files[0];
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (file) {
       // Validate file type
       const validTypes = [".csv", ".tsv", ".xls", ".xlsx"];
-      const fileExtension = "." + file.name.split(".").pop().toLowerCase();
+      const fileExtension = "." + (file.name.split(".").pop()?.toLowerCase() || "");
       const maxSize = 25 * 1024 * 1024; // 25MB
 
       if (!validTypes.includes(fileExtension)) {
@@ -196,7 +196,7 @@ export default function ImportCustomers() {
 
   const filteredDocuments = getFilteredDocuments();
 
-  const handleDragOver = (e) => {
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (dropAreaRef.current) {
@@ -204,7 +204,7 @@ export default function ImportCustomers() {
     }
   };
 
-  const handleDragLeave = (e) => {
+  const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (dropAreaRef.current) {
@@ -212,7 +212,7 @@ export default function ImportCustomers() {
     }
   };
 
-  const handleDrop = (e) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (dropAreaRef.current) {
@@ -224,7 +224,7 @@ export default function ImportCustomers() {
       const file = files[0];
       // Validate file type
       const validTypes = [".csv", ".tsv", ".xls", ".xlsx"];
-      const fileExtension = "." + file.name.split(".").pop().toLowerCase();
+      const fileExtension = "." + (file.name.split(".").pop()?.toLowerCase() || "");
       const maxSize = 25 * 1024 * 1024; // 25MB
 
       if (!validTypes.includes(fileExtension)) {
@@ -327,12 +327,12 @@ export default function ImportCustomers() {
     }
   };
 
-  const parseCSV = (csvText) => {
+  const parseCSV = (csvText: string) => {
     const lines = csvText.split('\n').filter(line => line.trim());
     if (lines.length === 0) return { headers: [], rows: [] };
 
     // Improved CSV parsing that handles quoted values with commas
-    const parseCSVLine = (line) => {
+    const parseCSVLine = (line: string) => {
       const result = [];
       let current = '';
       let inQuotes = false;
@@ -372,7 +372,7 @@ export default function ImportCustomers() {
     for (let i = 1; i < lines.length; i++) {
       const values = parseCSVLine(lines[i]);
       if (values.some(v => v)) { // Only add non-empty rows
-        const row = {};
+        const row: Record<string, any> = {};
         headers.forEach((header, index) => {
           const value = (values[index] || '').replace(/^"|"$/g, '').trim();
           row[header] = value;
@@ -384,7 +384,7 @@ export default function ImportCustomers() {
     return { headers, rows };
   };
 
-  const mapFieldValue = (row, mappedField) => {
+  const mapFieldValue = (row: any, mappedField: string) => {
     if (!mappedField) return '';
     // Try exact match first
     if (row[mappedField] !== undefined && row[mappedField] !== null && row[mappedField] !== '') {
@@ -507,7 +507,7 @@ export default function ImportCustomers() {
 
           await saveCustomer(customerData);
           importedCount++;
-        } catch (error) {
+        } catch (error: any) {
           skippedCount++;
           errors.push(`Row ${importedCount + skippedCount}: ${error.message}`);
         }

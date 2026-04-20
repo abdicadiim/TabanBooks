@@ -12,6 +12,7 @@ import {
   useCustomersListQuery,
 } from "./customerQueries";
 import { loadCustomerReportingTags } from "./customerReportingTags";
+import { createAdaptiveStorageAdapter } from "../../../sync/persistence";
 
 const defaultCustomerViews = [
   "All Customers",
@@ -24,6 +25,50 @@ const defaultCustomerViews = [
   "Overdue Customers",
   "Unpaid Customers"
 ];
+
+type CustomerRow = Record<string, any> & {
+  id?: string;
+  _id?: string;
+  name?: string;
+  displayName?: string;
+  companyName?: string;
+  email?: string;
+  workPhone?: string;
+  mobile?: string;
+  firstName?: string;
+  lastName?: string;
+  status?: string;
+  isActive?: boolean;
+  isInactive?: boolean;
+  customerType?: string;
+  source?: string;
+  enablePortal?: boolean;
+  portalStatus?: string;
+  receivables?: number;
+  unusedCredits?: number;
+  website?: string;
+  webSite?: string;
+  accountsReceivable?: number;
+  unused_credits?: number;
+  currency?: string;
+  currencyCode?: string;
+};
+
+type CustomerViewItem = {
+  id: string;
+  name: string;
+  isFavorite?: boolean;
+  criteria?: Array<{ id: number; field: string; comparator: string; value: string }>;
+  columns?: string[];
+  visibility?: string;
+  type?: string;
+  entityType?: string;
+  filters?: Record<string, any>;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+};
+
+type DropdownRef = React.RefObject<HTMLDivElement | null>;
 
 
 export default function useCustomersPageController() {
@@ -47,18 +92,23 @@ export default function useCustomersPageController() {
   const organizationNameHtml = organizationName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const AUTH_URL = (import.meta as any).env?.VITE_AUTH_URL || "http://localhost:5172";
   const LOCAL_COLUMNS_LAYOUT_KEY = "taban_customers_columns";
-  const [customers, setCustomers] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [statusOverrides, setStatusOverrides] = useState<Record<string, "active" | "inactive">>({});
   const [selectedCustomers, setSelectedCustomers] = useState(new Set<string>());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
+  const [sortConfig, setSortConfig] = useState<{ key: string | null; direction: "asc" | "desc" }>({
+    key: null,
+    direction: "asc",
+  });
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
   const currentPageRef = useRef(1);
   const itemsPerPageRef = useRef(50);
-  const loadCustomersRef = useRef<any>(null);
+  const loadCustomersRef = useRef<
+    ((page?: number, limit?: number, options?: { rowRefreshOnly?: boolean; useCache?: boolean }) => Promise<void>) | null
+  >(null);
   const lastAutoRefreshAtRef = useRef(0);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -66,16 +116,20 @@ export default function useCustomersPageController() {
   const [selectedView, setSelectedView] = useState("All Customers");
   const [favoriteViews, setFavoriteViews] = useState(new Set<string>());
   const [viewSearchQuery, setViewSearchQuery] = useState("");
-  const [customViews, setCustomViews] = useState(() => getCustomViews().filter(v => v.type === "customers" || !v.type));
+  const [customViews, setCustomViews] = useState<CustomerViewItem[]>(
+    () => getCustomViews().filter((v: CustomerViewItem) => v.type === "customers" || !v.type)
+  );
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newViewName, setNewViewName] = useState("");
   const [isFavorite, setIsFavorite] = useState(false);
-  const [criteria, setCriteria] = useState([{ id: 1, field: "", comparator: "", value: "" }]);
+  const [criteria, setCriteria] = useState<Array<{ id: number; field: string; comparator: string; value: string }>>([
+    { id: 1, field: "", comparator: "", value: "" },
+  ]);
   const [selectedColumns, setSelectedColumns] = useState(["Name"]);
-  const [fieldSearch, setFieldSearch] = useState({});
-  const [isFieldDropdownOpen, setIsFieldDropdownOpen] = useState({});
-  const [comparatorSearch, setComparatorSearch] = useState({});
-  const [isComparatorDropdownOpen, setIsComparatorDropdownOpen] = useState({});
+  const [fieldSearch, setFieldSearch] = useState<Record<string, string>>({});
+  const [isFieldDropdownOpen, setIsFieldDropdownOpen] = useState<Record<string, boolean>>({});
+  const [comparatorSearch, setComparatorSearch] = useState<Record<string, string>>({});
+  const [isComparatorDropdownOpen, setIsComparatorDropdownOpen] = useState<Record<string, boolean>>({});
 
 
   interface Column {
@@ -297,7 +351,7 @@ export default function useCustomersPageController() {
   });
   const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false);
   const [currencySearch, setCurrencySearch] = useState("");
-  const currencyDropdownRef = useRef(null);
+  const currencyDropdownRef = useRef<HTMLDivElement | null>(null);
   const [priceLists, setPriceLists] = useState<Array<{ id: string; name: string; currency: string; pricingScheme: string }>>([]);
   const [availableReportingTags, setAvailableReportingTags] = useState<any[]>([]);
 
@@ -339,13 +393,13 @@ export default function useCustomersPageController() {
 
   const [isCustomerLanguageDropdownOpen, setIsCustomerLanguageDropdownOpen] = useState(false);
   const [customerLanguageSearch, setCustomerLanguageSearch] = useState("");
-  const customerLanguageDropdownRef = useRef(null);
+  const customerLanguageDropdownRef = useRef<HTMLDivElement | null>(null);
   const [isTaxRateDropdownOpen, setIsTaxRateDropdownOpen] = useState(false);
   const [taxRateSearch, setTaxRateSearch] = useState("");
-  const taxRateDropdownRef = useRef(null);
+  const taxRateDropdownRef = useRef<HTMLDivElement | null>(null);
   const [isAccountsReceivableDropdownOpen, setIsAccountsReceivableDropdownOpen] = useState(false);
   const [accountsReceivableSearch, setAccountsReceivableSearch] = useState("");
-  const accountsReceivableDropdownRef = useRef(null);
+  const accountsReceivableDropdownRef = useRef<HTMLDivElement | null>(null);
 
   const closeBulkUpdateDropdowns = () => {
     setIsCurrencyDropdownOpen(false);
@@ -353,10 +407,10 @@ export default function useCustomersPageController() {
     setIsCustomerLanguageDropdownOpen(false);
     setIsAccountsReceivableDropdownOpen(false);
   };
-  const dropdownRef = useRef(null);
-  const modalRef = useRef(null);
-  const moreMenuRef = useRef(null);
-  const bulkMoreMenuRef = useRef(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const bulkMoreMenuRef = useRef<HTMLDivElement | null>(null);
   const [isExportCurrentViewModalOpen, setIsExportCurrentViewModalOpen] = useState(false);
   const [isExportCustomersModalOpen, setIsExportCustomersModalOpen] = useState(false);
   const [exportData, setExportData] = useState({
@@ -423,8 +477,8 @@ export default function useCustomersPageController() {
 
   const [isDecimalFormatDropdownOpen, setIsDecimalFormatDropdownOpen] = useState(false);
   const [isModuleDropdownOpen, setIsModuleDropdownOpen] = useState(false);
-  const decimalFormatDropdownRef = useRef(null);
-  const moduleDropdownRef = useRef(null);
+  const decimalFormatDropdownRef = useRef<HTMLDivElement | null>(null);
+  const moduleDropdownRef = useRef<HTMLDivElement | null>(null);
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
   const [mergeTargetCustomer, setMergeTargetCustomer] = useState<any>(null);
   const [isMergeCustomerDropdownOpen, setIsMergeCustomerDropdownOpen] = useState(false);
@@ -433,7 +487,7 @@ export default function useCustomersPageController() {
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
   const [activePreferencesTab, setActivePreferencesTab] = useState("preferences");
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [deleteCustomerId, setDeleteCustomerId] = useState(null);
+  const [deleteCustomerId, setDeleteCustomerId] = useState<string | null>(null);
   const [deleteCustomerIds, setDeleteCustomerIds] = useState<string[]>([]);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [isDeletingCustomer, setIsDeletingCustomer] = useState(false);
@@ -461,9 +515,9 @@ export default function useCustomersPageController() {
     termsAndConditions: "",
     customerNotes: "Thank you for the payment. You just made our day."
   });
-  const mergeCustomerDropdownRef = useRef(null);
+  const mergeCustomerDropdownRef = useRef<HTMLDivElement | null>(null);
   const [isMoreOptionsDropdownOpen, setIsMoreOptionsDropdownOpen] = useState(false);
-  const moreOptionsDropdownRef = useRef(null);
+  const moreOptionsDropdownRef = useRef<HTMLDivElement | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importType, setImportType] = useState("customers"); // "customers" or "contactPersons"
   const [isImportContinueLoading, setIsImportContinueLoading] = useState(false);
@@ -596,28 +650,28 @@ export default function useCustomersPageController() {
   const [isTaxExemptionsDropdownOpen, setIsTaxExemptionsDropdownOpen] = useState(false);
   const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
   const [isPaymentMethodDropdownOpen, setIsPaymentMethodDropdownOpen] = useState(false);
-  const searchTypeDropdownRef = useRef(null);
-  const filterDropdownRef = useRef(null);
-  const statusDropdownRef = useRef(null);
-  const customerTypeDropdownRef = useRef(null);
-  const salesAccountDropdownRef = useRef(null);
-  const purchaseAccountDropdownRef = useRef(null);
-  const adjustmentTypeDropdownRef = useRef(null);
-  const transactionTypeDropdownRef = useRef(null);
-  const itemNameDropdownRef = useRef(null);
-  const customerNameDropdownRef = useRef(null);
-  const salespersonDropdownRef = useRef(null);
-  const projectNameDropdownRef = useRef(null);
-  const taxExemptionsDropdownRef = useRef(null);
-  const accountDropdownRef = useRef(null);
-  const paymentMethodDropdownRef = useRef(null);
-  const [openReceivablesDropdownId, setOpenReceivablesDropdownId] = useState(null);
-  const receivablesDropdownRefs = useRef({});
-  const [hoveredRowId, setHoveredRowId] = useState(null);
+  const searchTypeDropdownRef = useRef<HTMLDivElement | null>(null);
+  const filterDropdownRef = useRef<HTMLDivElement | null>(null);
+  const statusDropdownRef = useRef<HTMLDivElement | null>(null);
+  const customerTypeDropdownRef = useRef<HTMLDivElement | null>(null);
+  const salesAccountDropdownRef = useRef<HTMLDivElement | null>(null);
+  const purchaseAccountDropdownRef = useRef<HTMLDivElement | null>(null);
+  const adjustmentTypeDropdownRef = useRef<HTMLDivElement | null>(null);
+  const transactionTypeDropdownRef = useRef<HTMLDivElement | null>(null);
+  const itemNameDropdownRef = useRef<HTMLDivElement | null>(null);
+  const customerNameDropdownRef = useRef<HTMLDivElement | null>(null);
+  const salespersonDropdownRef = useRef<HTMLDivElement | null>(null);
+  const projectNameDropdownRef = useRef<HTMLDivElement | null>(null);
+  const taxExemptionsDropdownRef = useRef<HTMLDivElement | null>(null);
+  const accountDropdownRef = useRef<HTMLDivElement | null>(null);
+  const paymentMethodDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [openReceivablesDropdownId, setOpenReceivablesDropdownId] = useState<string | null>(null);
+  const receivablesDropdownRefs = useRef<Record<string, HTMLElement | null>>({});
+  const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const [isSearchHeaderDropdownOpen, setIsSearchHeaderDropdownOpen] = useState(false);
-  const searchHeaderDropdownRef = useRef(null);
+  const searchHeaderDropdownRef = useRef<HTMLDivElement | null>(null);
   const [receivablesDropdownPosition, setReceivablesDropdownPosition] = useState({ top: 0, left: 0 });
-  const receivablesDropdownRef = useRef(null);
+  const receivablesDropdownRef = useRef<HTMLDivElement | null>(null);
   const getSearchFilterOptions = (type: string) => {
     const map: Record<string, string[]> = {
       "Customers": allViews,
@@ -870,13 +924,16 @@ export default function useCustomersPageController() {
   };
 
   // Evaluate custom view criteria
-  const evaluateCustomViewCriteria = (customersList: any[], criteria: any[]) => {
+  const evaluateCustomViewCriteria = (
+    customersList: CustomerRow[],
+    criteria: Array<{ field: string; comparator: string; value: string }>
+  ) => {
     if (!criteria || criteria.length === 0) {
       return customersList;
     }
 
-    return customersList.filter((customer: any) => {
-      return criteria.every((criterion: any) => {
+    return customersList.filter((customer: CustomerRow) => {
+      return criteria.every((criterion) => {
         if (!criterion.field || !criterion.comparator) {
           return true; // Skip incomplete criteria
         }
@@ -888,13 +945,13 @@ export default function useCustomersPageController() {
   };
 
   // Filter customers based on selected view
-  const filterCustomersByView = (customersList, viewName) => {
+  const filterCustomersByView = (customersList: CustomerRow[], viewName: string) => {
     if (viewName === "All Customers") {
       return customersList;
     }
 
     // Check if it's a custom view
-    const customView = customViews.find(v => v.name === viewName);
+    const customView = customViews.find((v: CustomerViewItem) => v.name === viewName);
     if (customView && customView.criteria) {
       return evaluateCustomViewCriteria(customersList, customView.criteria);
     }
@@ -918,9 +975,9 @@ export default function useCustomersPageController() {
 
       case "Duplicate Customers":
         // Find duplicates by name or email
-        const nameMap = {};
-        const emailMap = {};
-        customersList.forEach(c => {
+        const nameMap: Record<string, number> = {};
+        const emailMap: Record<string, number> = {};
+        customersList.forEach((c: CustomerRow) => {
           if (c.name) {
             nameMap[c.name] = (nameMap[c.name] || 0) + 1;
           }
@@ -928,7 +985,7 @@ export default function useCustomersPageController() {
             emailMap[c.email] = (emailMap[c.email] || 0) + 1;
           }
         });
-        return customersList.filter(c =>
+        return customersList.filter((c: CustomerRow) =>
           (c.name && nameMap[c.name] > 1) || (c.email && emailMap[c.email] > 1)
         );
 
@@ -944,13 +1001,13 @@ export default function useCustomersPageController() {
 
       case "Overdue Customers":
         return customersList.filter(c => {
-          const receivables = parseFloat(c.receivables || 0);
+          const receivables = Number(c.receivables || 0);
           return receivables > 0;
         });
 
       case "Unpaid Customers":
         return customersList.filter(c => {
-          const receivables = parseFloat(c.receivables || 0);
+          const receivables = Number(c.receivables || 0);
           return receivables > 0;
         });
 
@@ -960,29 +1017,30 @@ export default function useCustomersPageController() {
   };
 
   // Get filtered and sorted customers
-  const getFilteredAndSortedCustomers = () => {
+  const getFilteredAndSortedCustomers = (): CustomerRow[] => {
     let filtered = filterCustomersByView(customers, selectedView);
 
     // Apply sorting
-    if (sortConfig.key) {
-      filtered = [...filtered].sort((a, b) => {
-        let aValue = a[sortConfig.key];
-        let bValue = b[sortConfig.key];
+    const sortKey = sortConfig.key;
+    if (sortKey) {
+      filtered = [...filtered].sort((a: CustomerRow, b: CustomerRow) => {
+        let aValue = a[sortKey];
+        let bValue = b[sortKey];
 
         // Handle nested properties
-        if (sortConfig.key === "name") {
+        if (sortKey === "name") {
           aValue = a.name || "";
           bValue = b.name || "";
-        } else if (sortConfig.key === "companyName") {
+        } else if (sortKey === "companyName") {
           aValue = a.companyName || "";
           bValue = b.companyName || "";
-        } else if (sortConfig.key === "receivables") {
-          aValue = parseFloat(a.receivables || 0);
-          bValue = parseFloat(b.receivables || 0);
-        } else if (sortConfig.key === "createdTime") {
+        } else if (sortKey === "receivables") {
+          aValue = Number(a.receivables || 0);
+          bValue = Number(b.receivables || 0);
+        } else if (sortKey === "createdTime") {
           aValue = new Date(a.createdAt || 0);
           bValue = new Date(b.createdAt || 0);
-        } else if (sortConfig.key === "lastModifiedTime") {
+        } else if (sortKey === "lastModifiedTime") {
           aValue = new Date(a.updatedAt || a.createdAt || 0);
           bValue = new Date(b.updatedAt || b.createdAt || 0);
         }
@@ -999,21 +1057,21 @@ export default function useCustomersPageController() {
   const displayedCustomers = getFilteredAndSortedCustomers();
   const hasPositiveReceivables = useMemo(
     () =>
-      displayedCustomers.some((customer) =>
+      displayedCustomers.some((customer: CustomerRow) =>
         Number(customer.receivables ?? customer.receivables_bcy ?? customer.accountsReceivable ?? 0) > 0
       ),
     [displayedCustomers]
   );
   const hasPositiveUnusedCredits = useMemo(
     () =>
-      displayedCustomers.some((customer) =>
+      displayedCustomers.some((customer: CustomerRow) =>
         Number(customer.unusedCredits ?? customer.unused_credits ?? customer.unused_credits_bcy ?? 0) > 0
       ),
     [displayedCustomers]
   );
   const tableVisibleColumns = useMemo(
     () =>
-      visibleColumns.filter((col) => {
+      visibleColumns.filter((col: Column) => {
         if (col.key === "receivables" || col.key === "receivables_bcy") {
           return hasPositiveReceivables;
         }
@@ -1030,15 +1088,15 @@ export default function useCustomersPageController() {
   );
   const showCustomerSkeletons = isLoading && customers.length === 0;
 
-  const handleSelectAll = (e) => {
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      setSelectedCustomers(new Set(displayedCustomers.map(c => c.id)));
+      setSelectedCustomers(new Set(displayedCustomers.map((c: CustomerRow) => String(c.id ?? c._id ?? ""))));
     } else {
       setSelectedCustomers(new Set());
     }
   };
 
-  const handleSelectCustomer = (customerId) => {
+  const handleSelectCustomer = (customerId: string) => {
     const newSelected = new Set(selectedCustomers);
     if (newSelected.has(customerId)) {
       newSelected.delete(customerId);
@@ -1048,25 +1106,25 @@ export default function useCustomersPageController() {
     setSelectedCustomers(newSelected);
   };
 
-  const handleSort = (key) => {
-    let direction = "asc";
+  const handleSort = (key: string) => {
+    let direction: "asc" | "desc" = "asc";
     if (sortConfig.key === key && sortConfig.direction === "asc") {
       direction = "desc";
     }
     setSortConfig({ key, direction });
   };
 
-  const formatCurrency = (amount) => {
-    return (amount || 0).toFixed(2);
+  const formatCurrency = (amount: number | string | undefined | null) => {
+    return Number(amount || 0).toFixed(2);
   };
 
-  const getCustomerIdForNavigation = (customer: any) => {
+  const getCustomerIdForNavigation = (customer: CustomerRow) => {
     const rawId = customer?._id ?? customer?.id;
     if (rawId === undefined || rawId === null) return "";
     return String(rawId).trim();
   };
 
-  const mapCustomerForList = useCallback((customer: any) => {
+  const mapCustomerForList = useCallback((customer: CustomerRow): CustomerRow | null => {
     const customerId = customer?.id ? String(customer.id) : (customer?._id ? String(customer._id) : "");
     if (!customerId) return null;
     const statusOverride = statusOverrides[customerId];
@@ -1133,7 +1191,7 @@ export default function useCustomersPageController() {
     const customersArray = Array.isArray(result.data) ? result.data : [];
     setTotalItems(result.total || result.pagination?.total || customersArray.length || 0);
     setTotalPages(result.totalPages || result.pagination?.pages || 0);
-    setCustomers(customersArray.map(mapCustomerForList).filter(Boolean));
+    setCustomers(customersArray.map(mapCustomerForList).filter((customer): customer is CustomerRow => Boolean(customer)));
     setStatusOverrides((prev) => {
       let next = prev;
       let hasChanges = false;
@@ -1249,25 +1307,27 @@ export default function useCustomersPageController() {
 
   // Close dropdown when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      const targetElement = event.target as HTMLElement | null;
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
         setIsDropdownOpen(false);
       }
-      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target)) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(target)) {
         setIsMoreMenuOpen(false);
       }
-      if (bulkMoreMenuRef.current && !bulkMoreMenuRef.current.contains(event.target)) {
+      if (bulkMoreMenuRef.current && !bulkMoreMenuRef.current.contains(target)) {
         setIsBulkMoreMenuOpen(false);
       }
-      if (decimalFormatDropdownRef.current && !decimalFormatDropdownRef.current.contains(event.target)) {
+      if (decimalFormatDropdownRef.current && !decimalFormatDropdownRef.current.contains(target)) {
         setIsDecimalFormatDropdownOpen(false);
       }
-      if (moduleDropdownRef.current && !moduleDropdownRef.current.contains(event.target)) {
+      if (moduleDropdownRef.current && !moduleDropdownRef.current.contains(target)) {
         setIsModuleDropdownOpen(false);
       }
       // Close field and comparator dropdowns when clicking outside
-      const isFieldDropdown = event.target.closest('[data-field-dropdown]') ||
-        event.target.closest('[data-field-button]');
+      const isFieldDropdown = targetElement?.closest('[data-field-dropdown]') ||
+        targetElement?.closest('[data-field-button]');
       if (!isFieldDropdown && Object.keys(isFieldDropdownOpen).length > 0) {
         setIsFieldDropdownOpen({});
       }
@@ -1275,36 +1335,36 @@ export default function useCustomersPageController() {
         setIsComparatorDropdownOpen({});
       }
       // Close merge customer dropdown when clicking outside
-      if (mergeCustomerDropdownRef.current && !mergeCustomerDropdownRef.current.contains(event.target)) {
+      if (mergeCustomerDropdownRef.current && !mergeCustomerDropdownRef.current.contains(target)) {
         setIsMergeCustomerDropdownOpen(false);
       }
       // Close more options dropdown when clicking outside
-      if (moreOptionsDropdownRef.current && !moreOptionsDropdownRef.current.contains(event.target)) {
+      if (moreOptionsDropdownRef.current && !moreOptionsDropdownRef.current.contains(target)) {
         setIsMoreOptionsDropdownOpen(false);
       }
       // Close search header dropdown when clicking outside
-      if (searchHeaderDropdownRef.current && !searchHeaderDropdownRef.current.contains(event.target)) {
+      if (searchHeaderDropdownRef.current && !searchHeaderDropdownRef.current.contains(target)) {
         setIsSearchHeaderDropdownOpen(false);
       }
       // Close search modal dropdowns when clicking outside
-      if (searchTypeDropdownRef.current && !searchTypeDropdownRef.current.contains(event.target)) {
+      if (searchTypeDropdownRef.current && !searchTypeDropdownRef.current.contains(target)) {
         setIsSearchTypeDropdownOpen(false);
       }
-      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target)) {
+      if (filterDropdownRef.current && !filterDropdownRef.current.contains(target)) {
         setIsFilterDropdownOpen(false);
       }
-      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target)) {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(target)) {
         setIsStatusDropdownOpen(false);
       }
-      if (customerTypeDropdownRef.current && !customerTypeDropdownRef.current.contains(event.target)) {
+      if (customerTypeDropdownRef.current && !customerTypeDropdownRef.current.contains(target)) {
         setIsCustomerTypeDropdownOpen(false);
       }
       // Close receivables dropdown when clicking outside
       if (openReceivablesDropdownId !== null) {
         const dropdownRef = receivablesDropdownRef.current;
         // Check if click is on the button that opens the dropdown
-        const clickedElement = event.target.closest('[data-receivables-button]');
-        if (dropdownRef && !dropdownRef.contains(event.target) && (!clickedElement || clickedElement.getAttribute('data-customer-id') !== openReceivablesDropdownId)) {
+        const clickedElement = targetElement?.closest('[data-receivables-button]');
+        if (dropdownRef && !dropdownRef.contains(target) && (!clickedElement || clickedElement.getAttribute('data-customer-id') !== openReceivablesDropdownId)) {
           setOpenReceivablesDropdownId(null);
           setHoveredRowId(null);
         }
@@ -1320,12 +1380,12 @@ export default function useCustomersPageController() {
     };
   }, [isDropdownOpen, isMoreMenuOpen, isBulkMoreMenuOpen, isDecimalFormatDropdownOpen, isModuleDropdownOpen, isFieldDropdownOpen, isComparatorDropdownOpen, isMergeCustomerDropdownOpen, isMoreOptionsDropdownOpen, isSearchTypeDropdownOpen, isFilterDropdownOpen, isStatusDropdownOpen, isCustomerTypeDropdownOpen, openReceivablesDropdownId, isSearchHeaderDropdownOpen]);
 
-  const handleViewSelect = (view) => {
+  const handleViewSelect = (view: string) => {
     setSelectedView(view);
     setIsDropdownOpen(false);
   };
 
-  const handleToggleFavorite = (view, e) => {
+  const handleToggleFavorite = (view: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const newFavorites = new Set(favoriteViews);
     if (newFavorites.has(view)) {
@@ -1338,13 +1398,17 @@ export default function useCustomersPageController() {
 
   const handleSaveCustomView = () => {
     if (newViewName.trim()) {
-      const newView = {
+      const newView: CustomerViewItem = {
         id: Date.now().toString(),
         name: newViewName.trim(),
         isFavorite: isFavorite,
         criteria: criteria,
         columns: selectedColumns,
-        visibility: visibilityPreference
+        visibility: visibilityPreference,
+        entityType: "customers",
+        filters: {},
+        sortBy: "createdAt",
+        sortOrder: "desc",
       };
       setCustomViews([...customViews, newView]);
       setNewViewName("");
@@ -1355,7 +1419,7 @@ export default function useCustomersPageController() {
       setIsModalOpen(false);
       setSelectedView(newView.name);
       if (isFavorite) {
-        setFavoriteViews(prev => new Set([...prev, newView.name]));
+      setFavoriteViews((prev: Set<string>) => new Set([...prev, newView.name]));
       }
     }
   };
@@ -1364,25 +1428,25 @@ export default function useCustomersPageController() {
     setCriteria([...criteria, { id: Date.now(), field: "", comparator: "", value: "" }]);
   };
 
-  const handleRemoveCriterion = (id) => {
+  const handleRemoveCriterion = (id: number) => {
     if (criteria.length > 1) {
       setCriteria(criteria.filter(c => c.id !== id));
     }
   };
 
-  const handleCriterionChange = (id, field, value) => {
+  const handleCriterionChange = (id: number, field: string, value: string) => {
     setCriteria(criteria.map(c =>
       c.id === id ? { ...c, [field]: value } : c
     ));
   };
 
-  const handleAddColumn = (column) => {
+  const handleAddColumn = (column: string) => {
     if (!selectedColumns.includes(column)) {
       setSelectedColumns([...selectedColumns, column]);
     }
   };
 
-  const handleRemoveColumn = (column) => {
+  const handleRemoveColumn = (column: string) => {
     if (selectedColumns.length > 1 && column !== "Name") {
       setSelectedColumns(selectedColumns.filter(c => c !== column));
     }
@@ -1401,16 +1465,16 @@ export default function useCustomersPageController() {
     "is in", "is not in", "is empty", "is not empty"
   ];
 
-  const handleDeleteCustomView = (viewId, e) => {
+  const handleDeleteCustomView = (viewId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const updatedViews = customViews.filter(v => v.id !== viewId);
+    const updatedViews = customViews.filter((v: CustomerViewItem) => v.id !== viewId);
     setCustomViews(updatedViews);
-    if (selectedView === customViews.find(v => v.id === viewId)?.name) {
+    if (selectedView === customViews.find((v: CustomerViewItem) => v.id === viewId)?.name) {
       setSelectedView("All Customers");
     }
   };
 
-  const handleDeleteCustomer = async (customerId, e) => {
+  const handleDeleteCustomer = async (customerId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setDeleteCustomerId(customerId);
     setIsDeleteModalOpen(true);
@@ -1423,7 +1487,7 @@ export default function useCustomersPageController() {
       setIsDeletingCustomer(true);
       await customersAPI.delete(deleteCustomerId);
       await loadCustomers();
-      setSelectedCustomers(prev => {
+      setSelectedCustomers((prev: Set<string>) => {
         const newSet = new Set(prev);
         newSet.delete(deleteCustomerId);
         return newSet;
@@ -1431,7 +1495,7 @@ export default function useCustomersPageController() {
       setIsDeleteModalOpen(false);
       setDeleteCustomerId(null);
       toast.success("Customer deleted successfully.");
-    } catch (error) {
+    } catch (error: any) {
       toast.error("Failed to delete customer: " + (error?.message || "Unknown error."));
     } finally {
       setIsDeletingCustomer(false);
@@ -1455,7 +1519,7 @@ export default function useCustomersPageController() {
       setIsBulkDeleteModalOpen(false);
       setDeleteCustomerIds([]);
       toast.success("Customers deleted successfully.");
-    } catch (error) {
+    } catch (error: any) {
       toast.error("Failed to delete customers: " + (error?.message || "Unknown error."));
     } finally {
       setIsBulkDeletingCustomers(false);
@@ -1464,8 +1528,8 @@ export default function useCustomersPageController() {
 
   // Load customers from API
   const loadCustomers = async (
-    page = currentPage,
-    limit = itemsPerPage,
+    page: number = currentPage,
+    limit: number = itemsPerPage,
     options: { rowRefreshOnly?: boolean; useCache?: boolean } = {}
   ) => {
     const { rowRefreshOnly = false, useCache = false } = options;
@@ -1481,7 +1545,27 @@ export default function useCustomersPageController() {
 
     try {
       if (shouldShowBlockingLoader) {
-        setIsLoading(true);
+        // Hydrate from the SWR cache (LocalStorage/IndexedDB) before showing skeletons.
+        try {
+          const endpoint = `/customers?page=${encodeURIComponent(page)}&limit=${encodeURIComponent(limit)}&search=`;
+          const storageKey = `taban:swr:customers:${endpoint}`;
+          const adapter = createAdaptiveStorageAdapter<any>({ key: storageKey });
+          const cachedPayload = await adapter.read();
+          if (cachedPayload && Array.isArray(cachedPayload.items) && cachedPayload.items.length > 0) {
+            applyCustomerListResult({
+              data: cachedPayload.items,
+              pagination: cachedPayload.pagination,
+              total: cachedPayload.total,
+              page: cachedPayload.page,
+              limit: cachedPayload.limit,
+              totalPages: cachedPayload.totalPages,
+            } as any);
+          } else {
+            setIsLoading(true);
+          }
+        } catch {
+          setIsLoading(true);
+        }
       }
       setIsRefreshing(true);
 
@@ -1495,6 +1579,26 @@ export default function useCustomersPageController() {
       }
 
       applyCustomerListResult(response);
+
+      // Persist to SWR cache so subsequent navigations avoid skeletons.
+      try {
+        const endpoint = `/customers?page=${encodeURIComponent(page)}&limit=${encodeURIComponent(limit)}&search=`;
+        const storageKey = `taban:swr:customers:${endpoint}`;
+        const adapter = createAdaptiveStorageAdapter<any>({ key: storageKey });
+        await adapter.write({
+          resource: "customers",
+          items: Array.isArray(response?.data) ? response.data : [],
+          pagination: response?.pagination,
+          total: response?.pagination?.total ?? response?.total,
+          page: response?.pagination?.page ?? page,
+          limit: response?.pagination?.limit ?? limit,
+          totalPages: response?.pagination?.pages ?? response?.totalPages,
+          version_id: response?.version_id,
+          last_updated: response?.last_updated,
+        });
+      } catch {
+        // Ignore cache write failures.
+      }
     } catch (error: any) {
 
       if (error.status === 401 || error.message?.includes('authorized') || error.message?.includes('Unauthorized')) {
@@ -1531,8 +1635,9 @@ export default function useCustomersPageController() {
   }, []);
   // Close modal when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (modalRef.current && !modalRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (modalRef.current && !modalRef.current.contains(target)) {
         setIsModalOpen(false);
         setNewViewName("");
       }
@@ -1549,8 +1654,9 @@ export default function useCustomersPageController() {
 
   // Close currency dropdown when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (currencyDropdownRef.current && !currencyDropdownRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (currencyDropdownRef.current && !currencyDropdownRef.current.contains(target)) {
         setIsCurrencyDropdownOpen(false);
       }
     };
@@ -1566,8 +1672,9 @@ export default function useCustomersPageController() {
 
   // Close customer language dropdown when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (customerLanguageDropdownRef.current && !customerLanguageDropdownRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (customerLanguageDropdownRef.current && !customerLanguageDropdownRef.current.contains(target)) {
         setIsCustomerLanguageDropdownOpen(false);
       }
     };
@@ -1747,15 +1854,15 @@ export default function useCustomersPageController() {
       await customersAPI.merge(mergeTargetCustomer.id, sourceCustomerIds);
       await loadCustomers();
       const sourceNames = customers
-        .filter(c => sourceCustomerIds.includes(c.id))
-        .map(c => c.name)
+        .filter((c: CustomerRow) => sourceCustomerIds.includes(String(c.id ?? c._id ?? "")))
+        .map((c: CustomerRow) => c.name)
         .join(", ");
       toast.success(`Successfully merged "${sourceNames}" into "${mergeTargetCustomer.name}". The merged customer(s) have been marked as inactive.`);
       setSelectedCustomers(new Set());
       setIsMergeModalOpen(false);
       setMergeTargetCustomer(null);
       setMergeCustomerSearch("");
-    } catch (error) {
+    } catch (error: any) {
       const message = (error as any)?.message || "Failed to merge customers. Please try again.";
       toast.error(message);
     }
@@ -1817,9 +1924,9 @@ export default function useCustomersPageController() {
     // Show loading state on download button
     setIsDownloading(true);
 
-    const selectedCustomerData = Array.from(selectedCustomers).map(id =>
-      customers.find(c => c.id === id)
-    ).filter(Boolean);
+    const selectedCustomerData = Array.from(selectedCustomers)
+      .map((id) => customers.find((c: CustomerRow) => String(c.id ?? c._id ?? "") === id))
+      .filter((customer): customer is CustomerRow => Boolean(customer));
 
     const today = new Date();
     const dateStr = today.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -1846,6 +1953,7 @@ export default function useCustomersPageController() {
 
       for (let i = 0; i < selectedCustomerData.length; i++) {
         const customer = selectedCustomerData[i];
+        if (!customer) continue;
         if (i > 0) pdf.addPage();
 
         // Render customer statement HTML
@@ -1887,7 +1995,7 @@ export default function useCustomersPageController() {
                   </tr>
                   <tr>
                     <td style="padding: 8px 0; color: #718096;">Invoiced Amount</td>
-                    <td style="text-align: right; padding: 8px 0; font-weight: 600;">${customer.currency || 'AED'} ${parseFloat(customer.receivables || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td style="text-align: right; padding: 8px 0; font-weight: 600;">${customer.currency || 'AED'} ${Number(customer.receivables || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                   </tr>
                   <tr>
                     <td style="padding: 8px 0; color: #718096;">Amount Received</td>
@@ -1895,7 +2003,7 @@ export default function useCustomersPageController() {
                   </tr>
                   <tr style="border-top: 1px solid #e2e8f0;">
                     <td style="padding: 12px 0 0 0; font-weight: 800; color: #1a202c; font-size: 16px;">Balance Due</td>
-                    <td style="text-align: right; padding: 12px 0 0 0; font-weight: 800; color: #156372; font-size: 18px;">${customer.currency || 'AED'} ${parseFloat(customer.receivables || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td style="text-align: right; padding: 12px 0 0 0; font-weight: 800; color: #156372; font-size: 18px;">${customer.currency || 'AED'} ${Number(customer.receivables || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                   </tr>
                 </table>
               </div>
@@ -1927,16 +2035,16 @@ export default function useCustomersPageController() {
                     <td style="padding: 15px;">${dateStr}</td>
                     <td style="padding: 15px; font-weight: 600; color: #156372;">Invoice</td>
                     <td style="padding: 15px; color: #718096;">Account Balance Adjustment</td>
-                    <td style="padding: 15px; text-align: right;">${parseFloat(customer.receivables || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td style="padding: 15px; text-align: right;">${Number(customer.receivables || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                     <td style="padding: 15px; text-align: right;">0.00</td>
-                    <td style="padding: 15px; text-align: right; font-weight: 600;">${parseFloat(customer.receivables || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td style="padding: 15px; text-align: right; font-weight: 600;">${Number(customer.receivables || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                   </tr>
                 </tbody>
                 <tfoot>
                   <tr style="background: #f8fafc; border-top: 2px solid #156372;">
                     <td colspan="4" style="padding: 20px 15px; text-align: right; font-weight: 800; font-size: 14px; color: #2d3748;">NET BALANCE DUE</td>
                     <td style="padding: 20px 15px; text-align: right;"></td>
-                    <td style="padding: 20px 15px; text-align: right; font-weight: 900; font-size: 15px; color: #156372;">${customer.currency || 'AED'} ${parseFloat(customer.receivables || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td style="padding: 20px 15px; text-align: right; font-weight: 900; font-size: 15px; color: #156372;">${customer.currency || 'AED'} ${Number(customer.receivables || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -2270,7 +2378,7 @@ export default function useCustomersPageController() {
     }
   };
 
-  const downloadExportFile = (content, defaultFileName) => {
+  const downloadExportFile = (content: string, defaultFileName: string) => {
     // Determine file extension and MIME type
     let fileExtension = "csv";
     let mimeType = "text/csv";
@@ -2300,7 +2408,7 @@ export default function useCustomersPageController() {
     window.URL.revokeObjectURL(url);
   };
 
-  const formatNumberForExport = (number, format) => {
+  const formatNumberForExport = (number: any, format: string) => {
     const num = parseFloat(number) || 0;
 
     switch (format) {
@@ -2420,6 +2528,9 @@ export default function useCustomersPageController() {
     isPaymentMethodDropdownOpen,
     isPreferencesOpen,
     isProjectNameDropdownOpen,
+    isPrintModalOpen,
+    isPrintPreviewOpen,
+    isPurchaseAccountDropdownOpen,
     isSalesAccountDropdownOpen,
     isSalespersonDropdownOpen,
     isSearchModalOpen,
@@ -2530,4 +2641,6 @@ export default function useCustomersPageController() {
     visibleColumns,
   };
 }
+
+export type CustomersPageController = ReturnType<typeof useCustomersPageController>;
 

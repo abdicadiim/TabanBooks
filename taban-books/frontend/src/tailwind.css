@@ -10,3 +10,19 @@
   }
 }
 
+@layer utilities {
+  @keyframes progress-flow {
+    0% {
+      transform: translateX(-100%);
+    }
+    50% {
+      transform: translateX(100%);
+    }
+    100% {
+      transform: translateX(-100%);
+    }
+  }
+  .animate-progress-flow {
+    animation: progress-flow 2s infinite ease-in-out;
+  }
+}

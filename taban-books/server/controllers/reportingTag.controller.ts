@@ -5,6 +5,11 @@
 
 import { Request, Response } from "express";
 import ReportingTag from "../models/ReportingTag.js";
+import {
+  applyResourceVersionHeaders,
+  buildResourceVersion,
+  requestMatchesResourceVersion,
+} from "../utils/resourceVersion.js";
 
 /**
  * Get all reporting tags
@@ -25,6 +30,27 @@ export const getReportingTags = async (req: Request, res: Response): Promise<voi
       query.isActive = isActive === 'true';
     }
 
+    const [latestTag, tagCount] = await Promise.all([
+      ReportingTag.findOne(query).sort({ updatedAt: -1 }).select("updatedAt name").lean(),
+      ReportingTag.countDocuments(query),
+    ]);
+
+    const versionState = buildResourceVersion("settings-reporting-tags", [
+      {
+        key: "tags",
+        id: (req as any).user.organizationId,
+        updatedAt: (latestTag as any)?.updatedAt,
+        count: tagCount,
+        extra: JSON.stringify({ appliesTo: appliesTo ?? "", isActive: isActive ?? "" }),
+      },
+    ]);
+    applyResourceVersionHeaders(res, versionState);
+
+    if (requestMatchesResourceVersion(req, versionState)) {
+      res.status(304).end();
+      return;
+    }
+
     const tags = await ReportingTag.find(query)
       .sort({ name: 1 })
       .populate('createdBy', 'name email');
@@ -32,6 +58,8 @@ export const getReportingTags = async (req: Request, res: Response): Promise<voi
     res.json({
       success: true,
       data: tags,
+      version_id: versionState.version_id,
+      last_updated: versionState.last_updated,
     });
   } catch (error: any) {
     console.error("Error fetching reporting tags:", error);

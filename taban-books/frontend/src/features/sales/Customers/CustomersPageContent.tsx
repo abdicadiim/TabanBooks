@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { ArrowUpDown, Check, ChevronDown, ChevronRight, ChevronUp, Download, Eye, Info, Loader2, MoreVertical, Plus, RefreshCw, Search, Settings, SlidersHorizontal, Star, Trash2, Upload, X } from "lucide-react";
 
 import { preloadCustomerDetailRoute } from "./customerRouteLoaders";
@@ -16,6 +16,12 @@ const toSerializableCustomerState = (value: any) => {
 };
 
 export default function CustomersPageContent({ controller }: { controller: any }) {
+  type CustomerView = {
+    id: string;
+    name: string;
+    isFavorite?: boolean;
+  };
+
   const {
     bulkMoreMenuRef,
     customViews,
@@ -113,9 +119,10 @@ export default function CustomersPageContent({ controller }: { controller: any }
   };
 
   return (
-    <>      {/* Header - Show Bulk Actions Bar when items are selected, otherwise show normal header */}
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white font-sans text-gray-800 antialiased">
+      {/* Header - Show Bulk Actions Bar when items are selected, otherwise show normal header */}
       {selectedCustomers.size > 0 ? (
-        <div className="flex-none flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white z-30">
+        <div className="flex-none flex items-center justify-between px-4 py-1.5 border-b border-gray-100 bg-white z-30">
           <div className="flex items-center gap-2">
             <button
               className="flex items-center gap-1.5 py-1.5 px-4 bg-white border border-gray-200 rounded-md text-sm font-medium text-gray-700 cursor-pointer transition-all hover:bg-gray-50"
@@ -202,13 +209,13 @@ export default function CustomersPageContent({ controller }: { controller: any }
         </div>
       ) : (
         /* Normal Page Header */
-        <div className="flex-none flex items-center justify-between px-6 py-6 border-b border-gray-100 bg-white z-30">
-          <div className="flex items-center gap-6 pl-4">
+        <div className="flex-none flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white z-30">
+          <div className="flex items-center gap-3">
             {/* Title with Dropdown */}
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="flex items-center gap-1.5 py-4 cursor-pointer group border-b-2 border-slate-900 -mb-[px]"
+                className="flex items-center gap-1.5 py-1.5 cursor-pointer group border-b-2 border-slate-900"
               >
                 <h1 className="text-[15px] font-bold text-slate-900 transition-colors">
                   {selectedView}
@@ -241,8 +248,8 @@ export default function CustomersPageContent({ controller }: { controller: any }
                       System Views
                     </div>
                     {defaultCustomerViews
-                      .filter(view => view.toLowerCase().includes(viewSearchQuery.toLowerCase()))
-                      .map((view) => (
+                      .filter((view: string) => view.toLowerCase().includes(viewSearchQuery.toLowerCase()))
+                      .map((view: string) => (
                         <div
                           key={view}
                           onClick={() => handleViewSelect(view)}
@@ -259,15 +266,15 @@ export default function CustomersPageContent({ controller }: { controller: any }
 
                     {/* Custom Views */}
                     {customViews
-                      .filter(view => view.name.toLowerCase().includes(viewSearchQuery.toLowerCase()))
+                      .filter((view: CustomerView) => view.name.toLowerCase().includes(viewSearchQuery.toLowerCase()))
                       .length > 0 && (
                         <div className="mt-4">
                           <div className="px-3 pb-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-white">
                             Custom Views
                           </div>
                           {customViews
-                            .filter(view => view.name.toLowerCase().includes(viewSearchQuery.toLowerCase()))
-                            .map((view) => (
+                            .filter((view: CustomerView) => view.name.toLowerCase().includes(viewSearchQuery.toLowerCase()))
+                            .map((view: CustomerView) => (
                               <div
                                 key={view.id}
                                 className={`group flex items-center justify-between px-4 py-2.5 text-sm cursor-pointer transition-all ${selectedView === view.name ? "bg-[#15637210] text-[#156372] font-bold" : "text-gray-900 hover:bg-gray-50"
@@ -302,9 +309,9 @@ export default function CustomersPageContent({ controller }: { controller: any }
           </div>
 
           {/* Action Buttons */}
-          <div className="flex flex-wrap items-center gap-3 sm:gap-2 mr-4">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-2">
             <button
-              className="h-[38px] min-w-[100px] cursor-pointer transition-all text-white px-5 rounded-lg border-[#0D4A52] border-b-[4px] hover:brightness-110 hover:-translate-y-[1px] hover:border-b-[6px] active:border-b-[2px] active:translate-y-[1px] text-sm font-semibold shadow-sm flex items-center justify-center gap-2"
+              className="h-[32px] min-w-[80px] cursor-pointer transition-all text-white px-4 rounded-lg border-[#0D4A52] border-b-[3px] hover:brightness-110 hover:-translate-y-[1px] hover:border-b-[4px] active:border-b-[1.5px] active:translate-y-[1px] text-sm font-semibold shadow-sm flex items-center justify-center gap-2"
               style={{ background: "linear-gradient(180deg, #156372 0%, #0D4A52 100%)" }}
               onClick={() => navigate("/sales/customers/new")}
             >
@@ -314,7 +321,7 @@ export default function CustomersPageContent({ controller }: { controller: any }
 
             <div className="relative" ref={moreMenuRef}>
               <button
-                className="h-[38px] flex items-center justify-center p-2 bg-white border border-gray-300 border-b-[4px] rounded-lg hover:bg-gray-50 transition-all hover:-translate-y-[1px] hover:border-b-[6px] active:border-b-[2px] active:translate-y-[1px] shadow-sm"
+                className="h-[32px] flex items-center justify-center p-2 bg-white border border-gray-300 border-b-[3px] rounded-lg hover:bg-gray-50 transition-all hover:-translate-y-[1px] hover:border-b-[4px] active:border-b-[1.5px] active:translate-y-[1px] shadow-sm"
                 onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
               >
                 <MoreVertical size={18} className="text-gray-500" />
@@ -544,13 +551,13 @@ export default function CustomersPageContent({ controller }: { controller: any }
                 <div className="h-2 bg-gray-100 rounded w-12" />
               </div>
             </div>
-          )) : displayedCustomers.map((customer, index) => {
+          )) : displayedCustomers.map((customer: any, index: number) => {
             const receivables = parseFloat(customer.receivables || 0);
             const unusedCredits = parseFloat(customer.unusedCredits || 0);
             const isInactiveCustomer = customer.status?.toLowerCase() === "inactive" || customer.isInactive === true;
             const initials = (customer.name || customer.displayName || 'C')
               .split(' ')
-              .map(n => n[0])
+              .map((n: string) => n[0])
               .join('')
               .substring(0, 2)
               .toUpperCase();
@@ -617,7 +624,7 @@ export default function CustomersPageContent({ controller }: { controller: any }
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto bg-white min-h-0 custom-scrollbar">
+      <div className="flex-1 min-h-0 overflow-auto bg-white custom-scrollbar">
         {/* Table */}
         <table
           className="w-full text-left border-collapse text-[13px] table-fixed"
@@ -651,8 +658,8 @@ export default function CustomersPageContent({ controller }: { controller: any }
                 </div>
               </th>
 
-              {tableVisibleColumns.map((col) => (
-                <th
+                  {tableVisibleColumns.map((col: any) => (
+                    <th
                   key={col.key}
                   className={`px-4 py-3 relative group/header cursor-pointer select-none ${col.key !== 'name' && col.key !== 'receivables_bcy' && col.key !== 'companyName' ? 'hidden md:table-cell' : ''}`}
                   style={{ width: col.width }}
@@ -708,7 +715,7 @@ export default function CustomersPageContent({ controller }: { controller: any }
                   <td className="px-4 py-3 w-16">
                     <div className="h-4 w-4 bg-gray-100 rounded mx-auto" />
                   </td>
-                  {tableVisibleColumns.map((col, idx) => (
+                  {tableVisibleColumns.map((col: any, idx: number) => (
                     <td key={idx} className="px-4 py-3" style={{ width: col.width }}>
                       <div className={`h-4 bg-gray-100 rounded ${idx === 0 ? 'w-3/4' : 'w-1/2'}`} />
                     </td>
@@ -717,7 +724,7 @@ export default function CustomersPageContent({ controller }: { controller: any }
                 </tr>
               ))
             ) : (
-              displayedCustomers.map((customer, index) => {
+              displayedCustomers.map((customer: any, index: number) => {
                 const isSelected = selectedCustomers.has(customer.id);
                 const isInactiveCustomer = customer.status?.toLowerCase() === "inactive" || customer.isInactive === true;
                 return (
@@ -761,7 +768,7 @@ export default function CustomersPageContent({ controller }: { controller: any }
                       </div>
                     </td>
 
-                    {tableVisibleColumns.map(col => (
+                    {tableVisibleColumns.map((col: any) => (
                       <td
                         key={col.key}
                         className={`px-4 py-3 truncate ${col.key !== 'name' && col.key !== 'receivables_bcy' && col.key !== 'companyName' ? 'hidden sm:table-cell' : ''}`}
@@ -816,9 +823,7 @@ export default function CustomersPageContent({ controller }: { controller: any }
           </tbody>
         </table>
       </div>
-
-
-    </>
+    </div>
   );
 }
 

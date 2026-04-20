@@ -1,0 +1,2855 @@
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "react-toastify";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { getCreditNoteById, getCreditNotes, deleteCreditNote, saveCreditNote, CreditNote, AttachedFile, updateCreditNote } from "../../salesModel";
+import { currenciesAPI, bankAccountsAPI, chartOfAccountsAPI, refundsAPI, creditNotesAPI, invoicesAPI, settingsAPI, customersAPI } from "../../../services/api";
+import CreditNoteDeleteModal from "../CreditNoteDeleteModal";
+import ApplyToInvoices from "./ApplyToInvoices";
+import CreditNoteCommentsPanel from "./CreditNoteCommentsPanel";
+import CreditNotePreview from "./CreditNotePreview";
+import { downloadCreditNotesPdf } from "../creditNotePdf";
+import {
+  X, Edit, Send, FileText, MoreVertical,
+  ChevronDown, ChevronUp, ChevronRight, ChevronLeft, Plus, Filter,
+  ArrowUpDown, CheckSquare, Square, Search, Star, Mail, MessageSquare, Calendar,
+  HelpCircle, Bell, Monitor, MessageCircle, ArrowRight, Volume2, Paperclip, FileUp, Bold, Italic, Underline,
+  Settings, Upload, User, ChevronDown as ChevronDownIcon, CheckCircle, Trash2, ExternalLink, Loader2, AlertTriangle
+} from "lucide-react";
+
+const statusFilters = [
+  "All",
+  "Draft",
+  "Locked",
+  "Pending Approval",
+  "Approved",
+  "Open",
+  "Closed",
+  "Void"
+];
+
+interface CreditNoteItem {
+  itemDetails: string;
+  description: string;
+  quantity: number | string;
+  unit?: string;
+  unitPrice?: number | string;
+  rate?: number | string;
+  amount: number | string;
+  total?: number | string;
+}
+
+export default function CreditNoteDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const queryClient = useQueryClient();
+  const initialCreditNote = (location.state as any)?.creditNote as CreditNote | undefined;
+  const [creditNote, setCreditNote] = useState<CreditNote | null>(() => initialCreditNote ?? null);
+  const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
+  const [baseCurrency, setBaseCurrency] = useState("USD");
+  const [invoicesLookup, setInvoicesLookup] = useState<Record<string, any>>({});
+  const [isCreditAppliedInvoicesOpen, setIsCreditAppliedInvoicesOpen] = useState(false);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [isSendDropdownOpen, setIsSendDropdownOpen] = useState(false);
+  const [isPdfDropdownOpen, setIsPdfDropdownOpen] = useState(false);
+  const [isAllCreditNotesDropdownOpen, setIsAllCreditNotesDropdownOpen] = useState(false);
+  const [isSendEmailModalOpen, setIsSendEmailModalOpen] = useState(false);
+  const [isScheduleEmailModalOpen, setIsScheduleEmailModalOpen] = useState(false);
+  const [isDraftApplyConfirmOpen, setIsDraftApplyConfirmOpen] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isDeletingCreditNote, setIsDeletingCreditNote] = useState(false);
+  const [emailData, setEmailData] = useState({
+    to: "",
+    cc: "",
+    bcc: "",
+    subject: "",
+    message: ""
+  });
+  const [scheduleData, setScheduleData] = useState({
+    to: "",
+    cc: "",
+    bcc: "",
+    subject: "",
+    message: "",
+    date: "",
+    time: ""
+  });
+  const [filterSearch, setFilterSearch] = useState("");
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const allCreditNotesDropdownRef = useRef<HTMLDivElement>(null);
+  const sendDropdownRef = useRef<HTMLDivElement>(null);
+  const pdfDropdownRef = useRef<HTMLDivElement>(null);
+  const sendEmailModalRef = useRef<HTMLDivElement>(null);
+  const scheduleEmailModalRef = useRef<HTMLDivElement>(null);
+  const refundModalRef = useRef<HTMLDivElement>(null);
+  const paymentModeDropdownRef = useRef<HTMLDivElement>(null);
+  const fromAccountDropdownRef = useRef<HTMLDivElement>(null);
+  const refundDatePickerRef = useRef<HTMLDivElement>(null);
+  const attachmentsPopoverRef = useRef<HTMLDivElement>(null);
+
+  // Attachments Popover States
+  const [showAttachmentsPopover, setShowAttachmentsPopover] = useState(false);
+  const [attachmentMenuIndex, setAttachmentMenuIndex] = useState<number | null>(null);
+  const [attachmentDeleteConfirmIndex, setAttachmentDeleteConfirmIndex] = useState<number | null>(null);
+  const [creditNoteAttachments, setCreditNoteAttachments] = useState<AttachedFile[]>(() =>
+    Array.isArray((initialCreditNote as any)?.attachedFiles) ? (initialCreditNote as any).attachedFiles : []
+  );
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [showImageViewer, setShowImageViewer] = useState(false);
+  const attachmentsFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Comments Sidebar States
+  const [showCommentsSidebar, setShowCommentsSidebar] = useState(false);
+  const [comments, setComments] = useState<any[]>(() =>
+    Array.isArray((initialCreditNote as any)?.comments) ? (initialCreditNote as any).comments : []
+  );
+  const [newComment, setNewComment] = useState("");
+  const [commentBold, setCommentBold] = useState(false);
+  const [commentItalic, setCommentItalic] = useState(false);
+  const [commentUnderline, setCommentUnderline] = useState(false);
+
+  // Customize Dropdown States
+  const [isCreditNoteDocumentHovered, setIsCreditNoteDocumentHovered] = useState(false);
+  const [isCustomizeDropdownOpen, setIsCustomizeDropdownOpen] = useState(false);
+  const [isChooseTemplateModalOpen, setIsChooseTemplateModalOpen] = useState(false);
+  const [isOrganizationAddressModalOpen, setIsOrganizationAddressModalOpen] = useState(false);
+  const [isTermsAndConditionsModalOpen, setIsTermsAndConditionsModalOpen] = useState(false);
+  const [templateSearch, setTemplateSearch] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState("Standard Template");
+  const [organizationData, setOrganizationData] = useState({
+    street1: "",
+    street2: "",
+    city: "",
+    zipCode: "",
+    stateProvince: "",
+    phone: "",
+    faxNumber: "",
+    websiteUrl: "",
+    industry: ""
+  });
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | ArrayBuffer | null>(null);
+  const [termsData, setTermsData] = useState({
+    notes: "Looking forward for your business.",
+    termsAndConditions: "",
+    useNotesForAllCreditNotes: false,
+    useTermsForAllCreditNotes: false
+  });
+
+  // Refund Modal States
+  const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const [refundData, setRefundData] = useState({
+    amount: "",
+    refundedOn: "",
+    paymentMode: "",
+    referenceNumber: "",
+    fromAccount: "",
+    fromAccountId: "",
+    description: ""
+  });
+  const [isPaymentModeDropdownOpen, setIsPaymentModeDropdownOpen] = useState(false);
+  const [isFromAccountDropdownOpen, setIsFromAccountDropdownOpen] = useState(false);
+  const [isRefundDatePickerOpen, setIsRefundDatePickerOpen] = useState(false);
+  const [refundDateCalendar, setRefundDateCalendar] = useState(new Date());
+  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+  const [refunds, setRefunds] = useState<any[]>([]);
+  const [organizationProfile, setOrganizationProfile] = useState<any>(null);
+
+  const paymentModeOptions = ["Cash", "Check", "Credit Card", "Debit Card", "Bank Transfer", "PayPal", "Other"];
+  const depositToOptions = ["Petty Cash", "Bank Account", "Cash Account", "Other"];
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const customizeDropdownRef = useRef<HTMLDivElement>(null);
+  const organizationAddressFileInputRef = useRef<HTMLInputElement>(null);
+
+  const mergeCreditNoteLike = (base: any, overlay: any) => {
+    if (!base) return overlay || null;
+    if (!overlay) return base;
+
+    const pick = (...values: any[]) => values.find((value) => value !== undefined && value !== null && value !== "");
+    const pickArray = (...values: any[]) => values.find((value) => Array.isArray(value) && value.length > 0) ?? values.find((value) => Array.isArray(value));
+    const cleanObject = (value: any) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+      return Object.fromEntries(
+        Object.entries(value).filter(([, entryValue]) => entryValue !== undefined && entryValue !== null && entryValue !== "")
+      );
+    };
+    const sanitizedOverlay = Object.fromEntries(
+      Object.entries(overlay).filter(([, value]) => value !== undefined && value !== null && value !== "")
+    );
+    const baseCustomer = base?.customer && typeof base.customer === "object" ? base.customer : null;
+    const overlayCustomer = overlay?.customer && typeof overlay.customer === "object" ? overlay.customer : null;
+
+    return {
+      ...base,
+      ...sanitizedOverlay,
+      customer: overlayCustomer || baseCustomer
+        ? {
+            ...(baseCustomer || {}),
+            ...(cleanObject(overlayCustomer) || {}),
+          }
+        : pick(overlay.customer, base.customer),
+      items: pickArray(overlay.items, overlay.lineItems, overlay.invoiceItems, base.items, base.lineItems, base.invoiceItems),
+      attachedFiles: pickArray(overlay.attachedFiles, overlay.files, base.attachedFiles, base.files),
+      comments: pickArray(overlay.comments, base.comments),
+      allocations: pickArray(overlay.allocations, overlay.appliedInvoices, base.allocations, base.appliedInvoices),
+      creditNoteNumber: pick(overlay.creditNoteNumber, overlay.number, overlay.noteNumber, base.creditNoteNumber, base.number, base.noteNumber),
+      referenceNumber: pick(overlay.referenceNumber, overlay.reference, overlay.referenceNo, base.referenceNumber, base.reference),
+      customerName: pick(
+        overlay.customerName,
+        overlay.customer?.displayName,
+        overlay.customer?.companyName,
+        overlay.customer?.name,
+        base.customerName
+      ),
+      creditNoteDate: pick(overlay.creditNoteDate, overlay.date, base.creditNoteDate, base.date),
+      taxExclusive: pick(overlay.taxExclusive, overlay.taxPreference, base.taxExclusive, base.taxPreference),
+      discount: pick(overlay.discount, base.discount, 0),
+      discountType: pick(overlay.discountType, base.discountType, "percent"),
+      shippingCharges: pick(overlay.shippingCharges, overlay.shipping, base.shippingCharges, base.shipping, 0),
+      shippingChargeTax: pick(
+        overlay.shippingChargeTax,
+        overlay.shippingTax,
+        overlay.shipping_tax,
+        overlay.shippingTaxId,
+        base.shippingChargeTax,
+        base.shippingTax,
+        ""
+      ),
+      shippingTaxAmount: pick(overlay.shippingTaxAmount, overlay.shippingTaxAmountValue, overlay.shippingTax, base.shippingTaxAmount, base.shippingTax, 0),
+      shippingTaxName: pick(overlay.shippingTaxName, overlay.shipping_tax_name, base.shippingTaxName, base.shipping_tax_name, ""),
+      shippingTaxRate: pick(overlay.shippingTaxRate, overlay.shipping_tax_rate, base.shippingTaxRate, base.shipping_tax_rate, 0),
+      adjustment: pick(overlay.adjustment, base.adjustment, 0),
+      roundOff: pick(overlay.roundOff, base.roundOff, 0),
+      total: pick(overlay.total, overlay.amount, base.total, base.amount, 0),
+      status: pick(overlay.status, base.status, "open")
+    };
+  };
+
+  const creditNotesListQuery = useQuery({
+    queryKey: ["credit-notes", "list"],
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    initialData: () => queryClient.getQueryData(["credit-notes", "list"]),
+    queryFn: async () => {
+      const notes = await getCreditNotes();
+      return { creditNotes: Array.isArray(notes) ? notes : [] };
+    }
+  });
+
+  useEffect(() => {
+    const data: any = creditNotesListQuery.data;
+    const list = Array.isArray(data?.creditNotes) ? data.creditNotes : Array.isArray(data) ? data : [];
+    setCreditNotes(list);
+  }, [creditNotesListQuery.data]);
+
+  useEffect(() => {
+    if (!initialCreditNote || !id) return;
+    const matches =
+      String((initialCreditNote as any)?.id || (initialCreditNote as any)?._id || "").trim() === String(id).trim();
+    if (!matches) return;
+    setCreditNote(initialCreditNote);
+    setCreditNoteAttachments(
+      Array.isArray((initialCreditNote as any)?.attachedFiles) ? (initialCreditNote as any).attachedFiles : []
+    );
+    setComments(
+      Array.isArray((initialCreditNote as any)?.comments) ? (initialCreditNote as any).comments : []
+    );
+  }, [id, initialCreditNote]);
+
+  useEffect(() => {
+    const fetchCreditNoteData = async () => {
+      try {
+        if (!id) return;
+        const creditNoteData = await getCreditNoteById(id);
+        if (creditNoteData) {
+          let resolvedCreditNote = mergeCreditNoteLike(initialCreditNote || creditNote, creditNoteData) as any;
+          const currentCustomerName = String(
+            resolvedCreditNote?.customerName ||
+            (typeof resolvedCreditNote?.customer === "object"
+              ? resolvedCreditNote?.customer?.displayName || resolvedCreditNote?.customer?.companyName || resolvedCreditNote?.customer?.name || ""
+              : "")
+          ).trim();
+          const customerId = String(
+            typeof resolvedCreditNote?.customer === "object"
+              ? resolvedCreditNote?.customer?._id || resolvedCreditNote?.customer?.id || ""
+              : resolvedCreditNote?.customerId || resolvedCreditNote?.customer || ""
+          ).trim();
+
+          if (!currentCustomerName && customerId) {
+            try {
+              const customerRes: any = await customersAPI.getById(customerId);
+              const customerData = customerRes?.data || customerRes;
+              const resolvedCustomerName = String(
+                customerData?.displayName || customerData?.companyName || customerData?.name || ""
+              ).trim();
+              if (resolvedCustomerName) {
+                resolvedCreditNote = {
+                  ...resolvedCreditNote,
+                  customerName: resolvedCustomerName,
+                  customer: typeof resolvedCreditNote?.customer === "object"
+                    ? { ...resolvedCreditNote.customer, ...customerData }
+                    : resolvedCreditNote?.customer,
+                };
+              }
+            } catch (customerError) {
+              console.error("Error resolving credit note customer:", customerError);
+            }
+          }
+
+          setCreditNote(resolvedCreditNote);
+          setCreditNoteAttachments(Array.isArray((resolvedCreditNote as any).attachedFiles) ? (resolvedCreditNote as any).attachedFiles : []);
+          setComments(Array.isArray((resolvedCreditNote as any).comments) ? (resolvedCreditNote as any).comments : []);
+        } else if (!initialCreditNote) {
+          navigate("/sales/credit-notes");
+        } else {
+          setCreditNote((prev) => mergeCreditNoteLike(initialCreditNote, prev || initialCreditNote) as CreditNote);
+        }
+      } catch (error) {
+        console.error("Error loading credit note:", error);
+        if (!initialCreditNote) {
+          navigate("/sales/credit-notes");
+        } else if (initialCreditNote) {
+          setCreditNote((prev) => mergeCreditNoteLike(initialCreditNote, prev || initialCreditNote) as CreditNote);
+        }
+      }
+    };
+    fetchCreditNoteData();
+
+    // Fetch Bank Accounts and Refunds
+    const fetchAdditionalData = async () => {
+      try {
+        const [bankAccRes, chartAccRes] = await Promise.all([
+          bankAccountsAPI.getAll(),
+          chartOfAccountsAPI.getAccounts({ type: 'Asset' })
+        ]);
+
+        let combinedAccounts: any[] = [];
+        if (bankAccRes && Array.isArray(bankAccRes)) {
+          combinedAccounts = [...bankAccRes];
+        } else if (bankAccRes && bankAccRes.success && Array.isArray(bankAccRes.data)) {
+          combinedAccounts = [...bankAccRes.data];
+        }
+
+        if (chartAccRes && chartAccRes.success && Array.isArray(chartAccRes.data)) {
+          const relevantCoa = chartAccRes.data.filter((acc: any) =>
+            acc.name.toLowerCase().includes('cash') ||
+            acc.name.toLowerCase().includes('petty') ||
+            acc.name.toLowerCase().includes('undeposited')
+          );
+          combinedAccounts = [...combinedAccounts, ...relevantCoa];
+        }
+
+        setBankAccounts(combinedAccounts);
+
+        // Fetch Refunds for this Credit Note
+        if (id) {
+          const refundsRes = await refundsAPI.getByCreditNoteId(id);
+          if (refundsRes && refundsRes.success && Array.isArray(refundsRes.data)) {
+            setRefunds(refundsRes.data);
+          }
+        }
+
+        // Fetch Organization Profile
+        const orgRes = await settingsAPI.getOrganizationProfile();
+        if (orgRes && orgRes.success && orgRes.data) {
+          setOrganizationProfile(orgRes.data);
+          setOrganizationData({
+            street1: orgRes.data.addressLine1 || "",
+            street2: orgRes.data.addressLine2 || "",
+            city: orgRes.data.city || "",
+            zipCode: orgRes.data.zipCode || "",
+            stateProvince: orgRes.data.state || "",
+            phone: orgRes.data.phone || "",
+            faxNumber: orgRes.data.fax || "",
+            websiteUrl: orgRes.data.website || "",
+            industry: orgRes.data.industry || ""
+          });
+          if (orgRes.data.logo) {
+            setLogoPreview(orgRes.data.logo);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading additional details:", error);
+      }
+    };
+    fetchAdditionalData();
+
+    // Fetch Base Currency
+    const fetchBaseCurrency = async () => {
+      try {
+        const response = await currenciesAPI.getBaseCurrency();
+        if (response && response.success && response.data) {
+          setBaseCurrency(response.data.code || "USD");
+        }
+      } catch (error) {
+        console.error("Error fetching base currency:", error);
+      }
+    };
+    fetchBaseCurrency();
+
+    const fetchInvoicesLookup = async () => {
+      try {
+        const res = await invoicesAPI.getAll({ limit: 2000 });
+        const rows = Array.isArray((res as any)?.data) ? (res as any).data : [];
+        const map: Record<string, any> = {};
+        rows.forEach((row: any) => {
+          const rowId = String(row?.id || row?._id || "").trim();
+          if (rowId) map[rowId] = row;
+        });
+        setInvoicesLookup(map);
+      } catch (error) {
+        console.error("Failed to load invoices lookup for credit note applications:", error);
+      }
+    };
+    fetchInvoicesLookup();
+  }, [id, navigate]);
+
+  // Initialize refund data when modal opens
+  useEffect(() => {
+    if (isRefundModalOpen && creditNote) {
+      const today = new Date();
+      const day = String(today.getDate()).padStart(2, "0");
+      const month = String(today.getMonth() + 1).padStart(2, "0");
+      const year = today.getFullYear();
+      const initialBalance = creditNote.balance !== undefined ? creditNote.balance : (creditNote.total || 0);
+      const defaultAcc = bankAccounts[0];
+      const defaultAccountName = getAccountDisplayName(defaultAcc);
+      const defaultAccountId = getAccountId(defaultAcc);
+
+      setRefundData((prev) => ({
+        ...prev,
+        amount: initialBalance.toString(),
+        refundedOn: `${day}/${month}/${year}`,
+        paymentMode: "Cash",
+        referenceNumber: "",
+        fromAccount: defaultAccountName,
+        fromAccountId: defaultAccountId,
+        description: `Refund for Credit Note ${creditNote.creditNoteNumber}`
+      }));
+    }
+  }, [isRefundModalOpen, creditNote, bankAccounts]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: globalThis.MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setIsMoreMenuOpen(false);
+      }
+      if (allCreditNotesDropdownRef.current && !allCreditNotesDropdownRef.current.contains(event.target as Node)) {
+        setIsAllCreditNotesDropdownOpen(false);
+      }
+      if (sendDropdownRef.current && !sendDropdownRef.current.contains(event.target as Node)) {
+        setIsSendDropdownOpen(false);
+      }
+      if (pdfDropdownRef.current && !pdfDropdownRef.current.contains(event.target as Node)) {
+        setIsPdfDropdownOpen(false);
+      }
+      if (sendEmailModalRef.current && !sendEmailModalRef.current.contains(event.target as Node)) {
+        // Don't close on overlay click for modals
+      }
+      if (scheduleEmailModalRef.current && !scheduleEmailModalRef.current.contains(event.target as Node)) {
+        // Don't close on overlay click for modals
+      }
+      if (isCustomizeDropdownOpen && customizeDropdownRef.current && !customizeDropdownRef.current.contains(event.target as Node)) {
+        setIsCustomizeDropdownOpen(false);
+      }
+      if (refundModalRef.current && !refundModalRef.current.contains(event.target as Node) && isRefundModalOpen) {
+        setIsRefundModalOpen(false);
+      }
+      if (paymentModeDropdownRef.current && !paymentModeDropdownRef.current.contains(event.target as Node)) {
+        setIsPaymentModeDropdownOpen(false);
+      }
+      if (fromAccountDropdownRef.current && !fromAccountDropdownRef.current.contains(event.target as Node)) {
+        setIsFromAccountDropdownOpen(false);
+      }
+      if (refundDatePickerRef.current && !refundDatePickerRef.current.contains(event.target as Node)) {
+        setIsRefundDatePickerOpen(false);
+      }
+      if (attachmentsPopoverRef.current && !attachmentsPopoverRef.current.contains(event.target as Node)) {
+        setShowAttachmentsPopover(false);
+      }
+    };
+
+    if (isMoreMenuOpen || isAllCreditNotesDropdownOpen || isSendDropdownOpen || isPdfDropdownOpen || isCustomizeDropdownOpen || isRefundModalOpen || isPaymentModeDropdownOpen || isFromAccountDropdownOpen || isRefundDatePickerOpen || showAttachmentsPopover) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isMoreMenuOpen, isAllCreditNotesDropdownOpen, isSendDropdownOpen, isPdfDropdownOpen, isCustomizeDropdownOpen, isRefundModalOpen, isPaymentModeDropdownOpen, isFromAccountDropdownOpen, isRefundDatePickerOpen, showAttachmentsPopover]);
+
+  const formatCurrency = (amount: any, currency = baseCurrency) => {
+    return `${currency}${parseFloat(amount || 0).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })}`;
+  };
+
+  const formatDate = (dateString: any) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  const formatCurrencyNumber = (amount: any) => {
+    return parseFloat(amount || 0).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  };
+
+  const getAccountId = (account: any): string =>
+    String(account?._id || account?.id || "").trim();
+
+  const getAccountDisplayName = (account: any): string => {
+    const display = String(account?.displayName || account?.accountName || account?.name || "").trim();
+    return display || "Unnamed Account";
+  };
+
+  const parseRefundInputDate = (value: string): Date | null => {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) return null;
+
+    const slashMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (slashMatch) {
+      const day = Number(slashMatch[1]);
+      const month = Number(slashMatch[2]);
+      const year = Number(slashMatch[3]);
+      const parsed = new Date(year, month - 1, day);
+      if (
+        parsed.getFullYear() === year &&
+        parsed.getMonth() === month - 1 &&
+        parsed.getDate() === day
+      ) {
+        return parsed;
+      }
+      return null;
+    }
+
+    const parsed = new Date(trimmed);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const handleDownloadPDF = async () => {
+    setIsPdfDropdownOpen(false);
+    if (!creditNote) return;
+    try {
+      await downloadCreditNotesPdf({
+        notes: [creditNote],
+        organizationProfile,
+        baseCurrency,
+        fileName: `CreditNote-${creditNote.creditNoteNumber || creditNote.id}.pdf`
+      });
+    } catch (error) {
+      console.error("Error downloading credit note PDF:", error);
+      toast("Failed to generate PDF. Please try again.");
+    }
+  };
+
+  const remainingCreditBalance = toNumber((creditNote as any)?.balance ?? (creditNote as any)?.total ?? 0);
+  const creditNoteStatus = String((creditNote as any)?.status || "").toLowerCase();
+  const canApplyToInvoices = Boolean(creditNote) && remainingCreditBalance > 0 && creditNoteStatus !== "closed";
+
+  const handleSendEmail = () => {
+    setIsSendDropdownOpen(false);
+    navigate(`/sales/credit-notes/${id}/email`);
+  };
+
+  const handleScheduleEmail = () => {
+    setIsSendDropdownOpen(false);
+    if (creditNote) {
+      // Pre-fill schedule data with credit note info
+      setScheduleData({
+        to: creditNote.customerEmail || (typeof creditNote.customer === 'object' ? (creditNote.customer?.displayName || creditNote.customer?.name) : creditNote.customer) || "",
+        cc: "",
+        bcc: "",
+        subject: `Credit Note ${creditNote.creditNoteNumber || creditNote.id} from ${creditNote.companyName || "Your Company"}`,
+        message: `Dear ${creditNote.customerName || (typeof creditNote.customer === 'object' ? (creditNote.customer?.displayName || creditNote.customer?.name) : creditNote.customer) || "Customer"},
+
+Please find attached credit note ${creditNote.creditNoteNumber || creditNote.id} for ${formatCurrency(creditNote.total || creditNote.amount || 0, creditNote.currency)}.
+
+Credit Note Details:
+- Credit Note Number: ${creditNote.creditNoteNumber || creditNote.id}
+- Credit Date: ${formatDate(creditNote.creditNoteDate || creditNote.date)}
+- Amount: ${formatCurrency(creditNote.total || creditNote.amount || 0, creditNote.currency)}
+- Credits Remaining: ${formatCurrency(creditNote.balance || creditNote.total || creditNote.amount || 0, creditNote.currency)}
+
+Thank you for your business!
+
+Best regards`,
+        date: "",
+        time: ""
+      });
+      setIsScheduleEmailModalOpen(true);
+    }
+  };
+
+  const handleSendEmailSubmit = () => {
+    if (!emailData.to || !emailData.subject) {
+      toast("Please fill in required fields (To and Subject)");
+      return;
+    }
+    // TODO: Implement actual email sending
+    console.log("Sending email:", emailData);
+    setIsSendEmailModalOpen(false);
+    toast("Email sent successfully!");
+    setEmailData({
+      to: "",
+      cc: "",
+      bcc: "",
+      subject: "",
+      message: ""
+    });
+  };
+
+  const handleScheduleEmailSubmit = () => {
+    if (!scheduleData.to || !scheduleData.subject || !scheduleData.date || !scheduleData.time) {
+      toast("Please fill in required fields (To, Subject, Date, and Time)");
+      return;
+    }
+    // TODO: Implement actual email scheduling
+    console.log("Scheduling email:", scheduleData);
+    setIsScheduleEmailModalOpen(false);
+    toast("Email scheduled successfully!");
+    setScheduleData({
+      to: "",
+      cc: "",
+      bcc: "",
+      subject: "",
+      message: "",
+      date: "",
+      time: ""
+    });
+  };
+
+  const handleSendSMS = () => {
+    setIsSendDropdownOpen(false);
+    // TODO: Implement SMS sending functionality
+    toast("SMS functionality will be implemented soon.");
+  };
+
+  const [isApplyToInvoicesOpen, setIsApplyToInvoicesOpen] = useState(false);
+
+  const handleApplyToInvoices = () => {
+    if (creditNoteStatus === "draft") {
+      setIsDraftApplyConfirmOpen(true);
+      return;
+    }
+    setIsApplyToInvoicesOpen(true);
+  };
+
+  const handleConfirmDraftApply = async () => {
+    if (!creditNote?.id) {
+      setIsDraftApplyConfirmOpen(false);
+      setIsApplyToInvoicesOpen(true);
+      return;
+    }
+
+    try {
+      const updatedNote = await creditNotesAPI.update(creditNote.id, {
+        status: "open"
+      });
+      if (updatedNote) {
+        setCreditNote((prev) =>
+          mergeCreditNoteLike(prev || creditNote, { ...updatedNote, status: "open" }) as CreditNote
+        );
+      } else {
+        setCreditNote((prev) => prev ? ({ ...prev, status: "open" } as CreditNote) : prev);
+      }
+      setIsDraftApplyConfirmOpen(false);
+      setIsApplyToInvoicesOpen(true);
+      toast.success("Credit note status changed to Open.");
+    } catch (error: any) {
+      console.error("Failed to update draft credit note to open:", error);
+      toast(error?.message || "Failed to update credit note status.");
+    }
+  };
+
+  function toNumber(value: any) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : 0;
+  }
+
+  const creditAppliedInvoicesRows = useMemo(() => {
+    const source = (creditNote as any)?.allocations || (creditNote as any)?.appliedInvoices || [];
+    const rows = (Array.isArray(source) ? source : [])
+      .map((row: any, index: number) => {
+        const invoiceId = String(row?.invoiceId || row?.id || "").trim();
+        const linked = invoiceId ? invoicesLookup[invoiceId] : null;
+        const invoiceNumber =
+          String(row?.invoiceNumber || row?.number || linked?.invoiceNumber || linked?.number || "").trim() || "-";
+        const amount = Number(row?.amount || row?.appliedAmount || 0) || 0;
+        const date = String(row?.date || row?.appliedDate || row?.createdAt || "").trim();
+        return {
+          rowKey: `${invoiceId || "row"}-${index}`,
+          index,
+          invoiceId,
+          invoiceNumber,
+          amount,
+          date
+        };
+      })
+      .filter((row: any) => row.amount > 0);
+
+    return rows.sort(
+      (a: any, b: any) =>
+        new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
+    );
+  }, [creditNote, invoicesLookup]);
+
+  const handleSaveAllocations = async (allocations: any[]) => {
+    try {
+      if (!creditNote || !creditNote.id) return;
+      const appliedTotal = allocations.reduce((sum, row) => sum + toNumber(row?.amount), 0);
+
+      const response = await creditNotesAPI.applyToInvoices(creditNote.id, allocations);
+
+      if (response && response.success) {
+        const currentBalance = toNumber((creditNote as any)?.balance ?? (creditNote as any)?.total ?? 0);
+        const nextBalance = Math.max(0, currentBalance - appliedTotal);
+        await creditNotesAPI.update(creditNote.id, {
+          balance: nextBalance,
+          creditsUsed: toNumber((creditNote as any)?.creditsUsed) + appliedTotal,
+          status: nextBalance <= 0 ? "closed" : ((creditNote as any)?.status || "open"),
+          allocationUpdatedAt: new Date().toISOString()
+        });
+
+        await Promise.all(
+          allocations.map(async (allocation: any) => {
+            const invoiceId = String(allocation?.invoiceId || "").trim();
+            const allocationAmount = toNumber(allocation?.amount);
+            if (!invoiceId || allocationAmount <= 0) return;
+            try {
+              const invoiceRes = await invoicesAPI.getById(invoiceId);
+              const invoiceData: any = (invoiceRes as any)?.data || invoiceRes;
+              if (!invoiceData) return;
+
+              const invoiceTotal = toNumber(invoiceData?.total ?? invoiceData?.amount ?? invoiceData?.grandTotal);
+              const paidAmount = toNumber(invoiceData?.paidAmount ?? invoiceData?.amountPaid);
+              const prevCredits = toNumber(invoiceData?.creditsApplied ?? invoiceData?.creditAppliedAmount);
+              const nextCredits = prevCredits + allocationAmount;
+              const nextBalanceDue = Math.max(0, invoiceTotal - paidAmount - nextCredits);
+              const normalizedStatus = String(invoiceData?.status || "").toLowerCase().replace(/\s+/g, "_");
+              const nextStatus =
+                nextBalanceDue <= 0
+                  ? "paid"
+                  : ["draft", "void", "cancelled"].includes(normalizedStatus)
+                    ? invoiceData?.status
+                    : "partially_paid";
+
+              await invoicesAPI.update(invoiceId, {
+                creditsApplied: nextCredits,
+                balance: nextBalanceDue,
+                balanceDue: nextBalanceDue,
+                amountDue: nextBalanceDue,
+                status: nextStatus
+              });
+            } catch (invoiceError) {
+              console.error(`Failed to update invoice ${invoiceId} after credit allocation`, invoiceError);
+            }
+          })
+        );
+
+        toast(`Successfully applied credits to ${allocations.length} invoice(s).`);
+        setIsApplyToInvoicesOpen(false);
+        // Refresh data
+        const updatedNote = await getCreditNoteById(creditNote.id);
+        if (updatedNote) setCreditNote((prev) => mergeCreditNoteLike(prev || creditNote, updatedNote) as CreditNote);
+      } else {
+        toast("Failed to apply credits: " + (response.message || "Unknown error"));
+      }
+    } catch (error: any) {
+      console.error("Error applying credits:", error);
+      toast("Failed to apply credits: " + (error.message || "Communication error"));
+    }
+  };
+
+  const handleRemoveAppliedInvoice = async (rowToRemove: any) => {
+    if (!creditNote?.id) return;
+    const shouldRemove = await confirmToast("Remove this applied credit from the invoice?");
+    if (!shouldRemove) return;
+
+    try {
+      const source = (creditNote as any)?.allocations || (creditNote as any)?.appliedInvoices || [];
+      const currentAllocations = Array.isArray(source) ? source : [];
+      const nextAllocations = currentAllocations.filter((_: any, index: number) => index !== rowToRemove.index);
+
+      const currentBalance = Number((creditNote as any)?.balance ?? (creditNote as any)?.total ?? 0) || 0;
+      const currentCreditsUsed = Number((creditNote as any)?.creditsUsed ?? 0) || 0;
+      const restoreAmount = Number(rowToRemove?.amount || 0) || 0;
+      const nextBalance = Math.max(0, currentBalance + restoreAmount);
+      const nextCreditsUsed = Math.max(0, currentCreditsUsed - restoreAmount);
+
+      await creditNotesAPI.update(creditNote.id, {
+        allocations: nextAllocations,
+        balance: nextBalance,
+        creditsUsed: nextCreditsUsed,
+        status: nextBalance > 0 ? "open" : ((creditNote as any)?.status || "closed")
+      });
+
+      if (rowToRemove?.invoiceId) {
+        try {
+          const invoiceRes = await invoicesAPI.getById(String(rowToRemove.invoiceId));
+          const invoiceData: any = (invoiceRes as any)?.data || invoiceRes;
+          if (invoiceData) {
+            const invoiceTotal = Number(invoiceData?.total ?? invoiceData?.amount ?? 0) || 0;
+            const invoicePaid = Number(invoiceData?.paidAmount ?? invoiceData?.amountPaid ?? 0) || 0;
+            const prevCredits = Number(invoiceData?.creditsApplied ?? invoiceData?.creditAppliedAmount ?? 0) || 0;
+            const nextCredits = Math.max(0, prevCredits - restoreAmount);
+            const nextDue = Math.max(0, invoiceTotal - invoicePaid - nextCredits);
+            await invoicesAPI.update(String(rowToRemove.invoiceId), {
+              creditsApplied: nextCredits,
+              balance: nextDue,
+              balanceDue: nextDue,
+              amountDue: nextDue,
+              status: nextDue <= 0 ? "paid" : invoicePaid > 0 || nextCredits > 0 ? "partially_paid" : "sent"
+            });
+          }
+        } catch (invoiceError) {
+          console.error("Failed to restore invoice after removing applied credit", invoiceError);
+        }
+      }
+
+      const updatedNote = await getCreditNoteById(creditNote.id);
+      if (updatedNote) setCreditNote((prev) => mergeCreditNoteLike(prev || creditNote, updatedNote) as CreditNote);
+      toast("Applied credit removed.");
+    } catch (error: any) {
+      console.error("Failed to remove applied credit:", error);
+      toast(error?.message || "Failed to remove applied credit.");
+    }
+  };
+
+  const handleRefund = () => {
+    setIsRefundModalOpen(true);
+  };
+
+  const handleRefundCancel = () => {
+    setIsRefundModalOpen(false);
+    setRefundData({
+      amount: "",
+      refundedOn: "",
+      paymentMode: "",
+      referenceNumber: "",
+      fromAccount: "",
+      fromAccountId: "",
+      description: ""
+    });
+  };
+
+  const handleRefundSave = async () => {
+    try {
+      if (!id || !creditNote) return;
+
+      // Basic validation - aligned with Payments refund flow
+      if (!refundData.amount || !refundData.refundedOn || !refundData.fromAccount) {
+        toast("Please fill in all required fields: Amount, Refunded On, and From Account");
+        return;
+      }
+
+      const amt = parseFloat(refundData.amount);
+      if (isNaN(amt) || amt <= 0) {
+        toast("Please enter a valid amount.");
+        return;
+      }
+
+      const availableBalance = creditNote.balance !== undefined ? creditNote.balance : (creditNote.total || 0);
+      if (amt > availableBalance) {
+        toast("Refund amount cannot exceed available balance.");
+        return;
+      }
+
+      if (!refundData.fromAccountId && !refundData.fromAccount) {
+        toast("Please select an account.");
+        return;
+      }
+
+      const parsedRefundDate = parseRefundInputDate(refundData.refundedOn);
+      if (!parsedRefundDate) {
+        toast("Please enter a valid refund date.");
+        return;
+      }
+      const isoDate = parsedRefundDate.toISOString().split("T")[0];
+
+      const payload = {
+        creditNoteId: creditNote.id || creditNote._id || id,
+        amount: amt,
+        refundDate: isoDate,
+        paymentMethod: refundData.paymentMode || "Cash",
+        referenceNumber: refundData.referenceNumber,
+        fromAccount: refundData.fromAccountId || refundData.fromAccount,
+        description: refundData.description
+      };
+
+      const res = await refundsAPI.create(payload);
+
+      if (res && res.success) {
+        toast("Refund processed successfully!");
+        handleRefundCancel();
+
+        // Refresh only the refund-related data without reloading the page
+        const noteId = String(creditNote.id || creditNote._id || id);
+        const [updatedCreditNote, refundsRes] = await Promise.all([
+          getCreditNoteById(noteId),
+          refundsAPI.getByCreditNoteId(noteId)
+        ]);
+
+        if (updatedCreditNote) {
+          setCreditNote((prev) => mergeCreditNoteLike(prev || creditNote, updatedCreditNote) as CreditNote);
+        }
+        if (refundsRes && refundsRes.success && Array.isArray(refundsRes.data)) {
+          setRefunds(refundsRes.data);
+        }
+      } else {
+        toast("Failed to process refund: " + (res.message || "Unknown error"));
+      }
+    } catch (error: any) {
+      console.error("[REFUND] Error saving refund:", error);
+      toast("Error processing refund: " + (error.message || "Please try again."));
+    }
+  };
+
+  const navigateRefundMonth = (direction: 'prev' | 'next') => {
+    setRefundDateCalendar(prev => {
+      const newDate = new Date(prev);
+      if (direction === "prev") {
+        newDate.setMonth(newDate.getMonth() - 1);
+      } else {
+        newDate.setMonth(newDate.getMonth() + 1);
+      }
+      return newDate;
+    });
+  };
+
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+
+    const days = [];
+
+    // Previous month days
+    const prevMonth = new Date(year, month, 0);
+    const prevMonthDays = prevMonth.getDate();
+    for (let i = startingDayOfWeek - 1; i >= 0; i--) {
+      days.push({
+        date: prevMonthDays - i,
+        month: "prev",
+        fullDate: new Date(year, month - 1, prevMonthDays - i).toISOString().split('T')[0]
+      });
+    }
+
+    // Current month days
+    for (let day = 1; day <= daysInMonth; day++) {
+      days.push({
+        date: day,
+        month: "current",
+        fullDate: new Date(year, month, day).toISOString().split('T')[0]
+      });
+    }
+
+    // Next month days to fill the grid
+    const remainingDays = 42 - days.length;
+    for (let day = 1; day <= remainingDays; day++) {
+      days.push({
+        date: day,
+        month: "next",
+        fullDate: new Date(year, month + 1, day).toISOString().split('T')[0]
+      });
+    }
+
+    return days;
+  };
+
+  const handleRefundDateSelect = (dateString: string) => {
+    const date = new Date(dateString);
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = date.getFullYear();
+    setRefundData({ ...refundData, refundedOn: `${day}/${month}/${year}` });
+    setIsRefundDatePickerOpen(false);
+  };
+
+  const confirmToast = (message: string) =>
+    new Promise<boolean>((resolve) => {
+      let toastId: any;
+      const ConfirmToast = () => (
+        <div className="w-full max-w-sm">
+          <div className="mb-3 text-sm font-medium text-slate-800">{message}</div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+              onClick={() => {
+                toast.dismiss(toastId);
+                resolve(false);
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="rounded-md px-3 py-1.5 text-sm text-white hover:brightness-95"
+              style={{ backgroundColor: "#156372" }}
+              onClick={() => {
+                toast.dismiss(toastId);
+                resolve(true);
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      );
+
+      toastId = toast(<ConfirmToast />, {
+        position: "top-center",
+        autoClose: false,
+        closeOnClick: false,
+        draggable: false,
+        closeButton: false,
+      });
+    });
+
+  const handleDelete = () => {
+    setIsMoreMenuOpen(false);
+    setIsDeleteConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (isDeletingCreditNote) return;
+    setIsDeletingCreditNote(true);
+    try {
+      if (!id) {
+        toast('Missing credit note id.');
+        return;
+      }
+      await deleteCreditNote(id);
+      queryClient.setQueryData(["credit-notes", "list"], (current: any) => {
+        const currentList = Array.isArray(current?.creditNotes) ? current.creditNotes : Array.isArray(current) ? current : [];
+        const nextList = currentList.filter((note: any) => String(note?.id || note?._id || "") !== String(id));
+        return Array.isArray(current?.creditNotes) ? { ...current, creditNotes: nextList } : nextList;
+      });
+      await queryClient.invalidateQueries({ queryKey: ["credit-notes", "list"] });
+      toast.success("Credit note deleted successfully.");
+      navigate("/sales/credit-notes", { replace: true });
+    } catch (error) {
+      console.error("Error deleting credit note:", error);
+      toast.error("Failed to delete credit note. Please try again.");
+    } finally {
+      setIsDeletingCreditNote(false);
+      setIsDeleteConfirmOpen(false);
+    }
+  };
+
+  const handleClone = async () => {
+    setIsMoreMenuOpen(false);
+    if (!creditNote) return;
+
+    const extractCreditNoteNumberParts = (value: any) => {
+      const raw = String(value || "").trim();
+      if (!raw) return null;
+      const match = raw.match(/^(.*?)(\d+)([^\d]*)$/);
+      if (!match) return null;
+      return {
+        prefix: match[1] || "",
+        digits: match[2] || "",
+        suffix: match[3] || "",
+        numeric: parseInt(match[2], 10) || 0
+      };
+    };
+
+    const buildNextCreditNoteNumber = (numbers: any[], preferredPrefix = "CN-") => {
+      const parsed = (Array.isArray(numbers) ? numbers : [])
+        .map(extractCreditNoteNumberParts)
+        .filter(Boolean) as Array<{ prefix: string; digits: string; suffix: string; numeric: number }>;
+
+      const prefix =
+        parsed.find((entry) => entry.prefix)?.prefix ||
+        preferredPrefix ||
+        "CN-";
+      const samePrefix = parsed.filter((entry) => entry.prefix === prefix);
+      const widestDigits = samePrefix.reduce((max, entry) => Math.max(max, entry.digits.length), 6);
+      const highest = samePrefix.reduce((max, entry) => Math.max(max, entry.numeric), 0);
+      return `${prefix}${String(highest + 1).padStart(widestDigits, "0")}`;
+    };
+
+    try {
+      const [nextNumberResponse, existingNotes] = await Promise.all([
+        creditNotesAPI.getNextNumber(),
+        getCreditNotes().catch(() => [])
+      ]);
+
+      const nextCreditNoteNumber =
+        nextNumberResponse?.data?.nextNumber ||
+        nextNumberResponse?.data?.creditNoteNumber ||
+        nextNumberResponse?.nextNumber ||
+        "";
+
+      const preferredPrefix =
+        extractCreditNoteNumberParts((creditNote as any)?.creditNoteNumber)?.prefix ||
+        extractCreditNoteNumberParts(nextCreditNoteNumber)?.prefix ||
+        "CN-";
+      const cloneNumber = buildNextCreditNoteNumber(
+        [
+          ...(Array.isArray(existingNotes) ? existingNotes.map((note: any) => note?.creditNoteNumber) : []),
+          (creditNote as any)?.creditNoteNumber,
+          nextCreditNoteNumber
+        ],
+        preferredPrefix
+      );
+
+      const cloneCustomer = (creditNote as any)?.customer;
+      const cloneCustomerId = String((creditNote as any)?.customerId || cloneCustomer?._id || cloneCustomer?.id || (typeof cloneCustomer === "string" ? cloneCustomer : "") || "").trim();
+      const cloneCustomerName = String(
+        (creditNote as any)?.customerName ||
+        cloneCustomer?.displayName ||
+        cloneCustomer?.companyName ||
+        cloneCustomer?.name ||
+        ""
+      ).trim();
+      const cloneReference = String(
+        (creditNote as any)?.referenceNumber ||
+        (creditNote as any)?.reference ||
+        (creditNote as any)?.referenceNo ||
+        (creditNote as any)?.refNumber ||
+        (creditNote as any)?.ref ||
+        ""
+      ).trim();
+      const cloneItems = Array.isArray((creditNote as any)?.items)
+        ? (creditNote as any).items.map((item: any) => ({ ...item }))
+        : [];
+      const cloneTotal = Number((creditNote as any)?.total ?? (creditNote as any)?.amount ?? creditNote.balance ?? 0) || 0;
+      const cloneCurrency = String((creditNote as any)?.currency || "").trim();
+      const sourceStatus = String((creditNote as any)?.status || "open").trim().toLowerCase() || "open";
+
+      const clonedPayload: any = {
+        creditNoteNumber: cloneNumber,
+        customerId: cloneCustomerId,
+        customerName: cloneCustomerName,
+        customer: cloneCustomerId || cloneCustomerName || undefined,
+        invoiceId: String((creditNote as any)?.invoiceId || (creditNote as any)?.invoice || "").trim(),
+        invoiceNumber: String((creditNote as any)?.invoiceNumber || "").trim(),
+        referenceNumber: cloneReference,
+        reference: cloneReference,
+        subject: String((creditNote as any)?.subject || "").trim(),
+        termsAndConditions: String((creditNote as any)?.termsAndConditions || (creditNote as any)?.terms || "").trim(),
+        terms: String((creditNote as any)?.terms || (creditNote as any)?.termsAndConditions || "").trim(),
+        customerNotes: String((creditNote as any)?.customerNotes || (creditNote as any)?.notes || "").trim(),
+        notes: String((creditNote as any)?.notes || (creditNote as any)?.customerNotes || "").trim(),
+        creditNoteDate: new Date(),
+        date: new Date(),
+        status: sourceStatus,
+        balance: cloneTotal,
+        total: cloneTotal,
+        currency: cloneCurrency || baseCurrency || "USD",
+        items: cloneItems,
+        attachedFiles: [],
+        comments: [],
+        allocations: [],
+        appliedInvoices: [],
+      };
+
+      let clonedCreditNote;
+      try {
+        clonedCreditNote = await saveCreditNote(clonedPayload);
+      } catch (error: any) {
+        const message = String(error?.message || "").toLowerCase();
+        if (!message.includes("duplicate") && !message.includes("exists")) {
+          throw error;
+        }
+
+        const freshNotes = await getCreditNotes().catch(() => []);
+        const retryNumber = buildNextCreditNoteNumber(
+          [
+            ...(Array.isArray(freshNotes) ? freshNotes.map((note: any) => note?.creditNoteNumber) : []),
+            cloneNumber
+          ],
+          preferredPrefix
+        );
+        clonedPayload.creditNoteNumber = retryNumber;
+        clonedPayload.referenceNumber = cloneReference;
+        clonedPayload.reference = cloneReference;
+        clonedCreditNote = await saveCreditNote(clonedPayload);
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["credit-notes", "list"] });
+      toast.success("Credit note cloned successfully.");
+      const openedClone = { ...clonedCreditNote, status: sourceStatus };
+      navigate(`/sales/credit-notes/${clonedCreditNote.id || clonedCreditNote._id}`, {
+        replace: true,
+        state: { creditNote: openedClone }
+      });
+    } catch (error) {
+      console.error("Error cloning credit note:", error);
+      toast.error((error as any)?.message || "Failed to clone credit note. Please try again.");
+    }
+  };
+
+  const persistCreditNoteMeta = async (attachments: AttachedFile[], nextComments: any[]) => {
+    if (!id) return;
+    try {
+      await updateCreditNote(id, {
+        attachedFiles: attachments,
+        comments: nextComments
+      } as any);
+      setCreditNote((prev) => prev ? ({ ...prev, attachedFiles: attachments, comments: nextComments } as any) : prev);
+    } catch (error) {
+      console.error("Error saving credit note comments/attachments:", error);
+      toast("Failed to save changes. Please try again.");
+    }
+  };
+
+  const fileToDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => resolve(String(event.target?.result || ""));
+      reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+      reader.readAsDataURL(file);
+    });
+
+  // Attachments Handlers
+  const handleFileUpload = async (files: FileList | File[]) => {
+    const validFiles = Array.from(files).filter(file => {
+      if (file.size > 10 * 1024 * 1024) {
+        toast(`File ${file.name} is too large. Maximum size is 10MB.`);
+        return false;
+      }
+      return true;
+    });
+
+    if (creditNoteAttachments.length + validFiles.length > 5) {
+      toast("Maximum 5 files allowed. Please remove some files first.");
+      return;
+    }
+    if (validFiles.length === 0) return;
+
+    try {
+      setIsUploadingAttachment(true);
+      const newAttachments: AttachedFile[] = [];
+      for (const file of validFiles) {
+        const preview = await fileToDataUrl(file);
+        newAttachments.push({
+          id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          name: file.name,
+          size: file.size,
+          type: file.type || "application/octet-stream",
+          preview,
+          uploadedAt: new Date().toISOString()
+        });
+      }
+
+      const updated = [...creditNoteAttachments, ...newAttachments].slice(0, 5);
+      setCreditNoteAttachments(updated);
+      await persistCreditNoteMeta(updated, comments);
+    } catch (error) {
+      console.error("Error uploading credit note attachments:", error);
+      toast("Failed to upload files. Please try again.");
+    } finally {
+      setIsUploadingAttachment(false);
+    }
+  };
+
+  const handleFileClick = (attachment: any) => {
+    if (attachment.type && String(attachment.type).startsWith('image/')) {
+      setSelectedImage(typeof attachment.preview === 'string' ? attachment.preview : null);
+      setShowImageViewer(true);
+      return;
+    }
+
+    if (attachment.preview) {
+      const a = document.createElement('a');
+      a.href = attachment.preview;
+      a.download = attachment.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  };
+
+  const handleRemoveAttachment = async (attachmentId: string | number) => {
+    const updated = creditNoteAttachments.filter(att => String(att.id) !== String(attachmentId));
+    setCreditNoteAttachments(updated);
+    await persistCreditNoteMeta(updated, comments);
+  };
+
+  const attachments = Array.isArray(creditNoteAttachments) ? creditNoteAttachments : [];
+
+  const formatFileSize = (bytes: number | string | undefined) => {
+    const size = Number(bytes) || 0;
+    if (!size) return "0 B";
+    const units = ["B", "KB", "MB", "GB"];
+    const index = Math.min(Math.floor(Math.log(size) / Math.log(1024)), units.length - 1);
+    const value = size / Math.pow(1024, index);
+    return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
+  };
+
+  const isPdfAttachment = (fileName: string) => /\.pdf$/i.test(fileName || "");
+
+  const handleDownloadAttachment = (file: any) => {
+    const url = file?.preview || file?.url || "";
+    if (!url) return;
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = file?.name || "attachment";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleOpenAttachmentInNewTab = (file: any) => {
+    const url = file?.preview || file?.url || "";
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const handleRequestRemoveAttachment = (index: number) => {
+    setAttachmentMenuIndex(index);
+    setAttachmentDeleteConfirmIndex(index);
+  };
+
+  const handleCancelRemoveAttachment = () => {
+    setAttachmentMenuIndex(null);
+    setAttachmentDeleteConfirmIndex(null);
+  };
+
+  // Comments Handlers
+  const handleAddComment = async () => {
+    if (!newComment.trim()) return;
+
+    const comment = {
+      id: `com_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      text: newComment.trim(),
+      author: "You",
+      timestamp: new Date().toISOString(),
+      bold: commentBold,
+      italic: commentItalic,
+      underline: commentUnderline
+    };
+
+    const updated = [...comments, comment];
+    setComments(updated);
+    await persistCreditNoteMeta(creditNoteAttachments, updated);
+    setNewComment("");
+    setCommentBold(false);
+    setCommentItalic(false);
+    setCommentUnderline(false);
+  };
+
+  const handleFilterSelect = (filter: string) => {
+    setIsAllCreditNotesDropdownOpen(false);
+    // Navigate to credit notes list with filter applied
+    if (filter === "All") {
+      navigate("/sales/credit-notes");
+    } else {
+      // Convert filter name to status format
+      const statusMap: { [key: string]: string } = {
+        "All": "all",
+        "Draft": "draft",
+        "Open": "open",
+        "Closed": "closed",
+        "Void": "void",
+        "Locked": "locked",
+        "Pending Approval": "pending_approval",
+        "Approved": "approved"
+      };
+      navigate(`/sales/credit-notes?status=${statusMap[filter] || filter.toLowerCase()}`);
+    }
+  };
+
+  const filteredStatusOptions = statusFilters.filter(filter =>
+    filter.toLowerCase().includes(filterSearch.toLowerCase())
+  );
+
+  if (!creditNote) {
+    return <div className="w-full min-h-screen bg-gray-50" />;
+  }
+
+  return (
+    <div className="w-full h-[calc(100vh-4rem)] min-h-0 flex bg-[#f8fafc] overflow-hidden">
+      {/* Left Sidebar */}
+      <div className="w-[320px] lg:w-[320px] md:w-[270px] border-r border-gray-200 bg-white flex flex-col h-full min-h-0 overflow-hidden hidden md:flex">        <div className="relative z-20 flex items-center justify-between px-4 h-[74px] border-b border-gray-200">
+          <div className="relative flex-1" ref={allCreditNotesDropdownRef}>
+            <button
+              onClick={() => setIsAllCreditNotesDropdownOpen(!isAllCreditNotesDropdownOpen)}
+              className="inline-flex items-center gap-1 text-[18px] font-semibold text-gray-900 cursor-pointer"
+            >
+              {isAllCreditNotesDropdownOpen ? (
+                <ChevronUp size={16} className="text-[#156372]" />
+              ) : (
+                <ChevronDown size={16} className="text-[#156372]" />
+              )}
+              <span>All Credit Notes</span>
+            </button>
+
+            {/* Filter Dropdown */}
+            {isAllCreditNotesDropdownOpen && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 min-w-[250px] overflow-hidden">
+                {/* Search Bar */}
+                <div className="flex items-center gap-2 p-3 border-b border-gray-200 bg-gray-50">
+                  <Search size={16} className="text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search"
+                    value={filterSearch}
+                    onChange={(e) => setFilterSearch(e.target.value)}
+                    className="flex-1 text-sm bg-transparent focus:outline-none"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Filter Options */}
+                <div>
+                  {filteredStatusOptions.map((filter) => (
+                    <div
+                      key={filter}
+                      onClick={() => handleFilterSelect(filter)}
+                      className="p-3 cursor-pointer hover:bg-gray-50 flex items-center justify-between transition-colors"
+                      style={{ "--hover-bg": "rgba(21, 99, 114, 0.1)" } as any}
+                      onMouseEnter={(e: React.MouseEvent) => ((e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)")}
+                      onMouseLeave={(e: React.MouseEvent) => ((e.target as HTMLElement).style.backgroundColor = "transparent")}
+                    >
+                      <span className="text-sm font-medium text-gray-900">{filter}</span>
+                      <Star size={16} className="text-yellow-400" />
+                    </div>
+                  ))}
+                </div>
+
+              </div>
+            )}
+          </div>
+
+          <button
+            className="p-2 rounded-md cursor-pointer text-white border border-[#0D4A52] shadow-sm bg-[#156372] hover:bg-[#0D4A52] ml-2"
+            onClick={() => navigate("/sales/credit-notes/new")}
+            title="New Credit Note"
+          >
+            <Plus size={16} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {creditNotes.map((note) => (
+            <div
+              key={note.id}
+                            onClick={() => {
+                              if (!note.id) return;
+                              navigate(`/sales/credit-notes/${note.id}`, { state: { creditNote: note } });
+                            }}
+              className={`flex items-center gap-3 p-3 cursor-pointer border-b border-gray-100 hover:bg-gray-50 ${note.id === id ? "bg-blue-50 border-l-4 border-l-blue-600" : ""}`}
+            >
+              <Square size={14} className="text-gray-400" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-gray-900 truncate mb-1">{note.customerName || (typeof note.customer === 'object' ? (note.customer?.displayName || note.customer?.name) : note.customer) || "-"}</div>
+                <div className="text-sm font-medium text-gray-900 mb-1">{formatCurrency(note.total || note.amount, note.currency)}</div>
+                <div className="flex items-center gap-1 text-xs text-gray-600 mb-1">
+                  <span>{note.creditNoteNumber || note.id}</span>
+                  <span>{formatDate(note.creditNoteDate || note.date)}</span>
+                </div>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full inline-block ${(note.status || "open").toLowerCase() === "open"
+                  ? "bg-green-100 text-green-700"
+                  : (note.status || "open").toLowerCase() === "closed"
+                    ? "bg-gray-200 text-gray-700"
+                    : (note.status || "open").toLowerCase() === "draft"
+                      ? "bg-yellow-100 text-yellow-700"
+                      : "bg-red-100 text-red-700"
+                  }`}>
+                  {(note.status || "open").toUpperCase()}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        {/* Top Header Bar */}
+        <div className="bg-white border-b border-gray-200 px-6 py-3 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[14px] text-gray-500">
+                Location: <span className="text-[#1d4ed8]">{(creditNote as any)?.location || "Head Office"}</span>
+              </div>
+              <h1 className="text-[32px] leading-none font-semibold text-gray-900">{creditNote.creditNoteNumber || creditNote.id}</h1>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="relative" ref={attachmentsPopoverRef}>
+                <button
+                  onClick={() => {
+                    setShowAttachmentsPopover((prev) => !prev);
+                    setShowCommentsSidebar(false);
+                  }}
+                  className="h-8 min-w-8 rounded border border-gray-200 bg-white px-2 cursor-pointer flex items-center justify-center gap-1 text-gray-600 hover:bg-gray-50"
+                  aria-label="Attachments"
+                  title="Attachments"
+                >
+                  <Paperclip size={14} strokeWidth={2} />
+                  <span className="text-[12px] font-medium leading-none">{attachments.length}</span>
+                </button>
+                {showAttachmentsPopover && (
+                  <div className="absolute right-0 top-full mt-2 w-[286px] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg z-[220]">
+                    <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                      <h3 className="text-[15px] font-semibold text-slate-900">Attachments</h3>
+                      <button
+                        type="button"
+                        onClick={() => setShowAttachmentsPopover(false)}
+                        className="h-6 w-6 rounded text-red-500 flex items-center justify-center hover:bg-red-50"
+                        aria-label="Close attachments"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <div className="px-4 py-4">
+                      {attachments.length === 0 ? (
+                        <div className="py-3 text-center text-[14px] text-slate-700">No Files Attached</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {attachments.map((file, index) => (
+                            <div key={file.id || `${file.name}-${index}`}>
+                              <div
+                                className={`group relative cursor-pointer rounded-md px-3 py-2 pr-16 text-[13px] transition-colors ${
+                                  attachmentMenuIndex === index
+                                    ? "w-full bg-[#eef2ff] hover:bg-[#e5e7eb]"
+                                    : "w-full bg-white hover:bg-slate-100"
+                                }`}
+                              >
+                                <div className="flex items-start gap-2">
+                                  <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-sm ${isPdfAttachment(file.name) ? "bg-red-50 text-red-500" : "bg-slate-50 text-slate-400"}`}>
+                                    <FileText size={12} />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="truncate text-[13px] text-slate-700">{file.name}</div>
+                                    <div className="text-[12px] text-slate-500">File Size: {formatFileSize(file.size)}</div>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRequestRemoveAttachment(index)}
+                                  className="absolute right-8 top-1/2 -translate-y-1/2 rounded p-1 text-red-500 opacity-0 transition-opacity hover:bg-red-50 group-hover:opacity-100"
+                                  aria-label="Remove attachment"
+                                  title="Remove"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setAttachmentMenuIndex((current) => (current === index ? null : index))}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-600 opacity-0 transition-opacity group-hover:opacity-100"
+                                  aria-label="Attachment actions"
+                                  title="More"
+                                >
+                                  <MoreVertical size={14} />
+                                </button>
+                                {attachmentMenuIndex === index && (
+                                  <div className="mt-2 flex items-center gap-5 px-8 text-[12px] font-medium text-blue-600">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        handleDownloadAttachment(file);
+                                        setAttachmentMenuIndex(null);
+                                      }}
+                                      className="hover:text-blue-700"
+                                    >
+                                      Download
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRequestRemoveAttachment(index)}
+                                      className="hover:text-blue-700"
+                                    >
+                                      Remove
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenAttachmentInNewTab(file)}
+                                      className="rounded p-1 text-blue-600 hover:bg-blue-50"
+                                      aria-label="Open attachment"
+                                      title="Open"
+                                    >
+                                      <ExternalLink size={13} />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="mt-4 text-center">
+                        {isUploadingAttachment ? (
+                          <div className="flex h-[58px] w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 text-[14px] font-medium text-slate-400">
+                            <Loader2 size={16} className="animate-spin text-blue-400" />
+                            <span>Uploading...</span>
+                          </div>
+                        ) : (
+                          <label className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#156372] px-4 py-3 text-[14px] font-semibold text-white shadow-sm hover:opacity-95">
+                            <Upload size={16} />
+                            <span>Upload your Files</span>
+                            <input
+                              ref={attachmentsFileInputRef}
+                              type="file"
+                              multiple
+                              className="hidden"
+                              onChange={(e) => {
+                                const files = Array.from(e.target.files || []);
+                                if (files.length > 0) {
+                                  handleFileUpload(files as File[]);
+                                }
+                                e.currentTarget.value = "";
+                              }}
+                            />
+                          </label>
+                        )}
+                        <p className="mt-2 text-[11px] text-slate-500">You can upload a maximum of 5 files, 10MB each</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setShowCommentsSidebar(true);
+                  setShowAttachmentsPopover(false);
+                }}
+                className="w-8 h-8 bg-gray-200 rounded flex items-center justify-center text-gray-700 hover:bg-gray-300 transition-colors relative"
+              >
+                <MessageSquare size={18} />
+                {comments.length > 0 && (
+                  <span className="absolute -top-1 -right-1 text-white text-xs font-semibold rounded-full w-5 h-5 flex items-center justify-center bg-gray-700">
+                    {comments.length}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => navigate("/sales/credit-notes")}
+                className="w-8 h-8 rounded flex items-center justify-center transition-colors"
+                style={{ color: "#156372" }}
+                onMouseEnter={(e) => {
+                  (e.target as HTMLElement).style.color = "#0D4A52";
+                  (e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.target as HTMLElement).style.color = "#156372";
+                  (e.target as HTMLElement).style.backgroundColor = "transparent";
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Secondary Action Bar */}
+        <div className="bg-white border-b border-gray-200 px-6 py-2 flex-shrink-0">
+          <div className="flex items-center gap-0">
+            <button
+              onClick={() => navigate(`/sales/credit-notes/${id}/edit`, { state: { creditNote } })}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors border-r border-gray-200 pr-4"
+            >
+              <Edit size={16} />
+              Edit
+            </button>
+            <div className="relative" ref={sendDropdownRef}>
+              <button
+                onClick={() => setIsSendDropdownOpen(!isSendDropdownOpen)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors border-r border-gray-200 pr-4"
+              >
+                <Mail size={16} />
+                Email
+              </button>
+              {isSendDropdownOpen && (
+                <div className="absolute top-full left-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 min-w-[180px] overflow-hidden">
+                  <div className="p-3 cursor-pointer flex items-center gap-2 text-sm text-gray-700 transition-colors" style={{ "--hover-bg": "rgba(21, 99, 114, 0.1)" } as any} onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"} onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"} onClick={handleSendEmail}>
+                    <Mail size={16} />
+                    Send Email
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="relative" ref={pdfDropdownRef}>
+              <button
+                onClick={() => setIsPdfDropdownOpen(!isPdfDropdownOpen)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors border-r border-gray-200 pr-4"
+              >
+                <FileText size={16} />
+                PDF
+                <ChevronDown size={14} />
+              </button>
+              {isPdfDropdownOpen && (
+                <div className="absolute top-full left-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 min-w-[150px] overflow-hidden">
+                  <div className="p-3 cursor-pointer flex items-center gap-2 text-sm text-gray-700 transition-colors" onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"} onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"} onClick={handleDownloadPDF}>
+                    <FileText size={16} />
+                    PDF
+                  </div>
+                </div>
+              )}
+            </div>
+            {canApplyToInvoices && (
+              <button
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors border-r border-gray-200 pr-4"
+                onClick={handleApplyToInvoices}
+              >
+                <ArrowRight size={16} />
+                Apply to Invoices
+              </button>
+            )}
+            <div className="relative" ref={moreMenuRef}>
+              <button
+                onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+                className="p-2 text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                <MoreVertical size={18} />
+              </button>
+              {isMoreMenuOpen && (
+                <div className="absolute top-full right-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 min-w-[150px] overflow-hidden">
+                  <div className="p-3 cursor-pointer text-sm transition-colors" style={{ color: "#dc2626" }} onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(220, 38, 38, 0.1)"} onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"} onClick={handleDelete}>Delete</div>
+                  <div className="p-3 cursor-pointer text-sm text-gray-700 transition-colors" style={{ "--hover-bg": "rgba(21, 99, 114, 0.1)" } as any} onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"} onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"} onClick={handleClone}>Clone</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Credit Note Document */}
+        <div className="flex-1 overflow-y-auto p-3 bg-gray-50">
+          {creditAppliedInvoicesRows.length > 0 && (
+            <div className="w-full max-w-[1280px] mx-auto mb-3 border border-gray-200 rounded-md bg-white overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setIsCreditAppliedInvoicesOpen((prev) => !prev)}
+                className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50"
+              >
+                <div className="text-sm font-semibold text-gray-800">
+                  Credit Applied Invoices <span className="text-[#3b82f6] ml-1">{creditAppliedInvoicesRows.length}</span>
+                </div>
+                <ChevronDown
+                  size={16}
+                  className={`text-gray-500 transition-transform ${isCreditAppliedInvoicesOpen ? "rotate-180" : ""}`}
+                />
+              </button>
+
+              {isCreditAppliedInvoicesOpen && (
+                <div className="border-t border-gray-200">
+                  <table className="w-full">
+                    <thead className="bg-[#f6f7fb]">
+                      <tr className="text-xs font-semibold text-[#697386]">
+                        <th className="text-left px-5 py-3">Date</th>
+                        <th className="text-left px-5 py-3">Invoice Number</th>
+                        <th className="text-left px-5 py-3">Amount Credited</th>
+                        <th className="text-right px-5 py-3" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {creditAppliedInvoicesRows.map((row: any) => (
+                        <tr key={row.rowKey} className="border-t border-gray-100 text-sm">
+                          <td className="px-5 py-3 text-gray-800">{formatDate(row.date)}</td>
+                          <td className="px-5 py-3">
+                            <button
+                              type="button"
+                              className="text-[#3b82f6] hover:underline"
+                              onClick={() => row.invoiceId && navigate(`/sales/invoices/${row.invoiceId}`)}
+                            >
+                              {row.invoiceNumber}
+                            </button>
+                          </td>
+                          <td className="px-5 py-3 text-gray-900">
+                            {formatCurrency(row.amount, (creditNote as any)?.currency || baseCurrency)}
+                          </td>
+                          <td className="px-5 py-3 text-right">
+                            <button
+                              type="button"
+                              className="text-gray-500 hover:text-red-600"
+                              onClick={() => handleRemoveAppliedInvoice(row)}
+                              title="Remove Applied Credit"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="w-full max-w-[920px] mx-auto relative">
+
+            <CreditNotePreview
+              creditNote={creditNote}
+              organizationProfile={organizationProfile}
+              baseCurrency={baseCurrency}
+            />
+          </div>
+        </div>
+
+        {/* Send Email Modal */}
+        {isSendEmailModalOpen && (
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setIsSendEmailModalOpen(false);
+              }
+            }}
+          >
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4" ref={sendEmailModalRef} onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <h2 className="text-xl font-semibold text-gray-900">Send Email</h2>
+                <button
+                  className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
+                  onClick={() => setIsSendEmailModalOpen(false)}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    To<span className="text-red-500 ml-1">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
+                    value={emailData.to}
+                    onChange={(e) => setEmailData(prev => ({ ...prev, to: e.target.value }))}
+                    placeholder="Enter email address"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">CC</label>
+                  <input
+                    type="email"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
+                    value={emailData.cc}
+                    onChange={(e) => setEmailData(prev => ({ ...prev, cc: e.target.value }))}
+                    placeholder="Enter CC email addresses (comma separated)"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">BCC</label>
+                  <input
+                    type="email"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
+                    value={emailData.bcc}
+                    onChange={(e) => setEmailData(prev => ({ ...prev, bcc: e.target.value }))}
+                    placeholder="Enter BCC email addresses (comma separated)"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Subject<span className="text-red-500 ml-1">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
+                    value={emailData.subject}
+                    onChange={(e) => setEmailData(prev => ({ ...prev, subject: e.target.value }))}
+                    placeholder="Enter email subject"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Message</label>
+                  <textarea
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] resize-none transition-all"
+                    value={emailData.message}
+                    onChange={(e) => setEmailData(prev => ({ ...prev, message: e.target.value }))}
+                    placeholder="Enter email message"
+                    rows={8}
+                  />
+                </div>
+                <div className="flex items-center gap-2 p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(21, 99, 114, 0.1)", color: "#156372" }}>
+                  <FileText size={16} />
+                  <span>Credit Note {creditNote.creditNoteNumber || creditNote.id} will be attached as PDF</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
+                <button
+                  className="px-6 py-2 text-white rounded-lg text-sm font-semibold transition-colors"
+                  style={{ backgroundColor: "#156372" }}
+                  onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#0D4A52"}
+                  onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#156372"}
+                  onClick={handleSendEmailSubmit}
+                >
+                  Send
+                </button>
+                <button
+                  className="px-6 py-2 bg-white border-2 border-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors"
+                  onClick={() => setIsSendEmailModalOpen(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Schedule Email Modal */}
+        {isScheduleEmailModalOpen && (
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setIsScheduleEmailModalOpen(false);
+              }
+            }}
+          >
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4" ref={scheduleEmailModalRef} onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <h2 className="text-xl font-semibold text-gray-900">Schedule Email</h2>
+                <button
+                  className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
+                  onClick={() => setIsScheduleEmailModalOpen(false)}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    To<span className="text-red-500 ml-1">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
+                    value={scheduleData.to}
+                    onChange={(e) => setScheduleData(prev => ({ ...prev, to: e.target.value }))}
+                    placeholder="Enter email address"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">CC</label>
+                  <input
+                    type="email"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
+                    value={scheduleData.cc}
+                    onChange={(e) => setScheduleData(prev => ({ ...prev, cc: e.target.value }))}
+                    placeholder="Enter CC email addresses (comma separated)"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">BCC</label>
+                  <input
+                    type="email"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
+                    value={scheduleData.bcc}
+                    onChange={(e) => setScheduleData(prev => ({ ...prev, bcc: e.target.value }))}
+                    placeholder="Enter BCC email addresses (comma separated)"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Subject<span className="text-red-500 ml-1">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
+                    value={scheduleData.subject}
+                    onChange={(e) => setScheduleData(prev => ({ ...prev, subject: e.target.value }))}
+                    placeholder="Enter email subject"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Message</label>
+                  <textarea
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] resize-none transition-all"
+                    value={scheduleData.message}
+                    onChange={(e) => setScheduleData(prev => ({ ...prev, message: e.target.value }))}
+                    placeholder="Enter email message"
+                    rows={8}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Date<span className="text-red-500 ml-1">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
+                      value={scheduleData.date}
+                      onChange={(e) => setScheduleData(prev => ({ ...prev, date: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Time<span className="text-red-500 ml-1">*</span>
+                    </label>
+                    <input
+                      type="time"
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
+                      value={scheduleData.time}
+                      onChange={(e) => setScheduleData(prev => ({ ...prev, time: e.target.value }))}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(21, 99, 114, 0.1)", color: "#156372" }}>
+                  <FileText size={16} />
+                  <span>Credit Note {creditNote.creditNoteNumber || creditNote.id} will be attached as PDF</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
+                <button
+                  className="px-6 py-2 text-white rounded-lg text-sm font-semibold transition-colors"
+                  style={{ backgroundColor: "#156372" }}
+                  onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#0D4A52"}
+                  onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#156372"}
+                  onClick={handleScheduleEmailSubmit}
+                >
+                  Schedule
+                </button>
+                <button
+                  className="px-6 py-2 bg-white border-2 border-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors"
+                  onClick={() => setIsScheduleEmailModalOpen(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {attachmentDeleteConfirmIndex !== null && (
+          <div
+            className="fixed inset-0 z-[10000] flex items-start justify-center bg-black/40 px-4 pt-4"
+            onClick={handleCancelRemoveAttachment}
+          >
+            <div
+              className="w-full max-w-[520px] overflow-hidden rounded-lg bg-white shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-3 px-5 py-4">
+                <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                  <AlertTriangle size={18} />
+                </div>
+                <p className="text-[14px] leading-6 text-slate-700">
+                  This action will permanently delete the attachment. Are you sure you want to proceed?
+                </p>
+              </div>
+              <div className="border-t border-slate-200 px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (attachmentDeleteConfirmIndex !== null) {
+                        const attachment = attachments[attachmentDeleteConfirmIndex];
+                        if (attachment?.id) {
+                          handleRemoveAttachment(attachment.id);
+                        }
+                      }
+                      handleCancelRemoveAttachment();
+                    }}
+                    className="rounded-md bg-blue-500 px-4 py-2 text-[14px] font-medium text-white hover:bg-blue-600"
+                  >
+                    Proceed
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelRemoveAttachment}
+                    className="rounded-md border border-slate-300 bg-white px-4 py-2 text-[14px] font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Image Viewer Modal */}
+        {showImageViewer && selectedImage && (
+          <div
+            className="fixed inset-0 bg-black bg-opacity-75 z-[60] flex items-center justify-center"
+            onClick={() => {
+              setShowImageViewer(false);
+              setSelectedImage(null);
+            }}
+          >
+            <div className="max-w-4xl max-h-[90vh] p-4" onClick={(e) => e.stopPropagation()}>
+              <button
+                className="absolute top-4 right-4 p-2 bg-white rounded-full hover:bg-gray-100 text-gray-900"
+                onClick={() => {
+                  setShowImageViewer(false);
+                  setSelectedImage(null);
+                }}
+              >
+                <X size={24} />
+              </button>
+              <img
+                src={selectedImage}
+                alt="Preview"
+                className="max-w-full max-h-[90vh] object-contain rounded-lg"
+              />
+            </div>
+          </div>
+        )}
+
+        <CreditNoteCommentsPanel
+          open={showCommentsSidebar}
+          onClose={() => setShowCommentsSidebar(false)}
+          creditNoteId={String(creditNote?.id || id || "")}
+          comments={comments}
+          onCommentsChange={(nextComments) => setComments(nextComments)}
+          updateCreditNote={updateCreditNote}
+        />
+
+        {/* Choose Template Modal */}
+        {isChooseTemplateModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+            <div
+              className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <h2 className="text-xl font-bold text-gray-900">Choose Template</h2>
+                <button
+                  className="p-2 text-white rounded transition-colors"
+                  style={{ backgroundColor: "#dc2626" }}
+                  onMouseEnter={(e) => (e.target as HTMLElement).style.backgroundColor = "#b91c1c"}
+                  onMouseLeave={(e) => (e.target as HTMLElement).style.backgroundColor = "#dc2626"}
+                  onClick={() => setIsChooseTemplateModalOpen(false)}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {/* Search Bar */}
+                <div className="mb-6">
+                  <div className="relative">
+                    <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={templateSearch}
+                      onChange={(e) => setTemplateSearch(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Search templates..."
+                    />
+                  </div>
+                </div>
+
+                {/* Template Options */}
+                <div className="space-y-3">
+                  {[
+                    "Standard Template",
+                    "Professional Template",
+                    "Modern Template",
+                    "Classic Template",
+                    "Minimal Template"
+                  ]
+                    .filter(template => template.toLowerCase().includes(templateSearch.toLowerCase()))
+                    .map((template) => (
+                      <div
+                        key={template}
+                        className={`p-4 border rounded-lg cursor-pointer transition-colors ${selectedTemplate === template
+                          ? ""
+                          : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                          }`}
+                        style={selectedTemplate === template ? { borderColor: "#156372", backgroundColor: "rgba(21, 99, 114, 0.1)" } : {}}
+                        onClick={() => setSelectedTemplate(template)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-medium text-gray-900">{template}</div>
+                            <div className="text-sm text-gray-500 mt-1">
+                              {template === "Standard Template" && "Clean and professional layout"}
+                              {template === "Professional Template" && "Detailed business layout"}
+                              {template === "Modern Template" && "Contemporary design"}
+                              {template === "Classic Template" && "Traditional business style"}
+                              {template === "Minimal Template" && "Simple and clean"}
+                            </div>
+                          </div>
+                          {selectedTemplate === template && (
+                            <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: "#156372" }}>
+                              <div className="w-2 h-2 bg-white rounded-full"></div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center gap-3 p-6 border-t border-gray-200">
+                <button
+                  className="px-4 py-2 text-white rounded-md text-sm font-medium transition-colors"
+                  style={{ backgroundColor: "#156372" }}
+                  onMouseEnter={(e: React.MouseEvent) => ((e.target as HTMLElement).style.backgroundColor = "#0D4A52")}
+                  onMouseLeave={(e: React.MouseEvent) => ((e.target as HTMLElement).style.backgroundColor = "#156372")}
+                  onClick={() => {
+                    console.log("Selected template:", selectedTemplate);
+                    setIsChooseTemplateModalOpen(false);
+                  }}
+                >
+                  Apply Template
+                </button>
+                <button
+                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
+                  onClick={() => setIsChooseTemplateModalOpen(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Organization Address Modal */}
+        {isOrganizationAddressModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+            <div
+              className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <h2 className="text-xl font-bold text-gray-900">Organization Address</h2>
+                <button
+                  className="p-2 text-white rounded transition-colors"
+                  style={{ backgroundColor: "#dc2626" }}
+                  onMouseEnter={(e) => (e.target as HTMLElement).style.backgroundColor = "#b91c1c"}
+                  onMouseLeave={(e) => (e.target as HTMLElement).style.backgroundColor = "#dc2626"}
+                  onClick={() => setIsOrganizationAddressModalOpen(false)}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Logo Upload Section */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Logo</h3>
+                  <div className="flex items-center gap-4">
+                    {logoPreview ? (
+                      <div className="relative">
+                        <img
+                          src={typeof logoPreview === 'string' ? logoPreview : undefined}
+                          alt="Logo Preview"
+                          className="w-20 h-20 object-cover rounded border border-gray-300"
+                        />
+                        <button
+                          className="absolute -top-2 -right-2 p-1 text-white rounded-full transition-colors"
+                          style={{ backgroundColor: "#dc2626" }}
+                          onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#b91c1c"}
+                          onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#dc2626"}
+                          onClick={() => {
+                            setLogoPreview(null);
+                            setLogoFile(null);
+                          }}
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="w-20 h-20 border-2 border-dashed border-gray-300 rounded flex items-center justify-center">
+                        <Upload size={24} className="text-gray-400" />
+                      </div>
+                    )}
+                    <div>
+                      <input
+                        type="file"
+                        ref={organizationAddressFileInputRef}
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setLogoFile(file);
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setLogoPreview(reader.result);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                        className="hidden"
+                      />
+                      <button
+                        className="px-4 py-2 text-white rounded-md text-sm font-medium transition-colors"
+                        style={{ backgroundColor: "#156372" }}
+                        onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#0D4A52"}
+                        onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#156372"}
+                        onClick={() => organizationAddressFileInputRef.current?.click()}
+                      >
+                        Upload Logo
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Address Fields */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 1</label>
+                    <input
+                      type="text"
+                      value={organizationData.street1}
+                      onChange={(e) => setOrganizationData({ ...organizationData, street1: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Laleex"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 2</label>
+                    <input
+                      type="text"
+                      value={organizationData.street2}
+                      onChange={(e) => setOrganizationData({ ...organizationData, street2: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Laleex"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                    <input
+                      type="text"
+                      value={organizationData.city}
+                      onChange={(e) => setOrganizationData({ ...organizationData, city: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="mogadishu"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Zip Code</label>
+                    <input
+                      type="text"
+                      value={organizationData.zipCode}
+                      onChange={(e) => setOrganizationData({ ...organizationData, zipCode: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="22223"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">State/Province</label>
+                    <input
+                      type="text"
+                      value={organizationData.stateProvince}
+                      onChange={(e) => setOrganizationData({ ...organizationData, stateProvince: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Nairobi"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                    <input
+                      type="text"
+                      value={organizationData.phone}
+                      onChange={(e) => setOrganizationData({ ...organizationData, phone: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder=""
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Fax Number</label>
+                    <input
+                      type="text"
+                      value={organizationData.faxNumber}
+                      onChange={(e) => setOrganizationData({ ...organizationData, faxNumber: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder=""
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Website URL</label>
+                    <input
+                      type="text"
+                      value={organizationData.websiteUrl}
+                      onChange={(e) => setOrganizationData({ ...organizationData, websiteUrl: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder=""
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center gap-3 p-6 border-t border-gray-200">
+                <button
+                  className="px-4 py-2 text-white rounded-md text-sm font-medium transition-colors"
+                  style={{ backgroundColor: "#156372" }}
+                  onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget as HTMLElement).style.backgroundColor = "#0D4A52"}
+                  onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget as HTMLElement).style.backgroundColor = "#156372"}
+                  onClick={async () => {
+                    try {
+                      const payload = {
+                        addressLine1: organizationData.street1,
+                        addressLine2: organizationData.street2,
+                        city: organizationData.city,
+                        zipCode: organizationData.zipCode,
+                        state: organizationData.stateProvince,
+                        phone: organizationData.phone,
+                        fax: organizationData.faxNumber,
+                        website: organizationData.websiteUrl,
+                        industry: organizationData.industry,
+                        logo: logoPreview // In a real app, you might upload the file first
+                      };
+                      const res = await settingsAPI.updateOrganizationProfile(payload);
+                      if (res && res.success) {
+                        setOrganizationProfile(res.data || { ...organizationProfile, ...payload });
+                        toast("Organization profile updated successfully!");
+                        setIsOrganizationAddressModalOpen(false);
+                      } else {
+                        toast("Failed to update organization profile: " + (res.message || "Unknown error"));
+                      }
+                    } catch (error: any) {
+                      console.error("Error saving organization address:", error);
+                      toast("Error saving organization address: " + error.message);
+                    }
+                  }}
+                >
+                  Save
+                </button>
+                <button
+                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
+                  onClick={() => setIsOrganizationAddressModalOpen(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Terms & Conditions Modal */}
+        {isTermsAndConditionsModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+            <div
+              className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <h2 className="text-xl font-bold text-gray-900">Update Terms & Conditions</h2>
+                <button
+                  className="p-2 text-white rounded transition-colors"
+                  style={{ backgroundColor: "#dc2626" }}
+                  onMouseEnter={(e) => (e.target as HTMLElement).style.backgroundColor = "#b91c1c"}
+                  onMouseLeave={(e) => (e.target as HTMLElement).style.backgroundColor = "#dc2626"}
+                  onClick={() => setIsTermsAndConditionsModalOpen(false)}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Notes Section */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-2">Notes</h3>
+                  <textarea
+                    value={termsData.notes}
+                    onChange={(e) => setTermsData({ ...termsData, notes: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[100px]"
+                    placeholder="Enter notes..."
+                  />
+                  <label className="flex items-center gap-2 mt-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={termsData.useNotesForAllCreditNotes}
+                      onChange={(e) => setTermsData({ ...termsData, useNotesForAllCreditNotes: e.target.checked })}
+                      className="w-4 h-4 border-gray-300 rounded focus:ring-[#156372]"
+                      style={{ accentColor: "#156372" }}
+                    />
+                    <span className="text-sm text-gray-700">Use this in future for all credit notes of all customers.</span>
+                  </label>
+                </div>
+
+                {/* Terms & Conditions Section */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-2">Terms & Conditions</h3>
+                  <textarea
+                    value={termsData.termsAndConditions}
+                    onChange={(e) => setTermsData({ ...termsData, termsAndConditions: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[200px]"
+                    placeholder="Enter terms and conditions..."
+                  />
+                  <label className="flex items-center gap-2 mt-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={termsData.useTermsForAllCreditNotes}
+                      onChange={(e) => setTermsData({ ...termsData, useTermsForAllCreditNotes: e.target.checked })}
+                      className="w-4 h-4 border-gray-300 rounded focus:ring-[#156372]"
+                      style={{ accentColor: "#156372" }}
+                    />
+                    <span className="text-sm text-gray-700">Use this in future for all credit notes of all customers.</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center gap-3 p-6 border-t border-gray-200">
+                <button
+                  className="px-4 py-2 text-white rounded-md text-sm font-medium transition-colors"
+                  style={{ backgroundColor: "#156372" }}
+                  onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#0D4A52"}
+                  onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#156372"}
+                  onClick={() => {
+                    console.log("Saving terms and conditions:", termsData);
+                    setIsTermsAndConditionsModalOpen(false);
+                  }}
+                >
+                  Save
+                </button>
+                <button
+                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
+                  onClick={() => setIsTermsAndConditionsModalOpen(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Refund Modal */}
+        {isRefundModalOpen && creditNote && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center" onClick={(e) => {
+            if (e.target === e.currentTarget) handleRefundCancel();
+          }}>
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" ref={refundModalRef} onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white">
+                <h2 className="text-xl font-semibold text-gray-900">Refund ({creditNote.creditNoteNumber || creditNote.id})</h2>
+                <button
+                  className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
+                  onClick={handleRefundCancel}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* Customer and Credit Note Information */}
+                <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center"
+                      style={{ backgroundColor: "rgba(21, 99, 114, 0.1)" }}
+                    >
+                      <User size={20} style={{ color: "#156372" }} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Customer Name</div>
+                      <div className="text-base font-semibold text-gray-900">{creditNote.customerName || creditNote.customer || "-"}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center"
+                      style={{ backgroundColor: "rgba(21, 99, 114, 0.1)" }}
+                    >
+                      <FileText size={20} style={{ color: "#156372" }} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Credit Note Number</div>
+                      <div className="text-base font-semibold text-gray-900">{creditNote.creditNoteNumber || creditNote.id}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Amount Field */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Amount<span className="text-red-500 ml-1">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-sm text-gray-500">{creditNote.currency || "USD"}</div>
+                    <input
+                      type="number"
+                      value={refundData.amount}
+                      onChange={(e) => setRefundData({ ...refundData, amount: e.target.value })}
+                      placeholder="0.00"
+                      step="0.01"
+                      min="0"
+                      max={creditNote.balance || creditNote.total || creditNote.amount || 0}
+                      className="w-full pl-16 pr-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 transition-all"
+                      style={{ "--tw-ring-color": "#156372" } as React.CSSProperties}
+                      onFocus={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#156372"; }}
+                      onBlur={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#d1d5db"; }}
+                    />
+                  </div>
+                  <div className="mt-2 text-xs text-gray-500">
+                    Balance : {formatCurrency(creditNote.balance || creditNote.total || creditNote.amount || 0, creditNote.currency)}
+                  </div>
+                </div>
+
+                {/* Refunded On */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Refunded On<span className="text-red-500 ml-1">*</span>
+                  </label>
+                  <div className="relative" ref={refundDatePickerRef}>
+                    <input
+                      type="text"
+                      value={refundData.refundedOn}
+                      readOnly
+                      onClick={() => setIsRefundDatePickerOpen(!isRefundDatePickerOpen)}
+                      placeholder="Select date"
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:outline-none focus:ring-2 transition-all pr-10 cursor-pointer"
+                      style={{ "--tw-ring-color": "#156372" } as React.CSSProperties}
+                      onFocus={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#156372"; }}
+                      onBlur={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#d1d5db"; }}
+                    />
+                    <Calendar
+                      size={18}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 cursor-pointer"
+                      onClick={() => setIsRefundDatePickerOpen(!isRefundDatePickerOpen)}
+                    />
+                    {isRefundDatePickerOpen && (
+                      <div className="absolute top-full left-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 w-72">
+                        <div className="p-4">
+                          <div className="flex items-center justify-between mb-4">
+                            <button onClick={() => navigateRefundMonth("prev")} className="p-1 hover:bg-gray-100 rounded text-gray-600">
+                              <ChevronLeft size={16} />
+                            </button>
+                            <span className="font-semibold text-gray-900">{months[refundDateCalendar.getMonth()]} {refundDateCalendar.getFullYear()}</span>
+                            <button onClick={() => navigateRefundMonth("next")} className="p-1 hover:bg-gray-100 rounded text-gray-600">
+                              <ChevronRight size={16} />
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-7 gap-1 mb-2">
+                            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
+                              <div key={day} className={`text-xs font-semibold text-center py-2 ${day === "Sun" || day === "Fri" ? "text-gray-400" : "text-gray-600"
+                                }`}>
+                                {day}
+                              </div>
+                            ))}
+                          </div>
+                          <div className="grid grid-cols-7 gap-1">
+                            {getDaysInMonth(refundDateCalendar).map((day, idx) => (
+                              <button
+                                key={idx}
+                                className={`text-sm py-2 rounded hover:bg-gray-100 ${day.month !== "current" ? "text-gray-300" : "text-gray-900"
+                                  }`}
+                                onClick={() => handleRefundDateSelect(day.fullDate)}
+                              >
+                                {day.date}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Payment Mode */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Payment Mode</label>
+                  <div className="relative" ref={paymentModeDropdownRef}>
+                    <input
+                      type="text"
+                      value={refundData.paymentMode}
+                      readOnly
+                      onClick={() => setIsPaymentModeDropdownOpen(!isPaymentModeDropdownOpen)}
+                      placeholder="Select payment mode"
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:outline-none focus:ring-2 transition-all pr-10 cursor-pointer"
+                      style={{ "--tw-ring-color": "#156372" } as React.CSSProperties}
+                      onFocus={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#156372"; }}
+                      onBlur={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#d1d5db"; }}
+                    />
+                    <ChevronDownIcon
+                      size={18}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 cursor-pointer"
+                      onClick={() => setIsPaymentModeDropdownOpen(!isPaymentModeDropdownOpen)}
+                    />
+                    {isPaymentModeDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
+                        {paymentModeOptions.map((mode) => (
+                          <div
+                            key={mode}
+                            className="p-3 cursor-pointer text-sm text-gray-700 transition-colors"
+                            style={{ "--hover-bg": "rgba(21, 99, 114, 0.1)" } as React.CSSProperties}
+                            onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"}
+                            onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"}
+                            onClick={() => {
+                              setRefundData({ ...refundData, paymentMode: mode });
+                              setIsPaymentModeDropdownOpen(false);
+                            }}
+                          >
+                            {mode}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Reference Number */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Reference#</label>
+                  <input
+                    type="text"
+                    value={refundData.referenceNumber}
+                    onChange={(e) => setRefundData({ ...refundData, referenceNumber: e.target.value })}
+                    placeholder="Enter reference number"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 transition-all"
+                    style={{ "--tw-ring-color": "#156372" } as React.CSSProperties}
+                    onFocus={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#156372"; }}
+                    onBlur={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#d1d5db"; }}
+                  />
+                </div>
+
+                {/* From Account */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    From Account<span className="text-red-500 ml-1">*</span>
+                  </label>
+                  <div className="relative" ref={fromAccountDropdownRef}>
+                    <input
+                      type="text"
+                      value={refundData.fromAccount}
+                      readOnly
+                      onClick={() => setIsFromAccountDropdownOpen(!isFromAccountDropdownOpen)}
+                      placeholder="Select account"
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:outline-none focus:ring-2 transition-all pr-10 cursor-pointer"
+                      style={{ "--tw-ring-color": "#156372" } as React.CSSProperties}
+                      onFocus={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#156372"; }}
+                      onBlur={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#d1d5db"; }}
+                    />
+                    <ChevronDownIcon
+                      size={18}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 cursor-pointer"
+                      onClick={() => setIsFromAccountDropdownOpen(!isFromAccountDropdownOpen)}
+                    />
+                    {isFromAccountDropdownOpen && (
+                      <div className="absolute bottom-full left-0 right-0 mb-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-[70] max-h-60 overflow-y-auto">
+                        {bankAccounts.map((account, index) => {
+                          const accountId = getAccountId(account);
+                          const accountName = getAccountDisplayName(account);
+                          return (
+                            <div
+                              key={accountId || `refund-account-${index}`}
+                              className="p-3 cursor-pointer text-sm text-gray-700 transition-colors"
+                              onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"}
+                              onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"}
+                              onClick={() => {
+                                setRefundData({ ...refundData, fromAccount: accountName, fromAccountId: accountId });
+                                setIsFromAccountDropdownOpen(false);
+                              }}
+                            >
+                              {accountName}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
+                  <textarea
+                    value={refundData.description}
+                    onChange={(e) => setRefundData({ ...refundData, description: e.target.value })}
+                    placeholder="Enter description"
+                    rows={4}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 transition-all resize-none"
+                    style={{ "--tw-ring-color": "#156372" } as React.CSSProperties}
+                    onFocus={(e: React.FocusEvent<HTMLTextAreaElement>) => { (e.target as HTMLElement).style.borderColor = "#156372"; }}
+                    onBlur={(e: React.FocusEvent<HTMLTextAreaElement>) => { (e.target as HTMLElement).style.borderColor = "#d1d5db"; }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50 sticky bottom-0">
+                <button
+                  className="px-6 py-2 bg-white border-2 border-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors"
+                  onClick={handleRefundCancel}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="px-6 py-2 text-white border-none rounded-lg text-sm font-semibold transition-all"
+                  style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+                  onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget as HTMLElement).style.opacity = "0.9"}
+                  onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget as HTMLElement).style.opacity = "1"}
+                  onClick={handleRefundSave}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isDraftApplyConfirmOpen && (
+          <div className="fixed inset-0 z-[80] flex items-start justify-center bg-black/40 px-4 pt-24">
+            <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="border-b border-gray-100 p-6">
+                <div className="flex items-start gap-3">
+                  <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                    <AlertTriangle size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Open this draft credit note?</h3>
+                    <p className="mt-2 text-sm text-gray-600">
+                      This credit note is still a draft. Open it first, then continue to the apply-to-invoices workflow.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 bg-gray-50 px-6 py-4">
+                <button
+                  type="button"
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  onClick={() => setIsDraftApplyConfirmOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg bg-[#156372] px-4 py-2 text-sm font-medium text-white hover:bg-[#0f4f59]"
+                  onClick={handleConfirmDraftApply}
+                >
+                  Open
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <CreditNoteDeleteModal
+          isOpen={isDeleteConfirmOpen}
+          title="Delete credit note?"
+          message={`Are you sure you want to delete credit note ${creditNote?.creditNoteNumber || creditNote?.id}? This action cannot be undone.`}
+          confirmText={isDeletingCreditNote ? "Deleting..." : "Delete"}
+          confirmTone="danger"
+          onClose={() => setIsDeleteConfirmOpen(false)}
+          onConfirm={handleConfirmDelete}
+          confirmDisabled={isDeletingCreditNote}
+        />
+
+        {/* Apply to Invoices Modal */}
+        {isApplyToInvoicesOpen && (
+          <ApplyToInvoices
+            isOpen={isApplyToInvoicesOpen}
+            onClose={() => setIsApplyToInvoicesOpen(false)}
+            creditNote={creditNote}
+            onSave={handleSaveAllocations}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+

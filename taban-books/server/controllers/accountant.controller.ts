@@ -21,6 +21,11 @@ import TransactionLock from "../models/TransactionLock.js";
 import Organization from "../models/Organization.js";
 import { updateAccountBalances } from "../utils/accounting.js";
 import {
+  applyResourceVersionHeaders,
+  buildResourceVersion,
+  requestMatchesResourceVersion,
+} from "../utils/resourceVersion.js";
+import {
   getAccountTypesForCategory,
   normalizeAccountPayload,
   resolveAccountQueryFilters,
@@ -423,6 +428,38 @@ export const getAccounts = async (req: AuthRequest, res: Response): Promise<void
       if (!Number.isNaN(modifiedAfter.getTime())) {
         query.updatedAt = { $gte: modifiedAfter };
       }
+    }
+
+    const [latestAccount, accountCount] = await Promise.all([
+      ChartOfAccount.findOne(query).sort({ updatedAt: -1 }).select("updatedAt").lean(),
+      ChartOfAccount.countDocuments(query),
+    ]);
+
+    const versionState = buildResourceVersion("accounts", [
+      {
+        key: "accounts",
+        id: req.user.organizationId,
+        updatedAt: (latestAccount as any)?.updatedAt,
+        count: accountCount,
+        extra: JSON.stringify({
+          search,
+          type,
+          filter_by,
+          isActive,
+          sortBy,
+          sort_column,
+          sortOrder,
+          last_modified_time: last_modified_time || "",
+          page,
+          limit,
+          per_page,
+        }),
+      },
+    ]);
+    applyResourceVersionHeaders(res, versionState);
+    if (requestMatchesResourceVersion(req, versionState)) {
+      res.status(304).end();
+      return;
     }
 
     const pageSize = parseInt((per_page as string) || (limit as string), 10);
