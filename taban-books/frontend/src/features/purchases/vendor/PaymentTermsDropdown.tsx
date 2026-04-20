@@ -45,7 +45,8 @@ export default function PaymentTermsDropdown({ value, onChange, onConfigure }: P
                 style={{
                     ...styles.trigger,
                     borderColor: isOpen ? "#156372" : "#d1d5db",
-                    boxShadow: isOpen ? "0 0 0 2px rgba(37, 99, 235, 0.1)" : "none",
+                    boxShadow: isOpen ? "0 0 0 3px rgba(21, 99, 114, 0.12)" : "0 1px 2px rgba(15, 23, 42, 0.06)",
+                    transform: isOpen ? "translateY(-1px)" : "none",
                 }}
                 onClick={() => setIsOpen(!isOpen)}
             >
@@ -126,20 +127,20 @@ const styles: { [key: string]: CSSProperties } = {
         cursor: "pointer",
         fontSize: "14px",
         minHeight: "38px",
-        transition: "border-color 0.2s, box-shadow 0.2s",
+        transition: "border-color 0.2s, box-shadow 0.2s, transform 0.2s ease",
     },
     triggerText: {
         color: "#374151",
     },
     dropdown: {
         position: "absolute",
-        top: "calc(100% + 4px)",
+        top: "calc(100% + 6px)",
         left: 0,
         right: 0,
         backgroundColor: "white",
         border: "1px solid #e5e7eb",
-        borderRadius: "8px",
-        boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+        borderRadius: "10px",
+        boxShadow: "0 18px 30px -12px rgba(15, 23, 42, 0.22)",
         zIndex: 1000,
         overflow: "hidden",
     },
@@ -173,7 +174,7 @@ const styles: { [key: string]: CSSProperties } = {
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        transition: "background-color 0.2s",
+        transition: "background-color 0.2s, color 0.2s",
     },
     checkIcon: {
         color: "white",

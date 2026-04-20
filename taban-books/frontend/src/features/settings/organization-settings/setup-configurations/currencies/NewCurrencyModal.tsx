@@ -323,7 +323,8 @@ export default function NewCurrencyModal({ onClose, onSave }: NewCurrencyModalPr
 
   return createPortal(
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000]"
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-[10000] overflow-y-auto"
+      style={{ paddingTop: "96px", paddingBottom: "24px" }}
       onClick={onClose}
     >
       <div

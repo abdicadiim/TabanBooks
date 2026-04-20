@@ -202,7 +202,11 @@ export const getAllVendors = async (req: AuthRequest, res: Response): Promise<vo
     res.status(500).json({
       success: false,
       message: 'Error fetching vendors',
+<<<<<<< Updated upstream
       error: error.message
+=======
+      error: error.message || 'Unknown error'
+>>>>>>> Stashed changes
     });
   }
 };

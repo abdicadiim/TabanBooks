@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useLocation, useParams } from "react-router-dom";
 import { vendorsAPI, currenciesAPI, taxesAPI, accountsAPI } from "../../../services/api";
 import { useCurrency } from "../../../hooks/useCurrency";
+import NewCurrencyModal from "../../settings/organization-settings/setup-configurations/currencies/NewCurrencyModal";
 
 import {
   ChevronDown,
@@ -22,6 +23,93 @@ import {
 } from "lucide-react";
 import PaymentTermsDropdown from "./PaymentTermsDropdown";
 import ConfigurePaymentTermsModal from "./ConfigurePaymentTermsModal";
+import { countryData, countryPhoneCodes } from "../../sales/Customers/NewCustomer/countriesData";
+
+type CurrencyOption = {
+  _id: string;
+  code: string;
+  name: string;
+  isBaseCurrency?: boolean;
+};
+
+type TaxOption = {
+  _id?: string;
+  id?: string;
+  name?: string;
+  rate?: number | string;
+};
+
+type DocumentAttachment = {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  base64: string | ArrayBuffer | null;
+  preview: string;
+  url?: string;
+  uploadedAt?: Date;
+};
+
+type ContactPerson = {
+  id: number;
+  isPrimary?: boolean;
+  salutation: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  workPhone: string;
+  mobile: string;
+  skypeName: string;
+  designation: string;
+  department: string;
+};
+
+type VendorFormData = {
+  salutation: string;
+  firstName: string;
+  lastName: string;
+  companyName: string;
+  displayName: string;
+  email: string;
+  workPhone: string;
+  mobile: string;
+  vendorLanguage: string;
+  taxRate: string;
+  enableTDS: boolean;
+  companyId: string;
+  currency: string;
+  accountsPayable: string;
+  openingBalance: string;
+  paymentTerms: string;
+  enablePortal: boolean;
+  locationCode: string;
+  billingAttention: string;
+  billingCountry: string;
+  billingStreet1: string;
+  billingStreet2: string;
+  billingCity: string;
+  billingState: string;
+  billingZipCode: string;
+  billingPhone: string;
+  billingFax: string;
+  shippingAttention: string;
+  shippingCountry: string;
+  shippingStreet1: string;
+  shippingStreet2: string;
+  shippingCity: string;
+  shippingState: string;
+  shippingZipCode: string;
+  shippingPhone: string;
+  shippingFax: string;
+  remarks: string;
+  notes?: string;
+  websiteUrl: string;
+  department: string;
+  designation: string;
+  xSocial: string;
+  skypeName: string;
+  facebook: string;
+};
 
 
 
@@ -77,7 +165,7 @@ export default function NewVendor() {
   const isEdit = !!id;
   const { code: baseCurrencyCode } = useCurrency();
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<VendorFormData>({
     salutation: "",
     firstName: "",
     lastName: "",
@@ -128,32 +216,140 @@ export default function NewVendor() {
   });
   const [activeTab, setActiveTab] = useState("Other Details");
   const [showMoreDetails, setShowMoreDetails] = useState(false);
-  const [documents, setDocuments] = useState([]);
+  const [documents, setDocuments] = useState<DocumentAttachment[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadDropdownOpen, setUploadDropdownOpen] = useState(false);
-  const [contactPersons, setContactPersons] = useState([
+  const [contactPersons, setContactPersons] = useState<ContactPerson[]>([
     { id: Date.now(), salutation: "", firstName: "", lastName: "", email: "", workPhone: "", mobile: "", skypeName: "", designation: "", department: "" }
   ]);
   const [showAdditionalColumns, setShowAdditionalColumns] = useState(false);
-  const fileInputRef = useRef(null);
-  const uploadDropdownRef = useRef(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadDropdownRef = useRef<HTMLDivElement | null>(null);
   const [showConfigureTerms, setShowConfigureTerms] = useState(false);
-  const [currencies, setCurrencies] = useState([]);
+  const [currencies, setCurrencies] = useState<CurrencyOption[]>([]);
   const [loadingCurrencies, setLoadingCurrencies] = useState(true);
-  const [availableTaxes, setAvailableTaxes] = useState([]);
+  const [availableTaxes, setAvailableTaxes] = useState<TaxOption[]>([]);
   const [accountsPayableOptions, setAccountsPayableOptions] = useState<string[]>([]);
+  const [fieldErrors, setFieldErrors] = useState<{ displayName?: string }>({});
+  const [isWorkPhoneCodeDropdownOpen, setIsWorkPhoneCodeDropdownOpen] = useState(false);
+  const [isMobilePhoneCodeDropdownOpen, setIsMobilePhoneCodeDropdownOpen] = useState(false);
+  const [phoneCodeSearch, setPhoneCodeSearch] = useState("");
+  const [workPhoneCode, setWorkPhoneCode] = useState("+254");
+  const [mobilePhoneCode, setMobilePhoneCode] = useState("+254");
+  const workPhoneCodeDropdownRef = useRef<HTMLDivElement | null>(null);
+  const mobilePhoneCodeDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [isVendorLanguageDropdownOpen, setIsVendorLanguageDropdownOpen] = useState(false);
+  const [vendorLanguageSearch, setVendorLanguageSearch] = useState("");
+  const vendorLanguageDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [isTaxRateDropdownOpen, setIsTaxRateDropdownOpen] = useState(false);
+  const [taxRateSearch, setTaxRateSearch] = useState("");
+  const taxRateDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [isAccountsPayableDropdownOpen, setIsAccountsPayableDropdownOpen] = useState(false);
+  const [accountsPayableSearch, setAccountsPayableSearch] = useState("");
+  const accountsPayableDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false);
+  const [currencySearch, setCurrencySearch] = useState("");
+  const currencyDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [showNewCurrencyModal, setShowNewCurrencyModal] = useState(false);
+  const [isOpeningBalanceLocationDropdownOpen, setIsOpeningBalanceLocationDropdownOpen] = useState(false);
+  const openingBalanceLocationDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [isBillingCountryDropdownOpen, setIsBillingCountryDropdownOpen] = useState(false);
+  const [billingCountrySearch, setBillingCountrySearch] = useState("");
+  const billingCountryDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [isBillingStateDropdownOpen, setIsBillingStateDropdownOpen] = useState(false);
+  const [billingStateSearch, setBillingStateSearch] = useState("");
+  const billingStateDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [isShippingCountryDropdownOpen, setIsShippingCountryDropdownOpen] = useState(false);
+  const [shippingCountrySearch, setShippingCountrySearch] = useState("");
+  const shippingCountryDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [isShippingStateDropdownOpen, setIsShippingStateDropdownOpen] = useState(false);
+  const [shippingStateSearch, setShippingStateSearch] = useState("");
+  const shippingStateDropdownRef = useRef<HTMLDivElement | null>(null);
+  const countryOptions = useMemo(() => Object.keys(countryData), []);
+  const billingStateOptions = useMemo(() => countryData[formData.billingCountry] || [], [formData.billingCountry]);
+  const shippingStateOptions = useMemo(() => countryData[formData.shippingCountry] || [], [formData.shippingCountry]);
+  const filteredBillingCountries = useMemo(() => {
+    const term = String(billingCountrySearch || "").trim().toLowerCase();
+    return term ? countryOptions.filter((country) => country.toLowerCase().includes(term)) : countryOptions;
+  }, [billingCountrySearch, countryOptions]);
+  const filteredShippingCountries = useMemo(() => {
+    const term = String(shippingCountrySearch || "").trim().toLowerCase();
+    return term ? countryOptions.filter((country) => country.toLowerCase().includes(term)) : countryOptions;
+  }, [shippingCountrySearch, countryOptions]);
+  const filteredBillingStates = useMemo(() => {
+    const term = String(billingStateSearch || "").trim().toLowerCase();
+    return term ? billingStateOptions.filter((state) => state.toLowerCase().includes(term)) : billingStateOptions;
+  }, [billingStateSearch, billingStateOptions]);
+  const filteredShippingStates = useMemo(() => {
+    const term = String(shippingStateSearch || "").trim().toLowerCase();
+    return term ? shippingStateOptions.filter((state) => state.toLowerCase().includes(term)) : shippingStateOptions;
+  }, [shippingStateSearch, shippingStateOptions]);
+  const vendorLanguageOptions = [
+    "العربية (المصرية)",
+    "العربية",
+    "български",
+    "Deutsch",
+    "English",
+    "español",
+    "Filipino",
+    "Français",
+    "हिन्दी",
+    "Italiano",
+    "日本語",
+    "한국어",
+    "Português",
+    "Русский",
+  ];
+  const filteredVendorLanguageOptions = useMemo(() => {
+    const term = String(vendorLanguageSearch || "").trim().toLowerCase();
+    if (!term) return vendorLanguageOptions;
+    return vendorLanguageOptions.filter((lang) => String(lang).toLowerCase().includes(term));
+  }, [vendorLanguageSearch]);
+  const filteredPhoneCodes = useMemo(() => {
+    const term = String(phoneCodeSearch || "").trim().toLowerCase();
+    if (!term) return countryPhoneCodes;
+    return countryPhoneCodes.filter((entry) =>
+      String(entry.code || "").toLowerCase().includes(term) ||
+      String(entry.name || "").toLowerCase().includes(term)
+    );
+  }, [phoneCodeSearch]);
+  const filteredTaxRates = useMemo(() => {
+    const term = String(taxRateSearch || "").trim().toLowerCase();
+    if (!term) return availableTaxes;
+    return availableTaxes.filter((tax) =>
+      String(tax.name || "").toLowerCase().includes(term) ||
+      String(tax.rate ?? "").toLowerCase().includes(term)
+    );
+  }, [availableTaxes, taxRateSearch]);
+  const filteredAccountsPayableOptions = useMemo(() => {
+    const term = String(accountsPayableSearch || "").trim().toLowerCase();
+    if (!term) return accountsPayableOptions;
+    return accountsPayableOptions.filter((account) => String(account || "").toLowerCase().includes(term));
+  }, [accountsPayableOptions, accountsPayableSearch]);
+  const filteredCurrencyOptions = useMemo(() => {
+    const term = String(currencySearch || "").trim().toLowerCase();
+    if (!term) return currencies;
+    return currencies.filter((currency) =>
+      String(currency.code || "").toLowerCase().includes(term) ||
+      String(currency.name || "").toLowerCase().includes(term)
+    );
+  }, [currencies, currencySearch]);
+
+  const fancySelectClass =
+    "col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-2 pl-3 pr-10 text-base text-gray-900 border border-gray-300 shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition-all duration-200 ease-out hover:border-[#156372]/50 hover:shadow-[0_8px_20px_rgba(15,23,42,0.08)] focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6";
 
   useEffect(() => {
     const loadCurrencies = async () => {
       try {
         const response = await currenciesAPI.getAll();
         if (response.success && response.data) {
-          setCurrencies(response.data);
+          const nextCurrencies = Array.isArray(response.data) ? response.data : [];
+          setCurrencies(nextCurrencies);
           // Set default currency if none selected
-          if (!formData.currency && response.data.length > 0) {
-            const baseCurrency = response.data.find(curr => curr.isBaseCurrency);
-            const defaultCurrency = baseCurrency || response.data[0];
+          if (!formData.currency && nextCurrencies.length > 0) {
+            const baseCurrency = nextCurrencies.find((curr: CurrencyOption) => curr.isBaseCurrency);
+            const defaultCurrency = baseCurrency || nextCurrencies[0];
             setFormData(prev => ({
               ...prev,
               currency: `${defaultCurrency.code} - ${defaultCurrency.name}`
@@ -168,6 +364,45 @@ export default function NewVendor() {
     };
 
     loadCurrencies();
+  }, []);
+
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (taxRateDropdownRef.current && !taxRateDropdownRef.current.contains(target)) {
+        setIsTaxRateDropdownOpen(false);
+        setTaxRateSearch("");
+      }
+      if (accountsPayableDropdownRef.current && !accountsPayableDropdownRef.current.contains(target)) {
+        setIsAccountsPayableDropdownOpen(false);
+        setAccountsPayableSearch("");
+      }
+      if (currencyDropdownRef.current && !currencyDropdownRef.current.contains(target)) {
+        setIsCurrencyDropdownOpen(false);
+        setCurrencySearch("");
+      }
+      if (openingBalanceLocationDropdownRef.current && !openingBalanceLocationDropdownRef.current.contains(target)) {
+        setIsOpeningBalanceLocationDropdownOpen(false);
+      }
+      if (billingCountryDropdownRef.current && !billingCountryDropdownRef.current.contains(target)) {
+        setIsBillingCountryDropdownOpen(false);
+        setBillingCountrySearch("");
+      }
+      if (billingStateDropdownRef.current && !billingStateDropdownRef.current.contains(target)) {
+        setIsBillingStateDropdownOpen(false);
+        setBillingStateSearch("");
+      }
+      if (shippingCountryDropdownRef.current && !shippingCountryDropdownRef.current.contains(target)) {
+        setIsShippingCountryDropdownOpen(false);
+        setShippingCountrySearch("");
+      }
+      if (shippingStateDropdownRef.current && !shippingStateDropdownRef.current.contains(target)) {
+        setIsShippingStateDropdownOpen(false);
+        setShippingStateSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
   useEffect(() => {
@@ -198,6 +433,29 @@ export default function NewVendor() {
     };
 
     loadTaxRatesAndAccounts();
+  }, []);
+
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      const clickedWork = workPhoneCodeDropdownRef.current?.contains(target);
+      const clickedMobile = mobilePhoneCodeDropdownRef.current?.contains(target);
+      if (!clickedWork) {
+        setIsWorkPhoneCodeDropdownOpen(false);
+      }
+      if (!clickedMobile) {
+        setIsMobilePhoneCodeDropdownOpen(false);
+      }
+      if (vendorLanguageDropdownRef.current && !vendorLanguageDropdownRef.current.contains(target)) {
+        setIsVendorLanguageDropdownOpen(false);
+        setVendorLanguageSearch("");
+      }
+      if (!clickedWork && !clickedMobile) {
+        setPhoneCodeSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
   useEffect(() => {
@@ -280,8 +538,8 @@ export default function NewVendor() {
   // Close upload dropdown when clicking outside
   useEffect(() => {
 
-    const handleClickOutside = (event) => {
-      if (uploadDropdownRef.current && !uploadDropdownRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (uploadDropdownRef.current && !uploadDropdownRef.current.contains(event.target as Node)) {
         setUploadDropdownOpen(false);
       }
     };
@@ -300,7 +558,7 @@ export default function NewVendor() {
     };
   }, [documents]);
 
-  const handleFileUpload = (files) => {
+  const handleFileUpload = (files: FileList | File[]) => {
     const fileArray = Array.from(files);
     const maxFiles = 10;
     const maxSize = 10 * 1024 * 1024; // 10MB in bytes
@@ -321,10 +579,10 @@ export default function NewVendor() {
     });
 
     // Convert files to base64 and add to documents
-    validFiles.forEach(file => {
+    validFiles.forEach((file: File) => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setDocuments(prev => [...prev, {
+        setDocuments((prev: DocumentAttachment[]) => [...prev, {
           id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
           name: file.name,
           size: file.size,
@@ -337,17 +595,17 @@ export default function NewVendor() {
     });
   };
 
-  const handleRemoveDocument = (id) => {
-    setDocuments(prev => {
-      const doc = prev.find(d => d.id === id);
+  const handleRemoveDocument = (id: string) => {
+    setDocuments((prev: DocumentAttachment[]) => {
+      const doc = prev.find((d) => d.id === id);
       if (doc && doc.preview) {
         URL.revokeObjectURL(doc.preview);
       }
-      return prev.filter(d => d.id !== id);
+      return prev.filter((d) => d.id !== id);
     });
   };
 
-  const formatFileSize = (bytes) => {
+  const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
@@ -368,9 +626,13 @@ export default function NewVendor() {
     }));
   };
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    const updatedData = { ...formData, [name]: type === "checkbox" ? checked : value };
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    const isCheckbox = e.target instanceof HTMLInputElement && e.target.type === "checkbox";
+    const updatedData = {
+      ...formData,
+      [name]: isCheckbox ? (e.target as HTMLInputElement).checked : value,
+    };
 
     // Auto-generate display name options when firstName, lastName, or companyName changes
     if (name === "firstName" || name === "lastName" || name === "companyName") {
@@ -384,9 +646,9 @@ export default function NewVendor() {
     setFormData(updatedData);
   };
 
-  const generateDisplayNameOptions = (data) => {
+  const generateDisplayNameOptions = (data: Pick<VendorFormData, "firstName" | "lastName" | "companyName">) => {
     const { firstName, lastName, companyName } = data;
-    const options = [];
+    const options: string[] = [];
 
     if (companyName) {
       options.push(companyName);
@@ -408,13 +670,18 @@ export default function NewVendor() {
     return options.length > 0 ? options : [""];
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (isSaving) return;
 
     // Create vendorData object matching API structure
     // Ensure displayName and name are never empty
     const displayName = formData.displayName || formData.companyName || `${formData.firstName || ''} ${formData.lastName || ''}`.trim() || 'Vendor';
+    if (!formData.displayName) {
+      setFieldErrors({ displayName: "Enter the Display Name of your vendor." });
+      return;
+    }
+    setFieldErrors({});
     const vendorData = {
       displayName: displayName,
       name: displayName,
@@ -424,8 +691,8 @@ export default function NewVendor() {
       lastName: formData.lastName || '',
       companyName: formData.companyName || '',
       email: formData.email || '',
-      workPhone: formData.workPhone || '',
-      mobile: formData.mobile || '',
+      workPhone: `${workPhoneCode} ${formData.workPhone || ''}`.trim(),
+      mobile: `${mobilePhoneCode} ${formData.mobile || ''}`.trim(),
       websiteUrl: formData.websiteUrl || '',
       xHandle: formData.xSocial || '',
       skypeName: formData.skypeName || '',
@@ -524,9 +791,9 @@ export default function NewVendor() {
         const detailedError = response?.error ? `: ${response.error}` : '';
         throw new Error(errorMsg + detailedError);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error saving vendor:', error);
-      alert('Failed to save vendor: ' + (error.message || 'Unknown error. Please check console.'));
+      alert('Failed to save vendor: ' + (error instanceof Error ? error.message : 'Unknown error. Please check console.'));
       return; // Don't navigate if save failed
     } finally {
       setIsSaving(false);
@@ -549,12 +816,31 @@ export default function NewVendor() {
     }
   };
 
+  useEffect(() => {
+    const onClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      const clickedWork = workPhoneCodeDropdownRef.current?.contains(target);
+      const clickedMobile = mobilePhoneCodeDropdownRef.current?.contains(target);
+      if (!clickedWork) {
+        setIsWorkPhoneCodeDropdownOpen(false);
+      }
+      if (!clickedMobile) {
+        setIsMobilePhoneCodeDropdownOpen(false);
+      }
+      if (!clickedWork && !clickedMobile) {
+        setPhoneCodeSearch("");
+      }
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
 
   const handleCancel = () => {
     navigate("/purchases/vendors");
   };
 
-  const styles = {
+  const styles: Record<string, React.CSSProperties> = {
     container: {
       width: "100%",
       backgroundColor: "#ffffff",
@@ -659,6 +945,41 @@ export default function NewVendor() {
       boxSizing: "border-box",
       backgroundColor: "#ffffff",
     },
+    addressInput: {
+      width: "100%",
+      maxWidth: "50%",
+      padding: "8px 12px",
+      border: "1px solid #d1d5db",
+      borderRadius: "6px",
+      fontSize: "14px",
+      outline: "none",
+      boxSizing: "border-box",
+      backgroundColor: "#ffffff",
+    },
+    dropdownSearchInput: {
+      width: "100%",
+      padding: "8px 12px",
+      border: "1px solid #d1d5db",
+      borderRadius: "6px",
+      fontSize: "14px",
+      outline: "none",
+      boxSizing: "border-box",
+      backgroundColor: "#ffffff",
+    },
+    addressTextarea: {
+      width: "100%",
+      maxWidth: "50%",
+      padding: "8px 12px",
+      border: "1px solid #d1d5db",
+      borderRadius: "6px",
+      fontSize: "14px",
+      outline: "none",
+      boxSizing: "border-box",
+      resize: "vertical",
+      minHeight: "60px",
+      fontFamily: "inherit",
+      backgroundColor: "#ffffff",
+    },
     select: {
       width: "100%",
       padding: "8px 32px 8px 12px",
@@ -727,12 +1048,12 @@ export default function NewVendor() {
     },
     tabs: {
       display: "flex",
-      gap: "8px",
+      gap: "18px",
       borderBottom: "1px solid #e5e7eb",
       marginBottom: "24px",
     },
     tab: {
-      padding: "8px 16px",
+      padding: "10px 0 12px",
       fontSize: "14px",
       fontWeight: "500",
       color: "#6b7280",
@@ -933,12 +1254,13 @@ export default function NewVendor() {
     addressContainer: {
       display: "grid",
       gridTemplateColumns: "1fr 1fr",
-      gap: "24px",
+      gap: "16px",
     },
     addressSection: {
-      border: "1px solid #e5e7eb",
-      borderRadius: "6px",
-      padding: "16px",
+      border: "none",
+      borderRadius: "0",
+      padding: "0",
+      minHeight: "100%",
     },
     addressTitle: {
       fontSize: "16px",
@@ -954,7 +1276,7 @@ export default function NewVendor() {
       alignItems: "center",
       gap: "4px",
       color: "#156372",
-      fontSize: "14px",
+      fontSize: "13px",
       cursor: "pointer",
       textDecoration: "none",
       background: "none",
@@ -1163,34 +1485,29 @@ export default function NewVendor() {
   };
 
   return (
-    <div style={{ ...styles.container, backgroundColor: "#f9fafb" }}>
-      <div style={{ ...styles.body, display: "flex", gap: "0", backgroundColor: "#f9fafb" }}>
-        {/* Left Column - Form */}
-        <div style={{ flex: 1, minWidth: 0, padding: "24px" }}>
-          <h2 style={{ ...styles.title, marginBottom: "24px" }}>{isEdit ? "Edit Vendor" : "New Vendor"}</h2>
-
-          <form onSubmit={handleSubmit} className="p-0">
+    <div className="min-h-screen bg-white">
+      <div className="w-full px-6 py-5">
+        <form onSubmit={handleSubmit} className="w-full">
+          <div className="border-b border-gray-200 bg-white px-0 pt-5 pb-6">
+            <h2 className="text-[24px] font-medium tracking-tight text-gray-900">{isEdit ? "Edit Vendor" : "New Vendor"}</h2>
+          </div>
             {/* Primary Contact through Vendor Language Section */}
-            <div className="border-b border-gray-900/10 pb-12">
-              {/* Primary Contact Section */}
-              <div className="mb-10">
-                <h2 className="text-base/7 font-semibold text-gray-900">
-                  Primary Contact
-                </h2>
-                <div className="mt-10 grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6 items-center">
-                  <div className="sm:col-span-1">
+            <div className="pt-6 pb-8">
+              <div className="mb-6">
+                <div className="grid grid-cols-1 gap-y-5 sm:flex sm:items-center sm:gap-3">
+                  <div className="sm:w-[180px]">
                     <label className="flex items-center gap-1 text-sm/6 font-medium text-gray-900">
                       Primary Contact <HelpTooltip text="The primary contact will receive all emails related to transactions. You can add multiple contact persons below or from this customer's details page."><Info size={14} className="text-gray-400" /></HelpTooltip>
                     </label>
                   </div>
-                  <div className="sm:col-span-1">
+                  <div className="sm:w-[230px] transition-all duration-200 ease-out focus-within:scale-[1.01]">
                     <div className="grid grid-cols-1">
                       <select
                         id="salutation"
                         name="salutation"
                         value={formData.salutation}
                         onChange={handleChange}
-                        className="col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-1.5 pr-8 pl-3 text-base text-gray-900 border border-gray-300 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                        className={fancySelectClass}
                       >
                         <option>Salutation</option>
                         <option>Mr.</option>
@@ -1205,7 +1522,7 @@ export default function NewVendor() {
                       />
                     </div>
                   </div>
-                  <div className="sm:col-span-2">
+                  <div className="sm:w-[230px] transition-all duration-200 ease-out focus-within:scale-[1.01]">
                     <div>
                       <input
                         id="firstName"
@@ -1214,11 +1531,11 @@ export default function NewVendor() {
                         placeholder="First name"
                         value={formData.firstName}
                         onChange={handleChange}
-                        className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                        className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-sm focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6"
                       />
                     </div>
                   </div>
-                  <div className="sm:col-span-2">
+                  <div className="sm:w-[230px] transition-all duration-200 ease-out focus-within:scale-[1.01]">
                     <div>
                       <input
                         id="lastName"
@@ -1227,7 +1544,7 @@ export default function NewVendor() {
                         placeholder="Last name"
                         value={formData.lastName}
                         onChange={handleChange}
-                        className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                        className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-sm focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6"
                       />
                     </div>
                   </div>
@@ -1235,9 +1552,9 @@ export default function NewVendor() {
               </div>
 
               {/* Company Name */}
-              <div className="mb-10">
-                <label htmlFor="companyName" className="block text-sm/6 font-medium text-gray-900">Company Name</label>
-                <div className="mt-2">
+              <div className="mb-6 flex items-start gap-4">
+                <label htmlFor="companyName" className="w-[180px] shrink-0 pt-1.5 text-sm/6 font-medium text-gray-900">Company Name</label>
+                <div className="w-full max-w-[390px]">
                   <input
                     id="companyName"
                     type="text"
@@ -1245,41 +1562,43 @@ export default function NewVendor() {
                     value={formData.companyName}
                     onChange={handleChange}
                     placeholder="Company Name"
-                    className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                    className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-sm focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6"
                   />
                 </div>
               </div>
 
               {/* Display Name */}
-              <div className="mb-10">
-                <label htmlFor="displayName" className="flex items-center gap-1 text-sm/6 font-medium text-red-600">
+              <div className="mb-6 flex items-start gap-4">
+                <label htmlFor="displayName" className="w-[180px] shrink-0 pt-1.5 flex items-center gap-1 text-sm/6 font-medium text-red-600">
                   Display Name <span className="text-red-500">*</span> <HelpTooltip text="This name will be displayed on all the transactions you create for this Vendor."><Info size={14} className="text-gray-400" /></HelpTooltip>
                 </label>
-                <div className="mt-2 grid grid-cols-1 relative">
-                  <select
-                    id="displayName"
-                    name="displayName"
-                    required
-                    value={formData.displayName}
-                    onChange={handleChange}
-                    className="col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-1.5 pr-8 pl-3 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                  >
-                    {generateDisplayNameOptions(formData).map((option, index) => (
-                      <option key={index} value={option}>
-                        {option || "Select or type to add"}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown size={16} className="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4" />
+                <div className="w-full max-w-[390px]">
+                  <div className="relative">
+                    <input
+                      id="displayName"
+                      name="displayName"
+                      value={formData.displayName}
+                      onChange={handleChange}
+                      placeholder="Select or type to add"
+                      className={`w-full rounded-md bg-white py-1.5 pl-3 pr-8 text-base text-gray-900 transition-all duration-200 ease-out hover:shadow-sm focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6 ${fieldErrors.displayName ? "border border-red-400 focus:border-red-500" : "border border-gray-300 hover:border-[#156372]/40 focus:border-[#156372]"}`}
+                    />
+                    <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 sm:size-4" />
+                  </div>
+                  {fieldErrors.displayName && (
+                    <div className="mt-2 flex items-center gap-2 text-sm text-red-500">
+                      <span className="inline-block h-3 w-3 rounded-full bg-red-500" />
+                      {fieldErrors.displayName}
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Email Address */}
-              <div className="mb-10">
-                <label htmlFor="email" className="flex items-center gap-1 text-sm/6 font-medium text-gray-900">
+              <div className="mb-6 flex items-start gap-4">
+                <label htmlFor="email" className="w-[180px] shrink-0 pt-1.5 flex items-center gap-1 text-sm/6 font-medium text-gray-900">
                   Email address <HelpTooltip text={<span><span className="font-bold text-blue-300">Privacy Info:</span> This data will be stored without encryption and will be visible only to your organisation users who have the required permission.</span>}><Info size={14} className="text-gray-400" /></HelpTooltip>
                 </label>
-                <div className="mt-2 relative">
+                <div className="w-full max-w-[390px] relative transition-all duration-200 ease-out focus-within:scale-[1.01]">
                   <Mail size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
                   <input
                     id="email"
@@ -1288,26 +1607,64 @@ export default function NewVendor() {
                     value={formData.email}
                     onChange={handleChange}
                     placeholder="Email Address"
-                    className="block w-full rounded-md bg-white pl-10 pr-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                    className="block w-full rounded-md bg-white pl-10 pr-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-sm focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6"
                   />
                 </div>
               </div>
 
               {/* Phone */}
-              <div className="mb-10">
-                <label className="flex items-center gap-1 text-sm/6 font-medium text-gray-900 mb-2">
+              <div className="mb-6 flex items-start gap-4">
+                <label className="w-[180px] shrink-0 pt-1.5 flex items-center gap-1 text-sm/6 font-medium text-gray-900">
                   Phone <HelpTooltip text={<span><span className="font-bold text-blue-300">Privacy Info:</span> This data will be stored without encryption and will be visible only to your organisation users who have the required permission.</span>}><Info size={14} className="text-gray-400" /></HelpTooltip>
                 </label>
-                <div className="mt-2 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-6">
-                  <div className="sm:col-span-3 flex">
-                    <div className="grid grid-cols-1 relative flex-shrink-0">
-                      <select className="col-start-1 row-start-1 appearance-none rounded-l-md bg-white py-1.5 pr-8 pl-3 text-base text-gray-900 border border-gray-300 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6 border-r-0">
-                        <option>+252</option>
-                        <option>+1</option>
-                        <option>+44</option>
-                        <option>+33</option>
-                      </select>
-                      <ChevronDown size={16} className="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4" />
+                <div className="w-full max-w-[780px]">
+                  <div className="flex items-center gap-2">
+                    <div className="relative" ref={workPhoneCodeDropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsWorkPhoneCodeDropdownOpen((prev) => !prev);
+                          setIsMobilePhoneCodeDropdownOpen(false);
+                          setPhoneCodeSearch("");
+                        }}
+                        className="flex h-[38px] w-[72px] items-center justify-between rounded-l-md rounded-r-none border border-gray-300 bg-white px-3 text-sm text-gray-700 transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-sm focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none"
+                      >
+                        <span>{workPhoneCode}</span>
+                        <ChevronDown size={14} className={`text-gray-500 transition-transform ${isWorkPhoneCodeDropdownOpen ? "rotate-180" : ""}`} />
+                      </button>
+                      {isWorkPhoneCodeDropdownOpen && (
+                        <div className="absolute left-0 top-full z-50 mt-2 w-[285px] overflow-hidden rounded-md border border-gray-300 bg-white shadow-xl">
+                          <div className="border-b border-gray-200 p-2">
+                            <div className="flex items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5">
+                              <Search size={14} className="text-gray-400" />
+                              <input
+                                type="text"
+                                value={phoneCodeSearch}
+                                onChange={(e) => setPhoneCodeSearch(e.target.value)}
+                                placeholder="Search"
+                                className="w-full text-sm text-gray-700 focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                          <div className="max-h-56 overflow-y-auto py-1">
+                            {filteredPhoneCodes.map((entry, index) => (
+                              <button
+                                key={`${entry.code}-${entry.name}-${index}`}
+                                type="button"
+                                onClick={() => {
+                                  setWorkPhoneCode(entry.code);
+                                  setIsWorkPhoneCodeDropdownOpen(false);
+                                  setPhoneCodeSearch("");
+                                }}
+                                className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-gray-700 hover:bg-[#156372] hover:text-white"
+                              >
+                                <span className="w-12 shrink-0">{entry.code}</span>
+                                <span>{entry.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <input
                       type="tel"
@@ -1315,26 +1672,54 @@ export default function NewVendor() {
                       value={formData.workPhone}
                       onChange={handleChange}
                       placeholder="Work Phone"
-                      className="block w-full rounded-r-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                      className="h-[38px] w-[205px] rounded-l-none rounded-r-md border border-l-0 border-gray-300 bg-white px-3 py-1.5 text-base text-gray-900 placeholder:text-gray-400 transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-sm focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6"
                     />
-                  </div>
-                  <div className="sm:col-span-3 flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="mobileCheckbox"
-                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
-                    />
-                    <label htmlFor="mobileCheckbox" className="text-sm/6 text-gray-900 cursor-pointer">Mobile</label>
-                  </div>
-                  <div className="sm:col-span-3 flex">
-                    <div className="grid grid-cols-1 relative flex-shrink-0">
-                      <select className="col-start-1 row-start-1 appearance-none rounded-l-md bg-white py-1.5 pr-8 pl-3 text-base text-gray-900 border border-gray-300 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6 border-r-0">
-                        <option>+252</option>
-                        <option>+1</option>
-                        <option>+44</option>
-                        <option>+33</option>
-                      </select>
-                      <ChevronDown size={16} className="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4" />
+                    <div className="relative" ref={mobilePhoneCodeDropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMobilePhoneCodeDropdownOpen((prev) => !prev);
+                          setIsWorkPhoneCodeDropdownOpen(false);
+                          setPhoneCodeSearch("");
+                        }}
+                        className="flex h-[38px] w-[72px] items-center justify-between rounded-l-md rounded-r-none border border-gray-300 bg-white px-3 text-sm text-gray-700 transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-sm focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none"
+                      >
+                        <span>{mobilePhoneCode}</span>
+                        <ChevronDown size={14} className={`text-gray-500 transition-transform ${isMobilePhoneCodeDropdownOpen ? "rotate-180" : ""}`} />
+                      </button>
+                      {isMobilePhoneCodeDropdownOpen && (
+                        <div className="absolute left-0 top-full z-50 mt-2 w-[285px] overflow-hidden rounded-md border border-gray-300 bg-white shadow-xl">
+                          <div className="border-b border-gray-200 p-2">
+                            <div className="flex items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5">
+                              <Search size={14} className="text-gray-400" />
+                              <input
+                                type="text"
+                                value={phoneCodeSearch}
+                                onChange={(e) => setPhoneCodeSearch(e.target.value)}
+                                placeholder="Search"
+                                className="w-full text-sm text-gray-700 focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                          <div className="max-h-56 overflow-y-auto py-1">
+                            {filteredPhoneCodes.map((entry, index) => (
+                              <button
+                                key={`${entry.code}-${entry.name}-${index}`}
+                                type="button"
+                                onClick={() => {
+                                  setMobilePhoneCode(entry.code);
+                                  setIsMobilePhoneCodeDropdownOpen(false);
+                                  setPhoneCodeSearch("");
+                                }}
+                                className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-gray-700 hover:bg-[#156372] hover:text-white"
+                              >
+                                <span className="w-12 shrink-0">{entry.code}</span>
+                                <span>{entry.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <input
                       type="tel"
@@ -1342,31 +1727,65 @@ export default function NewVendor() {
                       value={formData.mobile}
                       onChange={handleChange}
                       placeholder="Mobile"
-                      className="block w-full rounded-r-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                      className="h-[38px] w-[205px] rounded-l-none rounded-r-md border border-l-0 border-gray-300 bg-white px-3 py-1.5 text-base text-gray-900 placeholder:text-gray-400 transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-sm focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6"
                     />
                   </div>
                 </div>
               </div>
 
               {/* Vendor Language */}
-              <div className="mb-10">
-                <label htmlFor="vendorLanguage" className="flex items-center gap-1 text-sm/6 font-medium text-gray-900">
+              <div className="mb-6 flex items-start gap-4">
+                <label htmlFor="vendorLanguage" className="w-[180px] shrink-0 pt-1.5 flex items-center gap-1 text-sm/6 font-medium text-gray-900">
                   Vendor Language <HelpTooltip text="The selected language will be used for the vendor portal and all email communications."><Info size={14} className="text-gray-400" /></HelpTooltip>
                 </label>
-                <div className="mt-2 grid grid-cols-1">
-                  <select
-                    id="vendorLanguage"
-                    name="vendorLanguage"
-                    value={formData.vendorLanguage}
-                    onChange={handleChange}
-                    className="col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-1.5 pr-8 pl-3 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                <div className="w-full max-w-[390px] relative" ref={vendorLanguageDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsVendorLanguageDropdownOpen((prev) => !prev);
+                      setVendorLanguageSearch("");
+                    }}
+                    className="flex h-[38px] w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 text-left text-sm text-gray-700 transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-sm focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none"
                   >
-                    <option>English</option>
-                    <option>Spanish</option>
-                    <option>French</option>
-                    <option>German</option>
-                  </select>
-                  <ChevronDown size={16} className="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4" />
+                    <span>{formData.vendorLanguage || "English"}</span>
+                    <ChevronDown size={16} className={`text-gray-500 transition-transform ${isVendorLanguageDropdownOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  {isVendorLanguageDropdownOpen && (
+                    <div className="absolute left-0 top-full z-50 mt-2 w-full overflow-hidden rounded-md border border-gray-300 bg-white shadow-xl">
+                      <div className="border-b border-gray-200 p-2">
+                        <div className="flex items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5">
+                          <Search size={14} className="text-gray-400" />
+                          <input
+                            type="text"
+                            value={vendorLanguageSearch}
+                            onChange={(e) => setVendorLanguageSearch(e.target.value)}
+                            placeholder="Search"
+                            className="w-full text-sm text-gray-700 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                      <div className="max-h-56 overflow-y-auto py-1">
+                        {filteredVendorLanguageOptions.map((lang) => {
+                          const isSelected = String(formData.vendorLanguage || "").toLowerCase() === String(lang).toLowerCase();
+                          return (
+                            <button
+                              key={lang}
+                              type="button"
+                              onClick={() => {
+                                setFormData((prev) => ({ ...prev, vendorLanguage: lang }));
+                                setIsVendorLanguageDropdownOpen(false);
+                                setVendorLanguageSearch("");
+                              }}
+                              className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${isSelected ? "bg-gray-100 text-gray-900" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"}`}
+                            >
+                              <span>{lang}</span>
+                              {isSelected && <ChevronDown size={14} className="rotate-180 text-gray-600" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1394,100 +1813,14 @@ export default function NewVendor() {
 
             {/* Other Details Tab Content */}
             {activeTab === "Other Details" && (
-              <div className="border-b border-gray-900/10 pb-12">
-              <div className="mt-10 grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
-                  {/* Tax Rate */}
-                  <div className="sm:col-span-3">
-                    <label htmlFor="taxRate" className="flex items-center gap-1 text-sm/6 font-medium text-gray-900">
-                      Tax Rate
-                      <HelpTooltip text="To associate more than one tax, you need to create a tax group in Settings.">
-                        <Info size={14} className="text-gray-400" />
-                      </HelpTooltip>
-                    </label>
-                    <div className="mt-2">
-                      <select
-                        id="taxRate"
-                        name="taxRate"
-                        value={formData.taxRate}
-                        onChange={handleChange}
-                        className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                      >
-                        <option value="">Select a Tax</option>
-                        {availableTaxes.map((tax: any) => (
-                          <option key={tax?._id || tax?.id} value={tax?._id || tax?.id}>
-                            {tax?.name} ({Number(tax?.rate || 0)}%)
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <p className="mt-1 text-xs text-gray-500">To associate more than one tax, create a tax group in Settings.</p>
-                  </div>
-
-                  {/* TDS */}
-                  <div className="sm:col-span-3">
-                    <label className="text-sm/6 font-medium text-gray-900">TDS</label>
-                    <div className="mt-2 flex items-center gap-3">
-                      <input
-                        id="enableTDS"
-                        type="checkbox"
-                        name="enableTDS"
-                        checked={formData.enableTDS}
-                        onChange={handleChange}
-                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
-                      />
-                      <label htmlFor="enableTDS" className="text-sm/6 text-gray-700">
-                        Enable TDS for this Vendor
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Company ID */}
-                  <div className="sm:col-span-3">
-                    <label htmlFor="companyId" className="flex items-center gap-1 text-sm/6 font-medium text-gray-900">
-                      Company ID <Info size={14} className="text-gray-400" />
-                    </label>
-                    <div className="mt-2">
-                      <input
-                        id="companyId"
-                        type="text"
-                        name="companyId"
-                        value={formData.companyId}
-                        onChange={handleChange}
-                        className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Accounts Payable */}
-                  <div className="sm:col-span-3">
-                    <label htmlFor="accountsPayable" className="flex items-center gap-1 text-sm/6 font-medium text-gray-900">
-                      Accounts Payable <Info size={14} className="text-gray-400" />
-                    </label>
-                    <div className="mt-2 grid grid-cols-1">
-                      <select
-                        id="accountsPayable"
-                        name="accountsPayable"
-                        value={formData.accountsPayable}
-                        onChange={handleChange}
-                        className="col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-1.5 pr-8 pl-3 text-base text-gray-900 border border-gray-300 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                      >
-                        <option value="">Select an account</option>
-                        {accountsPayableOptions.map((accountName) => (
-                          <option key={accountName} value={accountName}>
-                            {accountName}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown size={16} className="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4" />
-                    </div>
-                  </div>
-
+            <div className="border-b border-gray-900/10 pb-10">
+              <div className="mt-8 max-w-[720px] space-y-4">
                   {/* Location Code */}
-                  <div className="sm:col-span-3">
-                    <label htmlFor="locationCode" className="flex items-center gap-1 text-sm/6 font-medium text-gray-900">
+                  <div className="mb-4 flex items-start gap-6">
+                    <label htmlFor="locationCode" className="w-[160px] shrink-0 pt-2 flex items-center gap-1 text-sm/6 font-medium text-gray-900">
                       Location Code <Info size={14} className="text-gray-400" />
                     </label>
-                    <div className="mt-2">
+                    <div className="flex-1 max-w-[360px]">
                       <input
                         id="locationCode"
                         type="text"
@@ -1495,60 +1828,314 @@ export default function NewVendor() {
                         value={formData.locationCode}
                         onChange={handleChange}
                         placeholder="Location Code"
-                        className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                        className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 shadow-sm transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-md focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6"
                       />
                     </div>
                   </div>
 
-                  {/* Currency */}
-                  <div className="sm:col-span-3">
-                    <label htmlFor="currency" className="block text-sm/6 font-medium text-gray-900">Currency</label>
-                    <div className="mt-2 grid grid-cols-1">
-                      <select
-                        id="currency"
-                        name="currency"
-                        value={formData.currency}
-                        onChange={handleChange}
-                        disabled={loadingCurrencies}
-                        className="col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-1.5 pr-8 pl-3 text-base text-gray-900 border border-gray-300 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6 disabled:opacity-50"
+                  {/* Tax Rate */}
+                  <div className="mb-4 flex items-start gap-6">
+                    <label htmlFor="taxRate" className="w-[160px] shrink-0 pt-2 flex items-center gap-1 text-sm/6 font-medium text-gray-900">
+                      Tax Rate
+                      <HelpTooltip text="To associate more than one tax, you need to create a tax group in Settings.">
+                        <Info size={14} className="text-gray-400" />
+                      </HelpTooltip>
+                    </label>
+                    <div className="relative flex-1 max-w-[360px]" ref={taxRateDropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsTaxRateDropdownOpen((prev) => !prev);
+                          setTaxRateSearch("");
+                        }}
+                        className="flex h-[40px] w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 text-left text-sm text-gray-700 shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition-all duration-200 ease-out hover:border-[#156372]/50 hover:shadow-[0_8px_20px_rgba(15,23,42,0.08)] focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none"
                       >
-                        {loadingCurrencies ? (
-                          <option>Loading currencies...</option>
-                        ) : (
-                          currencies.map((currency) => (
-                            <option key={currency._id} value={`${currency.code} - ${currency.name}`}>
-                              {currency.code} - {currency.name}
-                            </option>
-                          ))
-                        )}
-                      </select>
-                      <ChevronDown size={16} className="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4" />
+                        <span className="truncate">
+                          {(() => {
+                            const selected = availableTaxes.find((tax) => String(tax._id || tax.id || "") === String(formData.taxRate || ""));
+                            return selected ? `${selected.name || "Tax"} (${Number(selected.rate || 0)}%)` : "Select a Tax";
+                          })()}
+                        </span>
+                        <ChevronDown size={16} className={`ml-3 shrink-0 text-gray-500 transition-transform ${isTaxRateDropdownOpen ? "rotate-180" : ""}`} />
+                      </button>
+                      {isTaxRateDropdownOpen && (
+                        <div className="absolute z-50 mt-2 w-[360px] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0_18px_30px_-12px_rgba(15,23,42,0.22)]">
+                          <div className="border-b border-gray-100 p-2">
+                            <div className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 focus-within:border-[#156372] focus-within:shadow-[0_0_0_3px_rgba(21,99,114,0.12)]">
+                              <Search size={14} className="text-gray-400" />
+                              <input
+                                type="text"
+                                value={taxRateSearch}
+                                onChange={(e) => setTaxRateSearch(e.target.value)}
+                                placeholder="Search taxes"
+                                className="w-full border-0 bg-transparent text-sm text-gray-700 outline-none placeholder:text-gray-400"
+                                autoFocus
+                              />
+                            </div>
+                          </div>
+                          <div className="max-h-56 overflow-y-auto py-1">
+                            {filteredTaxRates.length > 0 ? (
+                              filteredTaxRates.map((tax) => {
+                                const taxId = String(tax._id || tax.id || "");
+                                const isSelected = String(formData.taxRate || "") === taxId;
+                                return (
+                                  <button
+                                    key={taxId || `${tax.name}-${tax.rate}`}
+                                    type="button"
+                                    onClick={() => {
+                                      setFormData((prev) => ({ ...prev, taxRate: taxId }));
+                                      setIsTaxRateDropdownOpen(false);
+                                      setTaxRateSearch("");
+                                    }}
+                                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors ${isSelected ? "bg-blue-50 text-[#156372]" : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"}`}
+                                  >
+                                    <span className="truncate">{tax.name || "Tax"} ({Number(tax.rate || 0)}%)</span>
+                                    {isSelected && <ChevronDown size={14} className="rotate-180 text-[#156372]" />}
+                                  </button>
+                                );
+                              })
+                            ) : (
+                              <div className="px-3 py-4 text-sm text-gray-500">No taxes found</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Company ID */}
+                  <div className="mb-4 flex items-start gap-6">
+                    <label htmlFor="companyId" className="w-[160px] shrink-0 pt-2 flex items-center gap-1 text-sm/6 font-medium text-gray-900">
+                      Company ID <Info size={14} className="text-gray-400" />
+                    </label>
+                    <div className="flex-1 max-w-[360px]">
+                      <input
+                        id="companyId"
+                        type="text"
+                        name="companyId"
+                        value={formData.companyId}
+                        onChange={handleChange}
+                        className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 shadow-sm transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-md focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Accounts Payable */}
+                  <div className="mb-4 flex items-start gap-6">
+                    <label htmlFor="accountsPayable" className="w-[160px] shrink-0 pt-2 flex items-center gap-1 text-sm/6 font-medium text-gray-900">
+                      Accounts Payable <Info size={14} className="text-gray-400" />
+                    </label>
+                    <div className="relative flex-1 max-w-[360px]" ref={accountsPayableDropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAccountsPayableDropdownOpen((prev) => !prev);
+                          setAccountsPayableSearch("");
+                        }}
+                        className="flex h-[40px] w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 text-left text-sm text-gray-700 shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition-all duration-200 ease-out hover:border-[#156372]/50 hover:shadow-[0_8px_20px_rgba(15,23,42,0.08)] focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none"
+                      >
+                        <span className="truncate">
+                          {formData.accountsPayable || "Select an account"}
+                        </span>
+                        <ChevronDown size={16} className={`ml-3 shrink-0 text-gray-500 transition-transform ${isAccountsPayableDropdownOpen ? "rotate-180" : ""}`} />
+                      </button>
+                      {isAccountsPayableDropdownOpen && (
+                        <div className="absolute z-50 mt-2 w-[360px] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0_18px_30px_-12px_rgba(15,23,42,0.22)]">
+                          <div className="border-b border-gray-100 p-2">
+                            <div className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 focus-within:border-[#156372] focus-within:shadow-[0_0_0_3px_rgba(21,99,114,0.12)]">
+                              <Search size={14} className="text-gray-400" />
+                              <input
+                                type="text"
+                                value={accountsPayableSearch}
+                                onChange={(e) => setAccountsPayableSearch(e.target.value)}
+                                placeholder="Search accounts"
+                                className="w-full border-0 bg-transparent text-sm text-gray-700 outline-none placeholder:text-gray-400"
+                                autoFocus
+                              />
+                            </div>
+                          </div>
+                          <div className="max-h-56 overflow-y-auto py-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormData((prev) => ({ ...prev, accountsPayable: "" }));
+                                setIsAccountsPayableDropdownOpen(false);
+                                setAccountsPayableSearch("");
+                              }}
+                              className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors ${!formData.accountsPayable ? "bg-blue-50 text-[#156372]" : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"}`}
+                            >
+                              <span className="truncate">Select an account</span>
+                            </button>
+                            {filteredAccountsPayableOptions.length > 0 ? (
+                              filteredAccountsPayableOptions.map((accountName) => {
+                                const isSelected = formData.accountsPayable === accountName;
+                                return (
+                                  <button
+                                    key={accountName}
+                                    type="button"
+                                    onClick={() => {
+                                      setFormData((prev) => ({ ...prev, accountsPayable: accountName }));
+                                      setIsAccountsPayableDropdownOpen(false);
+                                      setAccountsPayableSearch("");
+                                    }}
+                                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors ${isSelected ? "bg-blue-50 text-[#156372]" : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"}`}
+                                  >
+                                    <span className="truncate">{accountName}</span>
+                                    {isSelected && <ChevronDown size={14} className="rotate-180 text-[#156372]" />}
+                                  </button>
+                                );
+                              })
+                            ) : (
+                              <div className="px-3 py-4 text-sm text-gray-500">No accounts found</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
                   {/* Opening Balance */}
-                  <div className="sm:col-span-3">
-                    <label htmlFor="openingBalance" className="flex items-center gap-1 text-sm/6 font-medium text-gray-900">Opening Balance <Info size={14} className="text-gray-400" /></label>
-                    <div className="mt-2 flex">
-                      <span className="inline-flex items-center rounded-l-md border border-r-0 border-gray-300 bg-gray-50 px-3 text-sm text-gray-900">
-                        {formData.currency?.split("-")[0]?.trim() || baseCurrencyCode || "USD"}
-                      </span>
-                      <input
-                        id="openingBalance"
-                        type="text"
-                        name="openingBalance"
-                        value={formData.openingBalance}
-                        onChange={handleChange}
-                        placeholder="0.00"
-                        className="block w-full rounded-r-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                      />
+                  <div className="my-4 w-full max-w-[720px]">
+                    <div className="flex items-center gap-6">
+                      <label htmlFor="openingBalance" className="w-[160px] shrink-0 flex items-center gap-1 text-sm/6 font-medium text-gray-900">
+                        Opening Balance <Info size={14} className="text-gray-400" />
+                      </label>
+                      <div className="relative" ref={openingBalanceLocationDropdownRef}>
+                        <button
+                          type="button"
+                          onClick={() => setIsOpeningBalanceLocationDropdownOpen((prev) => !prev)}
+                          className="flex h-[38px] w-[150px] items-center justify-between rounded-md border border-gray-300 bg-white px-3 text-left text-sm text-gray-700 shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition-all duration-200 ease-out hover:border-[#156372]/50 hover:shadow-[0_8px_20px_rgba(15,23,42,0.08)] focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none"
+                        >
+                          <span className="truncate">{formData.locationCode || "Head Office"}</span>
+                          <ChevronDown size={14} className={`ml-3 shrink-0 text-gray-500 transition-transform ${isOpeningBalanceLocationDropdownOpen ? "rotate-180" : ""}`} />
+                        </button>
+                        {isOpeningBalanceLocationDropdownOpen && (
+                          <div className="absolute z-50 mt-2 w-[150px] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0_18px_30px_-12px_rgba(15,23,42,0.22)]">
+                            {["Head Office", "Branch Office"].map((location) => {
+                              const isSelected = (formData.locationCode || "Head Office") === location;
+                              return (
+                                <button
+                                  key={location}
+                                  type="button"
+                                  onClick={() => {
+                                    setFormData((prev) => ({ ...prev, locationCode: location }));
+                                    setIsOpeningBalanceLocationDropdownOpen(false);
+                                  }}
+                                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors ${isSelected ? "bg-blue-50 text-[#156372]" : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"}`}
+                                >
+                                  <span className="truncate">{location}</span>
+                                  {isSelected && <ChevronDown size={14} className="rotate-180 text-[#156372]" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center">
+                        <span className="inline-flex h-[38px] min-w-[48px] items-center rounded-l-md border border-r-0 border-gray-300 bg-white px-3 text-sm text-gray-900">
+                          KES
+                        </span>
+                        <input
+                          id="openingBalance"
+                          type="text"
+                          name="openingBalance"
+                          value={formData.openingBalance}
+                          onChange={handleChange}
+                          placeholder="0.00"
+                          className="block h-[38px] w-[140px] rounded-r-md bg-white px-3 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 shadow-sm transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-md focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Currency */}
+                  <div className="mb-4 flex items-start gap-6">
+                    <label htmlFor="currency" className="w-[160px] shrink-0 pt-2 block text-sm/6 font-medium text-gray-900">Currency</label>
+                    <div className="relative flex-1 max-w-[360px]" ref={currencyDropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCurrencyDropdownOpen((prev) => !prev);
+                          setCurrencySearch("");
+                        }}
+                        disabled={loadingCurrencies}
+                        className="flex h-[40px] w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 text-left text-sm text-gray-700 shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition-all duration-200 ease-out hover:border-[#156372]/50 hover:shadow-[0_8px_20px_rgba(15,23,42,0.08)] focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none disabled:opacity-50"
+                      >
+                        <span className="truncate">
+                          {(() => {
+                            const selected = currencies.find((currency) => `${currency.code} - ${currency.name}` === formData.currency);
+                            return selected ? `${selected.code} - ${selected.name}` : "Select a currency";
+                          })()}
+                        </span>
+                        <ChevronDown size={16} className={`ml-3 shrink-0 text-gray-500 transition-transform ${isCurrencyDropdownOpen ? "rotate-180" : ""}`} />
+                      </button>
+                      {isCurrencyDropdownOpen && (
+                        <div className="absolute z-50 mt-2 w-[360px] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0_18px_30px_-12px_rgba(15,23,42,0.22)]">
+                          <div className="border-b border-gray-100 p-2">
+                            <div className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 focus-within:border-[#156372] focus-within:shadow-[0_0_0_3px_rgba(21,99,114,0.12)]">
+                              <Search size={14} className="text-gray-400" />
+                              <input
+                                type="text"
+                                value={currencySearch}
+                                onChange={(e) => setCurrencySearch(e.target.value)}
+                                placeholder="Search currencies"
+                                className="w-full border-0 bg-transparent text-sm text-gray-700 outline-none placeholder:text-gray-400"
+                                autoFocus
+                              />
+                            </div>
+                          </div>
+                          <div className="max-h-56 overflow-y-auto py-1">
+                            {loadingCurrencies ? (
+                              <div className="px-3 py-4 text-sm text-gray-500">Loading currencies...</div>
+                            ) : filteredCurrencyOptions.length > 0 ? (
+                              filteredCurrencyOptions.map((currency) => {
+                                const value = `${currency.code} - ${currency.name}`;
+                                const isSelected = formData.currency === value;
+                                return (
+                                  <button
+                                    key={currency._id}
+                                    type="button"
+                                    onClick={() => {
+                                      setFormData((prev) => ({ ...prev, currency: value }));
+                                      setIsCurrencyDropdownOpen(false);
+                                      setCurrencySearch("");
+                                    }}
+                                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors ${isSelected ? "bg-blue-50 text-[#156372]" : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"}`}
+                                  >
+                                    <span className="truncate">{value}</span>
+                                    {isSelected && <ChevronDown size={14} className="rotate-180 text-[#156372]" />}
+                                  </button>
+                                );
+                              })
+                            ) : (
+                              <div className="px-3 py-4 text-sm text-gray-500">No currencies found</div>
+                            )}
+                          </div>
+                          <div className="border-t border-gray-100 p-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsCurrencyDropdownOpen(false);
+                                setCurrencySearch("");
+                                setShowNewCurrencyModal(true);
+                              }}
+                              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-[#156372] transition-colors hover:bg-[#156372]/5"
+                            >
+                              <Plus size={16} />
+                              Add new currency
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
                   {/* Payment Terms */}
-                  <div className="sm:col-span-3">
-                    <label className="flex items-center gap-1 text-sm/6 font-medium text-gray-900">Payment Terms <Info size={14} className="text-gray-400" /></label>
-                    <div className="mt-2">
+                  <div className="mb-4 flex items-start gap-6">
+                    <label className="w-[160px] shrink-0 pt-2 flex items-center gap-1 text-sm/6 font-medium text-gray-900">
+                      Payment Terms <Info size={14} className="text-gray-400" />
+                    </label>
+                    <div className="relative flex-1 max-w-[360px]">
                       <PaymentTermsDropdown
                         value={formData.paymentTerms}
                         onChange={(val) => setFormData({ ...formData, paymentTerms: val })}
@@ -1558,8 +2145,11 @@ export default function NewVendor() {
                   </div>
 
                   {/* Enable Portal */}
-                  <div className="sm:col-span-6">
-                    <div className="flex items-start gap-3">
+                  <div className="mb-4 flex items-start gap-6">
+                    <label htmlFor="enablePortal" className="w-[160px] shrink-0 pt-0.5 flex items-center gap-1 text-sm/6 font-medium text-gray-900">
+                      Enable Portal? <HelpTooltip text="Give your vendors access to portal to view transactions and payments."><Info size={14} className="text-gray-400" /></HelpTooltip>
+                    </label>
+                    <div className="flex items-start gap-3 pt-0.5">
                       <input
                         id="enablePortal"
                         type="checkbox"
@@ -1568,32 +2158,19 @@ export default function NewVendor() {
                         onChange={handleChange}
                         className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 mt-0.5"
                       />
-                      <div>
-                        <label htmlFor="enablePortal" className="flex items-center gap-1 text-sm/6 font-medium text-gray-900">
-                          Enable Portal? <HelpTooltip text="Give your vendors access to portal to view transactions and payments."><Info size={14} className="text-gray-400" /></HelpTooltip>
-                        </label>
-                        <p className="mt-1 text-sm/6 text-gray-600">Allow portal access for this vendor</p>
-                      </div>
+                      <span className="text-sm/6 text-gray-600">Allow portal access for this vendor</span>
                     </div>
                   </div>
 
                   {/* Documents */}
-                  <div className="sm:col-span-6">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="flex items-center gap-1 text-sm font-medium text-gray-900">Documents <Info size={14} className="text-gray-400" /></label>
-                      {documents.length > 0 && (
+                  <div className="mb-4 flex items-start gap-6">
+                    <label className="w-[160px] shrink-0 pt-2 flex items-center gap-1 text-sm/6 font-medium text-gray-900">
+                      Documents <Info size={14} className="text-gray-400" />
+                    </label>
+                    <div className="flex-1 max-w-[360px]" ref={uploadDropdownRef}>
+                      <div className="flex items-center gap-0">
                         <button
                           type="button"
-                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#156372] text-white rounded-md text-xs font-medium"
-                        >
-                          <File size={12} />
-                          {documents.length}
-                        </button>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-0" ref={uploadDropdownRef}>
-                      <button
-                        type="button"
                         onClick={() => {
                           fileInputRef.current?.click();
                         }}
@@ -1722,7 +2299,7 @@ export default function NewVendor() {
                     <p className="mt-1 text-xs text-gray-500">You can upload a maximum of 10 files, 10MB each</p>
 
                     {/* Display uploaded files */}
-                    {documents.length > 0 && (
+                  {documents.length > 0 && (
                       <div className="mt-2 space-y-1.5">
                         {documents.map((doc) => (
                           <div key={doc.id} className="flex items-center gap-2 p-2 border border-gray-200 rounded bg-gray-50 hover:bg-gray-100 transition-colors">
@@ -1747,137 +2324,139 @@ export default function NewVendor() {
                         ))}
                       </div>
                     )}
+
+                    <button
+                      type="button"
+                      onClick={() => setShowMoreDetails((prev) => !prev)}
+                      className="mt-4 text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline"
+                    >
+                      {showMoreDetails ? "Hide more details" : "Add more details"}
+                    </button>
+
+                    {showMoreDetails && (
+                      <div className="mt-4 -ml-44 space-y-4">
+                        <div className="flex items-start gap-2">
+                          <label htmlFor="websiteUrl" className="w-[160px] shrink-0 pt-2 block text-sm/6 font-medium text-gray-900">
+                            Website URL <Info size={14} className="text-gray-400" />
+                          </label>
+                          <div className="flex-1 max-w-[360px]">
+                            <div className="relative">
+                              <Globe size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                              <input
+                                id="websiteUrl"
+                                type="url"
+                                name="websiteUrl"
+                                value={formData.websiteUrl}
+                                onChange={handleChange}
+                                placeholder="ex: www.zylker.com"
+                                className="block h-[40px] w-full rounded-md border border-gray-300 bg-white pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-md focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-2">
+                          <label htmlFor="department" className="w-[160px] shrink-0 pt-2 block text-sm/6 font-medium text-gray-900">
+                            Department
+                          </label>
+                          <div className="flex-1 max-w-[360px]">
+                            <input
+                              id="department"
+                              type="text"
+                              name="department"
+                              value={formData.department}
+                              onChange={handleChange}
+                              className="block h-[40px] w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-md focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-2">
+                          <label htmlFor="designation" className="w-[160px] shrink-0 pt-2 block text-sm/6 font-medium text-gray-900">
+                            Designation
+                          </label>
+                          <div className="flex-1 max-w-[360px]">
+                            <input
+                              id="designation"
+                              type="text"
+                              name="designation"
+                              value={formData.designation}
+                              onChange={handleChange}
+                              className="block h-[40px] w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-md focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-2">
+                          <label htmlFor="xSocial" className="w-[160px] shrink-0 pt-2 block text-sm/6 font-medium text-gray-900">
+                            X
+                          </label>
+                          <div className="flex-1 max-w-[360px]">
+                            <div className="relative">
+                              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">
+                                X
+                              </span>
+                              <input
+                                id="xSocial"
+                                type="text"
+                                name="xSocial"
+                                value={formData.xSocial}
+                                onChange={handleChange}
+                                className="block h-[40px] w-full rounded-md border border-gray-300 bg-white pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-md focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none"
+                              />
+                            </div>
+                            <p className="mt-1 text-xs text-blue-500">https://x.com/</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-2">
+                          <label htmlFor="skypeName" className="w-[160px] shrink-0 pt-2 block text-sm/6 font-medium text-gray-900">
+                            Skype Name/Number
+                          </label>
+                          <div className="flex-1 max-w-[360px]">
+                            <div className="relative">
+                              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-[#00aff0]">
+                                S
+                              </span>
+                              <input
+                                id="skypeName"
+                                type="text"
+                                name="skypeName"
+                                value={formData.skypeName}
+                                onChange={handleChange}
+                                className="block h-[40px] w-full rounded-md border border-gray-300 bg-white pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-md focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-2">
+                          <label htmlFor="facebook" className="w-[160px] shrink-0 pt-2 block text-sm/6 font-medium text-gray-900">
+                            Facebook
+                          </label>
+                          <div className="flex-1 max-w-[360px]">
+                            <div className="relative">
+                              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#1877f2] text-xs font-semibold text-white">
+                                f
+                              </span>
+                              <input
+                                id="facebook"
+                                type="text"
+                                name="facebook"
+                                value={formData.facebook}
+                                onChange={handleChange}
+                                className="block h-[40px] w-full rounded-md border border-gray-300 bg-white pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-md focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none"
+                              />
+                            </div>
+                            <p className="mt-1 text-xs text-blue-500">http://www.facebook.com/</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-
-                {/* Add more details */}
-                <div className="sm:col-span-6 mt-8">
-                  <button
-                    type="button"
-                    onClick={() => setShowMoreDetails(!showMoreDetails)}
-                    className="text-sm text-teal-700 hover:text-teal-800 hover:underline"
-                  >
-                    Add more details
-                  </button>
-                </div>
-
-                {showMoreDetails && (
-                  <div className="mt-10 border-t border-gray-200 pt-10">
-                    <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
-                      {/* Website URL */}
-                      <div className="sm:col-span-3">
-                        <label htmlFor="websiteUrl" className="flex items-center gap-1 text-sm/6 font-medium text-gray-900">Website URL <Info size={14} className="text-gray-400" /></label>
-                        <div className="mt-2 relative">
-                          <Globe size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
-                          <input
-                            id="websiteUrl"
-                            type="url"
-                            name="websiteUrl"
-                            value={formData.websiteUrl}
-                            onChange={handleChange}
-                            placeholder="ex: www.zylker.com"
-                            className="block w-full rounded-md bg-white pl-10 pr-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Department */}
-                      <div className="sm:col-span-3">
-                        <label htmlFor="department" className="flex items-center gap-1 text-sm/6 font-medium text-gray-900">Department <Info size={14} className="text-gray-400" /></label>
-                        <div className="mt-2">
-                          <input
-                            id="department"
-                            type="text"
-                            name="department"
-                            value={formData.department}
-                            onChange={handleChange}
-                            placeholder="Department"
-                            className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Designation */}
-                      <div className="sm:col-span-3">
-                        <label htmlFor="designation" className="flex items-center gap-1 text-sm/6 font-medium text-gray-900">Designation <Info size={14} className="text-gray-400" /></label>
-                        <div className="mt-2">
-                          <input
-                            id="designation"
-                            type="text"
-                            name="designation"
-                            value={formData.designation}
-                            onChange={handleChange}
-                            placeholder="Designation"
-                            className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                          />
-                        </div>
-                      </div>
-
-                      {/* X (Twitter) */}
-                      <div className="sm:col-span-3">
-                        <label htmlFor="xSocial" className="flex items-center gap-1 text-sm/6 font-medium text-gray-900">X <Info size={14} className="text-gray-400" /></label>
-                        <div className="mt-2 relative">
-                          <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none font-semibold">X</div>
-                          <input
-                            id="xSocial"
-                            type="url"
-                            name="xSocial"
-                            value={formData.xSocial}
-                            onChange={handleChange}
-                            placeholder="https://x.com/"
-                            className="block w-full rounded-md bg-white pl-10 pr-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Skype Name/Number */}
-                      <div className="sm:col-span-3">
-                        <label htmlFor="skypeName" className="flex items-center gap-1 text-sm/6 font-medium text-gray-900">Skype Name/Number <Info size={14} className="text-gray-400" /></label>
-                        <div className="mt-2 relative">
-                          <div className="absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="#00AFF0">
-                              <path d="M12.015 0C5.398 0 .006 5.388.006 12.002c0 5.098 3.158 9.478 7.618 11.239-.105-.949-.199-2.403.041-3.439.219-.937 1.406-5.957 1.406-5.957s-.359-.72-.359-1.781c0-1.663.967-2.911 2.168-2.911 1.024 0 1.518.769 1.518 1.688 0 1.029-.653 2.567-.992 3.992-.285 1.193.6 2.165 1.775 2.165 2.128 0 3.768-2.245 3.768-5.487 0-2.861-2.063-4.869-5.008-4.869-3.41 0-5.409 2.562-5.409 5.199 0 1.033.394 2.143.889 2.741.097.118.112.222.083.343-.09.375-.293 1.199-.334 1.363-.053.225-.172.271-.402.165-1.495-.69-2.433-2.878-2.433-4.646 0-3.776 2.748-7.252 7.92-7.252 4.158 0 7.392 2.967 7.392 6.923 0 4.135-2.607 7.462-6.233 7.462-1.214 0-2.357-.629-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24.009 12.015 24.009c6.624 0 11.99-5.388 11.99-12.002C24.005 5.388 18.641.001 12.015.001z" />
-                            </svg>
-                          </div>
-                          <input
-                            id="skypeName"
-                            type="text"
-                            name="skypeName"
-                            value={formData.skypeName}
-                            onChange={handleChange}
-                            placeholder="Skype Name/Number"
-                            className="block w-full rounded-md bg-white pl-10 pr-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Facebook */}
-                      <div className="sm:col-span-3">
-                        <label htmlFor="facebook" className="flex items-center gap-1 text-sm/6 font-medium text-gray-900">Facebook <Info size={14} className="text-gray-400" /></label>
-                        <div className="mt-2 relative">
-                          <div className="absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="#1877F2">
-                              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                            </svg>
-                          </div>
-                          <input
-                            id="facebook"
-                            type="url"
-                            name="facebook"
-                            value={formData.facebook}
-                            onChange={handleChange}
-                            placeholder="http://www.facebook.com/"
-                            className="block w-full rounded-md bg-white pl-10 pr-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-
-
-                )}
               </div>
+            </div>
             )}
 
             {/* Address Tab Content */}
@@ -1891,36 +2470,81 @@ export default function NewVendor() {
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>Attention <Info size={14} className="text-gray-400" /></label>
-                      <input
-                        type="text"
-                        name="billingAttention"
-                        value={formData.billingAttention}
-                        onChange={handleChange}
-                        style={styles.input}
-                      />
+                        <input
+                          type="text"
+                          name="billingAttention"
+                          value={formData.billingAttention}
+                          onChange={handleChange}
+                          style={styles.addressInput}
+                        />
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>Country/Region <Info size={14} className="text-gray-400" /></label>
-                      <div style={{ position: "relative" }}>
-                        <input
-                          type="text"
-                          name="billingCountry"
-                          value={formData.billingCountry}
-                          onChange={handleChange}
-                          placeholder="Select or type to add"
-                          style={styles.input}
-                        />
-                        <ChevronDown
-                          size={16}
-                          style={{
-                            position: "absolute",
-                            right: "12px",
-                            top: "50%",
-                            transform: "translateY(-50%)",
-                            color: "#6b7280",
-                            pointerEvents: "none",
+                      <div ref={billingCountryDropdownRef} style={{ position: "relative", width: "100%" }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsBillingCountryDropdownOpen((prev) => !prev);
+                            setBillingCountrySearch("");
                           }}
-                        />
+                          style={{
+                            ...styles.addressInput,
+                            textAlign: "left",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <span>{formData.billingCountry || "Select or type to add"}</span>
+                          <ChevronDown size={16} style={{ color: "#6b7280", flexShrink: 0 }} />
+                        </button>
+                        {isBillingCountryDropdownOpen && (
+                          <div style={{
+                            position: "absolute",
+                            top: "calc(100% + 4px)",
+                            left: 0,
+                            right: 0,
+                            backgroundColor: "#fff",
+                            border: "1px solid #d1d5db",
+                            borderRadius: "6px",
+                            boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                            zIndex: 50,
+                            maxHeight: "260px",
+                            overflow: "auto",
+                          }}>
+                            <div style={{ padding: "8px 10px", borderBottom: "1px solid #e5e7eb" }}>
+                              <input
+                                autoFocus
+                                value={billingCountrySearch}
+                                onChange={(e) => setBillingCountrySearch(e.target.value)}
+                                placeholder="Search countries"
+                                style={{ ...styles.dropdownSearchInput, width: "260px" }}
+                              />
+                            </div>
+                            {filteredBillingCountries.map((country) => (
+                              <button
+                                key={country}
+                                type="button"
+                                onClick={() => {
+                                  setFormData((prev) => ({ ...prev, billingCountry: country }));
+                                  setIsBillingCountryDropdownOpen(false);
+                                  setBillingCountrySearch("");
+                                }}
+                                style={{
+                                  width: "100%",
+                                  textAlign: "left",
+                                  padding: "8px 12px",
+                                  border: "none",
+                                  background: "white",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {country}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div style={styles.formGroup}>
@@ -1931,80 +2555,129 @@ export default function NewVendor() {
                           value={formData.billingStreet1}
                           onChange={handleChange}
                           placeholder="Street 1"
-                          style={styles.textarea}
+                          style={styles.addressTextarea}
                         />
                       </div>
-                      <textarea
-                        name="billingStreet2"
-                        value={formData.billingStreet2}
-                        onChange={handleChange}
-                        placeholder="Street 2"
-                        style={styles.textarea}
-                      />
+                      <div style={{ gridColumn: "2 / 3", width: "100%" }}>
+                        <textarea
+                          name="billingStreet2"
+                          value={formData.billingStreet2}
+                          onChange={handleChange}
+                          placeholder="Street 2"
+                          style={styles.addressTextarea}
+                        />
+                      </div>
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>City <Info size={14} className="text-gray-400" /></label>
-                      <input
-                        type="text"
-                        name="billingCity"
-                        value={formData.billingCity}
-                        onChange={handleChange}
-                        style={styles.input}
-                      />
+                        <input
+                          type="text"
+                          name="billingCity"
+                          value={formData.billingCity}
+                          onChange={handleChange}
+                          style={styles.addressInput}
+                        />
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>State <Info size={14} className="text-gray-400" /></label>
-                      <div style={{ position: "relative" }}>
-                        <input
-                          type="text"
-                          name="billingState"
-                          value={formData.billingState}
-                          onChange={handleChange}
-                          placeholder="Select or type to add"
-                          style={styles.input}
-                        />
-                        <ChevronDown
-                          size={16}
-                          style={{
-                            position: "absolute",
-                            right: "12px",
-                            top: "50%",
-                            transform: "translateY(-50%)",
-                            color: "#6b7280",
-                            pointerEvents: "none",
+                      <div ref={billingStateDropdownRef} style={{ position: "relative", width: "100%" }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsBillingStateDropdownOpen((prev) => !prev);
+                            setBillingStateSearch("");
                           }}
-                        />
+                          style={{
+                            ...styles.addressInput,
+                            textAlign: "left",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <span>{formData.billingState || "Select or type to add"}</span>
+                          <ChevronDown size={16} style={{ color: "#6b7280", flexShrink: 0 }} />
+                        </button>
+                        {isBillingStateDropdownOpen && (
+                          <div style={{
+                            position: "absolute",
+                            top: "calc(100% + 4px)",
+                            left: 0,
+                            right: 0,
+                            backgroundColor: "#fff",
+                            border: "1px solid #d1d5db",
+                            borderRadius: "6px",
+                            boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                            zIndex: 50,
+                            maxHeight: "260px",
+                            overflow: "auto",
+                          }}>
+                            <div style={{ padding: "8px 10px", borderBottom: "1px solid #e5e7eb" }}>
+                              <input
+                                autoFocus
+                                value={billingStateSearch}
+                                onChange={(e) => setBillingStateSearch(e.target.value)}
+                                placeholder="Search states"
+                                style={{ ...styles.dropdownSearchInput, width: "260px" }}
+                              />
+                            </div>
+                            {filteredBillingStates.length > 0 ? filteredBillingStates.map((state) => (
+                              <button
+                                key={state}
+                                type="button"
+                                onClick={() => {
+                                  setFormData((prev) => ({ ...prev, billingState: state }));
+                                  setIsBillingStateDropdownOpen(false);
+                                  setBillingStateSearch("");
+                                }}
+                                style={{
+                                  width: "100%",
+                                  textAlign: "left",
+                                  padding: "8px 12px",
+                                  border: "none",
+                                  background: "white",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {state}
+                              </button>
+                            )) : (
+                              <div style={{ padding: "8px 12px", color: "#6b7280" }}>No states found</div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>ZIP Code <Info size={14} className="text-gray-400" /></label>
-                      <input
-                        type="text"
-                        name="billingZipCode"
-                        value={formData.billingZipCode}
-                        onChange={handleChange}
-                        style={styles.input}
-                      />
+                        <input
+                          type="text"
+                          name="billingZipCode"
+                          value={formData.billingZipCode}
+                          onChange={handleChange}
+                          style={styles.addressInput}
+                        />
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>Phone <Info size={14} className="text-gray-400" /></label>
-                      <input
-                        type="tel"
-                        name="billingPhone"
-                        value={formData.billingPhone}
-                        onChange={handleChange}
-                        style={styles.input}
-                      />
+                        <input
+                          type="tel"
+                          name="billingPhone"
+                          value={formData.billingPhone}
+                          onChange={handleChange}
+                          style={styles.addressInput}
+                        />
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>Fax Number <Info size={14} className="text-gray-400" /></label>
-                      <input
-                        type="text"
-                        name="billingFax"
-                        value={formData.billingFax}
-                        onChange={handleChange}
-                        style={styles.input}
-                      />
+                        <input
+                          type="text"
+                          name="billingFax"
+                          value={formData.billingFax}
+                          onChange={handleChange}
+                          style={styles.addressInput}
+                        />
                     </div>
                   </div>
 
@@ -2023,36 +2696,81 @@ export default function NewVendor() {
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>Attention <Info size={14} className="text-gray-400" /></label>
-                      <input
-                        type="text"
-                        name="shippingAttention"
-                        value={formData.shippingAttention}
-                        onChange={handleChange}
-                        style={styles.input}
-                      />
+                        <input
+                          type="text"
+                          name="shippingAttention"
+                          value={formData.shippingAttention}
+                          onChange={handleChange}
+                          style={styles.addressInput}
+                        />
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>Country/Region <Info size={14} className="text-gray-400" /></label>
-                      <div style={{ position: "relative" }}>
-                        <input
-                          type="text"
-                          name="shippingCountry"
-                          value={formData.shippingCountry}
-                          onChange={handleChange}
-                          placeholder="Select or type to add"
-                          style={styles.input}
-                        />
-                        <ChevronDown
-                          size={16}
-                          style={{
-                            position: "absolute",
-                            right: "12px",
-                            top: "50%",
-                            transform: "translateY(-50%)",
-                            color: "#6b7280",
-                            pointerEvents: "none",
+                      <div ref={shippingCountryDropdownRef} style={{ position: "relative", width: "100%" }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsShippingCountryDropdownOpen((prev) => !prev);
+                            setShippingCountrySearch("");
                           }}
-                        />
+                          style={{
+                            ...styles.addressInput,
+                            textAlign: "left",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <span>{formData.shippingCountry || "Select or type to add"}</span>
+                          <ChevronDown size={16} style={{ color: "#6b7280", flexShrink: 0 }} />
+                        </button>
+                        {isShippingCountryDropdownOpen && (
+                          <div style={{
+                            position: "absolute",
+                            top: "calc(100% + 4px)",
+                            left: 0,
+                            right: 0,
+                            backgroundColor: "#fff",
+                            border: "1px solid #d1d5db",
+                            borderRadius: "6px",
+                            boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                            zIndex: 50,
+                            maxHeight: "260px",
+                            overflow: "auto",
+                          }}>
+                            <div style={{ padding: "8px 10px", borderBottom: "1px solid #e5e7eb" }}>
+                              <input
+                                autoFocus
+                                value={shippingCountrySearch}
+                                onChange={(e) => setShippingCountrySearch(e.target.value)}
+                                placeholder="Search countries"
+                                style={{ ...styles.dropdownSearchInput, width: "260px" }}
+                              />
+                            </div>
+                            {filteredShippingCountries.map((country) => (
+                              <button
+                                key={country}
+                                type="button"
+                                onClick={() => {
+                                  setFormData((prev) => ({ ...prev, shippingCountry: country }));
+                                  setIsShippingCountryDropdownOpen(false);
+                                  setShippingCountrySearch("");
+                                }}
+                                style={{
+                                  width: "100%",
+                                  textAlign: "left",
+                                  padding: "8px 12px",
+                                  border: "none",
+                                  background: "white",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {country}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div style={styles.formGroup}>
@@ -2063,80 +2781,129 @@ export default function NewVendor() {
                           value={formData.shippingStreet1}
                           onChange={handleChange}
                           placeholder="Street 1"
-                          style={styles.textarea}
+                          style={styles.addressTextarea}
                         />
                       </div>
-                      <textarea
-                        name="shippingStreet2"
-                        value={formData.shippingStreet2}
-                        onChange={handleChange}
-                        placeholder="Street 2"
-                        style={styles.textarea}
-                      />
+                      <div style={{ gridColumn: "2 / 3", width: "100%" }}>
+                        <textarea
+                          name="shippingStreet2"
+                          value={formData.shippingStreet2}
+                          onChange={handleChange}
+                          placeholder="Street 2"
+                          style={styles.addressTextarea}
+                        />
+                      </div>
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>City <Info size={14} className="text-gray-400" /></label>
-                      <input
-                        type="text"
-                        name="shippingCity"
-                        value={formData.shippingCity}
-                        onChange={handleChange}
-                        style={styles.input}
-                      />
+                        <input
+                          type="text"
+                          name="shippingCity"
+                          value={formData.shippingCity}
+                          onChange={handleChange}
+                          style={styles.addressInput}
+                        />
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>State <Info size={14} className="text-gray-400" /></label>
-                      <div style={{ position: "relative" }}>
-                        <input
-                          type="text"
-                          name="shippingState"
-                          value={formData.shippingState}
-                          onChange={handleChange}
-                          placeholder="Select or type to add"
-                          style={styles.input}
-                        />
-                        <ChevronDown
-                          size={16}
-                          style={{
-                            position: "absolute",
-                            right: "12px",
-                            top: "50%",
-                            transform: "translateY(-50%)",
-                            color: "#6b7280",
-                            pointerEvents: "none",
+                      <div ref={shippingStateDropdownRef} style={{ position: "relative", width: "100%" }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsShippingStateDropdownOpen((prev) => !prev);
+                            setShippingStateSearch("");
                           }}
-                        />
+                          style={{
+                            ...styles.addressInput,
+                            textAlign: "left",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <span>{formData.shippingState || "Select or type to add"}</span>
+                          <ChevronDown size={16} style={{ color: "#6b7280", flexShrink: 0 }} />
+                        </button>
+                        {isShippingStateDropdownOpen && (
+                          <div style={{
+                            position: "absolute",
+                            top: "calc(100% + 4px)",
+                            left: 0,
+                            right: 0,
+                            backgroundColor: "#fff",
+                            border: "1px solid #d1d5db",
+                            borderRadius: "6px",
+                            boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                            zIndex: 50,
+                            maxHeight: "260px",
+                            overflow: "auto",
+                          }}>
+                            <div style={{ padding: "8px 10px", borderBottom: "1px solid #e5e7eb" }}>
+                              <input
+                                autoFocus
+                                value={shippingStateSearch}
+                                onChange={(e) => setShippingStateSearch(e.target.value)}
+                                placeholder="Search states"
+                                style={{ ...styles.dropdownSearchInput, width: "260px" }}
+                              />
+                            </div>
+                            {filteredShippingStates.length > 0 ? filteredShippingStates.map((state) => (
+                              <button
+                                key={state}
+                                type="button"
+                                onClick={() => {
+                                  setFormData((prev) => ({ ...prev, shippingState: state }));
+                                  setIsShippingStateDropdownOpen(false);
+                                  setShippingStateSearch("");
+                                }}
+                                style={{
+                                  width: "100%",
+                                  textAlign: "left",
+                                  padding: "8px 12px",
+                                  border: "none",
+                                  background: "white",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {state}
+                              </button>
+                            )) : (
+                              <div style={{ padding: "8px 12px", color: "#6b7280" }}>No states found</div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>ZIP Code <Info size={14} className="text-gray-400" /></label>
-                      <input
-                        type="text"
-                        name="shippingZipCode"
-                        value={formData.shippingZipCode}
-                        onChange={handleChange}
-                        style={styles.input}
-                      />
+                        <input
+                          type="text"
+                          name="shippingZipCode"
+                          value={formData.shippingZipCode}
+                          onChange={handleChange}
+                          style={styles.addressInput}
+                        />
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>Phone <Info size={14} className="text-gray-400" /></label>
-                      <input
-                        type="tel"
-                        name="shippingPhone"
-                        value={formData.shippingPhone}
-                        onChange={handleChange}
-                        style={styles.input}
-                      />
+                        <input
+                          type="tel"
+                          name="shippingPhone"
+                          value={formData.shippingPhone}
+                          onChange={handleChange}
+                          style={styles.addressInput}
+                        />
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>Fax Number <Info size={14} className="text-gray-400" /></label>
-                      <input
-                        type="text"
-                        name="shippingFax"
-                        value={formData.shippingFax}
-                        onChange={handleChange}
-                        style={styles.input}
-                      />
+                        <input
+                          type="text"
+                          name="shippingFax"
+                          value={formData.shippingFax}
+                          onChange={handleChange}
+                          style={styles.addressInput}
+                        />
                     </div>
                   </div>
                 </div>
@@ -2158,8 +2925,7 @@ export default function NewVendor() {
             }
 
             {/* Contact Persons Tab Content */}
-            {
-              activeTab === "Contact Persons" && (
+            {activeTab === "Contact Persons" && (
                 <>
                   <table style={styles.contactPersonsTable}>
                     <thead style={styles.contactPersonsHeader}>
@@ -2352,12 +3118,10 @@ export default function NewVendor() {
                     Add Contact Person
                   </button>
                 </>
-              )
-            }
+            )}
 
             {/* Custom Fields Tab Content */}
-            {
-              activeTab === "Custom Fields" && (
+            {activeTab === "Custom Fields" && (
                 <div style={styles.emptyState}>
                   <div style={styles.emptyStateText}>
                     Start adding custom fields for your Customers and Vendors by going to{" "}
@@ -2366,12 +3130,10 @@ export default function NewVendor() {
                     <span style={{ fontWeight: "600" }}>Customers and Vendors</span>. You can also refine the address format of your Customers and Vendors from there.
                   </div>
                 </div>
-              )
-            }
+            )}
 
             {/* Reporting Tags Tab Content */}
-            {
-              activeTab === "Reporting Tags" && (
+            {activeTab === "Reporting Tags" && (
                 <div style={styles.emptyState}>
                   <div style={styles.emptyStateText}>
                     You've not created any Reporting Tags.
@@ -2382,12 +3144,10 @@ export default function NewVendor() {
                     <span style={{ fontWeight: "600" }}>Reporting Tags</span>.
                   </div>
                 </div>
-              )
-            }
+            )}
 
             {/* Remarks Tab Content */}
-            {
-              activeTab === "Remarks" && (
+            {activeTab === "Remarks" && (
                 <div className="border-b border-gray-900/10 pb-12">
                   <div className="mt-10">
                     <label htmlFor="remarks" className="flex items-center gap-1 text-sm/6 font-medium text-gray-900">
@@ -2401,38 +3161,35 @@ export default function NewVendor() {
                         value={formData.remarks}
                         onChange={handleChange}
                         placeholder="Enter remarks..."
-                        className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                        className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 shadow-sm transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-md focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6"
                       />
                     </div>
                   </div>
                 </div>
-              )
-            }
+            )}
 
 
             {/* Action Buttons */}
-            <div className="mt-6 flex items-center justify-start gap-x-6">
+            <div className="sticky bottom-0 z-20 flex items-center gap-3 bg-transparent px-0 py-4">
               <button
                 type="button"
                 onClick={handleCancel}
                 disabled={isSaving}
-                className="cursor-pointer transition-all bg-white text-gray-700 px-6 py-2 rounded-lg border-gray-300 border-b-[4px] hover:brightness-110 hover:-translate-y-[1px] hover:border-b-[6px] active:border-b-[2px] active:brightness-90 active:translate-y-[2px] text-sm font-semibold"
+                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isSaving}
-                className="cursor-pointer transition-all bg-[#156372] text-white px-6 py-2 rounded-lg border-red-600 border-b-[4px] hover:brightness-110 hover:-translate-y-[1px] hover:border-b-[6px] active:border-b-[2px] active:brightness-90 active:translate-y-[2px] text-sm font-semibold"
+                className="rounded-md bg-[#156372] px-5 py-2 text-sm font-medium text-white hover:bg-[#0d4a52]"
               >
                 {isSaving ? "Saving..." : "Save"}
               </button>
             </div>
-          </form >
-        </div >
+        </form>
         {/* Right Column - Documents Table */}
-        {
-          documents.length > 0 && (
+        {documents.length > 0 && (
             <div style={styles.rightSidebar}>
               <div style={styles.documentsHeader}>
                 <Search size={16} style={{ color: "#6b7280" }} />
@@ -2465,8 +3222,12 @@ export default function NewVendor() {
                             onClick={() => handleRemoveDocument(doc.id)}
                             style={styles.documentsTableActionBtn}
                             title="Remove file"
-                            onMouseEnter={(e) => (e.target.style.backgroundColor = "#fee2e2")}
-                            onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = "#fee2e2";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = "transparent";
+                            }}
                           >
                             <Trash2 size={14} />
                           </button>
@@ -2479,13 +3240,51 @@ export default function NewVendor() {
             </div>
           )
         }
-      </div >
+      </div>
       <ConfigurePaymentTermsModal
         isOpen={showConfigureTerms}
         onClose={() => setShowConfigureTerms(false)}
       />
-    </div >
+      {showNewCurrencyModal && (
+        <NewCurrencyModal
+          onClose={() => setShowNewCurrencyModal(false)}
+          onSave={async (currencyData) => {
+            try {
+              const response = await currenciesAPI.create({
+                code: currencyData.code.split(" - ")[0],
+                symbol: currencyData.symbol,
+                name: currencyData.name,
+                decimal_places: parseInt(currencyData.decimalPlaces, 10) || 2,
+                format: currencyData.format,
+                is_base_currency: currencyData.isBaseCurrency,
+              });
+
+              const createdCurrency = response?.data || response;
+              const createdValue = `${createdCurrency.code || currencyData.code.split(" - ")[0]} - ${createdCurrency.name || currencyData.name}`;
+
+              setCurrencies((prev) => {
+                const next = Array.isArray(prev) ? [...prev] : [];
+                next.push({
+                  _id: createdCurrency._id || createdCurrency.id || crypto.randomUUID(),
+                  code: createdCurrency.code || currencyData.code.split(" - ")[0],
+                  name: createdCurrency.name || currencyData.name,
+                  isBaseCurrency: Boolean(createdCurrency.isBaseCurrency || createdCurrency.is_base_currency),
+                });
+                return next;
+              });
+
+              setFormData((prev) => ({ ...prev, currency: createdValue }));
+              setShowNewCurrencyModal(false);
+            } catch (error) {
+              console.error("Error saving currency:", error);
+              alert("Error saving currency");
+            }
+          }}
+        />
+      )}
+    </div>
   );
 }
+
 
 

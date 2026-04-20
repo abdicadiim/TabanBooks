@@ -2,8 +2,20 @@ import React, { useState, useEffect } from "react";
 import { X, Plus } from "lucide-react";
 import { getPaymentTerms, savePaymentTerms } from "../shared/purchasesModel";
 
-export default function ConfigurePaymentTermsModal({ isOpen, onClose, onSave }) {
-    const [terms, setTerms] = useState([]);
+type PaymentTerm = {
+    id: string;
+    name: string;
+    days: number;
+};
+
+type ConfigurePaymentTermsModalProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onSave?: (terms: PaymentTerm[]) => void;
+};
+
+export default function ConfigurePaymentTermsModal({ isOpen, onClose, onSave }: ConfigurePaymentTermsModalProps) {
+    const [terms, setTerms] = useState<PaymentTerm[]>([]);
     const [newTermName, setNewTermName] = useState("");
     const [newTermDays, setNewTermDays] = useState("");
 
@@ -27,7 +39,7 @@ export default function ConfigurePaymentTermsModal({ isOpen, onClose, onSave }) 
         }
     };
 
-    const handleRemoveTerm = (id) => {
+    const handleRemoveTerm = (id: string) => {
         setTerms(terms.filter((term) => term.id !== id));
     };
 
@@ -116,7 +128,7 @@ export default function ConfigurePaymentTermsModal({ isOpen, onClose, onSave }) 
     );
 }
 
-const styles = {
+const styles: Record<string, React.CSSProperties> = {
     overlay: {
         position: "fixed",
         top: 0,
