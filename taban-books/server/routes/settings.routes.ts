@@ -433,6 +433,10 @@ router
   .put(senderEmailController.updateSenderEmail)
   .delete(senderEmailController.deleteSenderEmail);
 
+router
+  .route("/settings/sender-emails/:id/resend-verification")
+  .post(senderEmailController.resendSenderVerification);
+
 // Email Template routes
 router
   .route("/settings/email-templates")

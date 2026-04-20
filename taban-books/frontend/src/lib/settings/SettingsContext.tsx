@@ -5,6 +5,7 @@ type SettingsShape = {
   general?: {
     companyDisplayName?: string;
     schoolDisplayName?: string;
+    organizationEmail?: string;
   };
 };
 
@@ -23,6 +24,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       general: {
         companyDisplayName,
         schoolDisplayName: companyDisplayName,
+        organizationEmail: String(organization?.email || "").trim(),
       },
     };
   });
@@ -38,6 +40,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         general: {
           companyDisplayName,
           schoolDisplayName: companyDisplayName,
+          organizationEmail: String(organization?.email || "").trim(),
         },
       });
     };

@@ -132,7 +132,7 @@ export default function NewTransactionNumberSeriesPage({ onBack }: NewTransactio
   };
 
   return (
-    <div className="flex flex-col font-sans">
+    <div className="flex min-w-0 flex-col font-sans bg-transparent">
       {/* Title with Close icon */}
       <div className="flex items-center justify-between mb-8">
         <h2 className="text-[17px] font-semibold text-gray-800">New Series</h2>
@@ -221,7 +221,7 @@ export default function NewTransactionNumberSeriesPage({ onBack }: NewTransactio
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded border border-[#edf2f7] shadow-sm overflow-hidden mb-12">
+      <div className="min-w-0 bg-transparent rounded-none border-0 shadow-none overflow-hidden mb-12">
         <table className="w-full text-left border-collapse">
           <thead className="bg-[#f8fafc] border-b border-[#edf2f7]">
             <tr>

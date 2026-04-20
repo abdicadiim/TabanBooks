@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import SenderEmail from "../models/SenderEmail.js";
 import User from "../models/User.js";
+import { sendEmail } from "../services/email.service.js";
 
 /**
  * Get all sender emails for an organization
@@ -103,10 +104,18 @@ export const updateSenderEmail = async (req: Request, res: Response): Promise<vo
             await SenderEmail.updateMany({ organization: organizationId }, { isPrimary: false });
         }
 
+        const normalizedNextEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+        const normalizedCurrentEmail = String(sender.email || "").trim().toLowerCase();
+        const emailChanged = Boolean(normalizedNextEmail) && normalizedNextEmail !== normalizedCurrentEmail;
+
         sender.name = name || sender.name;
         sender.email = email || sender.email;
         sender.isPrimary = isPrimary !== undefined ? isPrimary : sender.isPrimary;
-        if (isVerified !== undefined) sender.isVerified = Boolean(isVerified);
+        if (emailChanged) {
+            sender.isVerified = false;
+        } else if (isVerified !== undefined) {
+            sender.isVerified = Boolean(isVerified);
+        }
 
         // Update SMTP configuration if provided
         if (smtpHost !== undefined) sender.smtpHost = smtpHost;
@@ -118,6 +127,63 @@ export const updateSenderEmail = async (req: Request, res: Response): Promise<vo
         await sender.save();
 
         res.json({ success: true, data: sender });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+/**
+ * Resend sender email verification
+ * POST /api/settings/sender-emails/:id/resend-verification
+ */
+export const resendSenderVerification = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { id } = req.params;
+        const organizationId = (req as any).user?.organizationId;
+
+        if (!organizationId) {
+            res.status(401).json({ success: false, message: "Organization ID is required" });
+            return;
+        }
+
+        const sender = await SenderEmail.findOne({ _id: id, organization: organizationId });
+        if (!sender) {
+            res.status(404).json({ success: false, message: "Sender email not found" });
+            return;
+        }
+
+        const message = `
+          <div style="font-family: Arial, sans-serif; color: #0f172a; line-height: 1.6;">
+            <h2 style="margin: 0 0 12px;">Sender email verified</h2>
+            <p style="margin: 0 0 12px;">The sender email <strong>${sender.email}</strong> has been verified for your Taban Books organization.</p>
+            <p style="margin: 0;">You can now use this address for outgoing mail.</p>
+          </div>
+        `;
+
+        const mailResult = await sendEmail({
+            to: sender.email,
+            subject: "Your sender email has been verified",
+            html: message,
+            text: `The sender email ${sender.email} has been verified for your Taban Books organization.`,
+            organizationId,
+        });
+
+        if (!mailResult.success) {
+            res.status(500).json({
+                success: false,
+                message: mailResult.error || "Failed to send verification email",
+            });
+            return;
+        }
+
+        sender.isVerified = true;
+        await sender.save();
+
+        res.json({
+            success: true,
+            message: "Verification email sent successfully",
+            data: sender,
+        });
     } catch (error: any) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -165,13 +231,22 @@ export const getPrimarySender = async (req: Request, res: Response): Promise<voi
         }
 
         const primarySender = await SenderEmail.findOne({ organization: organizationId, isPrimary: true });
+        if (primarySender?.isVerified) {
+            res.json({ success: true, data: primarySender });
+            return;
+        }
+
+        const verifiedSender = await SenderEmail.findOne({ organization: organizationId, isVerified: true });
+        if (verifiedSender) {
+            res.json({ success: true, data: verifiedSender });
+            return;
+        }
 
         if (primarySender) {
             res.json({ success: true, data: primarySender });
             return;
         }
 
-        // Fallback: If no primary marked, find any verified sender
         const anySender = await SenderEmail.findOne({ organization: organizationId });
         if (anySender) {
             res.json({ success: true, data: anySender });

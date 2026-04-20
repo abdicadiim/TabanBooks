@@ -8,6 +8,7 @@ import mongoose, { Document, Schema } from "mongoose";
 export interface ILocation extends Document {
   organization: mongoose.Types.ObjectId;
   name: string;
+  locationCode?: string;
   type: "Business" | "Warehouse" | "General";
   isDefault: boolean;
   defaultTransactionSeries: string;
@@ -44,6 +45,11 @@ const locationSchema = new Schema<ILocation>(
     name: {
       type: String,
       required: [true, "Location name is required"],
+      trim: true,
+    },
+    locationCode: {
+      type: String,
+      default: "",
       trim: true,
     },
     type: {

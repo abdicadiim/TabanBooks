@@ -36,6 +36,7 @@ export interface User {
   name: string;
   email: string;
   role: string;
+  organizationName?: string;
   profile?: {
     phone?: string;
     avatar?: string;

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Edit, Trash2, Info, Check } from "lucide-react";
+import { Plus, Edit, Trash2, Info, Check, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import NewEmailTemplateModal from "./NewEmailTemplateModal";
 import SignatureSettingsModal from "./SignatureSettingsModal";
 import AddAdditionalContactModal from "./AddAdditionalContactModal";
 import ShowMailContentModal from "./ShowMailContentModal";
+import Skeleton from "../../components/ui/Skeleton";
 import {
   emailTemplatesAPI,
   senderEmailsAPI,
@@ -13,6 +14,10 @@ import {
   emailRelayAPI,
 } from "../../services/api";
 import { getTemplateKeyFromLabel } from "./emailTemplateUtils";
+import { useSettings } from "../../lib/settings/SettingsContext";
+import { useUser } from "../../lib/auth/UserContext";
+
+const DEFAULT_SYSTEM_SENDER_EMAIL = "message-service@sender.tabanbooks.com";
 
 interface Sender {
   _id?: string;
@@ -42,6 +47,8 @@ interface RelayServer {
 
 export default function EmailNotificationsPage() {
   const navigate = useNavigate();
+  const { settings } = useSettings();
+  const { user } = useUser();
   const [selectedEmail, setSelectedEmail] = useState<string | null>(null);
   const [selectedPreference, setSelectedPreference] = useState<string | null>("Sender Email Preferences");
   const [showNewTemplateModal, setShowNewTemplateModal] = useState(false);
@@ -127,6 +134,19 @@ export default function EmailNotificationsPage() {
     fetchTemplates();
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("senderVerified") === "1") {
+      showSuccess("Sender email verified successfully.");
+      params.delete("senderVerified");
+      const nextSearch = params.toString();
+      const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}`;
+      window.history.replaceState({}, "", nextUrl);
+      return;
+    }
+  }, []);
+
   // Auto-hide success notification after 3 seconds
   useEffect(() => {
     if (showSuccessNotification) {
@@ -162,76 +182,78 @@ export default function EmailNotificationsPage() {
 
   const preferences = [
     "Sender Email Preferences",
-    "Email Relay",
     "Email Insights"
   ];
 
   const emailCategories = [
     {
-      category: "GENERAL",
+      category: "General",
       emails: [
         "Customer Review Notification",
-        "Item Notification"
+        "Item Notification",
+        "Task Notification"
       ]
     },
     {
-      category: "SALES",
+      category: "Sales",
       emails: [
         "Customer Notification",
         "Customer Statement",
         "Quote Notification",
+        "Retainer Invoice Notification",
         "Invoice Notification",
-        "Recurring Invoice Notification",
+        "Sales Receipt Notification",
         "Credit Note Notification",
         "Customer Portal Invitation",
         "Customer Portal Link"
       ]
     },
     {
-      category: "PURCHASES",
+      category: "Purchases",
       emails: [
-        "Vendor Statement",
-        "Vendor Credit Notification",
-        "Vendor Portal Invitation",
         "Expense Notification",
-        "Recurring Expense",
-        "Recurring Expense Notification",
-        "Expense Refund Notification",
-        "Purchase Order Notification",
-        "Bill Notification",
-        "Recurring Bill Notification"
+        "Recurring Expense Notification"
       ]
     },
     {
-      category: "TIME TRACKING",
-      emails: ["Project Notification", "Timesheet Notification"]
+      category: "Time Tracking",
+      emails: ["Project Notification", "Timesheet Notification", "Timesheet Customer Approval"]
     },
     {
-      category: "ACCOUNTING",
-      emails: [
-        "Chart of Accounts Notification",
-        "Budget Notification",
-        "Transfer Fund Notification",
-        "Deposit Notification",
-        "Owner Drawings Notification",
-        "Owner Contribution Notification",
-        "Other Income Notification",
-        "Interest Income Notification"
-      ]
-    },
-    {
-      category: "CUSTOMER PAYMENTS",
+      category: "Customer Payments",
       emails: [
         "Payment Thank-you",
+        "Retainer Payment Thank you",
         "Payment Initiated",
         "Payment Refund",
-        "Card Payment Notification",
-        "Refund/Credit Notification"
+        "Offline Payment Failure"
       ]
     },
     {
-      category: "VENDOR PAYMENTS",
-      emails: ["Payment Made Notification"]
+      category: "Subscriptions",
+      emails: [
+        "New Subscription",
+        "Update Subscription",
+        "One-time Addon Purchase",
+        "Subscription Renewal",
+        "Reactivate Subscription",
+        "Subscription Reactivation Scheduled",
+        "Cancel Subscription",
+        "Change Subscription Status",
+        "Subscription Renewal Ahead"
+      ]
+    },
+    {
+      category: "Expiry & Cancellation",
+      emails: [
+        "Trial About to Expire",
+        "Subscription About to Cancel",
+        "Subscription about to Expire",
+        "Card about to Expire",
+        "Card Expired",
+        "Subscription Expired",
+        "Trial Expired"
+      ]
     }
   ];
 
@@ -262,58 +284,64 @@ export default function EmailNotificationsPage() {
     return !domainSenders.some((s) => Boolean(s.isVerified));
   });
   const primarySender = senders.find((sender) => sender.isPrimary);
-  const sendingFromAddress = primarySender?.isVerified
-    ? primarySender.email
-    : "message-service@sender.tabanbooks.com";
-  const sendingFromLabel = primarySender?.isVerified
-    ? "Primary sender email"
-    : "Email address of Taban Books";
+  const orgEmail = String(settings?.general?.organizationEmail || "").trim();
+  const orgName = String(settings?.general?.companyDisplayName || settings?.general?.schoolDisplayName || "").trim() || "Organization";
+  const sendingFromAddress = primarySender?.isVerified ? primarySender.email : DEFAULT_SYSTEM_SENDER_EMAIL;
 
-  const markPrimaryContact = async (sender: Sender) => {
+  const getSenderId = (sender: Sender) => String(sender._id || sender.id || "").trim();
+
+  const handleResendSenderVerification = async (sender: Sender) => {
+    const senderId = getSenderId(sender);
+    if (!senderId) return;
     try {
       setErrorMessage(null);
-      const response = await senderEmailsAPI.update(sender._id || sender.id, { isPrimary: true });
-      if (!response?.success) {
-        setErrorMessage(response?.message || "Failed to mark as primary.");
-        return;
+      const response = await senderEmailsAPI.resendVerification(senderId);
+      if (response?.success) {
+        await fetchSenders();
+        showSuccess(response?.message || "Verification email sent.");
+      } else {
+        setErrorMessage(response?.message || "Failed to resend verification email.");
       }
-      await fetchSenders();
-      showSuccess("Primary sender updated.");
-    } catch (error) {
-      console.error("Error marking sender as primary:", error);
-      setErrorMessage("Failed to mark as primary.");
-    }
-  };
-
-  const resendVerification = async (sender: Sender) => {
-    try {
-      setErrorMessage(null);
-      const response = await senderEmailsAPI.update(sender._id || sender.id, { isVerified: true });
-      if (!response?.success) {
-        setErrorMessage(response?.message || "Failed to resend verification.");
-        return;
-      }
-      await fetchSenders();
-      showSuccess("Verification status updated.");
-    } catch (error) {
-      console.error("Error resending verification:", error);
-      setErrorMessage("Failed to resend verification.");
-    }
-  };
-
-  const authenticateDomain = async (domain: string) => {
-    try {
-      setErrorMessage(null);
-      const domainSenders = senders.filter((sender) => getDomain(sender.email) === domain);
-      await Promise.all(
-        domainSenders.map((sender) =>
-          senderEmailsAPI.update(sender._id || sender.id, { isVerified: true })
-        )
-      );
-      await fetchSenders();
-      showSuccess(`Domain ${domain} authenticated.`);
     } catch (error: any) {
-      setErrorMessage(error?.message || `Failed to authenticate ${domain}.`);
+      console.error("Error resending sender verification:", error);
+      setErrorMessage(error?.message || "Failed to resend verification email.");
+    }
+  };
+
+  const handleMarkSenderPrimary = async (sender: Sender) => {
+    const senderId = getSenderId(sender);
+    if (!senderId) return;
+    try {
+      setErrorMessage(null);
+      const response = await senderEmailsAPI.update(senderId, { isPrimary: true });
+      if (response?.success) {
+        await fetchSenders();
+        showSuccess("Primary sender updated.");
+      } else {
+        setErrorMessage(response?.message || "Failed to update primary sender.");
+      }
+    } catch (error: any) {
+      console.error("Error updating primary sender:", error);
+      setErrorMessage(error?.message || "Failed to update primary sender.");
+    }
+  };
+
+  const handleDeleteSender = async (sender: Sender) => {
+    const senderId = getSenderId(sender);
+    if (!senderId) return;
+    if (!window.confirm("Delete this sender?")) return;
+    try {
+      setErrorMessage(null);
+      const response = await senderEmailsAPI.delete(senderId);
+      if (response?.success) {
+        await fetchSenders();
+        showSuccess("Sender deleted.");
+      } else {
+        setErrorMessage(response?.message || "Failed to delete sender.");
+      }
+    } catch (error: any) {
+      console.error("Error deleting sender:", error);
+      setErrorMessage(error?.message || "Failed to delete sender.");
     }
   };
 
@@ -394,12 +422,24 @@ export default function EmailNotificationsPage() {
   };
 
   return (
-    <div className="p-6 max-w-7xl">
+    <div className="w-full">
       {/* Success Notification */}
       {showSuccessNotification && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[10001] bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-fade-in">
-          <Check size={20} />
-          <span>{successMessage}</span>
+        <div className="fixed top-4 right-4 z-[10001] min-w-[320px] max-w-[420px] rounded-xl border border-slate-100 bg-white px-4 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.14)]">
+          <button
+            type="button"
+            onClick={() => setShowSuccessNotification(false)}
+            className="absolute right-2 top-2 text-slate-400 transition hover:text-slate-600"
+            aria-label="Dismiss notification"
+          >
+            <X size={16} />
+          </button>
+          <div className="flex items-center gap-3 pr-6">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-green-500 text-white">
+              <Check size={16} strokeWidth={3} />
+            </div>
+            <span className="text-sm font-medium text-slate-700">{successMessage}</span>
+          </div>
         </div>
       )}
       {errorMessage && (
@@ -408,12 +448,14 @@ export default function EmailNotificationsPage() {
         </div>
       )}
 
-      <h1 className="text-2xl font-semibold text-gray-900 mb-6">Emails</h1>
-
-      <div className="flex gap-6">
+      <div className="flex items-stretch gap-4">
         {/* Left Sidebar - Email List */}
-        <div className="w-80 bg-white rounded-lg border border-gray-200 p-4 max-h-[600px] overflow-y-auto">
-          <div className="space-y-4">
+        <div className="hidden w-80 bg-white rounded-lg border border-gray-200 h-[calc(100vh-2rem)] flex flex-col">
+          <div className="shrink-0 border-b border-gray-200 px-4 py-3">
+            <h2 className="text-xl font-semibold text-gray-900">Emails</h2>
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 pt-4 pb-0">
+            <div className="space-y-4">
             {/* PREFERENCES Section */}
             <div>
               <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">PREFERENCES</h3>
@@ -467,22 +509,20 @@ export default function EmailNotificationsPage() {
                 ))}
               </div>
             </div>
+            </div>
           </div>
         </div>
 
         {/* Right Content - Email Details */}
-        <div className="flex-1 bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex-1 rounded-lg p-6 h-[calc(100vh-2rem)] overflow-y-auto">
           {selectedPreference === "Sender Email Preferences" ? (
             <div>
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-semibold text-gray-900">Sender Email Preferences</h2>
                 <div className="flex items-center gap-3">
-                  <button className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-                    Page Tips
-                  </button>
                   <button
                     onClick={() => setShowAddContactModal(true)}
-                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 flex items-center gap-2"
+                    className="px-4 py-2 text-sm font-medium text-white bg-[#156372] rounded-lg hover:bg-[#0f4e5a] flex items-center gap-2"
                   >
                     <Plus size={16} />
                     New Sender
@@ -490,147 +530,142 @@ export default function EmailNotificationsPage() {
                 </div>
               </div>
 
-              {/* Domain Classification */}
-              <div className="mb-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <h3 className="text-sm font-semibold text-gray-900">Domain Classification</h3>
-                  <Info size={14} className="text-gray-400" />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <div className="text-xs font-semibold text-red-700 uppercase mb-2">Unauthenticated Domains</div>
-                    {unauthenticatedDomains.length === 0 ? (
-                      <p className="text-sm text-gray-600">No unauthenticated domains.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {unauthenticatedDomains.map((domain) => (
-                          <div key={domain} className="flex items-center justify-between">
-                            <span className="text-sm text-gray-800">{domain}</span>
-                            <button
-                              onClick={() => authenticateDomain(domain)}
-                              className="text-xs text-blue-700 hover:underline"
-                            >
-                              Authenticate Now
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <div className="text-xs font-semibold text-green-700 uppercase mb-2">Authenticated Domains</div>
-                    {authenticatedDomains.length === 0 ? (
-                      <p className="text-sm text-gray-600">No authenticated domains yet.</p>
-                    ) : (
-                      <div className="space-y-1">
-                        {authenticatedDomains.map((domain) => (
-                          <div key={domain} className="text-sm text-gray-800">{domain}</div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
               {/* Emails Are Sent Through Section */}
               <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-900 mb-2">EMAILS ARE SENT THROUGH</h3>
-                <div className="text-sm text-gray-700 mb-1">{sendingFromLabel}</div>
-                <div className="text-sm text-gray-600">{sendingFromAddress}</div>
+                <h3 className="text-sm font-semibold text-gray-900 mb-2">Public Domains</h3>
+                <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                  <div className="grid grid-cols-1 md:grid-cols-[320px_1fr]">
+                    <div className="p-5 border-b md:border-b-0 md:border-r border-slate-200">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 mb-3">
+                        EMAILS ARE SENT THROUGH
+                      </div>
+                      {loadingSenders ? (
+                        <>
+                          <Skeleton className="h-4 w-44 mb-2" />
+                          <Skeleton className="h-3 w-56" />
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-sm font-semibold text-slate-900">
+                            Email address of {orgName}
+                          </div>
+                          <div className="text-sm text-slate-500">
+                            ({sendingFromAddress})
+                          </div>
+                          {!primarySender?.isVerified && orgEmail ? (
+                            <div className="mt-1 text-xs text-slate-500">
+                              Reply-To: {orgEmail}
+                            </div>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                    <div className="p-5 bg-sky-50/60">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-sky-100 text-sky-700">
+                          <Info size={14} />
+                        </div>
+                        <p className="text-sm text-slate-700 leading-relaxed">
+                          Emails sent from a public domain may be flagged as spam. If you use a public domain address,
+                          the email will be delivered via a system sender. In all cases, the Reply-To address will be set to the from address.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              {/* Senders Table */}
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
                 <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                  <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">NAME</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">EMAIL ADDRESS</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">ACTIONS</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-700">Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-700">Email Address</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-700">Status</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-700">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-slate-200">
                     {loadingSenders && (
                       <tr>
-                        <td colSpan={3} className="px-4 py-6 text-sm text-gray-500">Loading sender emails...</td>
+                        <td colSpan={4} className="px-4 py-6 text-sm text-slate-500">
+                          Loading sender emails...
+                        </td>
                       </tr>
                     )}
                     {!loadingSenders && senders.length === 0 && (
                       <tr>
-                        <td colSpan={3} className="px-4 py-6 text-sm text-gray-500">No sender emails found.</td>
+                        <td colSpan={4} className="px-4 py-6 text-sm text-slate-500">
+                          No sender emails found.
+                        </td>
                       </tr>
                     )}
-                    {senders.map((sender) => (
-                      <tr key={sender._id || sender.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-gray-900">{sender.name}</span>
-                            {sender.isPrimary && (
-                              <span className="px-2 py-0.5 text-xs font-medium text-green-700 bg-green-50 rounded">
-                                PRIMARY
-                              </span>
+                    {senders.map((sender) => {
+                      const senderId = getSenderId(sender);
+                      const isVerified = Boolean(sender.isVerified);
+                      const isPrimary = Boolean(sender.isPrimary);
+                      return (
+                        <tr key={senderId || sender.email}>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-slate-900">{sender.name || "Unnamed sender"}</span>
+                              {isPrimary ? (
+                                <span className="rounded bg-lime-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-lime-700">Primary</span>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-700">{sender.email}</td>
+                          <td className="px-4 py-3">
+                            {isVerified ? (
+                              <span className="rounded bg-emerald-100 px-2 py-1 text-[11px] font-semibold text-emerald-700">Verified</span>
+                            ) : (
+                              <span className="rounded bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700">Unverified</span>
                             )}
-                            {!sender.isVerified && (
-                              <span className="px-2 py-0.5 text-xs font-medium text-amber-700 bg-amber-50 rounded">
-                                UNVERIFIED
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-sm text-gray-600">{sender.email}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-2">
-                            {!sender.isPrimary && (
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-end gap-2">
+                              {!isVerified ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleResendSenderVerification(sender)}
+                                  className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                >
+                                  Resend Email
+                                </button>
+                              ) : !isPrimary ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMarkSenderPrimary(sender)}
+                                  className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                >
+                                  Mark as Primary
+                                </button>
+                              ) : null}
                               <button
-                                onClick={() => markPrimaryContact(sender)}
-                                className="text-xs text-blue-700 hover:underline"
+                                type="button"
+                                onClick={() => setEditingSender(sender)}
+                                className="rounded-md p-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                aria-label="Edit sender"
                               >
-                                Mark as Primary
+                                <Edit size={16} />
                               </button>
-                            )}
-                            {!sender.isVerified && (
                               <button
-                                onClick={() => resendVerification(sender)}
-                                className="text-xs text-blue-700 hover:underline"
+                                type="button"
+                                onClick={() => handleDeleteSender(sender)}
+                                className="rounded-md p-2 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                                aria-label="Delete sender"
                               >
-                                Resend Email
+                                <Trash2 size={16} />
                               </button>
-                            )}
-                            <button
-                              onClick={() => setEditingSender(sender)}
-                              className="p-1.5 text-gray-600 hover:bg-gray-100 rounded transition"
-                            >
-                              <Edit size={16} />
-                            </button>
-                            <button
-                              onClick={async () => {
-                                if (window.confirm(`Are you sure you want to delete ${sender.name}?`)) {
-                                  try {
-                                    const response = await senderEmailsAPI.delete(sender._id || sender.id);
-                                    if (response?.success) {
-                                      await fetchSenders();
-                                      showSuccess("Sender deleted successfully.");
-                                    } else {
-                                      alert(response?.message || "Failed to delete sender");
-                                    }
-                                  } catch (error) {
-                                    console.error("Error deleting sender:", error);
-                                  }
-                                }
-                              }}
-                              className="p-1.5 text-gray-600 hover:bg-gray-100 rounded transition"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
+
             </div>
           ) : selectedPreference === "Email Relay" ? (
             <div>

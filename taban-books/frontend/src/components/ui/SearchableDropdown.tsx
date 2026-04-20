@@ -22,7 +22,7 @@ export default function SearchableDropdown({
   value,
   options,
   placeholder = "Select an option",
-  accentColor = "#475569",
+  accentColor = "#111827",
   onChange,
   showClear = false,
   onClear,
@@ -142,7 +142,9 @@ export default function SearchableDropdown({
                   <button
                     key={`${option.value}-${option.label}`}
                     type="button"
-                    className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 ${
+                      isSelected ? "bg-gray-50 font-medium text-gray-900" : ""
+                    }`}
                     onClick={() => {
                       onChange(option.value);
                       setIsOpen(false);
@@ -150,7 +152,7 @@ export default function SearchableDropdown({
                     }}
                   >
                     <span className="truncate">{option.label}</span>
-                    {isSelected ? <Check size={14} style={{ color: accentColor }} /> : null}
+                    {isSelected ? <Check size={14} className="text-gray-900" /> : null}
                   </button>
                 );
               })

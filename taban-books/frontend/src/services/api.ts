@@ -1675,6 +1675,8 @@ export const senderEmailsAPI = {
   create: (data: any) => apiRequest('/settings/sender-emails', { method: 'POST', body: data }),
   update: (id: any, data: any) => apiRequest(`/settings/sender-emails/${id}`, { method: 'PUT', body: data }),
   delete: (id: any) => apiRequest(`/settings/sender-emails/${id}`, { method: 'DELETE' }),
+  resendVerification: (id: any) =>
+    apiRequest(`/settings/sender-emails/${id}/resend-verification`, { method: 'POST' }),
 };
 
 // ============================================================================

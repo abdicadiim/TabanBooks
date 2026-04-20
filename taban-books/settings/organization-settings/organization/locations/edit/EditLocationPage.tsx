@@ -158,6 +158,8 @@ export default function EditLocationPage() {
   const [orgCountry, setOrgCountry] = useState<string>("");
   const [txSeriesNames, setTxSeriesNames] = useState<string[]>([]);
   const [loadingTxSeries, setLoadingTxSeries] = useState(false);
+  const rowClass = "grid grid-cols-1 gap-3 md:grid-cols-[180px_minmax(0,1fr)] md:gap-6 items-center";
+  const rowClassStart = "grid grid-cols-1 gap-3 md:grid-cols-[180px_minmax(0,1fr)] md:gap-6 items-start";
 
   const buildAccessFromUser = (user: User) => ({
     userId: user._id || user.id,
@@ -594,11 +596,7 @@ export default function EditLocationPage() {
           <div className="px-6 py-4 border-b border-gray-200">
             <div className="text-sm font-medium text-gray-700 mb-3">Location Type</div>
             <div className="grid grid-cols-2 gap-4">
-              <label className={`relative flex flex-col p-4 border rounded-lg cursor-pointer transition ${
-                formData.type === "Business"
-                  ? "border-blue-500 ring-1 ring-blue-500/20 bg-transparent"
-                  : "border-gray-200 hover:border-gray-300 bg-transparent"
-              }`}>
+              <label className={`relative flex flex-col p-4 border rounded-lg cursor-pointer transition ${formData.type === "Business" ? "border-blue-500 ring-1 ring-blue-500/20 bg-transparent" : "border-gray-200 hover:border-gray-300 bg-transparent"}`}>
                 <div className="flex items-center gap-3 mb-2">
                   <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
                       formData.type === "Business" ? "border-blue-500" : "border-gray-300"
@@ -610,11 +608,7 @@ export default function EditLocationPage() {
                 </div>
                 <p className="text-[12px] leading-relaxed text-gray-500 ml-7">A Business Location represents your organization or office's operational location. It is used to record transactions, assess regional performance, and monitor stock levels for items stored at this location.</p>
               </label>
-              <label className={`relative flex flex-col p-4 border rounded-lg cursor-pointer transition ${
-                formData.type === "Warehouse"
-                  ? "border-blue-500 ring-1 ring-blue-500/20 bg-transparent"
-                  : "border-gray-200 hover:border-gray-300 bg-transparent"
-              }`}>
+              <label className={`relative flex flex-col p-4 border rounded-lg cursor-pointer transition ${formData.type === "Warehouse" ? "border-blue-500 ring-1 ring-blue-500/20 bg-transparent" : "border-gray-200 hover:border-gray-300 bg-transparent"}`}>
                 <div className="flex items-center gap-3 mb-2">
                   <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
                       formData.type === "Warehouse" ? "border-blue-500" : "border-gray-300"
@@ -632,9 +626,9 @@ export default function EditLocationPage() {
           {/* Logo Section */}
           {formData.type === "Business" && (
             <div className="px-6 py-4 border-b border-gray-200">
-              <div className="grid grid-cols-3 gap-4">
+            <div className={rowClass}>
                 <label className="text-sm font-medium text-gray-700 pt-2">Logo</label>
-                <div className="col-span-2 space-y-3">
+                <div className="space-y-3">
                   <div className="relative" ref={logoDropdownRef}>
                     <button
                       type="button"
@@ -718,9 +712,9 @@ export default function EditLocationPage() {
 
           {/* Name Section */}
           <div className="px-6 py-4 border-b border-gray-200">
-            <div className="grid grid-cols-3 gap-4 items-start">
+            <div className={rowClassStart}>
               <label className="text-sm font-medium text-red-500 pt-1.5">Name*</label>
-              <div className="col-span-2 space-y-3">
+              <div className="space-y-3">
                 <input
                   type="text"
                   name="name"
@@ -755,9 +749,9 @@ export default function EditLocationPage() {
           {/* Parent Location Section */}
           {(isChild || formData.type === "Warehouse") && (
             <div className="px-6 py-4 border-b border-gray-200 animate-in fade-in slide-in-from-top-1 duration-200">
-              <div className="grid grid-cols-3 gap-4 items-center">
+              <div className={rowClass}>
                 <label className="text-sm font-medium text-red-500">Parent Location*</label>
-                <div className="col-span-2 relative" ref={parentDropdownRef}>
+                <div className="relative" ref={parentDropdownRef}>
                   <button
                     type="button"
                     onClick={() => setIsParentDropdownOpen(!isParentDropdownOpen)}
@@ -820,26 +814,26 @@ export default function EditLocationPage() {
 
           {/* Address Section */}
           <div className="px-6 py-4 border-b border-gray-200">
-            <div className="grid grid-cols-3 gap-4">
+            <div className={rowClassStart}>
               <label className="text-sm font-medium text-gray-700 pt-2">Address</label>
-              <div className="col-span-2 space-y-3">
-                <div className="grid grid-cols-3 gap-4 items-center">
-                    <input type="text" name="address.attention" value={formData.address.attention} onChange={handleChange} placeholder="Attention" className="col-span-2 px-3 py-1.5 border border-gray-300 rounded text-sm" />
+              <div className="space-y-3">
+                <div className={rowClass}>
+                    <input type="text" name="address.attention" value={formData.address.attention} onChange={handleChange} placeholder="Attention" className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm md:col-start-2" />
                 </div>
-                <div className="grid grid-cols-3 gap-4 items-center">
-                    <input type="text" name="address.street1" value={formData.address.street1} onChange={handleChange} placeholder="Street 1" className="col-span-2 px-3 py-1.5 border border-gray-300 rounded text-sm" />
+                <div className={rowClass}>
+                    <input type="text" name="address.street1" value={formData.address.street1} onChange={handleChange} placeholder="Street 1" className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm md:col-start-2" />
                 </div>
-                <div className="grid grid-cols-3 gap-4 items-center">
-                    <input type="text" name="address.street2" value={formData.address.street2} onChange={handleChange} placeholder="Street 2" className="col-span-2 px-3 py-1.5 border border-gray-300 rounded text-sm" />
+                <div className={rowClass}>
+                    <input type="text" name="address.street2" value={formData.address.street2} onChange={handleChange} placeholder="Street 2" className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm md:col-start-2" />
                 </div>
-                <div className="grid grid-cols-3 gap-4 items-center">
-                    <div className="col-span-2 grid grid-cols-2 gap-2">
-                        <input type="text" name="address.city" value={formData.address.city} onChange={handleChange} placeholder="City" className="px-3 py-1.5 border border-gray-300 rounded text-sm" />
-                        <input type="text" name="address.zipCode" value={formData.address.zipCode} onChange={handleChange} placeholder="ZIP/Postal Code" className="px-3 py-1.5 border border-gray-300 rounded text-sm" />
+                <div className={rowClass}>
+                    <div className="md:col-start-2 grid grid-cols-2 gap-2">
+                        <input type="text" name="address.city" value={formData.address.city} onChange={handleChange} placeholder="City" className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm" />
+                        <input type="text" name="address.zipCode" value={formData.address.zipCode} onChange={handleChange} placeholder="ZIP/Postal Code" className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm" />
                     </div>
                 </div>
-                <div className="grid grid-cols-3 gap-4 items-center">
-                    <div className="col-span-2">
+                <div className={rowClass}>
+                    <div className="md:col-start-2">
                       <SearchableDropdown
                         value={formData.address.country}
                         options={countryOptions}
@@ -852,21 +846,21 @@ export default function EditLocationPage() {
                       />
                     </div>
                 </div>
-                <div className="grid grid-cols-3 gap-4 items-center">
-                    <div className="col-span-2 grid grid-cols-2 gap-2">
-                        <input type="text" name="address.state" value={formData.address.state} onChange={handleChange} placeholder="State/Province" className="px-3 py-1.5 border border-gray-300 rounded text-sm" />
-                        <input type="text" name="address.phone" value={formData.address.phone} onChange={handleChange} placeholder="Phone" className="px-3 py-1.5 border border-gray-300 rounded text-sm" />
+                <div className={rowClass}>
+                    <div className="md:col-start-2 grid grid-cols-2 gap-2">
+                        <input type="text" name="address.state" value={formData.address.state} onChange={handleChange} placeholder="State/Province" className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm" />
+                        <input type="text" name="address.phone" value={formData.address.phone} onChange={handleChange} placeholder="Phone" className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm" />
                     </div>
                 </div>
-                <div className="grid grid-cols-3 gap-4 items-center">
-                    <input type="text" name="address.fax" value={formData.address.fax} onChange={handleChange} placeholder="Fax Number" className="col-span-2 px-3 py-1.5 border border-gray-300 rounded text-sm" />
+                <div className={rowClass}>
+                    <input type="text" name="address.fax" value={formData.address.fax} onChange={handleChange} placeholder="Fax Number" className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm md:col-start-2" />
                 </div>
               </div>
             </div>
           </div>
 
           <div className="px-6 py-4 border-b border-gray-200">
-            <div className="grid grid-cols-3 gap-4 items-center">
+            <div className={rowClass}>
               <label className="text-sm font-medium text-gray-700">Website URL</label>
               <input
                 type="url"
@@ -874,17 +868,17 @@ export default function EditLocationPage() {
                 value={formData.website}
                 onChange={handleChange}
                 placeholder="Website URL"
-                className="col-span-2 px-3 py-1.5 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
+                className="w-full px-3 py-1.5 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
               />
             </div>
           </div>
 
           <div className="px-6 py-4 border-b border-gray-200">
-            <div className="grid grid-cols-3 gap-4 items-center">
+            <div className={rowClass}>
               <label className={`text-sm font-medium ${formData.type === "Business" ? "text-red-500" : "text-gray-700"}`}>
                 Primary Contact{formData.type === "Business" && "*"}
               </label>
-              <div className="col-span-2">
+              <div>
                 <SearchableDropdown
                   value={formData.primaryContact}
                   options={primaryContactOptions}
@@ -898,9 +892,9 @@ export default function EditLocationPage() {
           {formData.type === "Business" && (
             <>
                 <div className="px-6 py-4 border-b border-gray-200">
-                    <div className="grid grid-cols-3 gap-4 items-center">
+                    <div className={rowClass}>
                         <label className="text-sm font-medium text-red-500">Transaction Number Series*</label>
-                        <div className="col-span-2">
+                        <div>
                           <SearchableDropdown
                             value={formData.transactionNumberSeriesId}
                             options={transactionSeriesOptions}
@@ -913,9 +907,9 @@ export default function EditLocationPage() {
                     </div>
                 </div>
                 <div className="px-6 py-4 border-b border-gray-200">
-                    <div className="grid grid-cols-3 gap-4 items-center">
+                    <div className={rowClass}>
                         <label className="text-sm font-medium text-red-500">Default Transaction Number Series*</label>
-                        <div className="col-span-2">
+                        <div>
                           <SearchableDropdown
                             value={formData.defaultTransactionNumberSeriesId}
                             options={transactionSeriesOptions}
@@ -932,12 +926,12 @@ export default function EditLocationPage() {
 
           {/* Location Access Section */}
           <div className="px-6 py-6 border-b border-gray-200">
-            <div className="grid grid-cols-3 gap-4">
+            <div className={rowClass}>
               <div>
                 <label className="text-sm font-medium text-gray-700">Location Access</label>
                 <p className="text-[10px] text-gray-400 mt-1">Define who can manage this location.</p>
               </div>
-              <div className="col-span-2">
+              <div>
                 <div className="border border-gray-200 rounded-lg bg-transparent">
                   <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-xs text-gray-600">

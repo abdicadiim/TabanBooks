@@ -2,8 +2,16 @@
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { getCurrentUser } from "../../../../../../services/auth";
 import { Upload, X, ChevronDown, ChevronUp, Search, Check, Plus } from "lucide-react";
-
-const API_BASE_URL = '/api';
+import { toast } from "react-toastify";
+import { locationsAPI, usersAPI } from "../../../../../../services/api";
+import { WORLD_COUNTRIES as COUNTRIES } from "../../../../../../constants/locationData";
+import SearchableDropdown from "../../../../../../components/ui/SearchableDropdown";
+import {
+  getLocationById,
+  readLocations,
+  writeLocations,
+  writeLocationsEnabled,
+} from "../storage";
 
 export default function EditLocationPage() {
   const navigate = useNavigate();
@@ -47,6 +55,11 @@ export default function EditLocationPage() {
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [userSearch, setUserSearch] = useState("");
   const [provideAccessToAll, setProvideAccessToAll] = useState(false);
+  const rowClass = "grid grid-cols-1 gap-3 md:grid-cols-[170px_360px] md:gap-6 items-center";
+  const rowClassStart = "grid grid-cols-1 gap-3 md:grid-cols-[170px_360px] md:gap-6 items-start";
+  const rowClassFluid = "grid grid-cols-1 gap-3 md:grid-cols-[170px_minmax(0,1fr)] md:gap-6 items-start";
+  const compactFieldRowClass = "grid grid-cols-1 gap-3 md:grid-cols-[220px_minmax(0,420px)] md:gap-5 items-center";
+  const compactFieldRowStartClass = "grid grid-cols-1 gap-3 md:grid-cols-[220px_minmax(0,420px)] md:gap-5 items-start";
   const [transactionSeriesList, setTransactionSeriesList] = useState(["Default Transaction Series"]);
   const [isTransactionSeriesDropdownOpen, setIsTransactionSeriesDropdownOpen] = useState(false);
   const [isDefaultTransactionSeriesDropdownOpen, setIsDefaultTransactionSeriesDropdownOpen] = useState(false);
@@ -59,270 +72,144 @@ export default function EditLocationPage() {
   const transactionSeriesDropdownRef = useRef(null);
   const defaultTransactionSeriesDropdownRef = useRef(null);
 
+  const normalizeActiveUser = (user: any) => {
+    const id = String(user?._id || user?.id || "").trim();
+    if (!id) return null;
+    const name = String(user?.name || `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || id).trim();
+    return {
+      ...user,
+      _id: id,
+      id,
+      name,
+      email: String(user?.email || "").trim(),
+      role: user?.role || "User",
+      image: user?.image || user?.photoUrl || "",
+      photoUrl: user?.photoUrl || user?.image || "",
+    };
+  };
+
   // Load location data when component mounts
   useEffect(() => {
-    const loadLocation = async () => {
-      setIsLoading(true);
-      try {
-        const token = localStorage.getItem('auth_token');
-        if (!token) {
-          setError('Authentication required');
+    setIsLoading(true);
+    try {
+      // prefer backend, fall back to local cache
+      // (this page can be opened after refresh where local cache is empty)
+      let localLocation: any = null;
+      void (async () => {
+        try {
+          const apiRes = await locationsAPI.getById(String(id));
+          if (apiRes?.success) {
+            localLocation = apiRes.data;
+          } else {
+            localLocation = getLocationById(String(id));
+          }
+
+          if (!localLocation) {
+            setError('Location not found');
+            setIsLoading(false);
+            return;
+          }
+
+          const currentUser = getCurrentUser();
+          const usersRes = await usersAPI.getAll({ limit: 10000, status: "active" });
+          const activeUsers = (Array.isArray(usersRes?.data) ? usersRes.data : [])
+            .map(normalizeActiveUser)
+            .filter((user): user is NonNullable<ReturnType<typeof normalizeActiveUser>> => Boolean(user))
+            .filter((user: any) => String(user?.status || "").trim().toLowerCase() === "active" || !user?.status);
+          let website = "";
+          if (localLocation.notes && String(localLocation.notes).includes("Website: ")) {
+            website = String(localLocation.notes).split("Website: ")[1].split("\n")[0].trim();
+          }
+
+          const isChild = !!localLocation.parentLocation;
+          let logoOption = "Same as Organization Logo";
+          let preview = null;
+          if (localLocation.logo && String(localLocation.logo).trim()) {
+            logoOption = "Upload a New Logo";
+            preview = localLocation.logo;
+          }
+
+          const matchedPrimaryContact =
+            activeUsers.find((u: any) => String(u.email || "").toLowerCase() === String(localLocation.contactPerson?.email || "").toLowerCase())?.id ||
+            activeUsers.find((u: any) => String(u.name || "").toLowerCase() === String(localLocation.contactPerson?.name || "").toLowerCase())?.id ||
+            activeUsers.find((u: any) => String(u.id || u._id) === String(localLocation.primaryContact || ""))?.id ||
+            "";
+
+          setUsers(activeUsers as any);
+          setAllUsers(activeUsers as any);
+          setLogoPreview(preview);
+          setFormData({
+            type: localLocation.type || "Business",
+            logo: logoOption,
+            name: localLocation.name || "",
+            isChildLocation: isChild,
+            parentLocation: localLocation.parentLocation ? String(localLocation.parentLocation) : "",
+            address: {
+              attention: localLocation.address?.attention || "",
+              street1: localLocation.address?.street1 || "",
+              street2: localLocation.address?.street2 || "",
+              city: localLocation.address?.city || "",
+              zipCode: localLocation.address?.zipCode || "",
+              country: localLocation.address?.country || "United Kingdom",
+              state: localLocation.address?.state || "",
+              phone: localLocation.address?.phone || "",
+              fax: localLocation.address?.fax || "",
+            },
+            website,
+            primaryContact: matchedPrimaryContact || String(localLocation.primaryContact || ""),
+            transactionSeries: localLocation.defaultTransactionSeries || "",
+            defaultTransactionSeries: localLocation.defaultTransactionSeries || "Default Transaction Series",
+            locationAccess: Array.isArray(localLocation.locationAccess) ? localLocation.locationAccess : [],
+          });
+          setError(null);
+
+          // refresh cache
+          try {
+            const list = await locationsAPI.getAll({ limit: 10000 });
+            if (list?.success) writeLocations(Array.isArray(list.data) ? list.data : []);
+          } catch {
+            // ignore
+          }
+        } catch (e) {
+          console.error('Error loading location:', e);
+          setError('An error occurred while loading the location');
+        } finally {
           setIsLoading(false);
-          return;
         }
-
-        const response = await fetch(`${API_BASE_URL}/settings/organization/locations/${id}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (response.ok) {
-          const contentType = response.headers.get("content-type");
-          if (contentType && contentType.includes("application/json")) {
-            const data = await response.json();
-            if (data.success && data.data) {
-              const location = data.data;
-              
-              // Extract website from notes if it exists
-              let website = "";
-              if (location.notes && location.notes.includes("Website: ")) {
-                website = location.notes.split("Website: ")[1].split("\n")[0].trim();
-              }
-
-              // Determine if it's a child location (has parentLocation)
-              const isChild = !!location.parentLocation;
-
-              // Determine logo option
-              let logoOption = "Same as Organization Logo";
-              let preview = null;
-              if (location.logo && location.logo.trim()) {
-                logoOption = "Upload a New Logo";
-                preview = location.logo;
-              }
-
-              // Load active organization users first to match primary contact
-              const currentUser = getCurrentUser();
-              let usersList: any[] = [];
-              try {
-                const usersResponse = await fetch(`${API_BASE_URL}/settings/users?status=active`, {
-                  headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                  },
-                });
-                if (usersResponse.ok) {
-                  const usersData = await usersResponse.json();
-                  if (usersData.success && Array.isArray(usersData.data)) {
-                    usersList = usersData.data.map((user: any) => ({
-                      _id: user.id || user._id,
-                      id: user.id || user._id,
-                      name: user.name,
-                      email: user.email,
-                      role: user.role || "Admin",
-                    }));
-                  }
-                }
-              } catch (err) {
-                console.error('Error loading organization users:', err);
-              }
-
-              if (usersList.length === 0 && currentUser) {
-                usersList = [{
-                  _id: currentUser.id,
-                  id: currentUser.id,
-                  name: currentUser.name,
-                  email: currentUser.email,
-                  role: currentUser.role || "Admin",
-                }];
-              }
-              
-              // Match primary contact by email
-              let matchedPrimaryContact = "";
-              if (location.contactPerson?.email && usersList.length > 0) {
-                const matchedUser = usersList.find(u => u.email === location.contactPerson.email);
-                if (matchedUser) {
-                  matchedPrimaryContact = matchedUser._id || matchedUser.id || "";
-                }
-              }
-              
-              // Set users state
-              setUsers(usersList);
-              setAllUsers(usersList);
-
-              // Populate form with location data
-              setFormData({
-                type: location.type || "Business",
-                logo: logoOption,
-                name: location.name || "",
-                isChildLocation: isChild,
-                parentLocation: location.parentLocation ? String(location.parentLocation) : "",
-                address: {
-                  attention: location.address?.attention || "",
-                  street1: location.address?.street1 || "",
-                  street2: location.address?.street2 || "",
-                  city: location.address?.city || "",
-                  zipCode: location.address?.zipCode || "",
-                  country: location.address?.country || "United Kingdom",
-                  state: location.address?.state || "",
-                  phone: location.address?.phone || "",
-                  fax: location.address?.fax || "",
-                },
-                website: website,
-                primaryContact: matchedPrimaryContact,
-                transactionSeries: location.defaultTransactionSeries || "",
-                defaultTransactionSeries: location.defaultTransactionSeries || "Default Transaction Series",
-                locationAccess: [], // TODO: Load from location if stored
-              });
-
-              setLogoPreview(preview);
-            } else {
-              setError(data.message || 'Failed to load location data');
-            }
-          } else {
-            setError('Invalid response from server');
-          }
-        } else {
-          const contentType = response.headers.get("content-type");
-          if (contentType && contentType.includes("application/json")) {
-            const errorData = await response.json();
-            setError(errorData.message || 'Failed to load location');
-          } else {
-            setError(`Failed to load location: ${response.status} ${response.statusText}`);
-          }
-        }
-      } catch (error) {
-        console.error('Error loading location:', error);
-        setError('An error occurred while loading the location');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    if (id) {
-      loadLocation();
-    } else {
-      setError("Invalid location URL. Missing location ID.");
-      setIsLoading(false);
+      })();
+    } catch (error) {
+      console.error('Error loading location:', error);
+      setError('An error occurred while loading the location');
+    } finally {
+      // loading is handled in async IIFE above
     }
   }, [id]);
 
-  // Load users for primary contact dropdown - only if not already loaded by location loading
-  useEffect(() => {
-    const loadUsers = async () => {
-      // Only load if users list is empty (users might have been loaded during location loading)
-      if (users.length > 0) return;
-      
-      try {
-        const token = localStorage.getItem('auth_token');
-        if (!token) return;
 
-        const currentUser = getCurrentUser();
-        
-        if (currentUser) {
-          const userForForm = {
-            _id: currentUser.id,
-            id: currentUser.id,
-            name: currentUser.name,
-            email: currentUser.email,
-            role: currentUser.role || "Admin",
-          };
-          
-          setUsers([userForForm]);
-        } else {
-          const response = await fetch(`${API_BASE_URL}/auth/me`, {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success && data.data) {
-              setUsers([data.data]);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error loading users:', error);
-      }
-    };
-
-    loadUsers();
-  }, [users.length]);
-
-  // Load all users for Location Access dropdown (same as AddLocationPage)
-  useEffect(() => {
-    const loadAllUsers = async () => {
-      try {
-        const token = localStorage.getItem('auth_token');
-        if (!token) return;
-
-        const response = await fetch(`${API_BASE_URL}/settings/users?status=active`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && Array.isArray(data.data)) {
-            const mappedUsers = data.data.map((user: any) => ({
-              _id: user.id || user._id,
-              id: user.id || user._id,
-              name: user.name,
-              email: user.email,
-              role: user.role || "Admin",
-            }));
-            setAllUsers(mappedUsers);
-            if (users.length === 0) {
-              setUsers(mappedUsers);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error loading all users:', error);
-      }
-    };
-
-    loadAllUsers();
-  }, [users.length]);
 
   // Load parent locations (same logic as AddLocationPage)
   useEffect(() => {
-    const loadParentLocations = async () => {
-      if (formData.type === "Business" && !formData.isChildLocation) {
-        setParentLocations([]);
-        return;
-      }
+    if (formData.type === "Business" && !formData.isChildLocation) {
+      setParentLocations([]);
+      return;
+    }
 
+    void (async () => {
       try {
-        const token = localStorage.getItem('auth_token');
-        if (!token) return;
-
-        const response = await fetch(`${API_BASE_URL}/settings/organization/locations`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            // Filter out current location and inactive locations
-            setParentLocations(data.data.filter(loc => loc._id !== id && loc.isActive !== false));
-          }
+        const res = await locationsAPI.getAll({ limit: 10000 });
+        if (res?.success) {
+          const rows = Array.isArray(res.data) ? res.data : [];
+          writeLocations(rows);
+          setParentLocations(rows.filter((loc: any) => String(loc?._id || loc?.id) !== String(id) && loc?.isActive !== false));
+          return;
         }
-      } catch (error) {
-        console.error('Error loading parent locations:', error);
+      } catch {
+        // ignore
       }
-    };
-
-    loadParentLocations();
+      setParentLocations(
+        readLocations().filter((loc: any) => String(loc?._id || loc?.id) !== String(id) && loc?.isActive !== false)
+      );
+    })();
   }, [formData.type, formData.isChildLocation, id]);
 
   // Close dropdowns when clicking outside (same as AddLocationPage)
@@ -524,6 +411,26 @@ export default function EditLocationPage() {
     (user.name?.toLowerCase().includes(userSearch.toLowerCase()) ||
      user.email?.toLowerCase().includes(userSearch.toLowerCase()))
   );
+    const primaryContactOptions = allUsers
+      .map((user: any) => {
+        const value = String(user._id || user.id || "").trim();
+        if (!value) return null;
+        const name = String(user.name || `${user.firstName || ""} ${user.lastName || ""}`.trim() || value).trim();
+        const email = String(user.email || "").trim();
+        return {
+          value,
+          label: email ? `${name} (${email})` : name,
+        };
+      })
+      .filter((opt: any): opt is { value: string; label: string } => Boolean(opt));
+  const countryOptions = COUNTRIES.map((country) => ({ value: country, label: country }));
+  const roleOptions = Array.from(
+    new Set(
+      allUsers
+        .map((user: any) => String(user.role || "").trim())
+        .filter(Boolean)
+    )
+  ).map((role) => ({ value: role, label: role }));
 
   const selectedParentLocation = parentLocations.find(loc => loc._id === formData.parentLocation);
 
@@ -534,13 +441,6 @@ export default function EditLocationPage() {
     setIsSaving(true);
 
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) {
-        setError('Authentication required');
-        setIsSaving(false);
-        return;
-      }
-
       if (!formData.name.trim()) {
         setError('Location name is required');
         setIsSaving(false);
@@ -581,46 +481,20 @@ export default function EditLocationPage() {
         logo: formData.type === "Business" && formData.logo === "Upload a New Logo" && logoPreview ? logoPreview : "",
       };
 
-      // Use PUT method for update
-      const response = await fetch(`${API_BASE_URL}/settings/organization/locations/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(locationData),
+      const updated = await locationsAPI.update(String(id), {
+        ...locationData,
+        parentLocation: locationData.parentLocation || "",
       });
-
-      if (response.ok) {
-        const contentType = response.headers.get("content-type");
-        if (contentType && contentType.includes("application/json")) {
-          const data = await response.json();
-          if (data.success) {
-            // Navigate back to locations list
-            navigate('/settings/locations');
-          } else {
-            setError(data.message || 'Failed to update location');
-          }
-        } else {
-          navigate('/settings/locations');
-        }
-      } else {
-        const contentType = response.headers.get("content-type");
-        let errorMessage = 'Failed to update location';
-        
-        if (contentType && contentType.includes("application/json")) {
-          try {
-            const errorData = await response.json();
-            errorMessage = errorData.message || errorData.error || errorMessage;
-          } catch (parseError) {
-            errorMessage = `Server error: ${response.status} ${response.statusText}`;
-          }
-        } else {
-          errorMessage = `Server error: ${response.status} ${response.statusText}`;
-        }
-        
-        setError(errorMessage);
+      if (!updated?.success) {
+        throw new Error(updated?.message || "Failed to update location");
       }
+
+      const list = await locationsAPI.getAll({ limit: 10000 });
+      if (list?.success) writeLocations(Array.isArray(list.data) ? list.data : []);
+
+      writeLocationsEnabled(true);
+      toast.success("Location updated successfully.");
+      navigate('/settings/locations');
     } catch (error) {
       console.error('Error updating location:', error);
       setError(error.message || 'An error occurred while updating the location. Please try again.');
@@ -644,7 +518,7 @@ export default function EditLocationPage() {
   }
 
   return (
-    <div className="w-full h-full p-6">
+    <div className="w-full h-full p-6 pb-28">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">Update Location</h1>
       </div>
@@ -657,13 +531,13 @@ export default function EditLocationPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Location Type Section */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="bg-transparent rounded-none border-0 p-6">
           <h2 className="text-sm font-semibold text-gray-900 mb-4">Location Type</h2>
           <div className="grid grid-cols-2 gap-4">
             <label className={`relative flex flex-col p-4 border-2 rounded-lg cursor-pointer transition ${
-              formData.type === "Business" 
-                ? "border-blue-500 bg-blue-50" 
-                : "border-gray-200 hover:border-gray-300"
+              formData.type === "Business"
+                ? "border-blue-500 ring-1 ring-blue-500/20 bg-transparent"
+                : "border-gray-200 hover:border-gray-300 bg-transparent"
             }`}>
               <div className="flex items-center gap-3 mb-2">
                 <input
@@ -682,9 +556,9 @@ export default function EditLocationPage() {
             </label>
 
             <label className={`relative flex flex-col p-4 border-2 rounded-lg cursor-pointer transition ${
-              formData.type === "Warehouse" 
-                ? "border-blue-500 bg-blue-50" 
-                : "border-gray-200 hover:border-gray-300"
+              formData.type === "Warehouse"
+                ? "border-blue-500 ring-1 ring-blue-500/20 bg-transparent"
+                : "border-gray-200 hover:border-gray-300 bg-transparent"
             }`}>
               <div className="flex items-center gap-3 mb-2">
                 <input
@@ -706,16 +580,16 @@ export default function EditLocationPage() {
 
         {/* Logo Field - Only show for Business Location */}
         {formData.type === "Business" && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <div className="grid grid-cols-3 gap-4">
+          <div className="bg-transparent rounded-none border-0 p-6">
+            <div className={compactFieldRowClass}>
               <label className="text-sm font-medium text-gray-700">Logo</label>
-              <div className="col-span-2 space-y-4">
+              <div className="space-y-4">
               {/* Logo Dropdown */}
               <div className="relative" ref={logoDropdownRef}>
                 <button
                   type="button"
                   onClick={() => setIsLogoDropdownOpen(!isLogoDropdownOpen)}
-                  className="w-full px-3 py-2 border border-blue-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-left flex items-center justify-between bg-white"
+                  className="w-full px-3 py-2 border border-blue-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-left flex items-center justify-between bg-transparent"
                 >
                   <span>{formData.logo}</span>
                   {isLogoDropdownOpen ? (
@@ -726,7 +600,7 @@ export default function EditLocationPage() {
                 </button>
 
                 {isLogoDropdownOpen && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg">
+                  <div className="absolute z-50 w-full mt-1 bg-gray-50 border border-gray-200 rounded-lg shadow-lg">
                     <div className="p-2 border-b border-gray-200">
                       <div className="relative">
                         <Search size={16} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -744,7 +618,7 @@ export default function EditLocationPage() {
                       <button
                         type="button"
                         onClick={() => handleLogoOptionSelect("Same as Organization Logo")}
-                        className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center justify-between ${
+                        className={`w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center justify-between ${
                           formData.logo === "Same as Organization Logo" ? "bg-blue-50" : ""
                         }`}
                       >
@@ -756,7 +630,7 @@ export default function EditLocationPage() {
                       <button
                         type="button"
                         onClick={() => handleLogoOptionSelect("Upload a New Logo")}
-                        className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center justify-between ${
+                        className={`w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center justify-between ${
                           formData.logo === "Upload a New Logo" ? "bg-blue-50" : ""
                         }`}
                       >
@@ -823,12 +697,12 @@ export default function EditLocationPage() {
         )}
 
         {/* Name Field */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="grid grid-cols-3 gap-4">
+        <div className="bg-transparent rounded-none border-0 p-6">
+          <div className={compactFieldRowStartClass}>
             <label className="text-sm font-medium text-gray-700 flex items-center">
               Name<span className="text-red-500 ml-1">*</span>
             </label>
-            <div className="col-span-2 space-y-3">
+            <div className="space-y-3">
               <input
                 type="text"
                 name="name"
@@ -857,16 +731,16 @@ export default function EditLocationPage() {
 
         {/* Parent Location Field - Show for Warehouse or Business Location when checkbox is checked */}
         {(formData.type === "Warehouse" || (formData.type === "Business" && formData.isChildLocation)) && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <div className="grid grid-cols-3 gap-4 items-center">
+          <div className="bg-transparent rounded-none border-0 p-6">
+            <div className={rowClass}>
               <label className="text-sm font-medium text-gray-700 flex items-center">
                 Parent Location<span className="text-red-500 ml-1">*</span>
               </label>
-              <div className="col-span-2 relative" ref={parentLocationDropdownRef}>
+              <div className="relative" ref={parentLocationDropdownRef}>
                 <button
                   type="button"
                   onClick={() => setIsParentLocationDropdownOpen(!isParentLocationDropdownOpen)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-left flex items-center justify-between bg-white"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-left flex items-center justify-between bg-transparent"
                 >
                   <span className={selectedParentLocation ? "text-gray-900" : "text-gray-500"}>
                     {selectedParentLocation ? selectedParentLocation.name : "Select Location"}
@@ -879,8 +753,8 @@ export default function EditLocationPage() {
                 </button>
 
                 {isParentLocationDropdownOpen && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    <div className="p-2 border-b border-gray-200 sticky top-0 bg-white">
+                  <div className="absolute z-50 w-full mt-1 bg-gray-50 border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    <div className="p-2 border-b border-gray-200 sticky top-0 bg-transparent">
                       <div className="relative">
                         <Search size={16} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
                         <input
@@ -902,7 +776,7 @@ export default function EditLocationPage() {
                             key={location._id}
                             type="button"
                             onClick={() => handleParentLocationSelect(location._id)}
-                            className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center justify-between ${
+                            className={`w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center justify-between ${
                               formData.parentLocation === location._id ? "bg-blue-50" : ""
                             }`}
                           >
@@ -922,10 +796,10 @@ export default function EditLocationPage() {
         )}
 
         {/* Address Section */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="bg-transparent rounded-none border-0 p-6">
           <h2 className="text-sm font-semibold text-gray-900 mb-4">Address</h2>
           <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
+            <div className={rowClass}>
               <label className="text-sm font-medium text-gray-700">Attention</label>
               <input
                 type="text"
@@ -933,11 +807,11 @@ export default function EditLocationPage() {
                 value={formData.address.attention}
                 onChange={handleChange}
                 placeholder="Attention"
-                className="col-span-2 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className={rowClass}>
               <label className="text-sm font-medium text-gray-700">Street 1</label>
               <input
                 type="text"
@@ -945,11 +819,11 @@ export default function EditLocationPage() {
                 value={formData.address.street1}
                 onChange={handleChange}
                 placeholder="Street 1"
-                className="col-span-2 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className={rowClass}>
               <label className="text-sm font-medium text-gray-700">Street 2</label>
               <input
                 type="text"
@@ -957,13 +831,13 @@ export default function EditLocationPage() {
                 value={formData.address.street2}
                 onChange={handleChange}
                 placeholder="Street 2"
-                className="col-span-2 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className={rowClass}>
               <label className="text-sm font-medium text-gray-700">City</label>
-              <div className="col-span-2 grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <input
                   type="text"
                   name="address.city"
@@ -983,28 +857,24 @@ export default function EditLocationPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className={rowClass}>
               <label className="text-sm font-medium text-gray-700">Country</label>
-              <select
-                name="address.country"
-                value={formData.address.country}
-                onChange={handleChange}
-                className="col-span-2 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              >
-                <option value="United Kingdom">United Kingdom</option>
-                <option value="United States">United States</option>
-                <option value="Canada">Canada</option>
-                <option value="Australia">Australia</option>
-                <option value="Germany">Germany</option>
-                <option value="France">France</option>
-                <option value="India">India</option>
-                <option value="Kenya">Kenya</option>
-              </select>
+              <div>
+                <SearchableDropdown
+                  value={formData.address.country}
+                  options={countryOptions}
+                  onChange={(value) => setFormData((prev) => ({
+                    ...prev,
+                    address: { ...prev.address, country: value },
+                  }))}
+                  placeholder="Select Country"
+                />
+              </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className={rowClass}>
               <label className="text-sm font-medium text-gray-700">State/Province</label>
-              <div className="col-span-2 grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <input
                   type="text"
                   name="address.state"
@@ -1024,7 +894,7 @@ export default function EditLocationPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className={rowClass}>
               <label className="text-sm font-medium text-gray-700">Fax Number</label>
               <input
                 type="text"
@@ -1032,15 +902,15 @@ export default function EditLocationPage() {
                 value={formData.address.fax}
                 onChange={handleChange}
                 placeholder="Fax Number"
-                className="col-span-2 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               />
             </div>
           </div>
         </div>
 
         {/* Website URL - Show for both Business and Warehouse */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="grid grid-cols-3 gap-4 items-center">
+        <div className="bg-transparent rounded-none border-0 p-6">
+          <div className={compactFieldRowClass}>
             <label className="text-sm font-medium text-gray-700">Website URL</label>
             <input
               type="url"
@@ -1048,31 +918,25 @@ export default function EditLocationPage() {
               value={formData.website}
               onChange={handleChange}
               placeholder="Website URL"
-              className="col-span-2 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             />
           </div>
         </div>
 
         {/* Primary Contact - Show for both Business and Warehouse */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="grid grid-cols-3 gap-4 items-center">
+        <div className="bg-transparent rounded-none border-0 p-6">
+          <div className={compactFieldRowClass}>
             <label className="text-sm font-medium text-gray-700 flex items-center">
-              Primary Contact<span className="text-red-500 ml-1">*</span>
+              Primary Contact
             </label>
-            <select
-              name="primaryContact"
-              value={formData.primaryContact}
-              onChange={handleChange}
-              required
-              className="col-span-2 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-            >
-              <option value="">Select Primary Contact</option>
-              {users.map((user) => (
-                <option key={user._id || user.id} value={user._id || user.id}>
-                  {user.name || `${user.firstName} ${user.lastName}`} &lt;{user.email}&gt;
-                </option>
-              ))}
-            </select>
+            <div>
+              <SearchableDropdown
+                value={formData.primaryContact}
+                options={primaryContactOptions}
+                onChange={(value) => setFormData(prev => ({ ...prev, primaryContact: value }))}
+                placeholder="Select Primary Contact"
+              />
+            </div>
           </div>
         </div>
 
@@ -1080,16 +944,16 @@ export default function EditLocationPage() {
         {formData.type === "Business" && (
           <>
             {/* Transaction Number Series */}
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <div className="grid grid-cols-3 gap-4 items-center">
+            <div className="bg-transparent rounded-none border-0 p-6">
+              <div className={compactFieldRowClass}>
                 <label className="text-sm font-medium text-gray-700 flex items-center">
                   Transaction Number Series<span className="text-red-500 ml-1">*</span>
                 </label>
-                <div className="col-span-2 relative" ref={transactionSeriesDropdownRef}>
+                <div className="relative" ref={transactionSeriesDropdownRef}>
                   <button
                     type="button"
                     onClick={() => setIsTransactionSeriesDropdownOpen(!isTransactionSeriesDropdownOpen)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-left flex items-center justify-between bg-white"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-left flex items-center justify-between bg-transparent"
                   >
                     <span className={formData.transactionSeries ? "text-gray-900" : "text-gray-500"}>
                       {formData.transactionSeries || "Add Transaction Series"}
@@ -1102,8 +966,8 @@ export default function EditLocationPage() {
                   </button>
 
                   {isTransactionSeriesDropdownOpen && (
-                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      <div className="p-2 border-b border-gray-200 sticky top-0 bg-white">
+                    <div className="absolute z-50 w-full mt-1 bg-gray-50 border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      <div className="p-2 border-b border-gray-200 sticky top-0 bg-transparent">
                         <div className="relative">
                           <Search size={16} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
                           <input
@@ -1125,7 +989,7 @@ export default function EditLocationPage() {
                               key={index}
                               type="button"
                               onClick={() => handleTransactionSeriesSelect(series)}
-                              className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center justify-between ${
+                              className={`w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center justify-between ${
                                 formData.transactionSeries === series ? "bg-blue-50" : ""
                               }`}
                             >
@@ -1139,7 +1003,7 @@ export default function EditLocationPage() {
                         <button
                           type="button"
                           onClick={handleAddTransactionSeries}
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-blue-600 border-t border-gray-200 mt-1 pt-2"
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-2 text-blue-600 border-t border-gray-200 mt-1 pt-2"
                         >
                           <Plus size={16} className="text-blue-600" />
                           <span>Add Transaction Series</span>
@@ -1152,16 +1016,16 @@ export default function EditLocationPage() {
             </div>
 
             {/* Default Transaction Number Series */}
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <div className="grid grid-cols-3 gap-4 items-center">
+            <div className="bg-transparent rounded-none border-0 p-6">
+              <div className={compactFieldRowClass}>
                 <label className="text-sm font-medium text-gray-700 flex items-center">
                   Default Transaction Number Series<span className="text-red-500 ml-1">*</span>
                 </label>
-                <div className="col-span-2 relative" ref={defaultTransactionSeriesDropdownRef}>
+                <div className="relative" ref={defaultTransactionSeriesDropdownRef}>
                   <button
                     type="button"
                     onClick={() => setIsDefaultTransactionSeriesDropdownOpen(!isDefaultTransactionSeriesDropdownOpen)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-left flex items-center justify-between bg-white"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-left flex items-center justify-between bg-transparent"
                   >
                     <span className={formData.defaultTransactionSeries ? "text-gray-900" : "text-gray-500"}>
                       {formData.defaultTransactionSeries || "Default Transaction Series"}
@@ -1174,8 +1038,8 @@ export default function EditLocationPage() {
                   </button>
 
                   {isDefaultTransactionSeriesDropdownOpen && (
-                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      <div className="p-2 border-b border-gray-200 sticky top-0 bg-white">
+                    <div className="absolute z-50 w-full mt-1 bg-gray-50 border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      <div className="p-2 border-b border-gray-200 sticky top-0 bg-transparent">
                         <div className="relative">
                           <Search size={16} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
                           <input
@@ -1200,7 +1064,7 @@ export default function EditLocationPage() {
                               className={`w-full px-3 py-2 text-left text-sm rounded-lg transition ${
                                 formData.defaultTransactionSeries === series 
                                   ? "bg-blue-500 text-white font-medium" 
-                                  : "hover:bg-gray-50"
+                                  : "hover:bg-blue-50"
                               } flex items-center justify-between`}
                             >
                               <span>{series}</span>
@@ -1213,7 +1077,7 @@ export default function EditLocationPage() {
                         <button
                           type="button"
                           onClick={handleAddTransactionSeries}
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-blue-600 border-t border-gray-200 mt-1 pt-2"
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-2 text-blue-600 border-t border-gray-200 mt-1 pt-2"
                         >
                           <Plus size={16} className="text-blue-600" />
                           <span>Add Transaction Series</span>
@@ -1228,10 +1092,10 @@ export default function EditLocationPage() {
         )}
 
         {/* Location Access - Show for both Business and Warehouse */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="grid grid-cols-3 gap-4">
+        <div className="bg-transparent rounded-none border-0 p-6">
+          <div className={compactFieldRowClass}>
             <label className="text-sm font-medium text-gray-700">Location Access</label>
-            <div className="col-span-2">
+            <div>
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                 {formData.locationAccess.length === 0 ? (
                   <>
@@ -1264,15 +1128,15 @@ export default function EditLocationPage() {
                               <button
                                 type="button"
                                 onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-left flex items-center justify-between bg-white"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-left flex items-center justify-between bg-transparent"
                               >
                                 <span className="text-gray-500">Select users</span>
                                 <ChevronDown size={16} className="text-gray-500" />
                               </button>
 
                               {isUserDropdownOpen && (
-                                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                                  <div className="p-2 border-b border-gray-200 sticky top-0 bg-white">
+                                <div className="absolute z-50 w-full mt-1 bg-gray-50 border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                  <div className="p-2 border-b border-gray-200 sticky top-0 bg-transparent">
                                     <div className="relative">
                                       <Search size={16} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
                                       <input
@@ -1294,7 +1158,7 @@ export default function EditLocationPage() {
                                           key={user._id || user.id}
                                           type="button"
                                           onClick={() => handleUserSelect(user._id || user.id)}
-                                          className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+                                          className="w-full px-3 py-2 text-left text-sm hover:bg-blue-50"
                                         >
                                           <div className="flex items-center gap-2">
                                             <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-semibold">
@@ -1314,9 +1178,9 @@ export default function EditLocationPage() {
                             </div>
                           </td>
                           <td className="py-2 px-3">
-                            <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white">
-                              <option>User's Role</option>
-                            </select>
+                            <div className="w-full h-10 flex items-center px-3 border border-gray-300 rounded-lg text-sm text-gray-500 bg-gray-50/50 italic">
+                              User's Role
+                            </div>
                           </td>
                         </tr>
                       </tbody>
@@ -1378,18 +1242,18 @@ export default function EditLocationPage() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-4 pt-4">
+        <div className="fixed bottom-0 left-64 right-0 z-30 border-t border-gray-200 bg-gray-50/95 px-6 py-4 backdrop-blur flex items-center gap-4">
           <button
             type="submit"
             disabled={isSaving}
-            className="px-6 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSaving ? 'Updating...' : 'Update'}
           </button>
           <button
             type="button"
             onClick={handleCancel}
-            className="px-6 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+            className="px-6 py-2 bg-gray-200 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-300 transition"
           >
             Cancel
           </button>

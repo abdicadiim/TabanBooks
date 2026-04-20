@@ -860,6 +860,7 @@ export const createLocation = async (req: Request, res: Response): Promise<void>
   try {
     const {
       name,
+      locationCode,
       type,
       isDefault,
       defaultTransactionSeries,
@@ -934,6 +935,7 @@ export const createLocation = async (req: Request, res: Response): Promise<void>
     const location = await Location.create({
       organization: (req as any).user.organizationId,
       name: name.trim(),
+      locationCode: typeof locationCode === "string" ? locationCode.trim() : "",
       type: type || "Business",
       isDefault: isDefault || false,
       defaultTransactionSeries: defaultTransactionSeries || "Default Transaction Series",
@@ -991,6 +993,7 @@ export const updateLocation = async (req: Request, res: Response): Promise<void>
     const { id } = req.params;
     const {
       name,
+      locationCode,
       type,
       isDefault,
       defaultTransactionSeries,
@@ -1062,6 +1065,7 @@ export const updateLocation = async (req: Request, res: Response): Promise<void>
 
     // Update fields
     if (name !== undefined) location.name = name.trim();
+    if (locationCode !== undefined) location.locationCode = typeof locationCode === "string" ? locationCode.trim() : "";
     if (type !== undefined) location.type = type;
     if (isDefault !== undefined) location.isDefault = isDefault;
     if (defaultTransactionSeries !== undefined) location.defaultTransactionSeries = defaultTransactionSeries;
