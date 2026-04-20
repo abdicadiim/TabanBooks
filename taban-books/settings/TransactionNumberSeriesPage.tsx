@@ -1,0 +1,351 @@
+import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { Loader2, Plus, Settings, Trash2 } from "lucide-react";
+import { transactionNumberSeriesAPI, locationsAPI } from "../../services/api";
+import { toast } from "react-toastify";
+import NewTransactionNumberSeriesPage from "./NewTransactionNumberSeriesPage";
+import PreventDuplicatesModal from "./PreventDuplicatesModal";
+
+export default function TransactionNumberSeriesPage() {
+  const [showNewSeriesPage, setShowNewSeriesPage] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [series, setSeries] = useState<any[]>([]);
+  const [selectedSeriesToEdit, setSelectedSeriesToEdit] = useState<any[] | null>(null);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [currentSetting, setCurrentSetting] = useState("all_fiscal_years");
+  const [locations, setLocations] = useState<any[]>([]);
+  const [activePopoverSeries, setActivePopoverSeries] = useState<string | null>(null);
+  const [popoverCoords, setPopoverCoords] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  useEffect(() => {
+    fetchSeries();
+    fetchSettings();
+    fetchLocations();
+  }, []);
+
+  // Handle outside click to close popover
+  useEffect(() => {
+    const handleClickOutside = () => setActivePopoverSeries(null);
+    if (activePopoverSeries) {
+      window.addEventListener("click", handleClickOutside);
+    }
+    return () => window.removeEventListener("click", handleClickOutside);
+  }, [activePopoverSeries]);
+
+  const fetchLocations = async () => {
+    try {
+      const response = await locationsAPI.getAll();
+      if (response && response.success) {
+        setLocations(response.data || []);
+      }
+    } catch (e) {
+      console.error("Error fetching locations:", e);
+    }
+  };
+
+  const fetchSettings = async () => {
+    try {
+      const response = await transactionNumberSeriesAPI.getSettings();
+      if (response && response.success) {
+        setCurrentSetting(response.data.preventDuplicates);
+      }
+    } catch (e) {
+      console.error("Error fetching settings:", e);
+    }
+  };
+
+  const handleSaveSettings = async (selection: string) => {
+    try {
+      await transactionNumberSeriesAPI.updateSettings({ preventDuplicates: selection });
+      setCurrentSetting(selection);
+      setShowSettingsModal(false);
+      toast.success("Settings saved successfully.");
+    } catch (e) {
+      console.error("Error saving settings:", e);
+      alert("Failed to save settings");
+    }
+  };
+
+  const fetchSeries = async () => {
+    setIsLoading(true);
+    try {
+      const response = await transactionNumberSeriesAPI.getAll();
+      if (response && response.success) {
+        setSeries(response.data);
+      }
+    } catch (error) {
+      console.error("Error fetching series:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleNewSeries = () => {
+    setSelectedSeriesToEdit(null);
+    setShowNewSeriesPage(true);
+  };
+
+  const handleEditSeries = (name: string) => {
+    const items = groupedSeries[name];
+    setSelectedSeriesToEdit(items);
+    setShowNewSeriesPage(true);
+  };
+
+  const handleBackFromNewSeries = () => {
+    setShowNewSeriesPage(false);
+    setSelectedSeriesToEdit(null);
+    fetchSeries();
+  };
+
+  const handleDeleteSeries = async (name: string) => {
+    if (!window.confirm(`Are you sure you want to delete the "${name}" series?`)) return;
+    
+    try {
+      const items = groupedSeries[name];
+      for (const item of items) {
+        await transactionNumberSeriesAPI.delete(item._id || item.id);
+      }
+      toast.success(`Transaction series "${name}" deleted.`);
+      fetchSeries();
+    } catch (e) {
+      console.error("Error deleting series:", e);
+      alert("Failed to delete series");
+    }
+  };
+
+  // Group series by name
+  const groupedSeries: Record<string, any[]> = series.reduce((acc, item) => {
+    const name = item.seriesName || "Standard";
+    if (!acc[name]) acc[name] = [];
+    acc[name].push(item);
+    return acc;
+  }, {} as Record<string, any[]>);
+
+  const seriesNames = Object.keys(groupedSeries);
+
+  // Fixed list of modules in the order shown in the image
+  const displayModules = [
+    "Retainer Invoice",
+    "Credit Note",
+    "Customer Payment",
+    "Subscriptions",
+    "Debit Note",
+    "Invoice",
+    "Sales Order",
+    "Quote",
+    "Sales Receipt"
+  ];
+
+  const resolveModuleSeries = (items: any[], moduleName: string) =>
+    items.find((s) => {
+      const m = String(s.module || "").toLowerCase().replace(/s$/, "");
+      const target = moduleName.toLowerCase().replace(/s$/, "");
+      return m === target || m.replace(/\s/g, "-") === target.replace(/\s/g, "-");
+    });
+
+  const renderSeriesLocationPopover = (name: string, firstItem: any) =>
+    activePopoverSeries === name &&
+    popoverCoords &&
+    createPortal(
+      <div
+        className="fixed z-[9999] w-[220px] rounded border border-[#3b82f6] bg-white shadow-xl animate-in fade-in slide-in-from-top-2 duration-200"
+        style={{
+          top: `${popoverCoords.top + 8}px`,
+          left: `${popoverCoords.left}px`,
+          transform: "translateX(-50%)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="absolute bottom-[100%] left-1/2 h-0 w-0 -translate-x-1/2 border-l-[7px] border-r-[7px] border-b-[7px] border-l-transparent border-r-transparent border-b-[#3b82f6]">
+          <div className="absolute left-[-7px] top-[1px] h-0 w-0 border-l-[7px] border-r-[7px] border-b-[7px] border-l-transparent border-r-transparent border-b-white"></div>
+        </div>
+
+        <div className="p-4 text-left">
+          <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wide text-[#4a5568]">
+            Associated Locations
+          </h3>
+          <div className="space-y-2">
+            {firstItem.locationIds?.length > 0 ? (
+              firstItem.locationIds.map((locId: string) => {
+                const loc = locations.find((l) => (l._id || l.id) === locId);
+                return (
+                  <div key={locId} className="text-[13.5px] font-medium text-gray-700">
+                    {loc ? (loc.locationName || loc.name) : "Head Office"}
+                  </div>
+                );
+              })
+            ) : (
+              <div className="whitespace-nowrap text-[13.5px] font-medium text-gray-700">Head Office</div>
+            )}
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+
+  if (isLoading && series.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="w-8 h-8 animate-spin text-[#1e5e6e]" />
+      </div>
+    );
+  }
+
+  if (showNewSeriesPage) {
+    return (
+      <div className="flex min-h-screen flex-col bg-[#f8f9fb] font-sans">
+        <div className="w-full px-0 py-2 md:py-3">
+          <div className="overflow-hidden">
+            <div className="p-3 md:p-4">
+              <NewTransactionNumberSeriesPage
+                onBack={handleBackFromNewSeries}
+                editSeriesItems={selectedSeriesToEdit || undefined}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col bg-[#f8f9fb] font-sans">
+      <div className="w-full px-0 py-2 md:py-3">
+        <div className="overflow-hidden">
+          {/* Top Header */}
+          <div className="flex flex-col gap-2.5 border-b border-[#eff2f7] px-3 py-3 md:px-4 md:py-3.5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <h1 className="truncate text-[15px] font-semibold text-[#1a202c]">
+                Transaction Number Series
+              </h1>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 md:gap-2.5 lg:justify-end">
+              <button
+                onClick={() => setShowSettingsModal(true)}
+                className="flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium text-[#1e5e6e] hover:underline"
+              >
+                <Settings size={14} className="text-[#1e5e6e]" />
+                Prevent Duplicate Transaction Numbers
+              </button>
+              <button
+                onClick={handleNewSeries}
+                className="flex h-8 items-center gap-2 whitespace-nowrap rounded-md bg-[#1e5e6e] px-3 text-[10.5px] font-bold text-white shadow-sm transition-colors hover:bg-[#164a58] active:scale-95"
+              >
+                <Plus size={16} />
+                New Series
+              </button>
+            </div>
+          </div>
+          {/* Sub Header */}
+          <div className="flex items-center gap-2 border-b border-[#eff2f7] bg-[#fcfdff] px-3 py-2 md:px-4">
+            <span className="text-[11px] font-semibold text-[#1a202c]">All Series</span>
+            <span className="rounded-[3px] bg-[#edf2f7] px-1.5 py-0.5 text-[11px] font-bold leading-none text-[#4a5568]">
+              {seriesNames.length}
+            </span>
+          </div>
+
+          {/* Horizontal Table */}
+          <div className="w-full overflow-x-auto overflow-y-hidden custom-scrollbar">
+            <table className="w-full table-fixed border-collapse border-l border-t border-[#eff2f7] text-left">
+              <thead>
+                <tr className="border-b border-[#eff2f7] bg-[#fcfdff]">
+                  <th className="w-[16%] border-r border-[#eff2f7] px-2 py-2 text-[9px] font-bold uppercase tracking-wider leading-tight text-[#718096] md:px-3">
+                    SERIES NAME
+                  </th>
+                  {displayModules.map((moduleName) => (
+                    <th
+                      key={moduleName}
+                      className="w-[8%] border-r border-[#eff2f7] px-2 py-2 text-[9px] font-bold uppercase tracking-wider leading-tight text-[#718096] md:px-3"
+                    >
+                      {moduleName}
+                    </th>
+                  ))}
+                  <th className="w-[10%] whitespace-normal border-r border-[#eff2f7] px-2 py-2 text-[9px] font-bold uppercase tracking-wider leading-tight text-[#718096] md:px-3">
+                    ASSOCIATED LOCATIONS
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#eff2f7]">
+                {seriesNames.map((name) => {
+                  const items = groupedSeries[name];
+                  const firstItem = items[0] || {};
+                  const locationCount = Array.isArray(firstItem.locationIds) ? firstItem.locationIds.length : 1;
+
+                  return (
+                    <tr
+                      key={name}
+                      className="group cursor-pointer transition-colors hover:bg-[#fcfdff]"
+                      onClick={() => handleEditSeries(name)}
+                    >
+                      <td className="relative border-r border-[#eff2f7] px-2 py-2.5 md:px-3">
+                        <div className="flex items-center justify-between group/name">
+                          <button className="min-w-0 flex-1 truncate text-left text-[12px] font-medium text-[#1e5e6e] hover:underline">
+                            {name}
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteSeries(name);
+                            }}
+                            className="ml-2 rounded p-1 text-red-400 opacity-0 transition-all hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
+                            title="Delete Series"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                      {displayModules.map((moduleName) => {
+                        const moduleSeries = resolveModuleSeries(items, moduleName);
+
+                        return (
+                          <td key={moduleName} className="border-r border-[#eff2f7] px-2 py-2.5 md:px-3">
+                            {moduleSeries ? (
+                              <span className="text-[11.5px] text-[#4a5568]">
+                                {moduleSeries.prefix || ""}
+                                {moduleSeries.startingNumber || moduleSeries.nextNumber || "1"}
+                              </span>
+                            ) : (
+                              <span className="text-[11.5px] text-gray-200">-</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                      <td className="relative border-r border-[#eff2f7] px-2 py-2.5 md:px-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setPopoverCoords({
+                              top: rect.bottom + window.scrollY,
+                              left: rect.left + rect.width / 2 + window.scrollX,
+                              width: rect.width,
+                            });
+                            setActivePopoverSeries(activePopoverSeries === name ? null : name);
+                          }}
+                          className="ml-1 block w-full text-center text-[11.5px] font-medium text-[#3b82f6] hover:underline"
+                        >
+                          {locationCount}
+                        </button>
+
+                        {/* Associated Locations Popover - Rendered via Portal */}
+                        {renderSeriesLocationPopover(name, firstItem)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {showSettingsModal && (
+        <PreventDuplicatesModal
+          onClose={() => setShowSettingsModal(false)}
+          onSave={handleSaveSettings}
+          currentValue={currentSetting}
+        />
+      )}
+    </div>
+  );
+}

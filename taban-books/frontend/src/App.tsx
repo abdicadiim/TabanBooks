@@ -1,11 +1,14 @@
 import React, { useEffect } from "react";
 import { Toaster } from "react-hot-toast";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import AppRoutes from "./routes/AppRoutes";
 import { API_BASE_URL } from "./services/auth";
 import type { Organization } from "./services/auth";
 import { AppBootstrapProvider, useAppBootstrap } from "./context/AppBootstrapContext";
+import { SettingsProvider } from "./lib/settings/SettingsContext";
 
 const DEFAULT_TITLE = "Taban Books";
+const queryClient = new QueryClient();
 const DEFAULT_FAVICON = `data:image/svg+xml,${encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#156372"/><text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-family="Arial,sans-serif" font-size="26" font-weight="700" fill="#ffffff">TB</text></svg>'
 )}`;
@@ -62,32 +65,36 @@ function AppContent() {
   return (
     <>
       <AppBrandingSync />
-      <AppRoutes />
-      <Toaster 
-        position="top-right"
-        toastOptions={{
-          duration: 3000,
-          style: {
-            background: '#fff',
-            color: '#374151',
-            border: '1px solid #e5e7eb',
-            borderRadius: '8px',
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-          },
-          success: {
-            iconTheme: {
-              primary: '#059669',
-              secondary: '#fff',
+      <QueryClientProvider client={queryClient}>
+        <SettingsProvider>
+          <AppRoutes />
+        </SettingsProvider>
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            duration: 3000,
+            style: {
+              background: '#fff',
+              color: '#374151',
+              border: '1px solid #e5e7eb',
+              borderRadius: '8px',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
             },
-          },
-          error: {
-            iconTheme: {
-              primary: '#dc2626',
-              secondary: '#fff',
+            success: {
+              iconTheme: {
+                primary: '#059669',
+                secondary: '#fff',
+              },
             },
-          },
-        }}
-      />
+            error: {
+              iconTheme: {
+                primary: '#dc2626',
+                secondary: '#fff',
+              },
+            },
+          }}
+        />
+      </QueryClientProvider>
     </>
   );
 }

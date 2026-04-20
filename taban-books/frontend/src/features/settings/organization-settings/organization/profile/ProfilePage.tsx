@@ -1,45 +1,90 @@
-﻿import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { Upload, Edit2, X, Search, HelpCircle, Send, Settings as SettingsIcon } from "lucide-react";
+import { Upload, Edit2, X, Search, HelpCircle, Send, Settings as SettingsIcon, Info, ChevronDown, Trash2 } from "lucide-react";
+import { toast } from "react-toastify";
 import { TIMEZONES } from "../../../../../constants/timezones";
+import { currenciesAPI } from "../../../../../services/api";
+import { getToken } from "../../../../../services/auth";
+import { normalizeImageSrc } from "../../../../../utils/imageSources";
+import { readJsonStorage, safeSetJsonStorage } from "../../../../../utils/storage";
+
+type AnyRecord = Record<string, any>;
+type ClickAwayRef = React.RefObject<HTMLElement | null>;
+type DropdownProps = {
+  value: string;
+  placeholder: string;
+  options: string[];
+  onChange: (value: string) => void;
+};
+type TooltipProps = {
+  text: string;
+  children: React.ReactNode;
+};
+type AdditionalField = {
+  label: string;
+  value: string;
+  index?: number;
+  [key: string]: any;
+};
 
 const API_BASE_URL = '/api';
 const DEFAULT_SYSTEM_SENDER_EMAIL = "message-service@sender.tabanbooks.com";
+const USER_STORAGE_KEYS = ["user", "current_user", "auth_user"];
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const LANGUAGE_LABEL_BY_CODE: Record<string, string> = {
+  ar: "Arabic",
+  de: "German",
+  en: "English",
+  es: "Spanish",
+  fr: "French",
+  hi: "Hindi",
+  zh: "Chinese",
+};
 
 const getStoredUser = () => {
-  try {
-    const user = localStorage.getItem('user');
-    return user ? JSON.parse(user) : null;
-  } catch (error) {
-    console.error('Error parsing local user:', error);
-    return null;
+  for (const key of USER_STORAGE_KEYS) {
+    const user = readJsonStorage<any>(key, null);
+    if (user) return user;
   }
+  return null;
 };
+
+const readStoredOrgProfile = () => readJsonStorage<any>("org_profile", null);
 
 const INDUSTRIES = [
   "Agency or Sales House",
   "Agriculture",
   "Art and Design",
   "Automotive",
-  "Banking & Finance",
   "Construction",
   "Consulting",
   "Consumer Packaged Goods",
   "Education",
-  "Energy & Utilities",
-  "Food & Beverage",
-  "Healthcare",
-  "Hospitality",
-  "Information Technology",
+  "Engineering",
+  "Entertainment",
+  "Financial Services",
+  "Food Services (Restaurants/Fast Food)",
+  "Gaming",
+  "Government",
+  "Health Care",
+  "Interior Design",
+  "Internal",
+  "Legal",
   "Manufacturing",
-  "Media & Entertainment",
+  "Marketing",
+  "Mining and Logistics",
+  "Non-Profit",
+  "Publishing and Web Media",
   "Real Estate",
-  "Retail",
+  "Retail (E-Commerce and Offline)",
+  "Services",
+  "Technology",
   "Telecommunications",
-  "Transportation & Logistics",
-  "Travel & Tourism",
-  "Other"
+  "Travel/Hospitality",
+  "Web Designing",
+  "Web Development",
+  "Writers"
 ];
 
 const COUNTRIES = [
@@ -306,7 +351,7 @@ const COUNTRIES = [
   "Zimbabwe"
 ];
 
-const CURRENCIES = [
+const DEFAULT_CURRENCY_OPTIONS = [
   "SOS - Somali Shilling",
   "USD - US Dollar",
   "EUR - Euro",
@@ -318,8 +363,19 @@ const CURRENCIES = [
   "CNY - Chinese Yuan",
   "JPY - Japanese Yen"
 ];
+const CURRENCY_STORAGE_KEYS = ["taban_currencies", "taban_books_currencies"];
 const LANGUAGES = ["English", "Spanish", "French", "German", "Arabic", "Chinese", "Hindi"];
 const TIME_ZONES = TIMEZONES;
+const DEFAULT_TIME_ZONE = "(GMT+03:00) Eastern African Time (Africa/Mogadishu)";
+
+const resolveTimezoneSelection = (value: string | null | undefined, fallback: string = DEFAULT_TIME_ZONE) => {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+  if (TIME_ZONES.includes(raw)) return raw;
+  const normalized = raw.toLowerCase();
+  const matched = TIME_ZONES.find((zone) => zone.toLowerCase().includes(normalized));
+  return matched || raw;
+};
 const DATE_FORMATS = {
   "short": [
     "MM-dd-yy [ 12-25-25 ]",
@@ -351,12 +407,360 @@ const ALL_DATE_FORMATS = [
 ];
 const FISCAL_YEARS = ["January - December", "February - January", "March - February", "April - March"];
 const START_DATES = Array.from({ length: 31 }, (_, i) => i + 1);
+const MONTH_OPTIONS = [
+  "january",
+  "february",
+  "march",
+  "april",
+  "may",
+  "june",
+  "july",
+  "august",
+  "september",
+  "october",
+  "november",
+  "december",
+];
+
+const getOrganizationEndpoint = () => {
+  const organizationId = String(getStoredUser()?.organizationId || "").trim();
+  return organizationId ? `${API_BASE_URL}/organizations/${organizationId}` : `${API_BASE_URL}/settings/organization/profile`;
+};
+
+const extractOrganizationResponse = (payload: any) => payload?.organization || payload?.data || null;
+
+const getLanguageLabel = (value: string | null | undefined) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const normalized = raw.toLowerCase();
+  return LANGUAGE_LABEL_BY_CODE[normalized] || raw;
+};
+
+const getLanguageCode = (value: string | null | undefined) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const normalized = raw.toLowerCase();
+  const found = Object.entries(LANGUAGE_LABEL_BY_CODE).find(([, label]) => label.toLowerCase() === normalized);
+  return found?.[0] || normalized;
+};
+
+const getFiscalYearLabel = (value: string | number | null | undefined) => {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (!raw) return "";
+
+  let monthIndex = MONTH_OPTIONS.indexOf(raw);
+  if (monthIndex < 0) {
+    const numericValue = Number(raw);
+    if (Number.isInteger(numericValue) && numericValue >= 0 && numericValue < MONTH_OPTIONS.length) {
+      monthIndex = numericValue;
+    }
+  }
+
+  if (monthIndex < 0) {
+    return String(value || "");
+  }
+
+  const start = MONTH_OPTIONS[monthIndex];
+  const end = MONTH_OPTIONS[(monthIndex + 11) % MONTH_OPTIONS.length];
+  return `${start.charAt(0).toUpperCase()}${start.slice(1)} - ${end.charAt(0).toUpperCase()}${end.slice(1)}`;
+};
+
+const normalizeOrganizationPayload = (responsePayload: any) => {
+  const payload = extractOrganizationResponse(responsePayload);
+  if (!payload || typeof payload !== "object") return null;
+
+  const addressSource = payload?.address && typeof payload.address === "object" ? payload.address : {};
+  const addressFallback = {
+    street1: payload?.street_address1 || payload?.addressLine1 || "",
+    street2: payload?.street_address2 || payload?.addressLine2 || "",
+    city: payload?.city || "",
+    zipCode: payload?.zip || payload?.postalCode || "",
+    state: payload?.state || "",
+    country: payload?.country || payload?.countryIso || "",
+    phone: payload?.phone || "",
+    fax: payload?.fax || "",
+  };
+  const mergedAddress = {
+    ...addressFallback,
+    ...addressSource,
+  };
+  const customFields = Array.isArray(payload?.custom_fields)
+    ? payload.custom_fields
+    : Array.isArray(payload?.additionalFields)
+      ? payload.additionalFields
+      : [];
+
+  return {
+    id: String(payload?.id || payload?._id || payload?.organizationId || "").trim(),
+    name: String(payload?.name || payload?.organizationName || "").trim(),
+    industry: String(payload?.industry || payload?.industry_type || "").trim(),
+    country: String(mergedAddress?.country || "").trim(),
+    website: String(payload?.website || "").trim(),
+    email: String(payload?.email || "").trim(),
+    baseCurrency: String(payload?.baseCurrency || payload?.currency_code || "").trim(),
+    fiscalYear: String(payload?.fiscalYear || getFiscalYearLabel(payload?.fiscal_year_start_month)).trim(),
+    reportBasis: String(payload?.reportBasis || "").trim(),
+    orgLanguage: String(payload?.orgLanguage || getLanguageLabel(payload?.language_code)).trim(),
+    commLanguage: String(payload?.commLanguage || "").trim(),
+    timeZone: String(payload?.timeZone || payload?.time_zone || "").trim(),
+    dateFormat: String(payload?.dateFormat || payload?.date_format || "").trim(),
+    dateSeparator: String(payload?.dateSeparator || payload?.field_separator || "").trim(),
+    street1: String(mergedAddress?.street1 || "").trim(),
+    street2: String(mergedAddress?.street2 || "").trim(),
+    city: String(mergedAddress?.city || "").trim(),
+    zipCode: String(mergedAddress?.zipCode || "").trim(),
+    state: String(mergedAddress?.state || "").trim(),
+    phone: String(mergedAddress?.phone || "").trim(),
+    fax: String(mergedAddress?.fax || "").trim(),
+    logo: String(payload?.logo || payload?.logoUrl || "").trim(),
+    additionalFields: customFields.map((field: any, index: number) => ({
+      label: String(field?.label || "").trim(),
+      value: String(field?.value || "").trim(),
+      index: Number(field?.index) || index + 1,
+    })),
+    paymentStubAddress: String(payload?.paymentStubAddress || "").trim(),
+    showPaymentStubAddress: Boolean(payload?.showPaymentStubAddress),
+  };
+};
+
+const isValidWebsite = (value: string) => {
+  if (!value) return true;
+  try {
+    const url = new URL(value.startsWith("http://") || value.startsWith("https://") ? value : `https://${value}`);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+const validateProfileForm = (input: {
+  orgName: string;
+  industry: string;
+  location: string;
+  email: string;
+  website: string;
+  baseCurrency: string;
+  timeZone: string;
+  paymentStubAddress: string;
+  additionalFields: Array<{ label?: string; value?: string }>;
+}) => {
+  const safeOrgName = String(input.orgName ?? "");
+  const safeIndustry = String(input.industry ?? "");
+  const safeLocation = String(input.location ?? "");
+  const safeTimeZone = String(input.timeZone ?? "");
+  const safeBaseCurrency = String(input.baseCurrency ?? "");
+  const normalizedEmail = String(input.email ?? "").trim().toLowerCase();
+  const normalizedWebsite = String(input.website ?? "").trim();
+  const safePaymentStubAddress = String(input.paymentStubAddress ?? "");
+
+  if (!safeOrgName.trim()) return "Organization name is required.";
+  if (!safeIndustry.trim()) return "Industry is required.";
+  if (!safeLocation.trim()) return "Organization location is required.";
+  if (!extractCurrencyCode(safeBaseCurrency)) return "Base currency is required.";
+  if (!safeTimeZone.trim()) return "Time zone is required.";
+
+  if (normalizedEmail && !EMAIL_REGEX.test(normalizedEmail)) {
+    return "Enter a valid organization email address.";
+  }
+
+  if (normalizedWebsite && !isValidWebsite(normalizedWebsite)) {
+    return "Enter a valid website URL.";
+  }
+
+  const incompleteAdditionalField = input.additionalFields.find((field: { label?: string; value?: string }) => {
+    const label = String(field?.label || "").trim();
+    const value = String(field?.value || "").trim();
+    return (label || value) && (!label || !value);
+  });
+
+  if (incompleteAdditionalField) {
+    return "Each additional field needs both a label and a value.";
+  }
+
+  if (safePaymentStubAddress.trim().length > 255) {
+    return "Payment stub address cannot exceed 255 characters.";
+  }
+
+  return "";
+};
+
+const readStoredCurrencyRows = () => {
+  for (const storageKey of CURRENCY_STORAGE_KEYS) {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (!stored) continue;
+
+      const parsed = JSON.parse(stored);
+      const rows = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.data)
+          ? parsed.data
+          : Array.isArray(parsed?.currencies)
+            ? parsed.currencies
+            : [];
+
+      if (rows.length > 0) {
+        return rows;
+      }
+    } catch {
+      // Ignore malformed cache and try the next storage key.
+    }
+  }
+
+  return [];
+};
+
+const resolveCurrencySelection = (value: string | null | undefined, options: string[]) => {
+  const availableOptions = options.length > 0 ? options : DEFAULT_CURRENCY_OPTIONS;
+  const fallback = availableOptions[0] || DEFAULT_CURRENCY_OPTIONS[0];
+  const raw = String(value || "").trim();
+
+  if (!raw) {
+    return fallback;
+  }
+
+  const code = raw.split(" - ")[0].trim().toUpperCase();
+
+  return availableOptions.find((option) => option.toUpperCase() === raw.toUpperCase())
+    || availableOptions.find((option) => option.toUpperCase().startsWith(`${code} - `))
+    || raw;
+};
+
+const extractCurrencyCode = (value: string | null | undefined) =>
+  String(value || "").split(" - ")[0].trim().toUpperCase();
+
+const extractCurrencyRows = (payload: any) => {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.currencies)) return payload.currencies;
+  if (Array.isArray(payload?.rows)) return payload.rows;
+  return [];
+};
+
+const isBaseCurrencyRecord = (row: any) => {
+  if (!row || typeof row !== "object") return false;
+  return Boolean(
+    row?.isBase ||
+    row?.isBaseCurrency ||
+    row?.is_base_currency ||
+    row?.baseCurrency ||
+    row?.base_currency
+  );
+};
+
+const normalizeCurrencyOption = (row: any) => {
+  if (!row || typeof row !== "object") return null;
+  const codeCandidate = String(
+    row?.code ||
+    row?.currencyCode ||
+    row?.currency ||
+    row?.currency_id ||
+    row?.id ||
+    ""
+  ).trim();
+  const code = extractCurrencyCode(codeCandidate);
+  if (!code) return null;
+  const name = String(row?.name || row?.currencyName || row?.label || row?.displayName || "").trim();
+  const symbol = String(row?.symbol || row?.currencySymbol || "").trim();
+  const detail = name || symbol ? ` - ${name || symbol}` : "";
+  const label = `${code}${detail}`;
+  return {
+    code,
+    label,
+    isBase: isBaseCurrencyRecord(row),
+  };
+};
+
+const buildCurrencyOptions = (rows: AnyRecord[]) => {
+  const seen = new Set<string>();
+  const options: string[] = [];
+  rows.forEach((row: AnyRecord) => {
+    const normalized = normalizeCurrencyOption(row);
+    if (!normalized || seen.has(normalized.label.toUpperCase())) return;
+    options.push(normalized.label);
+    seen.add(normalized.label.toUpperCase());
+  });
+  return options;
+};
+
+const readStoredCurrencyOptions = () => {
+  const rows = readStoredCurrencyRows();
+  const options = buildCurrencyOptions(rows);
+  return options.length > 0 ? options : DEFAULT_CURRENCY_OPTIONS;
+};
+
+const getBaseCurrencySelectionFromRows = (rows: AnyRecord[], options?: string[]) => {
+  const base = normalizeCurrencyOption(rows.find(isBaseCurrencyRecord));
+  if (!base) return null;
+  const availableOptions = options && options.length > 0 ? options : buildCurrencyOptions(rows);
+  return resolveCurrencySelection(base.label, availableOptions);
+};
+
+const readStoredBaseCurrencySelection = () => {
+  const rows = readStoredCurrencyRows();
+  return rows.length > 0 ? getBaseCurrencySelectionFromRows(rows) : null;
+};
+
+const updateStoredBaseCurrencySelection = (selectedCurrency: string) => {
+  const targetCode = extractCurrencyCode(selectedCurrency);
+  if (!targetCode) return;
+
+  for (const storageKey of CURRENCY_STORAGE_KEYS) {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (!stored) continue;
+
+      const parsed = JSON.parse(stored);
+      const rows = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.data)
+          ? parsed.data
+          : Array.isArray(parsed?.currencies)
+            ? parsed.currencies
+            : [];
+
+      if (!rows.length) continue;
+
+      const nextRows = rows.map((row: any) => {
+        const rowCode = extractCurrencyCode(String(row?.code || row?.currencyCode || ""));
+        const isTarget = rowCode === targetCode;
+        const nextRow: any = {
+          ...row,
+          isBase: isTarget,
+          isBaseCurrency: isTarget,
+        };
+
+        if (Object.prototype.hasOwnProperty.call(row, "is_base_currency")) {
+          nextRow.is_base_currency = isTarget;
+        }
+        if (Object.prototype.hasOwnProperty.call(row, "baseCurrency")) {
+          nextRow.baseCurrency = isTarget;
+        }
+        if (Object.prototype.hasOwnProperty.call(row, "base_currency")) {
+          nextRow.base_currency = isTarget;
+        }
+
+        return nextRow;
+      });
+
+      safeSetJsonStorage(storageKey, nextRows);
+    } catch {
+      // Ignore malformed cache writes.
+    }
+  }
+};
 
 // Helper for click away
-function useClickAway(ref, onAway, additionalRef = null) {
+function useClickAway(
+  ref: ClickAwayRef,
+  onAway?: () => void,
+  additionalRef: ClickAwayRef | null = null,
+) {
   useEffect(() => {
-    const fn = (e) => {
-      const clickedInside = ref.current?.contains(e.target) || additionalRef?.current?.contains(e.target);
+    const fn = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      const clickedInside = ref.current?.contains(target) || additionalRef?.current?.contains(target);
       if (!clickedInside) onAway?.();
     };
     document.addEventListener("mousedown", fn);
@@ -365,18 +769,18 @@ function useClickAway(ref, onAway, additionalRef = null) {
 }
 
 // Searchable Dropdown Component
-function SearchableDropdown({ value, placeholder, options, onChange }) {
+function SearchableDropdown({ value, placeholder, options, onChange }: DropdownProps) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [position, setPosition] = useState({ top: 0, left: 0, width: 0, openUpward: false });
-  const box = useRef(null);
-  const dropdownRef = useRef(null);
+  const box = useRef<HTMLDivElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   useClickAway(box, () => setOpen(false), dropdownRef);
 
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return s ? options.filter((o) => o.toLowerCase().includes(s)) : options;
+    return s ? options.filter((o: string) => o.toLowerCase().includes(s)) : options;
   }, [options, q]);
 
   useEffect(() => {
@@ -429,8 +833,8 @@ function SearchableDropdown({ value, placeholder, options, onChange }) {
       <div ref={box} className="relative w-full">
         <button
           type="button"
-          className={`h-10 w-full rounded-lg border-2 bg-white px-3 text-left text-sm font-medium flex items-center justify-between transition
-            ${open ? "border-blue-500 ring-2 ring-blue-100 shadow-md" : "border-gray-300 hover:border-gray-400"}
+          className={`h-10 w-full rounded-lg border-2 bg-transparent px-3 text-left text-sm font-medium flex items-center justify-between transition
+            ${open ? "border-black ring-2 ring-black/10 shadow-md" : "border-gray-300 hover:border-gray-400"}
           `}
           onClick={() => setOpen((v) => !v)}
         >
@@ -452,7 +856,7 @@ function SearchableDropdown({ value, placeholder, options, onChange }) {
       {open && createPortal(
         <div
           ref={dropdownRef}
-          className="fixed overflow-hidden rounded-xl border-2 border-blue-300 bg-white shadow-[0_20px_40px_rgba(0,0,0,0.25)]"
+          className="fixed overflow-hidden rounded-xl border-2 border-black/20 bg-white shadow-[0_20px_40px_rgba(0,0,0,0.25)]"
           style={{
             top: `${position.top}px`,
             left: `${position.left}px`,
@@ -462,28 +866,28 @@ function SearchableDropdown({ value, placeholder, options, onChange }) {
             display: 'flex',
             flexDirection: 'column'
           }}
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}
         >
-          <div className="flex items-center gap-2 border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-blue-50/30 px-3 py-3 flex-shrink-0">
+          <div className="flex items-center gap-2 border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 px-3 py-3 flex-shrink-0">
             <Search size={16} className="text-gray-400" />
             <input
               autoFocus
               className="w-full bg-transparent text-sm font-medium outline-none placeholder:text-gray-400"
               placeholder="Search"
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQ(e.target.value)}
             />
           </div>
 
           <div className="overflow-auto flex-1" style={{ maxHeight: '280px' }}>
-            {list.map((opt) => {
+            {list.map((opt: string) => {
               const isSelected = opt === value;
               return (
                 <button
                   key={opt}
                   type="button"
                   className={`w-full px-4 py-2.5 text-left text-sm font-medium transition
-                    ${isSelected ? "bg-blue-500 text-white" : "text-gray-900 hover:bg-gray-50"}
+                    ${isSelected ? "text-gray-900" : "text-gray-900 hover:bg-gray-100"}
                   `}
                   onClick={() => {
                     onChange(opt);
@@ -491,7 +895,14 @@ function SearchableDropdown({ value, placeholder, options, onChange }) {
                     setQ("");
                   }}
                 >
-                  {opt}
+                  <span className="flex items-center justify-between gap-3">
+                    <span>{opt}</span>
+                    {isSelected && (
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <path d="M3.5 8.5l2.5 2.5 6-6" stroke="#111827" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </span>
                 </button>
               );
             })}
@@ -507,10 +918,10 @@ function SearchableDropdown({ value, placeholder, options, onChange }) {
 }
 
 // Help Tooltip Component
-function HelpTooltip({ text, children }) {
+function HelpTooltip({ text, children }: TooltipProps) {
   const [show, setShow] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
-  const targetRef = useRef(null);
+  const targetRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (show && targetRef.current) {
@@ -552,12 +963,12 @@ function HelpTooltip({ text, children }) {
 }
 
 // Date Format Dropdown with Categories
-function DateFormatDropdown({ value, placeholder, onChange }) {
+function DateFormatDropdown({ value, placeholder, onChange }: DropdownProps) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [position, setPosition] = useState({ top: 0, left: 0, width: 0, openUpward: false });
-  const box = useRef(null);
-  const dropdownRef = useRef(null);
+  const box = useRef<HTMLDivElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   useClickAway(box, () => setOpen(false), dropdownRef);
 
@@ -566,9 +977,9 @@ function DateFormatDropdown({ value, placeholder, onChange }) {
     const s = q.trim().toLowerCase();
     if (!s) return DATE_FORMATS;
 
-    const filtered = {};
+    const filtered: Record<string, string[]> = {};
     Object.entries(DATE_FORMATS).forEach(([category, formats]) => {
-      const matching = formats.filter(f => f.toLowerCase().includes(s));
+      const matching = formats.filter((f: string) => f.toLowerCase().includes(s));
       if (matching.length > 0) {
         filtered[category] = matching;
       }
@@ -626,8 +1037,8 @@ function DateFormatDropdown({ value, placeholder, onChange }) {
       <div ref={box} className="relative w-full">
         <button
           type="button"
-          className={`h-10 w-full rounded-lg border-2 bg-white px-3 text-left text-sm font-medium flex items-center justify-between transition
-            ${open ? "border-blue-500 ring-2 ring-blue-100 shadow-md" : "border-gray-300 hover:border-gray-400"}
+          className={`h-10 w-full rounded-lg border-2 bg-transparent px-3 text-left text-sm font-medium flex items-center justify-between transition
+            ${open ? "border-black ring-2 ring-black/10 shadow-md" : "border-gray-300 hover:border-gray-400"}
           `}
           onClick={() => setOpen((v) => !v)}
         >
@@ -649,7 +1060,7 @@ function DateFormatDropdown({ value, placeholder, onChange }) {
       {open && createPortal(
         <div
           ref={dropdownRef}
-          className="fixed overflow-hidden rounded-xl border-2 border-blue-300 bg-white shadow-[0_20px_40px_rgba(0,0,0,0.25)]"
+          className="fixed overflow-hidden rounded-xl border-2 border-black/20 bg-white shadow-[0_20px_40px_rgba(0,0,0,0.25)]"
           style={{
             top: `${position.top}px`,
             left: `${position.left}px`,
@@ -659,9 +1070,9 @@ function DateFormatDropdown({ value, placeholder, onChange }) {
             display: 'flex',
             flexDirection: 'column'
           }}
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}
         >
-          <div className="flex items-center gap-2 border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-blue-50/30 px-3 py-3 flex-shrink-0">
+          <div className="flex items-center gap-2 border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 px-3 py-3 flex-shrink-0">
             <Search size={16} className="text-gray-400" />
             <input
               autoFocus
@@ -678,14 +1089,14 @@ function DateFormatDropdown({ value, placeholder, onChange }) {
                 <div className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-50 border-b border-gray-100 uppercase">
                   {category}
                 </div>
-                {formats.map((format) => {
+                {formats.map((format: string) => {
                   const isSelected = format === value;
                   return (
                     <button
                       key={format}
                       type="button"
                       className={`w-full px-4 py-2.5 text-left text-sm font-medium transition flex items-center justify-between
-                        ${isSelected ? "bg-blue-500 text-white" : "text-gray-900 hover:bg-gray-50"}
+                        ${isSelected ? "text-gray-900" : "text-gray-900 hover:bg-gray-100"}
                       `}
                       onClick={() => {
                         onChange(format);
@@ -717,24 +1128,25 @@ function DateFormatDropdown({ value, placeholder, onChange }) {
 
 export default function ProfilePage() {
   const navigate = useNavigate();
+  const [currencyOptions, setCurrencyOptions] = useState<string[]>(() => readStoredCurrencyOptions());
+  const [organizationDbId, setOrganizationDbId] = useState(() => {
+    const lp = readStoredOrgProfile();
+    return String(lp?.id || lp?._id || lp?.organizationId || getStoredUser()?.organizationId || "").trim();
+  });
   const [orgName, setOrgName] = useState(() => {
-    const local = localStorage.getItem('org_profile');
-    console.log("DEBUG: Local org_profile from storage:", local);
-    return local ? JSON.parse(local).organizationName : "Taban enterprise";
+    return readStoredOrgProfile()?.organizationName || "Taban enterprise";
   });
 
   const [industry, setIndustry] = useState(() => {
-    const local = localStorage.getItem('org_profile');
-    return local ? JSON.parse(local).industry : "Agriculture";
+    return readStoredOrgProfile()?.industry || "Agriculture";
   });
   const [location, setLocation] = useState(() => {
-    const local = localStorage.getItem('org_profile');
-    return local ? JSON.parse(local).location : "Somalia";
+    return readStoredOrgProfile()?.location || "Somalia";
   });
 
   const [email, setEmail] = useState(() => {
-    const user = localStorage.getItem('user');
-    return user ? JSON.parse(user).email : "";
+    const user = getStoredUser();
+    return user?.email || "";
   });
   const [primarySenderName, setPrimarySenderName] = useState(() => {
     const storedUser = getStoredUser();
@@ -744,28 +1156,23 @@ export default function ProfilePage() {
     const storedUser = getStoredUser();
     return storedUser?.email || "";
   });
-  const [logoImage, setLogoImage] = useState(null);
-  const [logoPreview, setLogoPreview] = useState(null);
-  const fileInputRef = useRef(null);
+  const [logoImage, setLogoImage] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string>("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [street1, setStreet1] = useState(() => {
-    const local = localStorage.getItem('org_profile');
-    return local ? JSON.parse(local).street1 : "";
+    return readStoredOrgProfile()?.street1 || "";
   });
   const [street2, setStreet2] = useState(() => {
-    const local = localStorage.getItem('org_profile');
-    return local ? JSON.parse(local).street2 : "";
+    return readStoredOrgProfile()?.street2 || "";
   });
   const [city, setCity] = useState(() => {
-    const local = localStorage.getItem('org_profile');
-    return local ? JSON.parse(local).city : "";
+    return readStoredOrgProfile()?.city || "";
   });
   const [zipCode, setZipCode] = useState(() => {
-    const local = localStorage.getItem('org_profile');
-    return local ? JSON.parse(local).zipCode : "";
+    return readStoredOrgProfile()?.zipCode || "";
   });
   const [state, setState] = useState(() => {
-    const local = localStorage.getItem('org_profile');
-    return local ? JSON.parse(local).state : "";
+    return readStoredOrgProfile()?.state || "";
   });
 
   const [phone, setPhone] = useState("");
@@ -777,43 +1184,39 @@ export default function ProfilePage() {
 
   // Additional fields
   const [baseCurrency, setBaseCurrency] = useState(() => {
-    const local = localStorage.getItem('org_profile');
-    if (local) {
-      const parsed = JSON.parse(local);
-      const cur = parsed.currency;
-      if (cur) return cur.includes(' - ') ? cur : CURRENCIES.find(c => c.startsWith(cur)) || cur;
-      return "SOS - Somali Shilling";
-    }
-    return "SOS - Somali Shilling";
+    return resolveCurrencySelection(null, readStoredCurrencyOptions());
   });
   const [fiscalYear, setFiscalYear] = useState("January - December");
   const [startDate, setStartDate] = useState("1");
   const [reportBasis, setReportBasis] = useState("Accrual");
   const [orgLanguage, setOrgLanguage] = useState(() => {
-    const local = localStorage.getItem('org_profile');
-    return local ? JSON.parse(local).language : "English";
+    return readStoredOrgProfile()?.language || "English";
   });
   const [commLanguage, setCommLanguage] = useState("English");
   const [timeZone, setTimeZone] = useState(() => {
-    const local = localStorage.getItem('org_profile');
-    return local ? JSON.parse(local).timezone : "(GMT 3:00) Eastern African Time (Africa/Mogadishu)";
+    const stored = readStoredOrgProfile()?.timezone || null;
+    return resolveTimezoneSelection(stored);
   });
 
   const [dateFormat, setDateFormat] = useState("dd-MM-yyyy [ 25-12-2025 ]");
   const [dateSeparator, setDateSeparator] = useState("-");
 
   // Update date format when separator changes
-  const handleDateSeparatorChange = (newSeparator) => {
+  const handleDateSeparatorChange = (newSeparator: string) => {
     setDateSeparator(newSeparator);
     // Replace all separators in the current date format
     const updatedFormat = dateFormat.replace(/[-./]/g, newSeparator);
     setDateFormat(updatedFormat);
   };
-  const [companyIdType, setCompanyIdType] = useState("Company ID :");
-  const [companyIdValue, setCompanyIdValue] = useState("");
-  const [additionalFields, setAdditionalFields] = useState<any[]>([{ label: "Label", value: "Value" }]);
+  const [additionalFields, setAdditionalFields] = useState<AdditionalField[]>([{ label: "", value: "" }]);
   const [isSaving, setIsSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  // Save feedback uses react-toastify (see `handleSave`).
+  const [isEditCurrencyModalOpen, setIsEditCurrencyModalOpen] = useState(false);
+  const [editCurrencyCode, setEditCurrencyCode] = useState("USD");
+  const [editCurrencySymbol, setEditCurrencySymbol] = useState("$");
+  const [editCurrencyName, setEditCurrencyName] = useState("United States Dollar");
+  const [editCurrencyDecimals, setEditCurrencyDecimals] = useState("2");
+  const [editCurrencyFormat, setEditCurrencyFormat] = useState("1,234,567.89");
 
   // Temporary state for the edit modal
   const [editStreet1, setEditStreet1] = useState(street1);
@@ -850,14 +1253,24 @@ export default function ProfilePage() {
     setAdditionalFields([...additionalFields, { label: "", value: "" }]);
   };
 
-  const handleFieldChange = (index, field, value) => {
+  const handleRemoveField = (index: number) => {
+    setAdditionalFields((fields) => {
+      if (fields.length <= 1) {
+        return [{ label: "", value: "" }];
+      }
+
+      return fields.filter((_, fieldIndex) => fieldIndex !== index);
+    });
+  };
+
+  const handleFieldChange = (index: number, field: "label" | "value", value: string) => {
     const updated = [...additionalFields];
     updated[index][field] = value;
     setAdditionalFields(updated);
   };
 
-  const handleLogoUpload = (e) => {
-    const file = e.target.files[0];
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (file) {
       // Validate file type
       const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp'];
@@ -877,7 +1290,7 @@ export default function ProfilePage() {
       // Create preview
       const reader = new FileReader();
       reader.onloadend = () => {
-        setLogoPreview(reader.result);
+        setLogoPreview(normalizeImageSrc(String(reader.result ?? ""), ""));
       };
       reader.readAsDataURL(file);
     }
@@ -887,10 +1300,10 @@ export default function ProfilePage() {
     fileInputRef.current?.click();
   };
 
-  const handleRemoveLogo = (e) => {
+  const handleRemoveLogo = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     setLogoImage(null);
-    setLogoPreview(null);
+    setLogoPreview("");
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -899,29 +1312,74 @@ export default function ProfilePage() {
   const handleOpenOrganizationAddressFormat = () => {
     navigate("/settings/general#organization-address-format");
   };
+  const handleOpenCurrencyModal = () => {
+    const code = baseCurrency?.split(" - ")[0] || "USD";
+    setEditCurrencyCode(code);
+    setEditCurrencySymbol(code === "USD" ? "$" : editCurrencySymbol);
+    setEditCurrencyName(code === "USD" ? "United States Dollar" : editCurrencyName);
+    setIsEditCurrencyModalOpen(true);
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const applyCurrencyOptions = (options: string[], preferredSelection: string | null = null) => {
+      if (!isMounted || options.length === 0) return;
+      setCurrencyOptions(options);
+      setBaseCurrency((current) => resolveCurrencySelection(preferredSelection || current, options));
+    };
+
+    const loadCurrencyOptions = async () => {
+      const storedRows = readStoredCurrencyRows();
+      const storedOptions = buildCurrencyOptions(storedRows);
+      const storedBaseSelection = getBaseCurrencySelectionFromRows(storedRows, storedOptions);
+      applyCurrencyOptions(
+        storedOptions.length > 0 ? storedOptions : readStoredCurrencyOptions(),
+        storedBaseSelection,
+      );
+
+      try {
+        const response = await currenciesAPI.getAll({ limit: 2000 });
+        const rows = extractCurrencyRows(response);
+        const options = buildCurrencyOptions(rows);
+        const baseSelection = getBaseCurrencySelectionFromRows(rows, options);
+        if (options.length > 0) {
+          applyCurrencyOptions(options, baseSelection);
+        }
+      } catch (error) {
+        console.error("Error loading currency options:", error);
+      }
+    };
+
+    void loadCurrencyOptions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Load profile data on mount
   useEffect(() => {
     const loadProfile = async () => {
       // Priority 1: Load from local storage (onboarding data)
-      const localData = localStorage.getItem('org_profile');
-      if (localData) {
-        try {
-          const lp = JSON.parse(localData);
-          if (lp.organizationName) setOrgName(lp.organizationName);
-          if (lp.industry) setIndustry(lp.industry);
-          if (lp.location) setLocation(lp.location);
-          if (lp.street1) setStreet1(lp.street1);
-          if (lp.street2) setStreet2(lp.street2);
-          if (lp.city) setCity(lp.city);
-          if (lp.zipCode) setZipCode(lp.zipCode);
-          if (lp.state) setState(lp.state);
-          if (lp.currency) setBaseCurrency(lp.currency.split(' - ')[0]);
-          if (lp.language) setOrgLanguage(lp.language);
-          if (lp.timezone) setTimeZone(lp.timezone);
-        } catch (e) {
-          console.error('Error parsing local org profile:', e);
+      const lp = readStoredOrgProfile();
+      if (lp) {
+        if (lp.id || lp._id || lp.organizationId) {
+          setOrganizationDbId(String(lp.id || lp._id || lp.organizationId).trim());
         }
+        if (lp.organizationName) setOrgName(lp.organizationName);
+        if (lp.industry) setIndustry(lp.industry);
+        if (lp.location) setLocation(lp.location);
+        if (lp.street1) setStreet1(lp.street1);
+        if (lp.street2) setStreet2(lp.street2);
+        if (lp.city) setCity(lp.city);
+        if (lp.zipCode) setZipCode(lp.zipCode);
+        if (lp.state) setState(lp.state);
+        if (lp.baseCurrency) {
+          setBaseCurrency(resolveCurrencySelection(lp.baseCurrency, readStoredCurrencyOptions()));
+        }
+        if (lp.language) setOrgLanguage(lp.language);
+        if (lp.timezone) setTimeZone(resolveTimezoneSelection(lp.timezone));
       }
 
       // Priority 2: Load from server and merge
@@ -929,7 +1387,7 @@ export default function ProfilePage() {
         const token = localStorage.getItem('auth_token');
         if (!token) return;
 
-        const response = await fetch(`${API_BASE_URL}/settings/organization/profile`, {
+        const response = await fetch(getOrganizationEndpoint(), {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -938,35 +1396,38 @@ export default function ProfilePage() {
 
         if (response.ok) {
           const data = await response.json();
-          if (data.success && data.data) {
-            const p = data.data;
+          const p = normalizeOrganizationPayload(data);
+          if (p) {
+            if (p.id) {
+              setOrganizationDbId(p.id);
+            }
             // Only update if server has non-empty values
             if (p.name && p.name !== "Taban enterprise") setOrgName(p.name);
             if (p.industry) setIndustry(p.industry);
-            if (p.address?.country) setLocation(p.address.country);
+            if (p.country) setLocation(p.country);
+            if (p.email) setEmail(p.email);
             if (p.website) setWebsite(p.website);
-            if (p.baseCurrency) setBaseCurrency(CURRENCIES.find(c => c.startsWith(p.baseCurrency)) || p.baseCurrency);
+            if (p.baseCurrency) {
+              setBaseCurrency(resolveCurrencySelection(p.baseCurrency, readStoredCurrencyOptions()));
+            }
             if (p.fiscalYear) setFiscalYear(p.fiscalYear);
             if (p.reportBasis) setReportBasis(p.reportBasis);
             if (p.orgLanguage) setOrgLanguage(p.orgLanguage);
             if (p.commLanguage) setCommLanguage(p.commLanguage);
-            if (p.timeZone) setTimeZone(p.timeZone);
+            if (p.timeZone) setTimeZone(resolveTimezoneSelection(p.timeZone));
             if (p.dateFormat) setDateFormat(p.dateFormat);
             if (p.dateSeparator) setDateSeparator(p.dateSeparator);
-
-            if (p.address) {
-              if (p.address.street1) setStreet1(p.address.street1);
-              if (p.address.street2) setStreet2(p.address.street2);
-              if (p.address.city) setCity(p.address.city);
-              if (p.address.zipCode) setZipCode(p.address.zipCode);
-              if (p.address.state) setState(p.address.state);
-              if (p.address.phone) setPhone(p.address.phone);
-              if (p.address.fax) setFax(p.address.fax);
-            }
-
-            if (p.logo) {
-              setLogoPreview(p.logo);
-            }
+            if (p.street1) setStreet1(p.street1);
+            if (p.street2) setStreet2(p.street2);
+            if (p.city) setCity(p.city);
+            if (p.zipCode) setZipCode(p.zipCode);
+            if (p.state) setState(p.state);
+            if (p.phone) setPhone(p.phone);
+            if (p.fax) setFax(p.fax);
+            if (p.logo) setLogoPreview(normalizeImageSrc(p.logo, ""));
+            if (Array.isArray(p.additionalFields) && p.additionalFields.length > 0) setAdditionalFields(p.additionalFields);
+            if (p.paymentStubAddress) setPaymentStubAddress(p.paymentStubAddress);
+            if (typeof p.showPaymentStubAddress === "boolean") setShowPaymentStubAddress(p.showPaymentStubAddress);
           }
         }
       } catch (error) {
@@ -1013,15 +1474,154 @@ export default function ProfilePage() {
     loadPrimarySender();
   }, []);
 
+  useEffect(() => {
+    const liveOrgProfile = {
+      organizationName: orgName,
+      name: orgName,
+      industry,
+      location,
+      logo: logoPreview || "",
+      logoUrl: logoPreview || "",
+      email,
+      website,
+      baseCurrency: baseCurrency.split(" - ")[0],
+      orgLanguage,
+      timeZone,
+      dateFormat,
+      dateSeparator,
+      address: {
+        street1,
+        street2,
+        city,
+        zipCode,
+        state,
+        country: location,
+        phone,
+        fax,
+      },
+    };
+
+    if (orgName) {
+      document.title = orgName;
+    }
+
+    const persistedLiveProfile = {
+      ...liveOrgProfile,
+      logo: typeof liveOrgProfile.logo === "string" && liveOrgProfile.logo.startsWith("data:") ? "" : liveOrgProfile.logo,
+      logoUrl: typeof liveOrgProfile.logoUrl === "string" && liveOrgProfile.logoUrl.startsWith("data:")
+        ? ""
+        : liveOrgProfile.logoUrl,
+    };
+
+    try {
+      safeSetJsonStorage("org_profile", persistedLiveProfile);
+      safeSetJsonStorage("organization_profile", persistedLiveProfile);
+    } catch {
+      // ignore storage sync failures
+    }
+
+    window.dispatchEvent(new CustomEvent("organizationProfileUpdated", {
+      detail: liveOrgProfile,
+    }));
+
+    window.dispatchEvent(new CustomEvent("brandingUpdated", {
+      detail: {
+        logo: logoPreview || "",
+      },
+    }));
+  }, [
+    orgName,
+    industry,
+    location,
+    logoPreview,
+    email,
+    website,
+    baseCurrency,
+    orgLanguage,
+    timeZone,
+    dateFormat,
+    dateSeparator,
+    street1,
+    street2,
+    city,
+    zipCode,
+    state,
+    phone,
+    fax,
+  ]);
+
+  const syncBaseCurrencyWithCurrencyTable = async (selectedCurrency: string) => {
+    const selectedCode = extractCurrencyCode(selectedCurrency);
+    if (!selectedCode) {
+      return resolveCurrencySelection(selectedCurrency, currencyOptions);
+    }
+
+    const response = await currenciesAPI.getAll({ limit: 2000 });
+    const rows = extractCurrencyRows(response);
+    if (!rows.length) {
+      updateStoredBaseCurrencySelection(selectedCurrency);
+      return resolveCurrencySelection(selectedCurrency, currencyOptions);
+    }
+
+    const targetCurrency = rows.find(
+      (row: AnyRecord) => extractCurrencyCode(String(row?.code || row?.currencyCode || "")) === selectedCode,
+    );
+
+    if (!targetCurrency) {
+      updateStoredBaseCurrencySelection(selectedCurrency);
+      return resolveCurrencySelection(selectedCurrency, buildCurrencyOptions(rows));
+    }
+
+    const targetId = String(targetCurrency?._id || targetCurrency?.id || "").trim();
+    if (targetId && !isBaseCurrencyRecord(targetCurrency)) {
+      const updateResponse = await currenciesAPI.update(targetId, { isBaseCurrency: true });
+      if (!updateResponse?.success) {
+        throw new Error(updateResponse?.message || "Failed to update base currency in currencies table");
+      }
+    }
+
+    const refreshedResponse = targetId ? await currenciesAPI.getAll({ limit: 2000 }) : response;
+    const refreshedRows = extractCurrencyRows(refreshedResponse);
+    const nextRows = refreshedRows.length > 0 ? refreshedRows : rows;
+    const nextOptions = buildCurrencyOptions(nextRows);
+    const nextSelection =
+      getBaseCurrencySelectionFromRows(nextRows, nextOptions)
+      || resolveCurrencySelection(selectedCurrency, nextOptions.length > 0 ? nextOptions : currencyOptions);
+
+    if (nextOptions.length > 0) {
+      setCurrencyOptions(nextOptions);
+    }
+    updateStoredBaseCurrencySelection(nextSelection);
+
+    return nextSelection;
+  };
+
   // Save profile function
   const handleSave = async () => {
     setIsSaving(true);
-    setSaveMessage(null);
 
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = getToken();
       if (!token) {
-        setSaveMessage({ type: 'error', text: 'Not authenticated. Please login again.' });
+        toast.error('Not authenticated. Please login again.');
+        setIsSaving(false);
+        return;
+      }
+
+      const validationError = validateProfileForm({
+        orgName,
+        industry,
+        location,
+        email,
+        website,
+        baseCurrency,
+        timeZone,
+        paymentStubAddress,
+        additionalFields,
+      });
+
+      if (validationError) {
+        toast.error(validationError);
         setIsSaving(false);
         return;
       }
@@ -1031,24 +1631,21 @@ export default function ProfilePage() {
       if (logoImage) {
         try {
           const reader = new FileReader();
-          logoBase64 = await new Promise((resolve, reject) => {
+          logoBase64 = await new Promise<string>((resolve, reject) => {
             reader.onloadend = () => {
               const result = reader.result;
               // Check if result is too large (limit to 5MB for base64)
               if (result && (result as string).length > 5000000) {
                 reject(new Error('Logo file is too large. Please use an image smaller than 1MB.'));
               } else {
-                resolve(result);
+                resolve(String(result ?? ""));
               }
             };
             reader.onerror = reject;
             reader.readAsDataURL(logoImage);
           });
         } catch (logoError: any) {
-          setSaveMessage({
-            type: 'error',
-            text: logoError.message || 'Error processing logo image.'
-          });
+          toast.error(logoError.message || 'Error processing logo image.');
           setIsSaving(false);
           return;
         }
@@ -1065,39 +1662,45 @@ export default function ProfilePage() {
 
       const profileData = {
         name: orgName,
-        industry: industry,
+        industry_type: industry,
+        contact_name: primarySenderName || orgName,
         email: email,
         website: website,
         logo: logoBase64,
         address: {
-          street1: street1,
-          street2: street2,
+          street_address1: street1,
+          street_address2: street2,
           city: city,
-          zipCode: zipCode,
+          zip: zipCode,
           state: state,
           country: location,
           phone: phone,
           fax: fax,
         },
-        baseCurrency: baseCurrency.split(' - ')[0],
-        fiscalYear: fiscalYear,
+        currency_code: baseCurrency.split(' - ')[0],
+        fiscal_year_start_month: startMonthName.toLowerCase(),
         fiscalYearStart: fStartDate.toISOString(),
         reportBasis: reportBasis,
         orgLanguage: orgLanguage,
         commLanguage: commLanguage,
-        timeZone: timeZone,
-        dateFormat: dateFormat,
-        dateSeparator: dateSeparator,
-        companyIdType: companyIdType,
-        companyIdValue: companyIdValue,
-        additionalFields: additionalFields,
+        language_code: getLanguageCode(orgLanguage) || "en",
+        time_zone: timeZone,
+        date_format: dateFormat,
+        field_separator: dateSeparator,
+        custom_fields: additionalFields
+          .map((field, index) => ({
+            index: index + 1,
+            label: String(field?.label || "").trim(),
+            value: String(field?.value || "").trim(),
+          }))
+          .filter((field) => field.label || field.value),
         paymentStubAddress: paymentStubAddress,
         showPaymentStubAddress: showPaymentStubAddress,
       };
 
       console.log('Saving profile data:', profileData);
 
-      const response = await fetch(`${API_BASE_URL}/settings/organization/profile`, {
+      const response = await fetch(getOrganizationEndpoint(), {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -1116,10 +1719,7 @@ export default function ProfilePage() {
             data = JSON.parse(text);
           } catch (parseError) {
             console.error('JSON parse error:', parseError);
-            setSaveMessage({
-              type: 'error',
-              text: 'Invalid response from server. Please try again.'
-            });
+            toast.error('Invalid response from server. Please try again.');
             setIsSaving(false);
             return;
           }
@@ -1128,30 +1728,88 @@ export default function ProfilePage() {
         }
       } else {
         const text = await response.text();
-        setSaveMessage({
-          type: 'error',
-          text: text || `Server error: ${response.status} ${response.statusText}`
-        });
+        toast.error(text || `Server error: ${response.status} ${response.statusText}`);
         setIsSaving(false);
         return;
       }
 
-      if (response.ok && data.success) {
-        setSaveMessage({ type: 'success', text: 'Profile saved successfully!' });
-        // Clear message after 3 seconds
-        setTimeout(() => setSaveMessage(null), 3000);
+      if (response.ok && (data?.success || data?.code === 0)) {
+        let syncedBaseCurrency = baseCurrency;
+        try {
+          syncedBaseCurrency = await syncBaseCurrencyWithCurrencyTable(baseCurrency);
+          setBaseCurrency(syncedBaseCurrency);
+        } catch (currencyError: any) {
+          console.error('Error syncing base currency:', currencyError);
+          toast.warn(currencyError?.message || 'Profile was saved, but the currencies table base currency could not be updated.');
+        }
+
+        toast.success("Profile saved successfully!");
+        try {
+          const localOrgProfile = {
+            organizationName: orgName,
+            industry: industry,
+            location: location,
+            street1: street1,
+            street2: street2,
+            city: city,
+            zipCode: zipCode,
+            state: state,
+            currency: syncedBaseCurrency,
+            language: orgLanguage,
+            timezone: timeZone,
+            email: email,
+            website: website,
+          };
+          safeSetJsonStorage("org_profile", localOrgProfile);
+
+          const existingOrgProfile = readStoredOrgProfile() || {};
+          const persistedLogo = typeof logoBase64 === "string" && logoBase64.startsWith("data:") ? "" : logoBase64;
+          const updatedOrgProfile = {
+            ...existingOrgProfile,
+            organizationName: orgName,
+            industry: industry,
+            location: location,
+            logo: persistedLogo,
+            logoUrl: persistedLogo,
+            email: email,
+            website: website,
+            baseCurrency: syncedBaseCurrency.split(" - ")[0],
+            orgLanguage: orgLanguage,
+            timeZone: timeZone,
+            dateFormat: dateFormat,
+            dateSeparator: dateSeparator,
+            address: {
+              ...(existingOrgProfile?.address || {}),
+              street1: street1,
+              street2: street2,
+              city: city,
+              zipCode: zipCode,
+              state: state,
+              country: location,
+              phone: phone,
+              fax: fax,
+            },
+          };
+          safeSetJsonStorage("organization_profile", updatedOrgProfile);
+
+          window.dispatchEvent(new CustomEvent("organizationProfileUpdated", {
+            detail: updatedOrgProfile,
+          }));
+
+          window.dispatchEvent(new CustomEvent("brandingUpdated", {
+            detail: {
+              logo: logoBase64,
+            },
+          }));
+        } catch {
+          // ignore local storage sync failures
+        }
       } else {
-        setSaveMessage({
-          type: 'error',
-          text: data.message || data.error || 'Failed to save profile. Please try again.'
-        });
+        toast.error(data.message || data.error || 'Failed to save profile. Please try again.');
       }
     } catch (error: any) {
       console.error('Error saving profile:', error);
-      setSaveMessage({
-        type: 'error',
-        text: 'An error occurred while saving. Please try again.'
-      });
+      toast.error('An error occurred while saving. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -1165,531 +1823,476 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="relative p-6 max-w-4xl pb-28">
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
-          <h1 className="text-2xl font-semibold text-gray-900">Organization Profile</h1>
-          <span className="px-3 py-1 bg-blue-100 text-blue-700 text-sm font-medium rounded-full">
-            ID: 907496461
-          </span>
+            <h1 className="text-2xl font-semibold text-gray-900">Organization Profile</h1>
+          {organizationDbId ? (
+            <span className="px-3 py-1 bg-[#d8eef0] text-[#0f5f6c] text-sm font-medium rounded-full">
+              ID: {organizationDbId}
+            </span>
+          ) : null}
         </div>
       </div>
+
+
 
       {/* Organization Logo */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+      <div className="rounded-lg border-0 p-6 mb-6">
         <div className="flex gap-6">
           <div className="flex-shrink-0">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/jpg,image/png,image/gif,image/bmp"
-              onChange={handleLogoUpload}
-              className="hidden"
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/jpg,image/png,image/gif,image/bmp"
+          onChange={handleLogoUpload}
+          className="hidden"
+        />
+        <div
+          className="w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-[#0f5f6c] transition relative"
+          onClick={handleLogoClick}
+        >
+            {logoPreview ? (
+            <>
+            <img
+            src={logoPreview}
+            alt="Organization Logo"
+            className="w-full h-full object-contain rounded-lg"
             />
-            <div
-              className="w-48 h-48 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 transition relative"
-              onClick={handleLogoClick}
+            <button
+            onClick={handleRemoveLogo}
+            className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition"
+            title="Remove logo"
             >
-              {logoPreview ? (
-                <>
-                  <img
-                    src={logoPreview}
-                    alt="Organization Logo"
-                    className="w-full h-full object-contain rounded-lg"
-                  />
-                  <button
-                    onClick={handleRemoveLogo}
-                    className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition"
-                    title="Remove logo"
-                  >
-                    <X size={16} />
-                  </button>
-                  <div className="absolute bottom-2 left-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded text-center">
-                    Click to change
-                  </div>
-                </>
-              ) : (
-                <>
-                  <Upload size={32} className="text-gray-400 mb-2" />
-                  <span className="text-sm font-medium text-gray-600 text-center px-2">Upload Your Organization Logo</span>
-                </>
-              )}
+            <X size={16} />
+            </button>
+            <div className="absolute bottom-2 left-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded text-center">
+            Click to change
             </div>
+            </>
+            ) : (
+            <>
+            <Upload size={32} className="text-gray-400 mb-2" />
+            <span className="text-sm font-medium text-gray-600 text-center px-2">Upload Your Organization Logo</span>
+            </>
+            )}
+        </div>
           </div>
           <div className="flex-1">
-            <p className="text-sm text-gray-600 mb-4">
-              This logo will be displayed in transaction PDFs and email notifications.
-            </p>
-            <div className="space-y-1 text-xs text-gray-500">
-              <p>Preferred Image Dimensions: 240 x 240 pixels @ 72 DPI</p>
-              <p>Supported Files: jpg, jpeg, png, gif, bmp</p>
-              <p>Maximum File Size: 1MB</p>
-            </div>
+        <p className="text-sm text-gray-600 mb-4">
+          This logo will be displayed in transaction PDFs and email notifications.
+        </p>
+        <div className="space-y-1 text-xs text-gray-500">
+          <p>Preferred Image Dimensions: 240 x 240 pixels @ 72 DPI</p>
+          <p>Supported Files: jpg, jpeg, png, gif, bmp</p>
+          <p>Maximum File Size: 1MB</p>
+        </div>
           </div>
         </div>
       </div>
 
+      <div className="border-t border-gray-200 my-6" />
+
       {/* Organization Details */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+      <div className="rounded-lg border-0 p-6 mb-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Organization Details</h2>
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="flex items-center gap-6">
+            <label className="w-56 text-sm font-medium text-red-500">
               Organization Name <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               value={orgName}
               onChange={(e) => setOrgName(e.target.value)}
-              className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 h-10 px-3 rounded-lg border border-gray-300 bg-transparent focus:outline-none focus:ring-2 focus:ring-[#0f5f6c]"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Industry <span className="text-red-500">*</span> <HelpTooltip text="Select your industry type to help us fine-tune your experience. If you can't find your industry type from the list of options, you can input your own.">
+          <div className="flex items-center gap-6">
+            <label className="w-56 text-sm font-medium text-red-500">
+              Industry <span className="text-red-500">*</span>{" "}
+              <HelpTooltip text="Select your industry type to help us fine-tune your experience. If you can't find your industry type from the list of options, you can input your own.">
                 <HelpCircle size={14} className="inline text-gray-400 cursor-help" />
               </HelpTooltip>
             </label>
-            <SearchableDropdown
-              value={industry}
-              placeholder="Select Industry"
-              options={INDUSTRIES}
-              onChange={setIndustry}
-            />
+            <div className="flex-1">
+              <SearchableDropdown
+                value={industry}
+                placeholder="Select Industry"
+                options={INDUSTRIES}
+                onChange={setIndustry}
+              />
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="flex items-center gap-6">
+            <label className="w-56 text-sm font-medium text-red-500">
               Organization Location <span className="text-red-500">*</span>
             </label>
-            <SearchableDropdown
-              value={location}
-              placeholder="Select Country"
-              options={COUNTRIES}
-              onChange={setLocation}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Organization Address */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <label className="block text-sm font-medium text-gray-700">
-            Organization Address <HelpTooltip text="You can display your organization's address in your preferred style. Edit it in Settings > Preferences > General.">
-              <HelpCircle size={14} className="inline text-gray-400 cursor-help" />
-            </HelpTooltip>
-          </label>
-          <button
-            onClick={handleOpenEditModal}
-            className="p-1 hover:bg-gray-100 rounded transition"
-            title="Edit Address"
-          >
-            <Edit2 size={16} className="text-blue-600" />
-          </button>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Street 1</label>
-            <input
-              type="text"
-              value={street1}
-              readOnly
-              className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-gray-50"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Street 2</label>
-            <input
-              type="text"
-              value={street2}
-              readOnly
-              className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-gray-50"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
-            <input
-              type="text"
-              value={city}
-              readOnly
-              className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-gray-50"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">ZIP/Postal Code</label>
-            <input
-              type="text"
-              value={zipCode}
-              readOnly
-              className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-gray-50"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              State/Province <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={state}
-              disabled
-              className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-gray-50"
-            >
-              <option value="">Select</option>
-              {state && <option value={state}>{state}</option>}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
-            <input
-              type="text"
-              value={phone}
-              readOnly
-              className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-gray-50"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Fax Number</label>
-            <input
-              type="text"
-              value={fax}
-              readOnly
-              className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-gray-50"
-            />
-          </div>
-        </div>
-        <div className="mt-4">
-          <button
-            type="button"
-            onClick={handleOpenOrganizationAddressFormat}
-            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-          >
-            Organization Address Format &gt;
-          </button>
-        </div>
-      </div>
-
-      {/* Website URL */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Website URL</label>
-        <input
-          type="text"
-          value={website}
-          onChange={(e) => setWebsite(e.target.value)}
-          placeholder="Website URL"
-          className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-
-      {/* Payment Stub Address Toggle */}
-      <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 mb-6">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-700">
-            Would you like to add a different address for payment stubs?
-          </span>
-          <div className="flex items-center gap-2">
-            <span className={`text-sm font-medium ${showPaymentStubAddress ? 'text-gray-600' : 'text-blue-600'}`}>
-              {showPaymentStubAddress ? 'Yes' : 'No'}
-            </span>
-            <button
-              onClick={() => setShowPaymentStubAddress(!showPaymentStubAddress)}
-              className={`relative w-12 h-6 rounded-full transition-colors ${showPaymentStubAddress ? 'bg-blue-600' : 'bg-gray-300'
-                }`}
-            >
-              <span
-                className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${showPaymentStubAddress ? 'translate-x-6' : 'translate-x-0'
-                  }`}
+            <div className="flex-1">
+              <SearchableDropdown
+                value={location}
+                placeholder="Select Country"
+                options={COUNTRIES}
+                onChange={setLocation}
               />
-            </button>
+            </div>
+          </div>
+          <div className="rounded-lg border border-[#b7e3e7] bg-[#eef8f9] p-4">
+            <div className="flex items-start gap-2">
+              <Info size={16} className="text-[#0f5f6c] flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-[#0f5f6c]">
+                <div className="font-semibold mb-1">Organization Address</div>
+                <div>
+                  Since Locations has been enabled for your organization, you can add or edit specific addresses from the Locations section. Go to{" "}
+                  <button
+                    type="button"
+                    onClick={() => navigate("/settings/locations")}
+                    className="text-[#0f5f6c] hover:underline"
+                  >
+                    Locations
+                  </button>{" "}
+                  &gt;
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-lg border border-gray-200 p-4 bg-[#d8dbe0]">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700">
+                Would you like to add a different address for payment stubs?
+              </span>
+              <div className="flex items-center gap-2">
+                <span className={`text-sm font-medium ${showPaymentStubAddress ? 'text-gray-600' : 'text-[#0f5f6c]'}`}>
+                  {showPaymentStubAddress ? 'Yes' : 'No'}
+                </span>
+                <button
+                  onClick={() => setShowPaymentStubAddress(!showPaymentStubAddress)}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${showPaymentStubAddress ? 'bg-[#0f5f6c]' : 'bg-gray-300'
+                    }`}
+                >
+                  <span
+                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${showPaymentStubAddress ? 'translate-x-6' : 'translate-x-0'
+                      }`}
+                  />
+                </button>
+              </div>
+            </div>
+            {showPaymentStubAddress && (
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Payment Stub Address <HelpTooltip text="This address will be displayed on payment stubs. You can view this by enabling Payment Stub in Templates.">
+                    <HelpCircle size={14} className="inline text-gray-400 cursor-help" />
+                  </HelpTooltip>
+                </label>
+                <textarea
+                  value={paymentStubAddress}
+                  onChange={(e) => setPaymentStubAddress(e.target.value)}
+                  placeholder="You can enter a maximum of 255 characters"
+                  rows={4}
+                  maxLength={255}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 bg-gray-100 focus:outline-none focus:ring-2 focus:ring-[#0f5f6c] resize-none"
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Payment Stub Address */}
-      {
-        showPaymentStubAddress && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Payment Stub Address <HelpTooltip text="This address will be displayed on payment stubs. You can view this by enabling Payment Stub in Templates.">
-                <HelpCircle size={14} className="inline text-gray-400 cursor-help" />
-              </HelpTooltip>
-            </label>
-            <textarea
-              value={paymentStubAddress}
-              onChange={(e) => setPaymentStubAddress(e.target.value)}
-              placeholder="You can enter a maximum of 255 characters"
-              rows={4}
-              maxLength={255}
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-            />
-          </div>
-        )
-      }
+      <div className="border-t border-gray-200 my-6" />
 
       {/* Primary Contact */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+      <div className="rounded-lg border-0 p-6 mb-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Primary Contact</h2>
-        <div className="grid grid-cols-2 gap-6 mb-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Send size={16} className="text-gray-600" />
-              <span className="text-xs font-semibold text-gray-600 uppercase">SENDER</span>
+        <div className="rounded-lg border border-gray-200 bg-white p-4 mb-4">
+          <div className="grid grid-cols-2 gap-6">
+            <div className="pr-6 border-r border-gray-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Send size={16} className="text-gray-600" />
+                <span className="text-xs font-semibold text-gray-600 uppercase">SENDER</span>
+              </div>
+              <div className="text-sm font-medium text-gray-900">{primarySenderName || "Organization Owner"}</div>
+              <div className="text-sm text-gray-600">({primarySenderEmail || email || "No email"})</div>
             </div>
-            <div className="text-sm font-medium text-gray-900">{primarySenderName || "Organization Owner"}</div>
-            <div className="text-sm text-gray-600">({primarySenderEmail || email || "No email"})</div>
-          </div>
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <SettingsIcon size={16} className="text-gray-600" />
-              <span className="text-xs font-semibold text-gray-600 uppercase">EMAILS ARE SENT THROUGH</span>
+            <div className="pl-2">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-gray-600 uppercase">EMAILS ARE SENT THROUGH</span>
+                </div>
+                <button
+                  className="p-1 hover:bg-gray-100 rounded"
+                  onClick={() => navigate("/settings/customization/email-notifications")}
+                >
+                  <SettingsIcon size={16} className="text-[#0f5f6c]" />
+                </button>
+              </div>
+              <div className="text-sm font-medium text-gray-900">Email address of {orgName || "Organization"}</div>
+              <div className="text-sm text-gray-600">({email || DEFAULT_SYSTEM_SENDER_EMAIL})</div>
             </div>
-            <div className="text-sm font-medium text-gray-900">Email address of Taban Books</div>
-            <div className="text-sm text-gray-600">({DEFAULT_SYSTEM_SENDER_EMAIL})</div>
           </div>
         </div>
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
-          <HelpCircle size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
+        <div className="bg-[#eef8f9] border border-[#b7e3e7] rounded-lg p-3 flex items-start gap-2">
+          <HelpCircle size={16} className="text-[#0f5f6c] flex-shrink-0 mt-0.5" />
           <div className="text-sm text-gray-700">
-            Your primary contact's email address belongs to a public domain. So, emails will be sent from {DEFAULT_SYSTEM_SENDER_EMAIL} to prevent them from landing in the Spam folder. If you still want to send emails using the public domain, <button className="text-blue-600 hover:underline">change setting</button> &gt;
+            Your primary contact's email address belongs to a public domain. So, emails will be sent from {DEFAULT_SYSTEM_SENDER_EMAIL} to prevent them from landing in the Spam folder.
           </div>
         </div>
       </div>
+
+      <div className="border-t border-gray-200 my-6" />
 
       {/* Base Currency */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <label className="block text-sm font-medium text-gray-700">
+      <div className="rounded-lg border-0 p-6 mb-6">
+        <div className="flex items-start gap-6">
+          <label className="w-56 text-sm font-medium text-gray-700 pt-2">
             Base Currency <HelpTooltip text="Your transactions and financial reports will be shown in the base currency.">
-              <HelpCircle size={14} className="inline text-gray-400 cursor-help" />
+              <HelpCircle size={14} className="inline text-gray-400 cursor-help ml-1" />
             </HelpTooltip>
           </label>
-          <button className="p-1 hover:bg-gray-100 rounded">
-            <SettingsIcon size={16} className="text-gray-600" />
-          </button>
+          <div className="flex-1">
+              <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <div className="h-10 w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 text-left text-sm font-medium text-gray-900 flex items-center justify-between cursor-not-allowed select-none">
+                  <span className={`truncate ${baseCurrency ? "text-gray-900 font-semibold" : "text-gray-500"}`}>
+                    {baseCurrency || "Select Currency"}
+                  </span>
+                  <ChevronDown size={14} className="text-gray-400" />
+                </div>
+              </div>
+            </div>
+            <div className="text-xs text-gray-500 mt-2">
+              You can't change the base currency as there are <button className="text-[#0f5f6c] hover:underline">transactions</button> recorded in your organization.
+            </div>
+          </div>
         </div>
-        <SearchableDropdown
-          value={baseCurrency}
-          placeholder="Select Currency"
-          options={CURRENCIES}
-          onChange={setBaseCurrency}
-        />
       </div>
+
+      <div className="border-t border-gray-200 my-6" />
 
       {/* Fiscal Year */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Fiscal Year</label>
-        <div className="grid grid-cols-2 gap-4 mb-2">
-          <SearchableDropdown
-            value={fiscalYear}
-            placeholder="Select Fiscal Year"
-            options={FISCAL_YEARS}
-            onChange={setFiscalYear}
-          />
-          <SearchableDropdown
-            value={startDate}
-            placeholder="Start Date"
-            options={START_DATES.map(d => d.toString())}
-            onChange={setStartDate}
-          />
+      <div className="rounded-lg border-0 p-6 mb-6">
+        <div className="flex items-start gap-6">
+          <label className="w-56 text-sm font-medium text-gray-700 pt-2">Fiscal Year</label>
+          <div className="flex-1">
+            <div className="max-w-[280px]">
+              <SearchableDropdown
+                value={fiscalYear}
+                placeholder="Select Fiscal Year"
+                options={FISCAL_YEARS}
+                onChange={setFiscalYear}
+              />
+            </div>
+          </div>
         </div>
-        <div className="text-sm text-gray-600 mt-2">Period: {getFiscalPeriod()}</div>
       </div>
+
+      <div className="border-t border-gray-200 my-6" />
 
       {/* Report Basis */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-3">Report Basis</label>
-        <div className="space-y-3">
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="radio"
-              name="reportBasis"
-              value="Accrual"
-              checked={reportBasis === "Accrual"}
-              onChange={(e) => setReportBasis(e.target.value)}
-              className="mt-1"
-            />
-            <div>
-              <div className="text-sm font-medium text-gray-900">Accrual</div>
-              <div className="text-xs text-gray-600">You owe tax as of invoice date</div>
-            </div>
-          </label>
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="radio"
-              name="reportBasis"
-              value="Cash"
-              checked={reportBasis === "Cash"}
-              onChange={(e) => setReportBasis(e.target.value)}
-              className="mt-1"
-            />
-            <div>
-              <div className="text-sm font-medium text-gray-900">Cash</div>
-              <div className="text-xs text-gray-600">You owe tax upon payment receipt</div>
-            </div>
-          </label>
+      <div className="rounded-lg border-0 p-6 mb-6">
+        <div className="flex items-start gap-6">
+          <label className="w-56 text-sm font-medium text-gray-700 pt-1">Report Basis</label>
+          <div className="flex-1 space-y-5">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="radio"
+                name="reportBasis"
+                value="Accrual"
+                checked={reportBasis === "Accrual"}
+                onChange={(e) => setReportBasis(e.target.value)}
+                className="mt-1 h-4 w-4 shrink-0 accent-[#0f5f6c]"
+              />
+              <div className="leading-tight">
+                <div className="text-sm font-semibold text-gray-900">Accrual</div>
+                <div className="text-xs text-gray-600 mt-1">You owe tax as of invoice date</div>
+              </div>
+            </label>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="radio"
+                name="reportBasis"
+                value="Cash"
+                checked={reportBasis === "Cash"}
+                onChange={(e) => setReportBasis(e.target.value)}
+                className="mt-1 h-4 w-4 shrink-0 accent-[#0f5f6c]"
+              />
+              <div className="leading-tight">
+                <div className="text-sm font-semibold text-gray-900">Cash</div>
+                <div className="text-xs text-gray-600 mt-1">You owe tax upon payment receipt</div>
+              </div>
+            </label>
+          </div>
         </div>
       </div>
+
+      <div className="border-t border-gray-200 my-6" />
 
       {/* Organization Language */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Organization Language <HelpTooltip text="Any change in the language will not be reflected in Chart of Accounts, Email Templates, Template Customizations, Payment Modes and Default tax Rates. These will still remain in the language selected during this organization's setup.">
-            <HelpCircle size={14} className="inline text-gray-400 cursor-help" />
-          </HelpTooltip>
-        </label>
-        <SearchableDropdown
-          value={orgLanguage}
-          placeholder="Select Language"
-          options={LANGUAGES}
-          onChange={setOrgLanguage}
-        />
+      <div className="rounded-lg border-0 p-6 mb-6">
+        <div className="flex items-start gap-6">
+          <label className="w-56 text-sm font-medium text-gray-700 pt-2">
+            Organization Language <HelpTooltip text="Any change in the language will not be reflected in Chart of Accounts, Email Templates, Template Customizations, Payment Modes and Default tax Rates. These will still remain in the language selected during this organization's setup.">
+              <HelpCircle size={14} className="inline text-gray-400 cursor-help ml-1" />
+            </HelpTooltip>
+          </label>
+          <div className="flex-1">
+            <SearchableDropdown
+              value={orgLanguage}
+              placeholder="Select Language"
+              options={LANGUAGES}
+              onChange={setOrgLanguage}
+            />
+          </div>
+        </div>
       </div>
+
+      <div className="border-t border-gray-200 my-6" />
 
       {/* Communication Languages */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Communication Languages <HelpTooltip text="Select the languages in which users can create email templates and send emails to customers and vendors.">
-            <HelpCircle size={14} className="inline text-gray-400 cursor-help" />
-          </HelpTooltip>
-        </label>
-        <SearchableDropdown
-          value={commLanguage}
-          placeholder="Select Language"
-          options={LANGUAGES}
-          onChange={setCommLanguage}
-        />
+      <div className="rounded-lg border-0 p-6 mb-6">
+        <div className="flex items-start gap-6">
+          <label className="w-56 text-sm font-medium text-gray-700 pt-2">
+            Communication Languages <HelpTooltip text="Select the languages in which users can create email templates and send emails to customers and vendors.">
+              <HelpCircle size={14} className="inline text-gray-400 cursor-help ml-1" />
+            </HelpTooltip>
+          </label>
+          <div className="flex-1">
+            <SearchableDropdown
+              value={commLanguage}
+              placeholder="Select Language"
+              options={LANGUAGES}
+              onChange={setCommLanguage}
+            />
+          </div>
+        </div>
       </div>
+
+      <div className="border-t border-gray-200 my-6" />
 
       {/* Time Zone */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Time Zone</label>
-        <SearchableDropdown
-          value={timeZone}
-          placeholder="Select Time Zone"
-          options={TIME_ZONES}
-          onChange={setTimeZone}
-        />
+      <div className="rounded-lg border-0 p-6 mb-6">
+        <div className="flex items-start gap-6">
+          <label className="w-56 text-sm font-medium text-gray-700 pt-2">Time Zone</label>
+          <div className="flex-1">
+            <SearchableDropdown
+              value={timeZone}
+              placeholder="Select Time Zone"
+              options={TIME_ZONES}
+              onChange={setTimeZone}
+            />
+          </div>
+        </div>
       </div>
+
+      <div className="border-t border-gray-200 my-6" />
 
       {/* Date Format */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Date Format</label>
-        <div className="grid grid-cols-2 gap-4">
-          <DateFormatDropdown
-            value={dateFormat}
-            placeholder="Select Date Format"
-            onChange={setDateFormat}
-          />
-          <SearchableDropdown
-            value={dateSeparator}
-            placeholder="-"
-            options={[".", "-", "/"]}
-            onChange={handleDateSeparatorChange}
-          />
+      <div className="rounded-lg border-0 p-6 mb-6">
+        <div className="flex items-start gap-6">
+          <label className="w-56 text-sm font-medium text-gray-700 pt-2">
+            Date Format <HelpTooltip text="Choose how dates are displayed across the organization.">
+              <HelpCircle size={14} className="inline text-gray-400 cursor-help ml-1" />
+            </HelpTooltip>
+          </label>
+          <div className="flex-1">
+            <div className="flex items-start gap-4">
+              <div className="max-w-[280px] flex-1">
+                <DateFormatDropdown
+                  value={dateFormat}
+                  placeholder="Select Date Format"
+                  options={ALL_DATE_FORMATS}
+                  onChange={setDateFormat}
+                />
+              </div>
+              <div className="w-36">
+                <SearchableDropdown
+                  value={dateSeparator}
+                  placeholder="/"
+                  options={["/", "-", "."]}
+                  onChange={handleDateSeparatorChange}
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Company ID */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Company ID</label>
-        <div className="grid grid-cols-2 gap-4">
-          <SearchableDropdown
-            value={companyIdType}
-            placeholder="Select Type"
-            options={["ACN", "BN", "CN", "CPR", "CVR", "DIW", "KT", "ORG", "SEC", "CRN", "Company ID :"]}
-            onChange={setCompanyIdType}
-          />
-          <input
-            type="text"
-            value={companyIdValue}
-            onChange={(e) => setCompanyIdValue(e.target.value)}
-            placeholder="Enter Company ID"
-            className="h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-      </div>
+      <div className="border-t border-gray-200 my-6" />
+
+      <div className="border-t border-gray-200 my-6" />
 
       {/* Additional Fields */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+      <div className="rounded-lg border-0 p-6 mb-6">
         <h3 className="text-sm font-bold text-gray-900 mb-4">Additional Fields</h3>
         <div className="mb-4">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-2 text-xs font-semibold text-gray-700 uppercase">LABEL NAME</th>
-                <th className="text-left py-2 text-xs font-semibold text-gray-700 uppercase">VALUE</th>
-              </tr>
-            </thead>
-            <tbody>
-              {additionalFields.map((field, index) => (
-                <tr key={index} className="border-b border-gray-100">
-                  <td className="py-2">
-                    <input
-                      type="text"
-                      value={field.label}
-                      onChange={(e) => handleFieldChange(index, 'label', e.target.value)}
-                      className="w-full h-9 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </td>
-                  <td className="py-2">
-                    <input
-                      type="text"
-                      value={field.value}
-                      onChange={(e) => handleFieldChange(index, 'value', e.target.value)}
-                      className="w-full h-9 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </td>
+          <div className="rounded-lg border border-gray-200 overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-gray-600 uppercase">LABEL NAME</th>
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-gray-600 uppercase">VALUE</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {additionalFields.map((field, index) => (
+                  <tr key={index} className="border-b border-gray-200 last:border-b-0">
+                    <td className="py-2 px-3 border-r border-gray-200">
+                      <input
+                        type="text"
+                        value={field.label}
+                        onChange={(e) => handleFieldChange(index, 'label', e.target.value)}
+                        placeholder="Label"
+                        className="w-full h-9 px-3 rounded-lg border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#0f5f6c]"
+                      />
+                    </td>
+                    <td className="py-2 px-3">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={field.value}
+                          onChange={(e) => handleFieldChange(index, 'value', e.target.value)}
+                          placeholder="Value"
+                          className="w-full h-9 px-3 rounded-lg border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#0f5f6c]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveField(index)}
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-gray-300 text-gray-500 transition hover:bg-gray-100 hover:text-red-600"
+                          aria-label={`Remove field row ${index + 1}`}
+                          title="Delete row"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
         <button
           onClick={handleAddField}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#0f5f6c] hover:text-[#176876]"
         >
           <span className="text-lg">+</span> New Field
         </button>
-        <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
-          <HelpCircle size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-gray-700">
-            You can include the Company ID and additional fields in your organization address which will be displayed in your transaction PDFs. Configure this by selecting the required placeholders in your{" "}
-            <button
-              type="button"
-              onClick={handleOpenOrganizationAddressFormat}
-              className="text-blue-600 hover:underline"
-            >
-              Organization Address Format
-            </button>.
-          </div>
-        </div>
       </div>
 
-      {/* Save Message */}
-      {
-        saveMessage && (
-          <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${saveMessage.type === 'success'
-            ? 'bg-green-500 text-white'
-            : 'bg-red-500 text-white'
-            }`}>
-            {saveMessage.text}
-          </div>
-        )
-      }
-
       {/* Action Buttons */}
-      <div className="flex items-center justify-end gap-3">
-        <button
-          onClick={() => window.history.back()}
-          className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          disabled={isSaving}
-        >
-          Cancel
-        </button>
+      <div className="sticky bottom-0 z-20 -mx-6 mt-8 flex items-center justify-start gap-3 bg-transparent px-6 py-4">
         <button
           onClick={handleSave}
           disabled={isSaving}
-          className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-lg bg-[#0f5f6c] text-white text-sm font-medium hover:bg-[#176876] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSaving ? 'Saving...' : 'Save'}
+        </button>
+        <button
+          onClick={() => window.history.back()}
+          className="px-4 py-2 rounded-lg border border-gray-300 bg-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-300"
+          disabled={isSaving}
+        >
+          Cancel
         </button>
       </div>
 
@@ -1727,14 +2330,14 @@ export default function ProfilePage() {
                     value={editStreet1}
                     onChange={(e) => setEditStreet1(e.target.value)}
                     placeholder="Street 1"
-                    className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-transparent focus:outline-none focus:ring-2 focus:ring-[#0f5f6c] mb-2"
                   />
                   <input
                     type="text"
                     value={editStreet2}
                     onChange={(e) => setEditStreet2(e.target.value)}
                     placeholder="Street 2"
-                    className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-transparent focus:outline-none focus:ring-2 focus:ring-[#0f5f6c]"
                   />
                 </div>
                 <div>
@@ -1744,7 +2347,7 @@ export default function ProfilePage() {
                     value={editCity}
                     onChange={(e) => setEditCity(e.target.value)}
                     placeholder="City"
-                    className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-transparent focus:outline-none focus:ring-2 focus:ring-[#0f5f6c]"
                   />
                 </div>
                 <div>
@@ -1754,7 +2357,7 @@ export default function ProfilePage() {
                     value={editZipCode}
                     onChange={(e) => setEditZipCode(e.target.value)}
                     placeholder="ZIP/Postal Code"
-                    className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-transparent focus:outline-none focus:ring-2 focus:ring-[#0f5f6c]"
                   />
                 </div>
                 <div>
@@ -1764,7 +2367,7 @@ export default function ProfilePage() {
                   <select
                     value={editState}
                     onChange={(e) => setEditState(e.target.value)}
-                    className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-transparent focus:outline-none focus:ring-2 focus:ring-[#0f5f6c]"
                   >
                     <option value="">State/Province *</option>
                   </select>
@@ -1776,7 +2379,7 @@ export default function ProfilePage() {
                     value={editPhone}
                     onChange={(e) => setEditPhone(e.target.value)}
                     placeholder="Phone"
-                    className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-transparent focus:outline-none focus:ring-2 focus:ring-[#0f5f6c]"
                   />
                 </div>
                 <div>
@@ -1786,7 +2389,7 @@ export default function ProfilePage() {
                     value={editFax}
                     onChange={(e) => setEditFax(e.target.value)}
                     placeholder="Fax Number"
-                    className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-transparent focus:outline-none focus:ring-2 focus:ring-[#0f5f6c]"
                   />
                 </div>
               </div>
@@ -1801,9 +2404,95 @@ export default function ProfilePage() {
                 </button>
                 <button
                   onClick={handleSaveAddress}
-                  className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+                  className="px-4 py-2 rounded-lg bg-[#0f5f6c] text-white text-sm font-medium hover:bg-[#176876]"
                 >
                   Proceed
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Edit Currency Modal */}
+      {
+        isEditCurrencyModalOpen && (
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-[10000] pt-16"
+            onClick={() => setIsEditCurrencyModalOpen(false)}
+          >
+            <div
+              className="bg-white rounded-lg shadow-xl w-full max-w-xl mx-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Edit Currency</h3>
+                <button
+                  onClick={() => setIsEditCurrencyModalOpen(false)}
+                  className="p-1 hover:bg-gray-100 rounded transition"
+                >
+                  <X size={20} className="text-red-500" />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-red-500 mb-2">Currency Code*</label>
+                  <input
+                    type="text"
+                    value={editCurrencyCode}
+                    onChange={(e) => setEditCurrencyCode(e.target.value)}
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-transparent focus:outline-none focus:ring-2 focus:ring-[#0f5f6c]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-red-500 mb-2">Currency Symbol*</label>
+                  <input
+                    type="text"
+                    value={editCurrencySymbol}
+                    onChange={(e) => setEditCurrencySymbol(e.target.value)}
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-transparent focus:outline-none focus:ring-2 focus:ring-[#0f5f6c]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-red-500 mb-2">Currency Name*</label>
+                  <input
+                    type="text"
+                    value={editCurrencyName}
+                    onChange={(e) => setEditCurrencyName(e.target.value)}
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-transparent focus:outline-none focus:ring-2 focus:ring-[#0f5f6c]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Decimal Places</label>
+                  <SearchableDropdown
+                    value={editCurrencyDecimals}
+                    placeholder="2"
+                    options={["0", "1", "2", "3"]}
+                    onChange={setEditCurrencyDecimals}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Format</label>
+                  <SearchableDropdown
+                    value={editCurrencyFormat}
+                    placeholder="1,234,567.89"
+                    options={["1,234,567.89", "1.234.567,89", "1 234 567.89"]}
+                    onChange={setEditCurrencyFormat}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-4 border-t border-gray-200">
+                <button
+                  onClick={() => setIsEditCurrencyModalOpen(false)}
+                  className="px-4 py-2 rounded-lg border border-gray-300 bg-transparent text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => setIsEditCurrencyModalOpen(false)}
+                  className="px-4 py-2 rounded-lg bg-[#0f5f6c] text-white text-sm font-medium hover:bg-[#176876]"
+                >
+                  Save
                 </button>
               </div>
             </div>
@@ -1813,4 +2502,5 @@ export default function ProfilePage() {
     </div >
   );
 }
+
 

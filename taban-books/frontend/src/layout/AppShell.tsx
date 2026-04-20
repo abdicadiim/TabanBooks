@@ -18,7 +18,7 @@ export default function AppShell() {
   }
 
   return (
-    <div className="min-h-screen bg-[#edf3f7] text-slate-900">
+    <div className="min-h-screen bg-white text-slate-900">
       <Header />
       <Sidebar />
 

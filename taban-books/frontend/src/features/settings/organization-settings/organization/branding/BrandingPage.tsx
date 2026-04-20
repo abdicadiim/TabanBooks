@@ -23,6 +23,11 @@ export default function BrandingPage({ onColorChange }) {
   const fileInputRef = useRef(null);
   const colorPickerRef = useRef(null);
   const saveTimeoutRef = useRef(null);
+  const initialBrandingSnapshotRef = useRef({
+    appearance: "dark",
+    accentColor: "blue",
+    keepPlatformBranding: false,
+  });
 
   // Load branding data on mount
   useEffect(() => {
@@ -31,6 +36,11 @@ export default function BrandingPage({ onColorChange }) {
         const token = localStorage.getItem('auth_token');
         if (!token) {
           setAppearance("dark"); // Default if no token
+          initialBrandingSnapshotRef.current = {
+            appearance: "dark",
+            accentColor: "blue",
+            keepPlatformBranding: false,
+          };
           setIsInitialLoad(false);
           return;
         }
@@ -48,9 +58,16 @@ export default function BrandingPage({ onColorChange }) {
             const branding = data.data;
             // Convert "system" to "dark" for backward compatibility
             const appearanceValue = branding.appearance === "system" ? "dark" : (branding.appearance || "dark");
+            const accentColorValue = branding.accentColor || "blue";
+            const keepPlatformBrandingValue = branding.keepZohoBranding || false;
             setAppearance(appearanceValue);
-            setAccentColor(branding.accentColor || "blue");
-            setKeepPlatformBranding(branding.keepZohoBranding || false);
+            setAccentColor(accentColorValue);
+            setKeepPlatformBranding(keepPlatformBrandingValue);
+            initialBrandingSnapshotRef.current = {
+              appearance: appearanceValue,
+              accentColor: accentColorValue,
+              keepPlatformBranding: keepPlatformBrandingValue,
+            };
 
             // Load logo from profile - check both branding.logo and fetch from profile if needed
             if (branding.logo) {
@@ -77,15 +94,30 @@ export default function BrandingPage({ onColorChange }) {
           } else {
             // No branding data found, use defaults
             setAppearance("dark");
+            initialBrandingSnapshotRef.current = {
+              appearance: "dark",
+              accentColor: "blue",
+              keepPlatformBranding: false,
+            };
           }
         } else {
           // API error, use defaults
           setAppearance("dark");
+          initialBrandingSnapshotRef.current = {
+            appearance: "dark",
+            accentColor: "blue",
+            keepPlatformBranding: false,
+          };
         }
       } catch (error) {
         console.error('Error loading branding:', error);
         // On error, use defaults
         setAppearance("dark");
+        initialBrandingSnapshotRef.current = {
+          appearance: "dark",
+          accentColor: "blue",
+          keepPlatformBranding: false,
+        };
       } finally {
         // Always set initial load to false, even if there's an error
         setIsInitialLoad(false);
@@ -106,6 +138,27 @@ export default function BrandingPage({ onColorChange }) {
   const selectedColor = accentColor === "custom"
     ? customColor
     : accentColors.find(c => c.name === accentColor)?.value || "#3b82f6";
+
+  const syncBrandingSnapshot = (nextSnapshot?: {
+    appearance?: string;
+    accentColor?: string;
+    keepPlatformBranding?: boolean;
+  }) => {
+    initialBrandingSnapshotRef.current = {
+      appearance: nextSnapshot?.appearance ?? appearance,
+      accentColor: nextSnapshot?.accentColor ?? accentColor,
+      keepPlatformBranding: nextSnapshot?.keepPlatformBranding ?? keepPlatformBranding,
+    };
+  };
+
+  const isSameAsInitialBranding = () => {
+    const initial = initialBrandingSnapshotRef.current;
+    return (
+      appearance === initial.appearance &&
+      accentColor === initial.accentColor &&
+      keepPlatformBranding === initial.keepPlatformBranding
+    );
+  };
 
   // Convert HSL to Hex
   const hslToHex = (h, s, l) => {
@@ -400,6 +453,11 @@ export default function BrandingPage({ onColorChange }) {
             window.dispatchEvent(new CustomEvent('brandingUpdated', {
               detail: eventData
             }));
+            syncBrandingSnapshot({
+              appearance: currentAppearance,
+              accentColor: accentColor,
+              keepPlatformBranding: keepPlatformBranding,
+            });
 
             // Show success notification based on what changed
             if (changeType === "logo") {
@@ -440,7 +498,7 @@ export default function BrandingPage({ onColorChange }) {
   // Auto-save when appearance changes - but skip if triggered by button click (already handled with immediate save)
   // Note: Button clicks already handle the save immediately, this is a backup for programmatic changes
   useEffect(() => {
-    if (!isInitialLoad && appearance) {
+    if (!isInitialLoad && appearance && !isSameAsInitialBranding()) {
       // Use very short delay for appearance changes to save faster
       // The button click handler already saves immediately, so this is just a backup
       const timeoutId = setTimeout(() => {
@@ -453,7 +511,7 @@ export default function BrandingPage({ onColorChange }) {
 
   // Auto-save and update UI when accent color changes
   useEffect(() => {
-    if (!isInitialLoad) {
+    if (!isInitialLoad && !isSameAsInitialBranding()) {
       // Immediate UI update for custom color changes (e.g. while dragging color picker)
       const selectedColorValue = accentColor === "custom"
         ? customColor
@@ -480,7 +538,7 @@ export default function BrandingPage({ onColorChange }) {
 
   // Auto-save when the platform branding preference changes
   useEffect(() => {
-    if (!isInitialLoad) {
+    if (!isInitialLoad && !isSameAsInitialBranding()) {
       autoSaveBranding(true); // Skip logo for toggle changes
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -578,6 +636,11 @@ export default function BrandingPage({ onColorChange }) {
               };
               // Immediately update sidebar (instant visual feedback)
               window.dispatchEvent(new CustomEvent('brandingUpdated', { detail: eventData }));
+              syncBrandingSnapshot({
+                appearance: newAppearance,
+                accentColor: accentColor,
+                keepPlatformBranding: keepPlatformBranding,
+              });
               // Save immediately without debounce
               setIsInitialLoad(false);
               // Clear any pending save
@@ -621,6 +684,11 @@ export default function BrandingPage({ onColorChange }) {
               };
               // Immediately update sidebar (instant visual feedback)
               window.dispatchEvent(new CustomEvent('brandingUpdated', { detail: eventData }));
+              syncBrandingSnapshot({
+                appearance: newAppearance,
+                accentColor: accentColor,
+                keepPlatformBranding: keepPlatformBranding,
+              });
               // Save immediately without debounce
               setIsInitialLoad(false);
               // Clear any pending save

@@ -1,567 +1,369 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, X, Building2, Users, Receipt, Settings as SettingsIcon, Palette, Zap, Package, CreditCard, ShoppingCart, ShoppingBag, Puzzle, Plug, Code } from "lucide-react";
+import {
+  Building2,
+  Code2,
+  Compass,
+  Cpu,
+  Grid2x2,
+  Megaphone,
+  Palette,
+  Receipt,
+  ShieldCheck,
+  ShoppingBag,
+  ShoppingCart,
+  Users,
+  X,
+} from "lucide-react";
 
-import { getCurrentUser } from "../../services/auth";
+type SettingItem = {
+  label: string;
+  path?: string;
+  badge?: string;
+};
+
+type SettingCard = {
+  icon: React.ElementType;
+  color: string;
+  title: string;
+  items: SettingItem[];
+};
+
+const cardToneClasses: Record<string, string> = {
+  green: "bg-emerald-50 text-emerald-600",
+  pink: "bg-rose-50 text-rose-500",
+  blue: "bg-blue-50 text-blue-600",
+  orange: "bg-orange-50 text-orange-500",
+  yellow: "bg-amber-50 text-amber-600",
+  red: "bg-red-50 text-red-500",
+  cyan: "bg-cyan-50 text-cyan-600",
+};
+
+const organizationSettings: SettingCard[] = [
+  {
+    icon: Building2,
+    color: "green",
+    title: "Organization",
+    items: [
+      { label: "Profile", path: "/settings/profile" },
+      { label: "Branding", path: "/settings/branding" },
+      { label: "Custom Domain", path: "/settings/custom-domain" },
+      { label: "Locations", path: "/settings/locations" },
+      { label: "AI Preferences" },
+      { label: "Manage Subscription", path: "/settings/subscription" },
+    ],
+  },
+  {
+    icon: Users,
+    color: "pink",
+    title: "Users & Roles",
+    items: [
+      { label: "Users", path: "/settings/users" },
+      { label: "Roles", path: "/settings/roles" },
+      { label: "User Preferences", path: "/settings/user-preferences" },
+    ],
+  },
+  {
+    icon: Receipt,
+    color: "orange",
+    title: "Setup & Configurations",
+    items: [
+      { label: "General", path: "/settings/general" },
+      { label: "Currencies", path: "/settings/currencies" },
+      { label: "Opening Balances", path: "/settings/opening-balances" },
+      { label: "Reminders", path: "/settings/reminders" },
+      { label: "Customer Portal", path: "/settings/customer-portal" },
+      { label: "Vendor Portal", path: "/settings/vendor-portal" },
+    ],
+  },
+  {
+    icon: Palette,
+    color: "yellow",
+    title: "Customization",
+    items: [
+      { label: "Transaction Number Series", path: "/settings/customization/transaction-number-series" },
+      { label: "PDF Templates", path: "/settings/customization/pdf-templates" },
+      { label: "Email Notifications", path: "/settings/customization/email-notifications" },
+      { label: "Reporting Tags", path: "/settings/customization/reporting-tags" },
+      { label: "Web Tabs", path: "/settings/customization/web-tabs" },
+    ],
+  },
+  {
+    icon: ShieldCheck,
+    color: "red",
+    title: "Automation",
+    items: [
+      { label: "Workflow Rules", path: "/settings/workflow-rules" },
+      { label: "Workflow Actions", path: "/settings/workflow-actions" },
+      { label: "Workflow Logs", path: "/settings/workflow-logs" },
+      { label: "Schedules", path: "/settings/schedules" },
+    ],
+  },
+];
+
+const moduleSettings: SettingCard[] = [
+  {
+    icon: Grid2x2,
+    color: "green",
+    title: "General",
+    items: [
+      { label: "Customers and Vendors", path: "/settings/customers-vendors" },
+      { label: "Items", path: "/settings/items" },
+      { label: "Accountant", path: "/settings/accountant" },
+      { label: "Tasks", path: "/tasks" },
+      { label: "Projects", path: "/settings/projects" },
+      { label: "Timesheet", path: "/settings/timesheet" },
+    ],
+  },
+  {
+    icon: ShoppingCart,
+    color: "red",
+    title: "Inventory",
+    items: [{ label: "Inventory Adjustments", path: "/settings/inventory-adjustments" }],
+  },
+  {
+    icon: Megaphone,
+    color: "green",
+    title: "Sales",
+    items: [
+      { label: "Quotes", path: "/settings/quotes" },
+      { label: "Retainer Invoices", path: "/sales/retainer-invoices" },
+      { label: "Sales Orders", path: "/sales/sales-orders" },
+      { label: "Invoices", path: "/settings/invoices" },
+      { label: "Recurring Invoices", path: "/settings/recurring-invoices" },
+      { label: "Sales Receipts", path: "/settings/sales-receipts" },
+      { label: "Payments Received", path: "/settings/payments-received" },
+      { label: "Credit Notes", path: "/settings/credit-notes" },
+      { label: "Delivery Notes", path: "/settings/delivery-notes" },
+      { label: "Packing Slips", path: "/settings/packing-slips" },
+    ],
+  },
+  {
+    icon: ShoppingBag,
+    color: "green",
+    title: "Purchases",
+    items: [
+      { label: "Expenses", path: "/settings/expenses" },
+      { label: "Recurring Expenses", path: "/settings/recurring-expenses" },
+      { label: "Purchase Orders", path: "/settings/purchase-orders" },
+      { label: "Bills", path: "/settings/bills" },
+      { label: "Recurring Bills", path: "/settings/recurring-bills" },
+      { label: "Payments Made", path: "/settings/payments-made" },
+      { label: "Vendor Credits", path: "/settings/vendor-credits" },
+    ],
+  },
+  {
+    icon: Cpu,
+    color: "blue",
+    title: "Custom Modules",
+    items: [{ label: "Overview", path: "/settings/custom-modules" }],
+  },
+];
+
+const extensionSettings: SettingCard[] = [
+  {
+    icon: Compass,
+    color: "green",
+    title: "Integrations & Market...",
+    items: [
+      { label: "Zoho Apps" },
+      { label: "WhatsApp" },
+      { label: "SMS Integrations" },
+      { label: "Other Apps" },
+      { label: "Marketplace" },
+    ],
+  },
+  {
+    icon: Code2,
+    color: "orange",
+    title: "Developer Data",
+    items: [
+      { label: "Incoming Webhooks" },
+      { label: "Connections" },
+      { label: "API Usage" },
+      { label: "Signals" },
+      { label: "Data Management" },
+      { label: "Deluge Components Usage" },
+      { label: "Web Forms" },
+    ],
+  },
+];
+
+function SettingCardBlock({
+  card,
+  navigate,
+}: {
+  card: SettingCard;
+  navigate: ReturnType<typeof useNavigate>;
+}) {
+  const Icon = card.icon;
+  return (
+    <section className="rounded-[14px] border border-slate-200 bg-white shadow-[0_1px_0_rgba(15,23,42,0.02)]">
+      <div className="flex items-center gap-3 rounded-t-[14px] border-b border-slate-100 px-4 py-3">
+        <div className={`grid h-8 w-8 place-items-center rounded-lg ${cardToneClasses[card.color] || cardToneClasses.green}`}>
+          <Icon size={16} />
+        </div>
+        <h3 className="text-[15px] font-semibold text-slate-900">{card.title}</h3>
+      </div>
+
+      <div className="px-4 py-3">
+        <div className="space-y-1">
+          {card.items.map((item) => {
+            const row = (
+              <>
+                <span className="truncate">{item.label}</span>
+                {item.badge ? (
+                  <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    {item.badge}
+                  </span>
+                ) : null}
+              </>
+            );
+
+            if (!item.path) {
+              return (
+                <div
+                  key={item.label}
+                  className="flex items-center justify-between rounded-md px-1 py-2 text-[15px] text-slate-600 opacity-80"
+                >
+                  {row}
+                </div>
+              );
+            }
+
+            return (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => navigate(item.path!)}
+                className="flex w-full items-center justify-between rounded-md px-1 py-2 text-left text-[15px] text-slate-900 transition-colors hover:bg-slate-50 hover:text-[#156372]"
+              >
+                {row}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export default function AllSettings() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedSetting, setSelectedSetting] = useState(null);
-  const [selectedCategory, setSelectedCategory] = useState(null);
 
-  const user = getCurrentUser();
-  const permissions = user?.permissions;
+  const filteredSections = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
 
-  // Helper to check permissions
-  // Return true if access allowed
-  const checkPermission = (key: string, subKey?: string) => {
-    if (!user) return false;
-    if (user.role === 'owner' || user.role === 'admin' || permissions === 'full_access') return true;
-    if (!permissions) return false;
+    const filterCards = (cards: SettingCard[]) =>
+      cards
+        .map((card) => ({
+          ...card,
+          items: card.items.filter((item) => !query || item.label.toLowerCase().includes(query)),
+        }))
+        .filter((card) => card.items.length > 0);
 
-    // Check settings permissions
-    const p = permissions.settings;
-    if (!p) return false;
-
-    if (subKey) {
-      return p[key]?.[subKey]?.view; // e.g. p.usersRoles.view
-    }
-    return p[key]?.view;
-  };
-
-  // Specific checks for categories
-  const showOrgSettings = checkPermission('organizationProfile') || checkPermission('usersRoles') || checkPermission('taxesCompliance') || checkPermission('preferences') || checkPermission('automation'); // Approximate mapping
-
-  const organizationSettings = [
-    {
-      icon: Building2,
-      color: "green",
-      title: "Organization",
-      visible: checkPermission('organizationProfile'),
-      items: [
-        { label: "Profile", path: "/settings/profile" },
-        { label: "Branding", path: "/settings/branding" },
-        { label: "Custom Domain", path: "/settings/custom-domain" },
-        { label: "Locations", path: "/settings/locations", badge: "NEW" },
-        { label: "Manage Subscription", path: "/settings/subscription" },
-      ],
-    },
-    {
-      icon: Users,
-      color: "pink",
-      title: "Users & Roles",
-      visible: checkPermission('usersRoles'),
-      items: [
-        { label: "Users", path: "/settings/users" },
-        { label: "Roles", path: "/settings/roles" },
-      ],
-    },
-    {
-      icon: Receipt,
-      color: "blue",
-      title: "Taxes & Compliance",
-      visible: checkPermission('taxes'),
-      items: [
-        { label: "Taxes", path: "/settings/taxes" },
-      ],
-    },
-    {
-      icon: SettingsIcon,
-      color: "orange",
-      title: "Setup & Configurations",
-      visible: checkPermission('preferences') || checkPermission('currencies') || checkPermission('reminders') || checkPermission('openingBalances'),
-      items: [
-        { label: "General", path: "/settings/general", visible: checkPermission('preferences') },
-        { label: "Currencies", path: "/settings/currencies", visible: checkPermission('currencies') },
-        { label: "Opening Balances", path: "/settings/opening-balances", visible: checkPermission('openingBalances') },
-        { label: "Reminders", path: "/settings/reminders", visible: checkPermission('reminders') },
-      ].filter((item: any) => item.visible !== false),
-    },
-    {
-      icon: Palette,
-      color: "yellow",
-      title: "Customization",
-      visible: checkPermission('preferences'),
-      items: [
-        { label: "Transaction Number Series", path: "/settings/customization/transaction-number-series" },
-        { label: "PDF Templates", path: "/settings/customization/pdf-templates" },
-        { label: "Email Notifications", path: "/settings/customization/email-notifications" },
-        { label: "Reporting Tags", path: "/settings/customization/reporting-tags" },
-        { label: "Web Tabs", path: "/settings/customization/web-tabs" },
-      ],
-    },
-    {
-      icon: Zap,
-      color: "red",
-      title: "Automation",
-      visible: checkPermission('automation'),
-      items: [
-        "Workflow Rules",
-        "Workflow Actions",
-        "Workflow Logs",
-        "Schedules",
-      ],
-    },
-  ].filter(section => section.visible !== false);
-
-  const moduleSettings = [
-    {
-      icon: SettingsIcon,
-      color: "green",
-      title: "General",
-      description: "Configure core master data used across transactions and reports.",
-      visible: true,
-      items: [
-        permissionCheckItem("Customers and Vendors", checkPermission('customersVendors')),
-        permissionCheckItem("Items", checkPermission('items')),
-        permissionCheckItem("Accountant", checkPermission('accountant')),
-        permissionCheckItem("Projects", checkPermission('projects')),
-        permissionCheckItem("Timesheet", checkPermission('timesheet')),
-      ].filter(Boolean),
-    },
-    {
-      icon: Package,
-      color: "pink",
-      title: "Inventory",
-      description: "Track stock movement, quantity/value adjustments, and inventory controls.",
-      visible: checkPermission('inventoryAdjustments') || checkPermission('items'),
-      items: ["Inventory Adjustments"],
-    },
-    {
-      icon: ShoppingCart,
-      color: "green",
-      title: "Sales",
-      description: "Handle daily sales with fast billing and clean records for every customer transaction.",
-      visible: checkPermission('sales'),
-      items: [
-        "Customers",
-        "Quotes",
-        "Invoices",
-        "Recurring Invoices",
-        "Sales Receipts",
-        "Payments Received",
-        "Credit Notes",
-        "Delivery Notes",
-        "Packing Slips",
-      ],
-    },
-    {
-      icon: ShoppingBag,
-      color: "green",
-      title: "Purchases",
-      description: "Manage vendor-side spend from purchase orders to bills, expenses, and payments.",
-      visible: checkPermission('purchases'),
-      items: [
-        "Expenses",
-        "Recurring Expenses",
-        "Purchase Orders",
-        "Bills",
-        "Recurring Bills",
-        "Payments Made",
-        "Vendor Credits",
-      ],
-    },
-  ].filter(section => section.visible !== false);
-
-  function permissionCheckItem(label: string, allowed: any) {
-    if (allowed === false) return null;
-    return label;
-  }
-
-  /*
-  const extensionSettings = [
-    {
-      icon: Plug,
-      color: "green",
-      title: "Integrations & Market...",
-      items: [
-        "Taban Books Apps",
-        "WhatsApp",
-        "SMS Integrations",
-        "Other Apps",
-        "Marketplace",
-      ],
-    },
-    {
-      icon: Code,
-      color: "orange",
-      title: "Developer Data",
-      items: [
-        "Incoming Webhooks",
-        "Connections",
-        "API Usage",
-        "Signals",
-        "Data Management",
-        "Deluge Components Usage",
-        "Web Forms",
-      ],
-    },
-  ];
-  */
-
-  const getColorClasses = (color) => {
-    const colors = {
-      green: "bg-green-100 text-green-600",
-      pink: "bg-pink-100 text-pink-600",
-      blue: "bg-blue-100 text-blue-600",
-      orange: "bg-orange-100 text-orange-600",
-      yellow: "bg-yellow-100 text-yellow-600",
-      red: "bg-red-100 text-red-600",
+    return {
+      organization: filterCards(organizationSettings),
+      module: filterCards(moduleSettings),
+      extension: filterCards(extensionSettings),
     };
-    return colors[color] || colors.green;
-  };
+  }, [searchQuery]);
 
-  const filterItems = (items, query) => {
-    if (!query) return items;
-    const lowerQuery = query.toLowerCase();
-    return items.filter((item) => {
-      const label = typeof item === "string" ? item : item.label;
-      return label.toLowerCase().includes(lowerQuery);
-    });
-  };
-
-  const filteredOrgSettings = filterItems(organizationSettings, searchQuery);
-  const filteredModuleSettings = filterItems(moduleSettings, searchQuery);
-  // const filteredExtensionSettings = filterItems([], searchQuery);
-
-  // Hide sidebar when on settings page
   useEffect(() => {
-    const sidebar = document.querySelector('aside');
-    if (sidebar) {
-      sidebar.style.display = 'none';
-    }
+    const sidebar = document.querySelector("aside");
+    const topBar = document.querySelector("header");
+
+    if (sidebar) (sidebar as HTMLElement).style.display = "none";
+    if (topBar) (topBar as HTMLElement).style.display = "none";
+
     return () => {
-      if (sidebar) {
-        sidebar.style.display = '';
-      }
+      if (sidebar) (sidebar as HTMLElement).style.display = "";
+      if (topBar) (topBar as HTMLElement).style.display = "";
     };
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 w-full ml-0 pl-0">
-      {/* Top Bar */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-50 w-full">
-        <div className="px-6 py-4 flex items-center justify-between max-w-full">
+    <div className="fixed inset-0 z-[9999] min-h-screen overflow-y-auto bg-[#f4f7fb] text-slate-900">
+      <div className="mx-auto w-full max-w-[1600px] px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mb-6 flex items-center justify-between gap-4 rounded-[18px] border border-slate-200 bg-white px-5 py-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded bg-blue-600 text-white flex items-center justify-center font-bold text-sm">
-              B
-            </div>
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"
+              aria-label="Close settings"
+            >
+              <X size={16} />
+            </button>
             <div>
-              <div className="text-lg font-semibold text-gray-900">All Settings</div>
-              <div className="text-sm text-gray-500">TABAN ENTERPRISES</div>
+              <h1 className="text-[22px] font-semibold text-slate-900">Organization Settings</h1>
+              <p className="text-sm text-slate-500">All settings are grouped into the same 5-column layout from your reference.</p>
             </div>
           </div>
 
-          <div className="flex-1 max-w-md mx-8">
+          <div className="hidden w-full max-w-[360px] sm:block">
             <div className="relative">
-              <Search
-                size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              />
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search settings ( / )"
-                className="w-full h-10 pl-9 pr-4 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="h-11 w-full rounded-full border border-slate-200 bg-white px-4 pr-10 text-sm outline-none transition focus:border-[#156372] focus:ring-2 focus:ring-[#156372]/10"
               />
-            </div>
-          </div>
-
-          <button
-            onClick={() => navigate(-1)}
-            className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg flex items-center gap-2"
-          >
-            <X size={16} />
-            Close Settings
-          </button>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="w-full px-6 py-8">
-        {/* Organization Settings */}
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Organization Settings</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredOrgSettings.map((setting, idx) => {
-              const Icon = setting.icon;
-              return (
-                <div
-                  key={idx}
-                  className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow"
-                >
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className={`w-10 h-10 rounded-lg ${getColorClasses(setting.color)} flex items-center justify-center`}>
-                      <Icon size={20} />
-                    </div>
-                    <h3 className="font-semibold text-gray-900">{setting.title}</h3>
-                  </div>
-                  <ul className="space-y-1">
-                    {setting.items.map((item, itemIdx) => {
-                      const label = typeof item === "string" ? item : item.label;
-                      const badge = typeof item === "object" ? item.badge : null;
-                      return (
-                        <li
-                          key={itemIdx}
-                          onClick={() => {
-                            const path = typeof item === "object" && item.path ? item.path : null;
-                            if (path) {
-                              navigate(path);
-                            } else if (label === "Profile") {
-                              navigate("/settings/profile");
-                            } else if (label === "Branding") {
-                              navigate("/settings/branding");
-                            } else if (label === "Custom Domain") {
-                              navigate("/settings/custom-domain");
-                            } else if (label === "Locations") {
-                              navigate("/settings/locations");
-                            } else if (label === "Users") {
-                              navigate("/settings/users");
-                            } else if (label === "Roles") {
-                              navigate("/settings/roles");
-                            } else if (label === "Taxes") {
-                              navigate("/settings/taxes");
-                            } else if (label === "General") {
-                              navigate("/settings/general");
-                            } else if (label === "Currencies") {
-                              navigate("/settings/currencies");
-                            } else if (label === "Opening Balances") {
-                              navigate("/settings/opening-balances");
-                            } else if (label === "Reminders") {
-                              navigate("/settings/reminders");
-                              // } else if (label === "Customer Portal") {
-                              //   navigate("/settings/customer-portal");
-                              // } else if (label === "Vendor Portal") {
-                              //   navigate("/settings/vendor-portal");
-                            } else if (label === "Transaction Number Series") {
-                              navigate("/settings/customization/transaction-number-series");
-                            } else if (label === "PDF Templates") {
-                              navigate("/settings/customization/pdf-templates");
-                            } else if (label === "Email Notifications") {
-                              navigate("/settings/customization/email-notifications");
-                            } else if (label === "Reporting Tags") {
-                              navigate("/settings/customization/reporting-tags");
-                            } else if (label === "Web Tabs") {
-                              navigate("/settings/customization/web-tabs");
-                            } else if (label === "Workflow Rules") {
-                              navigate("/settings/workflow-rules");
-                            } else if (label === "Workflow Actions") {
-                              navigate("/settings/workflow-actions");
-                            } else if (label === "Workflow Logs") {
-                              navigate("/settings/workflow-logs");
-                            } else if (label === "Schedules") {
-                              navigate("/settings/schedules");
-                            } else {
-                              setSelectedSetting(label);
-                              setSelectedCategory(setting.title);
-                            }
-                          }}
-                          className="text-sm text-gray-600 hover:text-blue-600 cursor-pointer py-1 flex items-center justify-between"
-                        >
-                          <span>{label}</span>
-                          {badge && (
-                            <span className="text-xs bg-red-500 text-white px-1.5 py-0.5 rounded">
-                              {badge}
-                            </span>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Module Settings */}
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Module Settings</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredModuleSettings.map((setting, idx) => {
-              const Icon = setting.icon;
-              return (
-                <div
-                  key={idx}
-                  className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow"
-                >
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className={`w-10 h-10 rounded-lg ${getColorClasses(setting.color)} flex items-center justify-center`}>
-                      <Icon size={20} />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{setting.title}</h3>
-                      {setting.description && (
-                        <p className="text-xs text-gray-500 mt-0.5 max-w-[260px]">{setting.description}</p>
-                      )}
-                    </div>
-                  </div>
-                  <ul className="space-y-1">
-                    {setting.items.map((item, itemIdx) => (
-                      <li
-                        key={itemIdx}
-                        onClick={() => {
-                          if (item === "Customers and Vendors") {
-                            navigate("/settings/customers-vendors");
-                          } else if (item === "Customers") {
-                            navigate("/sales/customers");
-                          } else if (item === "Items") {
-                            navigate("/settings/items");
-                          } else if (item === "Accountant") {
-                            navigate("/settings/accountant");
-                          } else if (item === "Projects") {
-                            navigate("/settings/projects");
-                          } else if (item === "Timesheet") {
-                            navigate("/settings/timesheet");
-                          } else if (item === "Inventory Adjustments") {
-                            navigate("/settings/inventory-adjustments");
-                          } else if (item === "Quotes") {
-                            navigate("/settings/quotes");
-                          } else if (item === "Invoices") {
-                            navigate("/settings/invoices");
-                          } else if (item === "Recurring Invoices") {
-                            navigate("/settings/recurring-invoices");
-                          } else if (item === "Sales Receipts") {
-                            navigate("/settings/sales-receipts");
-                          } else if (item === "Payments Received") {
-                            navigate("/settings/payments-received");
-                          } else if (item === "Credit Notes") {
-                            navigate("/settings/credit-notes");
-                          } else if (item === "Delivery Notes") {
-                            navigate("/settings/delivery-notes");
-                          } else if (item === "Packing Slips") {
-                            navigate("/settings/packing-slips");
-                          } else if (item === "Expenses") {
-                            navigate("/settings/expenses");
-                          } else if (item === "Purchase Orders") {
-                            navigate("/settings/purchase-orders");
-                          } else if (item === "Bills") {
-                            navigate("/settings/bills");
-                          } else if (item === "Recurring Bills") {
-                            navigate("/settings/recurring-bills");
-                          } else if (item === "Payments Made") {
-                            navigate("/settings/payments-made");
-                          } else if (item === "Vendor Credits") {
-                            navigate("/settings/vendor-credits");
-                          } else {
-                            setSelectedSetting(item);
-                            setSelectedCategory(setting.title);
-                          }
-                        }}
-                        className="text-sm text-gray-600 hover:text-blue-600 cursor-pointer py-1"
-                      >
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-      </div>
-
-      {/* Side Panel */}
-      {selectedSetting && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-end">
-          <div className="bg-white h-full w-full max-w-2xl overflow-y-auto shadow-2xl">
-            {/* Panel Header */}
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setSelectedSetting(null)}
-                  className="p-2 hover:bg-gray-100 rounded-lg"
-                >
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                    <path d="M12.5 5l-5 5 5 5" stroke="#374151" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">{selectedSetting}</h2>
-                  {selectedCategory && (
-                    <div className="text-sm text-gray-500">{selectedCategory}</div>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={() => setSelectedSetting(null)}
-                className="p-2 hover:bg-gray-100 rounded-lg"
+              <svg
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
               >
-                <X size={20} className="text-gray-600" />
-              </button>
+                <path
+                  d="M7.333 12A4.667 4.667 0 1 0 7.333 2.667a4.667 4.667 0 0 0 0 9.333Zm5.334 1.333-2.8-2.8"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </div>
-
-            {/* Panel Content */}
-            <div className="p-6">
-              {selectedSetting === "Profile" && (
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="text-base font-semibold text-gray-900 mb-4">Organization Profile</h3>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Organization Name <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          defaultValue="Taban enterprise"
-                          className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Industry <span className="text-red-500">*</span>
-                        </label>
-                        <select className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                          <option>Agriculture</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Organization Location <span className="text-red-500">*</span>
-                        </label>
-                        <select className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                          <option>Algeria</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {selectedSetting !== "Profile" && (
-                <div className="text-center py-12">
-                  <p className="text-gray-500">{selectedSetting} settings will be displayed here.</p>
-                </div>
-              )}
-            </div>
-
-            {/* Panel Footer */}
-            {selectedSetting === "Profile" && (
-              <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex items-center justify-end gap-3">
-                <button
-                  onClick={() => setSelectedSetting(null)}
-                  className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
-                >
-                  Save
-                </button>
-              </div>
-            )}
           </div>
         </div>
-      )}
+
+        <section className="mb-8">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-[18px] font-semibold text-slate-900">Organization Settings</h2>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            {filteredSections.organization.map((card) => (
+              <SettingCardBlock key={card.title} card={card} navigate={navigate} />
+            ))}
+          </div>
+        </section>
+
+        <section className="mb-8">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-[18px] font-semibold text-slate-900">Module Settings</h2>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            {filteredSections.module.map((card) => (
+              <SettingCardBlock key={card.title} card={card} navigate={navigate} />
+            ))}
+          </div>
+        </section>
+
+        <section className="mb-8">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-[18px] font-semibold text-slate-900">Extension and Developer Data</h2>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            {filteredSections.extension.map((card) => (
+              <SettingCardBlock key={card.title} card={card} navigate={navigate} />
+            ))}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
-
-
-
-
-
