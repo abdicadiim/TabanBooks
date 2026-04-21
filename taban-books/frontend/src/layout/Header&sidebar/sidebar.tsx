@@ -324,7 +324,7 @@ export default function Sidebar() {
                     "flex items-center rounded-[12px] px-3 py-2 text-[13px] font-medium transition-all",
                     isActiveChild ? childActiveClass : childBaseClass,
                   ].join(" ")}
-                  style={isActiveChild ? { backgroundColor: rgba(accentColor, 0.18), color: accentForeground } : undefined}
+                  style={isActiveChild ? { backgroundColor: rgba(accentColor, 0.18), color: "#ffffff" } : undefined}
                 >
                   <span className="truncate">{child.label}</span>
                 </NavLink>
@@ -368,7 +368,7 @@ export default function Sidebar() {
                   "flex items-center rounded-[12px] px-3 py-2 text-[13px] font-semibold transition-all",
                   isActiveChild ? childActiveClass : childBaseClass,
                 ].join(" ")}
-                style={isActiveChild ? { backgroundColor: rgba(accentColor, 0.18), color: accentForeground } : undefined}
+                style={isActiveChild ? { backgroundColor: rgba(accentColor, 0.18), color: "#ffffff" } : undefined}
               >
                 <span className="truncate">{child.label}</span>
               </NavLink>

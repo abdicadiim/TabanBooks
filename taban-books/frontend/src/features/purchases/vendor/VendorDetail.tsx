@@ -179,6 +179,7 @@ export default function VendorDetail() {
   const [comments, setComments] = useState<any[]>([]);
   const [commentText, setCommentText] = useState("");
   const [selectedTransactionType, setSelectedTransactionType] = useState<any>(null);
+  const [isTransactionNavDropdownOpen, setIsTransactionNavDropdownOpen] = useState(false);
   const [bills, setBills] = useState<any[]>([]);
   const [isInvoiceViewDropdownOpen, setIsInvoiceViewDropdownOpen] = useState(false);
   const invoiceViewDropdownRef = useRef<HTMLDivElement>(null);
@@ -227,6 +228,9 @@ export default function VendorDetail() {
   const [projects, setProjects] = useState<any[]>([]);
   const [purchaseReceipts, setPurchaseReceipts] = useState<any[]>([]);
   const [mails, setMails] = useState<any[]>([]);
+  const [isMailsTypeDropdownOpen, setIsMailsTypeDropdownOpen] = useState(false);
+  const [selectedMailsType, setSelectedMailsType] = useState("System Mails");
+  const mailsTypeDropdownRef = useRef<HTMLDivElement>(null);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [newContactPerson, setNewContactPerson] = useState({
     salutation: "",
@@ -308,6 +312,8 @@ export default function VendorDetail() {
   // New Transaction dropdown state
   const [isNewTransactionDropdownOpen, setIsNewTransactionDropdownOpen] = useState(false);
   const newTransactionDropdownRef = useRef<HTMLDivElement>(null);
+  const transactionNavDropdownRef = useRef<HTMLDivElement>(null);
+  const transactionSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Additional missing state variables
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -701,6 +707,9 @@ export default function VendorDetail() {
       setPurchaseOrders([]);
       return;
     }
+    if (activeTab !== "transactions" && activeTab !== "statement") {
+      return;
+    }
 
     const vendorId = vendor?._id || vendor?.id || '';
     const vendorName = vendor?.name || "";
@@ -833,7 +842,7 @@ export default function VendorDetail() {
     };
 
     loadVendorTransactions();
-  }, [id, vendor]);
+  }, [id, vendor, activeTab]);
 
 
   // Build statement transactions from bills, payments made, and vendor credits
@@ -919,9 +928,13 @@ export default function VendorDetail() {
   }, [isDocumentsModalOpen]);
 
   useEffect(() => {
+    let isCancelled = false;
+
     const loadVendor = async () => {
       if (!id) {
-        setIsLoading(false);
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
         return;
       }
 
@@ -931,6 +944,7 @@ export default function VendorDetail() {
 
       try {
         const response = await vendorsAPI.getById(vendorId);
+        if (isCancelled) return;
 
         // Match customer's pattern exactly: check response.success && response.data
         if (response && response.success && response.data) {
@@ -971,50 +985,72 @@ export default function VendorDetail() {
             setProfileImage(mappedVendor.profileImage);
           }
 
-          // Load sample mails for this vendor
-          const vendorEmail = mappedVendor.email || "";
-          const sampleMails = [];
-
-          // Add sample mails based on vendor email
-          if (vendorEmail) {
-            sampleMails.push({
-              id: 1,
-              to: vendorEmail,
-              subject: "Payment Acknowledgment",
-              description: "Payment Made by taban",
-              date: "11 Dec 2025 01:30 PM",
-              type: "payment",
-              initial: vendorEmail.charAt(0).toUpperCase()
-            });
-          }
-
-          // Add a second sample mail with different email
-          const secondaryEmail = mappedVendor.contactPersons?.[0]?.email || "maxamed9885m@gmail.com";
-          sampleMails.push({
-            id: 2,
-            to: secondaryEmail,
-            subject: "Draft Notification",
-            description: "New auto-generated bill for the recurring profile: taban profile",
-            date: "11 Dec 2025 12:09 PM",
-            type: "bill",
-            initial: secondaryEmail.charAt(0).toUpperCase()
+          // Only use real mails returned by backend; no mock/sample rows.
+          const rawMails =
+            (Array.isArray(vendorData?.mails) ? vendorData.mails : null) ||
+            (Array.isArray(vendorData?.mailLogs) ? vendorData.mailLogs : null) ||
+            (Array.isArray(vendorData?.emails) ? vendorData.emails : null) ||
+            [];
+          const normalizedMails = rawMails.map((mail: any, index: number) => {
+            const to = String(mail?.to || mail?.recipient || mail?.email || "").trim();
+            return {
+              id: String(mail?._id || mail?.id || index),
+              to,
+              subject: String(mail?.subject || mail?.title || "Email"),
+              description: String(mail?.description || mail?.bodyPreview || mail?.message || ""),
+              date: mail?.date || mail?.createdAt || "",
+              type: String(mail?.type || "mail"),
+              initial: (to.charAt(0) || "M").toUpperCase()
+            };
           });
-
-          setMails(sampleMails);
+          setMails(normalizedMails);
           setIsLoading(false);
         } else {
+          if (isCancelled) return;
           setIsLoading(false);
           alert('Vendor data is invalid: Missing required fields');
           navigate("/purchases/vendors");
         }
       } catch (error) {
+        if (isCancelled) return;
         toast.error('Failed to load vendor: ' + (error instanceof Error ? error.message : 'Unknown error'));
         setIsLoading(false);
       }
     };
 
-    // Load the vendor details and the vendors list (vendor details must be fetched)
-    // Also fetch organization profile for the statement header
+    // Reset detail state immediately when switching vendor so old data does not linger
+    setIsLoading(true);
+    setVendor(null);
+    setComments([]);
+    setMails([]);
+    setAttachments([]);
+    setBills([]);
+    setPaymentsMade([]);
+    setVendorCredits([]);
+    setExpenses([]);
+    setPurchaseOrders([]);
+    setRecurringBills([]);
+    setRecurringExpenses([]);
+    setJournals([]);
+    setProjects([]);
+    setPurchaseReceipts([]);
+    setStatementTransactions([]);
+    setSelectedTransactionType(null);
+    setBillCurrentPage(1);
+    setBillSearchTerm("");
+    setBillStatusFilter("all");
+    setIsTransactionNavDropdownOpen(false);
+
+    loadVendor();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [id, navigate]);
+
+  useEffect(() => {
+    // Load sidebar list/profile once instead of every vendor switch.
+    loadVendors();
     const fetchOrganizationProfile = async () => {
       try {
         const resp = await profileAPI.getOrganizationProfile();
@@ -1030,11 +1066,8 @@ export default function VendorDetail() {
         if (fallback) setOrganizationProfile(JSON.parse(fallback));
       }
     };
-
-    loadVendor();
-    loadVendors();
     fetchOrganizationProfile();
-  }, [id, navigate]);
+  }, []);
 
   useEffect(() => {
     const handleVendorRefresh = () => {
@@ -1310,6 +1343,12 @@ export default function VendorDetail() {
       if (newTransactionDropdownRef.current && !newTransactionDropdownRef.current.contains(target)) {
         setIsNewTransactionDropdownOpen(false);
       }
+      if (mailsTypeDropdownRef.current && !mailsTypeDropdownRef.current.contains(target)) {
+        setIsMailsTypeDropdownOpen(false);
+      }
+      if (transactionNavDropdownRef.current && !transactionNavDropdownRef.current.contains(target)) {
+        setIsTransactionNavDropdownOpen(false);
+      }
       if (attachmentsDropdownRef.current && !attachmentsDropdownRef.current.contains(target)) {
         setIsAttachmentsDropdownOpen(false);
       }
@@ -1327,14 +1366,14 @@ export default function VendorDetail() {
       }
     };
 
-    if (isInvoiceViewDropdownOpen || isStatusDropdownOpen || isLinkEmailDropdownOpen || isStatementPeriodDropdownOpen || isStatementFilterDropdownOpen || isBulkActionsDropdownOpen || isStartDatePickerOpen || isEndDatePickerOpen || isMergeVendorDropdownOpen || isNewTransactionDropdownOpen || isAttachmentsDropdownOpen || isUploadDropdownOpen || isMoreDropdownOpen || isCustomizeDropdownOpen) {
+    if (isInvoiceViewDropdownOpen || isStatusDropdownOpen || isLinkEmailDropdownOpen || isStatementPeriodDropdownOpen || isStatementFilterDropdownOpen || isBulkActionsDropdownOpen || isStartDatePickerOpen || isEndDatePickerOpen || isMergeVendorDropdownOpen || isNewTransactionDropdownOpen || isTransactionNavDropdownOpen || isMailsTypeDropdownOpen || isAttachmentsDropdownOpen || isUploadDropdownOpen || isMoreDropdownOpen || isCustomizeDropdownOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isInvoiceViewDropdownOpen, isStatusDropdownOpen, isLinkEmailDropdownOpen, isStatementPeriodDropdownOpen, isStatementFilterDropdownOpen, isBulkActionsDropdownOpen, isStartDatePickerOpen, isEndDatePickerOpen, isMergeVendorDropdownOpen, isNewTransactionDropdownOpen, isAttachmentsDropdownOpen, isUploadDropdownOpen, isMoreDropdownOpen, openContactDropdown, isCustomizeDropdownOpen, isCustomerDropdownOpen]);
+  }, [isInvoiceViewDropdownOpen, isStatusDropdownOpen, isLinkEmailDropdownOpen, isStatementPeriodDropdownOpen, isStatementFilterDropdownOpen, isBulkActionsDropdownOpen, isStartDatePickerOpen, isEndDatePickerOpen, isMergeVendorDropdownOpen, isNewTransactionDropdownOpen, isTransactionNavDropdownOpen, isMailsTypeDropdownOpen, isAttachmentsDropdownOpen, isUploadDropdownOpen, isMoreDropdownOpen, openContactDropdown, isCustomizeDropdownOpen, isCustomerDropdownOpen]);
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
@@ -1355,6 +1394,26 @@ export default function VendorDetail() {
       ...prev,
       [section]: !prev[section]
     }));
+  };
+
+  const transactionNavOptions: Array<{ key: keyof typeof expandedTransactions; label: string }> = [
+    { key: "bills", label: "Bills" },
+    { key: "paymentsMade", label: "Bill Payments" },
+    { key: "expenses", label: "Expenses" },
+    { key: "recurringBills", label: "Recurring Bills" },
+    { key: "recurringExpenses", label: "Recurring Expenses" },
+    { key: "purchaseOrders", label: "Purchase Orders" },
+    { key: "vendorCredits", label: "Vendor Credits" },
+    { key: "journals", label: "Journals" }
+  ];
+
+  const handleTransactionNavSelect = (sectionKey: keyof typeof expandedTransactions, label: string) => {
+    setSelectedTransactionType(label);
+    setExpandedTransactions(prev => ({ ...prev, [sectionKey]: true }));
+    setIsTransactionNavDropdownOpen(false);
+    window.requestAnimationFrame(() => {
+      transactionSectionRefs.current[sectionKey]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   // Vendor selection handlers
@@ -2371,6 +2430,20 @@ export default function VendorDetail() {
   const startIndex = (billCurrentPage - 1) * billsPerPage;
   const endIndex = startIndex + billsPerPage;
   const paginatedBills = filteredBills.slice(startIndex, endIndex);
+  const hasAnyPurchaseTransactions = (
+    bills.length +
+    paymentsMade.length +
+    expenses.length +
+    purchaseOrders.length +
+    vendorCredits.length +
+    recurringBills.length +
+    recurringExpenses.length +
+    journals.length +
+    projects.length +
+    purchaseReceipts.length
+  ) > 0;
+  const purchasesTabLabel = hasAnyPurchaseTransactions ? "Purchases" : "Transactions";
+  const goToPurchasesText = hasAnyPurchaseTransactions ? "Go to purchases" : "Go to transactions";
 
   const formatCurrency = (amount, currency?: string) => {
     const resolvedCode = String(currency || baseCurrencyCode || "USD").split(" - ")[0].trim();
@@ -3073,17 +3146,24 @@ export default function VendorDetail() {
 
             {/* Tabs */}
             <div className="flex gap-1 overflow-x-auto no-scrollbar">
-              {["Overview", "Comments", "Transactions", ...(vendor?.linkedCustomerId ? ["Sales"] : []), "Statement"].map(tab => (
+              {[
+                { label: "Overview", key: "overview" },
+                { label: "Comments", key: "comments" },
+                { label: purchasesTabLabel, key: "transactions" },
+                ...(vendor?.linkedCustomerId ? [{ label: "Sales", key: "sales" }] : []),
+                { label: "Mails", key: "mails" },
+                { label: "Statement", key: "statement" }
+              ].map((tab) => (
                 <button
-                  key={tab}
-                  className={`px-4 py-2 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors ${activeTab === tab.toLowerCase()
+                  key={tab.key}
+                  className={`px-4 py-2 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors ${activeTab === tab.key
                     ? ""
                     : "text-gray-500 border-transparent hover:text-gray-700"
                     }`}
-                  style={activeTab === tab.toLowerCase() ? { color: purchasesTheme.secondary, borderColor: purchasesTheme.secondary } : {}}
-                  onClick={() => setActiveTab(tab.toLowerCase() as typeof activeTab)}
+                  style={activeTab === tab.key ? { color: purchasesTheme.secondary, borderColor: purchasesTheme.secondary } : {}}
+                  onClick={() => setActiveTab(tab.key as typeof activeTab)}
                 >
-                  {tab}
+                  {tab.label}
                 </button>
               ))}
             </div>
@@ -4007,13 +4087,33 @@ export default function VendorDetail() {
 
         {activeTab === "transactions" && (
           <div className="flex-1 overflow-y-auto p-6">
-            <button className="flex items-center gap-2 px-4 py-2 mb-4 bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-700 cursor-pointer hover:bg-gray-100">
-              Go to transactions
-              <ChevronDown size={16} />
-            </button>
+            <div className="relative inline-block mb-4" ref={transactionNavDropdownRef}>
+              <button
+                className="flex items-center gap-2 px-4 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-700 cursor-pointer hover:bg-gray-100"
+                onClick={() => setIsTransactionNavDropdownOpen((prev) => !prev)}
+              >
+                {selectedTransactionType ? selectedTransactionType : goToPurchasesText}
+                <ChevronDown size={16} />
+              </button>
+              {isTransactionNavDropdownOpen && (
+                <div className="absolute top-full left-0 mt-2 w-52 bg-white border border-gray-200 rounded-lg shadow-lg z-40 py-1">
+                  {transactionNavOptions.map((option) => (
+                    <button
+                      key={option.key}
+                      className={`w-full text-left px-3 py-2 text-sm cursor-pointer ${
+                        selectedTransactionType === option.label ? "bg-blue-50 text-blue-700" : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                      onClick={() => handleTransactionNavSelect(option.key, option.label)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Bills Section */}
-            <div className={`mb-4 border border-gray-200 rounded-lg ${expandedTransactions.bills ? "bg-white" : "bg-gray-50"}`}>
+            <div ref={(el) => { transactionSectionRefs.current.bills = el; }} className={`mb-4 border border-gray-200 rounded-lg ${expandedTransactions.bills ? "bg-white" : "bg-gray-50"}`}>
               <div
                 className={`flex items-center justify-between p-4 border-b border-gray-200 cursor-pointer ${expandedTransactions.bills ? "bg-white" : "bg-gray-50 hover:bg-gray-100"}`}
                 onClick={() => toggleTransactionSection("bills")}
@@ -4174,7 +4274,7 @@ export default function VendorDetail() {
             </div>
 
             {/* Bill Payments Section */}
-            <div className={`mb-4 border border-gray-200 rounded-lg ${expandedTransactions.paymentsMade ? "bg-white" : "bg-gray-50"}`}>
+            <div ref={(el) => { transactionSectionRefs.current.paymentsMade = el; }} className={`mb-4 border border-gray-200 rounded-lg ${expandedTransactions.paymentsMade ? "bg-white" : "bg-gray-50"}`}>
               <div
                 className={`flex items-center justify-between p-4 border-b border-gray-200 cursor-pointer ${expandedTransactions.paymentsMade ? "bg-white" : "bg-gray-50 hover:bg-gray-100"}`}
                 onClick={() => toggleTransactionSection("paymentsMade")}
@@ -4263,7 +4363,7 @@ export default function VendorDetail() {
 
 
             {/* Expenses Section */}
-            <div className={`mb-4 border border-gray-200 rounded-lg ${expandedTransactions.expenses ? "bg-white" : "bg-gray-50"}`}>
+            <div ref={(el) => { transactionSectionRefs.current.expenses = el; }} className={`mb-4 border border-gray-200 rounded-lg ${expandedTransactions.expenses ? "bg-white" : "bg-gray-50"}`}>
               <div
                 className={`flex items-center justify-between p-4 border-b border-gray-200 cursor-pointer ${expandedTransactions.expenses ? "bg-white" : "bg-gray-50 hover:bg-gray-100"}`}
                 onClick={() => toggleTransactionSection("expenses")}
@@ -4349,7 +4449,7 @@ export default function VendorDetail() {
             </div>
 
             {/* Purchase Orders Section */}
-            <div className={`mb-4 border border-gray-200 rounded-lg ${expandedTransactions.purchaseOrders ? "bg-white" : "bg-gray-50"}`}>
+            <div ref={(el) => { transactionSectionRefs.current.purchaseOrders = el; }} className={`mb-4 border border-gray-200 rounded-lg ${expandedTransactions.purchaseOrders ? "bg-white" : "bg-gray-50"}`}>
               <div
                 className={`flex items-center justify-between p-4 border-b border-gray-200 cursor-pointer ${expandedTransactions.purchaseOrders ? "bg-white" : "bg-gray-50 hover:bg-gray-100"}`}
                 onClick={() => toggleTransactionSection("purchaseOrders")}
@@ -4435,7 +4535,7 @@ export default function VendorDetail() {
             </div>
 
             {/* Vendor Credits Section */}
-            <div className={`mb-4 border border-gray-200 rounded-lg ${expandedTransactions.vendorCredits ? "bg-white" : "bg-gray-50"}`}>
+            <div ref={(el) => { transactionSectionRefs.current.vendorCredits = el; }} className={`mb-4 border border-gray-200 rounded-lg ${expandedTransactions.vendorCredits ? "bg-white" : "bg-gray-50"}`}>
               <div
                 className={`flex items-center justify-between p-4 border-b border-gray-200 cursor-pointer ${expandedTransactions.vendorCredits ? "bg-white" : "bg-gray-50 hover:bg-gray-100"}`}
                 onClick={() => toggleTransactionSection("vendorCredits")}
@@ -4514,7 +4614,7 @@ export default function VendorDetail() {
               )}
             </div>
             {/* Recurring Bills Section */}
-            <div className={`mb-4 border border-gray-200 rounded-lg ${expandedTransactions.recurringBills ? "bg-white" : "bg-gray-50"}`}>
+            <div ref={(el) => { transactionSectionRefs.current.recurringBills = el; }} className={`mb-4 border border-gray-200 rounded-lg ${expandedTransactions.recurringBills ? "bg-white" : "bg-gray-50"}`}>
               <div
                 className={`flex items-center justify-between p-4 border-b border-gray-200 cursor-pointer ${expandedTransactions.recurringBills ? "bg-white" : "bg-gray-50 hover:bg-gray-100"}`}
                 onClick={() => toggleTransactionSection("recurringBills")}
@@ -4592,7 +4692,7 @@ export default function VendorDetail() {
             </div>
 
             {/* Recurring Expenses Section */}
-            <div className={`mb-4 border border-gray-200 rounded-lg ${expandedTransactions.recurringExpenses ? "bg-white" : "bg-gray-50"}`}>
+            <div ref={(el) => { transactionSectionRefs.current.recurringExpenses = el; }} className={`mb-4 border border-gray-200 rounded-lg ${expandedTransactions.recurringExpenses ? "bg-white" : "bg-gray-50"}`}>
               <div
                 className={`flex items-center justify-between p-4 border-b border-gray-200 cursor-pointer ${expandedTransactions.recurringExpenses ? "bg-white" : "bg-gray-50 hover:bg-gray-100"}`}
                 onClick={() => toggleTransactionSection("recurringExpenses")}
@@ -4670,7 +4770,7 @@ export default function VendorDetail() {
             </div>
 
             {/* Journals Section */}
-            <div className={`mb-4 border border-gray-200 rounded-lg ${expandedTransactions.journals ? "bg-white" : "bg-gray-50"}`}>
+            <div ref={(el) => { transactionSectionRefs.current.journals = el; }} className={`mb-4 border border-gray-200 rounded-lg ${expandedTransactions.journals ? "bg-white" : "bg-gray-50"}`}>
               <div
                 className={`flex items-center justify-between p-4 border-b border-gray-200 cursor-pointer ${expandedTransactions.journals ? "bg-white" : "bg-gray-50 hover:bg-gray-100"}`}
                 onClick={() => toggleTransactionSection("journals")}
@@ -4908,7 +5008,7 @@ export default function VendorDetail() {
           activeTab === "sales" && (
             <div className="flex-1 overflow-y-auto p-6">
               <button className="flex items-center gap-2 px-4 py-2 mb-4 bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-700 cursor-pointer hover:bg-gray-100">
-                Go to transactions
+                Go to purchases
                 <ChevronDown size={16} />
               </button>
 
@@ -5090,30 +5190,37 @@ export default function VendorDetail() {
             <div className="flex-1 overflow-y-auto p-6">
               <div className="bg-white rounded-lg border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900">System Mails</h3>
-                  <div className="relative" ref={linkEmailDropdownRef}>
-                    <button
-                      className="flex items-center gap-2 px-4 py-2 bg-[#156372] text-white rounded-md text-sm font-medium cursor-pointer hover:bg-[#0D4A52]"
-                      onClick={() => setIsLinkEmailDropdownOpen(!isLinkEmailDropdownOpen)}
-                    >
-                      <Mail size={16} />
-                      Link Email account
-                      <ChevronDown size={14} />
-                    </button>
-                    {isLinkEmailDropdownOpen && (
-                      <div className="absolute top-full right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-                        <div className="px-4 py-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50">
-                          Connect Gmail
+                  {hasAnyPurchaseTransactions ? (
+                    <div className="relative" ref={mailsTypeDropdownRef}>
+                      <button
+                        className="flex items-center gap-1 text-lg font-semibold text-gray-900 cursor-pointer"
+                        onClick={() => setIsMailsTypeDropdownOpen((prev) => !prev)}
+                      >
+                        {selectedMailsType}
+                        <ChevronDown size={16} />
+                      </button>
+                      {isMailsTypeDropdownOpen && (
+                        <div className="absolute top-full left-0 mt-2 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-40 py-1">
+                          {["System Mails", "Snail Mail History"].map((option) => (
+                            <button
+                              key={option}
+                              className={`w-full text-left px-3 py-2 text-sm cursor-pointer ${
+                                selectedMailsType === option ? "bg-blue-50 text-blue-700" : "text-gray-700 hover:bg-gray-50"
+                              }`}
+                              onClick={() => {
+                                setSelectedMailsType(option);
+                                setIsMailsTypeDropdownOpen(false);
+                              }}
+                            >
+                              {option}
+                            </button>
+                          ))}
                         </div>
-                        <div className="px-4 py-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50">
-                          Connect Outlook
-                        </div>
-                        <div className="px-4 py-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50">
-                          Connect Other Email
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  ) : (
+                    <h3 className="text-lg font-semibold text-gray-900">System Mails</h3>
+                  )}
                 </div>
 
                 <div className="space-y-4">
