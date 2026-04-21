@@ -1,48 +1,49 @@
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import { usePermissions } from "../../hooks/usePermissions";
 import AccessDenied from "../../components/AccessDenied";
-import Vendor from "./vendor/Vendor";
-import NewVendor from "./vendor/NewVendor";
-import VendorDetail from "./vendor/VendorDetail";
-import NewVendorCustomView from "./vendor/NewVendorCustomView";
-import NewExpenseCustomView from "./expenses/NewExpenseCustomView";
-import ImportVendors from "./vendor/ImportVendors";
-import ImportExpenses from "./expenses/ImportExpenses";
-import Expenses from "./expenses/Expenses";
-import ExpenseDetail from "./expenses/ExpenseDetail";
-import RecordExpense from "./expenses/RecordExpense";
-import RecurringExpenses from "./expenses/RecurringExpenses";
-import NewRecurringExpense from "./expenses/NewRecurringExpense";
-import RecurringExpenseDetail from "./expenses/RecurringExpenseDetail";
-import ImportRecurringExpenses from "./expenses/ImportRecurringExpenses";
-import Bills from "./bills/Bills";
-import NewBill from "./bills/NewBill";
-import BillDetail from "./bills/BillDetail";
-import RecurringBills from "./bills/RecurringBills";
-import NewRecurringBill from "./bills/NewRecurringBill";
-import RecurringBillDetail from "./bills/RecurringBillDetail";
-import ImportBills from "./bills/ImportBills";
-import ImportRecurringBills from "./bills/ImportRecurringBills";
-import PurchaseOrders from "./purchase-orders/PurchaseOrders";
-import NewPurchaseOrder from "./purchase-orders/NewPurchaseOrder";
-import PurchaseOrderDetail from "./purchase-orders/PurchaseOrderDetail";
-import PurchaseOrderEmailView from "./purchase-orders/PurchaseOrderEmailView";
-import ImportPurchaseOrders from "./purchase-orders/ImportPurchaseOrders";
-import PaymentsMade from "./payments/PaymentsMade";
-import RecordPayment from "./payments/RecordPayment";
-import PaymentDetail from "./payments/PaymentDetail";
-import PaymentEmailView from "./payments/PaymentEmailView";
-import ImportPayments from "./payments/ImportPayments";
-import ImportAppliedExcessPayments from "./payments/ImportAppliedExcessPayments";
-import VendorCredits from "./vendor-credits/VendorCredits";
-import NewVendorCredit from "./vendor-credits/NewVendorCredit";
-import VendorCreditDetail from "./vendor-credits/VendorCreditDetail";
-import ImportAppliedVendorCredits from "./vendor-credits/ImportAppliedVendorCredits";
-import ImportRefunds from "./vendor-credits/ImportRefunds";
-import ImportVendorCredits from "./vendor-credits/ImportVendorCredits";
-import ReceiptsInbox from "./receipts/ReceiptsInbox";
-import UploadedDocuments from "./documents/UploadedDocuments";
+
+const Vendor = lazy(() => import("./vendor/Vendor"));
+const NewVendor = lazy(() => import("./vendor/NewVendor"));
+const VendorDetail = lazy(() => import("./vendor/VendorDetail"));
+const NewVendorCustomView = lazy(() => import("./vendor/NewVendorCustomView"));
+const NewExpenseCustomView = lazy(() => import("./expenses/NewExpenseCustomView"));
+const ImportVendors = lazy(() => import("./vendor/ImportVendors"));
+const ImportExpenses = lazy(() => import("./expenses/ImportExpenses"));
+const Expenses = lazy(() => import("./expenses/Expenses"));
+const ExpenseDetail = lazy(() => import("./expenses/ExpenseDetail"));
+const RecordExpense = lazy(() => import("./expenses/RecordExpense"));
+const RecurringExpenses = lazy(() => import("./expenses/RecurringExpenses"));
+const NewRecurringExpense = lazy(() => import("./expenses/NewRecurringExpense"));
+const RecurringExpenseDetail = lazy(() => import("./expenses/RecurringExpenseDetail"));
+const ImportRecurringExpenses = lazy(() => import("./expenses/ImportRecurringExpenses"));
+const Bills = lazy(() => import("./bills/Bills"));
+const NewBill = lazy(() => import("./bills/NewBill"));
+const BillDetail = lazy(() => import("./bills/BillDetail"));
+const RecurringBills = lazy(() => import("./bills/RecurringBills"));
+const NewRecurringBill = lazy(() => import("./bills/NewRecurringBill"));
+const RecurringBillDetail = lazy(() => import("./bills/RecurringBillDetail"));
+const ImportBills = lazy(() => import("./bills/ImportBills"));
+const ImportRecurringBills = lazy(() => import("./bills/ImportRecurringBills"));
+const PurchaseOrders = lazy(() => import("./purchase-orders/PurchaseOrders"));
+const NewPurchaseOrder = lazy(() => import("./purchase-orders/NewPurchaseOrder"));
+const PurchaseOrderDetail = lazy(() => import("./purchase-orders/PurchaseOrderDetail"));
+const PurchaseOrderEmailView = lazy(() => import("./purchase-orders/PurchaseOrderEmailView"));
+const ImportPurchaseOrders = lazy(() => import("./purchase-orders/ImportPurchaseOrders"));
+const PaymentsMade = lazy(() => import("./payments/PaymentsMade"));
+const RecordPayment = lazy(() => import("./payments/RecordPayment"));
+const PaymentDetail = lazy(() => import("./payments/PaymentDetail"));
+const PaymentEmailView = lazy(() => import("./payments/PaymentEmailView"));
+const ImportPayments = lazy(() => import("./payments/ImportPayments"));
+const ImportAppliedExcessPayments = lazy(() => import("./payments/ImportAppliedExcessPayments"));
+const VendorCredits = lazy(() => import("./vendor-credits/VendorCredits"));
+const NewVendorCredit = lazy(() => import("./vendor-credits/NewVendorCredit"));
+const VendorCreditDetail = lazy(() => import("./vendor-credits/VendorCreditDetail"));
+const ImportAppliedVendorCredits = lazy(() => import("./vendor-credits/ImportAppliedVendorCredits"));
+const ImportRefunds = lazy(() => import("./vendor-credits/ImportRefunds"));
+const ImportVendorCredits = lazy(() => import("./vendor-credits/ImportVendorCredits"));
+const ReceiptsInbox = lazy(() => import("./receipts/ReceiptsInbox"));
+const UploadedDocuments = lazy(() => import("./documents/UploadedDocuments"));
 
 function SendEmailStatement() {
   return (
@@ -175,8 +176,15 @@ export default function PurchasesPage() {
   const isExpenseDetailPage = location.pathname.includes('/expenses/') &&
     !location.pathname.includes('/expenses/new');
 
+  const routeLoadingFallback = (
+    <div className="min-h-[40vh] flex items-center justify-center text-sm text-gray-500">
+      Loading purchases...
+    </div>
+  );
+
   return (
     <div className={isVendorPage || isRecurringBillsPage || isRecurringExpensesPage || isPaymentsMadePage || isVendorCreditsPage || isExpenseDetailPage ? "page page-vendor" : "page"}>
+      <Suspense fallback={routeLoadingFallback}>
       <Routes>
         <Route path="vendors" element={<Vendor />} />
         <Route path="vendors/new" element={<NewVendor />} />
@@ -234,6 +242,7 @@ export default function PurchasesPage() {
           }
         />
       </Routes>
+      </Suspense>
     </div>
   );
 }

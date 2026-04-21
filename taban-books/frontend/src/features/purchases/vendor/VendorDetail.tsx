@@ -610,27 +610,82 @@ export default function VendorDetail() {
   //   enablePortalAccess: true
   // });
 
+  const normalizeCollection = (payload: any): any[] => {
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.data?.data)) return payload.data.data;
+    if (Array.isArray(payload?.data?.items)) return payload.data.items;
+    if (Array.isArray(payload?.data?.bills)) return payload.data.bills;
+    if (Array.isArray(payload?.data?.payments)) return payload.data.payments;
+    if (Array.isArray(payload?.data?.vendorCredits)) return payload.data.vendorCredits;
+    if (Array.isArray(payload?.data?.expenses)) return payload.data.expenses;
+    if (Array.isArray(payload?.data?.purchaseOrders)) return payload.data.purchaseOrders;
+    if (Array.isArray(payload?.data?.recurringBills)) return payload.data.recurringBills;
+    if (Array.isArray(payload?.data?.recurringExpenses)) return payload.data.recurringExpenses;
+    return [];
+  };
+
+  const toCandidateStrings = (value: any): string[] => {
+    if (!value) return [];
+    if (typeof value === "string" || typeof value === "number") {
+      return [String(value).trim()].filter(Boolean);
+    }
+    if (typeof value === "object") {
+      const candidates = [
+        value._id,
+        value.id,
+        value.vendorId,
+        value.value,
+        value.name,
+        value.displayName,
+        value.companyName,
+        value.label
+      ];
+      return candidates.map((item) => String(item || "").trim()).filter(Boolean);
+    }
+    return [];
+  };
+
   // Helper function to check if transaction belongs to vendor
   const matchesVendor = (transaction: any, vendorId: string, vendorName: string, displayName: string, companyName: string) => {
-    const transVendorId = (transaction.vendor || transaction.vendor_id || transaction.vendorId || "").toString().trim();
-    const transVendorName = (transaction.vendorName || transaction.vendor_name || transaction.vendor?.name || "").toLowerCase().trim();
+    const targetIds = [vendorId, id].map((v) => String(v || "").trim()).filter(Boolean);
+    const targetNames = [vendorName, displayName, companyName]
+      .map((v) => String(v || "").toLowerCase().trim())
+      .filter(Boolean);
 
-    // Check ID match
-    if (transVendorId && (transVendorId === vendorId || transVendorId === id)) {
+    const vendorIdCandidates = [
+      ...toCandidateStrings(transaction?.vendor),
+      ...toCandidateStrings(transaction?.vendor_id),
+      ...toCandidateStrings(transaction?.vendorId),
+      ...toCandidateStrings(transaction?.vendorID),
+      ...toCandidateStrings(transaction?.vendorRef),
+      ...toCandidateStrings(transaction?.party),
+      ...toCandidateStrings(transaction?.partyId),
+      ...toCandidateStrings(transaction?.contact),
+      ...toCandidateStrings(transaction?.contactId),
+    ];
+
+    if (vendorIdCandidates.some((candidate) => targetIds.includes(candidate))) {
       return true;
     }
 
-    // Check name matches
-    if (transVendorName) {
-      const vendorNameLower = (vendorName || "").toLowerCase().trim();
-      const displayNameLower = (displayName || "").toLowerCase().trim();
-      const companyNameLower = (companyName || "").toLowerCase().trim();
+    const vendorNameCandidates = [
+      ...toCandidateStrings(transaction?.vendorName),
+      ...toCandidateStrings(transaction?.vendor_name),
+      ...toCandidateStrings(transaction?.vendorDisplayName),
+      ...toCandidateStrings(transaction?.payeeName),
+      ...toCandidateStrings(transaction?.partyName),
+      ...toCandidateStrings(transaction?.contactName),
+      ...toCandidateStrings(transaction?.name),
+      ...toCandidateStrings(transaction?.vendor),
+    ]
+      .map((v) => v.toLowerCase().trim())
+      .filter(Boolean);
 
-      return transVendorName === vendorNameLower ||
-        transVendorName === displayNameLower ||
-        transVendorName === companyNameLower ||
-        transVendorName.includes(vendorNameLower) ||
-        vendorNameLower.includes(transVendorName);
+    if (vendorNameCandidates.some((candidate) =>
+      targetNames.some((target) => candidate === target || candidate.includes(target) || target.includes(candidate))
+    )) {
+      return true;
     }
 
     return false;
@@ -657,8 +712,7 @@ export default function VendorDetail() {
         // Load Bills
         try {
           const billsResponse = await billsAPI.getAll();
-          const rawBills = billsResponse?.data || billsResponse;
-          const allBills = Array.isArray(rawBills) ? rawBills : [];
+          const allBills = normalizeCollection(billsResponse);
           const vendorBills = allBills.filter((bill: any) =>
             matchesVendor(bill, vendorId, vendorName, displayName, companyName)
           );
@@ -670,8 +724,7 @@ export default function VendorDetail() {
         // Load Payments Made
         try {
           const paymentsResponse = await paymentsMadeAPI.getAll();
-          const rawPayments = paymentsResponse?.data || paymentsResponse;
-          const allPayments = Array.isArray(rawPayments) ? rawPayments : [];
+          const allPayments = normalizeCollection(paymentsResponse);
           const vendorPayments = allPayments.filter((payment: any) =>
             matchesVendor(payment, vendorId, vendorName, displayName, companyName)
           );
@@ -683,8 +736,7 @@ export default function VendorDetail() {
         // Load Vendor Credits
         try {
           const vendorCreditsResponse = await vendorCreditsAPI.getAll();
-          const rawVendorCredits = vendorCreditsResponse?.data || vendorCreditsResponse;
-          const allVendorCredits = Array.isArray(rawVendorCredits) ? rawVendorCredits : [];
+          const allVendorCredits = normalizeCollection(vendorCreditsResponse);
           const vendorCreditsFiltered = allVendorCredits.filter((vc: any) =>
             matchesVendor(vc, vendorId, vendorName, displayName, companyName)
           );
@@ -696,8 +748,7 @@ export default function VendorDetail() {
         // Load Expenses
         try {
           const expensesResponse = await expensesAPI.getAll({ limit: 1000 });
-          const rawExpenses = expensesResponse?.expenses || expensesResponse?.data || expensesResponse;
-          const allExpenses = Array.isArray(rawExpenses) ? rawExpenses : [];
+          const allExpenses = normalizeCollection(expensesResponse);
           const vendorExpenses = allExpenses.filter((expense: any) =>
             matchesVendor(expense, vendorId, vendorName, displayName, companyName)
           );
@@ -709,8 +760,7 @@ export default function VendorDetail() {
         // Load Purchase Orders
         try {
           const purchaseOrdersResponse = await purchaseOrdersAPI.getAll();
-          const rawPurchaseOrders = purchaseOrdersResponse?.data || purchaseOrdersResponse;
-          const allPurchaseOrders = Array.isArray(rawPurchaseOrders) ? rawPurchaseOrders : [];
+          const allPurchaseOrders = normalizeCollection(purchaseOrdersResponse);
           const vendorPurchaseOrders = allPurchaseOrders.filter((po: any) =>
             matchesVendor(po, vendorId, vendorName, displayName, companyName)
           );
@@ -722,8 +772,7 @@ export default function VendorDetail() {
         // Load Recurring Bills
         try {
           const recurringBillsResponse = await recurringBillsAPI.getAll();
-          const rawRecurringBills = recurringBillsResponse?.data || recurringBillsResponse;
-          const allRecurringBills = Array.isArray(rawRecurringBills) ? rawRecurringBills : [];
+          const allRecurringBills = normalizeCollection(recurringBillsResponse);
           const vendorRecurringBills = allRecurringBills.filter((rb: any) =>
             matchesVendor(rb, vendorId, vendorName, displayName, companyName)
           );
@@ -735,8 +784,7 @@ export default function VendorDetail() {
         // Load Recurring Expenses
         try {
           const recurringExpensesResponse = await recurringExpensesAPI.getAll();
-          const rawRecurringExpenses = recurringExpensesResponse?.data || recurringExpensesResponse;
-          const allRecurringExpenses = Array.isArray(rawRecurringExpenses) ? rawRecurringExpenses : [];
+          const allRecurringExpenses = normalizeCollection(recurringExpensesResponse);
           const vendorRecurringExpenses = allRecurringExpenses.filter((re: any) =>
             matchesVendor(re, vendorId, vendorName, displayName, companyName)
           );
@@ -748,8 +796,7 @@ export default function VendorDetail() {
         // Load Projects
         try {
           const projectsResponse = await projectsAPI.getAll();
-          const rawProjects = projectsResponse?.data || projectsResponse;
-          const allProjects = Array.isArray(rawProjects) ? rawProjects : [];
+          const allProjects = normalizeCollection(projectsResponse);
           const vendorProjects = allProjects.filter((p: any) =>
             matchesVendor(p, vendorId, vendorName, displayName, companyName)
           );
@@ -761,7 +808,7 @@ export default function VendorDetail() {
         // Load Purchase Receipts
         try {
           const receiptsResponse = await receiptsAPI.getAll();
-          const allReceipts = receiptsResponse?.data || receiptsResponse || [];
+          const allReceipts = normalizeCollection(receiptsResponse);
           const vendorReceipts = allReceipts.filter((r: any) =>
             matchesVendor(r, vendorId, vendorName, displayName, companyName)
           );
@@ -773,7 +820,7 @@ export default function VendorDetail() {
         // Load Journal Entries
         try {
           const journalsResponse = await accountantAPI.getJournals();
-          const allJournals = journalsResponse?.data || journalsResponse || [];
+          const allJournals = normalizeCollection(journalsResponse);
           const vendorJournals = allJournals.filter((j: any) =>
             matchesVendor(j, vendorId, vendorName, displayName, companyName)
           );

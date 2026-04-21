@@ -7,11 +7,8 @@ import { API_BASE_URL } from "./services/auth";
 import type { Organization } from "./services/auth";
 import { AppBootstrapProvider, useAppBootstrap } from "./context/AppBootstrapContext";
 import { SettingsProvider } from "./lib/settings/SettingsContext";
-<<<<<<< Updated upstream
 import "react-toastify/dist/ReactToastify.css";
-=======
 import FullScreenLoader from "./components/FullScreenLoader";
->>>>>>> Stashed changes
 
 const DEFAULT_TITLE = "Taban Books";
 const queryClient = new QueryClient();
