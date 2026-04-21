@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronDown, Plus, Search, X } from "lucide-react";
 
 type DropdownOption = {
@@ -16,6 +17,7 @@ type SearchableDropdownProps = {
   onClear?: () => void;
   disabled?: boolean;
   className?: string;
+  portalMenu?: boolean;
 };
 
 export default function SearchableDropdown({
@@ -28,14 +30,30 @@ export default function SearchableDropdown({
   onClear,
   disabled = false,
   className = "",
+  portalMenu = false,
 }: SearchableDropdownProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [menuStyle, setMenuStyle] = useState<{ left: number; top: number; width: number } | null>(null);
+
+  const updateMenuPosition = () => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    setMenuStyle({
+      left: rect.left,
+      top: rect.bottom + 8,
+      width: rect.width,
+    });
+  };
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const clickedContainer = containerRef.current?.contains(target);
+      const clickedMenu = menuRef.current?.contains(target);
+      if (!clickedContainer && !clickedMenu) {
         setIsOpen(false);
         setSearchTerm("");
       }
@@ -48,7 +66,19 @@ export default function SearchableDropdown({
     return () => {
       document.removeEventListener("mousedown", handleOutsideClick);
     };
-  }, [isOpen]);
+  }, [isOpen, portalMenu]);
+
+  useEffect(() => {
+    if (!isOpen || !portalMenu) return;
+    updateMenuPosition();
+    const onScrollOrResize = () => updateMenuPosition();
+    window.addEventListener("resize", onScrollOrResize);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    return () => {
+      window.removeEventListener("resize", onScrollOrResize);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+    };
+  }, [isOpen, portalMenu]);
 
   const selectedOption = useMemo(
     () => options.find((option) => option.value === value),
@@ -107,7 +137,7 @@ export default function SearchableDropdown({
         <ChevronDown size={16} className={`shrink-0 text-gray-500 transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </button>
 
-      {isOpen ? (
+      {isOpen && !portalMenu ? (
         <div className="absolute left-0 right-0 top-full z-[2500] mt-2 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
           <div className="border-b border-gray-100 p-2">
             <div className="flex items-center gap-2 rounded-md border border-gray-200 px-2 py-2">
@@ -159,6 +189,69 @@ export default function SearchableDropdown({
             )}
           </div>
         </div>
+      ) : null}
+
+      {isOpen && portalMenu && menuStyle && typeof document !== "undefined" ? createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-[12000] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg"
+          style={{
+            left: menuStyle.left,
+            top: menuStyle.top,
+            width: menuStyle.width,
+          }}
+        >
+          <div className="border-b border-gray-100 p-2">
+            <div className="flex items-center gap-2 rounded-md border border-gray-200 px-2 py-2">
+              <Search size={14} className="text-gray-400" />
+              <input
+                autoFocus
+                type="text"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search..."
+                className="w-full border-none bg-transparent text-sm outline-none"
+              />
+              {searchTerm ? (
+                <button
+                  type="button"
+                  className="text-gray-400 hover:text-gray-600"
+                  onClick={() => setSearchTerm("")}
+                >
+                  <X size={14} />
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="max-h-64 overflow-y-auto py-1">
+            {filteredOptions.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-gray-500">No options found.</div>
+            ) : (
+              filteredOptions.map((option) => {
+                const isSelected = option.value === value;
+                return (
+                  <button
+                    key={`${option.value}-${option.label}`}
+                    type="button"
+                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 ${
+                      isSelected ? "bg-gray-50 font-medium text-gray-900" : ""
+                    }`}
+                    onClick={() => {
+                      onChange(option.value);
+                      setIsOpen(false);
+                      setSearchTerm("");
+                    }}
+                  >
+                    <span className="truncate">{option.label}</span>
+                    {isSelected ? <Check size={14} className="text-gray-900" /> : null}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>,
+        document.body
       ) : null}
     </div>
   );

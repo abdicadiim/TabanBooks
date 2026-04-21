@@ -36,6 +36,10 @@ export interface IBill extends Document {
   status?: 'draft' | 'open' | 'paid' | 'partially paid' | 'overdue' | 'void' | 'cancelled';
   paymentTerms?: string;
   accountsPayable?: string;
+  locationId?: mongoose.Types.ObjectId;
+  locationName?: string;
+  warehouseLocationId?: mongoose.Types.ObjectId;
+  warehouseLocationName?: string;
   notes?: string;
   terms?: string;
   comments?: Array<{
@@ -168,6 +172,16 @@ const billSchema = new Schema<IBill>(
     },
     paymentTerms: String,
     accountsPayable: String,
+    locationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Location",
+    },
+    locationName: String,
+    warehouseLocationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Location",
+    },
+    warehouseLocationName: String,
     notes: String,
     terms: String,
     comments: [{

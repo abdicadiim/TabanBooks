@@ -3,6 +3,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
   ChevronUp,
+  ArrowUpDown,
+  RefreshCw,
   Plus,
   MoreVertical,
   X,
@@ -10,7 +12,6 @@ import {
   FileText,
   Folder,
   Eye,
-  Search,
   Download,
   Upload,
   Trash2,
@@ -33,6 +34,7 @@ import { useCurrency } from "../../../hooks/useCurrency";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import { getAccountOptionLabel, getBankAccountsFromResponse, getChartAccountsFromResponse, mergeAccountOptions } from "../shared/accountOptions";
+import ExportBills from "./ExportBills";
 
 interface BillItem {
   id: string;
@@ -115,21 +117,30 @@ export default function BillDetail() {
   const resolvedBaseCurrency = baseCurrencyCode || "USD";
   const resolvedBaseCurrencySymbol = baseCurrencySymbol || resolvedBaseCurrency;
   const [bill, setBill] = useState<Bill | null>(null);
+  const [isBillLoading, setIsBillLoading] = useState(true);
   const [bills, setBills] = useState<Bill[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [sidebarMoreMenuOpen, setSidebarMoreMenuOpen] = useState(false);
   const [showPdfView, setShowPdfView] = useState(true);
   const [pdfMenuOpen, setPdfMenuOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [payments, setPayments] = useState<Payment[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
-  const [exportSubmenuOpen, setExportSubmenuOpen] = useState(false);
   const [selectedBills, setSelectedBills] = useState<(string | number)[]>([]);
   const [isBulkActionsDropdownOpen, setIsBulkActionsDropdownOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("Payments Made");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [moreActionsMenuOpen, setMoreActionsMenuOpen] = useState(false);
+  const [selectedSidebarView, setSelectedSidebarView] = useState("All");
+  const [sidebarSortBy, setSidebarSortBy] = useState<"billDate" | "billNumber" | "vendorName" | "amount" | "dueDate" | "status">("billDate");
+  const [sidebarSortOrder, setSidebarSortOrder] = useState<"asc" | "desc">("desc");
+  const [showSortSubmenu, setShowSortSubmenu] = useState(false);
+  const [showImportSubmenu, setShowImportSubmenu] = useState(false);
+  const [showExportSubmenu, setShowExportSubmenu] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportType, setExportType] = useState<"bills" | "current-view">("bills");
+  const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+  const [printPreviewUrl, setPrintPreviewUrl] = useState("");
   const bulkActionsDropdownRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
@@ -138,6 +149,10 @@ export default function BillDetail() {
   const sidebarMoreMenuRef = useRef<HTMLDivElement>(null);
   const exportSubmenuRef = useRef<HTMLDivElement>(null);
   const billDocumentRef = useRef<HTMLDivElement>(null);
+  const journalSectionRef = useRef<HTMLDivElement>(null);
+  const printPreviewFrameRef = useRef<HTMLIFrameElement>(null);
+  const isGeneratingPrintPreviewRef = useRef(false);
+  const printPreviewUrlRef = useRef("");
 
   // Payment Recording State
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
@@ -262,6 +277,7 @@ export default function BillDetail() {
   };
 
   const loadBill = async () => {
+    setIsBillLoading(true);
     try {
       if (!id || id === 'undefined' || id === 'null') {
         setBill(null);
@@ -319,6 +335,8 @@ export default function BillDetail() {
     } catch (error) {
       console.error('Error loading bill:', error);
       setBill(null);
+    } finally {
+      setIsBillLoading(false);
     }
   };
 
@@ -388,49 +406,58 @@ export default function BillDetail() {
       }
 
       if (id && id !== 'undefined' && id !== 'null') {
-        const billRes = await billsAPI.getById(id);
-        if (billRes && billRes.success && billRes.data) {
-          const billData = billRes.data;
-          const transformedBill: Bill = {
-            id: billData._id || billData.id,
-            billNumber: billData.billNumber,
-            vendorName: billData.vendorName || billData.vendor?.displayName || '',
-            vendorAddress: billData.vendor?.billingAddress?.street || '',
-            vendorCity: billData.vendor?.billingAddress?.city || '',
-            vendorCountry: billData.vendor?.billingAddress?.country || '',
-            vendorEmail: billData.vendor?.email || '',
-            billDate: billData.date,
-            dueDate: billData.dueDate,
-            referenceNumber: billData.referenceNumber || '',
-            orderNumber: billData.orderNumber || '',
-            paymentTerms: billData.paymentTerms || '',
-            subject: billData.subject || '',
-            items: (billData.items || []).map((item: any, index: number) => ({
-              id: item._id || `item-${index}`,
-              itemDetails: item.description || item.name || item.itemDetails || '',
-              account: item.account || '',
-              quantity: item.quantity || 0,
-              rate: item.unitPrice || item.rate || 0,
-              tax: item.tax || item.taxRate || '',
-              amount: item.total || item.amount || 0
-            })),
-            subTotal: billData.subtotal || billData.subTotal || 0,
-            discountAmount: billData.discount || 0,
-            total: billData.total || 0,
-            balanceDue: billData.balance !== undefined ? billData.balance : (billData.total || 0),
-            currency: billData.currency || resolvedBaseCurrency,
-            status: billData.status || 'draft',
-            accountsPayable: billData.accountsPayable || '',
-            purchaseOrderId: billData.purchaseOrderId || billData.purchaseOrder
-          };
-          setBill(transformedBill);
+        try {
+          const billRes = await billsAPI.getById(id);
+          if (billRes && billRes.success && billRes.data) {
+            const billData = billRes.data;
+            const transformedBill: Bill = {
+              id: billData._id || billData.id,
+              billNumber: billData.billNumber,
+              vendorName: billData.vendorName || billData.vendor?.displayName || '',
+              vendorAddress: billData.vendor?.billingAddress?.street || '',
+              vendorCity: billData.vendor?.billingAddress?.city || '',
+              vendorCountry: billData.vendor?.billingAddress?.country || '',
+              vendorEmail: billData.vendor?.email || '',
+              billDate: billData.date,
+              dueDate: billData.dueDate,
+              referenceNumber: billData.referenceNumber || '',
+              orderNumber: billData.orderNumber || '',
+              paymentTerms: billData.paymentTerms || '',
+              subject: billData.subject || '',
+              items: (billData.items || []).map((item: any, index: number) => ({
+                id: item._id || `item-${index}`,
+                itemDetails: item.description || item.name || item.itemDetails || '',
+                account: item.account || '',
+                quantity: item.quantity || 0,
+                rate: item.unitPrice || item.rate || 0,
+                tax: item.tax || item.taxRate || '',
+                amount: item.total || item.amount || 0
+              })),
+              subTotal: billData.subtotal || billData.subTotal || 0,
+              discountAmount: billData.discount || 0,
+              total: billData.total || 0,
+              balanceDue: billData.balance !== undefined ? billData.balance : (billData.total || 0),
+              currency: billData.currency || resolvedBaseCurrency,
+              status: billData.status || 'draft',
+              accountsPayable: billData.accountsPayable || '',
+              purchaseOrderId: billData.purchaseOrderId || billData.purchaseOrder
+            };
+            setBill(transformedBill);
 
-          // Load purchase orders if purchaseOrderId exists
-          if (transformedBill.purchaseOrderId) {
-            loadPurchaseOrders(transformedBill.purchaseOrderId);
+            // Load purchase orders if purchaseOrderId exists
+            if (transformedBill.purchaseOrderId) {
+              loadPurchaseOrders(transformedBill.purchaseOrderId);
+            } else {
+              setPurchaseOrders([]);
+            }
           } else {
+            setBill(null);
             setPurchaseOrders([]);
           }
+        } catch (error) {
+          console.error("Error refreshing bill:", error);
+          setBill(null);
+          setPurchaseOrders([]);
         }
       }
     };
@@ -480,6 +507,15 @@ export default function BillDetail() {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [dropdownOpen, moreMenuOpen, pdfMenuOpen, sidebarMoreMenuOpen, isBulkActionsDropdownOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (printPreviewUrlRef.current) {
+        URL.revokeObjectURL(printPreviewUrlRef.current);
+        printPreviewUrlRef.current = "";
+      }
+    };
+  }, []);
 
 
   const formatDate = (dateString: string | undefined) => {
@@ -785,6 +821,129 @@ export default function BillDetail() {
     }
   };
 
+  const handlePrintBill = async () => {
+    if (!bill) return;
+    if (isGeneratingPrintPreviewRef.current) return;
+    isGeneratingPrintPreviewRef.current = true;
+    setPdfMenuOpen(false);
+
+    if (!billDocumentRef.current) {
+      setShowPdfView(true);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+
+    const target = billDocumentRef.current;
+    if (!target) {
+      toast.error("Unable to open print preview.");
+      return;
+    }
+
+    try {
+      const canvas = await html2canvas(target, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+      });
+
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const printableWidth = pageWidth - margin * 2;
+      const printableHeight = pageHeight - margin * 2;
+      const imgWidth = printableWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const imgData = canvas.toDataURL("image/png");
+
+      let heightLeft = imgHeight;
+      let position = margin;
+
+      pdf.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
+      heightLeft -= printableHeight;
+
+      while (heightLeft > 0.01) {
+        position = margin - (imgHeight - heightLeft);
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
+        heightLeft -= printableHeight;
+      }
+
+      const blob = pdf.output("blob");
+      const url = URL.createObjectURL(blob);
+
+      if (printPreviewUrlRef.current) {
+        URL.revokeObjectURL(printPreviewUrlRef.current);
+      }
+      printPreviewUrlRef.current = url;
+      setPrintPreviewUrl(url);
+      setIsPrintPreviewOpen(true);
+    } catch (error) {
+      console.error("Error creating print preview:", error);
+      toast.error("Failed to generate print preview.");
+    } finally {
+      isGeneratingPrintPreviewRef.current = false;
+    }
+  };
+
+  const handleClosePrintPreview = () => {
+    setIsPrintPreviewOpen(false);
+    if (printPreviewUrlRef.current) {
+      URL.revokeObjectURL(printPreviewUrlRef.current);
+      printPreviewUrlRef.current = "";
+      setPrintPreviewUrl("");
+    }
+  };
+
+  const handlePrintFromPreview = () => {
+    const frameWindow = printPreviewFrameRef.current?.contentWindow;
+    if (!frameWindow) {
+      toast.error("Print preview is not ready yet.");
+      return;
+    }
+    frameWindow.focus();
+    toast("Use the printer icon in the preview toolbar to print.");
+  };
+
+  const handleExpectedPaymentDate = async () => {
+    if (!bill) return;
+    const defaultDate = toISODate((bill as any).expectedPaymentDate || bill.dueDate || bill.billDate);
+    const enteredDate = window.prompt("Enter expected payment date (YYYY-MM-DD)", defaultDate);
+    if (!enteredDate) return;
+    const normalizedDate = toISODate(enteredDate);
+
+    try {
+      await persistBillPatch({ expectedPaymentDate: normalizedDate });
+      toast.success("Expected payment date updated.");
+    } catch (error: any) {
+      console.error("Error updating expected payment date:", error);
+      toast.error(error?.message || "Failed to update expected payment date.");
+    }
+  };
+
+  const handleCreateVendorCredits = () => {
+    if (!bill) return;
+    navigate("/purchases/vendor-credits/new", {
+      state: {
+        vendorId: bill.vendorId,
+        vendorName: bill.vendorName,
+        billId: getBillId(),
+        billNumber: bill.billNumber,
+        amount: bill.balanceDue || bill.total || 0,
+      },
+    });
+  };
+
+  const handleViewJournal = () => {
+    if (!showPdfView) {
+      setShowPdfView(true);
+      setTimeout(() => {
+        journalSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 180);
+      return;
+    }
+    journalSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const getBillId = () => String((bill as any)?._id || bill?.id || id || "");
 
   const persistBillPatch = async (patch: Record<string, any>) => {
@@ -857,15 +1016,73 @@ export default function BillDetail() {
     }
   };
 
-  // Filter bills based on search
-  const filteredBills = bills.filter((b: Bill) => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      b.billNumber?.toLowerCase().includes(query) ||
-      b.vendorName?.toLowerCase().includes(query) ||
-      b.referenceNumber?.toLowerCase().includes(query)
-    );
+  const viewFilteredBills = bills.filter((b: Bill) => {
+    const status = String(b.status || "").toLowerCase();
+    const statusDisplay = getBillStatusDisplay(b).text.toLowerCase();
+
+    switch (selectedSidebarView) {
+      case "Draft":
+        return status === "draft";
+      case "Pending Approval":
+        return status.includes("pending");
+      case "Open":
+        return status === "open" || statusDisplay.startsWith("due");
+      case "Overdue":
+        return statusDisplay.startsWith("overdue");
+      case "Unpaid":
+        return status !== "paid" && !statusDisplay.includes("partially paid") && !statusDisplay.startsWith("overdue") && status !== "void";
+      case "Partially Paid":
+        return statusDisplay.includes("partially paid");
+      case "Paid":
+        return status === "paid" || statusDisplay === "paid";
+      case "Void":
+        return status === "void" || status === "cancelled";
+      default:
+        return true;
+    }
+  });
+
+  const filteredBills = [...viewFilteredBills].sort((a: Bill, b: Bill) => {
+    let aValue: string | number = "";
+    let bValue: string | number = "";
+
+    switch (sidebarSortBy) {
+      case "billDate":
+        aValue = a.billDate ? new Date(a.billDate).getTime() : 0;
+        bValue = b.billDate ? new Date(b.billDate).getTime() : 0;
+        break;
+      case "billNumber":
+        aValue = String(a.billNumber || "").toLowerCase();
+        bValue = String(b.billNumber || "").toLowerCase();
+        break;
+      case "vendorName":
+        aValue = String(a.vendorName || "").toLowerCase();
+        bValue = String(b.vendorName || "").toLowerCase();
+        break;
+      case "amount":
+        aValue = toFiniteNumber(a.total, 0);
+        bValue = toFiniteNumber(b.total, 0);
+        break;
+      case "dueDate":
+        aValue = a.dueDate ? new Date(a.dueDate).getTime() : 0;
+        bValue = b.dueDate ? new Date(b.dueDate).getTime() : 0;
+        break;
+      case "status":
+        aValue = getBillStatusDisplay(a).text.toLowerCase();
+        bValue = getBillStatusDisplay(b).text.toLowerCase();
+        break;
+      default:
+        return 0;
+    }
+
+    if (typeof aValue === "string" && typeof bValue === "string") {
+      return sidebarSortOrder === "asc"
+        ? aValue.localeCompare(bValue)
+        : bValue.localeCompare(aValue);
+    }
+    return sidebarSortOrder === "asc"
+      ? Number(aValue) - Number(bValue)
+      : Number(bValue) - Number(aValue);
   });
 
   // Bill selection handlers
@@ -892,6 +1109,38 @@ export default function BillDetail() {
     setSelectedBills([]);
   };
 
+  const handleSidebarRefresh = async () => {
+    await Promise.all([loadBillsList(), loadBill(), loadPayments()]);
+    toast.success("Bill list refreshed");
+  };
+
+  const downloadSampleFile = (type: "csv" | "xls") => {
+    const headers = [
+      "Vendor Name", "Bill#", "Reference#", "Order#", "Date", "Due Date",
+      "Payment Terms", "Currency", "Item Name", "Item Description",
+      "Quantity", "Rate", "Account", "Tax Rate"
+    ];
+    const sampleData = [
+      ["John Doe", "BILL-001", "REF-001", "PO-001", "2024-01-01", "2024-01-15", "Net 15", resolvedBaseCurrency, "Consulting", "Work for Jan", "10", "150", "Professional Services", "0%"],
+      ["Jane Smith", "BILL-002", "REF-002", "PO-002", "2024-01-05", "2024-01-20", "Net 15", resolvedBaseCurrency, "Software", "License fee", "1", "1200", "Software Subscriptions", "5%"]
+    ];
+
+    const content = type === "csv"
+      ? [headers, ...sampleData].map((row) => row.map((cell) => `"${cell}"`).join(",")).join("\n")
+      : [headers, ...sampleData].map((row) => row.join("\t")).join("\n");
+    const mimeType = type === "csv" ? "text/csv;charset=utf-8;" : "application/vnd.ms-excel;charset=utf-8;";
+
+    const blob = new Blob([content], { type: mimeType });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `bills_sample.${type}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
   // Calculate payments total
   const paymentsTotal = payments.reduce((sum, payment) => {
     return sum + toFiniteNumber(payment.amount);
@@ -899,6 +1148,14 @@ export default function BillDetail() {
 
   // Get currency
   const currency = resolvedBaseCurrencySymbol;
+
+  if (isBillLoading) {
+    return (
+      <div style={{ padding: "48px", textAlign: "center" }}>
+        <p>Loading bill...</p>
+      </div>
+    );
+  }
 
   if (!bill) {
     return (
@@ -910,6 +1167,12 @@ export default function BillDetail() {
       </div>
     );
   }
+
+  const billStatusText = getBillStatusDisplay(bill).text;
+  const billBalanceDue = toFiniteNumber(bill.balanceDue ?? bill.total, 0);
+  const isBillPaid = billStatusText === "PAID" || billBalanceDue <= 0;
+  const isBillUnpaid = !isBillPaid;
+  const isBillOverdue = isBillUnpaid && calculateOverdueDays(bill.dueDate) > 0;
 
   const handlePaymentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -1056,6 +1319,7 @@ export default function BillDetail() {
     sidebarHeader: {
       padding: "16px",
       borderBottom: "1px solid #e5e7eb",
+      position: "relative",
     },
     searchBar: {
       display: "flex",
@@ -1099,6 +1363,55 @@ export default function BillDetail() {
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
+    },
+    sidebarDropdownMenu: {
+      position: "absolute",
+      top: "calc(100% + 8px)",
+      left: 0,
+      backgroundColor: "#ffffff",
+      border: "1px solid #e5e7eb",
+      borderRadius: "8px",
+      boxShadow: "0 10px 25px rgba(15, 23, 42, 0.12)",
+      zIndex: 20,
+      minWidth: "250px",
+      maxHeight: "370px",
+      overflowY: "auto",
+    },
+    sidebarDropdownItem: {
+      padding: "10px 14px",
+      fontSize: "14px",
+      color: "#374151",
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: "10px",
+      borderBottom: "1px solid #f3f4f6",
+    },
+    sidebarMoreMenu: {
+      position: "absolute",
+      top: "calc(100% + 8px)",
+      right: 0,
+      backgroundColor: "#ffffff",
+      border: "1px solid #e5e7eb",
+      borderRadius: "8px",
+      boxShadow: "0 10px 25px rgba(15, 23, 42, 0.12)",
+      zIndex: 20,
+      minWidth: "170px",
+      overflow: "visible",
+    },
+    sidebarSubmenuPanel: {
+      position: "absolute",
+      left: "100%",
+      top: 0,
+      marginLeft: "6px",
+      backgroundColor: "#ffffff",
+      border: "1px solid #e5e7eb",
+      borderRadius: "8px",
+      boxShadow: "0 10px 25px rgba(15, 23, 42, 0.12)",
+      minWidth: "200px",
+      zIndex: 30,
+      padding: "4px 0",
     },
     sidebarMoreButton: {
       padding: "6px",
@@ -1219,7 +1532,12 @@ export default function BillDetail() {
       transition: "all 0.2s",
     },
     recordPaymentBtn: {
-      backgroundColor: "#156372",
+      backgroundColor: "#ffffff",
+      color: "#156372",
+      border: "1px solid #156372",
+    },
+    bannerRecordPaymentBtn: {
+      backgroundColor: "#3b82f6",
       color: "#ffffff",
       border: "none",
     },
@@ -1543,28 +1861,198 @@ export default function BillDetail() {
       {/* Sidebar */}
       <div style={styles.sidebar}>
         <div style={styles.sidebarHeader}>
-          <div style={styles.searchBar}>
-            <Search size={16} style={{ color: "#9ca3af" }} />
-            <input
-              type="text"
-              placeholder="Search Bills..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={styles.searchInput}
-            />
-          </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
-              <h2 style={{ ...styles.sidebarTitle, marginBottom: 0 }}>All Bills</h2>
-              <ChevronDown size={16} />
+            <div style={{ position: "relative" }} ref={dropdownRef}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}
+                onClick={() => setDropdownOpen((prev) => !prev)}
+              >
+                <h2 style={{ ...styles.sidebarTitle, marginBottom: 0 }}>{selectedSidebarView} Bills</h2>
+                {dropdownOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </div>
+              {dropdownOpen && (
+                <div style={styles.sidebarDropdownMenu}>
+                  {["All", "Draft", "Pending Approval", "Open", "Overdue", "Unpaid", "Partially Paid", "Paid", "Void"].map((view) => (
+                    <div
+                      key={view}
+                      style={{
+                        ...styles.sidebarDropdownItem,
+                        backgroundColor: selectedSidebarView === view ? "#f0f9ff" : "#ffffff",
+                        color: selectedSidebarView === view ? "#156372" : "#374151",
+                        fontWeight: selectedSidebarView === view ? "600" : "500",
+                      }}
+                      onClick={() => {
+                        setSelectedSidebarView(view);
+                        setDropdownOpen(false);
+                      }}
+                    >
+                      <span>{view}</span>
+                    </div>
+                  ))}
+                  <div
+                    style={{ ...styles.sidebarDropdownItem, borderBottom: "none", color: "#156372", fontWeight: "600" }}
+                    onClick={() => {
+                      setDropdownOpen(false);
+                      toast("Custom views can be created from the Bills list page.");
+                    }}
+                  >
+                    <span>+ New Custom View</span>
+                  </div>
+                </div>
+              )}
             </div>
             <div style={styles.sidebarActions}>
               <button style={{ ...styles.sidebarButton, backgroundColor: "#156372" }} onClick={() => navigate("/purchases/bills/new")}>
                 <Plus size={16} />
               </button>
-              <button style={styles.sidebarMoreButton}>
-                <MoreVertical size={16} />
-              </button>
+              <div style={{ position: "relative" }} ref={sidebarMoreMenuRef}>
+                <button style={styles.sidebarMoreButton} onClick={() => setSidebarMoreMenuOpen((prev) => !prev)}>
+                  <MoreVertical size={16} />
+                </button>
+                {sidebarMoreMenuOpen && (
+                  <div style={styles.sidebarMoreMenu}>
+                    <div
+                      style={{ position: "relative" }}
+                      onMouseEnter={() => setShowSortSubmenu(true)}
+                      onMouseLeave={() => setShowSortSubmenu(false)}
+                    >
+                      <div style={{ ...styles.sidebarDropdownItem, backgroundColor: showSortSubmenu ? "#e3f2fd" : "#ffffff", color: "#1976d2" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          <ArrowUpDown size={14} />
+                          <span>Sort by</span>
+                        </div>
+                        <ChevronRight size={14} />
+                      </div>
+                      {showSortSubmenu && (
+                        <div style={styles.sidebarSubmenuPanel}>
+                          {[
+                            { value: "billDate", label: "Date" },
+                            { value: "billNumber", label: "Bill Number" },
+                            { value: "vendorName", label: "Vendor" },
+                            { value: "amount", label: "Amount" },
+                            { value: "dueDate", label: "Due Date" },
+                            { value: "status", label: "Status" },
+                          ].map((option) => (
+                            <button
+                              key={option.value}
+                              type="button"
+                              style={{
+                                width: "100%",
+                                border: "none",
+                                textAlign: "left",
+                                backgroundColor: sidebarSortBy === option.value ? "#ecfeff" : "transparent",
+                                color: sidebarSortBy === option.value ? "#156372" : "#111827",
+                                padding: "10px 14px",
+                                fontSize: "14px",
+                                cursor: "pointer",
+                              }}
+                              onClick={() => {
+                                setSidebarSortOrder((prev) => (sidebarSortBy === option.value ? (prev === "asc" ? "desc" : "asc") : "asc"));
+                                setSidebarSortBy(option.value as any);
+                                setShowSortSubmenu(false);
+                                setSidebarMoreMenuOpen(false);
+                              }}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div
+                      style={{ position: "relative" }}
+                      onMouseEnter={() => setShowImportSubmenu(true)}
+                      onMouseLeave={() => setShowImportSubmenu(false)}
+                    >
+                      <div style={styles.sidebarDropdownItem}>
+                        <span>Import Bills</span>
+                        <ChevronRight size={14} />
+                      </div>
+                      {showImportSubmenu && (
+                        <div style={styles.sidebarSubmenuPanel}>
+                          <button
+                            type="button"
+                            style={{ width: "100%", border: "none", textAlign: "left", backgroundColor: "transparent", color: "#111827", padding: "10px 14px", fontSize: "14px", cursor: "pointer" }}
+                            onClick={() => {
+                              setSidebarMoreMenuOpen(false);
+                              setShowImportSubmenu(false);
+                              navigate("/purchases/bills/import");
+                            }}
+                          >
+                            Import Bills
+                          </button>
+                          <button
+                            type="button"
+                            style={{ width: "100%", border: "none", textAlign: "left", backgroundColor: "transparent", color: "#111827", padding: "10px 14px", fontSize: "14px", cursor: "pointer" }}
+                            onClick={() => downloadSampleFile("xls")}
+                          >
+                            Download Sample File
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div
+                      style={{ position: "relative" }}
+                      onMouseEnter={() => setShowExportSubmenu(true)}
+                      onMouseLeave={() => setShowExportSubmenu(false)}
+                    >
+                      <div style={styles.sidebarDropdownItem}>
+                        <span>Export</span>
+                        <ChevronRight size={14} />
+                      </div>
+                      {showExportSubmenu && (
+                        <div style={styles.sidebarSubmenuPanel}>
+                          <button
+                            type="button"
+                            style={{ width: "100%", border: "none", textAlign: "left", backgroundColor: "transparent", color: "#111827", padding: "10px 14px", fontSize: "14px", cursor: "pointer" }}
+                            onClick={() => {
+                              setExportType("bills");
+                              setShowExportModal(true);
+                              setShowExportSubmenu(false);
+                              setSidebarMoreMenuOpen(false);
+                            }}
+                          >
+                            Export Bills
+                          </button>
+                          <button
+                            type="button"
+                            style={{ width: "100%", border: "none", textAlign: "left", backgroundColor: "transparent", color: "#111827", padding: "10px 14px", fontSize: "14px", cursor: "pointer" }}
+                            onClick={() => {
+                              setExportType("current-view");
+                              setShowExportModal(true);
+                              setShowExportSubmenu(false);
+                              setSidebarMoreMenuOpen(false);
+                            }}
+                          >
+                            Export Current View
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div
+                      style={styles.sidebarDropdownItem}
+                      onClick={() => {
+                        setSidebarMoreMenuOpen(false);
+                        navigate("/settings/bills");
+                      }}
+                    >
+                      <span>Preferences</span>
+                    </div>
+                    <div
+                      style={{ ...styles.sidebarDropdownItem, borderBottom: "none" }}
+                      onClick={() => {
+                        setSidebarMoreMenuOpen(false);
+                        void handleSidebarRefresh();
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <RefreshCw size={14} />
+                        <span>Refresh List</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1627,7 +2115,12 @@ export default function BillDetail() {
               >
                 <MoreVertical size={18} />
               </button>
-              <h1 style={styles.headerTitle}>{bill.billNumber}</h1>
+              <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                <span style={{ fontSize: "14px", color: "#374151" }}>
+                  Location: {(bill as any)?.locationName || "Head Office"}
+                </span>
+                <h1 style={{ ...styles.headerTitle, margin: 0 }}>{bill.billNumber}</h1>
+              </div>
             </div>
             <div style={styles.headerActions}>
               <button
@@ -1680,11 +2173,11 @@ export default function BillDetail() {
                   style={styles.toolbarButton}
                   onClick={() => setPdfMenuOpen(!pdfMenuOpen)}
                 >
-                  <Download size={14} /> PDF <ChevronDown size={12} />
+                  <Download size={14} /> PDF/Print <ChevronDown size={12} />
                 </button>
-                {pdfMenuOpen && (
-                  <div style={{
-                    position: "absolute",
+              {pdfMenuOpen && (
+                <div style={{
+                  position: "absolute",
                     top: "100%",
                     left: 0,
                     marginTop: "4px",
@@ -1696,25 +2189,40 @@ export default function BillDetail() {
                     minWidth: "160px",
                     padding: "4px 0"
                   }}>
-                    <div style={{ padding: "8px 12px", fontSize: "13px", cursor: "pointer" }} onClick={handleDownloadPDF}>Download PDF</div>
+                  <div
+                    style={{ padding: "8px 12px", fontSize: "13px", cursor: "pointer" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#eff6ff")}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                    onClick={handleDownloadPDF}
+                  >
+                    PDF
                   </div>
-                )}
-              </div>
-              {getBillStatusDisplay(bill).text !== "PAID" && (
-                <button
-                  style={{ ...styles.toolbarButton, ...styles.recordPaymentBtn }}
-                  onClick={() => {
-                    setPaymentFormData(prev => ({
-                      ...prev,
-                      paymentAmount: String(bill.balanceDue || bill.total || ""),
-                      reference: `Payment for ${bill.billNumber}`
-                    }));
-                    setIsRecordingPayment(true);
-                  }}
-                >
-                  Record Payment
-                </button>
+                  <div
+                    style={{ padding: "8px 12px", fontSize: "13px", cursor: "pointer" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#eff6ff")}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                    onClick={handlePrintBill}
+                  >
+                    Print
+                  </div>
+                </div>
               )}
+            </div>
+            {isBillUnpaid && (
+              <button
+                style={{ ...styles.toolbarButton, ...styles.recordPaymentBtn }}
+                onClick={() => {
+                  setPaymentFormData(prev => ({
+                    ...prev,
+                    paymentAmount: String(bill.balanceDue || bill.total || ""),
+                    reference: `Payment for ${bill.billNumber}`
+                  }));
+                  setIsRecordingPayment(true);
+                }}
+              >
+                Record Payment
+              </button>
+            )}
               <div style={{ position: "relative" }} ref={moreActionsMenuRef}>
                 <button
                   style={styles.toolbarButton}
@@ -1742,9 +2250,11 @@ export default function BillDetail() {
                         padding: "10px 16px",
                         fontSize: "14px",
                         cursor: "pointer",
-                        backgroundColor: "#156372",
-                        color: "#ffffff"
+                        backgroundColor: "transparent",
+                        color: "#111827"
                       }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f3f4f6")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                       onClick={() => {
                         handleVoid();
                         setMoreActionsMenuOpen(false);
@@ -1753,6 +2263,14 @@ export default function BillDetail() {
                       Void
                     </div>
                     {[
+                      {
+                        key: "expected-payment-date",
+                        label: "Expected Payment Date",
+                        onClick: () => {
+                          handleExpectedPaymentDate();
+                          setMoreActionsMenuOpen(false);
+                        },
+                      },
                       {
                         key: "clone",
                         label: "Clone",
@@ -1783,15 +2301,19 @@ export default function BillDetail() {
                         },
                       },
                       {
-                        key: "view-po",
-                        label: "View Purchase Orders",
+                        key: "create-vendor-credits",
+                        label: "Create Vendor Credits",
                         onClick: () => {
-                          if (bill && bill.purchaseOrderId) {
-                            navigate(`/purchases/purchase-orders/${bill.purchaseOrderId}`);
-                            setMoreActionsMenuOpen(false);
-                            return;
-                          }
-                          alert("No purchase order linked to this bill");
+                          handleCreateVendorCredits();
+                          setMoreActionsMenuOpen(false);
+                        },
+                      },
+                      {
+                        key: "view-journal",
+                        label: "View Journal",
+                        onClick: () => {
+                          handleViewJournal();
+                          setMoreActionsMenuOpen(false);
                         },
                       },
                     ].map((item) => (
@@ -1847,14 +2369,19 @@ export default function BillDetail() {
         ) : null}
 
         {/* Banners */}
-        {!isRecordingPayment && getBillStatusDisplay(bill).text !== "PAID" && calculateOverdueDays(bill.dueDate) > 0 && (
+        {!isRecordingPayment && isBillUnpaid && (
           <div style={styles.banner}>
             <div style={styles.bannerText}>
               <span style={{ backgroundColor: "#8b5cf6", color: "#fff", borderRadius: "50%", padding: "4px", display: "flex", alignItems: "center", justifyContent: "center" }}>âœ¨</span>
-              <span><strong>WHAT'S NEXT?</strong> Payment for this bill is overdue. You can record the payment for this bill if paid.</span>
+              <span>
+                <strong>WHAT'S NEXT?</strong>{" "}
+                {isBillOverdue
+                  ? "Payment for this bill is overdue. You can record the payment for this bill if paid."
+                  : "This bill is still open. You can now record payment for this bill."}
+              </span>
             </div>
             <button
-              style={{ ...styles.toolbarButton, ...styles.recordPaymentBtn, padding: "4px 12px" }}
+              style={{ ...styles.toolbarButton, ...styles.bannerRecordPaymentBtn, padding: "4px 12px" }}
               onClick={() => {
                 setPaymentFormData(prev => ({
                   ...prev,
@@ -2304,7 +2831,7 @@ export default function BillDetail() {
                   </div>
 
                   {/* Journal Section */}
-                  <div style={styles.journalSection}>
+                  <div style={styles.journalSection} ref={journalSectionRef}>
                     <div style={styles.journalHeader}>
                       <span style={{ ...styles.journalTitle, ...styles.journalTitleActive }}>Journal</span>
                     </div>
@@ -2374,6 +2901,97 @@ export default function BillDetail() {
           )}
         </div>
       </div>
+
+      {showExportModal && typeof document !== "undefined" && document.body ? (
+        <ExportBills
+          onClose={() => setShowExportModal(false)}
+          exportType={exportType === "current-view" ? "current-view" : "bills"}
+          data={exportType === "current-view" ? filteredBills : bills}
+        />
+      ) : null}
+
+      {isPrintPreviewOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 10000,
+            backgroundColor: "#f3f4f6",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div
+            style={{
+              height: "64px",
+              backgroundColor: "#ffffff",
+              borderBottom: "1px solid #e5e7eb",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "0 20px",
+              flexShrink: 0,
+            }}
+          >
+            <div style={{ fontSize: "32px", fontWeight: 400, color: "#111827" }}>Preview</div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <button
+                onClick={handlePrintFromPreview}
+                style={{
+                  height: "38px",
+                  padding: "0 18px",
+                  border: "1px solid #3b82f6",
+                  backgroundColor: "#3b82f6",
+                  color: "#ffffff",
+                  borderRadius: "8px",
+                  fontSize: "22px",
+                  cursor: "pointer",
+                }}
+              >
+                Print
+              </button>
+              <button
+                onClick={handleClosePrintPreview}
+                style={{
+                  height: "38px",
+                  padding: "0 18px",
+                  border: "1px solid #d1d5db",
+                  backgroundColor: "#ffffff",
+                  color: "#111827",
+                  borderRadius: "8px",
+                  fontSize: "22px",
+                  cursor: "pointer",
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+
+          <div
+            style={{
+              height: "56px",
+              backgroundColor: "#2f3338",
+              borderBottom: "1px solid #1f2937",
+              flexShrink: 0,
+            }}
+          />
+
+          <div style={{ flex: 1, backgroundColor: "#2f3338", overflow: "hidden", padding: "0 12px 12px" }}>
+            <iframe
+              ref={printPreviewFrameRef}
+              src={printPreviewUrl}
+              title="Bill Print Preview"
+              style={{
+                width: "100%",
+                height: "100%",
+                border: "none",
+                backgroundColor: "#2f3338",
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

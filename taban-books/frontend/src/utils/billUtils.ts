@@ -1,4 +1,8 @@
 export const getBillStatusDisplay = (bill: any) => {
+    if (!bill || typeof bill !== "object") {
+        return { text: "DUE", color: "text-blue-800 bg-blue-100" };
+    }
+
     const status = (bill.status || "open").toLowerCase();
 
     // Reset hours for accurate day calc

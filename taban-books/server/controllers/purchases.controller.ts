@@ -81,6 +81,10 @@ const BILL_LIST_SELECT = [
   "status",
   "paymentTerms",
   "terms",
+  "locationId",
+  "locationName",
+  "warehouseLocationId",
+  "warehouseLocationName",
   "paidAmount",
   "vendorCreditsApplied",
   "balance",
@@ -199,10 +203,11 @@ export const getAllVendors = async (req: AuthRequest, res: Response): Promise<vo
     });
   } catch (error: any) {
     console.error("Error in getAllVendors:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     res.status(500).json({
       success: false,
       message: "Error fetching vendors",
-      error: error.message || "Unknown error"
+      error: errorMessage
     });
   }
 };

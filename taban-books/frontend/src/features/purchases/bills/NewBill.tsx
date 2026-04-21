@@ -24,7 +24,6 @@ import {
   MoreVertical,
   Settings,
   Image as ImageIcon,
-  Calculator,
   Tag,
   Folder,
   Building2,
@@ -32,7 +31,7 @@ import {
   Paperclip,
   Repeat2,
 } from "lucide-react";
-import { billsAPI, vendorsAPI, customersAPI, itemsAPI, documentsAPI, accountantAPI, paymentTermsAPI, taxesAPI, transactionNumberSeriesAPI } from "../../../services/api";
+import { billsAPI, vendorsAPI, customersAPI, itemsAPI, documentsAPI, accountantAPI, paymentTermsAPI, taxesAPI, transactionNumberSeriesAPI, reportingTagsAPI, locationsAPI } from "../../../services/api";
 import NewVendorModal from "./NewVendorModal";
 import DatePicker from "../../../components/DatePicker";
 import { PaymentTermsDropdown } from "../../../components/PaymentTermsDropdown";
@@ -41,6 +40,11 @@ import { API_BASE_URL, getToken } from "../../../services/auth";
 import { WORLD_COUNTRIES, getStatesByCountry } from "../../../constants/locationData";
 import { useCurrency } from "../../../hooks/useCurrency";
 import { filterActiveRecords } from "../shared/activeFilters";
+import {
+  isReportingTagActive,
+  normalizeReportingTagAppliesTo,
+  normalizeReportingTagOptions,
+} from "../../sales/Customers/customerReportingTags";
 
 // EXPENSE_ACCOUNTS_STRUCTURE removed as it's now fetched from API
 
@@ -69,6 +73,7 @@ interface Customer {
 
 interface Item {
   id: number;
+  _id?: string;
   itemDetails: string;
   description?: string;
   account: string;
@@ -81,14 +86,72 @@ interface Item {
   name?: string;
   sku?: string;
   purchaseAccount?: string;
-  costPrice?: string;
+  inventoryAccount?: string;
+  trackInventory?: boolean;
+  costPrice?: string | number;
   purchaseTax?: string;
+  purchaseTaxInfo?: { taxName?: string };
+  stockQuantity?: number;
+  unit?: string;
+  reportingTags?: Array<{ tagId: string; name?: string; value?: string }>;
+  reportingTag?: string;
+}
+
+interface BillLineItem {
+  id: number;
+  itemDetails: string;
+  account: string;
+  quantity: string;
+  rate: string;
+  discount: string;
+  tax: string;
+  customerDetails: string;
+  amount: string;
+  item?: string | number;
+  trackInventory?: boolean;
+  stockQuantity?: number;
+  unit?: string;
+  reportingTags?: Array<{ tagId: string; name?: string; value?: string }>;
+  reportingTag?: string;
+}
+
+interface BillFormData {
+  vendorName: string;
+  vendorId: string;
+  vendor_id: string;
+  vendorAddress: string;
+  vendorCity: string;
+  vendorCountry: string;
+  vendorEmail: string;
+  bill: string;
+  orderNumber: string;
+  billDate: string;
+  dueDate: string;
+  paymentTerms: string;
+  accountsPayable: string;
+  locationCode: string;
+  locationName: string;
+  warehouseLocationName: string;
+  items: BillLineItem[];
+  transactionLevel: string;
+  subTotal: string;
+  discount: { value: number; type: "%" };
+  discountAmount: string;
+  taxAmount: string;
+  adjustment: string;
+  total: string;
+  notes: string;
+  makeRecurring: boolean;
+  currency: string;
 }
 
 interface PaymentTerm {
+  id?: string;
+  _id?: string;
   name: string;
   days: number | null;
   isDefault: boolean;
+  isNew?: boolean;
 }
 
 interface Attachment {
@@ -103,6 +166,16 @@ interface Attachment {
   documentId?: string;
 }
 
+interface LocationOption {
+  _id?: string;
+  id?: string;
+  name?: string;
+  locationCode?: string;
+  type?: "Business" | "Warehouse" | "General" | string;
+  isDefault?: boolean;
+  isActive?: boolean;
+}
+
 export default function NewBill() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -111,7 +184,7 @@ export default function NewBill() {
   const resolvedBaseCurrencySymbol = baseCurrencySymbol || resolvedBaseCurrency;
   const clonedData = location.state?.clonedData || null;
   const [enabledSettings, setEnabledSettings] = useState<any>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<BillFormData>({
     vendorName: "",
     vendorId: "",
     vendor_id: "",
@@ -121,10 +194,13 @@ export default function NewBill() {
     vendorEmail: "",
     bill: "",
     orderNumber: "",
-    billDate: new Date().toISOString().split('T')[0],
+    billDate: "",
     dueDate: new Date().toISOString().split('T')[0],
     paymentTerms: "Due on Receipt",
     accountsPayable: "Accounts Payable",
+    locationCode: "",
+    locationName: "",
+    warehouseLocationName: "",
     items: [
       {
         id: 1,
@@ -167,16 +243,37 @@ export default function NewBill() {
   const [availableDocuments, setAvailableDocuments] = useState<any[]>([]);
   const [saveLoadingState, setSaveLoadingState] = useState<null | "draft" | "open">(null);
   const [structuredAccounts, setStructuredAccounts] = useState<Record<string, string[]>>({});
+  const [billLocationOpen, setBillLocationOpen] = useState(false);
+  const billLocationRef = useRef<HTMLDivElement>(null);
+  const [billLocation, setBillLocation] = useState("");
+  const [warehouseLocationOpen, setWarehouseLocationOpen] = useState(false);
+  const warehouseLocationRef = useRef<HTMLDivElement>(null);
+  const [taxModeDropdownOpen, setTaxModeDropdownOpen] = useState(false);
+  const taxModeDropdownRef = useRef<HTMLDivElement>(null);
+  const [validationErrors, setValidationErrors] = useState<Partial<Record<"vendorName" | "bill" | "billDate", string>>>({});
+
+  const fieldFocusClass =
+    "transition-all duration-200 ease-out focus:border-blue-500 focus:ring-4 focus:ring-blue-100 focus:shadow-[0_0_0_1px_rgba(59,130,246,0.18)]";
+  const fieldErrorClass =
+    "border-red-400 text-red-700 focus:border-red-500 focus:ring-red-100 focus:shadow-[0_0_0_1px_rgba(239,68,68,0.18)]";
+  const itemTableHeaderClass =
+    "px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-600";
+  const itemTableInputClass =
+    `h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm outline-none ${fieldFocusClass}`;
+  const itemTableSelectClass =
+    `h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm outline-none flex items-center justify-between gap-2 overflow-hidden ${fieldFocusClass}`;
+
+  const [locations, setLocations] = useState<LocationOption[]>([]);
 
   // Account dropdown states for each item row
   const [accountDropdowns, setAccountDropdowns] = useState<Record<string, boolean>>({});
   const [accountSearches, setAccountSearches] = useState<Record<string, string>>({});
-  const accountRefs = useRef<Record<string, React.RefObject<HTMLDivElement>>>({});
+  const accountRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Customer dropdown states for each item row
   const [customerDropdowns, setCustomerDropdowns] = useState<Record<string, boolean>>({});
   const [customerSearches, setCustomerSearches] = useState<Record<string, string>>({});
-  const customerRefs = useRef<Record<string, React.RefObject<HTMLDivElement>>>({});
+  const customerRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Payment Terms dropdown state
   // Payment Terms dropdown state
@@ -208,7 +305,7 @@ export default function NewBill() {
   const [selectedBulkAction, setSelectedBulkAction] = useState("Bulk Actions");
   const [showAdditionalFields, setShowAdditionalFields] = useState(true);
   const [showBanner, setShowBanner] = useState(true);
-  const [warehouseLocation, setWarehouseLocation] = useState("Head Office");
+  const [warehouseLocation, setWarehouseLocation] = useState("");
   const [taxMode, setTaxMode] = useState("Tax Exclusive");
   const bulkActionsRef = useRef<HTMLDivElement>(null);
 
@@ -221,10 +318,15 @@ export default function NewBill() {
   const [reportingTagsDropdownOpen, setReportingTagsDropdownOpen] = useState(false);
   const [selectedReportingTagAction, setSelectedReportingTagAction] = useState<string | null>(null);
   const reportingTagsRef = useRef<HTMLDivElement>(null);
+  const reportingTagsMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [availableReportingTags, setAvailableReportingTags] = useState<any[]>([]);
+  const [isReportingTagsLoading, setIsReportingTagsLoading] = useState(false);
+  const [reportingTagOptionOpenKey, setReportingTagOptionOpenKey] = useState<string | null>(null);
 
   // Reporting Tags for each item row
-  const [itemReportingTagsOpen, setItemReportingTagsOpen] = useState({});
-  const itemReportingTagsRefs = useRef({});
+  const [itemReportingTagsOpen, setItemReportingTagsOpen] = useState<Record<string, boolean>>({});
+  const itemReportingTagsRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [itemReportingTagDrafts, setItemReportingTagDrafts] = useState<Record<string, Record<string, string>>>({});
 
   // Item inventory states
   const [items, setItems] = useState<any[]>([]);
@@ -261,6 +363,47 @@ export default function NewBill() {
     return String(vendorValue.id || vendorValue._id || vendorValue.vendorId || vendorValue.vendor_id || "").trim();
   };
 
+  const getFirstNonEmptyString = (...values: any[]) => {
+    const match = values.find((value) => typeof value === "string" && value.trim());
+    return match ? String(match).trim() : "";
+  };
+
+  const normalizeDateForInput = (value: any, fallback = "") => {
+    if (!value) return fallback;
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return value.toISOString().split("T")[0];
+    }
+
+    if (typeof value === "string") {
+      const trimmedValue = value.trim();
+      if (!trimmedValue) return fallback;
+
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmedValue)) {
+        return trimmedValue;
+      }
+
+      if (trimmedValue.includes("T")) {
+        const isoDate = trimmedValue.split("T")[0];
+        if (/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
+          return isoDate;
+        }
+      }
+
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmedValue)) {
+        const [day, month, year] = trimmedValue.split("/");
+        return `${year}-${month}-${day}`;
+      }
+
+      const parsedDate = new Date(trimmedValue);
+      if (!Number.isNaN(parsedDate.getTime())) {
+        return parsedDate.toISOString().split("T")[0];
+      }
+    }
+
+    return fallback;
+  };
+
   const getVendorContactFields = (vendorValue: any) => {
     if (!vendorValue || typeof vendorValue !== "object") {
       return {
@@ -271,14 +414,47 @@ export default function NewBill() {
       };
     }
 
-    const billing = vendorValue.formData || vendorValue.billingAddress || vendorValue.billing || {};
-    const street1 = billing.billingStreet1 || billing.street1 || billing.address || billing.street || "";
-    const street2 = billing.billingStreet2 || billing.street2 || "";
-    const city = billing.billingCity || billing.city || "";
-    const state = billing.billingState || billing.state || "";
-    const zip = billing.billingZipCode || billing.zipCode || billing.zip || "";
-    const country = billing.billingCountry || billing.country || "";
-    const email = billing.email || vendorValue.email || "";
+    const billing = vendorValue.billingAddress || vendorValue.formData?.billingAddress || vendorValue.billing || {};
+    const street1 = getFirstNonEmptyString(
+      billing.street1,
+      billing.billingStreet1,
+      vendorValue.street1,
+      vendorValue.billingStreet1,
+      billing.address,
+      billing.street,
+    );
+    const street2 = getFirstNonEmptyString(
+      billing.street2,
+      billing.billingStreet2,
+      vendorValue.street2,
+      vendorValue.billingStreet2,
+    );
+    const city = getFirstNonEmptyString(
+      billing.city,
+      billing.billingCity,
+      vendorValue.city,
+      vendorValue.billingCity,
+    );
+    const state = getFirstNonEmptyString(
+      billing.state,
+      billing.billingState,
+      vendorValue.state,
+      vendorValue.billingState,
+    );
+    const zip = getFirstNonEmptyString(
+      billing.zipCode,
+      billing.billingZipCode,
+      billing.zip,
+      vendorValue.zipCode,
+      vendorValue.billingZipCode,
+    );
+    const country = getFirstNonEmptyString(
+      billing.country,
+      billing.billingCountry,
+      vendorValue.country,
+      vendorValue.billingCountry,
+    );
+    const email = getFirstNonEmptyString(billing.email, vendorValue.email, vendorValue.billingEmail);
 
     return {
       vendorAddress: [street1, street2].filter(Boolean).join(" "),
@@ -286,6 +462,65 @@ export default function NewBill() {
       vendorCountry: country,
       vendorEmail: email,
     };
+  };
+
+  const getVendorBillingAddressLines = (vendorValue: any) => {
+    if (!vendorValue || typeof vendorValue !== "object") {
+      return [];
+    }
+
+    const billing = vendorValue.billingAddress || vendorValue.formData?.billingAddress || vendorValue.billing || {};
+    const street1 = getFirstNonEmptyString(
+      billing.street1,
+      billing.billingStreet1,
+      vendorValue.street1,
+      vendorValue.billingStreet1,
+      billing.address,
+      billing.street,
+    );
+    const street2 = getFirstNonEmptyString(
+      billing.street2,
+      billing.billingStreet2,
+      vendorValue.street2,
+      vendorValue.billingStreet2,
+    );
+    const city = getFirstNonEmptyString(
+      billing.city,
+      billing.billingCity,
+      vendorValue.city,
+      vendorValue.billingCity,
+    );
+    const state = getFirstNonEmptyString(
+      billing.state,
+      billing.billingState,
+      vendorValue.state,
+      vendorValue.billingState,
+    );
+    const zip = getFirstNonEmptyString(
+      billing.zipCode,
+      billing.billingZipCode,
+      billing.zip,
+      vendorValue.zipCode,
+      vendorValue.billingZipCode,
+    );
+    const country = getFirstNonEmptyString(
+      billing.country,
+      billing.billingCountry,
+      vendorValue.country,
+      vendorValue.billingCountry,
+    );
+    const phone = getFirstNonEmptyString(billing.phone, billing.billingPhone, vendorValue.phone, vendorValue.billingPhone);
+    const fax = getFirstNonEmptyString(billing.fax, billing.billingFax, vendorValue.fax, vendorValue.billingFax);
+
+    return [
+      getFirstNonEmptyString(billing.attention, billing.billingAttention, vendorValue.attention, vendorValue.billingAttention),
+      street1,
+      street2,
+      [city, state, zip].filter(Boolean).join(", "),
+      country,
+      phone ? `Phone: ${phone}` : "",
+      fax ? `Fax: ${fax}` : "",
+    ].filter(Boolean);
   };
 
   const getVendorFormFields = (vendorValue: any, fallbackName?: any, fallbackId?: any) => {
@@ -308,8 +543,29 @@ export default function NewBill() {
       ...prev,
       ...getVendorFormFields(vendorValue, fallbackName, fallbackId),
     }));
+    setValidationErrors((prev) => {
+      if (!prev.vendorName) return prev;
+      const next = { ...prev };
+      delete next.vendorName;
+      return next;
+    });
     setVendorOpen(false);
     setVendorSearch("");
+  };
+
+  const clearVendorSelection = () => {
+    setFormData((prev) => ({
+      ...prev,
+      vendorName: "",
+      vendorId: "",
+      vendor_id: "",
+      vendorAddress: "",
+      vendorCity: "",
+      vendorCountry: "",
+      vendorEmail: "",
+    }));
+    setVendorSearch("");
+    setVendorOpen(false);
   };
 
   const findVendorMatch = (vendorNameValue: any, vendorIdValue?: any) => {
@@ -327,6 +583,20 @@ export default function NewBill() {
   };
 
   const selectedVendorName = getVendorDisplayName(formData.vendorName);
+  const selectedVendorId = String(formData.vendorId || formData.vendor_id || "").trim();
+  const selectedVendorRecord = findVendorMatch(selectedVendorName, selectedVendorId);
+  const selectedVendorBillingLines = selectedVendorRecord
+    ? getVendorBillingAddressLines(selectedVendorRecord)
+    : [
+        formData.vendorAddress,
+        formData.vendorCity,
+        formData.vendorCountry,
+        formData.vendorEmail ? `Email: ${formData.vendorEmail}` : "",
+      ].filter(Boolean);
+
+  const getInputClassName = (fieldName: "vendorName" | "bill" | "billDate", baseClass: string) => {
+    return `${baseClass} ${validationErrors[fieldName] ? fieldErrorClass : ""}`;
+  };
 
   // New Account Modal state
   const [showNewAccountModal, setShowNewAccountModal] = useState(false);
@@ -400,7 +670,7 @@ export default function NewBill() {
   useEffect(() => {
     if (showTransactionDiscount) return;
     setFormData((prev) => {
-      const subTotal = parseFloat(prev.subTotal || 0);
+      const subTotal = parseFloat(String(prev.subTotal || 0));
       return {
         ...prev,
         discount: { ...prev.discount, value: 0 },
@@ -425,7 +695,7 @@ export default function NewBill() {
       try {
         const response = await vendorsAPI.getAll();
         if (response && (response.code === 0 || response.success)) {
-          const loadedVendors = filterActiveRecords(response.data || response.vendors || []);
+          const loadedVendors = filterActiveRecords((response.data || response.vendors || []) as Vendor[]) as Vendor[];
           setVendors(loadedVendors);
           setAllVendors(loadedVendors);
         }
@@ -442,7 +712,7 @@ export default function NewBill() {
       try {
         const response = await customersAPI.getAll({ limit: 1000 });
         if (response && (response.code === 0 || response.success)) {
-          setCustomers(filterActiveRecords(response.data || []));
+          setCustomers(filterActiveRecords((response.data || []) as Customer[]) as Customer[]);
         }
       } catch (error) {
         console.error("Error loading customers:", error);
@@ -457,7 +727,7 @@ export default function NewBill() {
       try {
         const response = await itemsAPI.getAll();
         if (response && (response.code === 0 || response.success)) {
-          setItems(filterActiveRecords(response.data || []));
+          setItems(filterActiveRecords((response.data || []) as any[]) as any[]);
         }
       } catch (error) {
         console.error("Error loading items:", error);
@@ -473,7 +743,7 @@ export default function NewBill() {
       try {
         const response = await taxesAPI.getForTransactions("purchase");
         if (response && (response.code === 0 || response.success)) {
-          setTaxes(filterActiveRecords(response.data || []));
+          setTaxes(filterActiveRecords((response.data || []) as any[]) as any[]);
         }
       } catch (error) {
         console.error("Error loading taxes:", error);
@@ -482,13 +752,51 @@ export default function NewBill() {
     loadTaxes();
   }, []);
 
-  const normalizeTaxRateToDecimal = (rawRate) => {
+  // Load locations from API
+  useEffect(() => {
+    const loadLocations = async () => {
+      try {
+        const response = await locationsAPI.getAll();
+        if (response && (response.code === 0 || response.success)) {
+          const loadedLocations = filterActiveRecords((response.data || []) as LocationOption[]) as LocationOption[];
+          setLocations(loadedLocations);
+        }
+      } catch (error) {
+        console.error("Error loading locations:", error);
+      }
+    };
+    loadLocations();
+  }, []);
+
+  useEffect(() => {
+    const activeLocations = locations.filter((location) => location.isActive !== false);
+    const billLocations = activeLocations.filter((location) => {
+      const type = String(location.type || "").toLowerCase();
+      return type === "business" || type === "general";
+    });
+    const warehouseLocations = activeLocations.filter((location) => {
+      const type = String(location.type || "").toLowerCase();
+      return type === "warehouse";
+    });
+
+    const nextBillLocation = billLocations.find((location) => location.isDefault)?.name || billLocations[0]?.name || activeLocations[0]?.name || "";
+    const nextWarehouseLocation = warehouseLocations.find((location) => location.isDefault)?.name || warehouseLocations[0]?.name || activeLocations[0]?.name || "";
+
+    if (!billLocation && nextBillLocation) {
+      setBillLocation(nextBillLocation);
+    }
+    if (!warehouseLocation && nextWarehouseLocation) {
+      setWarehouseLocation(nextWarehouseLocation);
+    }
+  }, [locations, billLocation, warehouseLocation]);
+
+  const normalizeTaxRateToDecimal = (rawRate: number | string | null | undefined) => {
     const numericRate = Number(rawRate);
     if (!Number.isFinite(numericRate) || numericRate <= 0) return 0;
     return numericRate <= 1 ? numericRate : numericRate / 100;
   };
 
-  const resolveTaxOption = (taxNameOrIdOrObj) => {
+  const resolveTaxOption = (taxNameOrIdOrObj: any) => {
     if (!taxNameOrIdOrObj) return null;
     if (typeof taxNameOrIdOrObj === "object") return taxNameOrIdOrObj;
 
@@ -502,7 +810,7 @@ export default function NewBill() {
     );
   };
 
-  const getTaxRateFromSelection = (taxNameOrIdOrObj) => {
+  const getTaxRateFromSelection = (taxNameOrIdOrObj: any) => {
     const taxObj = resolveTaxOption(taxNameOrIdOrObj);
     if (taxObj) {
       const rawRate = Number(taxObj.rate ?? taxObj.taxRate ?? taxObj.tax_percentage ?? 0);
@@ -519,7 +827,7 @@ export default function NewBill() {
     return normalizeTaxRateToDecimal(parsed);
   };
 
-  const getTaxDisplayLabel = (taxNameOrObj) => {
+  const getTaxDisplayLabel = (taxNameOrObj: any) => {
     if (!taxNameOrObj) return "";
     const tax = resolveTaxOption(taxNameOrObj);
     if (!tax) return typeof taxNameOrObj === "string" ? taxNameOrObj : "";
@@ -584,12 +892,12 @@ export default function NewBill() {
   // Tax dropdown states for each item row
   const [taxDropdowns, setTaxDropdowns] = useState<Record<string, boolean>>({});
   const [taxSearches, setTaxSearches] = useState<Record<string, string>>({});
-  const taxRefs = useRef<Record<string, React.RefObject<HTMLDivElement>>>({});
+  const taxRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [taxDropdownPosition, setTaxDropdownPosition] = useState<Record<string, { top: number; left: number; width: number }>>({});
 
   useEffect(() => {
     setFormData((prev) => {
-      const discountValue = showTransactionDiscount ? (parseFloat(prev.discount?.value) || 0) : 0;
+      const discountValue = showTransactionDiscount ? (parseFloat(String(prev.discount?.value ?? 0)) || 0) : 0;
       const calculated = calculateBillTotals(prev.items, discountValue, prev.adjustment, taxMode);
       const currentTaxAmount = String(prev.taxAmount ?? "0.00");
 
@@ -625,7 +933,7 @@ export default function NewBill() {
       try {
         const response = await accountantAPI.getAccounts();
         if (response && (response.code === 0 || response.success)) {
-          const accountsList = filterActiveRecords(response.data || response.accounts || []);
+          const accountsList = filterActiveRecords((response.data || response.accounts || []) as any[]) as any[];
           if (accountsList.length > 0) {
             const structured: Record<string, string[]> = {};
             accountsList.forEach((acc: any) => {
@@ -663,26 +971,50 @@ export default function NewBill() {
     loadDocuments();
   }, []);
 
-  useEffect(() => {
-    const loadPaymentTerms = async () => {
-      try {
-        const response = await paymentTermsAPI.getAll();
-        if (response && (response.code === 0 || response.success)) {
-          const terms = response.data || [];
-          if (terms.length > 0) {
-            setPaymentTermsList(terms);
-            const defaultTerm = terms.find((term: any) => term.isDefault) || terms[0];
-            if (defaultTerm && !formData.paymentTerms) {
-              setFormData(prev => ({ ...prev, paymentTerms: defaultTerm.name }));
-            }
+  const loadPaymentTerms = async () => {
+    try {
+      const response = await paymentTermsAPI.getAll();
+      if (response && (response.code === 0 || response.success)) {
+        const terms = response.data || [];
+        if (terms.length > 0) {
+          setPaymentTermsList(terms);
+          const defaultTerm = terms.find((term: any) => term.isDefault) || terms[0];
+          if (defaultTerm && !formData.paymentTerms) {
+            setFormData(prev => ({ ...prev, paymentTerms: defaultTerm.name }));
           }
         }
-      } catch (error) {
-        console.error("Error loading payment terms:", error);
       }
-    };
+    } catch (error) {
+      console.error("Error loading payment terms:", error);
+    }
+  };
+
+  useEffect(() => {
     loadPaymentTerms();
   }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (billLocationRef.current && !billLocationRef.current.contains(target)) {
+        setBillLocationOpen(false);
+      }
+      if (warehouseLocationRef.current && !warehouseLocationRef.current.contains(target)) {
+        setWarehouseLocationOpen(false);
+      }
+      if (taxModeDropdownRef.current && !taxModeDropdownRef.current.contains(target)) {
+        setTaxModeDropdownOpen(false);
+      }
+    };
+
+    if (billLocationOpen || warehouseLocationOpen || taxModeDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [billLocationOpen, warehouseLocationOpen, taxModeDropdownOpen]);
 
   // Load next bill number from transaction series
   useEffect(() => {
@@ -738,7 +1070,7 @@ export default function NewBill() {
       try {
         const response = await customersAPI.getAll({ limit: 1000 });
         if (response && (response.code === 0 || response.success)) {
-          setCustomers(filterActiveRecords(response.data || []));
+          setCustomers(filterActiveRecords((response.data || []) as Customer[]) as Customer[]);
         }
       } catch (error) {
         console.error("Error refreshing customers:", error);
@@ -754,18 +1086,8 @@ export default function NewBill() {
       const docData = location.state;
       const today = new Date().toISOString().split("T")[0];
 
-      // Convert date from DD/MM/YYYY to YYYY-MM-DD if needed
-      let billDate = docData.billDate || today;
-      let dueDate = docData.dueDate || today;
-
-      if (billDate.includes('/')) {
-        const [day, month, year] = billDate.split('/');
-        billDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-      }
-      if (dueDate.includes('/')) {
-        const [day, month, year] = dueDate.split('/');
-        dueDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-      }
+      const billDate = normalizeDateForInput(docData.billDate, today);
+      const dueDate = normalizeDateForInput(docData.dueDate, today);
 
       setFormData((prev) => ({
         ...prev,
@@ -840,8 +1162,8 @@ export default function NewBill() {
 
       if (recurringBillData.items && recurringBillData.items.length > 0) {
         calculatedSubTotal = recurringBillData.items.reduce((sum: number, item: any) => {
-          const quantity = parseFloat(item.quantity) || 0;
-          const rate = parseFloat(item.rate) || 0;
+          const quantity = parseFloat(String(item.quantity)) || 0;
+          const rate = parseFloat(String(item.rate)) || 0;
           return sum + (quantity * rate);
         }, 0).toFixed(2);
         calculatedTotal = calculatedSubTotal;
@@ -901,17 +1223,18 @@ export default function NewBill() {
   useEffect(() => {
     if (location.state?.editBill && location.state?.isEdit) {
       const editBill = location.state.editBill;
-      const billDate = editBill.date || editBill.billDate || new Date().toISOString().split("T")[0];
-      const dueDate = editBill.dueDate || billDate;
+      const today = new Date().toISOString().split("T")[0];
+      const billDate = normalizeDateForInput(editBill.date || editBill.billDate, today);
+      const dueDate = normalizeDateForInput(editBill.dueDate, billDate);
 
       // Calculate totals from items if available
       let calculatedTotal = "0.00";
       let calculatedSubTotal = "0.00";
 
       if (editBill.items && editBill.items.length > 0) {
-        calculatedSubTotal = editBill.items.reduce((sum, item) => {
-          const quantity = parseFloat(item.quantity) || 0;
-          const rate = parseFloat(item.rate) || 0;
+        calculatedSubTotal = editBill.items.reduce((sum: number, item: any) => {
+          const quantity = parseFloat(String(item.quantity)) || 0;
+          const rate = parseFloat(String(item.rate)) || 0;
           return sum + (quantity * rate);
         }, 0).toFixed(2);
         calculatedTotal = calculatedSubTotal;
@@ -929,10 +1252,11 @@ export default function NewBill() {
         dueDate: dueDate,
         paymentTerms: editBill.paymentTerms || "Due on Receipt",
         accountsPayable: editBill.accountsPayable || "Accounts Payable",
+        locationCode: editBill.locationCode || prev.locationCode || "",
         subject: editBill.subject || "",
         notes: editBill.notes || "",
         items: editBill.items && editBill.items.length > 0
-          ? editBill.items.map((item, index) => ({
+          ? editBill.items.map((item: any, index: number) => ({
             id: item.id || index + 1,
             item: item.item || item._id || item.id,
             itemDetails: item.itemDetails || item.description || "",
@@ -972,9 +1296,12 @@ export default function NewBill() {
         vendorCountry: editBill.vendorCountry || "",
       }));
 
+      setBillLocation(editBill.locationName || editBill.location || editBill.locationCode || "");
+      setWarehouseLocation(editBill.warehouseLocationName || editBill.warehouseLocation || "");
+
       // Load attached files if they exist
       if (editBill.attachedFiles && editBill.attachedFiles.length > 0) {
-        setAttachedFiles(editBill.attachedFiles.map(file => ({
+        setAttachedFiles(editBill.attachedFiles.map((file: any) => ({
           ...file,
           // Note: preview and file object won't be available when loading from localStorage
           // In a real app, you'd fetch these from a server
@@ -989,15 +1316,16 @@ export default function NewBill() {
   useEffect(() => {
     if (!clonedData || location.state?.isEdit) return;
 
-    const billDate = clonedData.date || clonedData.billDate || new Date().toISOString().split("T")[0];
-    const dueDate = clonedData.dueDate || billDate;
+    const today = new Date().toISOString().split("T")[0];
+    const billDate = normalizeDateForInput(clonedData.date || clonedData.billDate, today);
+    const dueDate = normalizeDateForInput(clonedData.dueDate, billDate);
 
     let calculatedSubTotal = "0.00";
     let calculatedTotal = "0.00";
 
     if (clonedData.items && clonedData.items.length > 0) {
       calculatedSubTotal = clonedData.items.reduce((sum: number, item: any) => {
-        return sum + (parseFloat(item.amount || "0") || 0);
+        return sum + (parseFloat(String(item.amount || "0")) || 0);
       }, 0).toFixed(2);
       calculatedTotal = calculatedSubTotal;
     } else {
@@ -1010,10 +1338,11 @@ export default function NewBill() {
       ...getVendorFormFields(clonedData.vendor || clonedData.vendorName, clonedData.vendorName, clonedData.vendorId || clonedData.vendor_id),
       bill: "",
       orderNumber: clonedData.referenceNumber || clonedData.orderNumber || "",
-      billDate: typeof billDate === "string" ? billDate.split("T")[0] : billDate,
-      dueDate: typeof dueDate === "string" ? dueDate.split("T")[0] : dueDate,
+      billDate,
+      dueDate,
       paymentTerms: clonedData.paymentTerms || "Due on Receipt",
       accountsPayable: clonedData.accountsPayable || "Accounts Payable",
+      locationCode: clonedData.locationCode || prev.locationCode || "",
       subject: clonedData.subject || "",
       notes: clonedData.notes || "",
       items: clonedData.items && clonedData.items.length > 0
@@ -1046,6 +1375,9 @@ export default function NewBill() {
       makeRecurring: false,
     }));
 
+    setBillLocation(clonedData.locationName || clonedData.location || clonedData.locationCode || "");
+    setWarehouseLocation(clonedData.warehouseLocationName || clonedData.warehouseLocation || "");
+
     setAttachedFiles([]);
   }, [clonedData, location.state]);
 
@@ -1063,6 +1395,7 @@ export default function NewBill() {
         billDate: today,
         dueDate: today,
         notes: po.notes || "",
+        locationCode: po.locationCode || prev.locationCode || "",
         items: po.items && po.items.length > 0
           ? po.items.map((item: any, index: number) => {
             const itemMaster = items.find(i => (i._id || i.id) === (item.item || item.id)) ||
@@ -1079,7 +1412,7 @@ export default function NewBill() {
               discount: "0 %-",
               tax: "",
               customerDetails: "",
-              amount: String(item.total || item.amount || (parseFloat(item.quantity || "0") * parseFloat(item.unitPrice || item.rate || "0")).toFixed(2)),
+              amount: String(item.total || item.amount || (parseFloat(String(item.quantity || "0")) * parseFloat(String(item.unitPrice || item.rate || "0"))).toFixed(2)),
             };
           })
           : prev.items,
@@ -1087,6 +1420,9 @@ export default function NewBill() {
         total: String(po.total || "0.00"),
         currency: resolvedBaseCurrency,
       }));
+
+      setBillLocation(po.locationName || po.location || po.locationCode || "");
+      setWarehouseLocation(po.warehouseLocationName || po.warehouseLocation || "");
 
       // If items are loaded, we consider it initialized.
       // If items are not loaded yet, this effect will run again when items load.
@@ -1096,14 +1432,14 @@ export default function NewBill() {
     }
   }, [location.state, items]);
 
-  const handleVendorCreated = async (vendorName) => {
+  const handleVendorCreated = async (vendorName: string) => {
     setFormData((prev) => ({ ...prev, vendorName }));
     setShowNewVendorModal(false);
     // Refresh vendors list
     try {
       const response = await vendorsAPI.getAll();
       if (response && (response.code === 0 || response.success)) {
-        const loadedVendors = filterActiveRecords(response.data || response.vendors || []);
+        const loadedVendors = filterActiveRecords((response.data || response.vendors || []) as Vendor[]) as Vendor[];
         setVendors(loadedVendors);
         setAllVendors(loadedVendors);
       }
@@ -1114,20 +1450,21 @@ export default function NewBill() {
 
   // Close dropdowns when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event) => {
+    const handleClickOutside = (event: MouseEvent) => {
       const targetElement = event.target instanceof Element ? event.target : null;
 
-      if (vendorRef.current && !vendorRef.current.contains(event.target)) {
+      if (vendorRef.current && !vendorRef.current.contains(targetElement)) {
         setVendorOpen(false);
         setVendorSearch("");
       }
-      if (uploadMenuRef.current && !uploadMenuRef.current.contains(event.target)) {
+      if (uploadMenuRef.current && !uploadMenuRef.current.contains(targetElement)) {
         setUploadMenuOpen(false);
       }
 
       // Close account dropdowns
       Object.keys(accountDropdowns).forEach(itemId => {
-        if (accountDropdowns[itemId] && accountRefs.current[itemId]?.current && !accountRefs.current[itemId].current.contains(event.target)) {
+        const accountRef = accountRefs.current[itemId];
+        if (accountDropdowns[itemId] && accountRef && !accountRef.contains(targetElement)) {
           setAccountDropdowns(prev => ({ ...prev, [itemId]: false }));
           setAccountSearches(prev => ({ ...prev, [itemId]: "" }));
           setAccountDropdownPosition((prev) => {
@@ -1138,7 +1475,8 @@ export default function NewBill() {
         }
 
         // Close tax dropdowns
-        if (taxDropdowns[itemId] && taxRefs.current[itemId]?.current && !taxRefs.current[itemId].current.contains(event.target)) {
+        const taxRef = taxRefs.current[itemId];
+        if (taxDropdowns[itemId] && taxRef && !taxRef.contains(targetElement)) {
           setTaxDropdowns(prev => ({ ...prev, [itemId]: false }));
           setTaxSearches(prev => ({ ...prev, [itemId]: "" }));
           setTaxDropdownPosition((prev) => {
@@ -1151,7 +1489,8 @@ export default function NewBill() {
 
       // Close customer dropdowns
       Object.keys(customerDropdowns).forEach(itemId => {
-        if (customerDropdowns[itemId] && customerRefs.current[itemId]?.current && !customerRefs.current[itemId].current.contains(event.target)) {
+        const customerRef = customerRefs.current[itemId];
+        if (customerDropdowns[itemId] && customerRef && !customerRef.contains(targetElement)) {
           setCustomerDropdowns(prev => ({ ...prev, [itemId]: false }));
           setCustomerSearches(prev => ({ ...prev, [itemId]: "" }));
           setCustomerDropdownPosition((prev) => {
@@ -1163,34 +1502,34 @@ export default function NewBill() {
       });
 
       // Close accounts payable dropdown
-      if (accountsPayableRef.current && !accountsPayableRef.current.contains(event.target)) {
+      if (accountsPayableRef.current && !accountsPayableRef.current.contains(targetElement)) {
         setAccountsPayableOpen(false);
         setAccountsPayableSearch("");
       }
 
       // Close account type dropdown
-      if (accountTypeDropdownRef.current && !accountTypeDropdownRef.current.contains(event.target)) {
+      if (accountTypeDropdownRef.current && !accountTypeDropdownRef.current.contains(targetElement)) {
         setAccountTypeDropdownOpen(false);
       }
 
       // Close transaction level dropdown
-      if (transactionLevelRef.current && !transactionLevelRef.current.contains(event.target)) {
+      if (transactionLevelRef.current && !transactionLevelRef.current.contains(targetElement)) {
         setTransactionLevelOpen(false);
         setTransactionLevelSearch("");
       }
 
       // Close bulk actions dropdown
-      if (bulkActionsRef.current && !bulkActionsRef.current.contains(event.target)) {
+      if (bulkActionsRef.current && !bulkActionsRef.current.contains(targetElement)) {
         setBulkActionsDropdownOpen(false);
       }
 
       // Close add new row dropdown
-      if (addNewRowRef.current && !addNewRowRef.current.contains(event.target)) {
+      if (addNewRowRef.current && !addNewRowRef.current.contains(targetElement)) {
         setAddNewRowDropdownOpen(false);
       }
 
       // Close reporting tags dropdown
-      if (reportingTagsRef.current && !reportingTagsRef.current.contains(event.target)) {
+      if (reportingTagsRef.current && !reportingTagsRef.current.contains(targetElement)) {
         setReportingTagsDropdownOpen(false);
       }
 
@@ -1202,14 +1541,16 @@ export default function NewBill() {
       // Close item reporting tags dropdowns
       Object.keys(itemReportingTagsOpen).forEach((itemId) => {
         const ref = itemReportingTagsRefs.current[itemId];
-        if (ref && !ref.contains(event.target)) {
+        const menuRef = reportingTagsMenuRefs.current[itemId];
+        if (ref && !ref.contains(targetElement) && (!menuRef || !menuRef.contains(targetElement))) {
           setItemReportingTagsOpen((prev) => ({ ...prev, [itemId]: false }));
+          setReportingTagOptionOpenKey(null);
         }
       });
 
       // Close item dropdowns
       Object.keys(itemDropdownOpen).forEach((itemId) => {
-        if (itemRefs.current[itemId] && !itemRefs.current[itemId].contains(event.target)) {
+        if (itemRefs.current[itemId] && !itemRefs.current[itemId].contains(targetElement)) {
           setItemDropdownOpen((prev) => ({ ...prev, [itemId]: false }));
           setItemSearch((prev) => ({ ...prev, [itemId]: "" }));
         }
@@ -1217,7 +1558,7 @@ export default function NewBill() {
 
       // Close row menus
       Object.keys(rowMenuOpen).forEach((itemId) => {
-        if (rowMenuOpen[itemId] && rowMenuRefs.current[itemId] && !rowMenuRefs.current[itemId].contains(event.target)) {
+        if (rowMenuOpen[itemId] && rowMenuRefs.current[itemId] && !rowMenuRefs.current[itemId].contains(targetElement)) {
           setRowMenuOpen((prev) => ({ ...prev, [itemId]: false }));
         }
       });
@@ -1239,18 +1580,109 @@ export default function NewBill() {
     };
   }, [vendorOpen, uploadMenuOpen, accountsPayableOpen, transactionLevelOpen, bulkActionsDropdownOpen, addNewRowDropdownOpen, reportingTagsDropdownOpen, accountDropdowns, customerDropdowns, itemDropdownOpen, rowMenuOpen, itemReportingTagsOpen]);
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
+  useEffect(() => {
+    const handleScroll = () => {
+      const hasRowDropdownOpen =
+        Object.values(accountDropdowns).some(Boolean) ||
+        Object.values(customerDropdowns).some(Boolean) ||
+        Object.values(taxDropdowns).some(Boolean) ||
+        Object.values(itemDropdownOpen).some(Boolean) ||
+        Object.values(itemReportingTagsOpen).some(Boolean);
+
+      if (!hasRowDropdownOpen) return;
+
+      setAccountDropdowns({});
+      setAccountDropdownPosition({});
+      setAccountSearches({});
+
+      setCustomerDropdowns({});
+      setCustomerDropdownPosition({});
+      setCustomerSearches({});
+
+      setTaxDropdowns({});
+      setTaxDropdownPosition({});
+      setTaxSearches({});
+
+      setItemDropdownOpen({});
+      setItemSearch({});
+
+      setItemReportingTagsOpen({});
+      setItemReportingTagDrafts({});
+      setReportingTagOptionOpenKey(null);
+    };
+
+    window.addEventListener("scroll", handleScroll, true);
+    return () => window.removeEventListener("scroll", handleScroll, true);
+  }, [
+    accountDropdowns,
+    customerDropdowns,
+    taxDropdowns,
+    itemDropdownOpen,
+    itemReportingTagsOpen,
+  ]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadReportingTags = async () => {
+      setIsReportingTagsLoading(true);
+      try {
+        const response = await reportingTagsAPI.getAll({ limit: 10000 });
+        const rows = Array.isArray(response) ? response : (response?.data || []);
+        const activeRows = (Array.isArray(rows) ? rows : [])
+          .filter(isReportingTagActive)
+          .map((tag: any) => ({
+            ...tag,
+            options: normalizeReportingTagOptions(tag),
+          }))
+          .filter((tag: any) => {
+            const appliesTo = normalizeReportingTagAppliesTo(tag);
+            return appliesTo.some((entry) => {
+              const normalized = String(entry || "").toLowerCase();
+              return normalized.includes("purchase") || normalized.includes("bill") || normalized.includes("expense");
+            });
+          });
+
+        if (mounted) {
+          setAvailableReportingTags(activeRows);
+        }
+      } catch (error) {
+        console.error("Error loading reporting tags:", error);
+        if (mounted) setAvailableReportingTags([]);
+      } finally {
+        if (mounted) setIsReportingTagsLoading(false);
+      }
+    };
+
+    loadReportingTags();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    const target = e.currentTarget as HTMLInputElement;
+    const isCheckbox = target.type === "checkbox";
     setFormData((prev) => ({
       ...prev,
-      [name]: type === "checkbox" ? checked : value,
+      [name]: isCheckbox ? target.checked : value,
     }));
+    if (name === "vendorName" || name === "bill" || name === "billDate") {
+      setValidationErrors((prev) => {
+        if (!prev[name as "vendorName" | "bill" | "billDate"]) return prev;
+        const next = { ...prev };
+        delete next[name as "vendorName" | "bill" | "billDate"];
+        return next;
+      });
+    }
   };
 
   // Vendor search handler
   const handleVendorSearch = () => {
     const searchTerm = vendorSearchTerm.toLowerCase();
-    let results = [];
+    let results: Vendor[] = [];
 
     if (vendorSearchCriteria === "Display Name") {
       results = allVendors.filter(vendor => {
@@ -1285,18 +1717,18 @@ export default function NewBill() {
   const vendorPaginatedResults = vendorSearchResults.slice(vendorStartIndex, vendorEndIndex);
   const vendorTotalPages = Math.ceil(vendorSearchResults.length / vendorResultsPerPage);
 
-  const handleItemChange = (id, field, value) => {
+  const handleItemChange = (id: string | number, field: keyof BillLineItem, value: any) => {
     console.log("handleItemChange called:", { id, field, value }); // Debug
     setFormData((prev) => {
-      const updatedItems = prev.items.map((item) => {
+      const updatedItems = prev.items.map((item: BillLineItem) => {
         // Loose comparison to handle potential string/number mismatches
         if (String(item.id) === String(id)) {
           console.log(`Updating item ${id} field ${field} to`, value); // Debug
           const updatedItem = { ...item, [field]: value };
           // Calculate amount when quantity, rate, or discount changes
           if (field === "quantity" || field === "rate" || field === "discount") {
-            const qty = parseFloat(updatedItem.quantity || 0);
-            const rate = parseFloat(updatedItem.rate || 0);
+            const qty = parseFloat(String(updatedItem.quantity || 0));
+            const rate = parseFloat(String(updatedItem.rate || 0));
             const discountMatch = (updatedItem.discount || "0 %-").match(/(\d+(?:\.\d+)?)/);
             const discountPercent = discountMatch ? parseFloat(discountMatch[1]) : 0;
             const subtotal = qty * rate;
@@ -1309,12 +1741,12 @@ export default function NewBill() {
       });
 
       // Calculate subtotal from all items (using amount which already includes discount)
-      const subTotal = updatedItems.reduce((sum, item) => {
-        return sum + (parseFloat(item.amount || 0));
+      const subTotal = updatedItems.reduce((sum: number, item: BillLineItem) => {
+        return sum + parseFloat(String(item.amount || 0));
       }, 0).toFixed(2);
 
       // Calculate discount amount at transaction level
-      const discountValue = showTransactionDiscount ? (parseFloat(prev.discount.value) || 0) : 0;
+      const discountValue = showTransactionDiscount ? (parseFloat(String(prev.discount.value || 0)) || 0) : 0;
       const discountAmount = discountValue > 0
         ? (parseFloat(subTotal) * (discountValue / 100)).toFixed(2)
         : "0.00";
@@ -1332,11 +1764,18 @@ export default function NewBill() {
     });
   };
 
-  const handleItemSelect = (id, item) => {
+  const handleItemSelect = (id: number | string, item: Item) => {
     setFormData((prev) => {
       const updatedItems = prev.items.map((existingItem) => {
         if (existingItem.id === id) {
-          const updatedItem = { ...existingItem, itemDetails: item.name, item: item._id || item.id };
+          const updatedItem = {
+            ...existingItem,
+            itemDetails: String(item.name || item.itemDetails || ""),
+            item: item._id || item.id,
+            trackInventory: Boolean(item.trackInventory),
+            stockQuantity: Number(item.stockQuantity ?? (item as any).stockOnHand ?? (item as any).quantityOnHand ?? 0),
+            unit: item.unit || "",
+          };
           // Set account based on inventory tracking status
           if (item.trackInventory && item.inventoryAccount) {
             updatedItem.account = item.inventoryAccount;
@@ -1355,8 +1794,8 @@ export default function NewBill() {
           if (item.costPrice !== undefined && item.costPrice !== null && item.costPrice !== "") {
             updatedItem.rate = String(item.costPrice);
             // Recalculate amount
-            const qty = parseFloat(updatedItem.quantity || 0);
-            const rate = parseFloat(item.costPrice || 0);
+            const qty = parseFloat(String(updatedItem.quantity || 0));
+            const rate = parseFloat(String(item.costPrice || 0));
             const discountMatch = (updatedItem.discount || "0 %-").match(/(\d+(?:\.\d+)?)/);
             const discountPercent = discountMatch ? parseFloat(discountMatch[1]) : 0;
             const subtotal = qty * rate;
@@ -1369,11 +1808,11 @@ export default function NewBill() {
       });
 
       // Recalculate totals
-      const subTotal = updatedItems.reduce((sum, item) => {
-        return sum + (parseFloat(item.amount || 0));
+      const subTotal = updatedItems.reduce((sum: number, item: BillLineItem) => {
+        return sum + (parseFloat(String(item.amount || 0)));
       }, 0).toFixed(2);
 
-      const discountValue = showTransactionDiscount ? (parseFloat(prev.discount.value) || 0) : 0;
+      const discountValue = showTransactionDiscount ? (parseFloat(String(prev.discount.value || 0)) || 0) : 0;
       const discountAmount = discountValue > 0
         ? (parseFloat(subTotal) * (discountValue / 100)).toFixed(2)
         : "0.00";
@@ -1392,7 +1831,7 @@ export default function NewBill() {
     setItemSearch((prev) => ({ ...prev, [id]: "" }));
   };
 
-  const filteredItems = (itemId) => {
+  const filteredItems = (itemId: number | string): Item[] => {
     const searchTerm = (itemSearch[itemId] || "").toLowerCase();
     if (!searchTerm) return items;
     return items.filter((item) =>
@@ -1402,9 +1841,9 @@ export default function NewBill() {
   };
 
   // Handle discount change
-  const handleDiscountChange = (value) => {
+  const handleDiscountChange = (value: string) => {
     const discountValue = showTransactionDiscount ? (parseFloat(value) || 0) : 0;
-    const subTotal = parseFloat(formData.subTotal) || 0;
+    const subTotal = parseFloat(String(formData.subTotal)) || 0;
     const discountAmount = discountValue > 0
       ? (subTotal * (discountValue / 100)).toFixed(2)
       : "0.00";
@@ -1438,16 +1877,16 @@ export default function NewBill() {
     }));
   };
 
-  const removeRow = (id) => {
+  const removeRow = (id: number | string) => {
     if (formData.items.length > 1) {
       setFormData((prev) => {
         const updatedItems = prev.items.filter((item) => item.id !== id);
         // Recalculate totals after removal
-        const subTotal = updatedItems.reduce((sum, item) => {
-          return sum + (parseFloat(item.amount || 0));
+        const subTotal = updatedItems.reduce((sum: number, item: any) => {
+          return sum + (parseFloat(String(item.amount || 0)));
         }, 0).toFixed(2);
 
-        const discountValue = showTransactionDiscount ? (parseFloat(prev.discount.value) || 0) : 0;
+        const discountValue = showTransactionDiscount ? (parseFloat(String(prev.discount.value || 0)) || 0) : 0;
         const discountAmount = discountValue > 0
           ? (parseFloat(subTotal) * (discountValue / 100)).toFixed(2)
           : "0.00";
@@ -1465,10 +1904,10 @@ export default function NewBill() {
     }
   };
 
-  const cloneRow = (id) => {
-    const itemToClone = formData.items.find(item => item.id === id);
+  const cloneRow = (id: number | string) => {
+    const itemToClone = formData.items.find((item: Item) => item.id === Number(id));
     if (itemToClone) {
-      const currentIndex = formData.items.findIndex(item => item.id === id);
+      const currentIndex = formData.items.findIndex((item: Item) => item.id === Number(id));
       const newRow = {
         ...itemToClone,
         id: Date.now(),
@@ -1484,8 +1923,8 @@ export default function NewBill() {
     setRowMenuOpen((prev) => ({ ...prev, [id]: false }));
   };
 
-  const insertNewRow = (id) => {
-    const currentIndex = formData.items.findIndex(item => item.id === id);
+  const insertNewRow = (id: number | string) => {
+    const currentIndex = formData.items.findIndex((item: Item) => item.id === Number(id));
     const newRow = {
       id: Date.now(),
       itemDetails: "",
@@ -1505,8 +1944,8 @@ export default function NewBill() {
     setRowMenuOpen((prev) => ({ ...prev, [id]: false }));
   };
 
-  const insertItemsInBulk = (id) => {
-    const currentIndex = formData.items.findIndex(item => item.id === id);
+  const insertItemsInBulk = (id: number | string) => {
+    const currentIndex = formData.items.findIndex((item: Item) => item.id === Number(id));
     setBulkItemsInsertIndex(currentIndex);
     setShowBulkItemsModal(true);
     setBulkItemsSearch("");
@@ -1515,7 +1954,7 @@ export default function NewBill() {
     setRowMenuOpen((prev) => ({ ...prev, [id]: false }));
   };
 
-  const handleBulkItemSelect = (item) => {
+  const handleBulkItemSelect = (item: Item) => {
     const isSelected = selectedBulkItems.some(selected => selected.id === item.id);
     if (isSelected) {
       setSelectedBulkItems(selectedBulkItems.filter(selected => selected.id !== item.id));
@@ -1528,22 +1967,22 @@ export default function NewBill() {
     }
   };
 
-  const handleBulkQuantityChange = (itemId, quantity) => {
+  const handleBulkQuantityChange = (itemId: number | string, quantity: string) => {
     setBulkItemQuantities({ ...bulkItemQuantities, [itemId]: parseFloat(quantity) || 1 });
   };
 
   const handleAddBulkItems = () => {
-    const newRows = selectedBulkItems.map(item => ({
+    const newRows = selectedBulkItems.map((item: Item) => ({
       id: Date.now() + Math.random(),
       item: item._id || item.id,
-      itemDetails: item.name,
+      itemDetails: String(item.name || item.itemDetails || ""),
       account: item.trackInventory ? (item.inventoryAccount || "Inventory Asset") : (item.purchaseAccount || "Cost of Goods Sold"),
       quantity: (bulkItemQuantities[item.id] || 1).toString(),
-      rate: (parseFloat(item.costPrice) || 0.0).toString(),
+      rate: (parseFloat(String(item.costPrice)) || 0.0).toString(),
       discount: "0 %-",
       tax: resolveTaxOption(item.purchaseTax)?.name || item.purchaseTax || "",
       customerDetails: "",
-      amount: ((bulkItemQuantities[item.id] || 1) * (parseFloat(item.costPrice) || 0.0)).toFixed(2),
+      amount: ((bulkItemQuantities[item.id] || 1) * (parseFloat(String(item.costPrice)) || 0.0)).toFixed(2),
     }));
 
     setFormData((prev) => {
@@ -1551,11 +1990,11 @@ export default function NewBill() {
       newItems.splice(bulkItemsInsertIndex + 1, 0, ...newRows);
 
       // Recalculate totals
-      const subTotal = newItems.reduce((sum, item) => {
-        return sum + (parseFloat(item.amount || 0));
+      const subTotal = newItems.reduce((sum: number, item: Item) => {
+        return sum + parseFloat(String(item.amount || 0));
       }, 0).toFixed(2);
 
-      const discountValue = showTransactionDiscount ? (parseFloat(prev.discount.value) || 0) : 0;
+      const discountValue = showTransactionDiscount ? (parseFloat(String(prev.discount.value || 0)) || 0) : 0;
       const discountAmount = discountValue > 0
         ? (parseFloat(subTotal) * (discountValue / 100)).toFixed(2)
         : "0.00";
@@ -1579,7 +2018,7 @@ export default function NewBill() {
 
   const filteredBulkItems = bulkItemsSearch.trim() === ""
     ? items
-    : items.filter(item =>
+    : items.filter((item: Item) =>
       item.name?.toLowerCase().includes(bulkItemsSearch.toLowerCase()) ||
       item.sku?.toLowerCase().includes(bulkItemsSearch.toLowerCase())
     );
@@ -1589,15 +2028,15 @@ export default function NewBill() {
       name: newItemData.name,
       type: newItemData.type,
       unit: newItemData.unit,
-      sellingPrice: parseFloat(newItemData.sellingPrice || 0),
-      costPrice: parseFloat(newItemData.costPrice || 0),
+      sellingPrice: parseFloat(String(newItemData.sellingPrice || 0)),
+      costPrice: parseFloat(String(newItemData.costPrice || 0)),
       purchaseAccount: newItemData.purchaseAccount,
       salesAccount: newItemData.salesAccount,
       purchaseDescription: newItemData.purchaseDescription,
       salesDescription: newItemData.salesDescription,
       trackInventory: newItemData.trackInventory,
       inventoryAccount: newItemData.inventoryAccount,
-      openingStock: parseFloat(newItemData.openingStock || 0),
+      openingStock: parseFloat(String(newItemData.openingStock || 0)),
       isActive: true,
     };
 
@@ -1640,25 +2079,28 @@ export default function NewBill() {
     getVendorDisplayName(vendor).toLowerCase().includes(vendorSearch.toLowerCase())
   );
 
-  const handleSubmit = async (e, status) => {
+  const handleSubmit = async (e: { preventDefault: () => void }, status: "draft" | "open") => {
     e.preventDefault();
     if (saveLoadingState) return;
+    const nextValidationErrors: Partial<Record<"vendorName" | "bill" | "billDate", string>> = {};
     const normalizedVendorName = getVendorDisplayName(formData.vendorName);
     const normalizedVendorId = String(formData.vendorId || formData.vendor_id || "").trim();
 
     // Basic validation
     if (!normalizedVendorName) {
-      alert("Please select a vendor.");
-      return;
+      nextValidationErrors.vendorName = "Please select a vendor.";
     }
 
     if (!formData.bill) {
-      alert("Please enter a bill number.");
-      return;
+      nextValidationErrors.bill = "Please enter a bill number.";
     }
 
     if (!formData.billDate) {
-      alert("Please select a bill date.");
+      nextValidationErrors.billDate = "Please select a bill date.";
+    }
+
+    setValidationErrors(nextValidationErrors);
+    if (Object.keys(nextValidationErrors).length > 0) {
       return;
     }
 
@@ -1668,9 +2110,9 @@ export default function NewBill() {
     }
 
     // Calculate total amount from items
-    const totalAmount = formData.items.reduce((sum, item) => {
-      const quantity = parseFloat(item.quantity) || 0;
-      const rate = parseFloat(item.rate) || 0;
+    const totalAmount = formData.items.reduce((sum: number, item: any) => {
+      const quantity = parseFloat(String(item.quantity)) || 0;
+      const rate = parseFloat(String(item.rate)) || 0;
       return sum + (quantity * rate);
     }, 0);
     const isTaxInclusive = String(taxMode || "Tax Exclusive").toLowerCase().includes("inclusive");
@@ -1691,6 +2133,8 @@ export default function NewBill() {
     // Prepare bill data
     const selectedVendor = findVendorMatch(normalizedVendorName, normalizedVendorId);
     const statusLower = status === "open" ? "open" : "draft";
+    const selectedBillLocation = activeLocations.find((location) => location.name === billLocation);
+    const selectedWarehouseLocation = activeLocations.find((location) => location.name === warehouseLocation);
 
     const billData = {
       billNumber: formData.bill,
@@ -1699,7 +2143,7 @@ export default function NewBill() {
       vendor: normalizedVendorId || (selectedVendor ? (selectedVendor.id || selectedVendor._id) : null),
       date: formData.billDate,
       dueDate: formData.dueDate,
-      items: formData.items.map(item => ({
+      items: formData.items.map((item: any) => ({
         ...(() => {
           const lineAmount = parseFloat(String(item.amount || 0)) || 0;
           const taxRateDecimal = getTaxRateFromSelection(item.tax);
@@ -1715,21 +2159,25 @@ export default function NewBill() {
             account: item.account,
             name: item.itemDetails,
             description: item.itemDetails,
-            quantity: parseFloat(item.quantity) || 0,
-            unitPrice: parseFloat(item.rate) || 0,
+            quantity: parseFloat(String(item.quantity)) || 0,
+            unitPrice: parseFloat(String(item.rate)) || 0,
             taxRate: Number((taxRateDecimal * 100).toFixed(4)),
             taxAmount: Number(taxAmount.toFixed(2)),
             total: Number(lineTotal.toFixed(2)),
           };
         })(),
       })),
-      subtotal: parseFloat(formData.subTotal) || 0,
-      tax: parseFloat(formData.taxAmount || 0) || 0,
-      discount: parseFloat(formData.discountAmount || 0) || 0,
-      total: parseFloat(formData.total) || totalAmount,
+      subtotal: parseFloat(String(formData.subTotal)) || 0,
+      tax: parseFloat(String(formData.taxAmount || 0)) || 0,
+      discount: parseFloat(String(formData.discountAmount || 0)) || 0,
+      total: parseFloat(String(formData.total || 0)) || totalAmount,
       status: statusLower,
       paymentTerms: formData.paymentTerms,
       accountsPayable: formData.accountsPayable,
+      locationId: selectedBillLocation?._id || selectedBillLocation?.id || null,
+      locationName: selectedBillLocation?.name || billLocation || "",
+      warehouseLocationId: selectedWarehouseLocation?._id || selectedWarehouseLocation?.id || null,
+      warehouseLocationName: selectedWarehouseLocation?.name || warehouseLocation || "",
       notes: formData.notes,
       currency: formData.currency,
       purchaseOrderId: location.state?.fromPurchaseOrder ? (location.state.purchaseOrder.id || location.state.purchaseOrder._id) : null,
@@ -1776,10 +2224,10 @@ export default function NewBill() {
     navigate("/purchases/bills");
   };
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      const fileArray = Array.from(files);
+      const fileArray = Array.from(files) as File[];
       const maxFiles = 5;
       const maxSize = 10 * 1024 * 1024; // 10MB
 
@@ -1789,7 +2237,7 @@ export default function NewBill() {
         return;
       }
 
-      const validFiles = fileArray.filter(file => {
+      const validFiles = fileArray.filter((file: File) => {
         if (file.size > maxSize) {
           alert(`File "${file.name}" exceeds the maximum size of 10MB.`);
           return false;
@@ -1797,7 +2245,7 @@ export default function NewBill() {
         return true;
       });
 
-      const newFiles = validFiles.map(file => ({
+      const newFiles = validFiles.map((file: File) => ({
         id: Date.now() + Math.random(),
         name: file.name,
         size: file.size,
@@ -1823,7 +2271,7 @@ export default function NewBill() {
     setDocumentsSearch("");
   };
 
-  const handleAttachFromCloud = (service) => {
+  const handleAttachFromCloud = (service?: string) => {
     if (service) {
       // Handle specific cloud service
       alert(`${service.charAt(0).toUpperCase() + service.slice(1)} integration - Coming soon! This will allow you to connect and select files from ${service}.`);
@@ -1834,7 +2282,7 @@ export default function NewBill() {
     setUploadMenuOpen(false);
   };
 
-  const handleRemoveFile = (fileId) => {
+  const handleRemoveFile = (fileId: number | string) => {
     setAttachedFiles(prev => {
       const fileToRemove = prev.find(f => f.id === fileId);
       if (fileToRemove && fileToRemove.preview) {
@@ -1862,7 +2310,7 @@ export default function NewBill() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run cleanup on unmount
 
-  const formatFileSize = (bytes) => {
+  const formatFileSize = (bytes: number) => {
     if (bytes === 0) return "0 Bytes";
     const k = 1024;
     const sizes = ["Bytes", "KB", "MB", "GB"];
@@ -1873,7 +2321,7 @@ export default function NewBill() {
   // Get documents from API handled by useEffect above
   // const [availableDocuments] = useState(() => getDocuments());
 
-  const handleDocumentToggle = (docId) => {
+  const handleDocumentToggle = (docId: string) => {
     setSelectedDocuments(prev => {
       if (prev.includes(docId)) {
         return prev.filter(id => id !== docId);
@@ -1927,11 +2375,20 @@ export default function NewBill() {
     return matchesSearch;
   });
 
+  const activeLocations = locations.filter((location) => location.isActive !== false);
+  const billLocationOptions = activeLocations.filter((location) => {
+    const type = String(location.type || "").toLowerCase();
+    return type === "business" || type === "general";
+  });
+  const warehouseLocationOptions = activeLocations.filter((location) => String(location.type || "").toLowerCase() === "warehouse");
+  const resolvedBillLocationOptions = billLocationOptions.length > 0 ? billLocationOptions : activeLocations;
+  const resolvedWarehouseLocationOptions = warehouseLocationOptions.length > 0 ? warehouseLocationOptions : activeLocations;
+
   return (
-    <div className="w-full flex flex-col bg-gray-50">
+    <div className="flex h-[calc(100vh-16px)] w-full flex-col overflow-hidden bg-white">
       {/* Header */}
-      <div className="bg-white px-8 py-6 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
-        <h1 className="text-2xl font-bold text-gray-900 m-0 flex items-center gap-3">
+      <div className="bg-white px-8 py-5 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+        <h1 className="text-[22px] font-semibold text-gray-900 m-0 flex items-center gap-3">
           <FileText size={24} className="text-gray-500" />
           {location.state?.isEdit && location.state?.editBill ? "Edit Bill" : "New Bill"}
         </h1>
@@ -1945,27 +2402,57 @@ export default function NewBill() {
       </div>
 
       {/* Form */}
-      <form onSubmit={(e) => handleSubmit(e, "open")} className="flex-1 bg-gray-50">
-        <div className="w-full p-6">
+      <div className="w-full flex-1 overflow-x-auto overflow-y-auto">
+      <form onSubmit={(e) => handleSubmit(e, "open")} className="min-w-[1600px] flex-1 bg-white pb-32">
+        <div className="w-full px-6 pt-7 pb-0">
           {/* Vendor Details */}
-          <div className="mb-8">
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-gray-900 flex items-center gap-1 mb-1">
-                Vendor Name<span className="text-red-500">*</span>
+          <div className="mb-8 border-b border-gray-100 pb-8">
+            <div className="flex max-w-[760px] flex-col gap-2">
+              <label className="text-sm font-medium text-red-500 flex items-center gap-1 mb-1">
+                <span>Vendor Name</span>
+                <span>*</span>
               </label>
               <div className="flex gap-0 items-end">
-                <div className="relative flex-1" ref={vendorRef}>
+                <div className="relative flex-1 min-w-0" ref={vendorRef}>
                   <button
                     type="button"
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-l-md rounded-r-none text-sm outline-none bg-white cursor-pointer flex items-center justify-between box-border h-10 focus:border-teal-600"
+                    className={`w-full px-3 pr-20 py-2.5 rounded-l-md rounded-r-none text-sm outline-none bg-white cursor-pointer flex items-center justify-between box-border h-10 shadow-[0_0_0_1px_rgba(59,130,246,0.08)] min-w-0 ${validationErrors.vendorName ? "border border-red-400 focus:border-red-500" : "border border-indigo-300 focus:border-blue-500"}`}
                     onClick={() => setVendorOpen(!vendorOpen)}
                     style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
                   >
-                    <span className={selectedVendorName ? "" : "text-gray-400"}>
+                    <span className={`truncate text-left ${selectedVendorName ? "" : validationErrors.vendorName ? "text-red-500" : "text-gray-400"}`}>
                       {selectedVendorName || "Select a Vendor"}
                     </span>
-                    <ChevronDown size={16} />
                   </button>
+                  <div className={`absolute inset-y-0 right-0 flex items-stretch overflow-hidden rounded-r-md border border-l-0 bg-white shadow-[0_0_0_1px_rgba(59,130,246,0.08)] ${validationErrors.vendorName ? "border-red-400" : "border-indigo-300"}`}>
+                    {selectedVendorName ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          clearVendorSelection();
+                        }}
+                        className="h-10 w-9 flex items-center justify-center border-none bg-white text-red-500 hover:bg-red-50"
+                        aria-label="Clear vendor"
+                      >
+                        <X size={14} />
+                      </button>
+                    ) : (
+                      <div className="h-10 w-9" />
+                    )}
+                    <div className="h-10 w-px bg-gray-200" />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setVendorOpen((prev) => !prev);
+                      }}
+                      className="h-10 w-9 flex items-center justify-center border-none bg-white text-gray-500 hover:bg-gray-50"
+                      aria-label="Toggle vendor dropdown"
+                    >
+                      {vendorOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </button>
+                  </div>
                   {vendorOpen && (
                     <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-md border border-gray-200 z-[100] max-h-[300px] overflow-hidden flex flex-col">
                       <div className="px-3 py-2 border-none border-b border-gray-200 text-sm outline-none flex items-center gap-2">
@@ -2015,7 +2502,7 @@ export default function NewBill() {
                 </div>
                 <button
                   type="button"
-                  className="p-2.5 bg-[#156372] text-white border-none rounded-r-md rounded-l-none cursor-pointer flex items-center justify-center h-10 w-10 shrink-0"
+                  className="p-2.5 bg-[#4f8df7] text-white border-none rounded-r-md rounded-l-none cursor-pointer flex items-center justify-center h-10 w-10 shrink-0 hover:bg-[#3b82f6]"
                   style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -2025,15 +2512,73 @@ export default function NewBill() {
                   <Search size={16} />
                 </button>
               </div>
+              {selectedVendorBillingLines.length > 0 && (
+                <div className="mt-3 max-w-[520px]">
+                  <div className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.12em] text-gray-500">
+                    Billing Address
+                    <Pencil size={12} className="text-gray-400" />
+                  </div>
+                  <div className="mt-2 space-y-1 text-sm leading-6 text-gray-900 whitespace-pre-line">
+                    {selectedVendorBillingLines.map((line, index) => (
+                      <div key={`${line}-${index}`}>{line}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {validationErrors.vendorName ? (
+                <div className="text-xs text-red-500">{validationErrors.vendorName}</div>
+              ) : null}
             </div>
           </div>
 
           {/* Bill Details */}
           <div className="mb-8">
-            <div className="grid grid-cols-2 gap-6 mb-6">
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-gray-900 flex items-center gap-1 mb-1">
-                  Bill#<span className="text-red-500">*</span>
+              <div className="mb-6 flex max-w-[500px] items-center gap-5">
+                <label className="w-[150px] shrink-0 text-sm font-medium text-gray-900">Location</label>
+                <div className="relative w-full max-w-[300px]" ref={billLocationRef}>
+                  <button
+                    type="button"
+                    onClick={() => setBillLocationOpen((prev) => !prev)}
+                    className="h-10 min-w-[180px] w-full px-3 border-0 border-b-2 border-gray-200 bg-transparent text-sm text-gray-700 cursor-pointer flex items-center justify-between outline-none hover:border-teal-600"
+                  >
+                    <span>{billLocation || "Select a Location"}</span>
+                    {billLocationOpen ? <ChevronUp size={16} className="text-teal-600" /> : <ChevronDown size={16} className="text-gray-500" />}
+                  </button>
+                  {billLocationOpen && (
+                    <div className="absolute top-full left-0 mt-1 w-[260px] bg-white rounded-lg shadow-lg border border-gray-200 z-[100] max-h-[300px] overflow-hidden flex flex-col">
+                      <div className="max-h-[200px] overflow-y-auto py-1">
+                        {resolvedBillLocationOptions.length > 0 ? resolvedBillLocationOptions.map((option) => {
+                          const optionName = String(option.name || "").trim();
+                          const isSelected = billLocation === optionName;
+                          return (
+                            <button
+                              key={option._id || option.id || optionName}
+                              type="button"
+                              onClick={() => {
+                                setBillLocation(optionName);
+                                setBillLocationOpen(false);
+                              }}
+                              className={`w-full px-4 py-2 text-sm text-left flex items-center justify-between hover:bg-teal-50 ${isSelected ? "bg-teal-50" : ""}`}
+                            >
+                              <span className={isSelected ? "text-teal-700 font-medium" : "text-gray-900"}>
+                                {optionName || "Unnamed Location"}
+                              </span>
+                              {isSelected ? <Check size={16} className="text-teal-700" /> : null}
+                            </button>
+                          );
+                        }) : (
+                          <div className="px-4 py-3 text-sm text-gray-500">No locations found</div>
+                        )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex max-w-[840px] flex-col gap-4">
+              <div className="flex max-w-[500px] items-center gap-5">
+                <label className="w-[150px] shrink-0 text-sm font-medium text-red-500 flex items-center gap-1">
+                  Bill#<span>*</span>
                 </label>
                 <input
                   type="text"
@@ -2041,26 +2586,27 @@ export default function NewBill() {
                   value={formData.bill}
                   onChange={handleChange}
                   required
-                  className="px-3 py-2.5 border border-gray-300 rounded-md text-sm outline-none box-border h-10 focus:border-teal-600"
+                  className={`h-9 w-full max-w-[300px] rounded-md px-3 py-2 text-sm outline-none box-border ${getInputClassName("bill", `border ${validationErrors.bill ? "border-red-400" : "border-gray-300"}`)} ${fieldFocusClass}`}
                 />
               </div>
+              {validationErrors.bill ? (
+                <div className="ml-[150px] -mt-2 text-xs text-red-500">{validationErrors.bill}</div>
+              ) : null}
 
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-gray-900 flex items-center gap-1 mb-1">Order Number</label>
+              <div className="flex max-w-[500px] items-center gap-5">
+                <label className="w-[150px] shrink-0 text-sm font-medium text-gray-900">Order Number</label>
                 <input
                   type="text"
                   name="orderNumber"
                   value={formData.orderNumber}
                   onChange={handleChange}
-                  className="px-3 py-2.5 border border-gray-300 rounded-md text-sm outline-none box-border h-10 focus:border-teal-600"
+                  className={`h-9 w-full max-w-[300px] rounded-md border border-gray-300 px-3 py-2 text-sm outline-none box-border ${fieldFocusClass}`}
                 />
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-6 mb-6">
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-gray-900 flex items-center gap-1 mb-1">
-                  Bill Date<span className="text-red-500">*</span>
+              <div className="flex max-w-[500px] items-center gap-5">
+                <label className="w-[150px] shrink-0 text-sm font-medium text-red-500 flex items-center gap-1">
+                  Bill Date<span>*</span>
                 </label>
                 <input
                   type="date"
@@ -2068,50 +2614,48 @@ export default function NewBill() {
                   value={formData.billDate}
                   onChange={handleChange}
                   required
-                  className="px-3 py-2.5 border border-gray-300 rounded-md text-sm outline-none box-border h-10 focus:border-teal-600"
+                  className={`h-9 w-full max-w-[300px] rounded-md px-3 py-2 text-sm outline-none box-border ${getInputClassName("billDate", `border ${validationErrors.billDate ? "border-red-400" : "border-gray-300"}`)} ${fieldFocusClass}`}
                 />
               </div>
+              {validationErrors.billDate ? (
+                <div className="ml-[150px] -mt-2 text-xs text-red-500">{validationErrors.billDate}</div>
+              ) : null}
 
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-gray-900 flex items-center gap-1 mb-1">Due Date</label>
+              <div className="grid max-w-[840px] grid-cols-[150px_300px_150px_220px] items-center gap-x-5">
+                <label className="w-[150px] shrink-0 text-sm font-medium text-gray-900">Due Date</label>
                 <input
                   type="date"
                   name="dueDate"
                   value={formData.dueDate}
                   onChange={handleChange}
-                  className="px-3 py-2.5 border border-gray-300 rounded-md text-sm outline-none box-border h-10 focus:border-teal-600"
+                  className={`h-9 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none box-border ${fieldFocusClass}`}
                 />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-6">
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-gray-900 flex items-center gap-1 mb-1">Payment Terms</label>
-                <div className="relative">
+                <label className="text-sm font-medium text-gray-900">Payment Terms</label>
+                <div className="w-full">
                   <PaymentTermsDropdown
                     value={formData.paymentTerms}
                     onChange={(value) => setFormData({ ...formData, paymentTerms: value })}
                     onConfigureTerms={() => setShowConfigurePaymentTermsModal(true)}
-                    customTerms={paymentTermsList.map(term => ({
+                    customTerms={paymentTermsList.map((term) => ({
                       id: term.name,
                       label: term.name,
                       value: term.name,
-                      days: term.days,
+                      days: term.days ?? undefined,
                       isDefault: term.isDefault
                     }))}
                   />
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-gray-900 flex items-center gap-1 mb-1">
+              <div className="flex max-w-[500px] items-center gap-5">
+                <label className="w-[150px] shrink-0 text-sm font-medium text-gray-900 flex items-center gap-1">
                   Accounts Payable <span className="text-gray-400 font-normal ml-1 cursor-pointer" title="Select the accounts payable account for this bill">?</span>
                 </label>
-                <div className="relative" ref={accountsPayableRef}>
+                <div className="relative w-full max-w-[300px]" ref={accountsPayableRef}>
                   <button
                     type="button"
                     onClick={() => setAccountsPayableOpen(!accountsPayableOpen)}
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm outline-none bg-white cursor-pointer flex items-center justify-between box-border h-10 focus:border-teal-600 hover:border-[#156372]"
+                    className={`w-full px-3 py-2 border border-gray-300 rounded-md text-sm outline-none bg-white cursor-pointer flex items-center justify-between box-border h-9 hover:border-[#156372] ${fieldFocusClass}`}
                     style={{
                       borderColor: accountsPayableOpen ? "#156372" : undefined,
                       boxShadow: accountsPayableOpen ? "0 0 0 1px #156372" : undefined
@@ -2175,31 +2719,87 @@ export default function NewBill() {
 
           {/* Item Table */}
           <div className="mb-8">
-            <div className="flex-1">
+            <div className="mr-24 max-w-[1180px]">
               {/* Top Item Controls */}
-              <div className="mb-4 flex flex-wrap items-center gap-6 border-b border-gray-200 pb-4">
+              <div className="mb-5 flex flex-wrap items-center gap-8 border-b border-gray-100 pb-5">
                 <div className="flex items-center gap-3">
                   <label className="text-sm text-gray-500">Warehouse Location</label>
-                  <select
-                    value={warehouseLocation}
-                    onChange={(e) => setWarehouseLocation(e.target.value)}
-                    className="h-10 min-w-[180px] border-0 border-b-2 border-gray-200 bg-transparent text-sm text-gray-700 outline-none focus:border-teal-600"
-                  >
-                    <option value="Head Office">Head Office</option>
-                    <option value="Branch Office">Branch Office</option>
-                    <option value="Main Warehouse">Main Warehouse</option>
-                  </select>
+                  <div className="relative" ref={warehouseLocationRef}>
+                    <button
+                      type="button"
+                      onClick={() => setWarehouseLocationOpen((prev) => !prev)}
+                      className="h-10 min-w-[180px] px-3 border-0 border-b-2 border-gray-200 bg-transparent text-sm text-gray-700 cursor-pointer flex items-center justify-between outline-none hover:border-teal-600"
+                    >
+                      <span>{warehouseLocation || "Select Warehouse"}</span>
+                      {warehouseLocationOpen ? <ChevronUp size={16} className="text-teal-600" /> : <ChevronDown size={16} className="text-gray-500" />}
+                    </button>
+                    {warehouseLocationOpen && (
+                      <div className="absolute top-full left-0 mt-1 w-[260px] bg-white rounded-lg shadow-lg border border-gray-200 z-[100] max-h-[300px] overflow-hidden flex flex-col">
+                        <div className="max-h-[200px] overflow-y-auto py-1">
+                          {resolvedWarehouseLocationOptions.length > 0 ? resolvedWarehouseLocationOptions.map((option) => {
+                            const optionName = String(option.name || "").trim();
+                            const isSelected = warehouseLocation === optionName;
+                            return (
+                              <button
+                                key={option._id || option.id || optionName}
+                                type="button"
+                                onClick={() => {
+                                  setWarehouseLocation(optionName);
+                                  setWarehouseLocationOpen(false);
+                                }}
+                                className={`w-full px-4 py-2 text-sm text-left flex items-center justify-between hover:bg-teal-50 ${isSelected ? "bg-teal-50" : ""}`}
+                              >
+                                <span className={isSelected ? "text-teal-700 font-medium" : "text-gray-900"}>
+                                  {optionName || "Unnamed Location"}
+                                </span>
+                                {isSelected ? <Check size={16} className="text-teal-700" /> : null}
+                              </button>
+                            );
+                          }) : (
+                            <div className="px-4 py-3 text-sm text-gray-500">No locations found</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <Tag size={16} className="text-gray-500" />
-                  <select
-                    value={taxMode}
-                    onChange={(e) => setTaxMode(e.target.value)}
-                    className="h-10 min-w-[180px] border-0 border-b-2 border-gray-200 bg-transparent text-sm text-gray-700 outline-none focus:border-teal-600"
-                  >
-                    <option value="Tax Exclusive">Tax Exclusive</option>
-                    <option value="Tax Inclusive">Tax Inclusive</option>
-                  </select>
+                  <div className="relative" ref={taxModeDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setTaxModeDropdownOpen((prev) => !prev)}
+                      className="h-10 min-w-[180px] px-3 border-0 border-b-2 border-gray-200 bg-transparent text-sm text-gray-700 cursor-pointer flex items-center justify-between outline-none hover:border-teal-600"
+                    >
+                      <span>{taxMode}</span>
+                      {taxModeDropdownOpen ? <ChevronUp size={16} className="text-teal-600" /> : <ChevronDown size={16} className="text-gray-500" />}
+                    </button>
+                    {taxModeDropdownOpen && (
+                      <div className="absolute top-full left-0 mt-1 w-[220px] bg-white rounded-lg shadow-lg border border-gray-200 z-[100] max-h-[300px] overflow-hidden flex flex-col">
+                        <div className="max-h-[200px] overflow-y-auto py-1">
+                          {["Tax Exclusive", "Tax Inclusive"].map((mode) => {
+                            const isSelected = taxMode === mode;
+                            return (
+                              <button
+                                key={mode}
+                                type="button"
+                                onClick={() => {
+                                  setTaxMode(mode);
+                                  setTaxModeDropdownOpen(false);
+                                }}
+                                className={`w-full px-4 py-2 text-sm text-left flex items-center justify-between hover:bg-teal-50 ${isSelected ? "bg-teal-50" : ""}`}
+                              >
+                                <span className={isSelected ? "text-teal-700 font-medium" : "text-gray-900"}>
+                                  {mode}
+                                </span>
+                                {isSelected && <Check size={16} className="text-teal-700" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="relative" ref={transactionLevelRef}>
                   <button
@@ -2259,8 +2859,8 @@ export default function NewBill() {
               </div>
 
               {/* Item Table Heading with Bulk Actions */}
-              <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border border-gray-200 border-b-0 rounded-t-md">
-                <h3 className="text-xl font-semibold text-gray-900">Item Table</h3>
+              <div className="flex items-center justify-between px-4 py-4 bg-gray-50 border border-gray-200 border-b-0 rounded-t-xl">
+                <h3 className="text-[18px] font-semibold text-gray-900">Item Table</h3>
                 <div className="relative" ref={bulkActionsRef}>
                   <button
                     type="button"
@@ -2315,17 +2915,17 @@ export default function NewBill() {
                         }}
                         onMouseEnter={(e) => {
                           if (selectedBulkAction !== "Bulk Update Line Items") {
-                            e.target.style.backgroundColor = "#156372";
-                            e.target.style.color = "#ffffff";
+                            e.currentTarget.style.backgroundColor = "#156372";
+                            e.currentTarget.style.color = "#ffffff";
                           }
                         }}
                         onMouseLeave={(e) => {
                           if (selectedBulkAction !== "Bulk Update Line Items") {
-                            e.target.style.backgroundColor = "transparent";
-                            e.target.style.color = "#111827";
+                            e.currentTarget.style.backgroundColor = "transparent";
+                            e.currentTarget.style.color = "#111827";
                           } else {
-                            e.target.style.backgroundColor = "#156372";
-                            e.target.style.color = "#ffffff";
+                            e.currentTarget.style.backgroundColor = "#156372";
+                            e.currentTarget.style.color = "#ffffff";
                           }
                         }}
                       >
@@ -2356,18 +2956,18 @@ export default function NewBill() {
                         onMouseEnter={(e) => {
                           const actionText = showAdditionalFields ? "Hide All Additional Information" : "Show All Additional Information";
                           if (selectedBulkAction !== actionText) {
-                            e.target.style.backgroundColor = "#156372";
-                            e.target.style.color = "#ffffff";
+                            e.currentTarget.style.backgroundColor = "#156372";
+                            e.currentTarget.style.color = "#ffffff";
                           }
                         }}
                         onMouseLeave={(e) => {
                           const actionText = showAdditionalFields ? "Hide All Additional Information" : "Show All Additional Information";
                           if (selectedBulkAction !== actionText) {
-                            e.target.style.backgroundColor = "transparent";
-                            e.target.style.color = "#111827";
+                            e.currentTarget.style.backgroundColor = "transparent";
+                            e.currentTarget.style.color = "#111827";
                           } else {
-                            e.target.style.backgroundColor = "#156372";
-                            e.target.style.color = "#ffffff";
+                            e.currentTarget.style.backgroundColor = "#156372";
+                            e.currentTarget.style.color = "#ffffff";
                           }
                         }}
                       >
@@ -2403,10 +3003,10 @@ export default function NewBill() {
                       transition: "background-color 0.2s",
                     }}
                     onMouseEnter={(e) => {
-                      e.target.style.backgroundColor = "#0D4A52";
+                      e.currentTarget.style.backgroundColor = "#0D4A52";
                     }}
                     onMouseLeave={(e) => {
-                      e.target.style.backgroundColor = "#156372";
+                      e.currentTarget.style.backgroundColor = "#156372";
                     }}
                   >
                     Update Reporting Tags
@@ -2429,10 +3029,10 @@ export default function NewBill() {
                       transition: "background-color 0.2s",
                     }}
                     onMouseEnter={(e) => {
-                      e.target.style.backgroundColor = "#dbeafe";
+                      e.currentTarget.style.backgroundColor = "#dbeafe";
                     }}
                     onMouseLeave={(e) => {
-                      e.target.style.backgroundColor = "transparent";
+                      e.currentTarget.style.backgroundColor = "transparent";
                     }}
                   >
                     <X size={16} />
@@ -2440,17 +3040,20 @@ export default function NewBill() {
                 </div>
               )}
 
-              <table className="w-full border-collapse border border-gray-200 border-t-0 mb-3" style={{ overflow: "visible" }}>
-                <thead className="bg-gray-50 border-b border-gray-200">
+              <div className="mb-4 overflow-visible rounded-b-2xl border border-t-0 border-gray-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.04)]">
+              <table className="w-full table-fixed border-collapse">
+                <thead className="border-b border-gray-200 bg-gray-50/80">
                   <tr>
-                    <th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase" style={{ width: "25%" }}>ITEM DETAILS</th>
-                    <th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase" style={{ width: "15%" }}>ACCOUNT</th>
-                    <th className="p-3 text-right text-xs font-semibold text-gray-500 uppercase" style={{ width: "8%" }}>QUANTITY</th>
-                    <th className="p-3 text-right text-xs font-semibold text-gray-500 uppercase" style={{ width: "12%" }}>RATE</th>
-                    <th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase" style={{ width: "12%" }}>TAX</th>
-                    <th className="p-3 text-left text-xs font-semibold text-gray-500 uppercase" style={{ width: "15%" }}>CUSTOMER DETAILS</th>
-                    <th className="p-3 text-right text-xs font-semibold text-gray-500 uppercase" style={{ width: "10%" }}>AMOUNT</th>
-                    <th className="p-3" style={{ width: "3%" }}></th>
+                    <th className={itemTableHeaderClass} style={{ width: "26%" }}>ITEM DETAILS</th>
+                    <th className={itemTableHeaderClass} style={{ width: "16%" }}>ACCOUNT</th>
+                    <th className={`${itemTableHeaderClass} text-right`} style={{ width: "11%" }}>QUANTITY</th>
+                    <th className={`${itemTableHeaderClass} text-right`} style={{ width: "13%" }}>RATE</th>
+                    <th className={itemTableHeaderClass} style={{ width: "0%", padding: 0 }} aria-hidden="true">
+                      <span className="sr-only">Tax</span>
+                    </th>
+                    <th className={itemTableHeaderClass} style={{ width: "13%" }}>CUSTOMER DETAILS</th>
+                    <th className={`${itemTableHeaderClass} text-right`} style={{ width: "7%" }}>AMOUNT</th>
+                    <th className="px-2 py-3" style={{ width: "2%" }}></th>
                   </tr>
                 </thead>
                 <tbody className="bg-white">
@@ -2459,9 +3062,21 @@ export default function NewBill() {
                     const accountSearch = accountSearches[item.id] || "";
                     const customerOpen = customerDropdowns[item.id] || false;
                     const customerSearch = customerSearches[item.id] || "";
+                    const reportingTagsTriggerRef = itemReportingTagsRefs.current[item.id];
+                    const reportingTagsTriggerRect = reportingTagsTriggerRef?.getBoundingClientRect() || null;
+                    const selectedItemMeta = items.find((itemOption) => String(itemOption._id || itemOption.id) === String(item.item));
+                    const rowTrackInventory = Boolean(item.trackInventory || selectedItemMeta?.trackInventory);
+                    const rowStockQuantity = Number(
+                      item.stockQuantity ??
+                      selectedItemMeta?.stockQuantity ??
+                      (selectedItemMeta as any)?.stockOnHand ??
+                      (selectedItemMeta as any)?.quantityOnHand ??
+                      0
+                    );
+                    const rowUnit = item.unit || selectedItemMeta?.unit || "";
 
                     // Filter accounts based on search
-                    const filteredAccounts = Object.entries(structuredAccounts).reduce((acc, [category, accounts]) => {
+                    const filteredAccounts: Record<string, string[]> = Object.entries(structuredAccounts).reduce((acc: Record<string, string[]>, [category, accounts]: [string, string[]]) => {
                       const filtered = accounts.filter(acc =>
                         acc && typeof acc === 'string' && acc.toLowerCase().includes(accountSearch.toLowerCase())
                       );
@@ -2476,40 +3091,55 @@ export default function NewBill() {
                       customer && customer.toLowerCase().includes(customerSearch.toLowerCase())
                     );
 
-                    if (!accountRefs.current[item.id]) accountRefs.current[item.id] = { current: null };
-                    if (!customerRefs.current[item.id]) customerRefs.current[item.id] = { current: null };
+                    if (!accountRefs.current[item.id]) accountRefs.current[item.id] = null;
+                    if (!customerRefs.current[item.id]) customerRefs.current[item.id] = null;
 
                     return (
                       <React.Fragment key={item.id}>
-                        <tr className="border-b border-gray-200">
-                          <td className="p-2 text-sm">
-                            <div className="relative flex items-center gap-2" ref={(el) => {
-                              if (!itemRefs.current[item.id]) itemRefs.current[item.id] = { current: null };
-                              itemRefs.current[item.id].current = el;
-                            }}>
-                              <div className="flex flex-col gap-1 cursor-move" style={{ padding: "4px 2px" }}>
+                        <tr className="border-b border-gray-200 align-top min-h-[118px]">
+                          <td className="px-3 py-2.5 text-sm">
+                              <div className="relative flex items-center gap-2" ref={(el) => {
+                                itemRefs.current[item.id] = el;
+                              }}>
+                              <div className="flex flex-col gap-1 cursor-move px-0.5 py-1.5">
                                 <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
                                 <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
                                 <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
                               </div>
-                              <ImageIcon size={16} className="text-gray-400" />
-                              <input
-                                type="text"
-                                value={item.itemDetails}
-                                onChange={(e) => {
-                                  handleItemChange(item.id, "itemDetails", e.target.value);
-                                  setItemSearch((prev) => ({ ...prev, [item.id]: e.target.value }));
-                                  setItemDropdownOpen((prev) => ({ ...prev, [item.id]: true }));
-                                }}
-                                onFocus={() => setItemDropdownOpen((prev) => ({ ...prev, [item.id]: true }))}
-                                className="flex-1 px-2 py-1.5 border rounded text-sm outline-none box-border"
-                                style={{
-                                  borderColor: itemDropdownOpen[item.id] ? "#156372" : "#d1d5db"
-                                }}
-                                placeholder="Type or click to select an item."
-                              />
+                              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50">
+                                <ImageIcon size={18} className="text-gray-300" />
+                              </div>
+                              <div className="relative flex-1">
+                                <input
+                                  type="text"
+                                  value={item.itemDetails}
+                                  onChange={(e) => {
+                                    handleItemChange(item.id, "itemDetails", e.target.value);
+                                    setItemSearch((prev) => ({ ...prev, [item.id]: e.target.value }));
+                                    setItemDropdownOpen((prev) => ({ ...prev, [item.id]: true }));
+                                  }}
+                                  onClick={() => setItemDropdownOpen((prev) => ({ ...prev, [item.id]: true }))}
+                                  onFocus={() => setItemDropdownOpen((prev) => ({ ...prev, [item.id]: true }))}
+                                  className={`${itemTableInputClass} w-full pr-9`}
+                                  style={{
+                                    borderColor: itemDropdownOpen[item.id] ? "#156372" : "#d1d5db"
+                                  }}
+                                  placeholder="Type or click to select an item."
+                                />
+                                <button
+                                  type="button"
+                                  aria-label={itemDropdownOpen[item.id] ? "Close item dropdown" : "Open item dropdown"}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => {
+                                    setItemDropdownOpen((prev) => ({ ...prev, [item.id]: !prev[item.id] }));
+                                  }}
+                                >
+                                  {itemDropdownOpen[item.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                </button>
+                              </div>
                               {itemDropdownOpen[item.id] && (
-                                <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 z-[100] max-h-[300px] overflow-y-auto" style={{ marginLeft: "40px" }}>
+                                <div className="absolute top-full left-0 right-0 z-[100] mt-2 max-h-[300px] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg" style={{ marginLeft: "58px" }}>
                                   {filteredItems(item.id).length > 0 ? (
                                     filteredItems(item.id).map((itemOption) => (
                                       <div
@@ -2525,7 +3155,7 @@ export default function NewBill() {
                                             <div className="text-[11px] text-gray-500 group-hover:text-gray-600 flex items-center gap-2">
                                               <span>SKU: {itemOption.sku || 'N/A'}</span>
                                               <span className="w-1 h-1 rounded-full bg-gray-300"></span>
-                                              <span>Purchase Rate: {resolvedBaseCurrencySymbol} {(itemOption.costPrice || 0).toFixed(2)}</span>
+                                              <span>Purchase Rate: {resolvedBaseCurrencySymbol} {(Number(itemOption.costPrice || 0)).toFixed(2)}</span>
                                             </div>
                                           </div>
                                           {itemOption.trackInventory && (
@@ -2533,8 +3163,8 @@ export default function NewBill() {
                                               <div className="text-[9px] uppercase font-bold text-gray-400 mb-0.5 tracking-wider">
                                                 Stock on Hand
                                               </div>
-                                              <div className={`text-xs font-semibold ${itemOption.stockQuantity > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                                {(itemOption.stockQuantity || 0).toFixed(2)} {itemOption.unit || ''}
+                                              <div className={`text-xs font-semibold ${(Number(itemOption.stockQuantity || 0)) > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                                {(Number(itemOption.stockQuantity || 0)).toFixed(2)} {itemOption.unit || ''}
                                               </div>
                                             </div>
                                           )}
@@ -2557,6 +3187,16 @@ export default function NewBill() {
                                     View All Items
                                   </div>
                                   <div
+                                    className="px-3 py-2 border-t border-gray-200 bg-white cursor-pointer text-sm flex items-center gap-2 hover:bg-gray-50"
+                                    style={{ color: "#6b7280" }}
+                                    onClick={() => {
+                                      setItemDropdownOpen((prev) => ({ ...prev, [item.id]: false }));
+                                      setItemSearch((prev) => ({ ...prev, [item.id]: "" }));
+                                    }}
+                                  >
+                                    Cancel
+                                  </div>
+                                  <div
                                     className="px-3 py-2 border-t border-gray-200 bg-gray-50 cursor-pointer text-sm flex items-center gap-2 hover:bg-teal-50"
                                     style={{ color: "#156372" }}
                                     onClick={() => {
@@ -2571,8 +3211,13 @@ export default function NewBill() {
                               )}
                             </div>
                           </td>
-                          <td className="p-2 text-sm">
-                            <div className="relative" ref={accountRefs.current[item.id]}>
+                          <td className="px-3 py-2.5 text-sm">
+                            <div
+                              className="relative"
+                              ref={(el) => {
+                                accountRefs.current[item.id] = el;
+                              }}
+                            >
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -2583,7 +3228,7 @@ export default function NewBill() {
                                     [item.id]: {
                                       top: buttonRect.bottom + 4,
                                       left: buttonRect.left,
-                                      width: buttonRect.width
+                                      width: Math.max(buttonRect.width + 20, 220)
                                     }
                                   }));
                                   setAccountDropdowns(prev => ({
@@ -2591,9 +3236,9 @@ export default function NewBill() {
                                     [item.id]: !prev[item.id]
                                   }));
                                 }}
-                                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm outline-none bg-white cursor-pointer flex items-center justify-between"
+                                className={`${itemTableSelectClass} cursor-pointer justify-between`}
                               >
-                                <span className={item.account ? "" : "text-gray-400"}>
+                                <span className={`${item.account ? "" : "text-gray-400"} min-w-0 flex-1 truncate`}>
                                   {item.account || "Select an account"}
                                 </span>
                                 {accountOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -2610,8 +3255,8 @@ export default function NewBill() {
                                     zIndex: 10000,
                                   }}
                                 >
-                                  <div className="px-3 py-2 border-b border-gray-200">
-                                    <div className="flex items-center gap-2">
+                                  <div className="p-2 border-b border-gray-200">
+                                    <div className="flex h-10 w-full items-center gap-2 rounded-md border border-gray-300 px-2.5 focus-within:border-blue-500">
                                       <Search size={14} className="text-gray-400" />
                                       <input
                                         type="text"
@@ -2623,7 +3268,7 @@ export default function NewBill() {
                                             [item.id]: e.target.value
                                           }));
                                         }}
-                                        className="flex-1 border-none outline-none text-sm"
+                                        className="w-full border-none outline-none text-sm text-gray-700 placeholder:text-gray-400"
                                         onClick={(e) => e.stopPropagation()}
                                         autoFocus
                                       />
@@ -2635,7 +3280,7 @@ export default function NewBill() {
                                         No accounts found
                                       </div>
                                     ) : (
-                                      Object.entries(filteredAccounts).map(([category, accounts]) => (
+                                      (Object.entries(filteredAccounts) as [string, string[]][]).map(([category, accounts]) => (
                                         <div key={category}>
                                           <div className="px-4 py-2 text-xs font-bold text-gray-900 uppercase" style={{ fontWeight: "600" }}>
                                             {category}
@@ -2705,52 +3350,52 @@ export default function NewBill() {
                               )}
                             </div>
                           </td>
-                          <td className="p-2 text-sm">
-                            <input
-                              type="text"
-                              value={item.quantity}
-                              onChange={(e) => handleItemChange(item.id, "quantity", e.target.value)}
-                              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm outline-none box-border text-right"
-                            />
-                          </td>
-                          <td className="p-2 text-sm">
-                            <div className="flex items-center gap-2">
+                          <td className="px-3 py-2.5 text-sm align-top">
+                            <div className="flex min-h-[128px] flex-col items-stretch justify-start">
                               <input
                                 type="text"
-                                value={item.rate}
-                                onChange={(e) => handleItemChange(item.id, "rate", e.target.value)}
-                                className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm outline-none box-border text-right"
+                                value={item.quantity}
+                                onChange={(e) => handleItemChange(item.id, "quantity", e.target.value)}
+                                className={`${itemTableInputClass} text-right tabular-nums`}
                               />
-                              <Calculator size={16} className="text-gray-400" />
+                              {rowTrackInventory ? (
+                                <div className="mt-2 space-y-1 text-center text-[11px] leading-4 pb-1">
+                                  <div className="text-gray-700">
+                                    <span className="font-medium">Stock on Hand:</span>{" "}
+                                    <span className="text-gray-900">
+                                      {rowStockQuantity.toFixed(2)} {rowUnit}
+                                    </span>
+                                  </div>
+                                  {warehouseLocation ? (
+                                    <div className="flex items-center justify-center gap-1 text-blue-500">
+                                      <Building2 size={12} />
+                                      <span>{warehouseLocation}</span>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
                             </div>
                           </td>
-                          <td className="p-2 text-sm">
-                            <div className="relative" ref={(el) => (taxRefs.current[item.id] = el)}>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  const button = e.currentTarget;
-                                  const buttonRect = button.getBoundingClientRect();
-                                  setTaxDropdownPosition((prev) => ({
-                                    ...prev,
-                                    [item.id]: {
-                                      top: buttonRect.bottom + 4,
-                                      left: buttonRect.left,
-                                      width: buttonRect.width
-                                    }
-                                  }));
-                                  setTaxDropdowns(prev => ({
-                                    ...prev,
-                                    [item.id]: !prev[item.id]
-                                  }));
-                                }}
-                                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm outline-none bg-white cursor-pointer flex items-center justify-between"
-                              >
-                                <span className={item.tax ? "" : "text-gray-400"}>
-                                  {item.tax ? getTaxDisplayLabel(item.tax) : "Select Tax"}
-                                </span>
-                                {taxDropdowns[item.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                              </button>
+                          <td className="px-3 py-2.5 text-sm">
+                            <input
+                              type="text"
+                              value={item.rate}
+                              onChange={(e) => handleItemChange(item.id, "rate", e.target.value)}
+                              className={`${itemTableInputClass} w-full text-right tabular-nums`}
+                            />
+                          </td>
+                          <td className="px-0 py-2.5 text-sm" style={{ width: 0 }}>
+                            <div
+                              className="relative"
+                              ref={(el) => {
+                                taxRefs.current[item.id] = el;
+                              }}
+                            >
+                              {item.tax ? (
+                                <div className="min-h-11 px-3 py-2.5 text-sm text-gray-700 flex items-center">
+                                  <span className="min-w-0 flex-1 truncate">{getTaxDisplayLabel(item.tax)}</span>
+                                </div>
+                              ) : null}
                               {taxDropdowns[item.id] && taxDropdownPosition[item.id] && createPortal(
                                 <div
                                   onClick={(e) => e.stopPropagation()}
@@ -2763,8 +3408,8 @@ export default function NewBill() {
                                     zIndex: 10000,
                                   }}
                                 >
-                                  <div className="px-3 py-2 border-b border-gray-200">
-                                    <div className="flex items-center gap-2">
+                                  <div className="p-2 border-b border-gray-200">
+                                    <div className="flex h-10 w-full items-center gap-2 rounded-md border border-gray-300 px-2.5 focus-within:border-blue-500">
                                       <Search size={14} className="text-gray-400" />
                                       <input
                                         type="text"
@@ -2776,7 +3421,7 @@ export default function NewBill() {
                                             [item.id]: e.target.value
                                           }));
                                         }}
-                                        className="flex-1 border-none outline-none text-sm"
+                                        className="w-full border-none outline-none text-sm text-gray-700 placeholder:text-gray-400"
                                         onClick={(e) => e.stopPropagation()}
                                         autoFocus
                                       />
@@ -2824,8 +3469,13 @@ export default function NewBill() {
                               )}
                             </div>
                           </td>
-                          <td className="p-2 text-sm">
-                            <div className="relative" ref={customerRefs.current[item.id]}>
+                          <td className="px-3 py-2.5 text-sm">
+                            <div
+                              className="relative"
+                              ref={(el) => {
+                                customerRefs.current[item.id] = el;
+                              }}
+                            >
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -2836,7 +3486,7 @@ export default function NewBill() {
                                     [item.id]: {
                                       top: buttonRect.bottom + 4,
                                       left: buttonRect.left,
-                                      width: buttonRect.width
+                                      width: Math.max(buttonRect.width + 20, 240)
                                     }
                                   }));
                                   setCustomerDropdowns(prev => ({
@@ -2844,12 +3494,11 @@ export default function NewBill() {
                                     [item.id]: !prev[item.id]
                                   }));
                                 }}
-                                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm outline-none bg-white cursor-pointer flex items-center justify-between"
+                                className={`${itemTableSelectClass} cursor-pointer justify-start`}
                               >
-                                <span className={item.customerDetails ? "" : "text-gray-400"}>
-                                  {item.customerDetails || "Select Customer"}
+                                <span className={`${item.customerDetails ? "" : "text-transparent"} min-w-0 flex-1 truncate`}>
+                                  {item.customerDetails || "\u00A0"}
                                 </span>
-                                {customerOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                               </button>
                               {customerOpen && customerDropdownPosition[item.id] && createPortal(
                                 <div
@@ -2863,8 +3512,8 @@ export default function NewBill() {
                                     zIndex: 10000,
                                   }}
                                 >
-                                  <div className="px-3 py-2 border-b border-gray-200">
-                                    <div className="flex items-center gap-2">
+                                  <div className="p-2 border-b border-gray-200">
+                                    <div className="flex h-10 w-full items-center gap-2 rounded-md border border-gray-300 px-2.5 focus-within:border-blue-500">
                                       <Search size={14} className="text-gray-400" />
                                       <input
                                         type="text"
@@ -2876,7 +3525,7 @@ export default function NewBill() {
                                             [item.id]: e.target.value
                                           }));
                                         }}
-                                        className="flex-1 border-none outline-none text-sm"
+                                        className="w-full border-none outline-none text-sm text-gray-700 placeholder:text-gray-400"
                                         onClick={(e) => e.stopPropagation()}
                                         autoFocus
                                       />
@@ -2937,19 +3586,24 @@ export default function NewBill() {
                               )}
                             </div>
                           </td>
-                          <td className="p-2 text-sm">
+                          <td className="px-3 py-2.5 text-sm">
                             <div className="flex items-center justify-end">
                               <input
                                 type="text"
-                                value={parseFloat(item.amount || 0).toFixed(2)}
+                                value={parseFloat(String(item.amount || 0)).toFixed(2)}
                                 readOnly
-                                className="px-2 py-1.5 border border-gray-300 rounded text-sm outline-none box-border bg-gray-50 text-right w-full"
+                                className="h-11 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none"
                               />
                             </div>
                           </td>
-                          <td className="p-2 text-sm">
-                            <div className="flex items-center gap-2 justify-end">
-                              <div style={{ position: "relative", zIndex: rowMenuOpen[item.id] ? 2000 : "auto" }} ref={(el) => (rowMenuRefs.current[item.id] = el)}>
+                          <td className="px-2 py-2.5 text-sm">
+                            <div className="flex items-center justify-end gap-2 pt-2">
+                              <div
+                                style={{ position: "relative", zIndex: rowMenuOpen[item.id] ? 2000 : "auto" }}
+                                ref={(el) => {
+                                  rowMenuRefs.current[item.id] = el;
+                                }}
+                              >
                                 <MoreVertical
                                   size={16}
                                   style={{ color: "#9ca3af", cursor: "pointer" }}
@@ -3003,7 +3657,7 @@ export default function NewBill() {
                                         // Insert New Row logic
                                         const index = formData.items.findIndex(i => i.id === item.id);
                                         const newItems = [...formData.items];
-                                        newItems.splice(index + 1, 0, { id: Date.now(), itemDetails: "", account: "", quantity: 1, rate: 0, tax: "", amount: 0 });
+                                        newItems.splice(index + 1, 0, { id: Date.now(), itemDetails: "", account: "", quantity: "1.00", rate: "0.00", discount: "0 %-", tax: "", customerDetails: "", amount: "0.00" });
                                         setFormData(prev => ({ ...prev, items: newItems }));
                                         setRowMenuOpen(prev => ({ ...prev, [item.id]: false }));
                                       }}
@@ -3093,15 +3747,15 @@ export default function NewBill() {
                         {/* Additional Fields Row for each item */}
                         {showAdditionalFields && (
                           <tr>
-                            <td colSpan={6} className="p-2" style={{ borderTop: "none", paddingTop: "0" }}>
+                            <td colSpan={8} className="px-3 pb-4 pt-0" style={{ borderTop: "none" }}>
                               <div style={{
                                 display: "flex",
                                 flexDirection: "row",
                                 gap: "16px",
                                 alignItems: "center",
-                                paddingLeft: "44px",
+                                paddingLeft: "56px",
                               }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                                   <Tag size={16} style={{ color: "#9ca3af" }} />
                                   <div
                                     style={{
@@ -3117,76 +3771,189 @@ export default function NewBill() {
                                     }}
                                     ref={(el) => {
                                       itemReportingTagsRefs.current[item.id] = el;
+                                      reportingTagsMenuRefs.current[item.id] = el;
                                     }}
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      const currentTags = Array.isArray((item as any).reportingTags) ? (item as any).reportingTags : [];
+                                      const draftValues: Record<string, string> = {};
+                                      currentTags.forEach((entry: any) => {
+                                        const tagId = String(entry?.tagId || entry?.id || "").trim();
+                                        if (!tagId) return;
+                                        draftValues[tagId] = String(entry?.value || "");
+                                      });
+                                      setItemReportingTagDrafts((prev) => ({
+                                        ...prev,
+                                        [item.id]: draftValues,
+                                      }));
                                       setItemReportingTagsOpen((prev) => ({
                                         ...prev,
                                         [item.id]: !prev[item.id]
                                       }));
                                     }}
                                   >
-                                    <span style={{ fontSize: "14px", color: "#6b7280" }}>Reporting Tags</span>
-                                    <ChevronDown size={14} style={{ color: "#6b7280" }} />
-                                    {itemReportingTagsOpen[item.id] && itemReportingTagsRefs.current[item.id] && typeof document !== 'undefined' && document.body && createPortal(
+                                    <Tag size={14} style={{ color: availableReportingTags.length > 0 ? "#ef4444" : "#6b7280" }} />
+                                    <span style={{ fontSize: "14px", color: availableReportingTags.length > 0 ? "#ef4444" : "#6b7280" }}>
+                                      Reporting Tags
+                                    </span>
+                                    <ChevronDown size={14} style={{ color: availableReportingTags.length > 0 ? "#6b7280" : "#6b7280" }} />
+                                    {itemReportingTagsOpen[item.id] && reportingTagsTriggerRef && reportingTagsTriggerRect && typeof document !== 'undefined' && document.body && createPortal(
                                       <div
                                         onClick={(e) => e.stopPropagation()}
+                                        ref={(el) => {
+                                          reportingTagsMenuRefs.current[item.id] = el;
+                                        }}
                                         style={{
                                           position: "fixed",
-                                          top: `${itemReportingTagsRefs.current[item.id].getBoundingClientRect().bottom + 4}px`,
-                                          left: `${itemReportingTagsRefs.current[item.id].getBoundingClientRect().left}px`,
+                                          top: `${reportingTagsTriggerRect.bottom + 4}px`,
+                                          left: `${reportingTagsTriggerRect.left}px`,
                                           backgroundColor: "#ffffff",
                                           border: "1px solid #d1d5db",
                                           borderRadius: "6px",
                                           boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
                                           zIndex: 10000,
-                                          minWidth: "300px",
-                                          padding: "16px",
+                                          minWidth: "420px",
+                                          width: "420px",
                                         }}
                                       >
-                                        <div style={{
-                                          fontSize: "16px",
-                                          fontWeight: "600",
-                                          color: "#111827",
-                                          marginBottom: "12px",
-                                        }}>
-                                          Reporting Tags
+                                        <div className="border-b border-gray-200 px-5 py-4">
+                                          <div className="text-[18px] font-semibold text-gray-900">Reporting Tags</div>
                                         </div>
-                                        <div style={{
-                                          fontSize: "14px",
-                                          color: "#6b7280",
-                                          marginBottom: "16px",
-                                          lineHeight: "1.5",
-                                        }}>
-                                          There are no active reporting tags or you haven't created a reporting tag yet. You can create/edit reporting tags under settings.
+
+                                        <div className="px-5 py-4">
+                                          {isReportingTagsLoading ? (
+                                            <div className="text-sm text-gray-500">Loading reporting tags...</div>
+                                          ) : availableReportingTags.length === 0 ? (
+                                            <div className="text-sm text-gray-600">
+                                              There are no active reporting tags or you haven't created a reporting tag yet. You can create/edit reporting tags under settings.
+                                            </div>
+                                          ) : (
+                                            <div className="space-y-4">
+                                              {availableReportingTags.map((tag) => {
+                                                const tagId = String(tag?._id || tag?.id || "").trim();
+                                                if (!tagId) return null;
+                                                const tagName = String(tag?.name || "Tag").trim();
+                                                const isRequired = Boolean(tag?.isRequired || tag?.required);
+                                                const selectedValue = String(itemReportingTagDrafts[item.id]?.[tagId] || "");
+                                                const options = [
+                                                  { value: "", label: "None" },
+                                                  ...((Array.isArray(tag?.options) ? tag.options : []) as string[]).map((option) => ({
+                                                    value: option,
+                                                    label: option,
+                                                  })),
+                                                ];
+                                                const selectedLabel = options.find((option) => option.value === selectedValue)?.label || "None";
+                                                const optionKey = `${item.id}:${tagId}`;
+                                                const optionMenuOpen = reportingTagOptionOpenKey === optionKey;
+
+                                                return (
+                                                  <div key={tagId} className="grid grid-cols-1 gap-2">
+                                                    <label className={`text-sm font-medium ${isRequired ? "text-red-600" : "text-gray-700"}`}>
+                                                      {tagName}{isRequired ? " *" : ""}
+                                                    </label>
+                                                    <div className="relative">
+                                                      <button
+                                                        type="button"
+                                                        className="flex h-10 w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-700 hover:border-blue-500"
+                                                        onClick={() => {
+                                                          setReportingTagOptionOpenKey((prev) => prev === optionKey ? null : optionKey);
+                                                        }}
+                                                      >
+                                                        <span className={`${selectedValue ? "text-gray-900" : "text-gray-400"} min-w-0 flex-1 truncate text-left`}>
+                                                          {selectedLabel}
+                                                        </span>
+                                                        <ChevronDown size={16} className={`shrink-0 text-gray-500 transition-transform ${optionMenuOpen ? "rotate-180" : ""}`} />
+                                                      </button>
+
+                                                      {optionMenuOpen && (
+                                                        <div className="absolute left-0 right-0 top-full z-[12001] mt-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+                                                          <div className="max-h-56 overflow-y-auto py-1">
+                                                            {options.map((option) => {
+                                                              const isSelected = option.value === selectedValue;
+                                                              return (
+                                                                <button
+                                                                  key={`${optionKey}-${option.value}`}
+                                                                  type="button"
+                                                                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 ${
+                                                                    isSelected ? "bg-gray-50 font-medium text-gray-900" : ""
+                                                                  }`}
+                                                                  onClick={() => {
+                                                                    setItemReportingTagDrafts((prev) => {
+                                                                      const next = { ...(prev || {}) };
+                                                                      const rowDrafts = { ...(next[item.id] || {}) };
+                                                                      if (!option.value) {
+                                                                        delete rowDrafts[tagId];
+                                                                      } else {
+                                                                        rowDrafts[tagId] = option.value;
+                                                                      }
+                                                                      next[item.id] = rowDrafts;
+                                                                      return next;
+                                                                    });
+                                                                    setReportingTagOptionOpenKey(null);
+                                                                  }}
+                                                                >
+                                                                  <span className="truncate">{option.label}</span>
+                                                                  {isSelected ? <Check size={14} className="text-gray-900" /> : null}
+                                                                </button>
+                                                              );
+                                                            })}
+                                                          </div>
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          )}
                                         </div>
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setItemReportingTagsOpen((prev) => ({
-                                              ...prev,
-                                              [item.id]: false
-                                            }));
-                                          }}
-                                          style={{
-                                            padding: "6px 16px",
-                                            fontSize: "14px",
-                                            color: "#111827",
-                                            backgroundColor: "#f3f4f6",
-                                            border: "1px solid #d1d5db",
-                                            borderRadius: "4px",
-                                            cursor: "pointer",
-                                            width: "100%",
-                                          }}
-                                          onMouseEnter={(e) => {
-                                            e.target.style.backgroundColor = "#e5e7eb";
-                                          }}
-                                          onMouseLeave={(e) => {
-                                            e.target.style.backgroundColor = "#f3f4f6";
-                                          }}
-                                        >
-                                          OK
-                                        </button>
+
+                                        <div className="flex items-center gap-3 border-t border-gray-200 px-5 py-4">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const currentTags = Array.isArray((item as any).reportingTags) ? (item as any).reportingTags : [];
+                                              const draftValues: Record<string, string> = {};
+                                              currentTags.forEach((entry: any) => {
+                                                const tagId = String(entry?.tagId || entry?.id || "").trim();
+                                                if (!tagId) return;
+                                                draftValues[tagId] = String(entry?.value || "");
+                                              });
+                                              setItemReportingTagDrafts((prev) => ({ ...prev, [item.id]: draftValues }));
+                                              setItemReportingTagsOpen((prev) => ({ ...prev, [item.id]: false }));
+                                              setReportingTagOptionOpenKey(null);
+                                            }}
+                                            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                          >
+                                            Cancel
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const rowDrafts = itemReportingTagDrafts[item.id] || {};
+                                              const nextTags = availableReportingTags
+                                                .map((tag) => {
+                                                  const tagId = String(tag?._id || tag?.id || "").trim();
+                                                  if (!tagId) return null;
+                                                  const value = String(rowDrafts[tagId] || "").trim();
+                                                  if (!value) return null;
+                                                  return {
+                                                    tagId,
+                                                    name: String(tag?.name || "Tag").trim(),
+                                                    value,
+                                                  };
+                                                })
+                                                .filter(Boolean);
+
+                                              handleItemChange(item.id, "reportingTags", nextTags);
+                                              setItemReportingTagsOpen((prev) => ({ ...prev, [item.id]: false }));
+                                              setReportingTagOptionOpenKey(null);
+                                            }}
+                                            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                                          >
+                                            Save
+                                          </button>
+                                        </div>
                                       </div>,
                                       document.body
                                     )}
@@ -3201,8 +3968,9 @@ export default function NewBill() {
                   })}
                 </tbody>
               </table>
+              </div>
 
-              <div className="flex justify-between items-start mt-3 gap-8">
+              <div className="mt-5 flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
                 {/* Left Side - Buttons stacked vertically */}
                 <div className="flex flex-col gap-3">
                   {/* Add New Row Button */}
@@ -3271,51 +4039,51 @@ export default function NewBill() {
                 </div>
 
                 {/* Summary - Bottom Right */}
-                <div className="w-[520px] flex-shrink-0 ml-0">
-                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-5">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[32px] font-semibold text-gray-700">Sub Total</span>
-                      <span className="text-[32px] font-semibold text-gray-900">{formData.subTotal}</span>
+                <div className="w-full max-w-[420px] flex-shrink-0 xl:ml-auto">
+                  <div className="rounded-3xl border border-gray-200 bg-gray-50/80 px-5 py-5 shadow-[0_14px_30px_rgba(15,23,42,0.04)]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[14px] font-semibold text-gray-900">Sub Total</span>
+                      <span className="text-[14px] font-semibold text-gray-900 tabular-nums">{formData.subTotal}</span>
                     </div>
                     {showTransactionDiscount && (
-                      <div className="flex justify-between items-center mt-4">
-                        <label className="text-[32px] font-medium text-gray-700">Discount</label>
+                      <div className="mt-5 grid grid-cols-[1fr_auto] items-center gap-4">
+                        <label className="text-[14px] font-medium text-gray-700">Discount</label>
                         <div className="flex items-center gap-2">
                           <input
                             type="number"
                             value={formData.discount.value}
                             onChange={(e) => handleDiscountChange(e.target.value)}
-                            className="w-28 px-2 py-1.5 border border-gray-300 rounded text-sm outline-none text-right bg-white"
+                            className={`h-10 w-28 rounded-l-lg border border-gray-200 bg-white px-3 text-right text-sm outline-none ${fieldFocusClass}`}
                             min="0"
                             max="100"
                           />
-                          <span className="text-sm text-gray-600 w-8 text-center">%</span>
-                          <span className="text-[32px] font-medium text-gray-900 w-24 text-right">{formData.discountAmount}</span>
+                          <span className="-ml-2 flex h-10 w-8 items-center justify-center rounded-r-lg border border-l-0 border-gray-200 bg-white text-sm text-gray-600">%</span>
+                          <span className="w-24 text-right text-[14px] font-medium text-gray-900 tabular-nums">{formData.discountAmount}</span>
                         </div>
                       </div>
                     )}
-                    <div className="flex justify-between items-center mt-4">
-                      <label className="text-[32px] font-medium text-gray-700">
+                    <div className="mt-5 flex items-center justify-between">
+                      <label className="text-[14px] font-medium text-gray-700">
                         Tax {String(taxMode || "").toLowerCase().includes("inclusive") ? "(Included)" : ""}
                       </label>
-                      <span className="text-[32px] font-medium text-gray-900">{formData.taxAmount || "0.00"}</span>
+                      <span className="text-[14px] font-medium text-gray-900 tabular-nums">{formData.taxAmount || "0.00"}</span>
                     </div>
-                    <div className="flex justify-between items-center mt-4">
-                      <label className="text-[32px] font-medium text-gray-700">Adjustment</label>
+                    <div className="mt-5 grid grid-cols-[1fr_auto] items-center gap-4">
+                      <label className="text-[14px] font-medium text-gray-700">Adjustment</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="number"
                           value={formData.adjustment || ""}
                           onChange={(e) => setFormData(prev => ({ ...prev, adjustment: e.target.value }))}
-                          className="w-32 px-2 py-1.5 border border-gray-300 rounded text-sm outline-none text-right bg-white"
+                          className={`h-10 w-32 rounded-lg border border-gray-200 bg-white px-3 text-right text-sm outline-none ${fieldFocusClass}`}
                         />
                         <Info size={14} className="text-gray-400" />
-                        <span className="text-[32px] font-medium text-gray-900 w-24 text-right">{(parseFloat(formData.adjustment || 0) || 0).toFixed(2)}</span>
+                        <span className="w-24 text-right text-[14px] font-medium text-gray-900 tabular-nums">{(parseFloat(String(formData.adjustment || 0)) || 0).toFixed(2)}</span>
                       </div>
                     </div>
-                    <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-200">
-                      <span className="text-[40px] font-bold text-gray-900">Total</span>
-                      <span className="text-[40px] font-bold text-gray-900">{formData.total}</span>
+                    <div className="mt-5 flex items-center justify-between border-t border-gray-200 pt-5">
+                      <span className="text-[17px] font-semibold text-gray-900">Total</span>
+                      <span className="text-[17px] font-semibold text-gray-900 tabular-nums">{formData.total}</span>
                     </div>
                   </div>
                 </div>
@@ -3324,9 +4092,9 @@ export default function NewBill() {
           </div>
 
           {/* Notes and Attachments */}
-          <div className="mb-8 border-y border-gray-200 bg-gray-50">
+          <div className="mb-8 border-y border-gray-200 bg-white">
             <div className="grid grid-cols-1 lg:grid-cols-2">
-              <div className="p-6 border-r border-gray-200">
+              <div className="p-6 lg:border-r lg:border-gray-200">
                 <label className="text-sm font-medium text-gray-900 flex items-center gap-1 mb-2">Notes</label>
                 <div className="relative">
                   <textarea
@@ -3514,52 +4282,21 @@ export default function NewBill() {
             </div>
           </div>
 
-          <div className="mb-6 px-1">
-            <p className="text-[22px] text-gray-500 italic">
-              <span className="font-semibold text-gray-600">Additional Fields:</span> Start adding custom fields for your payments made by going to <span className="underline">Settings</span> <span>?</span> <span className="underline">Purchases</span> <span>?</span> <span className="underline">Bills</span>.
-            </p>
-          </div>
-        </div>
-
-        {/* Vendor Address / Add Address */}
-        <div className="mb-4">
-          {formData.vendorAddress || formData.vendorCity || formData.vendorCountry || formData.vendorEmail ? (
-            <div className="p-3 border border-gray-200 rounded-md bg-white text-sm text-gray-700">
-              {formData.vendorAddress && <div>{formData.vendorAddress}</div>}
-              {formData.vendorCity && <div>{formData.vendorCity}</div>}
-              {formData.vendorCountry && <div>{formData.vendorCountry}</div>}
-              {formData.vendorEmail && <div className="text-gray-500 mt-1">Email: {formData.vendorEmail}</div>}
-            </div>
-          ) : (
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                className="px-3 py-2 text-sm text-teal-700 border border-blue-100 rounded-md hover:bg-teal-50"
-                onClick={() => setShowNewVendorModal(true)}
-              >
-                + Add new address
-              </button>
-              <button
-                type="button"
-                className="px-3 py-2 text-sm text-gray-600 border border-gray-100 rounded-md hover:bg-gray-50"
-                onClick={() => setVendorSearchModalOpen(true)}
-              >
-                Search vendor
-              </button>
-            </div>
-          )}
         </div>
       </form>
-
       {/* Footer */}
-      <div className="flex-shrink-0 bg-white border-t border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div
+        className="fixed bottom-0 right-0 z-20 flex-shrink-0 border-t border-gray-200 bg-white/95 px-6 py-4 shadow-[0_-10px_24px_rgba(15,23,42,0.06)] backdrop-blur-sm"
+        style={{ left: "240px" }}
+      >
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="flex gap-3">
             <button
               type="button"
               onClick={(e) => handleSubmit(e, "draft")}
               disabled={!!saveLoadingState}
-              className="cursor-pointer bg-white text-gray-700 px-5 py-2 rounded-md border border-gray-300 hover:bg-gray-50 text-sm font-medium"
+              className="cursor-pointer bg-white text-gray-900 px-5 py-2 rounded-md border border-gray-300 hover:bg-gray-50 text-sm font-semibold shadow-sm"
             >
               {saveLoadingState === "draft" ? "Saving..." : "Save as Draft"}
             </button>
@@ -3567,7 +4304,7 @@ export default function NewBill() {
               type="button"
               onClick={(e) => handleSubmit(e, "open")}
               disabled={!!saveLoadingState}
-              className="cursor-pointer bg-[#156372] text-white px-5 py-2 rounded-md border border-[#156372] hover:bg-[#0D4A52] text-sm font-medium"
+              className="cursor-pointer bg-[#156372] text-white px-5 py-2 rounded-md border border-[#156372] hover:bg-[#0D4A52] text-sm font-semibold shadow-sm"
             >
               {saveLoadingState === "open" ? "Saving..." : "Save as Open"}
             </button>
@@ -3575,13 +4312,13 @@ export default function NewBill() {
               type="button"
               onClick={handleCancel}
               disabled={!!saveLoadingState}
-              className="cursor-pointer bg-white text-gray-700 px-5 py-2 rounded-md border border-gray-300 hover:bg-gray-50 text-sm font-medium"
+              className="cursor-pointer bg-white text-gray-900 px-5 py-2 rounded-md border border-gray-300 hover:bg-gray-50 text-sm font-semibold shadow-sm"
             >
               Cancel
             </button>
           </div>
         </div>
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-6 justify-start xl:justify-end">
           <div className="flex items-center gap-4">
             <div className="text-sm text-gray-700 flex items-center gap-2">
               PDF Template: <span className="font-medium">'Standard Template'</span>
@@ -3599,6 +4336,8 @@ export default function NewBill() {
             </button>
           </div>
         </div>
+        </div>
+      </div>
       </div>
 
       {/* New Vendor Modal */}
@@ -4378,7 +5117,7 @@ export default function NewBill() {
                             <div style={{ fontSize: "14px", fontWeight: "500", color: "#111827" }}>{item.name}</div>
                             {item.costPrice && (
                               <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
-                                ${parseFloat(item.costPrice).toFixed(2)}
+                                ${parseFloat(String(item.costPrice)).toFixed(2)}
                               </div>
                             )}
                           </div>
@@ -4554,7 +5293,7 @@ export default function NewBill() {
                           overflowY: "auto",
                         }}
                       >
-                        {Object.keys(EXPENSE_ACCOUNTS_STRUCTURE).map((category) => (
+                        {Object.keys(structuredAccounts).map((category) => (
                           <button
                             key={category}
                             type="button"
@@ -4787,8 +5526,8 @@ export default function NewBill() {
                   color: "#374151",
                   cursor: "pointer",
                 }}
-                onMouseEnter={(e) => (e.target.style.backgroundColor = "#f9fafb")}
-                onMouseLeave={(e) => (e.target.style.backgroundColor = "#ffffff")}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f9fafb")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
               >
                 Cancel
               </button>
@@ -4829,12 +5568,12 @@ export default function NewBill() {
                 }}
                 onMouseEnter={(e) => {
                   if (newAccountData.accountName) {
-                    e.target.style.backgroundColor = "#0D4A52";
+                    e.currentTarget.style.backgroundColor = "#0D4A52";
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (newAccountData.accountName) {
-                    e.target.style.backgroundColor = "#0D4A52";
+                    e.currentTarget.style.backgroundColor = "#0D4A52";
                   }
                 }}
               >
@@ -4850,9 +5589,17 @@ export default function NewBill() {
 }
 
 // Configure Payment Terms Modal Component
-function ConfigurePaymentTermsModal({ paymentTerms, onClose, onSave }) {
+function ConfigurePaymentTermsModal({
+  paymentTerms,
+  onClose,
+  onSave,
+}: {
+  paymentTerms: PaymentTerm[];
+  onClose: () => void;
+  onSave: (updatedTerms: Array<PaymentTerm & { id?: string; _id?: string; isNew?: boolean }>) => void;
+}) {
   const [terms, setTerms] = useState(paymentTerms);
-  const [hoveredRow, setHoveredRow] = useState(null);
+  const [hoveredRow, setHoveredRow] = useState<number | null>(null);
 
   const handleAddNew = () => {
     setTerms([
@@ -4866,8 +5613,12 @@ function ConfigurePaymentTermsModal({ paymentTerms, onClose, onSave }) {
     ]);
   };
 
-  const handleTermChange = (index, field, value) => {
-    const updatedTerms = terms.map((term, i) => {
+  const handleTermChange = (
+    index: number,
+    field: keyof PaymentTerm | "isNew" | "id" | "_id",
+    value: string | number | boolean | null
+  ) => {
+    const updatedTerms = terms.map((term: PaymentTerm, i: number) => {
       if (i === index) {
         return { ...term, [field]: value };
       }
@@ -4876,15 +5627,15 @@ function ConfigurePaymentTermsModal({ paymentTerms, onClose, onSave }) {
     setTerms(updatedTerms);
   };
 
-  const handleMarkAsDefault = (index) => {
-    const updatedTerms = terms.map((term, i) => ({
+  const handleMarkAsDefault = (index: number) => {
+    const updatedTerms = terms.map((term: PaymentTerm, i: number) => ({
       ...term,
       isDefault: i === index,
     }));
     setTerms(updatedTerms);
   };
 
-  const handleDelete = (index) => {
+  const handleDelete = (index: number) => {
     if (terms.length > 1) {
       const updatedTerms = terms.filter((_, i) => i !== index);
       setTerms(updatedTerms);
@@ -4899,7 +5650,7 @@ function ConfigurePaymentTermsModal({ paymentTerms, onClose, onSave }) {
     onSave(validTerms);
   };
 
-  const modalStyles = {
+  const modalStyles: Record<string, React.CSSProperties> = {
     overlay: {
       position: "fixed",
       top: 0,
@@ -5143,8 +5894,10 @@ function ConfigurePaymentTermsModal({ paymentTerms, onClose, onSave }) {
 }
 
 // New Customer Modal Component
-function NewCustomerModal({ onClose, onSave }) {
-  const [formData, setFormData] = useState({
+function NewCustomerModal({ onClose, onSave }: { onClose: () => void; onSave: (customer: any) => void }) {
+  const { code: baseCurrencyCode } = useCurrency();
+  const resolvedBaseCurrency = baseCurrencyCode || "USD";
+  const [formData, setFormData] = useState<any>({
     customerType: "Business",
     salutation: "",
     firstName: "",
@@ -5188,14 +5941,15 @@ function NewCustomerModal({ onClose, onSave }) {
   });
   const [activeTab, setActiveTab] = useState("Other Details");
   const [showMoreDetails, setShowMoreDetails] = useState(false);
-  const [documents, setDocuments] = useState([]);
+  const [documents, setDocuments] = useState<Attachment[]>([]);
   const [uploadDropdownOpen, setUploadDropdownOpen] = useState(false);
-  const fileInputRef = useRef(null);
-  const uploadDropdownRef = useRef(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadDropdownRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (uploadDropdownRef.current && !uploadDropdownRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      const targetElement = event.target instanceof Node ? event.target : null;
+      if (uploadDropdownRef.current && !uploadDropdownRef.current.contains(targetElement)) {
         setUploadDropdownOpen(false);
       }
     };
@@ -5213,8 +5967,8 @@ function NewCustomerModal({ onClose, onSave }) {
     };
   }, [documents]);
 
-  const handleFileUpload = (files) => {
-    const fileArray = Array.from(files);
+  const handleFileUpload = (files: FileList | File[]) => {
+    const fileArray = Array.from(files) as File[];
     const maxFiles = 10;
     const maxSize = 10 * 1024 * 1024;
 
@@ -5223,7 +5977,7 @@ function NewCustomerModal({ onClose, onSave }) {
       return;
     }
 
-    const validFiles = fileArray.filter(file => {
+    const validFiles = fileArray.filter((file: File) => {
       if (file.size > maxSize) {
         alert(`File "${file.name}" exceeds the maximum size of 10MB.`);
         return false;
@@ -5231,10 +5985,10 @@ function NewCustomerModal({ onClose, onSave }) {
       return true;
     });
 
-    validFiles.forEach(file => {
+    validFiles.forEach((file: File) => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setDocuments(prev => [...prev, {
+        setDocuments((prev: Attachment[]) => [...prev, {
           id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
           name: file.name,
           size: file.size,
@@ -5247,24 +6001,24 @@ function NewCustomerModal({ onClose, onSave }) {
     });
   };
 
-  const handleRemoveDocument = (id) => {
-    setDocuments(prev => {
-      const doc = prev.find(d => d.id === id);
+  const handleRemoveDocument = (id: string | number) => {
+    setDocuments((prev: Attachment[]) => {
+      const doc = prev.find(d => String(d.id) === String(id));
       if (doc && doc.preview) {
         URL.revokeObjectURL(doc.preview);
       }
-      return prev.filter(d => d.id !== id);
+      return prev.filter(d => String(d.id) !== String(id));
     });
   };
 
-  const formatFileSize = (bytes) => {
+  const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   };
 
   const copyBillingToShipping = () => {
-    setFormData((prev) => ({
+    setFormData((prev: typeof formData) => ({
       ...prev,
       shippingAttention: prev.billingAttention,
       shippingCountry: prev.billingCountry,
@@ -5278,9 +6032,11 @@ function NewCustomerModal({ onClose, onSave }) {
     }));
   };
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    const updatedData = { ...formData, [name]: type === "checkbox" ? checked : value };
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    const target = e.currentTarget as HTMLInputElement;
+    const isCheckbox = target.type === "checkbox";
+    const updatedData = { ...formData, [name]: isCheckbox ? target.checked : value };
 
     if (name === "firstName" || name === "lastName" || name === "companyName") {
       const options = generateDisplayNameOptions(updatedData);
@@ -5292,9 +6048,9 @@ function NewCustomerModal({ onClose, onSave }) {
     setFormData(updatedData);
   };
 
-  const generateDisplayNameOptions = (data) => {
+  const generateDisplayNameOptions = (data: Partial<typeof formData>) => {
     const { firstName, lastName, companyName } = data;
-    const options = [];
+    const options: string[] = [];
 
     if (companyName) {
       options.push(companyName);
@@ -5316,7 +6072,7 @@ function NewCustomerModal({ onClose, onSave }) {
     return options.length > 0 ? options : [""];
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     const newCustomer = {
@@ -5343,7 +6099,7 @@ function NewCustomerModal({ onClose, onSave }) {
     }
   };
 
-  const modalStyles = {
+  const modalStyles: Record<string, React.CSSProperties> = {
     overlay: {
       position: "fixed",
       top: 0,
@@ -6164,8 +6920,8 @@ function NewCustomerModal({ onClose, onSave }) {
                             fileInputRef.current?.click();
                             setUploadDropdownOpen(false);
                           }}
-                          onMouseEnter={(e) => (e.target.style.backgroundColor = "#f3f4f6")}
-                          onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f3f4f6")}
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                         >
                           <UploadIcon size={16} />
                           Upload from Computer
@@ -6209,8 +6965,8 @@ function NewCustomerModal({ onClose, onSave }) {
                             onClick={() => handleRemoveDocument(doc.id)}
                             style={modalStyles.removeDocumentBtn}
                             title="Remove file"
-                            onMouseEnter={(e) => (e.target.style.backgroundColor = "#fee2e2")}
-                            onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#fee2e2")}
+                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                           >
                             <Trash2 size={16} />
                           </button>
@@ -6713,16 +7469,16 @@ function NewCustomerModal({ onClose, onSave }) {
               type="button"
               onClick={onClose}
               style={modalStyles.cancelBtn}
-              onMouseEnter={(e) => (e.target.style.backgroundColor = "#f9fafb")}
-              onMouseLeave={(e) => (e.target.style.backgroundColor = "#ffffff")}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f9fafb")}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
             >
               Cancel
             </button>
             <button
               type="submit"
               style={modalStyles.saveBtn}
-              onMouseEnter={(e) => (e.target.style.backgroundColor = "#0D4A52")}
-              onMouseLeave={(e) => (e.target.style.backgroundColor = "#156372")}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#0D4A52")}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#156372")}
             >
               Save
             </button>

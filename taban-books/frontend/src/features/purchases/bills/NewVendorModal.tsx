@@ -13,8 +13,8 @@ import {
 } from "lucide-react";
 import { WORLD_COUNTRIES, getStatesByCountry } from "../../../constants/locationData";
 
-export default function NewVendorModal({ isOpen, onClose, onVendorCreated }) {
-  const [formData, setFormData] = useState({
+export default function NewVendorModal({ isOpen, onClose, onVendorCreated }: { isOpen: boolean; onClose: () => void; onVendorCreated: (vendor: any) => void }) {
+  const [formData, setFormData] = useState<any>({
     salutation: "",
     firstName: "",
     lastName: "",
@@ -58,16 +58,16 @@ export default function NewVendorModal({ isOpen, onClose, onVendorCreated }) {
     facebook: "",
   });
   const [activeTab, setActiveTab] = useState("Other Details");
-  const [documents, setDocuments] = useState([]);
+  const [documents, setDocuments] = useState<any[]>([]);
   const [uploadDropdownOpen, setUploadDropdownOpen] = useState(false);
   const [showMoreDetails, setShowMoreDetails] = useState(false);
   const billingStates = getStatesByCountry(formData.billingCountry);
   const shippingStates = getStatesByCountry(formData.shippingCountry);
-  const [contactPersons, setContactPersons] = useState([
+  const [contactPersons, setContactPersons] = useState<any[]>([
     { id: Date.now(), salutation: "", firstName: "", lastName: "", email: "", workPhone: "", mobile: "", skypeName: "", designation: "", department: "" }
   ]);
-  const fileInputRef = useRef(null);
-  const uploadDropdownRef = useRef(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadDropdownRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
@@ -122,8 +122,9 @@ export default function NewVendorModal({ isOpen, onClose, onVendorCreated }) {
   }, [isOpen]);
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (uploadDropdownRef.current && !uploadDropdownRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target instanceof Node ? event.target : null;
+      if (uploadDropdownRef.current && target && !uploadDropdownRef.current.contains(target)) {
         setUploadDropdownOpen(false);
       }
     };
@@ -135,11 +136,13 @@ export default function NewVendorModal({ isOpen, onClose, onVendorCreated }) {
     };
   }, [uploadDropdownOpen]);
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    const target = e.currentTarget as HTMLInputElement;
+    const checked = target.checked;
     setFormData((prev) => ({
       ...prev,
-      [name]: type === "checkbox" ? checked : value,
+      [name]: target.type === "checkbox" ? checked : value,
     }));
 
     // Auto-generate display name options
@@ -152,9 +155,9 @@ export default function NewVendorModal({ isOpen, onClose, onVendorCreated }) {
     }
   };
 
-  const generateDisplayNameOptions = (data) => {
+  const generateDisplayNameOptions = (data: Partial<{ firstName: string; lastName: string; companyName: string }>) => {
     const { firstName, lastName, companyName } = data;
-    const options = [];
+    const options: string[] = [];
     
     if (companyName) {
       options.push(companyName);
@@ -176,8 +179,8 @@ export default function NewVendorModal({ isOpen, onClose, onVendorCreated }) {
     return options.length > 0 ? options : [""];
   };
 
-  const handleFileUpload = (files) => {
-    const newDocuments = Array.from(files).map((file) => ({
+  const handleFileUpload = (files: FileList | File[]) => {
+    const newDocuments = Array.from(files).map((file: File) => ({
       id: Date.now() + Math.random(),
       name: file.name,
       size: file.size,
@@ -187,7 +190,7 @@ export default function NewVendorModal({ isOpen, onClose, onVendorCreated }) {
     setDocuments((prev) => [...prev, ...newDocuments]);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
     // Get existing vendors from localStorage
@@ -205,7 +208,7 @@ export default function NewVendorModal({ isOpen, onClose, onVendorCreated }) {
       formData: {
         ...formData,
         contactPersons: contactPersons,
-        documents: documents.map(doc => ({
+        documents: documents.map((doc: any) => ({
           name: doc.name,
           size: doc.size,
           type: doc.type,
@@ -234,7 +237,7 @@ export default function NewVendorModal({ isOpen, onClose, onVendorCreated }) {
 
   if (!isOpen) return null;
 
-  const modalStyles = {
+  const modalStyles: Record<string, React.CSSProperties> = {
     overlay: {
       position: "fixed",
       top: 0,

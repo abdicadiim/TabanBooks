@@ -565,13 +565,13 @@ export default function TopBar() {
                                     setSearchTypeQuery("");
                                   }}
                                   className={`px-3 py-2 text-sm cursor-pointer flex items-center justify-between ${advancedSearchType === option
-                                    ? "bg-slate-700 text-white"
-                                    : "text-gray-700 hover:bg-gray-50"
+                                    ? "bg-gray-100 text-black"
+                                    : "text-black hover:bg-gray-50"
                                     }`}
                                 >
-                                  <span>{option}</span>
+                                  <span className="text-black">{option}</span>
                                   {advancedSearchType === option && (
-                                    <Check size={16} className="text-white" />
+                                    <Check size={16} className="text-black" />
                                   )}
                                 </div>
                               ))}
@@ -637,13 +637,13 @@ export default function TopBar() {
                                     setFilterQuery("");
                                   }}
                                   className={`px-3 py-2 text-sm cursor-pointer flex items-center justify-between ${advancedFilterType === option
-                                    ? "bg-slate-700 text-white"
-                                    : "text-gray-700 hover:bg-gray-50"
+                                    ? "bg-gray-100 text-black"
+                                    : "text-black hover:bg-gray-50"
                                     }`}
                                 >
-                                  <span>{option}</span>
+                                  <span className="text-black">{option}</span>
                                   {advancedFilterType === option && (
-                                    <Check size={16} className="text-white" />
+                                    <Check size={16} className="text-black" />
                                   )}
                                 </div>
                               ))}
@@ -742,13 +742,13 @@ export default function TopBar() {
                                       setStatusQuery("");
                                     }}
                                   className={`px-3 py-2 text-sm cursor-pointer flex items-center justify-between ${selectedStatus === option
-                                      ? "bg-slate-700 text-white"
-                                      : "text-gray-700 hover:bg-gray-50"
+                                      ? "bg-gray-100 text-black"
+                                      : "text-black hover:bg-gray-50"
                                       }`}
                                 >
-                                  <span>{option}</span>
+                                  <span className="text-black">{option}</span>
                                     {selectedStatus === option && (
-                                      <Check size={16} className="text-white" />
+                                      <Check size={16} className="text-black" />
                                     )}
                                   </div>
                                 ))}
@@ -819,13 +819,13 @@ export default function TopBar() {
                                       setCustomerTypeQuery("");
                                     }}
                                   className={`px-3 py-2 text-sm cursor-pointer flex items-center justify-between ${selectedCustomerType === option
-                                      ? "bg-slate-700 text-white"
-                                      : "text-gray-700 hover:bg-gray-50"
+                                      ? "bg-gray-100 text-black"
+                                      : "text-black hover:bg-gray-50"
                                       }`}
                                 >
-                                  <span>{option}</span>
+                                  <span className="text-black">{option}</span>
                                     {selectedCustomerType === option && (
-                                      <Check size={16} className="text-white" />
+                                      <Check size={16} className="text-black" />
                                     )}
                                   </div>
                                 ))}

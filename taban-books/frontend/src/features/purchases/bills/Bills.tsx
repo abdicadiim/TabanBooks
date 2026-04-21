@@ -16,6 +16,7 @@ import {
   Star,
   X,
   Filter,
+  SlidersHorizontal,
   Search,
   FileText,
   Trash2,
@@ -89,7 +90,6 @@ export default function Bills() {
   const { code: baseCurrencyCode, symbol: baseCurrencySymbol } = useCurrency();
   const displayCurrencyCode = baseCurrencyCode || "USD";
   const displayCurrencySymbol = baseCurrencySymbol || displayCurrencyCode;
-  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [showImportSubmenu, setShowImportSubmenu] = useState(false);
   const importSubmenuRef = useRef(null);
@@ -259,7 +259,6 @@ export default function Bills() {
   const sortSubmenuRef = useRef(null);
   const sortSubmenuTimeoutRef = useRef(null);
   const sortSubmenuClickedRef = useRef(false);
-  const dropdownRef = useRef(null);
   const moreMenuRef = useRef(null);
   const uploadMenuRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -345,9 +344,6 @@ export default function Bills() {
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setDropdownOpen(false);
-      }
       if (moreMenuRef.current && !moreMenuRef.current.contains(event.target)) {
         // Check if click is inside export submenu
         if (exportSubmenuRef.current && exportSubmenuRef.current.contains(event.target)) {
@@ -372,14 +368,14 @@ export default function Bills() {
       }
     };
 
-    if (dropdownOpen || moreMenuOpen || uploadMenuOpen || showYearMonthPicker || isSearchTypeDropdownOpen || isFilterDropdownOpen) {
+    if (moreMenuOpen || uploadMenuOpen || showYearMonthPicker || isSearchTypeDropdownOpen || isFilterDropdownOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [dropdownOpen, moreMenuOpen, uploadMenuOpen, showYearMonthPicker]);
+  }, [moreMenuOpen, uploadMenuOpen, showYearMonthPicker]);
 
   const handleAttachFromDesktop = () => {
     fileInputRef.current?.click();
@@ -1162,7 +1158,7 @@ export default function Bills() {
   };
 
   return (
-    <div className="w-full bg-white rounded-none border border-gray-200 border-l-0 border-r-0 shadow-sm">
+    <div className="w-full bg-transparent rounded-none">
       {/* CSS Animations */}
       <style dangerouslySetInnerHTML={{
         __html: `
@@ -1194,12 +1190,11 @@ export default function Bills() {
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4 flex-1">
               {/* All Bills dropdown with underline */}
-              <div className="relative inline-block" ref={dropdownRef}>
+              <div className="relative inline-block">
                 <button
-                  className="text-sm font-medium bg-transparent border-none cursor-pointer flex items-center gap-1 pb-1"
-                  onClick={() => {
-                    setDropdownOpen(!dropdownOpen);
-                  }}
+                  className="text-sm font-medium bg-transparent border-none cursor-default flex items-center gap-1 pb-1"
+                  aria-label="Bill view filter"
+                  type="button"
                   style={{
                     padding: 0,
                     paddingBottom: "4px",
@@ -1207,51 +1202,9 @@ export default function Bills() {
                     borderBottom: "2px solid #156372",
                   }}
                 >
-                  {selectedView === "All" ? "All Bills" : (selectedView === "Open" ? "Due" : selectedView)}
-                  {dropdownOpen ? (
-                    <ChevronUp size={14} />
-                  ) : (
-                    <ChevronDown size={14} />
-                  )}
+                  <span>All Bills</span>
+                  <ChevronDown size={14} />
                 </button>
-                {dropdownOpen && (
-                  <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-md shadow-lg z-50 min-w-[200px] max-h-[400px] overflow-y-auto">
-                    {["All", "Draft", "Due", "Overdue", "Partially Paid", "Paid", "Void", "Cancelled"].map((option) => {
-                      const isSelected = selectedView === option;
-                      return (
-                        <button
-                          key={option}
-                          className={`w-full px-4 py-2 text-sm text-left cursor-pointer border-none bg-transparent flex items-center justify-between ${isSelected
-                            ? "bg-[#156372] text-white"
-                            : "text-gray-900 hover:bg-gray-50"
-                            }`}
-                          onClick={() => {
-                            setSelectedView(option);
-                            setDropdownOpen(false);
-                          }}
-                        >
-                          <span>{option}</span>
-                          <Star
-                            size={16}
-                            className={isSelected ? "text-white fill-white" : "text-gray-400"}
-                            fill={isSelected ? "currentColor" : "none"}
-                          />
-                        </button>
-                      );
-                    })}
-                    <div className="h-px bg-gray-200 my-1" />
-                    <button
-                      className="w-full px-4 py-2 text-sm text-gray-900 text-left cursor-pointer border-none bg-transparent flex items-center gap-2 hover:bg-gray-50"
-                      onClick={() => {
-                        setShowCustomViewModal(true);
-                        setDropdownOpen(false);
-                      }}
-                    >
-                      <Plus size={16} className="text-teal-700" />
-                      New Custom View
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -1369,33 +1322,6 @@ export default function Bills() {
                     />
                   </div>
                 )}
-              </div>
-              <div className="relative inline-block" ref={uploadMenuRef}>
-                <button
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md cursor-pointer flex items-center gap-1 hover:bg-gray-50 hover:border-gray-400"
-                  onClick={() => setUploadMenuOpen(!uploadMenuOpen)}
-                >
-                  Upload Bill
-                  <ChevronDown size={14} />
-                </button>
-                {uploadMenuOpen && (
-                  <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-md shadow-lg z-50 min-w-[200px]">
-                    <button
-                      className="w-full px-4 py-2 text-sm text-gray-900 text-left cursor-pointer border-none bg-transparent hover:bg-gray-50"
-                      onClick={handleAttachFromDesktop}
-                    >
-                      Attach From Desktop
-                    </button>
-                  </div>
-                )}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
               </div>
               <button
                 className="px-4 py-2 text-sm font-medium text-white border-none rounded-md cursor-pointer flex items-center gap-2 transition-all hover:opacity-90"
@@ -1522,23 +1448,23 @@ export default function Bills() {
                                 style={{
                                   display: "flex",
                                   alignItems: "center",
-                                  justifyContent: "space-between",
+                                  justifyContent: "flex-start",
                                   padding: "8px 16px",
                                   fontSize: "14px",
-                                  color: "#111827",
+                                  color: sortBy === option.value ? "#156372" : "#111827",
                                   cursor: "pointer",
                                   border: "none",
-                                  backgroundColor: "transparent",
+                                  backgroundColor: sortBy === option.value ? "#ecfeff" : "transparent",
                                   width: "100%",
                                   textAlign: "left",
                                 }}
                                 onMouseEnter={(e) => {
-                                  e.currentTarget.style.backgroundColor = "#156372";
-                                  e.currentTarget.style.color = "#ffffff";
+                                  if (sortBy !== option.value) {
+                                    e.currentTarget.style.backgroundColor = "#f3f4f6";
+                                  }
                                 }}
                                 onMouseLeave={(e) => {
-                                  e.currentTarget.style.backgroundColor = "transparent";
-                                  e.currentTarget.style.color = "#111827";
+                                  e.currentTarget.style.backgroundColor = sortBy === option.value ? "#ecfeff" : "transparent";
                                 }}
                                 onClick={(e) => {
                                   e.preventDefault();
@@ -1552,59 +1478,10 @@ export default function Bills() {
                                   setShowSortSubmenu(false);
                                   setMoreMenuOpen(false);
                                   setHoveredMenuItem(null);
-                                }}
-                              >
-                                <span>{option.label}</span>
-                                {sortBy === option.value && (
-                                  <Check size={16} style={{ color: sortBy === option.value ? "inherit" : "transparent" }} />
-                                )}
-                              </button>
-                              {sortBy === option.value && (
-                                <div style={{ padding: "4px 16px", display: "flex", gap: "8px" }}>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      setSortOrder("asc");
-                                      setShowSortSubmenu(false);
-                                      setMoreMenuOpen(false);
-                                    }}
-                                    style={{
-                                      padding: "4px 8px",
-                                      fontSize: "12px",
-                                      backgroundColor: sortOrder === "asc" ? "#156372" : "#f3f4f6",
-                                      color: sortOrder === "asc" ? "#ffffff" : "#111827",
-                                      border: "none",
-                                      borderRadius: "4px",
-                                      cursor: "pointer",
-                                    }}
-                                  >
-                                    <ArrowUp size={12} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      setSortOrder("desc");
-                                      setShowSortSubmenu(false);
-                                      setMoreMenuOpen(false);
-                                    }}
-                                    style={{
-                                      padding: "4px 8px",
-                                      fontSize: "12px",
-                                      backgroundColor: sortOrder === "desc" ? "#156372" : "#f3f4f6",
-                                      color: sortOrder === "desc" ? "#ffffff" : "#111827",
-                                      border: "none",
-                                      borderRadius: "4px",
-                                      cursor: "pointer",
-                                    }}
-                                  >
-                                    <ArrowDown size={12} />
-                                  </button>
-                                </div>
-                              )}
+                                  }}
+                                >
+                                  <span>{option.label}</span>
+                                </button>
                             </div>
                           ))}
                         </div>
@@ -1625,17 +1502,27 @@ export default function Bills() {
                       }}
                     >
                       <button
-                        className="w-full px-4 py-3 text-sm text-gray-900 cursor-pointer border-none bg-transparent text-left flex items-center justify-between hover:bg-gray-100"
+                        className="w-full px-4 py-3 text-sm text-gray-900 cursor-pointer border-none bg-transparent text-left flex items-center justify-between hover:bg-transparent"
                         style={{
-                          backgroundColor: (hoveredMenuItem === 'import' || showImportSubmenu) ? "#156372" : "transparent",
-                          color: (hoveredMenuItem === 'import' || showImportSubmenu) ? "#ffffff" : "#111827",
+                          backgroundColor: "transparent",
+                          color: "#111827",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = "transparent";
+                          setShowImportSubmenu(true);
+                          setHoveredMenuItem('import');
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = "transparent";
+                          setShowImportSubmenu(false);
+                          setHoveredMenuItem(null);
                         }}
                       >
                         <div className="flex items-center gap-3">
-                          <Download size={16} style={{ color: (hoveredMenuItem === 'import' || showImportSubmenu) ? "#ffffff" : "#6b7280" }} />
+                          <Download size={16} style={{ color: "#6b7280" }} />
                           <span>Import Bills</span>
                         </div>
-                        <ChevronRight size={16} style={{ color: (hoveredMenuItem === 'import' || showImportSubmenu) ? "#ffffff" : "#6b7280" }} />
+                        <ChevronRight size={16} style={{ color: "#6b7280" }} />
                       </button>
                       {showImportSubmenu && (
                         <div
@@ -1668,8 +1555,8 @@ export default function Bills() {
                               textAlign: "left",
                             }}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.backgroundColor = "#156372";
-                              e.currentTarget.style.color = "#ffffff";
+                              e.currentTarget.style.backgroundColor = "transparent";
+                              e.currentTarget.style.color = "#111827";
                             }}
                             onMouseLeave={(e) => {
                               e.currentTarget.style.backgroundColor = "transparent";
@@ -1697,8 +1584,8 @@ export default function Bills() {
                               textAlign: "left",
                             }}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.backgroundColor = "#156372";
-                              e.currentTarget.style.color = "#ffffff";
+                              e.currentTarget.style.backgroundColor = "transparent";
+                              e.currentTarget.style.color = "#111827";
                             }}
                             onMouseLeave={(e) => {
                               e.currentTarget.style.backgroundColor = "transparent";
@@ -1720,39 +1607,38 @@ export default function Bills() {
                         style={{
                           ...styles.moreDropdownItem,
                           justifyContent: "space-between",
-                          backgroundColor: (hoveredMenuItem === 'export' || showExportSubmenu) ? "#156372" : "transparent",
-                          color: (hoveredMenuItem === 'export' || showExportSubmenu) ? "#ffffff" : "#111827"
+                          backgroundColor: "transparent",
+                          color: "#111827"
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
                           const newState = !showExportSubmenu;
                           exportSubmenuClickedRef.current = newState;
                           setShowExportSubmenu(newState);
-                          setHoveredMenuItem('export');
                           setImportSubmenuOpen(false); // Close other submenus if any
                         }}
-                        onMouseEnter={() => {
+                        onMouseEnter={(e) => {
                           if (exportSubmenuTimeoutRef.current) {
                             clearTimeout(exportSubmenuTimeoutRef.current);
                             exportSubmenuTimeoutRef.current = null;
                           }
+                          e.currentTarget.style.backgroundColor = "transparent";
                           setShowExportSubmenu(true);
-                          setHoveredMenuItem('export');
                         }}
-                        onMouseLeave={() => {
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = "transparent";
                           if (!exportSubmenuClickedRef.current) {
                             exportSubmenuTimeoutRef.current = setTimeout(() => {
                               setShowExportSubmenu(false);
-                              setHoveredMenuItem(null);
                             }, 200);
                           }
                         }}
                       >
                         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                          <Upload size={16} style={{ color: (hoveredMenuItem === 'export' || showExportSubmenu) ? "#ffffff" : "#6b7280" }} />
+                          <Upload size={16} style={{ color: "#6b7280" }} />
                           <span style={styles.moreDropdownItemText}>Export</span>
                         </div>
-                        <ChevronRight size={12} style={{ color: (hoveredMenuItem === 'export' || showExportSubmenu) ? "#ffffff" : "#6b7280" }} />
+                        <ChevronRight size={12} style={{ color: "#6b7280" }} />
                       </button>
                       {showExportSubmenu && (
                         <div style={{
@@ -2170,18 +2056,28 @@ export default function Bills() {
               <tr>
                 <th
                   style={{
-                    padding: "12px 16px",
+                    padding: "12px 12px",
                     textAlign: "left",
-                    width: "48px",
+                    width: "72px",
                     borderBottom: "1px solid #e5e7eb",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={selectedItems.length === sortedBills.length && sortedBills.length > 0}
-                    onChange={handleSelectAll}
-                    style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#156372" }}
-                  />
+                  <div className="flex items-center gap-2 whitespace-nowrap">
+                    <button
+                      type="button"
+                      aria-label="Filter bills"
+                      className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-sm text-[#156372] hover:bg-teal-50"
+                    >
+                      <SlidersHorizontal size={14} />
+                    </button>
+                    <input
+                      type="checkbox"
+                      checked={selectedItems.length === sortedBills.length && sortedBills.length > 0}
+                      onChange={handleSelectAll}
+                      style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#156372" }}
+                    />
+                  </div>
                 </th>
                 <th
                   style={{
@@ -2361,7 +2257,7 @@ export default function Bills() {
                       className="border-b border-gray-200 cursor-pointer hover:bg-gray-50"
                       onClick={() => navigate(`/purchases/bills/${bill._id || bill.id}`)}
                     >
-                      <td className="px-4 py-3 text-sm text-gray-900" onClick={(e) => e.stopPropagation()}>
+                      <td className="py-3 text-sm text-gray-900" style={{ width: "72px", paddingLeft: "34px", paddingRight: "12px" }} onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={selectedItems.includes(bill.id)}

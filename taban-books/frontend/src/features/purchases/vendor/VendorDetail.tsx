@@ -181,6 +181,7 @@ export default function VendorDetail() {
   const [selectedTransactionType, setSelectedTransactionType] = useState<any>(null);
   const [isTransactionNavDropdownOpen, setIsTransactionNavDropdownOpen] = useState(false);
   const [bills, setBills] = useState<any[]>([]);
+  const [isTransactionsLoading, setIsTransactionsLoading] = useState(false);
   const [isInvoiceViewDropdownOpen, setIsInvoiceViewDropdownOpen] = useState(false);
   const invoiceViewDropdownRef = useRef<HTMLDivElement>(null);
   const [expandedSections, setExpandedSections] = useState({
@@ -360,6 +361,18 @@ export default function VendorDetail() {
   const attachmentsDropdownRef = useRef<HTMLDivElement>(null);
   const [attachments, setAttachments] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const vendorTransactionsCacheRef = useRef<Record<string, {
+    bills: any[];
+    paymentsMade: any[];
+    vendorCredits: any[];
+    expenses: any[];
+    purchaseOrders: any[];
+    recurringBills: any[];
+    recurringExpenses: any[];
+    journals: any[];
+    projects: any[];
+    purchaseReceipts: any[];
+  }>>({});
 
   // Upload dropdown state
   const [isUploadDropdownOpen, setIsUploadDropdownOpen] = useState(false);
@@ -705,9 +718,12 @@ export default function VendorDetail() {
       setVendorCredits([]);
       setExpenses([]);
       setPurchaseOrders([]);
-      return;
-    }
-    if (activeTab !== "transactions" && activeTab !== "statement") {
+      setRecurringBills([]);
+      setRecurringExpenses([]);
+      setJournals([]);
+      setProjects([]);
+      setPurchaseReceipts([]);
+      setIsTransactionsLoading(false);
       return;
     }
 
@@ -715,9 +731,40 @@ export default function VendorDetail() {
     const vendorName = vendor?.name || "";
     const displayName = vendor?.displayName || "";
     const companyName = vendor?.companyName || "";
+    const cacheKey = String(vendorId);
+    const cachedTransactions = vendorTransactionsCacheRef.current[cacheKey];
+
+    if (cachedTransactions) {
+      setIsTransactionsLoading(false);
+      setBills(cachedTransactions.bills);
+      setPaymentsMade(cachedTransactions.paymentsMade);
+      setVendorCredits(cachedTransactions.vendorCredits);
+      setExpenses(cachedTransactions.expenses);
+      setPurchaseOrders(cachedTransactions.purchaseOrders);
+      setRecurringBills(cachedTransactions.recurringBills);
+      setRecurringExpenses(cachedTransactions.recurringExpenses);
+      setJournals(cachedTransactions.journals);
+      setProjects(cachedTransactions.projects);
+      setPurchaseReceipts(cachedTransactions.purchaseReceipts);
+      return;
+    }
 
     const loadVendorTransactions = async () => {
+      setIsTransactionsLoading(true);
       try {
+        const nextTransactions = {
+          bills: [] as any[],
+          paymentsMade: [] as any[],
+          vendorCredits: [] as any[],
+          expenses: [] as any[],
+          purchaseOrders: [] as any[],
+          recurringBills: [] as any[],
+          recurringExpenses: [] as any[],
+          journals: [] as any[],
+          projects: [] as any[],
+          purchaseReceipts: [] as any[],
+        };
+
         // Load Bills
         try {
           const billsResponse = await billsAPI.getAll();
@@ -726,6 +773,7 @@ export default function VendorDetail() {
             matchesVendor(bill, vendorId, vendorName, displayName, companyName)
           );
           setBills(vendorBills);
+          nextTransactions.bills = vendorBills;
         } catch (error) {
           setBills([]);
         }
@@ -738,6 +786,7 @@ export default function VendorDetail() {
             matchesVendor(payment, vendorId, vendorName, displayName, companyName)
           );
           setPaymentsMade(vendorPayments);
+          nextTransactions.paymentsMade = vendorPayments;
         } catch (error) {
           setPaymentsMade([]);
         }
@@ -750,6 +799,7 @@ export default function VendorDetail() {
             matchesVendor(vc, vendorId, vendorName, displayName, companyName)
           );
           setVendorCredits(vendorCreditsFiltered);
+          nextTransactions.vendorCredits = vendorCreditsFiltered;
         } catch (error) {
           setVendorCredits([]);
         }
@@ -762,6 +812,7 @@ export default function VendorDetail() {
             matchesVendor(expense, vendorId, vendorName, displayName, companyName)
           );
           setExpenses(vendorExpenses);
+          nextTransactions.expenses = vendorExpenses;
         } catch (error) {
           setExpenses([]);
         }
@@ -774,6 +825,7 @@ export default function VendorDetail() {
             matchesVendor(po, vendorId, vendorName, displayName, companyName)
           );
           setPurchaseOrders(vendorPurchaseOrders);
+          nextTransactions.purchaseOrders = vendorPurchaseOrders;
         } catch (error) {
           setPurchaseOrders([]);
         }
@@ -786,6 +838,7 @@ export default function VendorDetail() {
             matchesVendor(rb, vendorId, vendorName, displayName, companyName)
           );
           setRecurringBills(vendorRecurringBills);
+          nextTransactions.recurringBills = vendorRecurringBills;
         } catch (error) {
           setRecurringBills([]);
         }
@@ -798,6 +851,7 @@ export default function VendorDetail() {
             matchesVendor(re, vendorId, vendorName, displayName, companyName)
           );
           setRecurringExpenses(vendorRecurringExpenses);
+          nextTransactions.recurringExpenses = vendorRecurringExpenses;
         } catch (error) {
           setRecurringExpenses([]);
         }
@@ -810,6 +864,7 @@ export default function VendorDetail() {
             matchesVendor(p, vendorId, vendorName, displayName, companyName)
           );
           setProjects(vendorProjects);
+          nextTransactions.projects = vendorProjects;
         } catch (error) {
           setProjects([]);
         }
@@ -822,6 +877,7 @@ export default function VendorDetail() {
             matchesVendor(r, vendorId, vendorName, displayName, companyName)
           );
           setPurchaseReceipts(vendorReceipts);
+          nextTransactions.purchaseReceipts = vendorReceipts;
         } catch (error) {
           setPurchaseReceipts([]);
         }
@@ -834,15 +890,20 @@ export default function VendorDetail() {
             matchesVendor(j, vendorId, vendorName, displayName, companyName)
           );
           setJournals(vendorJournals);
+          nextTransactions.journals = vendorJournals;
         } catch (error) {
           setJournals([]);
         }
+
+        vendorTransactionsCacheRef.current[cacheKey] = nextTransactions;
       } catch (error) {
+      } finally {
+        setIsTransactionsLoading(false);
       }
     };
 
     loadVendorTransactions();
-  }, [id, vendor, activeTab]);
+  }, [id, vendor]);
 
 
   // Build statement transactions from bills, payments made, and vendor credits
@@ -2430,20 +2491,14 @@ export default function VendorDetail() {
   const startIndex = (billCurrentPage - 1) * billsPerPage;
   const endIndex = startIndex + billsPerPage;
   const paginatedBills = filteredBills.slice(startIndex, endIndex);
-  const hasAnyPurchaseTransactions = (
-    bills.length +
-    paymentsMade.length +
-    expenses.length +
-    purchaseOrders.length +
-    vendorCredits.length +
-    recurringBills.length +
-    recurringExpenses.length +
-    journals.length +
-    projects.length +
-    purchaseReceipts.length
-  ) > 0;
-  const purchasesTabLabel = hasAnyPurchaseTransactions ? "Purchases" : "Transactions";
-  const goToPurchasesText = hasAnyPurchaseTransactions ? "Go to purchases" : "Go to transactions";
+  const getBillDetailId = (bill: any) => bill?._id || bill?.id || bill?.billId || bill?.bill_id || "";
+  const openBillDetail = (bill: any) => {
+    const billId = getBillDetailId(bill);
+    if (!billId) return;
+    navigate(`/purchases/bills/${billId}`);
+  };
+  const purchasesTabLabel = "Transactions";
+  const goToPurchasesText = "Go to transactions";
 
   const formatCurrency = (amount, currency?: string) => {
     const resolvedCode = String(currency || baseCurrencyCode || "USD").split(" - ")[0].trim();
@@ -4112,6 +4167,12 @@ export default function VendorDetail() {
               )}
             </div>
 
+            {isTransactionsLoading && (
+              <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                Loading transactions in the background...
+              </div>
+            )}
+
             {/* Bills Section */}
             <div ref={(el) => { transactionSectionRefs.current.bills = el; }} className={`mb-4 border border-gray-200 rounded-lg ${expandedTransactions.bills ? "bg-white" : "bg-gray-50"}`}>
               <div
@@ -4191,8 +4252,16 @@ export default function VendorDetail() {
                         {paginatedBills.length > 0 ? (
                           paginatedBills.map((bill) => (
                             <tr
-                              key={bill.id}
-                              onClick={() => navigate(`/purchases/bills/${bill.id}`)}
+                              key={getBillDetailId(bill) || bill.billNumber || `${bill.date || "bill"}-${bill.orderNumber || "row"}`}
+                              onClick={() => openBillDetail(bill)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  openBillDetail(bill);
+                                }
+                              }}
+                              role="button"
+                              tabIndex={0}
                               className="border-b border-gray-200 transition-colors cursor-pointer hover:bg-gray-50"
                             >
                               <td className="py-3 px-4 text-gray-900">
@@ -4201,7 +4270,16 @@ export default function VendorDetail() {
                                   : "N/A"}
                               </td>
                               <td className="py-3 px-4 text-gray-900">
-                                <span className="text-teal-700 no-underline font-medium hover:underline">{bill.invoiceNumber || bill.id}</span>
+                                <button
+                                  type="button"
+                                  className="bg-transparent border-none p-0 text-teal-700 no-underline font-medium hover:underline cursor-pointer"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openBillDetail(bill);
+                                  }}
+                                >
+                                  {bill.invoiceNumber || bill.id}
+                                </button>
                               </td>
                               <td className="py-3 px-4 text-gray-900">{bill.orderNumber || "-"}</td>
                               <td className="py-3 px-4 text-gray-900">{formatCurrency(bill.total || bill.amount || 0, bill.currency || vendor?.currency || baseCurrencyCode)}</td>
@@ -5190,7 +5268,7 @@ export default function VendorDetail() {
             <div className="flex-1 overflow-y-auto p-6">
               <div className="bg-white rounded-lg border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
-                  {hasAnyPurchaseTransactions ? (
+                  {bills.length > 0 || paymentsMade.length > 0 || expenses.length > 0 || purchaseOrders.length > 0 || vendorCredits.length > 0 || recurringBills.length > 0 || recurringExpenses.length > 0 || journals.length > 0 || projects.length > 0 || purchaseReceipts.length > 0 ? (
                     <div className="relative" ref={mailsTypeDropdownRef}>
                       <button
                         className="flex items-center gap-1 text-lg font-semibold text-gray-900 cursor-pointer"
