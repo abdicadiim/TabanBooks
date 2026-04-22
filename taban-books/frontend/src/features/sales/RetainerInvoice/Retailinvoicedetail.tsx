@@ -192,14 +192,39 @@ const getRetainerStatusColor = (status: string) => {
   const statusColors = {
     draft: "#6B7280",
     sent: "#3B82F6",
+    approved: "#059669",
     paid: "#059669",
-    partialpaid: "#F59E0B",
-    partiallypaid: "#F59E0B",
+    partialpaid: "#3B82F6",
+    partiallypaid: "#3B82F6",
+    partiallydrawn: "#3B82F6",
+    customerviewed: "#156372",
+    paymentinitiated: "#156372",
+    drawn: "#059669",
     void: "#EF4444",
     cancelled: "#EF4444",
     canceled: "#EF4444",
   };
   return statusColors[s as keyof typeof statusColors] || "#6B7280";
+};
+
+const getRetainerStatusClass = (status: string) => {
+  const s = String(status || "").toLowerCase().replace(/[\s_-]+/g, "");
+  const statusClasses: Record<string, string> = {
+    draft: "bg-transparent text-slate-600",
+    sent: "bg-transparent text-blue-600",
+    approved: "bg-transparent text-emerald-600",
+    paid: "bg-transparent text-emerald-600",
+    partialpaid: "bg-transparent text-blue-600",
+    partiallypaid: "bg-transparent text-blue-600",
+    partiallydrawn: "bg-transparent text-blue-600",
+    customerviewed: "bg-transparent text-[#156372]",
+    paymentinitiated: "bg-transparent text-[#156372]",
+    drawn: "bg-transparent text-emerald-600",
+    void: "bg-transparent text-red-600",
+    cancelled: "bg-transparent text-red-600",
+    canceled: "bg-transparent text-red-600",
+  };
+  return statusClasses[s as keyof typeof statusClasses] || "bg-transparent text-slate-600";
 };
 
 const getRetainerStatusText = (status: string) => {
@@ -736,10 +761,12 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
     statusLabel === "VOID" ? "Void" :
     statusLabel;
   const ribbonBgClass =
-    statusLabel === "VOID" ? "bg-[#3f4348]" :
-    isFullyPaidStatus ? "bg-[#22c55e]" :
-    isPartiallyPaidStatus ? "bg-[#f59e0b]" :
-    "bg-[#2f8edb]";
+    isFullyPaidStatus ? "bg-emerald-500" :
+    isPartiallyPaidStatus ? "bg-blue-500" :
+    statusLabel === "VOID" ? "bg-red-500" :
+    statusLabel === "DRAFT" ? "bg-slate-500" :
+    statusLabel === "SENT" ? "bg-blue-500" :
+    "bg-[#156372]";
 
   useEffect(() => {
     if (!invoice) return;
@@ -1887,8 +1914,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
                       {row.invoiceNumber} <span className="mx-1">.</span> {row.date}
                     </div>
                     <div
-                      className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide"
-                      style={{ color: getRetainerStatusColor(row.status) }}
+                      className={`mt-1 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${getRetainerStatusClass(row.status)}`}
                     >
                       <span>{getRetainerStatusText(row.status)}</span>
                       {row.status === "SENT" && <Mail size={11} className="text-current" />}

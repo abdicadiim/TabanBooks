@@ -275,6 +275,17 @@ export default function Invoices() {
     }
   };
 
+  const navigateToInvoiceDetail = (invoice: Invoice) => {
+    const invoiceId = String((invoice as any)?.id || (invoice as any)?._id || (invoice as any)?.invoiceNumber || "").trim();
+    if (!invoiceId) return;
+    navigate(`/sales/invoices/${invoiceId}`, {
+      state: {
+        preloadedInvoice: { ...invoice, id: invoiceId },
+        preloadedInvoices: invoices,
+      },
+    });
+  };
+
   const [isBulkUpdateModalOpen, setIsBulkUpdateModalOpen] = useState(false);
   const [bulkUpdateField, setBulkUpdateField] = useState("");
   const [bulkUpdateValue, setBulkUpdateValue] = useState("");
@@ -987,7 +998,7 @@ export default function Invoices() {
               className="text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
               onClick={(e) => {
                 e.stopPropagation();
-                navigate(`/sales/invoices/${invoice.id}`);
+                navigateToInvoiceDetail(invoice);
               }}
             >
               {invoice.invoiceNumber || invoice.id}
@@ -2844,7 +2855,7 @@ export default function Invoices() {
                           if (target.closest('.invoice-checkbox') || target.closest('.invoice-action-button') || target.closest('.invoice-edit-button')) {
                             return;
                           }
-                          navigate(`/sales/invoices/${invoice.id}`);
+                          navigateToInvoiceDetail(invoice);
                         }}
                       >
                         <td className="px-4 py-3">

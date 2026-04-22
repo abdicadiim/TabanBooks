@@ -97,6 +97,7 @@ export default function InvoiceDetail() { // Start of component
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const preloadedInvoice = (location.state as any)?.preloadedInvoice || null;
   const isDebitNoteView = location.pathname.includes("/sales/debit-notes/");
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -443,7 +444,7 @@ export default function InvoiceDetail() { // Start of component
       let nextStatus: string = (current as any).status || "sent";
       if (currentStatusKey !== "void") {
         if (nextPaid > 0 && nextBalance <= 0) nextStatus = "paid";
-        else if (nextPaid > 0 && nextBalance > 0) nextStatus = "partially_paid";
+        else if (nextPaid > 0 && nextBalance > 0) nextStatus = "partially paid";
         else nextStatus = currentStatusKey === "draft" ? "draft" : "sent";
       }
 
@@ -599,7 +600,16 @@ export default function InvoiceDetail() { // Start of component
       // Fetch invoice data
       let currentInvoice = null;
       if (id) {
-        if (isDebitNoteView) {
+        if (preloadedInvoice && String(preloadedInvoice.id || preloadedInvoice._id || "") === String(id)) {
+          currentInvoice = preloadedInvoice;
+          setInvoice(currentInvoice);
+          if (currentInvoice.comments) {
+            setComments(currentInvoice.comments);
+          }
+          if (currentInvoice.attachments) {
+            setInvoiceAttachments(currentInvoice.attachments);
+          }
+        } else if (isDebitNoteView) {
           const dnResponse: any = await debitNotesAPI.getById(id);
           const dn = dnResponse?.success ? dnResponse.data : null;
           if (dn) {
@@ -2717,7 +2727,7 @@ export default function InvoiceDetail() { // Start of component
           : nextBalance <= 0
             ? "paid"
             : paid > 0 || nextCreditsApplied > 0 || nextRetainerApplied > 0
-              ? "partially_paid"
+              ? "partially paid"
               : (statusKey === "draft" ? "draft" : "sent");
 
       const existingRetainerApps = Array.isArray((invoice as any)?.retainerApplications)
@@ -2830,7 +2840,7 @@ export default function InvoiceDetail() { // Start of component
           : nextBalance <= 0
             ? "paid"
             : paid > 0 || nextCreditsApplied > 0 || currentRetainers > 0
-              ? "partially_paid"
+              ? "partially paid"
               : (statusKey === "draft" ? "draft" : "sent");
 
       const patchPayload: any = {
@@ -4215,18 +4225,32 @@ export default function InvoiceDetail() { // Start of component
               style={{ width: "210mm", minHeight: "297mm", padding: "20mm" }}
             >
               {/* Status Ribbon */}
-              {(invoice.status === "draft" || invoice.status?.toLowerCase() === "paid" || invoice.status?.toLowerCase() === "sent" || invoice.status?.toLowerCase() === "unpaid") && (
+              {(() => {
+                const ribbonStatus = normalizeKey(invoice.status || "");
+                const ribbonLabel =
+                  ribbonStatus === "partially_paid" ? "PARTIALLY PAID" :
+                  ribbonStatus === "paid" ? "PAID" :
+                  ribbonStatus === "sent" || ribbonStatus === "unpaid" ? "UNPAID" :
+                  ribbonStatus === "draft" ? "DRAFT" :
+                  ribbonStatus === "overdue" ? "OVERDUE" :
+                  "";
+                if (!ribbonLabel) return null;
+                const ribbonColor =
+                  ribbonStatus === "paid" ? "bg-green-500" :
+                  ribbonStatus === "partially_paid" ? "bg-blue-500" :
+                  ribbonStatus === "draft" ? "bg-yellow-500" :
+                  ribbonStatus === "overdue" ? "bg-red-500" :
+                  "bg-blue-500";
+                return (
                 <div className="absolute top-0 left-0 w-36 h-36 overflow-hidden">
-                  <div className={`absolute top-6 -left-8 w-48 h-9 transform -rotate-45 origin-center flex items-center justify-center shadow-sm ${invoice.status?.toLowerCase() === "paid" ? "bg-green-500" :
-                    (invoice.status?.toLowerCase() === "sent" || invoice.status?.toLowerCase() === "unpaid") ? "bg-blue-500" :
-                      "bg-yellow-500"
-                    }`}>
+                  <div className={`absolute top-6 -left-8 w-48 h-9 transform -rotate-45 origin-center flex items-center justify-center shadow-sm ${ribbonColor}`}>
                     <span className="text-white font-bold text-[13px] uppercase tracking-wider">
-                      {invoice.status?.toLowerCase() === "sent" ? "UNPAID" : invoice.status}
+                      {ribbonLabel}
                     </span>
                   </div>
                 </div>
-              )}
+                );
+              })()}
 
 
               {/* Document Header */}

@@ -920,7 +920,7 @@ export default function SendInvoiceEmail() {
   const customerDisplayName = getCustomerDisplayName(invoice);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 overflow-y-auto">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -937,7 +937,7 @@ export default function SendInvoiceEmail() {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-6xl mx-auto px-4 py-5">
+      <div className="max-w-6xl mx-auto px-4 py-5 pb-8">
         <div className="bg-white border border-gray-200 mb-6">
           {/* From Field */}
           <div className="grid grid-cols-[120px_1fr] items-center border-b border-gray-200 px-4">

@@ -1464,7 +1464,7 @@ export default function RecordPayment() {
       let nextStatus: string = (currentRecord as any).status || "sent";
       if (currentStatusKey !== "void") {
         if (nextPaid > 0 && nextBalance <= 0) nextStatus = "paid";
-        else if (!isRetainerTarget && nextPaid > 0 && nextBalance > 0) nextStatus = "partially_paid";
+        else if (!isRetainerTarget && nextPaid > 0 && nextBalance > 0) nextStatus = "partially paid";
         else nextStatus = currentStatusKey === "draft" ? "draft" : "sent";
       }
 
@@ -1502,7 +1502,7 @@ export default function RecordPayment() {
       if (isRetainerTarget) {
         const retainerStatus =
           nextPaid > 0 && nextBalance > 0
-            ? "partially_paid"
+            ? "partially paid"
             : nextBalance <= 0
               ? "paid"
               : currentStatusKey === "draft"

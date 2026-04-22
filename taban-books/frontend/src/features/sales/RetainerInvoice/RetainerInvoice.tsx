@@ -186,6 +186,24 @@ const parseSortKey = (value: string | null | undefined) => {
   return { field: match[1] || "created", direction: (match[2] as "asc" | "desc") || "desc" };
 };
 
+const getRetainerStatusClass = (status: string | undefined | null) => {
+  const normalized = String(status || "").toLowerCase().replace(/\s+/g, "_");
+  const statusClasses: Record<string, string> = {
+    draft: "bg-transparent text-slate-600",
+    pending_approval: "bg-transparent text-amber-700",
+    approved: "bg-transparent text-emerald-600",
+    sent: "bg-transparent text-blue-600",
+    customer_viewed: "bg-transparent text-[#156372]",
+    payment_initiated: "bg-transparent text-[#156372]",
+    partially_paid: "bg-transparent text-blue-600",
+    partially_drawn: "bg-transparent text-blue-600",
+    paid: "bg-transparent text-emerald-600",
+    drawn: "bg-transparent text-emerald-600",
+    void: "bg-transparent text-red-600",
+  };
+  return statusClasses[normalized] || "bg-transparent text-slate-600";
+};
+
 const DEFAULT_COLUMN_WIDTHS = {
   select: 68,
   date: 140,
@@ -1844,7 +1862,7 @@ export default function RetainerInvoice() {
                       )}
                       {visibleTableColumnSet.has("status") && (
                         <td className="px-4 py-3">
-                          <span className="text-[13px] uppercase tracking-wide text-[#6286a8]">
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${getRetainerStatusClass(row.status)}`}>
                             {row.status.split("_").join(" ").toUpperCase()}
                           </span>
                         </td>
