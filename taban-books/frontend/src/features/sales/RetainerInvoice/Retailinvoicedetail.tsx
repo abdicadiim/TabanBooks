@@ -1,9 +1,9 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { MoreHorizontal, MessageSquare, X, Edit, Mail, FileText, Banknote, ChevronDown, ChevronRight, Search, Star, Download, Printer, Trash2, ArrowUpDown, Upload, Settings, RefreshCw, RotateCcw, HelpCircle, Bold, Italic, Underline, Strikethrough, AlignLeft, AlignCenter, AlignRight, Link as LinkIcon, Image as ImageIcon, Copy, Ban, AlertTriangle } from "lucide-react";
-import { deleteInvoice, getCustomers, getInvoiceById, getInvoicesPaginated, Invoice, updateInvoice, saveInvoice } from "../salesModel";
+import { deleteRetainerInvoice, getCustomers, getRetainerInvoiceById, getRetainerInvoices, RetainerInvoice, updateRetainerInvoice, saveRetainerInvoice } from "../salesModel";
 import { useOrganizationBranding } from "../../../hooks/useOrganizationBranding";
 import { toast } from "react-hot-toast";
 import ApplyRetainersToInvoiceModal from "./ApplyRetainersToInvoiceModal";
@@ -220,7 +220,7 @@ export default function Retailinvoicedetail() {
   };
 
   const [loading, setLoading] = useState(true);
-  const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [invoice, setInvoice] = useState<RetainerInvoice | null>(null);
   const [retainers, setRetainers] = useState<RetainerListRow[]>([]);
   const [reloadTick, setReloadTick] = useState(0);
   const [selectedView, setSelectedView] = useState(() => localStorage.getItem(RETAINER_SELECTED_VIEW_STORAGE_KEY) || "all");
@@ -284,15 +284,13 @@ export default function Retailinvoicedetail() {
     const load = async () => {
       if (!cancelled) setLoading(true);
       try {
-        const [rawCurrentInvoice, allInvoicesResp, customers] = await Promise.all([
-          id ? getInvoiceById(id) : Promise.resolve(null),
-          getInvoicesPaginated({ limit: 1000, sort: "createdAt", order: "desc" }),
+        const [rawCurrentInvoice, retainerRowsRaw, customers] = await Promise.all([
+          id ? getRetainerInvoiceById(id) : Promise.resolve(null),
+          getRetainerInvoices({ limit: 1000, sort: "createdAt", order: "desc" }),
           getCustomers({ limit: 1000 }),
         ]);
 
-        const allInvoices: Invoice[] = Array.isArray(allInvoicesResp?.data) ? allInvoicesResp.data : [];
-        const retainerRows = allInvoices
-          .filter((row) => isRetainerInvoice(row))
+        const retainerRows = (Array.isArray(retainerRowsRaw) ? retainerRowsRaw : [])
           .map(mapRetainerListRow)
           .sort((a, b) => {
             const aTime = new Date(a.date).getTime();
@@ -326,7 +324,7 @@ export default function Retailinvoicedetail() {
           setInvoice({
             ...rawCurrentInvoice,
             customerName: matchedCustomerName || getCustomerDisplayName(rawCurrentInvoice),
-          });
+          } as RetainerInvoice);
           return;
         }
 
@@ -486,14 +484,14 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
     if (!invoice) return;
     const currentId = String((invoice as any).id || (invoice as any)._id || id || "");
     if (!currentId) return;
-    const updated = await updateInvoice(currentId, patch as Partial<Invoice>);
+    const updated = await updateRetainerInvoice(currentId, patch);
     setInvoice((prev) =>
       prev
         ? ({
             ...prev,
             ...updated,
             customerName: getCustomerDisplayName(updated),
-          } as Invoice)
+          } as RetainerInvoice)
         : updated
     );
     return updated;
@@ -593,7 +591,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
         };
       })
     );
-    setInvoice((prev) => (prev ? ({ ...prev, comments: normalized } as Invoice) : prev));
+    setInvoice((prev) => (prev ? ({ ...prev, comments: normalized } as RetainerInvoice) : prev));
   };
 
 
@@ -741,9 +739,9 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
     let cancelled = false;
     const syncPaidStatus = async () => {
       try {
-        await updateInvoice(invoiceId, { status: "paid" } as Partial<Invoice>);
+        await updateRetainerInvoice(invoiceId, { status: "paid" });
         if (cancelled) return;
-        setInvoice((prev) => (prev ? { ...prev, status: "paid" } : prev));
+        setInvoice((prev) => (prev ? { ...prev, status: "paid" } : prev) as RetainerInvoice);
       } catch (error) {
         console.error("Failed to sync retainer invoice status to paid:", error);
       }
@@ -918,7 +916,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
           appliedAt: allocation.date,
         };
 
-        await updateInvoice(targetInvoiceId, {
+        await updateRetainerInvoice(targetInvoiceId, {
           retainerAppliedAmount: nextRetainersApplied,
           retainersApplied: nextRetainersApplied,
           retainerAmountApplied: nextRetainersApplied,
@@ -1012,8 +1010,8 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
         patchPayload.payments = nextPaymentRecords;
       }
 
-      const updatedRetainer = await updateInvoice(currentInvoiceId, patchPayload as Partial<Invoice>);
-      setInvoice((prev) => (prev ? ({ ...prev, ...updatedRetainer, ...patchPayload } as Invoice) : prev));
+      const updatedRetainer = await updateRetainerInvoice(currentInvoiceId, patchPayload);
+      setInvoice((prev) => (prev ? ({ ...prev, ...updatedRetainer, ...patchPayload } as RetainerInvoice) : prev));
       setSelectedPaymentRow((prev: any) =>
         prev ? { ...prev, balance: Math.max(0, roundMoney(getPaymentAvailableAmount(prev) - totalApplied)) } : prev
       );
@@ -1272,7 +1270,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
       };
       let created: any;
       try {
-        created = await saveInvoice(clonePayload);
+        created = await saveRetainerInvoice(clonePayload);
       } catch (error: any) {
         if (!isDuplicateInvoiceNumberError(error)) throw error;
         let retryFloor = 1;
@@ -1283,7 +1281,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
           if (Number.isFinite(parsed)) retryFloor = Math.max(retryFloor, parsed + 1);
         }
         const retryPayload = { ...clonePayload, invoiceNumber: getNextRetainerNumber(retainers, retryFloor) };
-        created = await saveInvoice(retryPayload);
+        created = await saveRetainerInvoice(retryPayload);
       }
       const nextId = String((created as any)?.id || (created as any)?._id || "");
       setIsDetailActionsMenuOpen(false);
@@ -1319,7 +1317,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
       setDetailActionLoading("void");
       const invoiceId = String((invoice as any).id || (invoice as any)._id || id || "");
       if (!invoiceId) return;
-      await updateInvoice(invoiceId, { status: "void", voidReason: reason } as Partial<Invoice>);
+      await updateRetainerInvoice(invoiceId, { status: "void", voidReason: reason });
       setInvoice((prev) => (prev ? { ...prev, status: "void" } : prev));
       setIsVoidModalOpen(false);
       setVoidReason("");
@@ -1352,7 +1350,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
     if (!invoiceId) return;
     try {
       setDetailActionLoading("delete");
-      await deleteInvoice(invoiceId);
+      await deleteRetainerInvoice(invoiceId);
       setIsDetailActionsMenuOpen(false);
       setIsDeleteModalOpen(false);
       setDeleteRetainerId("");
@@ -1381,7 +1379,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
     const invoiceId = String((invoice as any).id || (invoice as any)._id || id || "");
     if (!invoiceId) return;
     try {
-      await updateInvoice(invoiceId, { status: "draft" } as Partial<Invoice>);
+      await updateRetainerInvoice(invoiceId, { status: "draft" });
       setInvoice((prev) => (prev ? { ...prev, status: "draft" } : prev));
       setReloadTick((v) => v + 1);
       toast.success("Retainer invoice converted to draft");
@@ -1397,7 +1395,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
     if (!invoiceId) return;
     try {
       setDetailActionLoading("sent");
-      await updateInvoice(invoiceId, { status: "sent" } as Partial<Invoice>);
+      await updateRetainerInvoice(invoiceId, { status: "sent" });
       setInvoice((prev) => (prev ? { ...prev, status: "sent" } : prev));
       setIsDetailActionsMenuOpen(false);
       setReloadTick((v) => v + 1);
@@ -1612,7 +1610,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
     const ids = Array.from(selectedRetainerIds);
     if (ids.length === 0) return;
     try {
-      await Promise.all(ids.map((retainerId) => deleteInvoice(retainerId)));
+      await Promise.all(ids.map((retainerId) => deleteRetainerInvoice(retainerId)));
       setSelectedRetainerIds(new Set());
       setIsBulkActionsOpen(false);
       setReloadTick((v) => v + 1);

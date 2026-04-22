@@ -103,9 +103,9 @@ export default function useCustomersPageController() {
     direction: "asc",
   });
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const currentPageRef = useRef(1);
-  const itemsPerPageRef = useRef(50);
+  const itemsPerPageRef = useRef(10);
   const loadCustomersRef = useRef<
     ((page?: number, limit?: number, options?: { rowRefreshOnly?: boolean; useCache?: boolean }) => Promise<void>) | null
   >(null);
@@ -208,6 +208,7 @@ export default function useCustomersPageController() {
 
   const [isCustomizeModalOpen, setIsCustomizeModalOpen] = useState(false);
   const resizingRef = useRef<{ col: string; startX: number; startWidth: number } | null>(null);
+  const hydratedListCacheKeyRef = useRef<string | null>(null);
 
   const visibleColumns = useMemo(() => columns.filter(c => c.visible), [columns]);
 
@@ -1227,6 +1228,68 @@ export default function useCustomersPageController() {
       applyCustomerListResult(customersListQuery.data);
     }
   }, [applyCustomerListResult, customersListQuery.data]);
+
+  useEffect(() => {
+    const hydrationKey = `${currentPageRef.current}:${itemsPerPageRef.current}`;
+    if (hydratedListCacheKeyRef.current === hydrationKey || customers.length > 0) return;
+
+    let cancelled = false;
+    const hydrateFromCache = async () => {
+      const queryParams = {
+        page: currentPageRef.current,
+        limit: itemsPerPageRef.current,
+        search: "",
+      };
+      const queryKey = customerQueryKeys.list(queryParams);
+      const cachedResult = queryClient.getQueryData<CustomersListQueryResult>(queryKey);
+      if (cachedResult) {
+        if (!cancelled) {
+          hydratedListCacheKeyRef.current = hydrationKey;
+          applyCustomerListResult(cachedResult);
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const endpoint = `/customers?page=${encodeURIComponent(queryParams.page)}&limit=${encodeURIComponent(queryParams.limit)}&search=`;
+        const storageKey = `taban:swr:customers:${endpoint}`;
+        const adapter = createAdaptiveStorageAdapter<any>({ key: storageKey });
+        const cachedPayload = await adapter.read();
+        if (cancelled || !cachedPayload || !Array.isArray(cachedPayload.items) || cachedPayload.items.length === 0) {
+          return;
+        }
+
+        const cachedListResult: CustomersListQueryResult = {
+          data: cachedPayload.items,
+          pagination: cachedPayload.pagination || {
+            total: Number(cachedPayload.total || cachedPayload.items.length || 0),
+            page: Number(cachedPayload.page || queryParams.page),
+            limit: Number(cachedPayload.limit || queryParams.limit),
+            pages: Number(cachedPayload.totalPages || Math.max(1, Math.ceil(Number(cachedPayload.total || cachedPayload.items.length || 0) / Math.max(1, Number(cachedPayload.limit || queryParams.limit))))),
+          },
+          total: Number(cachedPayload.total || cachedPayload.pagination?.total || cachedPayload.items.length || 0),
+          page: Number(cachedPayload.page || cachedPayload.pagination?.page || queryParams.page),
+          limit: Number(cachedPayload.limit || cachedPayload.pagination?.limit || queryParams.limit),
+          totalPages: Number(cachedPayload.totalPages || cachedPayload.pagination?.pages || Math.max(1, Math.ceil(Number(cachedPayload.total || cachedPayload.items.length || 0) / Math.max(1, Number(cachedPayload.limit || queryParams.limit))))),
+          version_id: cachedPayload.version_id,
+          last_updated: cachedPayload.last_updated,
+        };
+
+        hydratedListCacheKeyRef.current = hydrationKey;
+        applyCustomerListResult(cachedListResult);
+        setIsLoading(false);
+      } catch {
+        // Ignore cache hydration failures and let the live query continue.
+      }
+    };
+
+    void hydrateFromCache();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [applyCustomerListResult, customers.length, currentPage, itemsPerPage, queryClient]);
 
   useEffect(() => {
     const hasLoadedRows =
@@ -2627,14 +2690,20 @@ export default function useCustomersPageController() {
     setSearchModalFilter,
     setSearchType,
     setViewSearchQuery,
+    currentPage,
+    itemsPerPage,
     showCustomerSkeletons,
     sortConfig,
     startResizing,
+    setCurrentPage,
+    setItemsPerPage,
     statusDropdownRef,
     tableMinWidth,
     taxExemptionsDropdownRef,
     taxRateDropdownRef,
     taxRateOptions,
+    totalItems,
+    totalPages,
     transactionTypeDropdownRef,
     viewSearchQuery,
     tableVisibleColumns,

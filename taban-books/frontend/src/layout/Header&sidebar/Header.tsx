@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
   Building2,
@@ -20,9 +21,11 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { apiRequest } from "../../services/api";
 import { setOrganization } from "../../services/auth";
 import { useAppBootstrap } from "../../context/AppBootstrapContext";
+import { preloadCustomersIndexData } from "../../features/sales/Customers/customerRouteLoaders";
 
 export default function Header() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const location = useLocation();
   const { authenticated, currentUser, organization, branding } = useAppBootstrap();
   const [orgDropdownOpen, setOrgDropdownOpen] = useState(false);
@@ -121,6 +124,10 @@ export default function Header() {
     setSearchDropdownOpen(false);
     const query = searchQuery.trim();
     navigate(query ? `${option.path}?search=${encodeURIComponent(query)}` : option.path);
+  };
+
+  const handleCustomersPrefetch = () => {
+    void preloadCustomersIndexData(queryClient);
   };
 
   useEffect(() => {
@@ -289,18 +296,20 @@ export default function Header() {
             />
           </div>
 
-          {searchDropdownOpen && (
-            <div className="absolute left-0 top-full z-[120] mt-2 w-[300px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.16)]">
-              <div className="max-h-[500px] overflow-y-auto py-2">
-                {searchOptions.map((option) => (
-                  <button
-                    key={option.label}
-                    type="button"
-                    onClick={() => handleSearchScopeChange(option)}
-                    className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-slate-100 ${
-                      searchScope === option.label ? "bg-slate-100" : ""
-                    }`}
-                  >
+                {searchDropdownOpen && (
+                  <div className="absolute left-0 top-full z-[120] mt-2 w-[300px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.16)]">
+                  <div className="max-h-[500px] overflow-y-auto py-2">
+                    {searchOptions.map((option) => (
+                      <button
+                        key={option.label}
+                        type="button"
+                        onMouseEnter={option.label === "Customers" ? handleCustomersPrefetch : undefined}
+                        onFocus={option.label === "Customers" ? handleCustomersPrefetch : undefined}
+                        onClick={() => handleSearchScopeChange(option)}
+                        className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-slate-100 ${
+                          searchScope === option.label ? "bg-slate-100" : ""
+                        }`}
+                      >
                     <span className={searchScope === option.label ? "font-medium text-slate-900" : "text-slate-700"}>
                       {option.label}
                     </span>

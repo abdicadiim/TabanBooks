@@ -20,9 +20,12 @@ import {
 } from "lucide-react";
 import { logout } from "../services/auth";
 import { useAppBootstrap } from "../context/AppBootstrapContext";
+import { useQueryClient } from "@tanstack/react-query";
+import { preloadCustomersIndexData } from "../features/sales/Customers/customerRouteLoaders";
 
 export default function TopBar() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { authenticated, currentUser, organization, resetBootstrap, branding } = useAppBootstrap();
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -208,6 +211,10 @@ export default function TopBar() {
     if (option.path) {
       navigate(option.path);
     }
+  };
+
+  const handleCustomersPrefetch = () => {
+    void preloadCustomersIndexData(queryClient);
   };
 
   return (
@@ -559,6 +566,8 @@ export default function TopBar() {
                               .map((option) => (
                                 <div
                                   key={option}
+                                  onMouseEnter={option === "Customers" ? handleCustomersPrefetch : undefined}
+                                  onFocus={option === "Customers" ? handleCustomersPrefetch : undefined}
                                   onClick={() => {
                                     setAdvancedSearchType(option);
                                     setSearchTypeDropdownOpen(false);

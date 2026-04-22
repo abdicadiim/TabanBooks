@@ -18,6 +18,9 @@ type CustomerDetailOverviewContentProps = {
   invoices: any[];
   payments: any[];
   accountingBasis: string;
+  expenses: any[];
+  recurringExpenses: any[];
+  bills: any[];
   quotes: any[];
   creditNotes: any[];
   salesReceipts: any[];
@@ -49,6 +52,9 @@ export default function CustomerDetailOverviewContent({
   invoices,
   payments,
   accountingBasis,
+  expenses,
+  recurringExpenses,
+  bills,
   quotes,
   creditNotes,
   salesReceipts,
@@ -66,69 +72,49 @@ export default function CustomerDetailOverviewContent({
     Number.isFinite(receivablesValue) &&
     receivablesValue > creditLimitValue;
 
-  const filteredInvoices = (() => {
-    const now = new Date();
-    let nextInvoices = [...invoices];
+  const toAmount = (value: any) => {
+    const next = Number(String(value ?? 0).replace(/,/g, ""));
+    return Number.isFinite(next) ? next : 0;
+  };
 
+  const toDate = (value: any) => {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+
+  const matchesPeriod = (date: Date | null) => {
+    if (!date) return false;
+    const now = new Date();
     if (incomeTimePeriod === "This Fiscal Year") {
       const fiscalYearStart = new Date(now.getFullYear(), 6, 1);
-      nextInvoices = invoices.filter((invoice) => {
-        const invoiceDate = new Date(invoice.invoiceDate || invoice.date || invoice.createdAt);
-        return invoiceDate >= fiscalYearStart && invoiceDate <= now;
-      });
-    } else if (incomeTimePeriod === "Previous Fiscal Year") {
+      return date >= fiscalYearStart && date <= now;
+    }
+    if (incomeTimePeriod === "Previous Fiscal Year") {
       const previousYearStart = new Date(now.getFullYear() - 1, 6, 1);
       const previousYearEnd = new Date(now.getFullYear(), 5, 30);
-      nextInvoices = invoices.filter((invoice) => {
-        const invoiceDate = new Date(invoice.invoiceDate || invoice.date || invoice.createdAt);
-        return invoiceDate >= previousYearStart && invoiceDate <= previousYearEnd;
-      });
-    } else if (incomeTimePeriod === "Last 12 Months") {
+      return date >= previousYearStart && date <= previousYearEnd;
+    }
+    if (incomeTimePeriod === "Last 12 Months") {
       const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 12, now.getDate());
-      nextInvoices = invoices.filter((invoice) => {
-        const invoiceDate = new Date(invoice.invoiceDate || invoice.date || invoice.createdAt);
-        return invoiceDate >= twelveMonthsAgo && invoiceDate <= now;
-      });
-    } else if (incomeTimePeriod === "Last 6 Months") {
+      return date >= twelveMonthsAgo && date <= now;
+    }
+    if (incomeTimePeriod === "Last 6 Months") {
       const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
-      nextInvoices = invoices.filter((invoice) => {
-        const invoiceDate = new Date(invoice.invoiceDate || invoice.date || invoice.createdAt);
-        return invoiceDate >= sixMonthsAgo && invoiceDate <= now;
-      });
+      return date >= sixMonthsAgo && date <= now;
     }
+    return true;
+  };
 
-    if (accountingBasis === "Cash") {
-      nextInvoices = nextInvoices.filter((invoice) => {
-        const paidAmount = payments
-          .filter((payment) => payment.invoiceId === invoice.id || payment.invoiceId === invoice._id || payment.invoiceNumber === invoice.invoiceNumber)
-          .reduce((sum, payment) => sum + parseFloat(String(payment.amountReceived || payment.amount || 0)), 0);
-        const invoiceTotal = parseFloat(String(invoice.total || invoice.amount || 0));
-        return paidAmount >= invoiceTotal;
-      });
-    }
-
-    return nextInvoices;
-  })();
-
-  const totalIncome = filteredInvoices.reduce((sum, invoice) => {
-    const amount = parseFloat(String(invoice.total || invoice.amount || invoice.subtotal || 0));
-    return sum + amount;
-  }, 0);
-
-  const chartData = (() => {
-    const periods: { label: string; year: number; month: number; total: number }[] = [];
+  const periodSeed = (() => {
+    const periods: { label: string; year: number; month: number; income: number; expense: number }[] = [];
     const now = new Date();
 
     if (incomeTimePeriod === "Last 6 Months" || incomeTimePeriod === "Last 12 Months") {
       const count = incomeTimePeriod === "Last 6 Months" ? 6 : 12;
       for (let index = count - 1; index >= 0; index -= 1) {
         const date = new Date(now.getFullYear(), now.getMonth() - index, 1);
-        periods.push({
-          label: date.toLocaleString("en-US", { month: "short" }),
-          year: date.getFullYear(),
-          month: date.getMonth(),
-          total: 0,
-        });
+        periods.push({ label: date.toLocaleString("en-US", { month: "short" }), year: date.getFullYear(), month: date.getMonth(), income: 0, expense: 0 });
       }
     } else if (incomeTimePeriod === "This Fiscal Year") {
       const startMonth = 6;
@@ -136,42 +122,64 @@ export default function CustomerDetailOverviewContent({
       for (let index = 0; index < 12; index += 1) {
         const date = new Date(fiscalYearStart, startMonth + index, 1);
         if (date > now) break;
-        periods.push({
-          label: date.toLocaleString("en-US", { month: "short" }),
-          year: date.getFullYear(),
-          month: date.getMonth(),
-          total: 0,
-        });
+        periods.push({ label: date.toLocaleString("en-US", { month: "short" }), year: date.getFullYear(), month: date.getMonth(), income: 0, expense: 0 });
       }
     } else if (incomeTimePeriod === "Previous Fiscal Year") {
       const startMonth = 6;
       const fiscalYearStart = now.getMonth() >= startMonth ? now.getFullYear() - 1 : now.getFullYear() - 2;
       for (let index = 0; index < 12; index += 1) {
         const date = new Date(fiscalYearStart, startMonth + index, 1);
-        periods.push({
-          label: date.toLocaleString("en-US", { month: "short" }),
-          year: date.getFullYear(),
-          month: date.getMonth(),
-          total: 0,
-        });
+        periods.push({ label: date.toLocaleString("en-US", { month: "short" }), year: date.getFullYear(), month: date.getMonth(), income: 0, expense: 0 });
       }
     }
-
-    filteredInvoices.forEach((invoice) => {
-      const invoiceDate = new Date(String(invoice.invoiceDate || invoice.date || invoice.createdAt || 0));
-      const period = periods.find((item) => item.year === invoiceDate.getFullYear() && item.month === invoiceDate.getMonth());
-      if (period) {
-        period.total += parseFloat(String(invoice.total || invoice.amount || 0));
-      }
-    });
 
     return periods;
   })();
 
-  const maxChartValue = Math.max(...chartData.map((item) => item.total), 1000);
-  const hasIncomeData = chartData.some((item) => item.total > 0);
-  const chartHeight = 160;
-  const chartWidth = 400;
+  const chartData = periodSeed.map((period) => ({ ...period }));
+  const accumulate = (rows: any[], key: "income" | "expense") => {
+    rows.forEach((row) => {
+      const rowDate = toDate(row.invoiceDate || row.date || row.createdAt || row.created_on || row.expenseDate || row.billDate || row.startDate || row.recurringInvoiceDate);
+      const period = chartData.find((item) => item.year === rowDate?.getFullYear() && item.month === rowDate?.getMonth());
+      if (!period || !rowDate || !matchesPeriod(rowDate)) return;
+      period[key] += toAmount(row.total || row.amount || row.subtotal || row.subTotal || row.balance || 0);
+    });
+  };
+
+  const filteredInvoices = invoices.filter((row) => matchesPeriod(toDate(row.invoiceDate || row.date || row.createdAt)));
+  const cashFilteredInvoices =
+    accountingBasis === "Cash"
+      ? filteredInvoices.filter((invoice) => {
+          const paidAmount = payments
+            .filter((payment) => payment.invoiceId === invoice.id || payment.invoiceId === invoice._id || payment.invoiceNumber === invoice.invoiceNumber)
+            .reduce((sum, payment) => sum + toAmount(payment.amountReceived || payment.amount || 0), 0);
+          const invoiceTotal = toAmount(invoice.total || invoice.amount || 0);
+          return paidAmount >= invoiceTotal;
+        })
+      : filteredInvoices;
+  const filteredSalesReceipts = salesReceipts.filter((row) => matchesPeriod(toDate(row.date || row.salesReceiptDate || row.createdAt)));
+  const filteredRecurringInvoices = recurringInvoices.filter((row) => matchesPeriod(toDate(row.startDate || row.recurringInvoiceDate || row.createdAt)));
+  const filteredExpenses = expenses.filter((row) => matchesPeriod(toDate(row.expenseDate || row.date || row.createdAt)));
+  const filteredRecurringExpenses = recurringExpenses.filter((row) => matchesPeriod(toDate(row.startDate || row.expenseDate || row.date || row.createdAt)));
+  const filteredBills = bills.filter((row) => matchesPeriod(toDate(row.billDate || row.date || row.createdAt)));
+
+  accumulate(cashFilteredInvoices, "income");
+  accumulate(filteredSalesReceipts, "income");
+  accumulate(filteredRecurringInvoices, "income");
+  accumulate(filteredExpenses, "expense");
+  accumulate(filteredRecurringExpenses, "expense");
+  accumulate(filteredBills, "expense");
+
+  const totalIncome = [...cashFilteredInvoices, ...filteredSalesReceipts, ...filteredRecurringInvoices].reduce((sum, row) => sum + toAmount(row.total || row.amount || row.subtotal || row.subTotal || row.balance || 0), 0);
+  const totalExpense = [...filteredExpenses, ...filteredRecurringExpenses, ...filteredBills].reduce((sum, row) => sum + toAmount(row.total || row.amount || row.subtotal || row.subTotal || row.balance || 0), 0);
+
+  const maxChartValue = Math.max(...chartData.flatMap((item) => [item.income, item.expense]), 1000);
+  const hasChartData = chartData.some((item) => item.income > 0 || item.expense > 0);
+  const chartHeight = 180;
+  const chartWidth = 420;
+  const plotHeight = 130;
+  const groupWidth = chartData.length > 0 ? chartWidth / chartData.length : chartWidth;
+  const barWidth = Math.max(8, Math.min(20, groupWidth / 3));
 
   return (
     <div className="flex-1 min-w-0 bg-white p-4">
@@ -188,10 +196,14 @@ export default function CustomerDetailOverviewContent({
         </div>
         <div>
           <div className="px-2">
-            <span className="text-sm text-gray-500">Credit Limit</span>
+            <span className="text-sm text-gray-500">{customer.linkedVendorId ? "Associated with Vendor" : "Credit Limit"}</span>
           </div>
           <div className="px-2 pt-1">
-            <div className="text-sm text-gray-900">{getCreditLimitText(customer, formatCurrency)}</div>
+            <div className={`text-sm ${customer.linkedVendorId ? "font-medium text-blue-600" : "text-gray-900"}`}>
+              {customer.linkedVendorId
+                ? (customer.linkedVendorName || linkedVendor?.name || "N/A")
+                : getCreditLimitText(customer, formatCurrency)}
+            </div>
           </div>
         </div>
       </div>
@@ -230,37 +242,6 @@ export default function CustomerDetailOverviewContent({
         <div className="mb-4 flex items-center gap-2 bg-white px-4 py-3 text-sm text-orange-600">
           <AlertTriangle size={16} className="text-orange-500" />
           <span>Credit limit is being exceeded by {formatCurrency(receivablesValue - creditLimitValue, customer.currency || "USD")}</span>
-        </div>
-      )}
-
-      {customer.linkedVendorId && (
-        <div className="mb-4 border-y border-gray-200 bg-white">
-          <div className="border-b border-gray-200 p-4">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Payables</span>
-          </div>
-          <div className="overflow-hidden border-t border-gray-100">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">CURRENCY</th>
-                  <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500">OUTSTANDING PAYABLES</th>
-                  <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500">UNUSED CREDITS</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                <tr>
-                  <td className="px-4 py-3 font-medium text-gray-900">{customer.currency || "USD"}</td>
-                  <td className="px-4 py-3 text-right text-gray-900">{formatCurrency(linkedVendor?.payables || 0, customer.currency || "USD")}</td>
-                  <td className="px-4 py-3 text-right font-medium text-red-600">{formatCurrency(linkedVendor?.unusedCredits || 0, customer.currency || "USD")}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div className="border-t border-gray-100 p-4 pt-2">
-            <div className="text-xs text-gray-500">
-              Linked Vendor: <span className="font-medium text-gray-900">{customer.linkedVendorName || linkedVendor?.name || "N/A"}</span>
-            </div>
-          </div>
         </div>
       )}
 
@@ -308,37 +289,57 @@ export default function CustomerDetailOverviewContent({
                   <div key={item} className="h-0 w-full border-t border-gray-200"></div>
                 ))}
               </div>
-              {hasIncomeData && (
-                <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="h-full w-full overflow-visible">
-                  <path
-                    d={`M 0 ${chartHeight} ${chartData
-                      .map((item, index) => `L ${(index / (chartData.length - 1)) * chartWidth} ${chartHeight - (item.total / maxChartValue) * chartHeight * 0.8}`)
-                      .join(" ")} L ${chartWidth} ${chartHeight} Z`}
-                    fill="rgba(59, 130, 246, 0.10)"
-                  />
-                  <polyline
-                    fill="none"
-                    stroke="#3b82f6"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    points={chartData
-                      .map((item, index) => `${(index / (chartData.length - 1)) * chartWidth},${chartHeight - (item.total / maxChartValue) * chartHeight * 0.8}`)
-                      .join(" ")}
-                  />
-                </svg>
+              <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="h-full w-full overflow-visible">
+                {chartData.map((item, index) => {
+                  const groupX = index * groupWidth;
+                  const incomeHeight = (item.income / maxChartValue) * plotHeight;
+                  const expenseHeight = (item.expense / maxChartValue) * plotHeight;
+                  const baseY = chartHeight - 24;
+                  return (
+                    <g key={`${item.year}-${item.month}-${item.label}`}>
+                      <rect
+                        x={groupX + groupWidth / 2 - barWidth - 3}
+                        y={baseY - incomeHeight}
+                        width={barWidth}
+                        height={incomeHeight}
+                        rx="4"
+                        fill="#3b82f6"
+                        opacity={item.income > 0 ? 0.9 : 0.15}
+                      />
+                      <rect
+                        x={groupX + groupWidth / 2 + 3}
+                        y={baseY - expenseHeight}
+                        width={barWidth}
+                        height={expenseHeight}
+                        rx="4"
+                        fill="#f43f5e"
+                        opacity={item.expense > 0 ? 0.9 : 0.15}
+                      />
+                      <text
+                        x={groupX + groupWidth / 2}
+                        y={chartHeight - 6}
+                        textAnchor="middle"
+                        className="fill-gray-400"
+                        fontSize="10"
+                      >
+                        {item.label}
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
+              {!hasChartData && (
+                <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-400">
+                  No income or expense data for this period.
+                </div>
               )}
-              <div className="absolute bottom-[-15px] left-0 right-0 flex justify-between px-1">
-                {chartData.map((item, index) => (
-                  <span key={index} className="text-[10px] font-medium text-gray-400">
-                    {item.label}
-                  </span>
-                ))}
-              </div>
             </div>
           </div>
           <div className="border-t border-gray-200 pt-4 text-lg font-medium text-gray-900">
-            Total Income ({incomeTimePeriod}) - {formatCurrency(totalIncome, customer.currency?.substring(0, 3) || "USD")}
+            Income ({incomeTimePeriod}) - {formatCurrency(totalIncome, customer.currency?.substring(0, 3) || "USD")}
+          </div>
+          <div className="mt-1 text-sm text-gray-600">
+            Expense ({incomeTimePeriod}) - {formatCurrency(totalExpense, customer.currency?.substring(0, 3) || "USD")}
           </div>
         </div>
       </div>

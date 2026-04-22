@@ -601,12 +601,17 @@ export const retainerInvoicesAPI = {
 // ============================================================================
 
 export const debitNotesAPI = {
-  getAll: () => apiRequest('/debit-notes'),
+  getAll: (params: any = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/debit-notes${queryString ? `?${queryString}` : ''}`);
+  },
   getById: (id: any) => apiRequest(`/debit-notes/${id}`),
   create: (data: any) => apiRequest('/debit-notes', { method: 'POST', body: data }),
   update: (id: any, data: any) => apiRequest(`/debit-notes/${id}`, { method: 'PUT', body: data }),
   delete: (id: any) => apiRequest(`/debit-notes/${id}`, { method: 'DELETE' }),
   sendEmail: (id: any, data: any) => apiRequest(`/debit-notes/${id}/email`, { method: 'POST', body: data }),
+  getNextNumber: () => apiRequest('/debit-notes/next-number'),
+  getByInvoice: (id: any) => apiRequest(`/debit-notes/invoice/${id}`),
 };
 
 // ============================================================================
@@ -991,14 +996,23 @@ export const paymentsMadeAPI = {
 // ============================================================================
 
 export const creditNotesAPI = {
-  getAll: () => apiRequest('/credit-notes'),
+  getAll: (params: any = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/credit-notes${queryString ? `?${queryString}` : ''}`);
+  },
   getById: (id: any) => apiRequest(`/credit-notes/${id}`),
   getNextNumber: () => apiRequest('/credit-notes/next-number'),
   create: (data: any) => apiRequest('/credit-notes', { method: 'POST', body: data }),
   update: (id: any, data: any) => apiRequest(`/credit-notes/${id}`, { method: 'PUT', body: data }),
   delete: (id: any) => apiRequest(`/credit-notes/${id}`, { method: 'DELETE' }),
-  getByInvoice: (invoiceId: any) => apiRequest(`/credit-notes?invoiceId=${invoiceId}`),
-  getByCustomer: (customerId: any) => apiRequest(`/credit-notes?customerId=${customerId}`),
+  getByInvoice: (invoiceId: any, params: any = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/credit-notes?invoiceId=${invoiceId}${queryString ? `&${queryString}` : ''}`);
+  },
+  getByCustomer: (customerId: any, params: any = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/credit-notes?customerId=${customerId}${queryString ? `&${queryString}` : ''}`);
+  },
   applyToInvoices: (id: any, allocations: any[]) => apiRequest(`/credit-notes/${id}/apply-to-invoices`, { method: 'POST', body: { allocations } }),
 };
 
@@ -1327,6 +1341,15 @@ export const settingsAPI = {
   getRecurringInvoiceSettings: () => apiRequest('/settings/recurring-invoices'),
   updateRecurringInvoiceSettings: (data: any) => apiRequest('/settings/recurring-invoices', { method: 'PUT', body: data }),
   getOwnerEmail: () => apiRequest('/settings/organization/owner-email'),
+  getGeneralSettings: () => apiRequest('/settings/general'),
+  getCachedGeneralSettings: () => {
+    try {
+      const org = localStorage.getItem('organization');
+      return org ? JSON.parse(org) : {};
+    } catch {
+      return {};
+    }
+  },
 };
 
 // ============================================================================

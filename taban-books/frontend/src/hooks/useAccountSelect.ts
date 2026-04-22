@@ -120,6 +120,7 @@ export const useAccountSelect = ({ onSelect, initialValue = '', type, allowedTyp
         isOpen,
         setIsOpen,
         accounts,
+        filteredAccounts: accounts,
         groupedAccounts,
         loading,
         dropdownRef,

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { getCustomerById } from "../../../salesModel";
 import {
   X,
   FileText,
@@ -21,17 +20,19 @@ import {
   Type
 } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { emailTemplatesAPI, senderEmailsAPI, customersAPI, vendorsAPI } from "../../../../../services/api";
-import { applyEmailTemplate } from "../../../../settings/emailTemplateUtils";
+import { senderEmailsAPI, customersAPI, vendorsAPI, emailTemplatesAPI } from "../../../../../services/api";
 import { formatSenderDisplay } from "../../../../../utils/emailSenderDisplay";
+import { applyEmailTemplate } from "../../../../settings/emailTemplateUtils";
 
 export default function SendEmailStatement() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const [customer, setCustomer] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const statementData = location.state || {};
+  const initialCustomer = statementData.customer || null;
+  const [customer, setCustomer] = useState<any>(initialCustomer);
   const [isSending, setIsSending] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Format date helper function
   const formatDate = (date: any) => {
@@ -44,7 +45,6 @@ export default function SendEmailStatement() {
   };
 
   // Get statement data from location state or calculate defaults
-  const statementData = location.state || {};
   const entityType = statementData.type || "customer";
 
   // Use raw strings for dependencies to avoid infinite loops with new Date objects
@@ -62,14 +62,21 @@ export default function SendEmailStatement() {
   );
 
   const filterBy = statementData.filterBy || "all";
+  const initialDisplayName =
+    statementData.customer?.displayName ||
+    statementData.customer?.name ||
+    (entityType === "vendor" ? "Vendor" : "Customer");
 
   const [emailData, setEmailData] = useState({
     from: "Loading...",
-    sendTo: "",
+    sendTo: statementData.customer?.email || "",
     cc: "",
     bcc: "",
     subject: `Account Statement from ${formatDate(startDate)} to ${formatDate(endDate)}`,
-    body: ""
+    body: `Dear ${initialDisplayName},<br/><br/>
+            Please find your account statement attached.<br/><br/>
+            Regards,<br/>
+            ${statementData.senderName || "The Team"}`
   });
 
   const [showCc, setShowCc] = useState(false);
@@ -78,10 +85,15 @@ export default function SendEmailStatement() {
   const editorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (editorRef.current && !editorRef.current.innerHTML) {
+      editorRef.current.innerHTML = emailData.body;
+    }
+  }, []);
+
+  useEffect(() => {
     const fetchData = async () => {
       if (!id) return;
 
-      setIsLoading(true);
       try {
         // Fetch entity and primary sender in parallel
         const [entityResponse, senderResponse] = await Promise.all([
@@ -105,6 +117,7 @@ export default function SendEmailStatement() {
             If you have any questions, just drop us an email or call us.<br/><br/>
             Regards,<br/>
             ${primaryData.email || primaryData.name || "The Team"}`;
+
           let templateSubject = `Account Statement from ${formatDate(startDate)} to ${formatDate(endDate)}`;
           let templateBody = initialBody;
           const templateKey = entityType === "vendor" ? "vendor_statement" : "customer_statement";
@@ -132,6 +145,7 @@ export default function SendEmailStatement() {
             console.error("Error loading statement template:", templateError);
           }
 
+          setCustomer(entityData);
           setEmailData(prev => ({
             ...prev,
             from: fromAddress,
@@ -153,7 +167,7 @@ export default function SendEmailStatement() {
       }
     };
     fetchData();
-  }, [id, navigate, startDateStr, endDateStr, entityType]);
+  }, [id, navigate, startDateStr, endDateStr, entityType, initialCustomer]);
 
   const handleSend = async () => {
     if (!emailData.sendTo) {
@@ -214,13 +228,12 @@ export default function SendEmailStatement() {
       </div>
     );
   }
-
   const displayName = customer?.displayName || customer?.name || (entityType === "vendor" ? "Vendor" : "Customer");
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="flex h-screen flex-col overflow-hidden bg-white">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
         <div className="flex items-center gap-4">
           <X
             size={24}
@@ -248,7 +261,8 @@ export default function SendEmailStatement() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-8">
+      <div className="flex-1 overflow-y-auto px-6 py-8">
+        <div className="mx-auto max-w-4xl">
         {/* Email Metadata */}
         <div className="space-y-4 mb-8">
           {/* From */}
@@ -415,6 +429,25 @@ export default function SendEmailStatement() {
               <span>Attach more files...</span>
             </button>
           </div>
+        </div>
+        </div>
+      </div>
+
+      <div className="sticky bottom-0 z-10 shrink-0 border-t border-gray-200 bg-white/95 px-6 py-4 backdrop-blur">
+        <div className="mx-auto flex max-w-4xl items-center justify-end gap-3">
+          <button
+            onClick={handleCancel}
+            className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-md text-sm transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={isSending}
+            className={`px-4 py-2 bg-red-600 text-white font-medium rounded-md text-sm hover:bg-red-700 transition-colors flex items-center gap-2 ${isSending ? 'opacity-70 cursor-not-allowed' : ''}`}
+          >
+            {isSending ? 'Sending...' : 'Send'}
+          </button>
         </div>
       </div>
     </div>

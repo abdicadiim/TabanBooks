@@ -52,7 +52,6 @@ import { ConfigurePaymentTermsModal } from "../../../../components/ConfigurePaym
 import NewTaxQuickModal from "../../../../components/tax/NewTaxQuickModal";
 import { toast } from "react-hot-toast";
 import { useItemsListQuery } from "../../Product-Calalog/items/itemQueries";
-import { usePlansListQuery } from "../../Product-Calalog/plans/planQueries";
 
 interface Item {
   id: string | number;
@@ -338,7 +337,6 @@ const [taxSearches, setTaxSearches] = useState<Record<string, string>>({});
   const [newTaxTargetItemId, setNewTaxTargetItemId] = useState<string | number | null>(null);
   const [itemSearches, setItemSearches] = useState<Record<string, string>>({});
   const itemsQuery = useItemsListQuery();
-  const plansQuery = usePlansListQuery();
 
   const catalogEntries = useMemo(() => {
     const normalizedItems = (itemsQuery.data || []).map((entry: any, index: number) => ({
@@ -354,21 +352,8 @@ const [taxSearches, setTaxSearches] = useState<Record<string, string>>({});
       description: String(entry?.description || entry?.salesDescription || "").trim(),
     }));
 
-    const normalizedPlans = (plansQuery.data || []).map((plan: any, index: number) => ({
-      ...plan,
-      entityType: "plan",
-      id: String(plan?.id || plan?._id || `plan-${index}`),
-      sourceId: String(plan?.id || plan?._id || `plan-${index}`),
-      name: String(plan?.planName || plan?.name || plan?.plan || "").trim(),
-      sku: String(plan?.planCode || plan?.code || "").trim(),
-      code: String(plan?.planCode || plan?.code || "").trim(),
-      rate: Number(plan?.price || plan?.amount || plan?.rate || 0) || 0,
-      unit: String(plan?.billingFrequency || plan?.billingFrequencyUnit || "plan").trim(),
-      description: String(plan?.description || plan?.planDescription || "").trim(),
-    }));
-
     const uniqueByKey = new Map<string, any>();
-    [...normalizedItems, ...normalizedPlans].forEach((entry) => {
+    normalizedItems.forEach((entry) => {
       const key = `${String(entry?.entityType || "item")}:${String(entry?.id || entry?.sourceId || entry?.name || "").trim()}`;
       if (key && !key.endsWith(":")) {
         uniqueByKey.set(key, entry);
@@ -376,7 +361,7 @@ const [taxSearches, setTaxSearches] = useState<Record<string, string>>({});
     });
 
     return Array.from(uniqueByKey.values());
-  }, [itemsQuery.data, plansQuery.data]);
+  }, [itemsQuery.data]);
 
   const getBulkFilteredItems = () => {
     const search = bulkAddSearch.trim().toLowerCase();

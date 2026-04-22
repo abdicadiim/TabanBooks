@@ -3,9 +3,10 @@ import { toast } from "react-hot-toast";
 import { useLocation, useNavigate } from "react-router-dom";
 import { X, Download, ChevronDown, ChevronUp, HelpCircle, Search, Check, Lightbulb, LayoutGrid, HardDrive, Box, Square, Cloud, ChevronUp as ChevronUpIcon, Users, FileText, Folder, Building2, Edit, ChevronLeft, Info } from "lucide-react";
 import { getAllDocuments } from "../../../../utils/documentStorage";
-import { saveInvoice, getInvoices, getCustomers, updateInvoice, saveCustomer } from "../../salesModel";
+import { saveInvoice, getInvoices, getCustomers, updateInvoice, saveCustomer, saveRetainerInvoice, getRetainerInvoices, updateRetainerInvoice, Invoice, RetainerInvoice } from "../../salesModel";
 import { parseImportFile } from "../../utils/importFileParser";
 import { invoicesAPI } from "../../../../services/api";
+import { DocumentRecord } from "../../../../utils/documentStorage";
 
 export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer" }) {
   const navigate = useNavigate();
@@ -14,7 +15,7 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
   const entityLabel = isRetainerImport ? "Retainer Invoices" : "Invoices";
   const entityLabelSingle = isRetainerImport ? "retainer invoice" : "invoice";
   const returnPath = isRetainerImport ? "/sales/retainer-invoices" : "/sales/invoices";
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [duplicateHandling, setDuplicateHandling] = useState("skip");
   const [characterEncoding, setCharacterEncoding] = useState("UTF-8 (Unicode)");
   const [isEncodingDropdownOpen, setIsEncodingDropdownOpen] = useState(false);
@@ -24,11 +25,11 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
   const [isDocumentsModalOpen, setIsDocumentsModalOpen] = useState(false);
   const [selectedDocumentCategory, setSelectedDocumentCategory] = useState("allDocuments");
   const [documentSearch, setDocumentSearch] = useState("");
-  const [documents, setDocuments] = useState([]);
-  const [selectedDocuments, setSelectedDocuments] = useState([]);
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
   const [selectedCloudProvider, setSelectedCloudProvider] = useState("zoho");
   const [currentStep, setCurrentStep] = useState("configure"); // "configure", "mapFields", "preview"
-  const [fieldMappings, setFieldMappings] = useState({});
+  const [fieldMappings, setFieldMappings] = useState<Record<string, string>>({});
   const [decimalFormat, setDecimalFormat] = useState("1234567.89");
   const [previewData, setPreviewData] = useState({
     readyToImport: 0,
@@ -54,18 +55,19 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
     "Amount"
   ]);
   const [autoGenerateNumbers, setAutoGenerateNumbers] = useState(false);
-  const fileInputRef = useRef(null);
-  const encodingDropdownRef = useRef(null);
-  const fileSourceDropdownRef = useRef(null);
-  const dropAreaRef = useRef(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const encodingDropdownRef = useRef<HTMLDivElement>(null);
+  const fileSourceDropdownRef = useRef<HTMLDivElement>(null);
+  const dropAreaRef = useRef<HTMLDivElement>(null);
 
   // Handle click outside for dropdowns
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (encodingDropdownRef.current && !encodingDropdownRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (encodingDropdownRef.current && !encodingDropdownRef.current.contains(target)) {
         setIsEncodingDropdownOpen(false);
       }
-      if (fileSourceDropdownRef.current && !fileSourceDropdownRef.current.contains(event.target)) {
+      if (fileSourceDropdownRef.current && !fileSourceDropdownRef.current.contains(target)) {
         setIsFileSourceDropdownOpen(false);
       }
     };
@@ -103,14 +105,14 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
   }, []);
 
   // Filter documents based on category and search
-  const getFilteredDocuments = () => {
-    let filtered = documents;
+  const getFilteredDocuments = (): DocumentRecord[] => {
+    let filtered: DocumentRecord[] = documents;
 
     // Filter by category
     if (selectedDocumentCategory === "files") {
-      filtered = filtered.filter(doc => doc.folder === "Files" || doc.module === "Documents");
+      filtered = filtered.filter(doc => (doc as any).folder === "Files" || (doc as any).module === "Documents");
     } else if (selectedDocumentCategory === "bankStatements") {
-      filtered = filtered.filter(doc => doc.folder === "Bank Statements" || doc.name.toLowerCase().includes("bank") || doc.name.toLowerCase().includes("statement"));
+      filtered = filtered.filter(doc => (doc as any).folder === "Bank Statements" || doc.name.toLowerCase().includes("bank") || doc.name.toLowerCase().includes("statement"));
     }
     // "allDocuments" shows all documents
 
@@ -118,7 +120,7 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
     if (documentSearch) {
       filtered = filtered.filter(doc =>
         doc.name.toLowerCase().includes(documentSearch.toLowerCase()) ||
-        (doc.associatedTo && doc.associatedTo.toLowerCase().includes(documentSearch.toLowerCase()))
+        ((doc as any).associatedTo && (doc as any).associatedTo.toLowerCase().includes(documentSearch.toLowerCase()))
       );
     }
 
@@ -140,15 +142,16 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
     "ASCII"
   ];
 
-  const handleFileSelect = (event) => {
-    const file = event.target.files[0];
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (file) {
       // Validate file type
       const validTypes = [".csv", ".tsv", ".xls", ".xlsx"];
-      const fileExtension = "." + file.name.split(".").pop().toLowerCase();
+      const fileName = file.name || "";
+      const fileExtension = "." + fileName.split(".").pop()?.toLowerCase();
       const maxSize = 25 * 1024 * 1024; // 25MB
 
-      if (!validTypes.includes(fileExtension)) {
+      if (!fileExtension || !validTypes.includes(fileExtension)) {
         toast("Please select a valid file format (CSV, TSV, or XLS).");
         event.target.value = "";
         setSelectedFile(null);
@@ -187,7 +190,7 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
     setDocuments(getAllDocuments());
   };
 
-  const handleDragOver = (e) => {
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (dropAreaRef.current) {
@@ -195,7 +198,7 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
     }
   };
 
-  const handleDragLeave = (e) => {
+  const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (dropAreaRef.current) {
@@ -203,7 +206,7 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
     }
   };
 
-  const handleDrop = (e) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (dropAreaRef.current) {
@@ -215,10 +218,11 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
       const file = files[0];
       // Validate file type
       const validTypes = [".csv", ".tsv", ".xls", ".xlsx"];
-      const fileExtension = "." + file.name.split(".").pop().toLowerCase();
+      const fileName = file.name || "";
+      const fileExtension = "." + fileName.split(".").pop()?.toLowerCase();
       const maxSize = 25 * 1024 * 1024; // 25MB
 
-      if (!validTypes.includes(fileExtension)) {
+      if (!fileExtension || !validTypes.includes(fileExtension)) {
         toast("Please select a valid file format (CSV, TSV, or XLS).");
         setSelectedFile(null);
         return;
@@ -242,10 +246,10 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
     navigate(returnPath);
   };
 
-  const normalizeHeaderValue = (value) =>
+  const normalizeHeaderValue = (value: any) =>
     String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
-  const headerAliases = {
+  const headerAliases: Record<string, string[]> = {
     "Invoice Number": ["invoice no", "invoice #", "inv number", "inv no", "inv #", "number"],
     "Invoice Date": ["date", "invoice dt", "billing date"],
     "Due Date": ["due", "due on", "payment due"],
@@ -259,7 +263,7 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
     "Amount": ["line total", "total", "value", "line amount"]
   };
 
-  const resolveMappedHeader = (fieldName, headersList = importedFileHeaders) => {
+  const resolveMappedHeader = (fieldName: string, headersList = importedFileHeaders) => {
     const availableHeaders = (headersList || [])
       .map((header) => String(header || "").trim())
       .filter(Boolean);
@@ -360,14 +364,14 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
     option.toLowerCase().includes(encodingSearch.toLowerCase())
   );
 
-  const parseCSV = (csvText) => {
+  const parseCSV = (csvText: string) => {
     const normalizedText = String(csvText || "").replace(/^\uFEFF/, "").replace(/\r/g, "");
     const lines = normalizedText.split('\n').filter(line => line.trim());
     if (lines.length === 0) return { headers: [], rows: [] };
     const delimiter = (lines[0].match(/\t/g) || []).length > (lines[0].match(/,/g) || []).length ? '\t' : ',';
 
     // Improved CSV parsing that handles quoted values with commas
-    const parseCSVLine = (line) => {
+    const parseCSVLine = (line: string) => {
       const result = [];
       let current = '';
       let inQuotes = false;
@@ -407,7 +411,7 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
     for (let i = 1; i < lines.length; i++) {
       const values = parseCSVLine(lines[i]);
       if (values.some(v => v)) { // Only add non-empty rows
-        const row = {};
+        const row: Record<string, string> = {};
         headers.forEach((header, index) => {
           const value = (values[index] || '').replace(/^"|"$/g, '').trim();
           row[header] = value;
@@ -419,7 +423,7 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
     return { headers, rows };
   };
 
-  const mapFieldValue = (row, mappedField) => {
+  const mapFieldValue = (row: any, mappedField: string) => {
     if (!mappedField) return '';
     // Try exact match first
     if (row[mappedField] !== undefined && row[mappedField] !== null && row[mappedField] !== '') {
@@ -460,9 +464,9 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
       const errors = [];
       const customers = await getCustomers();
       const customerRows = Array.isArray(customers) ? [...customers] : [];
-      const existingInvoices = await getInvoices();
+      const existingInvoices = isRetainerImport ? await getRetainerInvoices() : await getInvoices();
 
-      const parseNumber = (value, fallback = 0) => {
+      const parseNumber = (value: any, fallback = 0) => {
         const normalized = String(value ?? "")
           .replace(/,/g, "")
           .replace(/[^\d.-]/g, "")
@@ -472,7 +476,7 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
         return Number.isFinite(parsed) ? parsed : fallback;
       };
 
-      const parseDateValue = (rawValue, fallbackDate) => {
+      const parseDateValue = (rawValue: any, fallbackDate: string | Date) => {
         const raw = String(rawValue || "").trim();
         if (!raw) return new Date(fallbackDate).toISOString();
 
@@ -498,12 +502,12 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
         return new Date(fallbackDate).toISOString();
       };
 
-      const normalizeStatus = (rawStatus) => {
+      const normalizeStatus = (rawStatus: any) => {
         const value = String(rawStatus || "").trim().toLowerCase();
         return value === "sent" ? "sent" : "draft";
       };
 
-      const findCustomerId = (customerName) => {
+      const findCustomerId = (customerName: string) => {
         const needle = String(customerName || "").trim().toLowerCase();
         if (!needle) return "";
         const match = customerRows.find((customer) => {
@@ -520,7 +524,7 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
         return String(match?.id || match?._id || "").trim();
       };
 
-      const getValueFromRow = (sourceRow, sourceHeaders, fieldName, aliases = []) => {
+      const getValueFromRow = (sourceRow: any, sourceHeaders: string[], fieldName: string, aliases: string[] = []) => {
         const mappedField = resolveMappedHeader(fieldName, sourceHeaders);
         if (mappedField) {
           const mappedValue = mapFieldValue(sourceRow, mappedField);
@@ -544,7 +548,7 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
         return "";
       };
 
-      const ensureCustomerId = async (customerName, row) => {
+      const ensureCustomerId = async (customerName: string, row: any) => {
         const existingId = findCustomerId(customerName);
         if (existingId) return existingId;
 
@@ -588,7 +592,7 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
         const row = rows[rowIndex];
         try {
           // Helper function to get value from row using field mapping or direct header match
-          const getValue = (fieldName) => {
+          const getValue = (fieldName: string) => {
             return getValueFromRow(row, headers, fieldName);
           };
 
@@ -686,21 +690,27 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
 
           // Check for duplicates based on duplicate handling setting
           if (duplicateHandling === "skip") {
-            const isDuplicate = existingInvoices.some(inv =>
-              inv.invoiceNumber === invoiceData.invoiceNumber && invoiceData.invoiceNumber && !autoGenerateNumbers
-            );
+            const isDuplicate = existingInvoices.some(inv => {
+              const invNo = isRetainerImport ? (inv as RetainerInvoice).retainerInvoiceNumber : (inv as Invoice).invoiceNumber;
+              return invNo === invoiceData.invoiceNumber && invNo && !autoGenerateNumbers;
+            });
             if (isDuplicate) {
               skippedCount++;
               errors.push(`Row ${rowIndex + 1}: Duplicate invoice number "${invoiceData.invoiceNumber}"`);
               continue;
             }
           } else if (duplicateHandling === "overwrite") {
-            const existingInvoice = existingInvoices.find(inv =>
-              inv.invoiceNumber === invoiceData.invoiceNumber && invoiceData.invoiceNumber && !autoGenerateNumbers
-            );
+            const existingInvoice = existingInvoices.find(inv => {
+              const invNo = isRetainerImport ? (inv as RetainerInvoice).retainerInvoiceNumber : (inv as Invoice).invoiceNumber;
+              return invNo === invoiceData.invoiceNumber && invNo && !autoGenerateNumbers;
+            });
             if (existingInvoice) {
               // Update existing invoice
-              await updateInvoice(existingInvoice.id, { ...existingInvoice, ...invoiceData, id: existingInvoice.id });
+              if (isRetainerImport) {
+                await updateRetainerInvoice(existingInvoice.id, { ...existingInvoice, ...invoiceData, id: existingInvoice.id });
+              } else {
+                await updateInvoice(existingInvoice.id, { ...existingInvoice, ...invoiceData, id: existingInvoice.id });
+              }
               importedCount++;
               continue;
             }
@@ -708,9 +718,13 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
           // For "add" or no duplicate, just save as new
 
           // Save invoice
-          await saveInvoice(invoiceData);
+          if (isRetainerImport) {
+            await saveRetainerInvoice(invoiceData);
+          } else {
+            await saveInvoice(invoiceData);
+          }
           importedCount++;
-        } catch (error) {
+        } catch (error: any) {
           console.error("Error importing invoice:", error);
           skippedCount++;
           errors.push(`Row ${rowIndex + 1}: ${error?.message || String(error)}`);
@@ -732,7 +746,7 @@ export default function ImportInvoices({ mode }: { mode?: "invoice" | "retainer"
     }
   };
 
-  const downloadSampleFile = (type) => {
+  const downloadSampleFile = (type: string) => {
     const headers = [
       "Invoice Number",
       "Invoice Date",

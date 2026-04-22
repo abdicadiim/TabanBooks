@@ -137,7 +137,7 @@ const commentMarkupToText = (value: string) => {
 };
 
 const getLoggedInUserDisplay = () => {
-  const currentUser = getCurrentUser();
+  const currentUser = getCurrentUser() as any;
   const name = String(
     currentUser?.name ||
       currentUser?.displayName ||

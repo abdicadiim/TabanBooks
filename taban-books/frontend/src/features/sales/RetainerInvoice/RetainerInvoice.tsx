@@ -26,10 +26,11 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { deleteInvoice, getCustomers, Invoice, readTaxesLocal } from "../salesModel";
+import { deleteRetainerInvoice, getCustomers, RetainerInvoice, readTaxesLocal } from "../salesModel";
 import { useRetainerListQuery } from "./retainerInvoiceQueries";
 import { useOrganizationBranding } from "../../../hooks/useOrganizationBranding";
 import { useThemeColors } from "../../../hooks/useThemeColors";
+import PaginationFooter from "../../../components/table/PaginationFooter";
 const preloadCustomerDetailRoute = async () => undefined;
 
 type RetainerRow = {
@@ -57,7 +58,7 @@ type RetainerRow = {
   updatedAtTs: number;
   statusKey: string;
   drawStatusKey: string;
-  sourceInvoice: Invoice;
+  sourceInvoice: RetainerInvoice;
 };
 
 type RetainerColumnKey =
@@ -396,7 +397,7 @@ const findMatchingCustomerRow = (rows: any[], row: RetainerRow) => {
   });
 };
 
-const mapInvoiceToRetainer = (invoice: Invoice): RetainerRow => {
+const mapInvoiceToRetainer = (invoice: RetainerInvoice): RetainerRow => {
   const normalizeKey = (value: any) =>
     String(value || "")
       .toLowerCase()
@@ -571,6 +572,8 @@ export default function RetainerInvoice() {
   const [taxSearchOptions, setTaxSearchOptions] = useState<string[]>([]);
   const [draftSelectedColumns, setDraftSelectedColumns] = useState<Set<RetainerColumnKey>>(new Set());
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteRetainerIds, setDeleteRetainerIds] = useState<string[]>([]);
@@ -802,6 +805,12 @@ export default function RetainerInvoice() {
     return sorted;
   }, [rows, selectedView, activeSortKey, appliedAdvancedSearch]);
 
+  const totalRetainerPages = Math.max(1, Math.ceil(filteredRows.length / itemsPerPage));
+  const safeRetainerPage = Math.min(currentPage, totalRetainerPages);
+  const paginatedRows = useMemo(() => {
+    const start = (safeRetainerPage - 1) * itemsPerPage;
+    return filteredRows.slice(start, start + itemsPerPage);
+  }, [filteredRows, itemsPerPage, safeRetainerPage]);
   const hasRows = filteredRows.length > 0;
   const clipTextClass = "truncate whitespace-nowrap";
   const visibleTableColumns = TABLE_COLUMNS.filter((columnKey) => selectedColumns.has(columnKey));
@@ -832,12 +841,12 @@ export default function RetainerInvoice() {
     [filterDropdownSearch]
   );
   const selectedColumnCount = draftSelectedColumns.size;
-  const visibleRowIdSet = useMemo(() => new Set(filteredRows.map((row) => row.id)), [filteredRows]);
+  const visibleRowIdSet = useMemo(() => new Set(paginatedRows.map((row) => row.id)), [paginatedRows]);
   const selectedVisibleRowCount = useMemo(
     () => Array.from(selectedRowIds).filter((rowId) => visibleRowIdSet.has(rowId)).length,
     [selectedRowIds, visibleRowIdSet]
   );
-  const allVisibleSelected = hasRows && selectedVisibleRowCount === filteredRows.length;
+  const allVisibleSelected = paginatedRows.length > 0 && selectedVisibleRowCount === paginatedRows.length;
   const hasVisibleSelection = selectedVisibleRowCount > 0;
   const selectedViewLabel =
     selectedView === "all"
@@ -885,6 +894,10 @@ export default function RetainerInvoice() {
   }, [hasVisibleSelection, allVisibleSelected]);
 
   useEffect(() => {
+    setCurrentPage((prev) => Math.min(prev, totalRetainerPages));
+  }, [totalRetainerPages]);
+
+  useEffect(() => {
     if (selectedRowIds.size === 0) return;
     const existingIds = new Set(rows.map((row) => row.id));
     setSelectedRowIds((prev) => {
@@ -906,7 +919,7 @@ export default function RetainerInvoice() {
   const toggleSelectAllVisible = (checked: boolean) => {
     setSelectedRowIds((prev) => {
       const next = new Set(prev);
-      filteredRows.forEach((row) => {
+      paginatedRows.forEach((row) => {
         if (checked) next.add(row.id);
         else next.delete(row.id);
       });
@@ -1002,7 +1015,7 @@ export default function RetainerInvoice() {
     if (deleteRetainerIds.length === 0) return;
     try {
       setBulkDeleteLoading(true);
-      await Promise.all(deleteRetainerIds.map((retainerId) => deleteInvoice(retainerId)));
+      await Promise.all(deleteRetainerIds.map((retainerId) => deleteRetainerInvoice(retainerId)));
       setRows((prev) => prev.filter((row) => !deleteRetainerIds.includes(row.id)));
       await retainerListQuery.refetch();
       setSelectedRowIds(new Set());
@@ -1767,7 +1780,7 @@ export default function RetainerInvoice() {
               {loading ? (
                 <TableRowSkeleton />
               ) : (
-                filteredRows.map((row) => {
+                paginatedRows.map((row) => {
                   const isSelected = selectedRowIds.has(row.id);
                   return (
                     <tr
@@ -2359,7 +2372,19 @@ export default function RetainerInvoice() {
             </div>
           </div>
         </div>
-      )}
+      )} 
+      <PaginationFooter
+        totalItems={filteredRows.length}
+        currentPage={safeRetainerPage}
+        pageSize={itemsPerPage}
+        pageSizeOptions={[10, 25, 50, 100]}
+        itemLabel="retainer invoices"
+        onPageChange={(nextPage) => setCurrentPage(nextPage)}
+        onPageSizeChange={(nextLimit) => {
+          setItemsPerPage(nextLimit);
+          setCurrentPage(1);
+        }}
+      />
     </div>
   );
 }

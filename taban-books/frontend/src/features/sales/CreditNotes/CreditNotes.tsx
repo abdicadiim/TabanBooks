@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { toast } from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import LoadingSpinner from "../../../components/LoadingSpinner";
@@ -30,6 +30,7 @@ import {
   SlidersHorizontal
 } from "lucide-react";
 import { useCreditNotesListQuery } from "./creditNoteQueries";
+import PaginationFooter from "../../../components/table/PaginationFooter";
 
 const FieldCustomization: React.FC<any> = () => null;
 
@@ -172,6 +173,8 @@ export default function CreditNotes() {
   const searchTypeDropdownRef = useRef<HTMLDivElement>(null);
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const filterDropdownRef = useRef<HTMLDivElement>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [searchModalData, setSearchModalData] = useState({
     // Credit Notes
     creditNoteNumber: "",
@@ -799,10 +802,13 @@ export default function CreditNotes() {
   };
 
   const handleSelectAll = () => {
-    if (selectedCreditNotes.length === filteredCreditNotes.length) {
-      setSelectedCreditNotes([]);
+    const visibleIds = paginatedCreditNotes.map((note) => note.id);
+    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedCreditNotes.includes(id));
+
+    if (allVisibleSelected) {
+      setSelectedCreditNotes((prev) => prev.filter((id) => !visibleIds.includes(id)));
     } else {
-      setSelectedCreditNotes(filteredCreditNotes.map(note => note.id));
+      setSelectedCreditNotes((prev) => Array.from(new Set([...prev, ...visibleIds])));
     }
   };
 
@@ -1011,6 +1017,17 @@ export default function CreditNotes() {
     }
     return selectedStatus === view;
   };
+
+  const totalCreditNotePages = Math.max(1, Math.ceil(filteredCreditNotes.length / itemsPerPage));
+  const safeCreditNotePage = Math.min(currentPage, totalCreditNotePages);
+  const paginatedCreditNotes = useMemo(() => {
+    const start = (safeCreditNotePage - 1) * itemsPerPage;
+    return filteredCreditNotes.slice(start, start + itemsPerPage);
+  }, [filteredCreditNotes, itemsPerPage, safeCreditNotePage]);
+
+  useEffect(() => {
+    setCurrentPage((prev) => Math.min(prev, totalCreditNotePages));
+  }, [totalCreditNotePages]);
 
   useEffect(() => {
     localStorage.setItem(CREDIT_NOTES_COLUMNS_STORAGE_KEY, JSON.stringify(visibleColumns));
@@ -1427,7 +1444,7 @@ export default function CreditNotes() {
                           handleSelectAll();
                         }}
                       >
-                        {selectedCreditNotes.length === filteredCreditNotes.length && filteredCreditNotes.length > 0 ? (
+                        {paginatedCreditNotes.length > 0 && paginatedCreditNotes.every((note) => selectedCreditNotes.includes(note.id)) ? (
                           <CheckSquare size={16} fill="#6b7280" color="#6b7280" />
                         ) : (
                           <Square size={16} className="text-gray-400" />
@@ -1495,7 +1512,7 @@ export default function CreditNotes() {
                     </td>
                   </tr>
                 ) : (
-                  filteredCreditNotes.map((note) => {
+                  paginatedCreditNotes.map((note) => {
                     const isSelected = selectedCreditNotes.includes(note.id);
                     return (
                       <tr
@@ -1576,6 +1593,19 @@ export default function CreditNotes() {
           </div>
         </div>
       </div>
+
+      <PaginationFooter
+        totalItems={filteredCreditNotes.length}
+        currentPage={safeCreditNotePage}
+        pageSize={itemsPerPage}
+        pageSizeOptions={[10, 25, 50, 100]}
+        itemLabel="credit notes"
+        onPageChange={(nextPage) => setCurrentPage(nextPage)}
+        onPageSizeChange={(nextLimit) => {
+          setItemsPerPage(nextLimit);
+          setCurrentPage(1);
+        }}
+      />
 
       {/* Search Modal */}
       {showSearchModal && (

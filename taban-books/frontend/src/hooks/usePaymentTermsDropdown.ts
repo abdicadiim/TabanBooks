@@ -5,6 +5,8 @@ export interface PaymentTerm {
     label: string;
     value: string;
     days?: number;
+    discountDays?: number;
+    discountPercentage?: number;
     isDefault?: boolean;
 }
 

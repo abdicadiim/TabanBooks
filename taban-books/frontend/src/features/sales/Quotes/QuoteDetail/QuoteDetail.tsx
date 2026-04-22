@@ -75,7 +75,7 @@ const QuoteDetail = () => {
   const [showConvertDropdown, setShowConvertDropdown] = useState(false);
   const [showSidebarMoreDropdown, setShowSidebarMoreDropdown] = useState(false);
   const [isCloningQuote, setIsCloningQuote] = useState(false);
-  const [selectedQuotes, setSelectedQuotes] = useState([]);
+  const [selectedQuotes, setSelectedQuotes] = useState<string[]>([]);
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState("All Quotes");
   const [isBulkActionsOpen, setIsBulkActionsOpen] = useState(false);
@@ -83,8 +83,10 @@ const QuoteDetail = () => {
   const [isMarkAsSentModalOpen, setIsMarkAsSentModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [statusSuccessMessage, setStatusSuccessMessage] = useState("");
-  const [activityLogs, setActivityLogs] = useState([]);
+  const [activityLogs, setActivityLogs] = useState<any[]>([]);
   const [allowEditingAcceptedQuotes, setAllowEditingAcceptedQuotes] = useState(false);
+  const [quoteAttachments, setQuoteAttachments] = useState<any[]>([]);
+  const [comments, setComments] = useState<any[]>([]);
 
   useEffect(() => {
     const loadQuoteSettings = async () => {
@@ -151,15 +153,15 @@ const QuoteDetail = () => {
   });
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
-  const [attachments, setAttachments] = useState([]);
+  const [attachments, setAttachments] = useState<any[]>([]);
   const [attachQuotePDF, setAttachQuotePDF] = useState(true);
   const [fontSize, setFontSize] = useState("16");
   const [isBold, setIsBold] = useState(false);
   const [isItalic, setIsItalic] = useState(false);
   const [isUnderline, setIsUnderline] = useState(false);
   const [isStrikethrough, setIsStrikethrough] = useState(false);
-  const emailModalRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const emailModalRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Customize Dropdown States
   const [isQuoteDocumentHovered, setIsQuoteDocumentHovered] = useState(false);
@@ -178,29 +180,27 @@ const QuoteDetail = () => {
     websiteUrl: "",
     industry: ""
   });
-  const [logoFile, setLogoFile] = useState(null);
-  const [logoPreview, setLogoPreview] = useState(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [termsData, setTermsData] = useState({
     notes: "Looking forward for your business.",
     termsAndConditions: "",
     useNotesForAllQuotes: false,
     useTermsForAllQuotes: false
   });
-  const customizeDropdownRef = useRef(null);
-  const organizationAddressFileInputRef = useRef(null);
+  const customizeDropdownRef = useRef<HTMLDivElement>(null);
+  const organizationAddressFileInputRef = useRef<HTMLInputElement>(null);
 
   // Attachments Modal States
   const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
-  const [quoteAttachments, setQuoteAttachments] = useState([]);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
   const [showImageViewer, setShowImageViewer] = useState(false);
-  const attachmentsFileInputRef = useRef(null);
+  const attachmentsFileInputRef = useRef<HTMLInputElement>(null);
 
   // Comments Sidebar States
   const [showCommentsSidebar, setShowCommentsSidebar] = useState(false);
-  const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [isSavingComment, setIsSavingComment] = useState(false);
   const [commentBold, setCommentBold] = useState(false);
@@ -221,20 +221,20 @@ const QuoteDetail = () => {
   const [linkExpirationDate, setLinkExpirationDate] = useState("");
   const [generatedLink, setGeneratedLink] = useState("");
   const [isLinkGenerated, setIsLinkGenerated] = useState(false);
-  const shareModalRef = useRef(null);
-  const visibilityDropdownRef = useRef(null);
+  const shareModalRef = useRef<HTMLDivElement>(null);
+  const visibilityDropdownRef = useRef<HTMLDivElement>(null);
 
   // Data for dropdowns
-  const [customers, setCustomers] = useState([]);
-  const [salespersons, setSalespersons] = useState([]);
-  const [projects, setProjects] = useState([]);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [salespersons, setSalespersons] = useState<any[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
 
   // Organization profile data
-  const [organizationProfile, setOrganizationProfile] = useState(null);
+  const [organizationProfile, setOrganizationProfile] = useState<any>(null);
   const organizationName = String(organizationProfile?.organizationName || organizationProfile?.name || "Organization").trim() || "Organization";
   const organizationNameHtml = organizationName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   // Owner email data
-  const [ownerEmail, setOwnerEmail] = useState(null);
+  const [ownerEmail, setOwnerEmail] = useState<any>(null);
 
   // Fetch organization profile data
   const fetchOrganizationProfile = async () => {
@@ -288,7 +288,7 @@ const QuoteDetail = () => {
       const primarySenderRes = await senderEmailsAPI.getPrimary();
       const fallbackName = String(organizationProfile?.name || "Taban Enterprise").trim() || "Taban Enterprise";
       const fallbackEmail = String(organizationProfile?.email || "").trim();
-      setOwnerEmail(resolvePrimarySender(primarySenderRes, fallbackName, fallbackEmail));
+      setOwnerEmail(resolvePrimarySender(primarySenderRes, fallbackName, fallbackEmail) as any);
     } catch (error) {
       console.error('Error fetching owner email:', error);
     }
@@ -304,7 +304,7 @@ const QuoteDetail = () => {
   }, [ownerEmail, organizationProfile?.name, organizationProfile?.email]);
 
   // Update organization profile data
-  const updateOrganizationProfile = async (profileData) => {
+  const updateOrganizationProfile = async (profileData: any) => {
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) return;
@@ -344,14 +344,14 @@ const QuoteDetail = () => {
     return "You";
   };
 
-  const isImageFileAttachment = (attachment) => {
+  const isImageFileAttachment = (attachment: any) => {
     const mimeType = String(attachment?.type || attachment?.mimeType || "").toLowerCase();
     if (mimeType.startsWith("image/")) return true;
     const name = String(attachment?.name || "").toLowerCase();
     return [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"].some(ext => name.endsWith(ext));
   };
 
-  const normalizeAttachmentFromQuote = (attachment, index) => {
+  const normalizeAttachmentFromQuote = (attachment: any, index: number) => {
     const attachmentId = attachment?.documentId || attachment?._id || attachment?.id || `attachment-${Date.now()}-${index}`;
     const fileUrl = attachment?.url || attachment?.preview || "";
     const mimeType = attachment?.type || attachment?.mimeType || "";
@@ -368,7 +368,7 @@ const QuoteDetail = () => {
     };
   };
 
-  const normalizeCommentFromQuote = (comment, index) => ({
+  const normalizeCommentFromQuote = (comment: any, index: number) => ({
     id: comment?._id || comment?.id || `comment-${Date.now()}-${index}`,
     text: String(comment?.text || ""),
     author: comment?.author || "User",
@@ -378,7 +378,7 @@ const QuoteDetail = () => {
     underline: Boolean(comment?.underline)
   });
 
-  const normalizeActivityLogFromQuote = (entry, index) => ({
+  const normalizeActivityLogFromQuote = (entry: any, index: number) => ({
     id: entry?._id || entry?.id || `activity-${Date.now()}-${index}`,
     action: String(entry?.action || "Updated quote"),
     description: String(entry?.description || ""),
@@ -387,7 +387,7 @@ const QuoteDetail = () => {
     level: String(entry?.level || "info")
   });
 
-  const appendActivityLog = async (action, description, level = "info") => {
+  const appendActivityLog = async (action: string, description: string, level = "info") => {
     const entry = {
       id: `activity-${Date.now()}-${Math.random()}`,
       action,
@@ -397,8 +397,8 @@ const QuoteDetail = () => {
       level
     };
 
-    let nextLogs = [];
-    setActivityLogs((prev) => {
+    let nextLogs: any[] = [];
+    setActivityLogs((prev: any[]) => {
       nextLogs = [entry, ...(Array.isArray(prev) ? prev : [])].slice(0, 200);
       return nextLogs;
     });
@@ -548,7 +548,9 @@ const QuoteDetail = () => {
             resolvedActivityLogs = [seedEntry];
             localStorage.setItem(`quote_activity_logs_${quoteId}`, JSON.stringify(resolvedActivityLogs));
             try {
-              await updateQuote(quoteId, { activityLogs: resolvedActivityLogs } as any);
+              if (quoteId) {
+                await updateQuote(quoteId, { activityLogs: resolvedActivityLogs } as any);
+              }
             } catch (error) {
               console.error("Error seeding activity logs:", error);
             }
@@ -648,7 +650,7 @@ const QuoteDetail = () => {
 
   // Close dropdowns when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event) => {
+    const handleClickOutside = (event: MouseEvent) => {
       if (isBulkActionsOpen && !event.target.closest('.quote-detail-bulk-actions-wrapper')) {
         setIsBulkActionsOpen(false);
       }
@@ -708,7 +710,7 @@ const QuoteDetail = () => {
   };
 
   // Handle quote selection
-  const handleSelectQuote = (id) => {
+  const handleSelectQuote = (id: string) => {
     setSelectedQuotes(prev => {
       if (prev.includes(id)) {
         return prev.filter(qId => qId !== id);
@@ -741,7 +743,7 @@ const QuoteDetail = () => {
 
   const handleExportPDF = async () => {
     setIsBulkActionsOpen(false);
-    const selectedQuoteData = allQuotes.filter(q => selectedQuotes.includes(q.id));
+    const selectedQuoteData = allQuotes.filter((q: any) => selectedQuotes.includes(q.id));
 
     if (selectedQuoteData.length === 0) {
       toast.error("Please select at least one quote to export.");
@@ -796,7 +798,8 @@ const QuoteDetail = () => {
       console.error('Error generating bulk PDF:', error);
       // Fallback to HTML download if PDF generation fails
       const printWindow = window.open('', '_blank');
-      printWindow.document.write(`
+      if (printWindow) {
+        printWindow.document.write(`
         <!DOCTYPE html>
         <html>
         <head>
@@ -824,7 +827,7 @@ const QuoteDetail = () => {
           </style>
         </head>
         <body>
-          ${selectedQuoteData.map(q => `
+          ${selectedQuoteData.map((q: any) => `
             <div class="quote-export">
               <div class="header">
                 <h1>${organizationNameHtml}</h1>
@@ -862,7 +865,7 @@ const QuoteDetail = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  ${q.items && q.items.length > 0 ? q.items.map(item => `
+                  ${q.items && q.items.length > 0 ? q.items.map((item: any) => `
                     <tr>
                       <td>${item.name || item.item?.name || 'N/A'}</td>
                       <td>${item.quantity || 0}</td>
@@ -885,6 +888,7 @@ const QuoteDetail = () => {
         </html>
       `);
       printWindow.document.close();
+    }
       printWindow.focus();
       printWindow.print();
     }
@@ -965,7 +969,7 @@ const QuoteDetail = () => {
         }
       }
 
-      if (!selectedQuotes.includes(quoteId)) {
+      if (quoteId && !selectedQuotes.includes(quoteId)) {
         await appendActivityLog(
           "Bulk Delete",
           `${selectedQuotes.length} quote(s) were deleted.`,
@@ -987,7 +991,7 @@ const QuoteDetail = () => {
 
     try {
       await Promise.all(selectedQuotes.map(id => {
-        const updateData = {};
+        const updateData: Record<string, any> = {};
         updateData[bulkUpdateField] = bulkUpdateValue;
         return updateQuote(id, updateData);
       }));
@@ -1045,7 +1049,7 @@ const QuoteDetail = () => {
   );
 
   // Navigate to quote
-  const handleQuoteClick = (id) => {
+  const handleQuoteClick = (id: string) => {
     navigate(`/sales/quotes/${id}`);
   };
 
@@ -1054,7 +1058,7 @@ const QuoteDetail = () => {
     navigate("/sales/quotes/new");
   };
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: any) => {
     if (!dateString) return "-";
     const date = new Date(dateString);
     return date.toLocaleDateString("en-GB", {
@@ -1064,7 +1068,7 @@ const QuoteDetail = () => {
     });
   };
 
-  const formatCurrency = (amount, currency = baseCurrency) => {
+  const formatCurrency = (amount: any, currency = baseCurrency) => {
     // Extract only the currency symbol (first 3-4 characters before any space or dash)
     const currencySymbol = currency ? currency.split(' - ')[0].split(' ')[0] : baseCurrency;
     return `${currencySymbol}${parseFloat(amount || 0).toLocaleString("en-US", {
@@ -1073,23 +1077,23 @@ const QuoteDetail = () => {
     })}`;
   };
 
-  const toNumber = (value) => {
+  const toNumber = (value: any) => {
     const parsed = parseFloat(String(value ?? 0));
     return Number.isFinite(parsed) ? parsed : 0;
   };
 
-  const isSameDay = (a, b) =>
+  const isSameDay = (a: Date, b: Date) =>
     a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate();
 
-  const getInvoiceDateValue = (invoice) =>
+  const getInvoiceDateValue = (invoice: any) =>
     invoice?.invoiceDate || invoice?.date || invoice?.createdAt || "";
 
-  const getInvoiceDueDateValue = (invoice) =>
+  const getInvoiceDueDateValue = (invoice: any) =>
     invoice?.dueDate || invoice?.expectedPaymentDate || "";
 
-  const getInvoiceBalanceDueValue = (invoice) => {
+  const getInvoiceBalanceDueValue = (invoice: any) => {
     const total = toNumber(invoice?.total ?? invoice?.amount ?? 0);
     const balanceDue = toNumber(invoice?.balanceDue ?? invoice?.balance ?? 0);
     if (balanceDue > 0) return balanceDue;
@@ -1098,7 +1102,7 @@ const QuoteDetail = () => {
     return balanceDue;
   };
 
-  const getInvoiceStatusMeta = (invoice) => {
+  const getInvoiceStatusMeta = (invoice: any) => {
     const rawStatus = String(invoice?.status || "").toLowerCase();
     const dueRaw = getInvoiceDueDateValue(invoice);
     const dueDate = dueRaw ? new Date(dueRaw) : null;
@@ -1117,7 +1121,7 @@ const QuoteDetail = () => {
     return { label: "UNPAID", className: "text-[#2F80FF]" };
   };
 
-  const renderLinkedInvoicesTable = (opts) => {
+  const renderLinkedInvoicesTable = (opts?: any) => {
     const compact = Boolean(opts?.compact);
     const visibleLinkedInvoices = linkedInvoices.filter((invoice: any) => {
       const status = String(invoice?.status || "").toLowerCase().replace(/[\s-]+/g, "_").trim();
@@ -1199,9 +1203,9 @@ const QuoteDetail = () => {
     );
   };
 
-  const getQuoteTotalsMeta = (quoteData) => {
+  const getQuoteTotalsMeta = (quoteData: any) => {
     const items = Array.isArray(quoteData?.items) ? quoteData.items : [];
-    const computedSubTotal = items.reduce((sum, item) => {
+    const computedSubTotal = items.reduce((sum: number, item: any) => {
       const quantity = toNumber(item?.quantity ?? 0);
       const rate = toNumber(item?.unitPrice ?? item?.rate ?? item?.price ?? 0);
       const amount = toNumber(item?.amount ?? item?.total);
@@ -1218,7 +1222,7 @@ const QuoteDetail = () => {
     );
     const shippingTaxAmount = toNumber(quoteData?.shippingTaxAmount ?? quoteData?.shippingTax ?? 0);
     const taxAmountFromQuote = toNumber(quoteData?.totalTax ?? quoteData?.taxAmount ?? quoteData?.tax ?? 0);
-    const itemsTaxAmount = items.reduce((sum, item) => sum + toNumber(item?.taxAmount ?? 0), 0);
+    const itemsTaxAmount = items.reduce((sum: number, item: any) => sum + toNumber(item?.taxAmount ?? 0), 0);
     const taxAmount = taxAmountFromQuote || (itemsTaxAmount + shippingTaxAmount);
     const discount = toNumber(quoteData?.discount ?? quoteData?.discountAmount ?? 0);
     const adjustment = toNumber(quoteData?.adjustment ?? 0);
@@ -1284,7 +1288,7 @@ const QuoteDetail = () => {
     };
   };
 
-  const getStatusBadge = (status) => {
+  const getStatusBadge = (status: any) => {
     const statusMap = {
       draft: { label: "Draft", className: "text-yellow-800" },
       approved: { label: "Approved", className: "text-emerald-700" },
@@ -1297,7 +1301,7 @@ const QuoteDetail = () => {
       converted: { label: "Invoiced", className: "text-[#0D4A52]" },
       invoiced: { label: "Invoiced", className: "text-[#0D4A52]" }
     };
-    const statusInfo = statusMap[status?.toLowerCase()] || statusMap.draft;
+    const statusInfo = (statusMap as any)[status?.toLowerCase()] || statusMap.draft;
     return <span className={`text-xs font-medium ${statusInfo.className}`}>{statusInfo.label}</span>;
   };
 
@@ -1349,7 +1353,7 @@ const QuoteDetail = () => {
           : parseFloat((quote as any).shippingTaxRate || 0) || 0;
 
       // Map quote items to invoice items format
-      const invoiceItems = (quote.items || []).map((item, index) => {
+      const invoiceItems = (quote.items || []).map((item: any, index: number) => {
         const quantity = parseFloat(item.quantity) || 1;
         const baseRate = parseFloat(item.catalogRate || item.unitPrice || item.rate || item.price) || 0;
         const rawLineAmount = parseFloat(item.total || item.amount) || 0;
@@ -1506,7 +1510,9 @@ const QuoteDetail = () => {
       // Mark quote as invoiced on convert (keeps list/detail in sync)
       const nextStatus = "invoiced";
       try {
-        updateQuote(quoteId, { status: nextStatus });
+        if (quoteId) {
+          updateQuote(quoteId, { status: nextStatus });
+        }
       } catch (error) {
         console.warn("Failed to update quote status after convert:", error);
       }
@@ -1564,7 +1570,8 @@ const QuoteDetail = () => {
     if (!quote) return;
     const totalsMeta = getQuoteTotalsMeta(quote);
     const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
+    if (printWindow) {
+      printWindow.document.write(`
       <!DOCTYPE html>
       <html>
       <head>
@@ -1747,7 +1754,7 @@ const QuoteDetail = () => {
               </tr>
             </thead>
             <tbody>
-              ${quote.items && quote.items.length > 0 ? quote.items.map((item, index) => `
+              ${quote.items && quote.items.length > 0 ? quote.items.map((item: any, index: number) => `
                 <tr>
                   <td>${index + 1}</td>
                   <td>
@@ -1912,10 +1919,10 @@ const QuoteDetail = () => {
   };
 
   // Generate HTML content for a specific quote (used for bulk export)
-  const generateQuoteHTMLForQuote = (quoteData) => {
+  const generateQuoteHTMLForQuote = (quoteData: any) => {
     if (!quoteData) return '';
 
-    const itemsHTML = quoteData.items && quoteData.items.length > 0 ? quoteData.items.map((item, index) => {
+    const itemsHTML = quoteData.items && quoteData.items.length > 0 ? quoteData.items.map((item: any, index: number) => {
       const rate = parseFloat(item.unitPrice || item.rate || item.price || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const amount = parseFloat(item.total || item.amount || (item.quantity * (item.unitPrice || item.rate || item.price || 0))).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const qty = parseFloat(item.quantity || 0).toFixed(2);
@@ -2303,7 +2310,9 @@ const QuoteDetail = () => {
     setShowMoreDropdown(false);
     if (!quote) return;
 
-    setSelectedQuotes([quoteId]);
+    if (quoteId) {
+      setSelectedQuotes([quoteId]);
+    }
     setIsDeleteModalOpen(true);
   };
 
@@ -2334,11 +2343,13 @@ const QuoteDetail = () => {
     if (!quote) return;
 
     try {
-      await updateQuote(quoteId, { status: 'accepted' });
-      await appendActivityLog("Status Updated", "Quote status changed to accepted.", "success");
-      const updatedQuote = await getQuoteById(quoteId);
-      if (updatedQuote) {
-        setQuote(updatedQuote);
+      if (quoteId) {
+        await updateQuote(quoteId, { status: 'accepted' });
+        await appendActivityLog("Status Updated", "Quote status changed to accepted.", "success");
+        const updatedQuote = await getQuoteById(quoteId);
+        if (updatedQuote) {
+          setQuote(updatedQuote);
+        }
       }
       // Reload all quotes
       try {
@@ -2360,11 +2371,13 @@ const QuoteDetail = () => {
     if (!quote) return;
 
     try {
-      await updateQuote(quoteId, { status: 'declined' });
-      await appendActivityLog("Status Updated", "Quote status changed to declined.", "warning");
-      const updatedQuote = await getQuoteById(quoteId);
-      if (updatedQuote) {
-        setQuote(updatedQuote);
+      if (quoteId) {
+        await updateQuote(quoteId, { status: 'declined' });
+        await appendActivityLog("Status Updated", "Quote status changed to declined.", "warning");
+        const updatedQuote = await getQuoteById(quoteId);
+        if (updatedQuote) {
+          setQuote(updatedQuote);
+        }
       }
       // Reload all quotes
       try {
@@ -2438,11 +2451,13 @@ const QuoteDetail = () => {
     if (!quote) return;
 
     try {
-      await updateQuote(quoteId, { status: "approved" });
-      await appendActivityLog("Status Updated", "Quote submitted for approval.", "success");
-      const updatedQuote = await getQuoteById(quoteId);
-      if (updatedQuote) {
-        setQuote(updatedQuote);
+      if (quoteId) {
+        await updateQuote(quoteId, { status: "approved" });
+        await appendActivityLog("Status Updated", "Quote submitted for approval.", "success");
+        const updatedQuote = await getQuoteById(quoteId);
+        if (updatedQuote) {
+          setQuote(updatedQuote);
+        }
       }
       try {
         const quotes = await getQuotes();
@@ -2458,7 +2473,7 @@ const QuoteDetail = () => {
   };
 
   // Attachments Handlers
-  const handleFileUpload = async (files) => {
+  const handleFileUpload = async (files: any) => {
     if (!quoteId || !quote) {
       toast.error("Please save the quote first, then upload files.");
       return;
@@ -2559,7 +2574,7 @@ const QuoteDetail = () => {
     }
   };
 
-  const handleFileClick = (attachment) => {
+  const handleFileClick = (attachment: any) => {
     const isImage = isImageFileAttachment(attachment);
     if (isImage) {
       setSelectedImage(attachment.preview || attachment.url || (attachment.file ? URL.createObjectURL(attachment.file) : null));
@@ -2580,7 +2595,7 @@ const QuoteDetail = () => {
     }
   };
 
-  const handleRemoveAttachment = async (id) => {
+  const handleRemoveAttachment = async (id: string) => {
     if (!quoteId) return;
 
     const updatedAttachments = quoteAttachments.filter(att => att.id !== id);
@@ -2618,7 +2633,7 @@ const QuoteDetail = () => {
     }
   };
 
-  const handleDrop = (e) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     const files = Array.from(e.dataTransfer.files || []);
@@ -2627,12 +2642,12 @@ const QuoteDetail = () => {
     }
   };
 
-  const handleDragOver = (e) => {
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
   };
 
-  const handleDragLeave = (e) => {
+  const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
   };
@@ -2668,6 +2683,7 @@ const QuoteDetail = () => {
       const commentsPayload = updatedComments.map((entry) => ({
         id: entry.id,
         text: entry.text,
+        content: entry.text,
         author: entry.author || "User",
         timestamp: entry.timestamp,
         bold: Boolean(entry.bold),
@@ -2781,7 +2797,7 @@ const QuoteDetail = () => {
     }
   };
 
-  const getInitial = (name) => {
+  const getInitial = (name: any) => {
     return name ? name.charAt(0).toUpperCase() : "?";
   };
 
@@ -3755,7 +3771,7 @@ const QuoteDetail = () => {
                       </thead>
                       <tbody>
                         {quote.items && quote.items.length > 0 ? (
-                          quote.items.map((item, index) => (
+                          quote.items.map((item: any, index: number) => (
                             <tr key={item.id || index} style={{ borderBottom: "1px solid #d1d5db", backgroundColor: index % 2 === 0 ? "#ffffff" : "#fafafa" }}>
                               <td style={{ padding: "9px 12px", fontSize: "11px", color: "#111827", textAlign: "center", verticalAlign: "top" }}>{index + 1}</td>
                               <td style={{ padding: "9px 12px", fontSize: "11px", color: "#111827", verticalAlign: "top" }}>
@@ -4000,7 +4016,7 @@ const QuoteDetail = () => {
                         </thead>
                         <tbody>
                           {quote.items && quote.items.length > 0 ? (
-                            quote.items.map((item, index) => (
+                            quote.items.map((item: any, index: number) => (
                               <tr key={item.id || index}>
                                 <td className="py-3 px-4 text-gray-900 text-center">{index + 1}</td>
                                 <td className="py-3 px-4 text-gray-900">

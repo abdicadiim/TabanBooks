@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import LoadingSpinner from "../../../components/LoadingSpinner";
+import PaginationFooter from "../../../components/table/PaginationFooter";
 import { useQueryClient } from "@tanstack/react-query";
 import { deleteQuotes, updateQuote, getCustomers, getProjects, getSalespersons, getCustomViews, deleteCustomView } from "../salesModel";
 import { invalidateQuoteQueries, useQuotesListQuery } from "./quoteQueries";
@@ -119,6 +120,8 @@ export default function Quotes() {
   const [viewSearchQuery, setViewSearchQuery] = useState("");
   const [customViews, setCustomViews] = useState<CustomView[]>(() => getCustomViews().filter(v => v.type === "quotes"));
   const [quotes, setQuotes] = useState<Quote[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [sortConfig, setSortConfig] = useState({ key: "createdTime", direction: "desc" as "asc" | "desc" });
   const [selectedQuotes, setSelectedQuotes] = useState<string[]>([]);
   const [isBulkUpdateModalOpen, setIsBulkUpdateModalOpen] = useState(false);
@@ -701,6 +704,20 @@ export default function Quotes() {
     });
   }, [filteredQuotes, sortConfig]);
 
+  const totalQuotePages = Math.max(1, Math.ceil(sortedQuotes.length / Math.max(itemsPerPage, 1)));
+  const safeQuotePage = Math.min(currentPage, totalQuotePages);
+  const quotePageStart = (safeQuotePage - 1) * itemsPerPage;
+  const paginatedQuotes = useMemo(
+    () => sortedQuotes.slice(quotePageStart, quotePageStart + itemsPerPage),
+    [sortedQuotes, quotePageStart, itemsPerPage]
+  );
+
+  useEffect(() => {
+    if (currentPage > totalQuotePages) {
+      setCurrentPage(totalQuotePages);
+    }
+  }, [currentPage, totalQuotePages]);
+
   const handleSort = (key: string) => {
     setSortConfig(prev => ({
       key,
@@ -1003,7 +1020,7 @@ export default function Quotes() {
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      setSelectedQuotes(sortedQuotes.map(q => q.id));
+      setSelectedQuotes(paginatedQuotes.map(q => q.id));
     } else {
       setSelectedQuotes([]);
     }
@@ -2591,10 +2608,10 @@ export default function Quotes() {
                       <input
                         type="checkbox"
                         className="w-4 h-4 rounded border-gray-300 text-[#156372] focus:ring-0 cursor-pointer"
-                        checked={selectedQuotes.length === sortedQuotes.length && sortedQuotes.length > 0}
+                        checked={selectedQuotes.length === paginatedQuotes.length && paginatedQuotes.length > 0}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setSelectedQuotes(sortedQuotes.map(q => q.id));
+                            setSelectedQuotes(paginatedQuotes.map(q => q.id));
                           } else {
                             setSelectedQuotes([]);
                           }
@@ -2636,7 +2653,7 @@ export default function Quotes() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-[#eef1f6]">
-                {sortedQuotes.map((quote) => {
+                {paginatedQuotes.map((quote) => {
                   const effectiveStatus = getEffectiveStatus(quote);
                   return (
                   <tr
@@ -2715,6 +2732,18 @@ export default function Quotes() {
                 })}
               </tbody>
             </table>
+            <PaginationFooter
+              totalItems={sortedQuotes.length}
+              currentPage={safeQuotePage}
+              pageSize={itemsPerPage}
+              pageSizeOptions={[10, 25, 50, 100]}
+              itemLabel="quotes"
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(nextLimit) => {
+                setItemsPerPage(nextLimit);
+                setCurrentPage(1);
+              }}
+            />
           </div>
         )}
       </div>

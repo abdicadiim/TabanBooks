@@ -87,7 +87,7 @@ export default function CustomerDetailTransactionsTab(args: any) {
       <div className="relative inline-block mb-4" ref={goToTransactionsDropdownRef}>
         <button
           className="flex items-center gap-1 text-sm text-[#0f5ca8] cursor-pointer hover:underline"
-          onClick={() => setIsGoToTransactionsDropdownOpen((prev) => !prev)}
+          onClick={() => setIsGoToTransactionsDropdownOpen((prev: boolean) => !prev)}
         >
           Go to transactions
           <ChevronDown size={14} />
@@ -150,7 +150,7 @@ export default function CustomerDetailTransactionsTab(args: any) {
                 </button>
                 {isStatusDropdownOpen && (
                   <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[200px]">
-                    {invoiceStatusOptions.map(status => (
+                    {invoiceStatusOptions.map((status: string) => (
                       <div
                         key={status}
                         className={`px-4 py-2 text-sm cursor-pointer hover:bg-gray-50 ${invoiceStatusFilter === status ? "bg-blue-50 text-blue-600" : "text-gray-700"}`}
@@ -182,7 +182,7 @@ export default function CustomerDetailTransactionsTab(args: any) {
                 </thead>
                 <tbody>
                   {paginatedInvoices.length > 0 ? (
-                    paginatedInvoices.map((invoice) => (
+                    paginatedInvoices.map((invoice: any) => (
                       <tr
                         key={invoice.id}
                         onClick={() => navigate(`/sales/invoices/${invoice.id}`)}
@@ -242,7 +242,7 @@ export default function CustomerDetailTransactionsTab(args: any) {
                   <div className="flex items-center gap-2">
                     <button
                       className="flex items-center justify-center w-8 h-8 border border-gray-300 rounded-md bg-white text-gray-700 cursor-pointer hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      onClick={() => setInvoiceCurrentPage(prev => Math.max(1, prev - 1))}
+                      onClick={() => setInvoiceCurrentPage((prev: number) => Math.max(1, prev - 1))}
                       disabled={invoiceCurrentPage === 1}
                     >
                       <ChevronLeft size={16} />
@@ -252,7 +252,7 @@ export default function CustomerDetailTransactionsTab(args: any) {
                     </span>
                     <button
                       className="flex items-center justify-center w-8 h-8 border border-gray-300 rounded-md bg-white text-gray-700 cursor-pointer hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      onClick={() => setInvoiceCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      onClick={() => setInvoiceCurrentPage((prev: number) => Math.min(totalPages, prev + 1))}
                       disabled={invoiceCurrentPage === totalPages}
                     >
                       <ChevronRight size={16} />
@@ -304,7 +304,7 @@ export default function CustomerDetailTransactionsTab(args: any) {
                 </thead>
                 <tbody>
                   {payments.length > 0 ? (
-                    payments.map((payment) => (
+                    payments.map((payment: any) => (
                       <tr
                         key={payment.id}
                         onClick={() => navigate(`/sales/payments-received/${payment.id}`)}
@@ -438,7 +438,7 @@ export default function CustomerDetailTransactionsTab(args: any) {
                 </thead>
                 <tbody>
                   {getFilteredQuotes().length > 0 ? (
-                    getFilteredQuotes().map((quote) => (
+                    getFilteredQuotes().map((quote: any) => (
                       <tr
                         key={quote.id}
                         onClick={() => navigate(`/sales/quotes/${quote.id}`)}
@@ -550,7 +550,7 @@ export default function CustomerDetailTransactionsTab(args: any) {
                 </thead>
                 <tbody>
                   {getFilteredRecurringInvoices().length > 0 ? (
-                    getFilteredRecurringInvoices().map((ri) => (
+                    getFilteredRecurringInvoices().map((ri: any) => (
                       <tr
                         key={ri.id}
                         onClick={() => navigate(`/sales/retainer-invoices/${ri.id}`)}
@@ -655,7 +655,7 @@ export default function CustomerDetailTransactionsTab(args: any) {
                 </thead>
                 <tbody>
                   {getFilteredExpenses().length > 0 ? (
-                    getFilteredExpenses().map((expense) => (
+                    getFilteredExpenses().map((expense: any) => (
                       <tr
                         key={expense.id}
                         onClick={() => navigate(`/purchases/expenses/${expense.id}`)}
@@ -761,7 +761,7 @@ export default function CustomerDetailTransactionsTab(args: any) {
                 </thead>
                 <tbody>
                   {getFilteredRecurringExpenses().length > 0 ? (
-                    getFilteredRecurringExpenses().map((re) => (
+                    getFilteredRecurringExpenses().map((re: any) => (
                       <tr
                         key={re.id}
                         onClick={() => navigate(`/purchases/expenses/recurring/${re.id}`)}

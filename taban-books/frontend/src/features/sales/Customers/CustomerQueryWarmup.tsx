@@ -27,8 +27,8 @@ export default function CustomerQueryWarmup() {
     sessionStorage.setItem(CUSTOMER_QUERY_WARMUP_SESSION_KEY, "1");
 
     void queryClient.prefetchQuery({
-      queryKey: customerQueryKeys.list({ page: 1, limit: 50, search: "" }),
-      queryFn: () => fetchCustomersList({ page: 1, limit: 50, search: "" }),
+      queryKey: customerQueryKeys.list({ page: 1, limit: 10, search: "" }),
+      queryFn: () => fetchCustomersList({ page: 1, limit: 10, search: "" }),
     });
 
     void queryClient.prefetchQuery({

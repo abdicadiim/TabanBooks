@@ -11,6 +11,7 @@ import { CustomerEmailIntegrationModal } from "./CustomerEmailIntegrationModals"
 import {
   CustomerDeleteConfirmationModal,
   CustomerDeleteContactPersonModal,
+  CustomerUnlinkVendorModal,
 } from "./CustomerDeleteModals";
 import {
   CustomerAssociateTemplatesModal,
@@ -21,6 +22,10 @@ import {
 } from "./CustomerDetailModals";
 
 export default function CustomerDetailModalStack(args: any) {
+  const [isLinkingVendor, setIsLinkingVendor] = React.useState(false);
+  const [isDeletingCustomer, setIsDeletingCustomer] = React.useState(false);
+  const [isDeletingContactPerson, setIsDeletingContactPerson] = React.useState(false);
+
   const {
     isPrintStatementsModalOpen,
     startDatePickerRef,
@@ -122,11 +127,15 @@ export default function CustomerDetailModalStack(args: any) {
     setIsZohoMailIntegrationModalOpen,
     isDeleteModalOpen,
     setIsDeleteModalOpen,
+    isUnlinkVendorModalOpen,
+    isUnlinkingVendor,
+    setIsUnlinkVendorModalOpen,
     isDeleteContactPersonModalOpen,
     setIsDeleteContactPersonModalOpen,
     setPendingDeleteContactPersonIndex,
     pendingDeleteContactPersonIndex,
     deleteContactPerson,
+    handleUnlinkVendorConfirm,
     isInviteModalOpen,
     inviteMethod,
     getInviteEmailValue,
@@ -308,8 +317,10 @@ export default function CustomerDetailModalStack(args: any) {
           setIsVendorDropdownOpen(false);
           setVendorSearch("");
         }}
+        isConfirming={isLinkingVendor}
         onConfirm={async () => {
           if (selectedVendor && customer) {
+            setIsLinkingVendor(true);
             const vendorName =
               selectedVendor.name ||
               selectedVendor.formData?.displayName ||
@@ -342,6 +353,7 @@ export default function CustomerDetailModalStack(args: any) {
               }
             } catch (error: any) {
               toast.error("Failed to update customer: " + (error.message || "Unknown error"));
+              setIsLinkingVendor(false);
               return;
             }
 
@@ -361,6 +373,7 @@ export default function CustomerDetailModalStack(args: any) {
             setVendorSearch("");
             toast.success(`Customer "${customer.name || customer.displayName}" has been linked to vendor "${vendorName}"`);
             void refreshData();
+            setIsLinkingVendor(false);
           }
         }}
       />
@@ -519,16 +532,28 @@ export default function CustomerDetailModalStack(args: any) {
       <CustomerDeleteConfirmationModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
+        isDeleting={isDeletingCustomer}
         onConfirm={async () => {
           try {
+            setIsDeletingCustomer(true);
             await customersAPI.delete(id);
             setIsDeleteModalOpen(false);
             navigate("/sales/customers");
             toast.success("Customer deleted successfully");
           } catch (error: any) {
             toast.error("Failed to delete customer: " + (error?.message || "Unknown error"));
+          } finally {
+            setIsDeletingCustomer(false);
           }
         }}
+      />
+
+      <CustomerUnlinkVendorModal
+        isOpen={isUnlinkVendorModalOpen}
+        customerName={customer?.name || customer?.displayName || "Customer"}
+        isUnlinking={isUnlinkingVendor}
+        onClose={() => setIsUnlinkVendorModalOpen(false)}
+        onConfirm={handleUnlinkVendorConfirm}
       />
 
       <CustomerDeleteContactPersonModal
@@ -537,11 +562,17 @@ export default function CustomerDetailModalStack(args: any) {
           setIsDeleteContactPersonModalOpen(false);
           setPendingDeleteContactPersonIndex(null);
         }}
+        isDeleting={isDeletingContactPerson}
         onConfirm={async () => {
           if (pendingDeleteContactPersonIndex === null) return;
-          await deleteContactPerson(pendingDeleteContactPersonIndex);
-          setIsDeleteContactPersonModalOpen(false);
-          setPendingDeleteContactPersonIndex(null);
+          try {
+            setIsDeletingContactPerson(true);
+            await deleteContactPerson(pendingDeleteContactPersonIndex);
+            setIsDeleteContactPersonModalOpen(false);
+            setPendingDeleteContactPersonIndex(null);
+          } finally {
+            setIsDeletingContactPerson(false);
+          }
         }}
       />
 

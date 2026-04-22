@@ -9,10 +9,10 @@ import {
   FileText, CreditCard, Square, Upload, Loader2, LayoutGrid, PlusCircle, Mail, Building2, AlertTriangle,
   Package, Layout
 } from "lucide-react";
-import { getCustomers, saveQuote, saveSalesperson, getQuotes, getQuoteById, updateQuote, getProjects, getSalespersonsFromAPI, updateSalesperson, getItemsFromAPI, getTaxes, Customer, Tax, Salesperson, Quote, ContactPerson, Project, buildTaxOptionGroups, taxLabel, normalizeCreatedTaxPayload, isTaxActive, readTaxesLocal, writeTaxesLocal } from "../../salesModel.ts";
+import { getCustomers, saveQuote, saveSalesperson, getQuotes, getQuoteById, updateQuote, getProjects, getSalespersonsFromAPI, updateSalesperson, getItemsFromAPI, getTaxes, Customer, Tax, Salesperson, Quote, ContactPerson, Project, buildTaxOptionGroups, taxLabel, normalizeCreatedTaxPayload, isTaxActive, readTaxesLocal, writeTaxesLocal } from "../../salesModel";
 
 import { getAllDocuments } from "../../../../utils/documentStorage";
-import { customersAPI, projectsAPI, salespersonsAPI, quotesAPI, itemsAPI, currenciesAPI, contactPersonsAPI, vendorsAPI, settingsAPI, chartOfAccountsAPI, documentsAPI, reportingTagsAPI, priceListsAPI, plansAPI, transactionNumberSeriesAPI } from "../../../../services/api.ts";
+import { customersAPI, projectsAPI, salespersonsAPI, quotesAPI, itemsAPI, currenciesAPI, contactPersonsAPI, vendorsAPI, settingsAPI, chartOfAccountsAPI, documentsAPI, reportingTagsAPI, priceListsAPI, plansAPI, transactionNumberSeriesAPI } from "../../../../services/api";
 import { useAccountSelect } from "../../../../hooks/useAccountSelect";
 import { useCurrency } from "../../../../hooks/useCurrency";
 import { API_BASE_URL, getToken } from "../../../../services/auth";
@@ -67,6 +67,81 @@ const NewQuote = () => {
     clonedDataFromState ||
     readPersistedEditQuote() ||
     null;
+
+  interface QuoteItem {
+    id: string | number;
+    _id?: string;
+    itemId?: string;
+    name?: string;
+    details?: string;
+    quantity: string | number;
+    rate: string | number;
+    tax: string;
+    taxAmount?: number;
+    amount: number;
+    discount?: string | number;
+    discountType?: "Fixed" | "%";
+    account?: string;
+    itemType?: string;
+    itemDetails?: string;
+    taxRate?: number;
+    description?: string;
+    reportingTags?: any[];
+    stockOnHand?: number;
+  }
+
+  interface QuoteFormData {
+    customerName: string;
+    customerId?: string;
+    selectedLocation: string;
+    selectedPriceList: string;
+    quoteNumber: string;
+    referenceNumber: string;
+    quoteDate: string;
+    expiryDate?: string;
+    salesperson: string;
+    salespersonId: string;
+    projectName: string;
+    projectId?: string;
+    subject: string;
+    taxExclusive: string;
+    items: QuoteItem[];
+    customerNotes: string;
+    termsAndConditions: string;
+    attachedFiles: any[];
+    subTotal: number;
+    shippingCharges: number;
+    adjustment: number;
+    total: number;
+    discount: number;
+    discountType: "Fixed" | "%";
+    discountAccount?: string;
+    shippingChargeTax?: string;
+    paymentTerms?: string;
+    currency?: string;
+    totalTax?: number;
+    roundOff?: number;
+    reportingTags?: any[];
+    createRetainerInvoice?: boolean;
+    retainerPercentage?: string;
+    contactPersons?: any[];
+  }
+
+  interface NewProjectData {
+    projectName: string;
+    projectCode: string;
+    customerName: string;
+    customerId: string;
+    billingMethod: string;
+    totalProjectCost: string;
+    description: string;
+    costBudget: string;
+    revenueBudget: string;
+    users: any[];
+    tasks: any[];
+    addToWatchlist: boolean;
+  }
+
   const cachedGeneralSettings = settingsAPI.getCachedGeneralSettings?.() || {};
   const cachedTaxModeSetting = String(
     cachedGeneralSettings?.taxSettings?.taxInclusive ??
@@ -150,7 +225,7 @@ const NewQuote = () => {
   const [saveLoading, setSaveLoading] = useState<null | "draft" | "send">(null);
   const [taxes, setTaxes] = useState<Tax[]>([]);
   const [enabledSettings, setEnabledSettings] = useState<any>(cachedGeneralSettings);
-  const [formData, setFormData] = useState<any>({
+  const [formData, setFormData] = useState<QuoteFormData>({
     customerName: "",
     selectedLocation: "Head Office",
     selectedPriceList: "Select Price List",
@@ -169,7 +244,7 @@ const NewQuote = () => {
     subTotal: 0,
     totalTax: 0,
     discount: 0,
-    discountType: "percent",
+    discountType: "%",
     discountAccount: "General Income",
     shippingCharges: 0,
     shippingChargeTax: "",
@@ -180,7 +255,8 @@ const NewQuote = () => {
     customerNotes: "Looking forward for your business.",
     termsAndConditions: "",
     attachedFiles: [],
-
+    createRetainerInvoice: false,
+    retainerPercentage: "",
     reportingTags: [] as any[],
     contactPersons: []
   });
@@ -240,10 +316,10 @@ const NewQuote = () => {
 
   const normalizeDiscountForForm = (quoteLike: any, subTotalValue: number, taxValue: number) => {
     const discountTypeRaw = String(quoteLike?.discountType || "percent").toLowerCase();
-    const discountTypeValue = discountTypeRaw === "amount" ? "amount" : "percent";
+    const discountTypeValue = discountTypeRaw === "amount" || discountTypeRaw === "fixed" ? "Fixed" : "%";
     const rawDiscount = toNumberSafe(quoteLike?.discount);
 
-    if (discountTypeValue === "amount" || rawDiscount <= 0 || subTotalValue <= 0) {
+    if (discountTypeValue === "Fixed" || rawDiscount <= 0 || subTotalValue <= 0) {
       return { discountValue: rawDiscount, discountTypeValue };
     }
 
@@ -275,12 +351,12 @@ const NewQuote = () => {
       (Math.abs(totalValue - totalAssumingAmount) + 0.01 < Math.abs(totalValue - totalAssumingPercent));
 
     if (!looksLikeAmount) {
-      return { discountValue: rawDiscount, discountTypeValue: "percent" };
+      return { discountValue: rawDiscount, discountTypeValue: "%" };
     }
 
     return {
       discountValue: (rawDiscount / subTotalValue) * 100,
-      discountTypeValue: "percent"
+      discountTypeValue: "%"
     };
   };
 
@@ -377,7 +453,7 @@ const NewQuote = () => {
       subTotal: clonedSubTotal || prev.subTotal,
       totalTax: clonedTax || prev.totalTax,
       discount: normalizedClonedDiscount.discountValue,
-      discountType: normalizedClonedDiscount.discountTypeValue,
+      discountType: normalizedClonedDiscount.discountTypeValue as "Fixed" | "%",
       discountAccount: cloned.discountAccount || prev.discountAccount,
       shippingCharges: Number(cloned.shippingCharges ?? prev.shippingCharges) || 0,
       shippingChargeTax: String(cloned.shippingChargeTax || cloned.shippingTax || prev.shippingChargeTax || ""),
@@ -501,12 +577,12 @@ const NewQuote = () => {
   const [openItemMenuId, setOpenItemMenuId] = useState<string | number | null>(null);
   const itemMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [isBulkAddModalOpen, setIsBulkAddModalOpen] = useState(false);
-  const [bulkAddInsertIndex, setBulkAddInsertIndex] = useState(null);
+  const [bulkAddInsertIndex, setBulkAddInsertIndex] = useState<number | null>(null);
   const [bulkAddSearch, setBulkAddSearch] = useState("");
   const [bulkSelectedItems, setBulkSelectedItems] = useState<any[]>([]);
-  const [bulkSelectedItemIds, setBulkSelectedItemIds] = useState<number[]>([]);
+  const [bulkSelectedItemIds, setBulkSelectedItemIds] = useState<(string | number)[]>([]);
   const [isBulkActionsOpen, setIsBulkActionsOpen] = useState(false);
-  const bulkActionsRef = useRef(null);
+  const bulkActionsRef = useRef<HTMLDivElement | null>(null);
   const [isTheseDropdownOpen, setIsTheseDropdownOpen] = useState(false);
   const [showAdditionalInformation, setShowAdditionalInformation] = useState(false);
   const [isNewItemModalOpen, setIsNewItemModalOpen] = useState(false);
@@ -536,7 +612,7 @@ const NewQuote = () => {
     purchasable: true,
     trackInventory: false
   });
-  const [newItemImage, setNewItemImage] = useState(null);
+  const [newItemImage, setNewItemImage] = useState<string | ArrayBuffer | null>(null);
   const newItemImageRef = useRef(null);
 
   // Project state
@@ -546,7 +622,7 @@ const NewQuote = () => {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedCustomerIdForProjects, setSelectedCustomerIdForProjects] = useState<string | null>(null);
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
-  const [newProjectData, setNewProjectData] = useState({
+  const [newProjectData, setNewProjectData] = useState<NewProjectData>({
     projectName: "",
     projectCode: "",
     customerName: "",
@@ -561,18 +637,18 @@ const NewQuote = () => {
     addToWatchlist: true
   });
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
-  const projectDropdownRef = useRef(null);
+  const projectDropdownRef = useRef<HTMLDivElement | null>(null);
   const [isQuoteDatePickerOpen, setIsQuoteDatePickerOpen] = useState(false);
   const [isExpiryDatePickerOpen, setIsExpiryDatePickerOpen] = useState(false);
   const [quoteDateCalendar, setQuoteDateCalendar] = useState(new Date());
   const [expiryDateCalendar, setExpiryDateCalendar] = useState(new Date());
-  const customerDropdownRef = useRef(null);
-  const salespersonDropdownRef = useRef(null);
-  const quoteDatePickerRef = useRef(null);
-  const expiryDatePickerRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const customerDropdownRef = useRef<HTMLDivElement | null>(null);
+  const salespersonDropdownRef = useRef<HTMLDivElement | null>(null);
+  const quoteDatePickerRef = useRef<HTMLDivElement | null>(null);
+  const expiryDatePickerRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploadDropdownOpen, setIsUploadDropdownOpen] = useState(false);
-  const uploadDropdownRef = useRef(null);
+  const uploadDropdownRef = useRef<HTMLDivElement | null>(null);
   const [isDocumentsModalOpen, setIsDocumentsModalOpen] = useState(false);
   const [selectedInbox, setSelectedInbox] = useState("files");
   const [documentSearch, setDocumentSearch] = useState("");
@@ -646,8 +722,8 @@ const NewQuote = () => {
   const [currencyMap, setCurrencyMap] = useState<Record<string, string>>({});
 
   // Contact Persons state
-  const [contactPersons, setContactPersons] = useState([]);
-  const [vendorContactPersons, setVendorContactPersons] = useState([]);
+  const [contactPersons, setContactPersons] = useState<any[]>([]);
+  const [vendorContactPersons, setVendorContactPersons] = useState<any[]>([]);
   const [selectedContactPersons, setSelectedContactPersons] = useState<ContactPerson[]>([]);
   const [isEmailCommunicationsOpen, setIsEmailCommunicationsOpen] = useState(false);
 
@@ -752,7 +828,7 @@ const NewQuote = () => {
 
       let score = 0;
       if (locationIds.length) {
-        const matchesLocation = rowLocationIds.some((id) => locationIds.includes(id));
+        const matchesLocation = rowLocationIds.some((id: string) => locationIds.includes(id));
         if (matchesLocation) score += 100;
         else if (!rowLocationIds.length) score += 10;
       }
@@ -1638,7 +1714,7 @@ const NewQuote = () => {
       const next = { ...prev };
       if (!showTransactionDiscount && !isEditMode) {
         next.discount = 0;
-        next.discountType = "percent";
+        next.discountType = "%";
       }
       if (!showShippingCharges && !isEditMode) {
         next.shippingCharges = 0;
@@ -1740,7 +1816,7 @@ const NewQuote = () => {
             }));
           }
 
-          let quote = await getQuoteById(quoteId);
+          let quote: Quote | null = await getQuoteById(quoteId);
 
           // Try numeric ID if not found
           if (!quote && !isNaN(parseInt(quoteId))) {
@@ -1750,10 +1826,10 @@ const NewQuote = () => {
           // Fallback: if not found, try matching by quoteNumber
           if (!quote) {
             const quotes = await getQuotes();
-            quote = quotes.find(q => q.quoteNumber === quoteId);
+            quote = quotes.find((q: Quote) => q.quoteNumber === quoteId) || null;
           }
 
-          const loadedQuote = quote || cachedQuote;
+          const loadedQuote: any = quote || initialQuoteSource;
 
           if (loadedQuote) {
             // Format dates for display
@@ -1811,14 +1887,16 @@ const NewQuote = () => {
               const resolvedTaxRate = matchedTax ? (Number((matchedTax as any).rate) || derivedTaxRate) : derivedTaxRate;
 
               return {
-                id: item.item?._id || item.item?.id || item.item || item._id || item.id || index + 1, // Map product ID if available
+                id: item.item?._id || item.item?.id || item.item || item._id || item.id || index + 1,
                 itemType: item.itemType || "item",
                 itemDetails: item.item?.name || item.item?.itemName || item.name || item.itemName || item.itemDetails || "",
                 name: item.item?.name || item.item?.itemName || item.name || item.itemName || "",
+                details: item.item?.description || item.description || "",
                 quantity,
                 rate,
                 tax: String(resolvedTaxId || normalizedRawTax || (resolvedTaxRate > 0 ? resolvedTaxRate : "")),
                 taxRate: resolvedTaxRate,
+                taxAmount: explicitTaxAmount,
                 amount,
                 description: item.description || "",
                 reportingTags: Array.isArray((item as any).reportingTags) ? (item as any).reportingTags : []
@@ -1878,7 +1956,7 @@ const NewQuote = () => {
               subTotal: subTotalValue,
               totalTax: totalTaxValue,
               discount: normalizedDiscount.discountValue,
-              discountType: normalizedDiscount.discountTypeValue,
+              discountType: normalizedDiscount.discountTypeValue as "Fixed" | "%",
               shippingCharges: Number((loadedQuote as any).shippingCharges || 0),
               shippingChargeTax: String((loadedQuote as any).shippingChargeTax || (loadedQuote as any).shippingTax || ""),
               adjustment: Number((loadedQuote as any).adjustment || 0),
@@ -1927,7 +2005,7 @@ const NewQuote = () => {
                       // Fallback: fetch all and filter
                       const allProjectsResponse = await projectsAPI.getAll();
                       if (allProjectsResponse && allProjectsResponse.success && allProjectsResponse.data) {
-                        const customerProjects = allProjectsResponse.data.filter(p =>
+                        const customerProjects = allProjectsResponse.data.filter((p: any) =>
                           p.customer?._id === customerId || p.customer === customerId || p.customerId === customerId
                         );
                         setProjects(customerProjects);
@@ -1941,55 +2019,55 @@ const NewQuote = () => {
             }
 
             // Set selected salesperson if exists
-            if (quote.salesperson || quote.salespersonId) {
+            if (loadedQuote.salesperson || loadedQuote.salespersonId) {
               // Ensure salespersons are loaded or use the one from quote if needed
-              const salesperson = salespersons.find(s =>
-                (s.name === quote.salesperson) ||
-                (s._id === quote.salespersonId) ||
-                (s.id === quote.salespersonId)
+              const salesperson = salespersons.find((s: any) =>
+                (s.name === loadedQuote.salesperson) ||
+                (s._id === loadedQuote.salespersonId) ||
+                (s.id === loadedQuote.salespersonId)
               );
               if (salesperson) {
                 setSelectedSalesperson(salesperson);
-              } else if (quote.salesperson) {
-                setSelectedSalesperson({ name: quote.salesperson, _id: quote.salespersonId });
+              } else if (loadedQuote.salesperson) {
+                setSelectedSalesperson({ name: loadedQuote.salesperson, _id: loadedQuote.salespersonId });
               }
             }
 
             // Set selected project if exists
-            if (quote.projectName || quote.projectId) {
+            if (loadedQuote.projectName || loadedQuote.projectId) {
               // Load projects and find matching project
               try {
                 const projectsResponse = await projectsAPI.getAll();
                 if (projectsResponse && projectsResponse.success && projectsResponse.data) {
-                  const project = projectsResponse.data.find(p =>
-                    (quote.projectId && (p._id === quote.projectId || p.id === quote.projectId)) ||
-                    ((p.projectName || p.name) === quote.projectName)
+                  const project = projectsResponse.data.find((p: any) =>
+                    (loadedQuote.projectId && (p._id === loadedQuote.projectId || p.id === loadedQuote.projectId)) ||
+                    ((p.projectName || p.name) === loadedQuote.projectName)
                   );
                   if (project) {
                     setSelectedProject(project);
-                    setFormData(prev => ({ ...prev, projectName: project.projectName || project.name }));
+                    setFormData((prev: any) => ({ ...prev, projectName: project.projectName || project.name }));
                   }
                 } else {
                   const loadedProjects = await getProjects();
-                  const project = loadedProjects.find(p =>
-                    (quote.projectId && (p._id === quote.projectId || p.id === quote.projectId)) ||
-                    ((p.projectName || p.name) === quote.projectName)
+                  const project = loadedProjects.find((p: any) =>
+                    (loadedQuote.projectId && (p._id === loadedQuote.projectId || p.id === loadedQuote.projectId)) ||
+                    ((p.projectName || p.name) === loadedQuote.projectName)
                   );
                   if (project) {
                     setSelectedProject(project);
-                    setFormData(prev => ({ ...prev, projectName: project.projectName || project.name }));
+                    setFormData((prev: any) => ({ ...prev, projectName: project.projectName || project.name }));
                   }
                 }
               } catch (error) {
                 console.error("Error loading projects for matching:", error);
                 const loadedProjects = await getProjects();
-                const project = loadedProjects.find(p =>
-                  (quote.projectId && (p._id === quote.projectId || p.id === quote.projectId)) ||
-                  ((p.projectName || p.name) === quote.projectName)
+                const project = loadedProjects.find((p: any) =>
+                  (loadedQuote.projectId && (p._id === loadedQuote.projectId || p.id === loadedQuote.projectId)) ||
+                  ((p.projectName || p.name) === loadedQuote.projectName)
                 );
                 if (project) {
                   setSelectedProject(project);
-                  setFormData(prev => ({ ...prev, projectName: project.projectName || project.name }));
+                  setFormData((prev: any) => ({ ...prev, projectName: project.projectName || project.name }));
                 }
               }
             }
@@ -2023,7 +2101,7 @@ const NewQuote = () => {
               setSelectedProject(project);
               setFormData(prev => ({
                 ...prev,
-                projectName: project.projectName || project.name
+                projectName: project.projectName || project.name || ""
               }));
             }
           }
@@ -2181,7 +2259,7 @@ const NewQuote = () => {
     }
   }, [location.state, customers, isEditMode]);
 
-  const formatDate = (date) => {
+  const formatDate = (date: any) => {
     if (!date) return "";
     const d = new Date(date);
     const day = String(d.getDate()).padStart(2, "0");
@@ -2202,7 +2280,7 @@ const NewQuote = () => {
   };
 
   // Format date for display in input field (e.g., "28 Dec 2025")
-  const formatDateForDisplay = (dateString) => {
+  const formatDateForDisplay = (dateString: string) => {
     if (!dateString) return "";
     try {
       // Parse dd/MM/yyyy format
@@ -2224,7 +2302,7 @@ const NewQuote = () => {
   };
 
   // Convert DD/MM/YYYY to ISO date string for API
-  const convertToISODate = (dateString) => {
+  const convertToISODate = (dateString: string) => {
     if (!dateString) return null;
     try {
       // Parse dd/MM/yyyy format
@@ -2242,7 +2320,7 @@ const NewQuote = () => {
     }
   };
 
-  const getDaysInMonth = (date) => {
+  const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
     const firstDay = new Date(year, month, 1);
@@ -2278,7 +2356,7 @@ const NewQuote = () => {
     return days;
   };
 
-  const handleDateSelect = (date, type) => {
+  const handleDateSelect = (date: Date, type: "quoteDate" | "expiryDate") => {
 
     const formatted = formatDate(date);
     setFormData(prev => ({
@@ -2304,7 +2382,7 @@ const NewQuote = () => {
     }
   };
 
-  const navigateMonth = (direction, type) => {
+  const navigateMonth = (direction: "prev" | "next", type: "quoteDate" | "expiryDate") => {
     const calendar = type === 'quoteDate' ? quoteDateCalendar : expiryDateCalendar;
     const setCalendar = type === 'quoteDate' ? setQuoteDateCalendar : setExpiryDateCalendar;
     const newDate = new Date(calendar);
@@ -2368,12 +2446,12 @@ const NewQuote = () => {
       }
 
       // Handle bulk actions dropdown
-      if (bulkActionsRef.current && !bulkActionsRef.current.contains(event.target)) {
+      if (bulkActionsRef.current && !bulkActionsRef.current.contains(event.target as Node)) {
         setIsBulkActionsOpen(false);
       }
 
       // Handle upload dropdown
-      if (uploadDropdownRef.current && !uploadDropdownRef.current.contains(event.target)) {
+      if (uploadDropdownRef.current && !uploadDropdownRef.current.contains(event.target as Node)) {
         setIsUploadDropdownOpen(false);
       }
     };
@@ -2392,7 +2470,7 @@ const NewQuote = () => {
     };
   }, [isCustomerDropdownOpen, isSalespersonDropdownOpen, isQuoteDatePickerOpen, isExpiryDatePickerOpen, isProjectDropdownOpen, isTaxPreferenceDropdownOpen, isPriceListDropdownOpen, openItemDropdowns, openTaxDropdowns, openItemMenuId, isBulkActionsOpen, isUploadDropdownOpen]);
 
-  const handleChange = (e) => {
+  const handleChange = (e: React.ChangeEvent<any>) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => {
       const updated = {
@@ -2410,7 +2488,7 @@ const NewQuote = () => {
     });
   };
 
-  const handleCustomerSelect = (customer) => {
+  const handleCustomerSelect = (customer: any) => {
     const customerId = customer.id || customer._id;
     const customerName = customer.name || customer.displayName || customer.companyName;
     const currentPriceListName = normalizeSelectedPriceListName(formData.selectedPriceList);
@@ -2425,7 +2503,7 @@ const NewQuote = () => {
     setSelectedCustomer(customer);
     const customerTaxMeta = getCustomerTaxMeta(customer);
 
-    setFormData(prev => {
+    setFormData((prev: QuoteFormData) => {
       const customerCurrency = (customer.currency || prev.currency || "USD").split(' - ')[0];
       const nextPriceListName = shouldPromptForPriceListChange
         ? normalizeSelectedPriceListName(prev.selectedPriceList)
@@ -2484,7 +2562,7 @@ const NewQuote = () => {
 
     // Clear validation error if any
     if (formErrors.customerName) {
-      setFormErrors(prev => {
+      setFormErrors((prev: any) => {
         const newErrors = { ...prev };
         delete newErrors.customerName;
         return newErrors;
@@ -2599,7 +2677,7 @@ const NewQuote = () => {
     if (!customerDefaultsAppliedRef.current.taxApplied) {
       const customerTaxMeta = getCustomerTaxMeta(selectedCustomer);
       if (customerTaxMeta.taxId) {
-        setFormData((prev) => {
+        setFormData((prev: QuoteFormData) => {
           const updatedItems = (prev.items || []).map((row: any) => {
             if (row?.itemType === "header") return row;
             const currentTaxId = String(row?.tax || "").trim();
@@ -2638,7 +2716,7 @@ const NewQuote = () => {
     setIsAddressModalOpen(true);
   };
 
-  const handleAddressFieldChange = (e: any) => {
+  const handleAddressFieldChange = (e: React.ChangeEvent<any>) => {
     const { name, value } = e.target;
     setAddressFormData((prev: any) => ({ ...prev, [name]: value }));
   };
@@ -2757,8 +2835,8 @@ const NewQuote = () => {
 
   useEffect(() => {
     if (!isPhoneCodeDropdownOpen) return;
-    const handleOutsideClick = (event: any) => {
-      if (phoneCodeDropdownRef.current && !phoneCodeDropdownRef.current.contains(event.target)) {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (phoneCodeDropdownRef.current && !phoneCodeDropdownRef.current.contains(event.target as Node)) {
         setIsPhoneCodeDropdownOpen(false);
       }
     };
@@ -2768,8 +2846,8 @@ const NewQuote = () => {
 
   useEffect(() => {
     if (!isCountryDropdownOpen) return;
-    const handleOutsideClick = (event: any) => {
-      if (countryDropdownRef.current && !countryDropdownRef.current.contains(event.target)) {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (countryDropdownRef.current && !countryDropdownRef.current.contains(event.target as Node)) {
         setIsCountryDropdownOpen(false);
       }
     };
@@ -2825,7 +2903,7 @@ const NewQuote = () => {
       const t = new Date(value || 0).getTime();
       return Number.isFinite(t) ? t : 0;
     };
-    return [...entities].sort((a, b) => {
+    return [...entities].sort((a: any, b: any) => {
       const aTime = Math.max(
         toTime(a?.createdAt),
         toTime(a?.created_at),
@@ -2917,7 +2995,7 @@ const NewQuote = () => {
       name: customerFromMessage?.displayName || customerFromMessage?.name || customerFromMessage?.companyName || "Unknown"
     };
     const normalizedId = getEntityId(normalizedCustomer);
-    setCustomers(prev => {
+    setCustomers((prev: any[]) => {
       if (!normalizedId) return prev;
       const existingIndex = prev.findIndex((c: any) => getEntityId(c) === normalizedId);
       if (existingIndex === -1) {
@@ -2929,7 +3007,7 @@ const NewQuote = () => {
     });
     handleCustomerSelect(normalizedCustomer as any);
     setIsNewCustomerQuickActionOpen(false);
-    setCustomerQuickActionBaseIds(prev => (normalizedId ? Array.from(new Set([...prev, normalizedId])) : prev));
+    setCustomerQuickActionBaseIds((prev: string[]) => (normalizedId ? Array.from(new Set([...prev, normalizedId])) : prev));
   };
 
   const handleQuickActionProjectCreated = (projectFromMessage: any) => {
@@ -2939,7 +3017,7 @@ const NewQuote = () => {
       id: projectFromMessage?._id || projectFromMessage?.id,
     };
     const normalizedId = getEntityId(normalizedProject);
-    setProjects(prev => {
+    setProjects((prev: any[]) => {
       if (!normalizedId) return prev;
       const existingIndex = prev.findIndex((p: any) => getEntityId(p) === normalizedId);
       if (existingIndex === -1) {
@@ -2951,7 +3029,7 @@ const NewQuote = () => {
     });
     handleProjectSelect(normalizedProject as any);
     setIsNewProjectQuickActionOpen(false);
-    setProjectQuickActionBaseIds(prev => (normalizedId ? Array.from(new Set([...prev, normalizedId])) : prev));
+    setProjectQuickActionBaseIds((prev: string[]) => (normalizedId ? Array.from(new Set([...prev, normalizedId])) : prev));
   };
 
   useEffect(() => {
@@ -3005,7 +3083,7 @@ const NewQuote = () => {
   ]);
 
   // Load contact persons for selected customer
-  const loadCustomerContactPersons = async (customerId) => {
+  const loadCustomerContactPersons = async (customerId: string) => {
     try {
       const response = await contactPersonsAPI.getAll(customerId);
       if (response && response.success && response.data) {
@@ -3033,7 +3111,7 @@ const NewQuote = () => {
             const contactResponse = await contactPersonsAPI.getAll(vendor.id || vendor._id);
             if (contactResponse && contactResponse.success && contactResponse.data) {
               // Add vendor info to each contact person
-              const vendorContacts = contactResponse.data.map(contact => ({
+              const vendorContacts = contactResponse.data.map((contact: any) => ({
                 ...contact,
                 vendorName: vendor.name || vendor.displayName,
                 vendorId: vendor.id || vendor._id,
@@ -3057,7 +3135,7 @@ const NewQuote = () => {
   };
 
   // Load projects for selected customer
-  const loadProjectsForCustomer = async (customerId) => {
+  const loadProjectsForCustomer = async (customerId: string) => {
     setSelectedCustomerIdForProjects(customerId);
     // We already have all projects in the 'projects' state from initial load.
     // If we want to ensure we have the latest for this customer, we can fetch,
@@ -3067,9 +3145,9 @@ const NewQuote = () => {
       const projectsResponse = await projectsAPI.getByCustomer(customerId);
       if (projectsResponse && projectsResponse.success && projectsResponse.data) {
         // Update projects list with these items, merging with existing
-        setProjects(prev => {
-          const existingIds = new Set(prev.map(p => p.id || p._id));
-          const newProjects = projectsResponse.data.filter(p => !existingIds.has(p.id || p._id));
+        setProjects((prev: any[]) => {
+          const existingIds = new Set(prev.map((p: any) => p.id || p._id));
+          const newProjects = projectsResponse.data.filter((p: any) => !existingIds.has(p.id || p._id));
           return [...prev, ...newProjects];
         });
       }
@@ -3078,18 +3156,14 @@ const NewQuote = () => {
     }
   };
 
-  const handleSalespersonSelect = (salesperson) => {
+  const handleSalespersonSelect = (salesperson: any) => {
     setSelectedSalesperson(salesperson);
-    setFormData(prev => ({
-      ...prev,
-      salesperson: salesperson.name || "",
-      salespersonId: salesperson.id || salesperson._id || null
-    }));
+    setFormData((prev: QuoteFormData) => ({ ...prev, salesperson: salesperson.name || "", salespersonId: salesperson.id || salesperson._id || null }));
     setIsSalespersonDropdownOpen(false);
     setSalespersonSearch("");
   };
 
-  const filteredCustomers = customers.filter(customer => {
+  const filteredCustomers = customers.filter((customer: Customer) => {
     if (!isCustomerActive(customer)) return false;
     const name = customer.name || customer.displayName || customer.companyName || "";
     const email = customer.email || "";
@@ -3164,10 +3238,7 @@ const NewQuote = () => {
 
   const handleNewSalespersonChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setNewSalespersonData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setNewSalespersonData((prev: any) => ({ ...prev, [name]: value }));
   };
 
   const handleSaveNewSalesperson = async () => {
@@ -3280,12 +3351,12 @@ const NewQuote = () => {
             : [];
         setSalespersons(refreshed);
       } catch {
-        setSalespersons(prev => prev.filter(sp => String(sp.id || sp._id || "") !== normalizedId));
+        setSalespersons((prev: any[]) => prev.filter(sp => String(sp.id || sp._id || "") !== normalizedId));
       }
 
       if (selectedSalesperson && String(selectedSalesperson.id || selectedSalesperson._id || "") === normalizedId) {
         setSelectedSalesperson(null);
-        setFormData(prev => ({
+        setFormData((prev: QuoteFormData) => ({
           ...prev,
           salesperson: "",
           salespersonId: ""
@@ -3318,7 +3389,7 @@ const NewQuote = () => {
     const previousSalespersonId = formData.salespersonId;
     const nextIsActive = nextStatus === "active";
 
-    setSalespersons((prev) =>
+    setSalespersons((prev: any[]) =>
       prev.map((sp: any) => {
         const spId = String(sp.id || sp._id || "");
         if (spId !== normalizedId) return sp;
@@ -3353,10 +3424,10 @@ const NewQuote = () => {
         if (String(formData.salespersonId || "") === normalizedId) {
           if (nextStatus === "inactive") {
             setSelectedSalesperson(null);
-            setFormData((prev) => ({ ...prev, salesperson: "", salespersonId: "" }));
+            setFormData((prev: QuoteFormData) => ({ ...prev, salesperson: "", salespersonId: "" }));
           } else {
             setSelectedSalesperson(updatedSalesperson);
-            setFormData((prev) => ({
+            setFormData((prev: QuoteFormData) => ({
               ...prev,
               salesperson: String(updatedSalesperson.name || previousSalespersonName || ""),
               salespersonId: String(updatedSalesperson.id || updatedSalesperson._id || previousSalespersonId || ""),
@@ -3380,7 +3451,7 @@ const NewQuote = () => {
       }
 
       setSalespersons(previousSalespersons);
-      setFormData((prev) => ({
+      setFormData((prev: QuoteFormData) => ({
         ...prev,
         salesperson: previousSalespersonName,
         salespersonId: previousSalespersonId,
@@ -3389,7 +3460,7 @@ const NewQuote = () => {
     } catch (error: any) {
       console.error("Error updating salesperson status:", error);
       setSalespersons(previousSalespersons);
-      setFormData((prev) => ({
+      setFormData((prev: QuoteFormData) => ({
         ...prev,
         salesperson: previousSalespersonName,
         salespersonId: previousSalespersonId,
@@ -3401,7 +3472,7 @@ const NewQuote = () => {
   const applySalespersonStatusLocally = (ids: string[], nextStatus: "active" | "inactive") => {
     const normalizedIds = new Set(ids.map((id) => String(id || "").trim()).filter(Boolean));
     const isActive = nextStatus === "active";
-    setSalespersons((prev) =>
+    setSalespersons((prev: any[]) =>
       prev.map((sp: any) => {
         const spId = String(sp.id || sp._id || "").trim();
         if (!normalizedIds.has(spId)) return sp;
@@ -3516,7 +3587,7 @@ const NewQuote = () => {
 
       if (ids.includes(String(formData.salespersonId || ""))) {
         setSelectedSalesperson(null);
-        setFormData((prev) => ({ ...prev, salesperson: "", salespersonId: "" }));
+        setFormData((prev: QuoteFormData) => ({ ...prev, salesperson: "", salespersonId: "" }));
       }
 
       toast.success(`${ids.length} salesperson${ids.length === 1 ? "" : "s"} deleted`);
@@ -3560,7 +3631,7 @@ const NewQuote = () => {
       })
       .filter(Boolean);
 
-    setFormData(prev => ({
+    setFormData((prev: QuoteFormData) => ({
       ...prev,
       items: prev.items.map((item: any) =>
         item.id === currentReportingTagsItemId
@@ -3618,7 +3689,7 @@ const NewQuote = () => {
                       value={reportingTagSelections[tagId] || ""}
                       onChange={(e) => {
                         const value = e.target.value;
-                        setReportingTagSelections(prev => ({ ...prev, [tagId]: value }));
+                        setReportingTagSelections((prev: any) => ({ ...prev, [tagId]: value }));
                       }}
                     >
                       <option value="">None</option>
@@ -3655,10 +3726,10 @@ const NewQuote = () => {
     );
   };
 
-  const getFilteredItems = (itemId) => {
+  const getFilteredItems = (itemId: string | number) => {
     const search = (itemSearches[itemId] || "").toLowerCase().trim();
     if (!search) return availableItems;
-    return availableItems.filter(item =>
+    return availableItems.filter((item: any) =>
       String(item.name || "").toLowerCase().includes(search) ||
       String(item.sku || "").toLowerCase().includes(search) ||
       String(item.code || "").toLowerCase().includes(search) ||
@@ -3861,7 +3932,7 @@ const NewQuote = () => {
     if (!showTransactionDiscount) return 0;
     const rawValue = parseFloat(String(discountValue)) || 0;
     if (subTotal <= 0 || rawValue <= 0) return 0;
-    const calculated = discountTypeValue === "percent" ? (subTotal * rawValue) / 100 : rawValue;
+    const calculated = discountTypeValue === "%" ? (subTotal * rawValue) / 100 : rawValue;
     return Math.min(calculated, subTotal);
   };
 
@@ -3915,7 +3986,7 @@ const NewQuote = () => {
     return Object.values(breakdown);
   }, [formData.items, formData.taxExclusive, formData.shippingCharges, formData.shippingChargeTax, taxes, taxMode, showShippingCharges]);
 
-  const handleItemSelect = (itemId, selectedItem) => {
+  const handleItemSelect = (itemId: string | number, selectedItem: any) => {
     const selectedEntityId = selectedItem.sourceId || selectedItem.id;
     const baseRate = Number(selectedItem?.rate ?? 0) || 0;
     const nextRate = selectedPriceList ? applyPriceListToBaseRate(baseRate, selectedPriceList, selectedItem) : baseRate;
@@ -3937,7 +4008,7 @@ const NewQuote = () => {
       parseTaxRate(selectedItem?.taxInfo?.taxRate ?? selectedItem?.taxRate ?? selectedItem?.salesTaxRate) ||
       0;
 
-    setSelectedItemIds(prev => ({ ...prev, [itemId]: selectedItem.id }));
+    setSelectedItemIds((prev: any) => ({ ...prev, [itemId]: selectedItem.id }));
     handleItemChange(itemId, 'itemId', selectedEntityId); // Store the actual Product/Plan ID
     handleItemChange(itemId, 'itemEntityType', selectedItem.entityType || selectedItem.itemEntityType || "item");
     handleItemChange(itemId, 'catalogRate', baseRate);
@@ -3957,40 +4028,40 @@ const NewQuote = () => {
       handleItemChange(itemId, 'taxRate', resolvedTaxRate);
     }
 
-    setOpenItemDropdowns(prev => ({ ...prev, [itemId]: false }));
-    setItemSearches(prev => ({ ...prev, [itemId]: "" }));
+    setOpenItemDropdowns((prev: any) => ({ ...prev, [itemId]: false }));
+    setItemSearches((prev: any) => ({ ...prev, [itemId]: "" }));
   };
 
-  const toggleItemDropdown = (itemId) => {
-    setOpenItemDropdowns(prev => ({
+  const toggleItemDropdown = (itemId: string | number) => {
+    setOpenItemDropdowns((prev: any) => ({
       ...prev,
       [itemId]: !prev[itemId]
     }));
     if (!itemDropdownRefs.current[itemId]) itemDropdownRefs.current[itemId] = null;
   };
 
-  const calculateAllTotals = (items, currentFormData) => {
+  const calculateAllTotals = (items: QuoteItem[], currentFormData: any) => {
     const itemRows = items.filter(i => i.itemType !== "header");
     const isInclusive = isTaxInclusiveMode(currentFormData);
 
-    const subTotal = itemRows.reduce((sum, item) => {
-      return sum + (parseFloat(item.quantity) || 0) * (parseFloat(item.rate) || 0);
+    const subTotal = itemRows.reduce((sum: number, item: any) => {
+      return sum + (parseFloat(String(item.quantity)) || 0) * (parseFloat(String(item.rate)) || 0);
     }, 0);
 
     const discountAmount = computeDiscountAmount(subTotal, currentFormData.discount, currentFormData.discountType);
 
-    const itemsTax = itemRows.reduce((sum, item) => {
-      const quantity = parseFloat(item.quantity) || 0;
-      const rate = parseFloat(item.rate) || 0;
+    const itemsTax = itemRows.reduce((sum: number, item: any) => {
+      const quantity = parseFloat(String(item.quantity)) || 0;
+      const rate = parseFloat(String(item.rate)) || 0;
       const lineAmount = quantity * rate;
       const discountedLineAmount = applyDiscountShare(lineAmount, subTotal, discountAmount);
       const taxMeta = getTaxMetaFromItem(item);
       return sum + calculateLineTaxAmount(discountedLineAmount, taxMeta.rate, isInclusive);
     }, 0);
 
-    const shipping = showShippingCharges ? (parseFloat(currentFormData.shippingCharges) || 0) : 0;
+    const shipping = showShippingCharges ? (parseFloat(String(currentFormData.shippingCharges)) || 0) : 0;
     const shippingTaxObj = (showShippingCharges && shipping > 0 && currentFormData.shippingChargeTax)
-      ? getTaxBySelection(currentFormData.shippingChargeTax)
+      ? getTaxBySelection(String(currentFormData.shippingChargeTax))
       : null;
     const shippingTaxRate = shippingTaxObj ? parseTaxRate((shippingTaxObj as any).rate) : 0;
     const shippingTaxAmount = (showShippingCharges && shipping > 0 && shippingTaxRate > 0)
@@ -4024,7 +4095,7 @@ const NewQuote = () => {
   useEffect(() => {
     // Re-apply selected price list to all selected lines (keeps rates consistent)
     const list = selectedPriceList;
-    setFormData((prev) => {
+    setFormData((prev: QuoteFormData) => {
       const nextCurrency = list?.currency ? String(list.currency).trim() : prev.currency;
       const updatedItems = prev.items.map((row: any) => {
         if (row.itemType === "header") return row;
@@ -4056,9 +4127,9 @@ const NewQuote = () => {
     });
   }, [selectedPriceList, availableItems, selectedItemIds]);
 
-  const handleItemChange = (id, field, value) => {
-    setFormData(prev => {
-      const updatedItems = prev.items.map(item => {
+  const handleItemChange = (id: string | number, field: string, value: any) => {
+    setFormData((prev: QuoteFormData) => {
+      const updatedItems = prev.items.map((item: QuoteItem) => {
         if (item.id === id) {
           const updatedItem = { ...item, [field]: value };
           if (item.itemType === "header") return updatedItem;
@@ -4069,8 +4140,8 @@ const NewQuote = () => {
           }
 
           // Row amount should exclude tax; tax is shown only in totals section.
-          const quantity = field === 'quantity' ? parseFloat(value) || 0 : parseFloat(item.quantity) || 0;
-          const rate = field === 'rate' ? parseFloat(value) || 0 : parseFloat(item.rate) || 0;
+          const quantity = field === 'quantity' ? parseFloat(String(value)) || 0 : parseFloat(String(item.quantity)) || 0;
+          const rate = field === 'rate' ? parseFloat(String(value)) || 0 : parseFloat(String(item.rate)) || 0;
           const subtotal = quantity * rate;
           updatedItem.amount = subtotal;
           return updatedItem;
@@ -4154,8 +4225,8 @@ const NewQuote = () => {
   };
 
   const handleAddItem = (insertAfterIndex?: number) => {
-    setFormData(prev => {
-      const newItem = { id: Date.now(), itemType: "item", itemDetails: "", quantity: 1, rate: 0, tax: "", amount: 0, description: "", stockOnHand: 0, reportingTags: [] };
+    setFormData((prev: QuoteFormData) => {
+      const newItem: QuoteItem = { id: Date.now(), itemType: "item", itemDetails: "", name: "", details: "", quantity: 1, rate: 0, tax: "", taxAmount: 0, amount: 0, description: "", stockOnHand: 0, reportingTags: [] };
       const newItems = [
         ...prev.items
       ];
@@ -4173,17 +4244,17 @@ const NewQuote = () => {
     });
   };
 
-  const handleInsertHeader = (index) => {
-    setFormData(prev => {
+  const handleInsertHeader = (index: number) => {
+    setFormData((prev: QuoteFormData) => {
       const newItems = [...prev.items];
-      newItems.splice(index + 1, 0, { id: Date.now(), itemType: "header", itemDetails: "", quantity: 0, rate: 0, tax: "", amount: 0, description: "", stockOnHand: 0, reportingTags: [] });
+      newItems.splice(index + 1, 0, { id: Date.now(), itemType: "header", itemDetails: "", name: "", details: "", quantity: 0, rate: 0, tax: "", taxAmount: 0, amount: 0, description: "", stockOnHand: 0, reportingTags: [] });
       return { ...prev, items: newItems };
     });
   };
 
-  const handleRemoveItem = (id) => {
-    setFormData(prev => {
-      const updatedItems = prev.items.filter(item => item.id !== id);
+  const handleRemoveItem = (id: string | number) => {
+    setFormData((prev: QuoteFormData) => {
+      const updatedItems = prev.items.filter((item: QuoteItem) => item.id !== id);
       const totals = calculateAllTotals(updatedItems, prev);
       return {
         ...prev,
@@ -4193,13 +4264,13 @@ const NewQuote = () => {
     });
   };
 
-  const handleDuplicateItem = (id) => {
-    setFormData(prev => {
-      const itemToDuplicate = prev.items.find(item => item.id === id);
+  const handleDuplicateItem = (id: string | number) => {
+    setFormData((prev: QuoteFormData) => {
+      const itemToDuplicate = prev.items.find((item: QuoteItem) => item.id === id);
       if (!itemToDuplicate) return prev;
 
       const newItem = { ...itemToDuplicate, id: Date.now() };
-      const index = prev.items.findIndex(item => item.id === id);
+      const index = prev.items.findIndex((item: QuoteItem) => item.id === id);
       const updatedItems = [...prev.items];
       updatedItems.splice(index + 1, 0, newItem);
       const totals = calculateAllTotals(updatedItems, prev);
@@ -4217,7 +4288,7 @@ const NewQuote = () => {
       return availableItems;
     }
     const search = bulkAddSearch.toLowerCase().trim();
-    return availableItems.filter(item =>
+    return availableItems.filter((item: any) =>
       String(item.name || "").toLowerCase().includes(search) ||
       String(item.sku || "").toLowerCase().includes(search) ||
       String(item.code || "").toLowerCase().includes(search) ||
@@ -4225,8 +4296,8 @@ const NewQuote = () => {
     );
   };
 
-  const handleBulkItemToggle = (item) => {
-    setBulkSelectedItems(prev => {
+  const handleBulkItemToggle = (item: any) => {
+    setBulkSelectedItems((prev: any[]) => {
       const exists = prev.find(selected => selected.id === item.id);
       if (exists) {
         return prev.filter(selected => selected.id !== item.id);
@@ -4236,10 +4307,10 @@ const NewQuote = () => {
     });
   };
 
-  const handleBulkItemQuantityChange = (itemId, quantity) => {
+  const handleBulkItemQuantityChange = (itemId: string | number, quantity: string | number) => {
     setBulkSelectedItems(prev =>
       prev.map(item =>
-        item.id === itemId ? { ...item, quantity: Math.max(1, parseFloat(quantity) || 1) } : item
+        item.id === itemId ? { ...item, quantity: Math.max(1, parseFloat(String(quantity)) || 1) } : item
       )
     );
   };
@@ -4248,22 +4319,28 @@ const NewQuote = () => {
     if (bulkSelectedItems.length === 0) return;
 
     // Add all selected items to the form and recalculate totals
-    setFormData(prev => {
-      const newItems = bulkSelectedItems.map((selectedItem, index) => {
+    setFormData((prev: QuoteFormData) => {
+      const newItems: QuoteItem[] = bulkSelectedItems.map((selectedItem, index) => {
         const resolvedTaxId = resolveItemTaxId(selectedItem);
         const resolvedTax = getTaxBySelection(resolvedTaxId);
         const fallbackTaxRate = parseTaxRate(selectedItem?.taxInfo?.taxRate ?? selectedItem?.taxRate ?? selectedItem?.salesTaxRate);
-
+        const quantity = selectedItem.quantity || 1;
+        const rate = selectedItem.rate || 0;
+ 
         return {
           id: Date.now() + index,
           itemType: "item",
           itemDetails: selectedItem.name,
-          quantity: selectedItem.quantity || 1,
-          rate: selectedItem.rate,
+          name: selectedItem.name,
+          details: "",
+          quantity: quantity,
+          rate: rate,
           tax: resolvedTaxId || "",
           taxRate: resolvedTax ? parseTaxRate(resolvedTax.rate) : fallbackTaxRate,
-          amount: (selectedItem.quantity || 1) * selectedItem.rate,
-          stockOnHand: selectedItem.stockOnHand
+          taxAmount: 0,
+          amount: quantity * rate,
+          stockOnHand: selectedItem.stockOnHand,
+          reportingTags: []
         };
       });
 
@@ -4303,8 +4380,8 @@ const NewQuote = () => {
     setBulkSelectedItemIds([]);
   };
 
-  const handleToggleItemSelection = (itemId) => {
-    setBulkSelectedItemIds(prev =>
+  const handleToggleItemSelection = (itemId: string | number) => {
+    setBulkSelectedItemIds((prev: (string | number)[]) =>
       prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]
     );
   };
@@ -4313,7 +4390,7 @@ const NewQuote = () => {
     if (bulkSelectedItemIds.length === 0) return;
 
     if (window.confirm(`Are you sure you want to delete ${bulkSelectedItemIds.length} item(s)?`)) {
-      setFormData(prev => {
+      setFormData((prev: QuoteFormData) => {
         const updatedItems = prev.items.filter(item => !bulkSelectedItemIds.includes(item.id));
         const totals = calculateAllTotals(updatedItems, prev);
 
@@ -4351,7 +4428,7 @@ const NewQuote = () => {
       file: file
     }));
 
-    setFormData(prev => ({
+    setFormData((prev: QuoteFormData) => ({
       ...prev,
       attachedFiles: [...prev.attachedFiles, ...newFiles]
     }));
@@ -4362,7 +4439,7 @@ const NewQuote = () => {
     }
   };
 
-  const handleRemoveFile = (fileId) => {
+  const handleRemoveFile = (fileId: string | number) => {
     setFormData(prev => ({
       ...prev,
       attachedFiles: prev.attachedFiles.filter(file => file.id !== fileId)
@@ -4370,7 +4447,7 @@ const NewQuote = () => {
   };
 
   // Helper function to parse file size string to bytes
-  const parseFileSize = (sizeStr) => {
+  const parseFileSize = (sizeStr: string | number) => {
     if (typeof sizeStr === 'number') return sizeStr;
     if (!sizeStr) return 0;
 
@@ -4381,7 +4458,7 @@ const NewQuote = () => {
     const unit = match[2].toUpperCase();
 
     const multipliers = { B: 1, KB: 1024, MB: 1024 * 1024, GB: 1024 * 1024 * 1024 };
-    return Math.round(value * (multipliers[unit] || 1));
+    return Math.round(value * (multipliers[unit as keyof typeof multipliers] || 1));
   };
 
   // Load documents when modal opens
@@ -4416,7 +4493,7 @@ const NewQuote = () => {
     fileInputRef.current?.click();
   };
 
-  const handleNewItemChange = (e) => {
+  const handleNewItemChange = (e: React.ChangeEvent<any>) => {
     const { name, value, type, checked } = e.target;
     setNewItemData(prev => ({
       ...prev,
@@ -4424,8 +4501,8 @@ const NewQuote = () => {
     }));
   };
 
-  const handleNewItemImageUpload = (e) => {
-    const file = e.target.files[0];
+  const handleNewItemImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -4556,14 +4633,14 @@ const NewQuote = () => {
   };
 
   // Project handlers
-  const filteredProjects = projects.filter(project => {
+  const filteredProjects = projects.filter((project: any) => {
     const projectName = project.projectName || project.name || "";
     const matchesSearch = projectName.toLowerCase().includes(projectSearch.toLowerCase());
 
     // If no customer is selected, show all matching search
     if (!selectedCustomer) return matchesSearch;
 
-    const selectedCustomerId = selectedCustomer.id || selectedCustomer._id;
+    const selectedCustomerId = (selectedCustomer.id || selectedCustomer._id) as string;
 
     // Support both ID and nested object structure for customer field
     const projectCustomer = project.customer || project.customerId;
@@ -4573,7 +4650,7 @@ const NewQuote = () => {
 
     const matchesCustomer = projectCustomerId && (
       projectCustomerId === selectedCustomerId ||
-      projectCustomerId.toString() === selectedCustomerId.toString()
+      projectCustomerId.toString() === selectedCustomerId?.toString()
     );
 
     // Also check customerName as a fallback if IDs don't match or aren't present
@@ -4584,7 +4661,7 @@ const NewQuote = () => {
     return matchesSearch && (matchesCustomer || matchesCustomerName || !projectCustomerId || projectCustomerId === "");
   });
 
-  const handleProjectSelect = (project) => {
+  const handleProjectSelect = (project: any) => {
     const projectName = project.projectName || project.name || "";
     setSelectedProject(project);
     setFormData(prev => ({
@@ -4595,7 +4672,7 @@ const NewQuote = () => {
     setProjectSearch("");
   };
 
-  const handleNewProjectChange = (e) => {
+  const handleNewProjectChange = (e: React.ChangeEvent<any>) => {
     const { name, value, type, checked } = e.target;
     setNewProjectData(prev => ({
       ...prev,
@@ -4604,21 +4681,21 @@ const NewQuote = () => {
   };
 
   const handleAddProjectTask = () => {
-    setNewProjectData(prev => ({
+    setNewProjectData((prev: NewProjectData) => ({
       ...prev,
       tasks: [...prev.tasks, { id: Date.now(), taskName: "", description: "" }]
     }));
   };
 
-  const handleRemoveProjectTask = (taskId) => {
+  const handleRemoveProjectTask = (taskId: string | number) => {
     setNewProjectData(prev => ({
       ...prev,
       tasks: prev.tasks.filter(task => task.id !== taskId)
     }));
   };
 
-  const handleProjectTaskChange = (taskId, field, value) => {
-    setNewProjectData(prev => ({
+  const handleProjectTaskChange = (taskId: string | number, field: string, value: any) => {
+    setNewProjectData((prev: NewProjectData) => ({
       ...prev,
       tasks: prev.tasks.map(task =>
         task.id === taskId ? { ...task, [field]: value } : task
@@ -4639,8 +4716,8 @@ const NewQuote = () => {
     }));
   };
 
-  const handleRemoveProjectUser = (userId) => {
-    setNewProjectData(prev => ({
+  const handleRemoveProjectUser = (userId: string | number) => {
+    setNewProjectData((prev: NewProjectData) => ({
       ...prev,
       users: prev.users.filter(user => user.id !== userId)
     }));
@@ -4676,11 +4753,11 @@ const NewQuote = () => {
     };
 
     // Add to local state
-    setProjects(prev => [...prev, savedProject]);
+    setProjects((prev: any[]) => [...prev, savedProject]);
 
     // Select the new project
     setSelectedProject(savedProject);
-    setFormData(prev => ({
+    setFormData((prev: QuoteFormData) => ({
       ...prev,
       projectName: savedProject.projectName
     }));
@@ -4734,18 +4811,18 @@ const NewQuote = () => {
     });
   };
 
-  const handleContactPersonChange = (e) => {
+  const handleContactPersonChange = (e: React.ChangeEvent<any>) => {
     const { name, value } = e.target;
-    setContactPersonData(prev => ({
+    setContactPersonData((prev: any) => ({
       ...prev,
       [name]: value
     }));
   };
 
-  const handleContactPersonImageUpload = (e) => {
+  const handleContactPersonImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setContactPersonData(prev => ({
+      setContactPersonData((prev: any) => ({
         ...prev,
         profileImage: file
       }));
@@ -4764,7 +4841,7 @@ const NewQuote = () => {
       selected: true
     };
 
-    setFormData(prev => ({
+    setFormData((prev: QuoteFormData) => ({
       ...prev,
       contactPersons: [...(prev.contactPersons || []), newContact]
     }));
@@ -4853,16 +4930,16 @@ const NewQuote = () => {
     const isInclusive = isTaxInclusiveMode(formData);
 
     const validItems = formData.items
-      .filter((item) => {
+      .filter((item: QuoteItem) => {
         if (item.itemType === "header") return false;
         const hasDetails = item.itemDetails?.trim();
-        const quantity = parseFloat(item.quantity);
-        const rate = parseFloat(item.rate);
+        const quantity = parseFloat(String(item.quantity));
+        const rate = parseFloat(String(item.rate));
         return hasDetails && !isNaN(quantity) && quantity > 0 && !isNaN(rate) && rate >= 0;
       })
-      .map((item) => {
-        const quantity = parseFloat(item.quantity) || 0;
-        const rate = parseFloat(item.rate) || 0;
+      .map((item: QuoteItem) => {
+        const quantity = parseFloat(String(item.quantity)) || 0;
+        const rate = parseFloat(String(item.rate)) || 0;
         const lineSubtotal = quantity * rate;
         const taxMeta = getTaxMetaFromItem(item);
         const taxRate = taxMeta.rate;
@@ -4890,15 +4967,15 @@ const NewQuote = () => {
     const subTotal = validItems.reduce((sum, item) => sum + (item.total || 0), 0);
     const discountAmount = computeDiscountAmount(subTotal, formData.discount, formData.discountType);
 
-    const normalizedItems = validItems.map((item) => {
+    const normalizedItems = validItems.map((item: any) => {
       const lineAmount = Number(item.lineSubtotal || 0);
       const discountedLineAmount = applyDiscountShare(lineAmount, subTotal, discountAmount);
       const taxAmount = calculateLineTaxAmount(discountedLineAmount, Number(item.taxRate || 0), isInclusive);
       return { ...item, taxAmount };
     });
 
-    const itemsTax = normalizedItems.reduce((sum, item) => sum + (item.taxAmount || 0), 0);
-    const shipping = showShippingCharges ? (parseFloat(formData.shippingCharges) || 0) : 0;
+    const itemsTax = normalizedItems.reduce((sum: number, item: any) => sum + (item.taxAmount || 0), 0);
+    const shipping = showShippingCharges ? (parseFloat(String(formData.shippingCharges)) || 0) : 0;
     const shippingTaxObj = (showShippingCharges && shipping > 0 && formData.shippingChargeTax)
       ? getTaxBySelection(formData.shippingChargeTax)
       : null;
@@ -4907,7 +4984,7 @@ const NewQuote = () => {
       ? calculateLineTaxAmount(shipping, shippingTaxRate, isInclusive)
       : 0;
     const totalTax = itemsTax + shippingTaxAmount;
-    const adjustment = showAdjustment ? (parseFloat(formData.adjustment) || 0) : 0;
+    const adjustment = showAdjustment ? (parseFloat(String(formData.adjustment)) || 0) : 0;
     const totalBeforeRound = isInclusive
       ? (subTotal - discountAmount + shipping + adjustment)
       : (subTotal + totalTax - discountAmount + shipping + adjustment);
@@ -4993,7 +5070,7 @@ const NewQuote = () => {
     });
 
     setQuoteSeriesRows((prev) =>
-      (prev || []).map((row) => {
+      (prev || []).map((row: any) => {
         if (
           String(row?.seriesName || "").toLowerCase() === seriesName.toLowerCase() &&
           isQuoteSeriesRow(row)
@@ -5008,7 +5085,7 @@ const NewQuote = () => {
         return row;
       })
     );
-    setQuoteSeriesRow((prev) =>
+    setQuoteSeriesRow((prev: any) =>
       prev
         ? {
           ...prev,
@@ -5157,10 +5234,10 @@ const NewQuote = () => {
         referenceNumber: formData.referenceNumber,
         customerName: formData.customerName,
         customer: selectedCustomer?.id || selectedCustomer?._id || formData.customerName,
-        customerId: selectedCustomer?.id || selectedCustomer?._id || null,
+        customerId: selectedCustomer?.id || selectedCustomer?._id || undefined,
         customerEmail: String((selectedCustomer as any)?.email || (selectedCustomer as any)?.primaryEmail || "").trim(),
-        quoteDate: convertToISODate(formData.quoteDate),
-        expiryDate: convertToISODate(formData.expiryDate),
+        quoteDate: convertToISODate(formData.quoteDate || "") ?? undefined,
+        expiryDate: convertToISODate(formData.expiryDate || "") ?? undefined,
         salesperson: formData.salesperson,
         salespersonId: formData.salespersonId,
         projectName: formData.projectName,
@@ -5179,8 +5256,8 @@ const NewQuote = () => {
         subtotal: subTotal,
         tax: totalTax,
         taxAmount: totalTax,
-        discount: showTransactionDiscount ? parseFloat(formData.discount || 0) : 0,
-        discountType: showTransactionDiscount ? formData.discountType : "percent",
+        discount: showTransactionDiscount ? (parseFloat(String(formData.discount)) || 0) : 0,
+        discountType: showTransactionDiscount ? formData.discountType : "%",
         discountAmount: discountAmount,
         discountAccount: formData.discountAccount,
         shippingCharges: shipping,
@@ -5196,7 +5273,7 @@ const NewQuote = () => {
         customerNotes: formData.customerNotes,
         termsAndConditions: formData.termsAndConditions,
         reportingTags: formData.reportingTags || [],
-        attachedFiles: finalAttachedFiles.map(file => ({
+        attachedFiles: finalAttachedFiles.map((file: any) => ({
           id: file.id,
           name: file.name,
           size: file.size,
@@ -5210,9 +5287,9 @@ const NewQuote = () => {
       // Save or update quote
       let savedQuote;
       if (isEditMode && quoteId) {
-        savedQuote = await updateQuote(quoteId, quoteData);
+        savedQuote = await updateQuote(quoteId, quoteData as unknown as Partial<Quote>);
       } else {
-        savedQuote = await saveQuote(quoteData);
+        savedQuote = await saveQuote(quoteData as unknown as Partial<Quote>);
       }
 
       // Handle URL change to detect if we should show a specific modal
@@ -5276,10 +5353,10 @@ const NewQuote = () => {
         referenceNumber: formData.referenceNumber,
         customerName: formData.customerName,
         customer: selectedCustomer?.id || selectedCustomer?._id || formData.customerName,
-        customerId: selectedCustomer?.id || selectedCustomer?._id || null,
+        customerId: selectedCustomer?.id || selectedCustomer?._id || undefined,
         customerEmail: String((selectedCustomer as any)?.email || (selectedCustomer as any)?.primaryEmail || "").trim(),
-        quoteDate: convertToISODate(formData.quoteDate),
-        expiryDate: convertToISODate(formData.expiryDate),
+        quoteDate: convertToISODate(formData.quoteDate || "") ?? undefined,
+        expiryDate: convertToISODate(formData.expiryDate || "") ?? undefined,
         salesperson: formData.salesperson,
         salespersonId: formData.salespersonId,
         projectName: formData.projectName,
@@ -5294,8 +5371,8 @@ const NewQuote = () => {
         subtotal: subTotal,
         tax: totalTax,
         taxAmount: totalTax,
-        discount: showTransactionDiscount ? parseFloat(formData.discount || 0) : 0,
-        discountType: showTransactionDiscount ? formData.discountType : "percent",
+        discount: showTransactionDiscount ? (parseFloat(String(formData.discount)) || 0) : 0,
+        discountType: showTransactionDiscount ? formData.discountType : "%",
         discountAmount: discountAmount,
         discountAccount: formData.discountAccount,
         shippingCharges: shipping,
@@ -5309,7 +5386,7 @@ const NewQuote = () => {
         customerNotes: formData.customerNotes,
         termsAndConditions: formData.termsAndConditions,
         reportingTags: formData.reportingTags || [],
-        attachedFiles: finalAttachedFiles.map(file => ({
+        attachedFiles: finalAttachedFiles.map((file: any) => ({
           id: file.id,
           name: file.name,
           size: file.size,
@@ -5321,9 +5398,9 @@ const NewQuote = () => {
 
       let savedQuote;
       if (isEditMode && quoteId) {
-        savedQuote = await updateQuote(quoteId, quoteData);
+        savedQuote = await updateQuote(quoteId, quoteData as unknown as Partial<Quote>);
       } else {
-        savedQuote = await saveQuote(quoteData);
+        savedQuote = await saveQuote(quoteData as unknown as Partial<Quote>);
       }
 
       // Step 2: Navigate to email page
@@ -5615,7 +5692,7 @@ const NewQuote = () => {
                             key={loc}
                             className={`w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 ${formData.selectedLocation === loc ? "bg-gray-100 font-medium" : ""}`}
                             onClick={() => {
-                              setFormData((prev: any) => ({ ...prev, selectedLocation: loc }));
+                              setFormData((prev: QuoteFormData) => ({ ...prev, selectedLocation: loc }));
                               setIsLocationDropdownOpen(false);
                             }}
                           >
@@ -5739,7 +5816,7 @@ const NewQuote = () => {
                         type="text"
                         className="w-full px-3 py-2 border border-gray-300 rounded text-sm text-gray-700 focus:outline-none"
                         placeholder="dd/MM/yyyy"
-                        value={formatDateForDisplay(formData.expiryDate)}
+                        value={formatDateForDisplay(formData.expiryDate || "")}
                         readOnly
                         onClick={() => openExclusiveDropdown(isExpiryDatePickerOpen, setIsExpiryDatePickerOpen)}
                       />
@@ -5968,7 +6045,7 @@ const NewQuote = () => {
                                   type="button"
                                   className={`w-full px-3 py-2 text-sm text-left flex items-center justify-between ${selected ? "bg-gray-100 text-gray-900" : "text-gray-700 hover:bg-white"}`}
                                   onClick={() => {
-                                    setFormData(prev => ({ ...prev, taxExclusive: option }));
+                                    setFormData((prev: QuoteFormData) => ({ ...prev, taxExclusive: option }));
                                     setIsTaxPreferenceDropdownOpen(false);
                                     setTaxPreferenceSearch("");
                                   }}
@@ -6038,7 +6115,7 @@ const NewQuote = () => {
                             <input
                               type="text"
                               value={item.itemDetails}
-                              onChange={(e) => handleItemChange(item.id, 'itemDetails', e.target.value)}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleItemChange(item.id, 'itemDetails', e.target.value)}
                               placeholder="Header Title"
                               className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-sm font-bold bg-gray-50"
                             />
@@ -6074,7 +6151,7 @@ const NewQuote = () => {
                                             className="min-w-0 flex-1 text-left"
                                             onClick={() => {
                                               void ensureQuoteItemsLoaded();
-                                              setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }));
+                                              setOpenItemDropdowns((prev: any) => ({ ...prev, [item.id]: true }));
                                             }}
                                           >
                                             <div className="truncate text-[14px] font-medium text-gray-900">
@@ -6094,9 +6171,9 @@ const NewQuote = () => {
                                       <input
                                         type="text"
                                         value={item.itemDetails}
-                                        onChange={(e) => {
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                                           handleItemChange(item.id, 'itemDetails', e.target.value);
-                                          setItemSearches(prev => ({ ...prev, [item.id]: e.target.value }));
+                                          setItemSearches((prev: any) => ({ ...prev, [item.id]: e.target.value }));
                                           void ensureQuoteItemsLoaded();
                                           if (!openItemDropdowns[item.id]) {
                                             setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }));
@@ -6126,7 +6203,7 @@ const NewQuote = () => {
                                             placeholder="Search..."
                                             className="w-full border-none bg-transparent text-[13px] text-slate-700 outline-none placeholder:text-slate-400"
                                             value={itemSearches[item.id] || ""}
-                                            onChange={(e) => setItemSearches(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                            onChange={(e) => setItemSearches((prev: any) => ({ ...prev, [item.id]: e.target.value }))}
                                             autoFocus
                                           />
                                         </div>
@@ -6135,7 +6212,7 @@ const NewQuote = () => {
                                         {getFilteredItems(item.id).length === 0 ? (
                                           <div className="px-4 py-3 text-center text-[13px] text-slate-400">No items found</div>
                                         ) : (
-                                          getFilteredItems(item.id).map((availItem) => {
+                                          getFilteredItems(item.id).map((availItem: any) => {
                                             const selected = String(selectedItemIds?.[item.id] || "") === String(availItem.id);
                                             const stockText = formatItemStock(availItem);
                                             const skuText = `${availItem.entityType === "plan" ? "Code" : "SKU"}: ${availItem.code || availItem.sku || "-"}`;
@@ -6173,7 +6250,7 @@ const NewQuote = () => {
                                         onClick={() => {
                                           setNewItemTargetRowId(item.id);
                                           setIsNewItemModalOpen(true);
-                                          setOpenItemDropdowns(prev => ({ ...prev, [item.id]: false }));
+                                          setOpenItemDropdowns((prev: any) => ({ ...prev, [item.id]: false }));
                                         }}
                                       >
                                         <PlusCircle size={14} />
@@ -6185,7 +6262,7 @@ const NewQuote = () => {
                                 <div className="mt-1">
                                   <textarea
                                     value={item.description || ""}
-                                    onChange={(e) => handleItemChange(item.id, 'description', e.target.value)}
+                                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleItemChange(item.id, 'description', e.target.value)}
                                     placeholder="Add a description to your item"
                                     className="w-full min-h-[52px] px-3 py-2 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded-md outline-none text-xs text-gray-500 resize-none bg-[#fafafa]"
                                     rows={2}
@@ -6223,7 +6300,7 @@ const NewQuote = () => {
                               <input
                                 type="number"
                                 value={item.quantity}
-                                onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleItemChange(item.id, 'quantity', e.target.value)}
                                 className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-sm text-center bg-transparent"
                                 step="0.01"
                               />
@@ -6246,7 +6323,7 @@ const NewQuote = () => {
                               <input
                                 type="number"
                                 value={item.rate}
-                                onChange={(e) => handleItemChange(item.id, 'rate', e.target.value)}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleItemChange(item.id, 'rate', e.target.value)}
                                 className="w-full px-2 py-1.5 border border-transparent hover:border-gray-300 focus:border-[#156372] rounded outline-none text-sm text-center bg-transparent"
                                 step="0.01"
                               />
@@ -6276,7 +6353,7 @@ const NewQuote = () => {
                                     <button
                                       type="button"
                                       className="h-10 w-full rounded border border-[#156372] bg-white px-3 text-left text-[13px] transition-colors hover:border-gray-400 outline-none"
-                                      onClick={() => setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                                      onClick={() => setOpenTaxDropdowns((prev: any) => ({ ...prev, [item.id]: !prev[item.id] }))}
                                     >
                                       <div className="flex items-center justify-between gap-2">
                                         <span className={displayLabel === "Select a Tax" ? "text-slate-500" : "text-slate-700"}>
@@ -6301,7 +6378,7 @@ const NewQuote = () => {
                                             <input
                                               type="text"
                                               value={searchValue}
-                                              onChange={(e) => setTaxSearches(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTaxSearches((prev: any) => ({ ...prev, [item.id]: e.target.value }))}
                                               placeholder="Search..."
                                               className="w-full border-none bg-transparent text-[13px] text-slate-700 outline-none placeholder:text-slate-400"
                                               autoFocus
@@ -6318,7 +6395,7 @@ const NewQuote = () => {
                                                   {group.label}
                                                 </div>
                                                 <div className="mt-1 space-y-0.5">
-                                                  {group.options.map((tax) => {
+                                                  {group.options.map((tax: any) => {
                                                     const taxId = tax.id;
                                                     const label = taxLabel(tax.raw ?? tax);
                                                     const selected = String(item.tax || "") === taxId || Number(item.taxRate || 0) === tax.rate;
@@ -6328,8 +6405,8 @@ const NewQuote = () => {
                                                         type="button"
                                                         onClick={() => {
                                                           handleItemChange(item.id, "tax", taxId);
-                                                          setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: false }));
-                                                          setTaxSearches(prev => ({ ...prev, [item.id]: "" }));
+                                                          setOpenTaxDropdowns((prev: any) => ({ ...prev, [item.id]: false }));
+                                                          setTaxSearches((prev: any) => ({ ...prev, [item.id]: "" }));
                                                         }}
                                                         className={`w-full rounded-lg px-4 py-2 text-left text-[13px] transition-colors ${
                                                           selected
@@ -6350,7 +6427,8 @@ const NewQuote = () => {
                                         type="button"
                                         className="w-full border-t border-gray-200 px-4 py-2 text-left text-[#156372] text-[13px] font-medium flex items-center gap-2 hover:bg-gray-50"
                                         onClick={() => {
-                                          setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: false }));
+                                          setOpenTaxDropdowns((prev: any) => ({ ...prev, [item.id]: false }));
+                                          setTaxSearches((prev: any) => ({ ...prev, [item.id]: "" }));
                                           setNewTaxTargetItemId(item.id);
                                           setIsNewTaxQuickModalOpen(true);
                                         }}
@@ -6404,7 +6482,7 @@ const NewQuote = () => {
                                   type="button"
                                   className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
                                   onClick={() => {
-                                    setShowAdditionalInformation((prev) => !prev);
+                                    setShowAdditionalInformation((prev: boolean) => !prev);
                                     setOpenItemMenuId(null);
                                   }}
                                 >
@@ -6536,19 +6614,19 @@ const NewQuote = () => {
                             type="number"
                             className="w-full h-full px-2 text-right text-xs outline-none bg-transparent"
                             value={formData.discount}
-                            onChange={(e) => setFormData(prev => ({ ...prev, discount: parseFloat(e.target.value) || 0 }))}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData((prev: QuoteFormData) => ({ ...prev, discount: parseFloat(e.target.value) || 0 }))}
                           />
                           <select
                             className="h-full min-w-[46px] px-1 text-[11px] text-gray-500 bg-[#f8fafc] border-l border-gray-300 outline-none cursor-pointer"
                             value={formData.discountType}
-                            onChange={(e) => setFormData(prev => ({ ...prev, discountType: e.target.value }))}
+                            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData((prev: QuoteFormData) => ({ ...prev, discountType: e.target.value as QuoteFormData['discountType'] }))}
                           >
-                            <option value="percent">%</option>
-                            <option value="amount">{formData.currency}</option>
+                            <option value="%">%</option>
+                            <option value="Fixed">{formData.currency}</option>
                           </select>
                         </div>
                         <span className="text-gray-900 font-medium text-right">
-                          {(formData.discountType === "percent" ? (formData.subTotal * formData.discount / 100) : formData.discount).toFixed(2)}
+                          {(formData.discountType === "%" ? (formData.subTotal * formData.discount / 100) : formData.discount).toFixed(2)}
                         </span>
                       </div>
                     )}
@@ -6565,9 +6643,9 @@ const NewQuote = () => {
                           type="number"
                           className="w-full h-8 px-2 text-right border border-gray-300 rounded text-xs outline-none focus:border-[#156372] bg-white"
                           value={formData.shippingCharges}
-                          onChange={(e) => setFormData(prev => ({ ...prev, shippingCharges: parseFloat(e.target.value) || 0 }))}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData((prev: QuoteFormData) => ({ ...prev, shippingCharges: parseFloat(e.target.value) || 0 }))}
                         />
-                        <span className="text-gray-900 font-medium text-right">{(parseFloat(String(formData.shippingCharges)) || 0).toFixed(2)}</span>
+                        <span className="text-gray-900 font-medium text-right">{formData.shippingCharges.toFixed(2)}</span>
                       </div>
                     )}
 
@@ -6576,7 +6654,7 @@ const NewQuote = () => {
                         <span className="text-gray-700">Shipping Charge Tax</span>
                         <select
                           value={String(formData.shippingChargeTax || "")}
-                          onChange={(e) => setFormData(prev => ({ ...prev, shippingChargeTax: e.target.value }))}
+                          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData((prev: QuoteFormData) => ({ ...prev, shippingChargeTax: e.target.value }))}
                           className="w-56 h-8 px-2 border border-gray-300 rounded text-xs outline-none focus:border-[#156372] bg-white text-gray-700"
                         >
                           <option value="">Select a Tax</option>
@@ -6614,7 +6692,7 @@ const NewQuote = () => {
                           type="number"
                           className="w-full h-8 px-2 text-right border border-gray-300 rounded text-xs outline-none focus:border-[#156372] bg-white"
                           value={formData.adjustment}
-                          onChange={(e) => setFormData(prev => ({ ...prev, adjustment: parseFloat(e.target.value) || 0 }))}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData((prev: QuoteFormData) => ({ ...prev, adjustment: parseFloat(e.target.value) || 0 }))}
                         />
                         <span className="text-gray-900 font-medium text-right">{(parseFloat(String(formData.adjustment)) || 0).toFixed(2)}</span>
                       </div>
@@ -6857,7 +6935,7 @@ const NewQuote = () => {
                   <label className="block text-[12px] text-gray-700 mb-1">State</label>
                   <input className="w-full h-9 rounded border border-gray-300 px-3 text-[12px] text-gray-700 outline-none focus:border-[#156372]" name="state" value={addressFormData.state} onChange={handleAddressFieldChange} placeholder="Select or type to add" list="state-list" />
                   <datalist id="state-list">
-                    {stateOptions.map((state: any) => (
+                    {stateOptions.map((state: string) => (
                       <option key={state} value={state} />
                     ))}
                   </datalist>
@@ -7073,7 +7151,7 @@ const NewQuote = () => {
                       onChange={handleNewProjectChange}
                     >
                       <option value="">Select Customer</option>
-                      {customers.map(customer => (
+                      {customers.map((customer: any) => (
                         <option key={customer.id} value={customer.name}>{customer.name}</option>
                       ))}
                     </select>
@@ -7244,7 +7322,7 @@ const NewQuote = () => {
                               className="new-project-table-input"
                               placeholder="Task Name"
                               value={task.taskName}
-                              onChange={(e) => handleProjectTaskChange(task.id, 'taskName', e.target.value)}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleProjectTaskChange(task.id, 'taskName', e.target.value)}
                             />
                           </td>
                           <td className="new-project-td">
@@ -7252,7 +7330,7 @@ const NewQuote = () => {
                               className="new-project-table-textarea"
                               placeholder="Description"
                               value={task.description}
-                              onChange={(e) => handleProjectTaskChange(task.id, 'description', e.target.value)}
+                              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleProjectTaskChange(task.id, 'description', e.target.value)}
                               rows={2}
                             />
                           </td>
@@ -7393,7 +7471,7 @@ const NewQuote = () => {
                                   onChange={(e) => {
                                     const nextPrefix = sanitizeQuotePrefix(e.target.value);
                                     setQuotePrefix(nextPrefix);
-                                    setFormData(prev => ({
+                                    setFormData((prev: QuoteFormData) => ({
                                       ...prev,
                                       quoteNumber: buildQuoteNumber(nextPrefix, quoteNextNumber)
                                     }));
@@ -7409,7 +7487,7 @@ const NewQuote = () => {
                                   onChange={(e) => {
                                     const nextDigits = extractQuoteDigits(e.target.value) || "";
                                     setQuoteNextNumber(nextDigits);
-                                    setFormData(prev => ({
+                                    setFormData((prev: QuoteFormData) => ({
                                       ...prev,
                                       quoteNumber: buildQuoteNumber(quotePrefix, nextDigits)
                                     }));
@@ -7453,7 +7531,7 @@ const NewQuote = () => {
                     const normalizedPrefix = sanitizeQuotePrefix(quotePrefix);
                     setQuoteNextNumber(normalizedDigits);
                     setQuotePrefix(normalizedPrefix);
-                    setFormData(prev => ({
+                    setFormData((prev: QuoteFormData) => ({
                       ...prev,
                       quoteNumber:
                         quoteNumberMode === "auto"
@@ -7715,13 +7793,13 @@ const NewQuote = () => {
                         type="text"
                         placeholder="Type to search or scan the barcode of the item or plan."
                         value={bulkAddSearch}
-                        onChange={(e) => setBulkAddSearch(e.target.value)}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBulkAddSearch(e.target.value)}
                         className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#156372]"
                       />
                     </div>
                   </div>
                   <div className="flex-1 overflow-y-auto">
-                    {getBulkFilteredItems().map(item => {
+                    {getBulkFilteredItems().map((item: any) => {
                       const isSelected = bulkSelectedItems.find(selected => selected.id === item.id);
                       return (
                         <div
@@ -7764,7 +7842,7 @@ const NewQuote = () => {
                       </span>
                     </div>
                     <div className="text-sm text-gray-600">
-                      Total Quantity: {bulkSelectedItems.reduce((sum, item) => sum + (item.quantity || 1), 0)}
+                      Total Quantity: {bulkSelectedItems.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0)}
                     </div>
                   </div>
                   <div className="flex-1 overflow-y-auto">
@@ -7774,7 +7852,7 @@ const NewQuote = () => {
                       </div>
                     ) : (
                       <div className="p-4 space-y-2">
-                        {bulkSelectedItems.map(selectedItem => (
+                        {bulkSelectedItems.map((selectedItem: any) => (
                           <div key={selectedItem.id} className="p-3 bg-gray-50 rounded border border-gray-200 flex items-center justify-between">
                             <div className="flex-1">
                               <div className="font-medium text-gray-900">{selectedItem.name}</div>
@@ -7787,12 +7865,12 @@ const NewQuote = () => {
                                 type="number"
                                 min="1"
                                 value={selectedItem.quantity || 1}
-                                onChange={(e) => handleBulkItemQuantityChange(selectedItem.id, e.target.value)}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleBulkItemQuantityChange(selectedItem.id, e.target.value)}
                                 className="w-16 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#156372]"
-                                onClick={(e) => e.stopPropagation()}
+                                onClick={(e: React.MouseEvent<HTMLInputElement>) => e.stopPropagation()}
                               />
                               <button
-                                onClick={(e) => {
+                                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                                   e.stopPropagation();
                                   handleBulkItemToggle(selectedItem);
                                 }}
@@ -7913,11 +7991,11 @@ const NewQuote = () => {
                     let filteredDocs = availableDocuments;
 
                     if (selectedInbox === "files") {
-                      filteredDocs = availableDocuments.filter(doc =>
+                      filteredDocs = availableDocuments.filter((doc: any) =>
                         doc.folder === "Inbox" || doc.folder === "Files" || !doc.folder
                       );
                     } else if (selectedInbox === "bank-statements") {
-                      filteredDocs = availableDocuments.filter(doc =>
+                      filteredDocs = availableDocuments.filter((doc: any) =>
                         doc.folder === "Bank Statements" || doc.module === "Banking"
                       );
                     } else if (selectedInbox === "all-documents") {
@@ -7926,13 +8004,13 @@ const NewQuote = () => {
 
                     // Filter by search term
                     if (documentSearch) {
-                      filteredDocs = filteredDocs.filter(doc =>
+                      filteredDocs = filteredDocs.filter((doc: any) =>
                         doc.name.toLowerCase().includes(documentSearch.toLowerCase()) ||
                         (doc.associatedTo && doc.associatedTo.toLowerCase().includes(documentSearch.toLowerCase()))
                       );
                     }
 
-                    const allSelected = filteredDocs.length > 0 && filteredDocs.every(doc => selectedDocuments.includes(doc.id));
+                    const allSelected = filteredDocs.length > 0 && filteredDocs.every((doc: any) => selectedDocuments.includes(doc.id));
 
                     if (filteredDocs.length === 0) {
                       return (
@@ -7961,11 +8039,11 @@ const NewQuote = () => {
                             <input
                               type="checkbox"
                               checked={allSelected}
-                              onChange={(e) => {
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                                 if (e.target.checked) {
-                                  setSelectedDocuments(filteredDocs.map(doc => doc.id));
+                                  setSelectedDocuments(filteredDocs.map((doc: any) => doc.id));
                                 } else {
-                                  setSelectedDocuments(selectedDocuments.filter(id => !filteredDocs.some(doc => doc.id === id)));
+                                  setSelectedDocuments(selectedDocuments.filter((id: string | number) => !filteredDocs.some((doc: any) => doc.id === id)));
                                 }
                               }}
                               className="cursor-pointer"
@@ -7989,11 +8067,11 @@ const NewQuote = () => {
                               <input
                                 type="checkbox"
                                 checked={selectedDocuments.includes(doc.id)}
-                                onChange={(e) => {
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                                   if (e.target.checked) {
                                     setSelectedDocuments([...selectedDocuments, doc.id]);
                                   } else {
-                                    setSelectedDocuments(selectedDocuments.filter(id => id !== doc.id));
+                                    setSelectedDocuments(selectedDocuments.filter((id: string | number) => id !== doc.id));
                                   }
                                 }}
                                 className="cursor-pointer"
@@ -8029,12 +8107,12 @@ const NewQuote = () => {
                   onClick={() => {
                     if (selectedDocuments.length > 0) {
                       // Get selected documents from availableDocuments
-                      const selectedDocs = availableDocuments.filter(doc =>
+                      const selectedDocs = availableDocuments.filter((doc: any) =>
                         selectedDocuments.includes(doc.id)
                       );
 
                       // Convert to attachedFiles format
-                      const newDocs = selectedDocs.map(doc => ({
+                      const newDocs = selectedDocs.map((doc: any) => ({
                         id: doc.id,
                         name: doc.name,
                         size: typeof doc.size === 'string' ? parseFileSize(doc.size) : (doc.size || 0),
@@ -8042,7 +8120,7 @@ const NewQuote = () => {
                         documentId: doc.id // Store reference to document
                       }));
 
-                      setFormData(prev => ({
+                      setFormData((prev: QuoteFormData) => ({
                         ...prev,
                         attachedFiles: [...prev.attachedFiles, ...newDocs]
                       }));
@@ -8636,13 +8714,13 @@ const NewQuote = () => {
                         </td>
                       </tr>
                     ) : (
-                      customerPaginatedResults.map((customer) => (
+                      customerPaginatedResults.map((customer: any) => (
                         <tr
                           key={customer.id || customer.name}
                           className=" cursor-pointer"
                           onClick={() => {
                             setSelectedCustomer(customer);
-                            setFormData(prev => ({ ...prev, customerName: customer.displayName || customer.name || "" }));
+                            setFormData((prev: QuoteFormData) => ({ ...prev, customerName: customer.displayName || customer.name || "" }));
                             setCustomerSearchModalOpen(false);
                             setCustomerSearchTerm("");
                             setCustomerSearchResults([]);
@@ -8667,7 +8745,7 @@ const NewQuote = () => {
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setCustomerSearchPage(prev => Math.max(1, prev - 1))}
+                      onClick={() => setCustomerSearchPage((prev: number) => Math.max(1, prev - 1))}
                       disabled={customerSearchPage === 1}
                       className="px-3 py-1 text-sm border border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed "
                     >
@@ -8678,7 +8756,7 @@ const NewQuote = () => {
                     </span>
                     <button
                       type="button"
-                      onClick={() => setCustomerSearchPage(prev => Math.min(customerTotalPages, prev + 1))}
+                      onClick={() => setCustomerSearchPage((prev: number) => Math.min(customerTotalPages, prev + 1))}
                       disabled={customerSearchPage >= customerTotalPages}
                       className="px-3 py-1 text-sm border border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed "
                     >
@@ -8748,7 +8826,7 @@ const NewQuote = () => {
                     className="px-3 py-1.5 border border-gray-300 rounded text-sm text-gray-700 disabled:opacity-60 disabled:cursor-not-allowed"
                     onClick={() => {
                       setIsReloadingProjectFrame(true);
-                      setProjectQuickActionFrameKey(prev => prev + 1);
+                      setProjectQuickActionFrameKey((prev: number) => prev + 1);
                     }}
                   >
                     {isReloadingProjectFrame ? "Reloading..." : "Reload Form"}
@@ -9037,7 +9115,7 @@ const NewQuote = () => {
                                     if (e.target.checked) {
                                       setSelectedSalespersonIds([...selectedSalespersonIds, salespersonId]);
                                     } else {
-                                      setSelectedSalespersonIds(selectedSalespersonIds.filter(id => id !== salespersonId));
+                                      setSelectedSalespersonIds(selectedSalespersonIds.filter((id: string) => id !== salespersonId));
                                     }
                                   }}
                                 />
@@ -9096,7 +9174,7 @@ const NewQuote = () => {
                         type="button"
                         className="rounded border border-gray-300 bg-white px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={manageSalespersonsCurrentPage <= 1}
-                        onClick={() => setManageSalespersonsPage((prev) => Math.max(1, prev - 1))}
+                        onClick={() => setManageSalespersonsPage((prev: number) => Math.max(1, prev - 1))}
                       >
                         Prev
                       </button>
@@ -9104,7 +9182,7 @@ const NewQuote = () => {
                         type="button"
                         className="rounded border border-gray-300 bg-white px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={manageSalespersonsCurrentPage >= manageSalespersonsTotalPages}
-                        onClick={() => setManageSalespersonsPage((prev) => Math.min(manageSalespersonsTotalPages, prev + 1))}
+                        onClick={() => setManageSalespersonsPage((prev: number) => Math.min(manageSalespersonsTotalPages, prev + 1))}
                       >
                         Next
                       </button>

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
+import PaginationFooter from "../../../components/table/PaginationFooter";
 import BulkUpdateModal from "../shared/BulkUpdateModal";
 import DeleteConfirmationModal from "../shared/DeleteConfirmationModal";
 import ExportBills from "./ExportBills";
@@ -37,7 +38,6 @@ import {
   ArrowRight,
   Info,
   Calendar,
-  ChevronLeft
 } from "lucide-react";
 import { getBillStatusDisplay } from "../../../utils/billUtils";
 import { useCurrency } from "../../../hooks/useCurrency";
@@ -2312,40 +2312,21 @@ export default function Bills() {
 
       {/* Pagination Controls */}
       {sortedBills.length > 0 && (
-        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-white">
-          <div className="flex items-center text-sm text-gray-500">
-            Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, totalItems)} of {totalItems} bills
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                if (currentPage > 1) {
-                  loadBills(currentPage - 1, itemsPerPage, selectedView);
-                }
-              }}
-              disabled={currentPage === 1}
-              className={`p-2 rounded-md ${currentPage === 1 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'}`}
-            >
-              <ChevronLeft size={20} />
-            </button>
-
-            <span className="text-sm font-medium text-gray-700">
-              Page {currentPage} of {totalPages}
-            </span>
-
-            <button
-              onClick={() => {
-                if (currentPage < totalPages) {
-                  loadBills(currentPage + 1, itemsPerPage, selectedView);
-                }
-              }}
-              disabled={currentPage === totalPages}
-              className={`p-2 rounded-md ${currentPage === totalPages ? 'text-gray-300 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'}`}
-            >
-              <ChevronRight size={20} />
-            </button>
-          </div>
-        </div>
+        <PaginationFooter
+          totalItems={totalItems}
+          currentPage={currentPage}
+          pageSize={itemsPerPage}
+          pageSizeOptions={[10, 25, 50, 100]}
+          itemLabel="rows"
+          onPageChange={(nextPage) => {
+            loadBills(nextPage, itemsPerPage, selectedView);
+          }}
+          onPageSizeChange={(nextLimit) => {
+            setItemsPerPage(nextLimit);
+            loadBills(1, nextLimit, selectedView);
+          }}
+          className="!px-6"
+        />
       )}
 
       {/* Export Bills Modal */}

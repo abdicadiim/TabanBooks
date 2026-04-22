@@ -24,6 +24,7 @@ import CustomerDetailSidebar from "./CustomerDetailSidebar";
 import CustomerDetailStatementTab from "./CustomerDetailStatementTab";
 import CustomerDetailPurchasesTab from "./CustomerDetailPurchasesTab";
 import { loadCustomerReportingTags } from "../customerReportingTags";
+import { preloadNewCustomerRoute, preloadSendEmailStatementRoute } from "../customerRouteLoaders";
 import CustomerDetailTransactionsTab from "./CustomerDetailTransactionsTab";
 import useCustomerDetailData from "./useCustomerDetailData";
 import CustomerPortalAccessModal from "./CustomerPortalAccessModal";
@@ -116,7 +117,36 @@ export default function CustomerDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
-    const initialSidebarCustomers: ExtendedCustomer[] = [];
+    const initialSidebarCustomers = (() => {
+        const normalizeList = (rows: any[]) =>
+            rows
+                .filter(Boolean)
+                .map((row: any) => normalizeSidebarCustomer(row))
+                .filter((row: any) => Boolean(String(row?._id || row?.id || "").trim()));
+
+        const passedCustomerList = Array.isArray(location.state?.customerList)
+            ? normalizeList(location.state.customerList)
+            : [];
+        if (passedCustomerList.length > 0) {
+            return passedCustomerList;
+        }
+
+        if (typeof window !== "undefined") {
+            try {
+                const storedSeed = window.sessionStorage.getItem(CUSTOMER_DETAIL_SIDEBAR_CACHE_KEY);
+                if (storedSeed) {
+                    const parsedSeed = JSON.parse(storedSeed);
+                    if (Array.isArray(parsedSeed) && parsedSeed.length > 0) {
+                        return normalizeList(parsedSeed);
+                    }
+                }
+            } catch {
+            }
+        }
+
+        const seededCustomer = location.state?.customer ? normalizeSidebarCustomer(location.state.customer) : null;
+        return seededCustomer ? [seededCustomer] : [];
+    })();
     const initialRouteCustomer = (() => {
         const targetId = String(id || "").trim();
         const seededCustomer = location.state?.customer ? normalizeSidebarCustomer(location.state.customer) : null;
@@ -197,6 +227,10 @@ export default function CustomerDetail() {
         if (typeof window === "undefined") return;
         window.scrollTo(0, 0);
     }, [id, location.key]);
+
+    useEffect(() => {
+        void preloadNewCustomerRoute();
+    }, []);
 
     useEffect(() => {
         if (!isNavigatingToEdit || typeof window === "undefined") {
@@ -584,6 +618,8 @@ export default function CustomerDetail() {
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isDeleteContactPersonModalOpen, setIsDeleteContactPersonModalOpen] = useState(false);
     const [pendingDeleteContactPersonIndex, setPendingDeleteContactPersonIndex] = useState<number | null>(null);
+    const [isUnlinkVendorModalOpen, setIsUnlinkVendorModalOpen] = useState(false);
+    const [isUnlinkingVendor, setIsUnlinkingVendor] = useState(false);
 
     // Refresh state
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -1200,12 +1236,14 @@ export default function CustomerDetail() {
         }
     };
 
-    const handleUnlinkVendor = async () => {
+    const handleUnlinkVendor = () => {
+        setIsUnlinkVendorModalOpen(true);
+    };
+
+    const handleUnlinkVendorConfirm = async () => {
         if (!customer) return;
 
-        const confirmUnlink = window.confirm(`Are you sure you want to unlink "${customer.name || customer.displayName}" from its associated vendor?`);
-        if (!confirmUnlink) return;
-
+        setIsUnlinkingVendor(true);
         try {
             const customerId = String(customer.id || customer._id || "");
             const linkedVendorId = String(customer.linkedVendorId || "").trim();
@@ -1239,6 +1277,9 @@ export default function CustomerDetail() {
             void refreshData();
         } catch (error: any) {
             toast.error('Failed to unlink vendor: ' + (error.message || 'Unknown error'));
+        } finally {
+            setIsUnlinkingVendor(false);
+            setIsUnlinkVendorModalOpen(false);
         }
         setIsMoreDropdownOpen(false);
     };
@@ -1295,6 +1336,7 @@ export default function CustomerDetail() {
             }
         }
 
+        void preloadNewCustomerRoute();
         setIsNavigatingToEdit(true);
 
         const openEditPage = () => {
@@ -1655,6 +1697,9 @@ export default function CustomerDetail() {
                         invoices={invoices}
                         payments={payments}
                         accountingBasis={accountingBasis}
+                        expenses={expenses}
+                        recurringExpenses={recurringExpenses}
+                        bills={bills}
                         quotes={quotes}
                         creditNotes={creditNotes}
                         salesReceipts={salesReceipts}
@@ -1671,7 +1716,7 @@ export default function CustomerDetail() {
                         }}
                     />
                 )}
-                {activeTab === "transactions" && (
+                {activeTab === "sales" && (
                     <CustomerDetailTransactionsTab
                         goToTransactionsDropdownRef={goToTransactionsDropdownRef}
                         isGoToTransactionsDropdownOpen={isGoToTransactionsDropdownOpen}
@@ -1873,10 +1918,15 @@ export default function CustomerDetail() {
                             setIsStatementFilterDropdownOpen(false);
                         }}
                         onDownloadPdf={handleDownloadPDF}
-                        onSendEmail={() => {
+                        onPrefetchSendEmail={() => {
+                            void preloadSendEmailStatementRoute();
+                        }}
+                        onSendEmail={async () => {
+                            await preloadSendEmailStatementRoute();
                             const { startDate, endDate } = getStatementDateRange();
                             navigate(`/sales/customers/${id}/send-email-statement`, {
                                 state: {
+                                    customer,
                                     startDate,
                                     endDate,
                                     filterBy: statementFilter,
@@ -1992,11 +2042,15 @@ export default function CustomerDetail() {
                 setIsZohoMailIntegrationModalOpen={setIsZohoMailIntegrationModalOpen}
                 isDeleteModalOpen={isDeleteModalOpen}
                 setIsDeleteModalOpen={setIsDeleteModalOpen}
+                isUnlinkVendorModalOpen={isUnlinkVendorModalOpen}
+                isUnlinkingVendor={isUnlinkingVendor}
+                setIsUnlinkVendorModalOpen={setIsUnlinkVendorModalOpen}
                 isDeleteContactPersonModalOpen={isDeleteContactPersonModalOpen}
                 setIsDeleteContactPersonModalOpen={setIsDeleteContactPersonModalOpen}
                 setPendingDeleteContactPersonIndex={setPendingDeleteContactPersonIndex}
                 pendingDeleteContactPersonIndex={pendingDeleteContactPersonIndex}
                 deleteContactPerson={deleteContactPerson}
+                handleUnlinkVendorConfirm={handleUnlinkVendorConfirm}
                 isInviteModalOpen={isInviteModalOpen}
                 inviteMethod={inviteMethod}
                 getInviteEmailValue={getInviteEmailValue}

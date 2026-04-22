@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { Info, Phone, Smartphone, Upload, X, Search, ChevronDown, Check, Globe, File, Edit, Mail, CheckCircle, Plus, MoreVertical, Folder, Cloud, Box, Layers, HardDrive, Settings, Paperclip, FileText, CreditCard, ChevronUp, Square, Grid3x3, LayoutGrid, Loader2, RefreshCw, Percent } from "lucide-react";
+import { Phone, Smartphone, Upload, X, Search, ChevronDown, Check, Globe, File, Edit, Mail, CheckCircle, Plus, MoreVertical, Folder, Cloud, Box, Layers, HardDrive, Settings, Paperclip, FileText, CreditCard, ChevronUp, Square, Grid3x3, LayoutGrid, Loader2, RefreshCw, Percent } from "lucide-react";
 import { customersAPI, currenciesAPI, documentsAPI, taxesAPI, priceListsAPI } from "../../../../services/api";
 
 import { getAllDocuments } from "../../../../utils/documentStorage";
@@ -217,51 +217,6 @@ const customerLanguageOptions = [
   { value: "hindi", label: "Hindi" },
   { value: "dutch", label: "Dutch" }
 ];
-
-// Help Tooltip Component
-function HelpTooltip({ text, children }: { text: React.ReactNode, children: React.ReactNode }) {
-  const [show, setShow] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-  const targetRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (show && targetRef.current) {
-      const rect = targetRef.current.getBoundingClientRect();
-      setPosition({
-        top: rect.top - 10, // 10px spacing
-        left: rect.left + rect.width / 2
-      });
-    }
-  }, [show]);
-
-  return (
-    <div
-      ref={targetRef}
-      className="inline-block relative"
-      onMouseEnter={() => setShow(true)}
-      onMouseLeave={() => setShow(false)}
-    >
-      {children}
-      {show && createPortal(
-        <div
-          className="fixed z-[999999] pointer-events-none"
-          style={{
-            top: `${position.top}px`,
-            left: `${position.left}px`,
-            transform: 'translate(-50%, -100%)'
-          }}
-        >
-          <div className="bg-[#1f2937] text-white text-[13px] leading-relaxed py-3 px-4 rounded-lg shadow-xl max-w-[320px] relative font-medium text-left">
-            {text}
-            {/* Arrow */}
-            <div className="absolute top-full left-1/2 -translate-x-1/2 border-[6px] border-transparent border-t-[#1f2937]" />
-          </div>
-        </div>,
-        document.body
-      )}
-    </div>
-  );
-}
 
 export default function NewCustomer() {
   const navigate = useNavigate();
@@ -512,12 +467,6 @@ export default function NewCustomer() {
   useEffect(() => {
     loadReportingTags();
   }, [loadReportingTags]);
-
-  useEffect(() => {
-    if (activeTab === "reporting-tags") {
-      loadReportingTags();
-    }
-  }, [activeTab, loadReportingTags]);
 
 
 
@@ -1806,7 +1755,7 @@ export default function NewCustomer() {
 
 
   return (
-    <div className="w-full min-h-full flex flex-col bg-gray-50">
+    <div className="w-full h-full min-h-0 flex flex-col bg-gray-50 overflow-hidden">
       {/* Header */}
       <div className="sticky top-0 z-20 flex items-center justify-between border-b border-gray-200 bg-white/95 px-4 sm:px-6 py-3 sm:py-4 backdrop-blur supports-[backdrop-filter]:bg-white/90">
         <div className="flex items-center gap-3">
@@ -1832,19 +1781,16 @@ export default function NewCustomer() {
         </button>
       </div>
 
-      <div className="flex-1 flex">
-        <div className="flex-1 relative bg-gray-50 overflow-x-hidden">
+      <div className="flex-1 min-h-0 flex overflow-hidden">
+        <div className="flex-1 min-h-0 relative bg-gray-50 overflow-x-hidden overflow-y-auto custom-scrollbar">
           <div className={`w-full ${pageContentMaxWidthClass} px-4 sm:px-6 py-5 sm:py-8 pb-24 overflow-x-hidden`}>
 
             <div>
               <div className="space-y-6 pb-12">
                 {/* Customer Type */}
                 <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
-                  <label className={`text-[13px] font-medium flex items-center gap-1 ${errors.customerType ? "text-red-600" : "text-gray-700"}`}>
+                  <label className={`text-[13px] font-medium ${errors.customerType ? "text-red-600" : "text-gray-700"}`}>
                     Customer Type
-                    <HelpTooltip text="Customers can be of two types: Business and Individual. Use Business if the customer is a company or organization, and Individual if they are a private person.">
-                      <Info size={14} className="text-gray-400 cursor-help" />
-                    </HelpTooltip>
                   </label>
                   <div data-validation-key="customerType">
                     <div className="flex items-center gap-6">
@@ -1879,12 +1825,7 @@ export default function NewCustomer() {
 
                 {/* Primary Contact */}
                 <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
-                  <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
-                    Primary Contact
-                    <HelpTooltip text="The primary contact will receive all emails related to transactions. You can add multiple contact persons below or from this customer's details page.">
-                      <Info size={14} className="text-gray-400 cursor-help" />
-                    </HelpTooltip>
-                  </label>
+                  <label className="text-[13px] font-medium text-gray-700">Primary Contact</label>
                   <div className="flex gap-2 max-w-xl min-w-0">
                     <select
                       name="salutation"
@@ -1933,11 +1874,8 @@ export default function NewCustomer() {
 
                 {/* Display Name */}
                 <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center" ref={displayNameDropdownRef}>
-                  <label className="text-[13px] font-medium text-red-600 flex items-center gap-1">
+                  <label className="text-[13px] font-medium text-red-600">
                     Display Name<span className="text-red-500">*</span>
-                    <HelpTooltip text="This name will be displayed on all the transactions (invoices, quotes, etc.) you create for this customer.">
-                      <Info size={14} className="text-gray-400 cursor-help" />
-                    </HelpTooltip>
                   </label>
                   <div className="relative max-w-md">
                     <input
@@ -2021,12 +1959,7 @@ export default function NewCustomer() {
 
                 {/* Email Address */}
                 <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
-                  <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
-                    Email Address
-                    <HelpTooltip text={<span><span className="font-bold">Privacy Info:</span> This data will be stored without encryption and will be visible only to your organisation users who have the required permission.</span>}>
-                      <Info size={14} className="text-gray-400 cursor-help" />
-                    </HelpTooltip>
-                  </label>
+                  <label className="text-[13px] font-medium text-gray-700">Email Address</label>
                   <div className="relative max-w-md">
                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
                       <Mail size={12} />
@@ -2079,12 +2012,7 @@ export default function NewCustomer() {
 
                 {/* Phone */}
                 <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
-                  <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
-                    Phone
-                    <HelpTooltip text={<span><span className="font-bold">Privacy Info:</span> This data will be stored without encryption and will be visible only to your organisation users who have the required permission.</span>}>
-                      <Info size={14} className="text-gray-400 cursor-help" />
-                    </HelpTooltip>
-                  </label>
+                  <label className="text-[13px] font-medium text-gray-700">Phone</label>
                   <div className="flex flex-wrap gap-4 max-w-xl">
                     {/* Work Phone */}
                     <div className="flex items-center border border-gray-300 rounded bg-white w-64">
@@ -2204,12 +2132,7 @@ export default function NewCustomer() {
 
                 {/* Customer Language */}
                 <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center mb-10" ref={customerLanguageDropdownRef}>
-                  <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
-                    Customer Language
-                    <HelpTooltip text="The selected language will be used for the customer portal and all email communications.">
-                      <Info size={14} className="text-gray-400 cursor-help" />
-                    </HelpTooltip>
-                  </label>
+                  <label className="text-[13px] font-medium text-gray-700">Customer Language</label>
                   <div className="relative max-w-md">
                     <button
                       type="button"
@@ -2251,9 +2174,7 @@ export default function NewCustomer() {
                   { id: "other-details", label: "Other Details" },
                   { id: "address", label: "Address" },
                   { id: "contact-persons", label: "Contact Persons" },
-                  { id: "custom-fields", label: "Custom Fields" },
                   { id: "reporting-tags", label: "Reporting Tags" },
-                  { id: "remarks", label: "Remarks" },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -2297,12 +2218,7 @@ export default function NewCustomer() {
                   <div className="space-y-6">
                     {/* Tax Rate */}
                     <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-start">
-                      <label className="text-[13px] font-medium text-gray-700 pt-1.5 flex items-center gap-1">
-                        Tax Rate
-                        <HelpTooltip text="To associate more than one tax, you need to create a tax group in Settings.">
-                          <Info size={14} className="text-gray-400 cursor-help" />
-                        </HelpTooltip>
-                      </label>
+                      <label className="text-[13px] font-medium text-gray-700 pt-1.5">Tax Rate</label>
                       <div className="w-full max-w-md" ref={taxRateDropdownRef}>
                         <div className="relative">
                           <button
@@ -2395,12 +2311,7 @@ export default function NewCustomer() {
 
                     {/* Company ID */}
                     <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
-                      <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
-                        Company ID
-                        <HelpTooltip text="The unique identification number of the company.">
-                          <Info size={14} className="text-gray-400 cursor-help" />
-                        </HelpTooltip>
-                      </label>
+                      <label className="text-[13px] font-medium text-gray-700">Company ID</label>
                       <div className="w-full max-w-md">
                         <input
                           type="text"
@@ -2414,12 +2325,7 @@ export default function NewCustomer() {
 
                     {/* Currency */}
                     <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center" ref={currencyDropdownRef}>
-                      <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
-                        Currency
-                        <HelpTooltip text="The currency in which you want to track transactions for this customer.">
-                          <Info size={14} className="text-gray-400 cursor-help" />
-                        </HelpTooltip>
-                      </label>
+                      <label className="text-[13px] font-medium text-gray-700">Currency</label>
                       <div className="w-full max-w-md relative">
                         <button
                           type="button"
@@ -2486,12 +2392,7 @@ export default function NewCustomer() {
 
                     {/* Accounts Receivable */}
                     <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
-                      <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
-                        Accounts Receivable
-                        <HelpTooltip text="The asset account where the money owed by this customer will be tracked.">
-                          <Info size={14} className="text-gray-400 cursor-help" />
-                        </HelpTooltip>
-                      </label>
+                      <label className="text-[13px] font-medium text-gray-700">Accounts Receivable</label>
                       <div className="w-full max-w-md relative" ref={accountsReceivableDropdownRef}>
                         <button
                           type="button"
@@ -2598,12 +2499,7 @@ export default function NewCustomer() {
 
                     {/* Price List */}
                     <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
-                      <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
-                        Price List
-                        <HelpTooltip text="Select a price list to associate with this customer. This will be used to determine item rates in transactions.">
-                          <Info size={14} className="text-gray-400 cursor-help" />
-                        </HelpTooltip>
-                      </label>
+                      <label className="text-[13px] font-medium text-gray-700">Price List</label>
                       <div className="w-full max-w-md relative" ref={priceListDropdownRef}>
                         <button
                           type="button"
@@ -2690,12 +2586,7 @@ export default function NewCustomer() {
 
                     {/* Enable Portal */}
                     <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
-                      <label className="text-[13px] font-medium text-gray-700 flex items-center gap-1">
-                        Enable Portal?
-                        <HelpTooltip text="Allow this customer to access your client portal to view their transactions and make payments.">
-                          <Info size={14} className="text-gray-400 cursor-help" />
-                        </HelpTooltip>
-                      </label>
+                      <label className="text-[13px] font-medium text-gray-700">Enable Portal?</label>
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="checkbox"
@@ -3654,21 +3545,6 @@ export default function NewCustomer() {
                   </div>
                 )}
 
-                {activeTab === "custom-fields" && (
-                  <div className="mt-6">
-                    <div className="py-12 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-lg bg-gray-50/50">
-                      <div className="p-3 bg-gray-100 rounded-full mb-3">
-                        <Plus size={24} className="text-gray-400" />
-                      </div>
-                      <p className="text-[13px] text-gray-600 font-medium mb-1">No custom fields found</p>
-                      <p className="text-[11px] text-gray-500 text-center max-w-xs px-6">
-                        Custom fields allow you to record additional information about your customers. 
-                        Go to <span className="text-[#156372] font-semibold">Settings &gt; Preferences &gt; Customers</span> to add them.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
                 {activeTab === "reporting-tags" && (
                   <div className="mt-6 space-y-6">
                     {isReportingTagsLoading ? (
@@ -3694,13 +3570,8 @@ export default function NewCustomer() {
 
                           return (
                             <div key={tagId} className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
-                              <label className={`text-[13px] font-medium flex items-center gap-1 ${tag.isMandatory ? 'text-red-500' : 'text-gray-700'}`}>
+                              <label className={`text-[13px] font-medium ${tag.isMandatory ? 'text-red-500' : 'text-gray-700'}`}>
                                 {tag.name} {tag.isMandatory && <span className="ml-0.5">*</span>}
-                                {tag.description && (
-                                  <HelpTooltip text={tag.description}>
-                                    <Info size={14} className="text-gray-400 cursor-help" />
-                                  </HelpTooltip>
-                                )}
                               </label>
                               <div className="w-full max-w-md" data-validation-key={getReportingTagErrorKey(tagId)}>
                                 <SearchableDropdown
@@ -3762,29 +3633,6 @@ export default function NewCustomer() {
                         </p>
                       </div>
                     )}
-                  </div>
-                )}
-
-                {activeTab === "remarks" && (
-                  <div className="mt-6 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-start pb-10">
-                      <label className="text-[13px] font-medium text-gray-700 pt-1.5 flex items-center gap-1">
-                        Remarks
-                        <HelpTooltip text="Add any additional remarks or notes for this customer. These will be visible only to your organisation users.">
-                          <Info size={14} className="text-gray-400 cursor-help" />
-                        </HelpTooltip>
-                      </label>
-                      <div className="w-full max-w-2xl">
-                        <textarea
-                          name="remarks"
-                          value={formData.remarks}
-                          onChange={handleChange}
-                          rows={6}
-                          placeholder="Enter remarks (visible only to your organisation)"
-                          className="w-full px-3 py-2 border border-gray-300 rounded text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] hover:border-gray-400 transition-colors"
-                        />
-                      </div>
-                    </div>
                   </div>
                 )}
               </div>

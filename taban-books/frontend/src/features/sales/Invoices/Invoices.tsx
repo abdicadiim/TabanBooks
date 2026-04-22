@@ -47,6 +47,7 @@ import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import * as XLSX from "xlsx";
 import { useInvoicesListQuery } from "./invoiceQueries";
+import PaginationFooter from "../../../components/table/PaginationFooter";
 const preloadCustomersRoutes = async () => undefined;
 const preloadCustomerDetailRoute = async () => undefined;
 
@@ -487,6 +488,8 @@ export default function Invoices() {
   const [isDecimalFormatDropdownOpen, setIsDecimalFormatDropdownOpen] = useState(false);
   const [activeActionInvoiceId, setActiveActionInvoiceId] = useState(null);
   const [viewFilterParams, setViewFilterParams] = useState<Record<string, string>>({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const invoiceListQuery = useInvoicesListQuery({
     page: 1,
     limit: FULL_INVOICE_LIST_LIMIT,
@@ -1132,10 +1135,21 @@ export default function Invoices() {
   };
 
   const handleSelectAllInvoices = () => {
-    if (selectedInvoices.size === sortedInvoices.length) {
-      setSelectedInvoices(new Set());
+    const visibleInvoiceIds = paginatedInvoices.map((inv) => inv.id);
+    const allVisibleSelected = visibleInvoiceIds.length > 0 && visibleInvoiceIds.every((invoiceId) => selectedInvoices.has(invoiceId));
+
+    if (allVisibleSelected) {
+      setSelectedInvoices((prev) => {
+        const next = new Set(prev);
+        visibleInvoiceIds.forEach((invoiceId) => next.delete(invoiceId));
+        return next;
+      });
     } else {
-      setSelectedInvoices(new Set(sortedInvoices.map(inv => inv.id)));
+      setSelectedInvoices((prev) => {
+        const next = new Set(prev);
+        visibleInvoiceIds.forEach((invoiceId) => next.add(invoiceId));
+        return next;
+      });
     }
   };
 
@@ -2086,7 +2100,17 @@ export default function Invoices() {
       }
     });
   }, [invoices, sortConfig]);
+  const totalInvoicePages = Math.max(1, Math.ceil(sortedInvoices.length / itemsPerPage));
+  const safeInvoicePage = Math.min(currentPage, totalInvoicePages);
+  const paginatedInvoices = useMemo(() => {
+    const start = (safeInvoicePage - 1) * itemsPerPage;
+    return sortedInvoices.slice(start, start + itemsPerPage);
+  }, [safeInvoicePage, itemsPerPage, sortedInvoices]);
   const hasInvoices = sortedInvoices.length > 0;
+
+  useEffect(() => {
+    setCurrentPage((prev) => Math.min(prev, totalInvoicePages));
+  }, [totalInvoicePages]);
 
   const paymentSummary = useMemo(() => {
     const safeInvoices = Array.isArray(sortedInvoices) ? sortedInvoices : [];
@@ -2746,14 +2770,14 @@ export default function Invoices() {
                       >
                         <SlidersHorizontal size={13} style={{ color: "#1b5e6a" }} />
                       </button>
-                      <div className="h-5 w-px bg-gray-200" />
-                      <input
-                        type="checkbox"
-                        checked={selectedInvoices.size === sortedInvoices.length && sortedInvoices.length > 0}
-                        onChange={handleSelectAllInvoices}
-                        style={{ accentColor: "#1b5e6a" }}
-                        className="cursor-pointer h-4 w-4 rounded border-gray-300 transition-all focus:ring-0"
-                      />
+                        <div className="h-5 w-px bg-gray-200" />
+                        <input
+                          type="checkbox"
+                          checked={paginatedInvoices.length > 0 && paginatedInvoices.every((invoice) => selectedInvoices.has(invoice.id))}
+                          onChange={handleSelectAllInvoices}
+                          style={{ accentColor: "#1b5e6a" }}
+                          className="cursor-pointer h-4 w-4 rounded border-gray-300 transition-all focus:ring-0"
+                        />
                     </div>
                   </th>
                   {visibleColumns.map((colKey) => {
@@ -2808,7 +2832,7 @@ export default function Invoices() {
                     </tr>
                   ))
                 ) : (
-                  sortedInvoices.map((invoice) => {
+                  paginatedInvoices.map((invoice) => {
                     const isSelected = selectedInvoices.has(invoice.id);
                     return (
                       <tr
@@ -4232,7 +4256,20 @@ export default function Invoices() {
             </div>
           </div>
         </div>
-      )}
+      )} 
+
+      <PaginationFooter
+        totalItems={sortedInvoices.length}
+        currentPage={safeInvoicePage}
+        pageSize={itemsPerPage}
+        pageSizeOptions={[10, 25, 50, 100]}
+        itemLabel="invoices"
+        onPageChange={(nextPage) => setCurrentPage(nextPage)}
+        onPageSizeChange={(nextLimit) => {
+          setItemsPerPage(nextLimit);
+          setCurrentPage(1);
+        }}
+      />
 
       {/* Share Modal */}
       {showShareModal && selectedInvoiceForShare && (

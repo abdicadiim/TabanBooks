@@ -1,6 +1,7 @@
 import React from "react";
 import { ArrowUpDown, Check, ChevronDown, ChevronRight, ChevronUp, Download, Eye, Info, Loader2, MoreVertical, Plus, RefreshCw, Search, Settings, SlidersHorizontal, Star, Trash2, Upload, X } from "lucide-react";
 
+import PaginationFooter from "../../../components/table/PaginationFooter";
 import { preloadCustomerDetailRoute } from "./customerRouteLoaders";
 
 const CUSTOMER_DETAIL_SIDEBAR_CACHE_KEY = "billing_customer_detail_sidebar_seed";
@@ -81,6 +82,9 @@ export default function CustomersPageContent({ controller }: { controller: any }
     loadCustomers,
     currentPage,
     itemsPerPage,
+    setCurrentPage,
+    setItemsPerPage,
+    totalItems,
   } = controller;
 
   const navigateToCustomerDetail = (selectedCustomer: any) => {
@@ -119,7 +123,7 @@ export default function CustomersPageContent({ controller }: { controller: any }
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white font-sans text-gray-800 antialiased">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white pt-2 font-sans text-gray-800 antialiased">
       {/* Header - Show Bulk Actions Bar when items are selected, otherwise show normal header */}
       {selectedCustomers.size > 0 ? (
         <div className="flex-none flex items-center justify-between px-4 py-1.5 border-b border-gray-100 bg-white z-30">
@@ -539,7 +543,7 @@ export default function CustomersPageContent({ controller }: { controller: any }
       {/* Mobile Card View (Mockup Style) */}
       <div className="block sm:hidden bg-white overflow-hidden mb-8">
         <div className="divide-y divide-gray-100">
-          {showCustomerSkeletons ? Array(3).fill(0).map((_, index) => (
+          {showCustomerSkeletons ? Array(2).fill(0).map((_, index) => (
             <div key={`mobile-skeleton-${index}`} className="flex items-center gap-3 p-4 animate-pulse">
               <div className="w-12 h-12 rounded-full bg-gray-200 flex-shrink-0" />
               <div className="flex-1 min-w-0">
@@ -710,7 +714,7 @@ export default function CustomersPageContent({ controller }: { controller: any }
           </thead>
           <tbody className="divide-y divide-gray-100">
             {showCustomerSkeletons ? (
-              Array(4).fill(0).map((_, i) => (
+              Array(2).fill(0).map((_, i) => (
                 <tr key={i} className="animate-pulse border-b border-gray-50">
                   <td className="px-4 py-3 w-16">
                     <div className="h-4 w-4 bg-gray-100 rounded mx-auto" />
@@ -823,6 +827,20 @@ export default function CustomersPageContent({ controller }: { controller: any }
           </tbody>
         </table>
       </div>
+      <PaginationFooter
+        totalItems={totalItems || displayedCustomers.length}
+        currentPage={currentPage}
+        pageSize={itemsPerPage}
+        pageSizeOptions={[10, 25, 50, 100]}
+        itemLabel="customers"
+        onPageChange={(nextPage) => {
+          setCurrentPage(nextPage);
+        }}
+        onPageSizeChange={(nextLimit) => {
+          setItemsPerPage(nextLimit);
+          setCurrentPage(1);
+        }}
+      />
     </div>
   );
 }

@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import SalesReceiptsCustomizeColumnsModal, { SalesReceiptsColumnOption } from "./SalesReceiptsCustomizeColumnsModal";
 import { useSalesReceiptsListQuery } from "./salesReceiptsQueries";
+import PaginationFooter from "../../../components/table/PaginationFooter";
 
 // import FieldCustomization from "../shared/FieldCustomization";
 
@@ -206,16 +207,17 @@ export default function SalesReceipts() {
   const [taxes, setTaxes] = useState([]);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 50, pages: 0 });
   const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const receiptQueryParams = useMemo(() => {
     const sortField = mapSortOptionToField(activeSort);
     return {
       page: currentPage,
-      limit: 50,
+      limit: itemsPerPage,
       status: selectedStatus === "All" ? undefined : selectedStatus,
       sortBy: sortField,
       sortOrder: isSortDescendingOption(activeSort) ? "desc" : "asc",
     };
-  }, [activeSort, currentPage, selectedStatus]);
+  }, [activeSort, currentPage, itemsPerPage, selectedStatus]);
   const salesReceiptsQuery = useSalesReceiptsListQuery(receiptQueryParams);
 
   const viewDropdownRef = useRef(null);
@@ -471,6 +473,11 @@ export default function SalesReceipts() {
   useEffect(() => {
     setCurrentPage(1);
   }, [selectedStatus, activeSort]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, pagination.pages || 1);
+    setCurrentPage((prev) => Math.min(prev, totalPages));
+  }, [pagination.pages]);
 
   useEffect(() => {
     const initialLoad = async () => {
@@ -1990,6 +1997,19 @@ export default function SalesReceipts() {
           </div>
         )}
       </div>
+
+      <PaginationFooter
+        totalItems={pagination.total || filteredSalesReceipts.length}
+        currentPage={currentPage}
+        pageSize={itemsPerPage}
+        pageSizeOptions={[10, 25, 50, 100]}
+        itemLabel="sales receipts"
+        onPageChange={(nextPage) => setCurrentPage(nextPage)}
+        onPageSizeChange={(nextLimit) => {
+          setItemsPerPage(nextLimit);
+          setCurrentPage(1);
+        }}
+      />
 
       {isBulkDeleteModalOpen && (
         <div className="fixed inset-0 z-[2100] flex items-start justify-center bg-black/40 pt-16">

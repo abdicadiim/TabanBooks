@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { toast } from "react-hot-toast";
 import { senderEmailsAPI } from "../../../../services/api";
-import { resolveVerifiedPrimarySender } from "../../../../utils/emailSenderDisplay";
+import { resolvePrimarySender } from "../../../../utils/emailSenderDisplay";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { getInvoiceById, getInvoices, updateInvoice, getPayments, getTaxes, getCreditNotesByInvoiceId, deletePayment, Tax, Invoice, AttachedFile, saveInvoice } from "../../salesModel";
 import { currenciesAPI, invoicesAPI, debitNotesAPI, creditNotesAPI, paymentsReceivedAPI, bankAccountsAPI, refundsAPI } from "../../../../services/api";
@@ -207,8 +207,8 @@ export default function InvoiceDetail() { // Start of component
     websiteUrl: "",
     industry: ""
   });
-  const [logoFile, setLogoFile] = useState(null);
-  const [logoPreview, setLogoPreview] = useState(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [isFieldCustomizationOpen, setIsFieldCustomizationOpen] = useState(false);
   const [isTermsAndConditionsModalOpen, setIsTermsAndConditionsModalOpen] = useState(false);
   const [termsData, setTermsData] = useState({
@@ -217,16 +217,16 @@ export default function InvoiceDetail() { // Start of component
     useNotesForAllInvoices: false,
     useTermsForAllInvoices: false
   });
-  const shareModalRef = useRef(null);
-  const organizationAddressFileInputRef = useRef(null);
-  const customizeDropdownRef = useRef(null);
-  const visibilityDropdownRef = useRef(null);
-  const moreMenuRef = useRef(null);
-  const remindersDropdownRef = useRef(null);
-  const allInvoicesDropdownRef = useRef(null);
-  const sidebarMoreRef = useRef(null);
-  const sendDropdownRef = useRef(null);
-  const pdfDropdownRef = useRef(null);
+  const shareModalRef = useRef<HTMLDivElement>(null);
+  const organizationAddressFileInputRef = useRef<HTMLInputElement>(null);
+  const customizeDropdownRef = useRef<HTMLDivElement>(null);
+  const visibilityDropdownRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const remindersDropdownRef = useRef<HTMLDivElement>(null);
+  const allInvoicesDropdownRef = useRef<HTMLDivElement>(null);
+  const sidebarMoreRef = useRef<HTMLDivElement>(null);
+  const sendDropdownRef = useRef<HTMLDivElement>(null);
+  const pdfDropdownRef = useRef<HTMLDivElement>(null);
 
   // Organization profile data
   const [organizationProfile, setOrganizationProfile] = useState<any>(null);
@@ -521,7 +521,7 @@ export default function InvoiceDetail() { // Start of component
     const primarySenderRes = await senderEmailsAPI.getPrimary();
     const fallbackName = DEFAULT_INVOICE_BRAND_NAME;
       const fallbackEmail = String(organizationProfile?.email || "").trim();
-      const sender = resolveVerifiedPrimarySender(primarySenderRes, fallbackName, fallbackEmail);
+      const sender = resolvePrimarySender(primarySenderRes, fallbackName, fallbackEmail);
       setOwnerEmail(sender);
     } catch (error) {
       console.error('Error fetching owner email:', error);
@@ -697,7 +697,7 @@ export default function InvoiceDetail() { // Start of component
         let creditRows: any[] = [];
         try {
           if (currentCustomerId) {
-            const byCustomer = await creditNotesAPI.getByCustomer(currentCustomerId, { limit: 10000 });
+            const byCustomer = await creditNotesAPI.getByCustomer(currentCustomerId, { limit: 10000 } as any);
             creditRows = Array.isArray((byCustomer as any)?.data) ? (byCustomer as any).data : [];
           }
           if (!creditRows.length) {
@@ -883,7 +883,7 @@ export default function InvoiceDetail() { // Start of component
   }, [location.state, id, navigate]);
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
+    const handleClickOutside = (event: MouseEvent) => {
       if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
         setIsMoreMenuOpen(false);
       }
@@ -974,7 +974,7 @@ export default function InvoiceDetail() { // Start of component
         return;
       }
 
-      const result = await invoicesAPI.update(id, { expectedPaymentDate: date.toISOString() });
+      const result = await invoicesAPI.update(id!, { expectedPaymentDate: date.toISOString() });
       if (result?.success && result.data) {
         setInvoice((prev: any) => ({ ...(prev || {}), ...result.data }));
         toast("Expected payment date saved");
@@ -987,7 +987,7 @@ export default function InvoiceDetail() { // Start of component
     }
   };
 
-  const formatCurrency = (amount, currencyStr = baseCurrency) => {
+  const formatCurrency = (amount: any, currencyStr = baseCurrency) => {
     const code = currencyStr?.split(' - ')[0] || baseCurrency;
     const symbols: { [key: string]: string } = {
       'USD': '$',
@@ -1010,13 +1010,13 @@ export default function InvoiceDetail() { // Start of component
     return `${symbol}${formattedAmount}`;
   };
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: any) => {
     if (!dateString) return "";
     const date = new Date(dateString);
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
-  const formatDateShort = (dateString) => {
+  const formatDateShort = (dateString: any) => {
     if (!dateString) return "";
     const date = new Date(dateString);
     const day = String(date.getDate()).padStart(2, '0');
@@ -1025,7 +1025,7 @@ export default function InvoiceDetail() { // Start of component
     return `${day}/${month}/${year}`;
   };
 
-  const formatCurrencyNumber = (amount) => {
+  const formatCurrencyNumber = (amount: any) => {
     return parseFloat(amount || 0).toLocaleString('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
@@ -1279,7 +1279,7 @@ export default function InvoiceDetail() { // Start of component
 
         if (isDebitNoteView) {
           const nextStatus = resolveDebitNotePostSendStatus(invoice.dueDate);
-          const updatedDebitNote = await debitNotesAPI.update(id, { ...invoice, status: nextStatus } as any);
+          const updatedDebitNote = await debitNotesAPI.update(id!, { ...invoice, status: nextStatus } as any);
           const nextInvoice = (updatedDebitNote as any)?.data || updatedDebitNote;
           if (nextInvoice) {
             setInvoice(nextInvoice);
@@ -1289,7 +1289,7 @@ export default function InvoiceDetail() { // Start of component
           }
         } else {
           const nextStatus = resolvePostSendStatus(invoice.dueDate);
-          const updatedInvoice = await updateInvoice(id, { ...invoice, status: nextStatus });
+          const updatedInvoice = await updateInvoice(id!, { ...invoice, status: nextStatus } as any);
           if (updatedInvoice) {
             setInvoice(updatedInvoice);
             // Update in list
@@ -1336,7 +1336,7 @@ export default function InvoiceDetail() { // Start of component
         dueDate.setHours(0, 0, 0, 0);
       }
       const nextStatus = dueDate && !Number.isNaN(dueDate.getTime()) && dueDate.getTime() < today.getTime() ? "overdue" : "due";
-      const updatedDebitNote = await debitNotesAPI.update(id, { ...invoice, status: nextStatus } as any);
+      const updatedDebitNote = await debitNotesAPI.update(id!, { ...invoice, status: nextStatus } as any);
       const nextInvoice = (updatedDebitNote as any)?.data || updatedDebitNote;
       if (nextInvoice) {
         setInvoice(nextInvoice);
@@ -1364,13 +1364,15 @@ export default function InvoiceDetail() { // Start of component
         : "") ||
       ""
     ).trim();
-    navigate(isDebitNoteDocument ? `/sales/debit-notes/${id}/email` : `/sales/invoices/${id}/email`, {
-      state: {
-        customerEmail,
-        sendTo: customerEmail,
-        customerName,
-      },
-    });
+    if (invoice) {
+      navigate(isDebitNoteDocument ? `/sales/debit-notes/${invoice.id}/email` : `/sales/invoices/${invoice.id}/email`, {
+        state: {
+          customerEmail,
+          sendTo: customerEmail,
+          customerName,
+        },
+      });
+    }
   };
 
   const handleSendEmailSubmit = async () => {
@@ -1418,9 +1420,12 @@ export default function InvoiceDetail() { // Start of component
       };
 
       // Update local invoice status if it was draft
-      if (invoice.status === 'draft') {
+      if (invoice && (invoice as any).status === 'draft') {
         const nextStatus = resolvePostSendStatus(invoice.dueDate);
-        setInvoice(prev => ({ ...prev, status: nextStatus }));
+        setInvoice((prev: any) => {
+          if (!prev) return null;
+          return { ...prev, status: nextStatus };
+        });
         // Also update the list if needed
         setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status: nextStatus } : inv));
       }
@@ -1438,7 +1443,7 @@ export default function InvoiceDetail() { // Start of component
     }
   };
 
-  const handleLogoUpload = (file) => {
+  const handleLogoUpload = (file: File) => {
     // Check file size (1MB max)
     if (file.size > 1024 * 1024) {
       toast("File size exceeds 1MB. Please choose a smaller file.");
@@ -1452,19 +1457,12 @@ export default function InvoiceDetail() { // Start of component
       return;
     }
 
-    // Create preview and save to localStorage
+    // Set preview
     const reader = new FileReader();
     reader.onloadend = () => {
-      const logoDataUrl = reader.result;
-      setLogoPreview(logoDataUrl);
-      setLogoFile(file);
-      // Save logo to localStorage
-      const persistedLogo = typeof logoDataUrl === "string" && logoDataUrl.startsWith("data:") ? "" : String(logoDataUrl || "");
-      if (persistedLogo) {
-        localStorage.setItem('organization_logo', persistedLogo);
-      } else {
-        localStorage.removeItem('organization_logo');
-      }
+      setLogoPreview(reader.result as string);
+      // Store in localStorage
+      localStorage.setItem('organization_logo', reader.result as string);
     };
     reader.readAsDataURL(file);
   };
@@ -1473,16 +1471,28 @@ export default function InvoiceDetail() { // Start of component
     setIsSendDropdownOpen(false);
     if (invoice) {
       const orgName = DEFAULT_INVOICE_BRAND_NAME;
-      // Pre-fill schedule data with invoice info
-      setScheduleData({
-        to: invoice.customerEmail || invoice.customer || "",
+      const amountStr = formatCurrency(invoice.total || invoice.amount || 0, invoice.currency || baseCurrency || "USD");
+      const clientName = String(
+        invoice?.customerName ||
+        (typeof invoice?.customer === "object" ? invoice?.customer?.displayName || invoice?.customer?.name : "") ||
+        "Client"
+      ).trim();
+      const invoiceNum = invoice.invoiceNumber || "";
+      
+      const subject = `Invoice ${invoiceNum} from ${orgName}`;
+      const to = String(
+        (invoice as any)?.customerEmail ||
+        (typeof invoice?.customer === "object" ? invoice?.customer?.email || "" : "")
+      ).trim();
+
+      setEmailData({
+        to,
         cc: "",
         bcc: "",
-        subject: `Invoice ${invoice.invoiceNumber || invoice.id} from ${orgName}`,
-        message: `Dear ${invoice.customer || "Customer"},\n\nPlease find attached invoice ${invoice.invoiceNumber || invoice.id} for ${formatCurrency(getInvoiceDisplayTotal(invoice), invoice.currency)}.\n\nInvoice Details:\n- Invoice Number: ${invoice.invoiceNumber || invoice.id}\n- Invoice Date: ${formatDate(invoice.invoiceDate || invoice.date)}\n- Due Date: ${formatDate(invoice.dueDate)}\n- Amount: ${formatCurrency(getInvoiceDisplayTotal(invoice), invoice.currency)}.\n\nPlease review and let us know your decision.\n\nBest regards,\n${orgName}`,
-        date: "",
-        time: ""
+        subject,
+        message: `Dear ${clientName},\n\nPlease find attached invoice ${invoiceNum} for ${amountStr}.\n\nRegards,\n${orgName}`
       });
+      setIsSendEmailModalOpen(true);
     }
   };
 
@@ -1503,25 +1513,6 @@ export default function InvoiceDetail() { // Start of component
       message: ""
     });
   };
-
-  /*
-    return;
-    // }
-    // TODO: Implement actual email scheduling
-    console.log("Scheduling email:", scheduleData);
-    setIsScheduleEmailModalOpen(false);
-    toast(`Email scheduled for ${scheduleData.date} at ${scheduleData.time}`);
-    setScheduleData({
-      to: "",
-      cc: "",
-      bcc: "",
-      subject: "",
-      message: "",
-      date: "",
-      time: ""
-    });
-  */
-  // };
 
   const handleShare = () => {
     if (!invoice) return;
@@ -1556,6 +1547,7 @@ export default function InvoiceDetail() { // Start of component
 
     // Generate a secure link similar to the example
     const baseUrl = "https://zohosecurepay.com/books/tabanenterprises/secure";
+    if (!invoice) return;
     const invoiceId = invoice.id || invoice.invoiceNumber || Date.now();
     // Generate a long secure token (128 characters like in the example)
     const token = Array.from(crypto.getRandomValues(new Uint8Array(64)))
@@ -1953,8 +1945,11 @@ export default function InvoiceDetail() { // Start of component
     setIsPdfDropdownOpen(false);
     if (!invoice) return;
     const printWindow = window.open('', '_blank');
-    printWindow.document.write(generateInvoiceHTML());
-    printWindow.document.close();
+    if (printWindow) {
+      printWindow.document.write(generateInvoiceHTML());
+      printWindow.document.close();
+      printWindow.print();
+    }
   };
 
   const handleRecordPayment = () => {
@@ -2047,7 +2042,7 @@ export default function InvoiceDetail() { // Start of component
         : (invoice as any)?.id || (invoice as any)?._id || id || ""
     ).trim();
     if (!targetInvoiceId) {
-      toast.error("Invoice id not found.");
+      toast("Invoice id not found.");
       return;
     }
 
@@ -2159,11 +2154,11 @@ export default function InvoiceDetail() { // Start of component
 
     if (!combinedRows.length) {
       if (sourceFilter === "retainer") {
-        toast.info("No retainers available for this customer.");
+        toast("No retainers available for this customer.");
       } else if (sourceFilter === "credit") {
-        toast.info("No credits available for this customer.");
+        toast("No credits available for this customer.");
       } else {
-        toast.info("No credits or retainers available for this customer.");
+        toast("No credits or retainers available for this customer.");
       }
       return;
     }
@@ -2188,7 +2183,7 @@ export default function InvoiceDetail() { // Start of component
       ""
     ).trim();
     if (!paymentId) {
-      toast.error("Payment id not found.");
+      toast("Payment id not found.");
       return;
     }
 
@@ -2237,10 +2232,10 @@ export default function InvoiceDetail() { // Start of component
       setShowDeletePaymentModal(false);
       setSelectedPaymentForDelete(null);
       setOpenPaymentMenuId(null);
-      toast.success("Payment deleted and invoice updated.");
+      toast("Payment deleted and invoice updated.");
     } catch (error: any) {
       console.error("Failed to delete payment from invoice detail:", error);
-      toast.error(error?.message || "Failed to delete payment.");
+      toast(error?.message || "Failed to delete payment.");
     } finally {
       setIsDeletingPayment(false);
     }
@@ -2254,7 +2249,7 @@ export default function InvoiceDetail() { // Start of component
       ""
     ).trim();
     if (!paymentId) {
-      toast.error("Payment id not found.");
+      toast("Payment id not found.");
       return;
     }
 
@@ -2264,7 +2259,7 @@ export default function InvoiceDetail() { // Start of component
         : invoice.id || invoice._id || id || ""
     ).trim();
     if (!targetInvoiceId) {
-      toast.error("Invoice id not found.");
+      toast("Invoice id not found.");
       return;
     }
 
@@ -2297,7 +2292,7 @@ export default function InvoiceDetail() { // Start of component
       }
       dissociatedAmount = roundMoney(Math.max(0, dissociatedAmount));
       if (dissociatedAmount <= 0) {
-        toast.error("No allocated amount found for this invoice.");
+        toast("No allocated amount found for this invoice.");
         return;
       }
 
@@ -2405,10 +2400,10 @@ export default function InvoiceDetail() { // Start of component
       setShowDeletePaymentModal(false);
       setSelectedPaymentForDelete(null);
       setOpenPaymentMenuId(null);
-      toast.success("Payment dissociated and moved to customer credit.");
+      toast("Payment dissociated and moved to customer credit.");
     } catch (error: any) {
       console.error("Failed to dissociate payment and create credit:", error);
-      toast.error(error?.message || "Failed to dissociate payment.");
+      toast(error?.message || "Failed to dissociate payment.");
     } finally {
       setIsDeletingPayment(false);
     }
@@ -2439,7 +2434,7 @@ export default function InvoiceDetail() { // Start of component
 
     const paymentId = String(selectedPaymentForRefund.id || selectedPaymentForRefund._id || "").trim();
     if (!paymentId) {
-      toast.error("Payment id not found.");
+      toast("Payment id not found.");
       return;
     }
 
@@ -2447,19 +2442,19 @@ export default function InvoiceDetail() { // Start of component
     const maxAmount = Number(selectedPaymentForRefund.amountReceived ?? selectedPaymentForRefund.amount ?? 0) || 0;
 
     if (!refundAmount || refundAmount <= 0) {
-      toast.error("Please enter a valid refund amount.");
+      toast("Please enter a valid refund amount.");
       return;
     }
     if (refundAmount > maxAmount) {
-      toast.error("Refund amount cannot exceed the payment amount.");
+      toast("Refund amount cannot exceed the payment amount.");
       return;
     }
     if (!refundData.refundedOn) {
-      toast.error("Please choose the refund date.");
+      toast("Please choose the refund date.");
       return;
     }
     if (!refundData.fromAccount && !refundData.fromAccountId) {
-      toast.error("Please choose the refund account.");
+      toast("Please choose the refund account.");
       return;
     }
 
@@ -2513,11 +2508,11 @@ export default function InvoiceDetail() { // Start of component
         );
       }
 
-      toast.success("Refund saved successfully.");
+      toast("Refund saved successfully.");
       handleCloseRefundModal();
     } catch (error: any) {
       console.error("Failed to process refund:", error);
-      toast.error(error?.message || "Failed to process refund.");
+      toast(error?.message || "Failed to process refund.");
     } finally {
       setIsSavingRefund(false);
     }
@@ -2531,11 +2526,11 @@ export default function InvoiceDetail() { // Start of component
     const invoiceBalance = getCurrentDocumentBalance();
     const totalApplied = getTotalRetainerApplied();
     if (totalApplied <= 0) {
-      toast.error("Enter retainer amount to apply.");
+      toast("Enter retainer amount to apply.");
       return;
     }
     if (totalApplied > invoiceBalance) {
-      toast.error("Total applied cannot exceed invoice balance.");
+      toast("Total applied cannot exceed invoice balance.");
       return;
     }
 
@@ -2549,13 +2544,13 @@ export default function InvoiceDetail() { // Start of component
       .filter((entry) => entry.rowId && entry.applied > 0);
 
     if (!rowsToApply.length) {
-      toast.error("Select at least one retainer amount.");
+      toast("Select at least one retainer amount.");
       return;
     }
 
     const invalidRow = rowsToApply.find((entry) => entry.applied > entry.available);
     if (invalidRow) {
-      toast.error(`Applied amount is greater than available for ${invalidRow.row?.invoiceNumber || invalidRow.rowId}.`);
+      toast(`Applied amount is greater than available for ${invalidRow.row?.invoiceNumber || invalidRow.rowId}.`);
       return;
     }
 
@@ -2626,10 +2621,10 @@ export default function InvoiceDetail() { // Start of component
       );
 
       setIsApplyRetainerOpen(false);
-      toast.success("Retainers applied successfully.");
+      toast("Retainers applied successfully.");
     } catch (error: any) {
       console.error("Failed to apply retainers:", error);
-      toast.error(error?.message || "Failed to apply retainers.");
+      toast(error?.message || "Failed to apply retainers.");
     } finally {
       setIsApplyingRetainer(false);
     }
@@ -2648,7 +2643,7 @@ export default function InvoiceDetail() { // Start of component
         : (invoice as any)?.id || (invoice as any)?._id || id || ""
     ).trim();
     if (!invoiceId) {
-      toast.error("Invoice id not found.");
+      toast("Invoice id not found.");
       return;
     }
 
@@ -2656,7 +2651,7 @@ export default function InvoiceDetail() { // Start of component
       .map((row: any) => ({ ...row, applied: roundMoney(toNumSafe(applyAdjustmentValues[row.rowKey], 0)) }))
       .filter((row: any) => row.applied > 0);
     if (!rowsToApply.length) {
-      toast.error("Enter amount to apply.");
+      toast("Enter amount to apply.");
       return;
     }
 
@@ -2667,7 +2662,7 @@ export default function InvoiceDetail() { // Start of component
     const currentBalance = roundMoney(Math.max(0, toNumSafe((invoice as any)?.balance ?? (invoice as any)?.balanceDue, total - paid - currentCredits - currentRetainers)));
     const totalToApply = roundMoney(rowsToApply.reduce((sum: number, row: any) => sum + row.applied, 0));
     if (totalToApply > currentBalance) {
-      toast.error("Applied amount cannot exceed invoice balance.");
+      toast("Applied amount cannot exceed invoice balance.");
       return;
     }
 
@@ -2766,10 +2761,10 @@ export default function InvoiceDetail() { // Start of component
 
       setIsApplyAdjustmentsModalOpen(false);
       setIsApplyRetainerOpen(false);
-      toast.success("Credits/retainers applied successfully.");
+      toast("Credits/retainers applied successfully.");
     } catch (error: any) {
       console.error("Failed to apply credits/retainers:", error);
-      toast.error(error?.message || "Failed to apply credits/retainers.");
+      toast(error?.message || "Failed to apply credits/retainers.");
     } finally {
       setIsApplyingAdjustments(false);
     }
@@ -2792,7 +2787,7 @@ export default function InvoiceDetail() { // Start of component
       const noteRes = await creditNotesAPI.getById(creditNoteId);
       const note = (noteRes as any)?.data || noteRes;
       if (!note) {
-        toast.error("Credit note not found.");
+        toast("Credit note not found.");
         return;
       }
 
@@ -2855,23 +2850,23 @@ export default function InvoiceDetail() { // Start of component
       setCreditsAppliedRows((prev) => prev.filter((row: any) => String(row.id) !== creditNoteId));
       setCreditsAppliedCount((prev) => Math.max(0, prev - 1));
       setCustomerCreditsAvailable((prev) => roundMoney(prev + amountToReverse));
-      toast.success("Applied credit removed and returned to credit note.");
+      toast("Applied credit removed and returned to credit note.");
     } catch (error: any) {
       console.error("Failed to remove applied credit:", error);
-      toast.error(error?.message || "Failed to remove applied credit.");
+      toast(error?.message || "Failed to remove applied credit.");
     } finally {
       setIsRemovingAppliedCreditId(null);
     }
   };
 
-  const handleFilterSelect = (filter) => {
+  const handleFilterSelect = (filter: any) => {
     setIsAllInvoicesDropdownOpen(false);
     // Navigate to invoices list with filter applied
     if (filter === "All") {
       navigate("/sales/invoices");
     } else {
       // Convert filter name to status format
-      const statusMap = {
+      const statusMap: Record<string, string> = {
         "All": "all",
         "Draft": "draft",
         "Unpaid": "unpaid",
@@ -2886,7 +2881,7 @@ export default function InvoiceDetail() { // Start of component
     }
   };
 
-  const handleSelectItem = (itemId) => {
+  const toggleItemMenu = (itemId: any) => {
     setSelectedItems(prev => {
       const newSelected = new Set(prev);
       if (newSelected.has(itemId)) {
@@ -2898,7 +2893,7 @@ export default function InvoiceDetail() { // Start of component
     });
   };
 
-  const handleSelectAll = (e) => {
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
       setSelectedItems(new Set(displayItems.map((item, index) => item.id || index)));
     } else {
@@ -2915,8 +2910,9 @@ export default function InvoiceDetail() { // Start of component
     if (window.confirm(`Are you sure you want to delete ${selectedItems.size} item(s)?`)) {
       const selectedIds = Array.from(selectedItems);
       const updatedItems = displayItems.filter((item, index) => !selectedIds.includes(item.id || index));
-      const updatedInvoice = { ...invoice, items: updatedItems };
-      updateInvoice(id, updatedInvoice);
+      if (!invoice) return;
+      const updatedInvoice = { ...invoice, items: updatedItems } as any;
+      updateInvoice(id!, updatedInvoice);
       setInvoice(updatedInvoice);
       setSelectedItems(new Set());
     }
@@ -2999,12 +2995,12 @@ export default function InvoiceDetail() { // Start of component
 
       const clonedInvoiceId = clonedInvoice?.id || clonedInvoice?._id;
       if (clonedInvoiceId) {
-        toast.success("Invoice cloned successfully.");
+        toast("Invoice cloned successfully.");
         navigate(`/sales/invoices/${clonedInvoiceId}`);
         return;
       }
 
-      toast.success("Invoice cloned successfully, but it could not be opened automatically.");
+      toast("Invoice cloned successfully, but it could not be opened automatically.");
     } catch (error: any) {
       console.error("Error cloning invoice:", error);
       toast(error?.message || "Failed to clone invoice. Please try again.");
@@ -3038,7 +3034,7 @@ export default function InvoiceDetail() { // Start of component
     // TODO: Implement actual deletion logic
     const updatedInvoices = invoices.filter(inv => inv.id !== invoice.id);
     setInvoices(updatedInvoices);
-    toast.success("Invoice deleted successfully.");
+    toast("Invoice deleted successfully.");
     setIsDeleteInvoiceModalOpen(false);
     navigate("/sales/invoices");
   };
@@ -3054,7 +3050,7 @@ export default function InvoiceDetail() { // Start of component
     if (!invoice) return;
     setIsMoreMenuOpen(false);
     try {
-      const updatedInvoice = await updateInvoice(id, { ...invoice, status: "void" });
+      const updatedInvoice = await updateInvoice(id!, { ...invoice, status: "void" } as any);
       if (updatedInvoice) {
         setInvoice(updatedInvoice);
         setInvoices((prev) => prev.map((inv) => String(inv.id) === String(id) ? updatedInvoice : inv));
@@ -3082,10 +3078,10 @@ export default function InvoiceDetail() { // Start of component
     }
 
     const processFiles = async () => {
-      const newAttachments = [];
+      const newAttachments: any[] = [];
 
       for (const file of validFiles) {
-        const attachment = {
+        const attachment: any = {
           id: Date.now() + Math.random() + Math.random(),
           name: file.name,
           size: file.size,
@@ -3095,9 +3091,13 @@ export default function InvoiceDetail() { // Start of component
         };
 
         if (file.type.startsWith('image/')) {
-          attachment.preview = await new Promise((resolve) => {
+          attachment.preview = await new Promise<string | null>((resolve) => {
             const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target.result);
+            reader.onload = (e: ProgressEvent<FileReader>) => {
+              const result = e.target?.result as string;
+              resolve(result || null);
+            };
+            reader.onerror = () => resolve(null);
             reader.readAsDataURL(file);
           });
         }
@@ -3117,11 +3117,11 @@ export default function InvoiceDetail() { // Start of component
           preview: att.preview
         }));
         // updateInvoice is async but we don't await it inside setState callback
-        updateInvoice(id, { attachments: attachmentsToStore })
-          .then(() => toast.success("Attachment uploaded successfully."))
+        updateInvoice(id!, { attachments: attachmentsToStore })
+          .then(() => toast("Attachment uploaded successfully."))
           .catch(err => {
             console.error("Error saving attachments to backend:", err);
-            toast.error("Failed to save attachment.");
+            toast("Failed to save attachment.");
           });
       }
       return updated;
@@ -3131,7 +3131,7 @@ export default function InvoiceDetail() { // Start of component
     processFiles();
   };
 
-  const handleFileClick = (attachment) => {
+  const handleFileClick = (attachment: any) => {
     if (attachment.type && attachment.type.startsWith('image/')) {
       setSelectedImage(attachment.preview || (attachment.file ? URL.createObjectURL(attachment.file) : null));
       setShowImageViewer(true);
@@ -3149,7 +3149,7 @@ export default function InvoiceDetail() { // Start of component
     }
   };
 
-  const handleRemoveAttachment = (attachmentId) => {
+  const handleDeleteAttachment = async (attachmentId: any) => {
     setInvoiceAttachments(prev => {
       const updated = prev.filter(att => att.id !== attachmentId);
       // Save to backend
@@ -3161,11 +3161,11 @@ export default function InvoiceDetail() { // Start of component
           type: att.type,
           preview: att.preview
         }));
-        updateInvoice(id, { attachments: attachmentsToStore })
-          .then(() => toast.success("Attachment removed successfully."))
+        updateInvoice(id!, { attachments: attachmentsToStore })
+          .then(() => toast("Attachment removed successfully."))
           .catch(err => {
             console.error("Error saving attachments to backend:", err);
-            toast.error("Failed to remove attachment.");
+            toast("Failed to remove attachment.");
           });
       }
       return updated;
@@ -3181,12 +3181,12 @@ export default function InvoiceDetail() { // Start of component
     }
   };
 
-  const handleDragOver = (e) => {
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(true);
   };
 
-  const handleDragLeave = (e) => {
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
   };
@@ -3210,11 +3210,11 @@ export default function InvoiceDetail() { // Start of component
       // Save to backend
       if (id) {
         // updateInvoice is async
-        updateInvoice(id, { comments: updated })
-          .then(() => toast.success("Comment added successfully."))
+        updateInvoice(id!, { comments: updated })
+          .then(() => toast("Comment added successfully."))
           .catch(err => {
             console.error("Error saving comments to backend:", err);
-            toast.error("Failed to save comment.");
+            toast("Failed to save comment.");
           });
       }
       return updated;
@@ -4829,7 +4829,7 @@ export default function InvoiceDetail() { // Start of component
                         value={emailData.cc.trim()}
                         onChange={(e) => setEmailData(prev => ({ ...prev, cc: e.target.value }))}
                       />
-                      <button className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" onClick={() => setEmailData(prev => ({ ...prev, cc: undefined }))}>
+                      <button className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" onClick={() => setEmailData((prev) => ({ ...prev, cc: "" }))}>
                         <X size={16} />
                       </button>
                     </div>
@@ -4849,7 +4849,7 @@ export default function InvoiceDetail() { // Start of component
                         value={emailData.bcc.trim()}
                         onChange={(e) => setEmailData(prev => ({ ...prev, bcc: e.target.value }))}
                       />
-                      <button className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" onClick={() => setEmailData(prev => ({ ...prev, bcc: undefined }))}>
+                      <button className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" onClick={() => setEmailData((prev) => ({ ...prev, bcc: "" }))}>
                         <X size={16} />
                       </button>
                     </div>
@@ -5583,7 +5583,7 @@ export default function InvoiceDetail() { // Start of component
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {invoiceAttachments.map((attachment) => {
+                    {invoiceAttachments.map((attachment: any) => {
                       const isImage = attachment.type && attachment.type.startsWith('image/');
                       return (
                         <div
@@ -5613,7 +5613,7 @@ export default function InvoiceDetail() { // Start of component
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleRemoveAttachment(attachment.id);
+                              handleDeleteAttachment(attachment.id);
                             }}
                             className="p-1 hover:bg-red-100 rounded text-red-600"
                           >

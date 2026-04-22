@@ -87,6 +87,7 @@ export function useCurrency() {
         error,
         symbol: baseCurrency?.symbol || "",
         code: baseCurrency?.code || "",
+        baseCurrencyCode: baseCurrency?.code || "",
         formatMoney
     };
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { recurringInvoicesAPI, quotesAPI, invoicesAPI, customersAPI, taxesAPI, itemsAPI, salespersonsAPI, salesReceiptsAPI, paymentsReceivedAPI, creditNotesAPI, projectsAPI, settingsAPI, plansAPI, reportingTagsAPI } from "../../services/api";
+import { recurringInvoicesAPI, quotesAPI, invoicesAPI, retainerInvoicesAPI, customersAPI, taxesAPI, itemsAPI, salespersonsAPI, salesReceiptsAPI, paymentsReceivedAPI, creditNotesAPI, projectsAPI, settingsAPI, plansAPI, reportingTagsAPI } from "../../services/api";
 
 
 const STORAGE_KEY = "taban_books_customers";
@@ -660,6 +660,96 @@ export const deleteInvoice = async (invoiceId: string): Promise<Invoice[]> => {
     throw new Error("Failed to delete invoice");
   } catch (error) {
     console.error("Error deleting invoice from API:", error);
+    throw error;
+  }
+};
+
+// ============================================================================
+// RETAINER INVOICES 
+// ============================================================================
+
+export interface RetainerInvoice extends Omit<Invoice, 'invoiceNumber'> {
+  retainerInvoiceNumber: string;
+  retainerType?: 'advance' | 'deposit' | 'prepayment';
+}
+
+export const getRetainerInvoices = async (params: any = {}): Promise<RetainerInvoice[]> => {
+  try {
+    const [response, customers] = await Promise.all([
+      retainerInvoicesAPI.getAll(params),
+      getCustomers({ limit: CUSTOMER_LOOKUP_LIMIT }).catch(() => []),
+    ]);
+    if (response && response.success) {
+      const rows = response.data || [];
+      const customerNameLookup = buildCustomerNameLookup(customers);
+      return rows.map((retainer: any) => ({
+        ...retainer,
+        id: retainer._id || retainer.id,
+        customerName: resolveInvoiceCustomerName(retainer, customerNameLookup),
+        status: retainer.status || "draft"
+      }));
+    }
+    return [];
+  } catch (error) {
+    console.error("Error fetching retainer invoices from API:", error);
+    return [];
+  }
+};
+
+export const getRetainerInvoiceById = async (id: string): Promise<RetainerInvoice | null> => {
+  try {
+    const [response, customers] = await Promise.all([
+      retainerInvoicesAPI.getById(id),
+      getCustomers({ limit: CUSTOMER_LOOKUP_LIMIT }).catch(() => []),
+    ]);
+    if (response && response.success && response.data) {
+      const customerNameLookup = buildCustomerNameLookup(customers);
+      const retainer = response.data;
+      return {
+        ...retainer,
+        id: retainer._id || retainer.id,
+        customerName: resolveInvoiceCustomerName(retainer, customerNameLookup),
+        status: retainer.status || "draft"
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error("Error getting retainer invoice by ID from API:", error);
+    return null;
+  }
+};
+
+export const saveRetainerInvoice = async (retainerData: any): Promise<any> => {
+  try {
+    const response = await retainerInvoicesAPI.create(retainerData);
+    if (response && response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response?.message || "Failed to create retainer invoice");
+  } catch (error) {
+    console.error("Error saving retainer invoice to API:", error);
+    throw error;
+  }
+};
+
+export const updateRetainerInvoice = async (id: string, retainerData: any): Promise<any> => {
+  try {
+    const response = await retainerInvoicesAPI.update(id, retainerData);
+    if (response && response.success && response.data) {
+      return response.data;
+    }
+    throw new Error("Failed to update retainer invoice");
+  } catch (error) {
+    console.error("Error updating retainer invoice in API:", error);
+    throw error;
+  }
+};
+
+export const deleteRetainerInvoice = async (id: string): Promise<void> => {
+  try {
+    await retainerInvoicesAPI.delete(id);
+  } catch (error) {
+    console.error("Error deleting retainer invoice from API:", error);
     throw error;
   }
 };
@@ -1811,6 +1901,8 @@ export interface Quote {
   referenceNumber?: string;
   attachedFiles?: AttachedFile[];
   comments?: QuoteComment[];
+  activityLogs?: any[];
+  createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
 }

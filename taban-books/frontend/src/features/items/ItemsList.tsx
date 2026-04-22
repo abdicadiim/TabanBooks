@@ -32,6 +32,7 @@ import {
 import ExportItemsModal from "./components/modals/ExportItemsModal";
 import ExportCurrentViewModal from "./components/modals/ExportCurrentViewModal";
 import AdvancedSearchModal from "../../components/modals/AdvancedSearchModal";
+import PaginationFooter from "../../components/table/PaginationFooter";
 import { accountantAPI, taxesAPI, vendorsAPI } from "../../services/api";
 import { useCurrency } from "../../hooks/useCurrency";
 import { useOrganizationBranding } from "../../hooks/useOrganizationBranding";
@@ -88,6 +89,7 @@ const ItemsList = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("All");
   const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(6);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showSearch, setShowSearch] = useState(false);
   const [newTransactionOpen, setNewTransactionOpen] = useState(false);
@@ -401,7 +403,6 @@ const ItemsList = ({
     return result;
   }, [items, searchTerm, filterType, sortKey, sortOrder]);
 
-  const itemsPerPage = 6;
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / itemsPerPage));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const startIndex = (safeCurrentPage - 1) * itemsPerPage;
@@ -967,40 +968,18 @@ const ItemsList = ({
           </tbody>
         </table>
       </div>
-      <div className="flex items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 text-sm text-slate-600">
-        <div>
-          Showing {filteredItems.length === 0 ? 0 : startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredItems.length)} of {filteredItems.length} items
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-            disabled={safeCurrentPage === 1}
-            className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
-              safeCurrentPage === 1
-                ? "cursor-not-allowed border-gray-200 text-gray-300"
-                : "border-gray-300 text-slate-700 hover:bg-gray-50"
-            }`}
-          >
-            Previous
-          </button>
-          <span className="min-w-[90px] text-center text-sm text-slate-700">
-            Page {safeCurrentPage} of {totalPages}
-          </span>
-          <button
-            type="button"
-            onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-            disabled={safeCurrentPage >= totalPages}
-            className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
-              safeCurrentPage >= totalPages
-                ? "cursor-not-allowed border-gray-200 text-gray-300"
-                : "border-gray-300 text-slate-700 hover:bg-gray-50"
-            }`}
-          >
-            Next
-          </button>
-        </div>
-      </div>
+      <PaginationFooter
+        totalItems={filteredItems.length}
+        currentPage={safeCurrentPage}
+        pageSize={itemsPerPage}
+        pageSizeOptions={[6, 12, 24, 48]}
+        itemLabel="items"
+        onPageChange={setCurrentPage}
+        onPageSizeChange={(nextPageSize) => {
+          setItemsPerPage(nextPageSize);
+          setCurrentPage(1);
+        }}
+      />
       {isCustomizeModalOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl w-[500px] max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Boxes,
@@ -17,6 +18,7 @@ import {
   Menu,
 } from "lucide-react";
 import { useAppBootstrap } from "../../context/AppBootstrapContext";
+import { preloadCustomersIndexData } from "../../features/sales/Customers/customerRouteLoaders";
 
 const normalizeHex = (input: string | undefined, fallback: string) => {
   const value = String(input || "").trim();
@@ -137,6 +139,7 @@ const SIDEBAR_COLLAPSED_STORAGE_KEY = "taban-books-sidebar-collapsed";
 
 export default function Sidebar() {
   const location = useLocation();
+  const queryClient = useQueryClient();
   const { currentUser, organization, branding } = useAppBootstrap();
   const [openSection, setOpenSection] = useState<string | null>(null);
   const [flyoutSection, setFlyoutSection] = useState<{
@@ -222,6 +225,10 @@ export default function Sidebar() {
       window.clearTimeout(flyoutCloseTimer.current);
       flyoutCloseTimer.current = null;
     }
+  };
+
+  const handleCustomersPrefetch = () => {
+    void preloadCustomersIndexData(queryClient);
   };
 
   const renderItem = (item: MenuItem) => {
@@ -316,10 +323,13 @@ export default function Sidebar() {
           <div className={`ml-4 space-y-1 border-l pl-4 ${isLightAppearance ? "border-slate-200" : "border-white/10"}`}>
             {item.children.map((child) => {
               const isActiveChild = isRouteMatch(location.pathname, child.to);
+              const shouldPrefetchCustomers = child.to === "/sales/customers";
               return (
                 <NavLink
                   key={child.to}
                   to={child.to}
+                  onMouseEnter={shouldPrefetchCustomers ? handleCustomersPrefetch : undefined}
+                  onFocus={shouldPrefetchCustomers ? handleCustomersPrefetch : undefined}
                   className={[
                     "flex items-center rounded-[12px] px-3 py-2 text-[13px] font-medium transition-all",
                     isActiveChild ? childActiveClass : childBaseClass,
@@ -360,10 +370,13 @@ export default function Sidebar() {
         <div className="space-y-1 p-2.5">
           {item.children.map((child) => {
             const isActiveChild = isRouteMatch(location.pathname, child.to);
+            const shouldPrefetchCustomers = child.to === "/sales/customers";
             return (
               <NavLink
                 key={child.to}
                 to={child.to}
+                onMouseEnter={shouldPrefetchCustomers ? handleCustomersPrefetch : undefined}
+                onFocus={shouldPrefetchCustomers ? handleCustomersPrefetch : undefined}
                 className={[
                   "flex items-center rounded-[12px] px-3 py-2 text-[13px] font-semibold transition-all",
                   isActiveChild ? childActiveClass : childBaseClass,

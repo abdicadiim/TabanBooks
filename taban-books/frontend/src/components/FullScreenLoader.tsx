@@ -24,14 +24,14 @@ export default function FullScreenLoader({
         <div className="relative mb-12">
           <img
             src={bookkeepingLogo}
-            className="w-32 h-32 md:w-48 md:h-48 relative object-contain drop-shadow-2xl animate-bounce"
+            className="w-32 h-32 md:w-48 md:h-48 relative object-contain animate-bounce"
             alt="Loading"
           />
         </div>
 
         <div
           className={[
-            "w-64 h-1.5 rounded-full overflow-hidden relative backdrop-blur-sm border",
+            "w-64 h-1.5 rounded-full overflow-hidden relative border",
             isDark ? "bg-white/10 border-white/5" : "bg-black/5 border-black/5",
           ].join(" ")}
         >

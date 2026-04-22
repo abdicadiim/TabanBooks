@@ -40,6 +40,7 @@ type DebitNoteItem = {
   tax: string;
   amount: number;
 };
+
 type ReportingTagDef = {
   key: string;
   label: string;
@@ -47,11 +48,47 @@ type ReportingTagDef = {
   isMandatory?: boolean;
   appliesTo?: string[];
 };
+
 type AccountGroup = {
   title: string;
   items: string[];
 };
+
 type CustomerOption = Record<string, any>;
+
+type Attachment = {
+  id: string;
+  name: string;
+  size: number;
+  file: File;
+};
+
+interface DebitNoteFormData {
+  customerName: string;
+  reason: string;
+  location: string;
+  debitNoteNumber: string;
+  orderNumber: string;
+  debitNoteDate: string;
+  term: string;
+  dueDate: string;
+  earlyPaymentDays: string;
+  earlyPaymentPercent: number;
+  salesperson: string;
+  customField: string;
+  subject: string;
+  taxMode: string;
+  priceList: string;
+  customerNotes: string;
+  termsAndConditions: string;
+  attachedFiles: Attachment[];
+  displayAttachmentsInPortalEmails: boolean;
+  discount: number;
+  discountType: string;
+  shippingCharges: number;
+  adjustment: number;
+  currency: string;
+}
 
 const DISCOUNT_ACCOUNT_GROUPS: AccountGroup[] = [
   {
@@ -332,7 +369,7 @@ export default function NewDebitNote() {
   const invoiceId = new URLSearchParams(location.search).get("invoiceId") || "";
   const clonedDataFromState = location.state?.clonedData || null;
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<DebitNoteFormData>({
     customerName: "",
     reason: "",
     location: "Head Office",

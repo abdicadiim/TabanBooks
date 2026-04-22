@@ -1,6 +1,7 @@
 // frontend/src/components/Sidebar.jsx
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Home,
   Package,
@@ -190,7 +191,16 @@ const isRouteMatch = (pathname: string, route: string): boolean => {
   return pathname.startsWith(`${route}/`);
 };
 
-function SidebarSection({ item, isCollapsed, appearance, accentColor, openSection, setOpenSection, onLinkClick }: any) {
+function SidebarSection({
+  item,
+  isCollapsed,
+  appearance,
+  accentColor,
+  openSection,
+  setOpenSection,
+  onLinkClick,
+  onChildHover,
+}: any) {
   const Icon = item.icon;
   const hasChildren = item.children?.length;
   const location = useLocation();
@@ -243,6 +253,8 @@ function SidebarSection({ item, isCollapsed, appearance, accentColor, openSectio
                     key={child.path}
                     to={child.path}
                     onClick={onLinkClick}
+                    onMouseEnter={() => onChildHover?.(child.path)}
+                    onFocus={() => onChildHover?.(child.path)}
                     className={({ isActive }) => `
                       block py-2 px-3 mb-1 rounded-[10px] no-underline text-[13px]
                       transition-all duration-300
@@ -297,6 +309,8 @@ export default function Sidebar() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [openSection, setOpenSection] = useState<string | null>(null);
   const [organizationLogoBroken, setOrganizationLogoBroken] = useState(false);
+  const queryClient = useQueryClient();
+  const hasPreloadedQuotesRef = useRef(false);
   const {
     currentUser,
     organization,
@@ -331,6 +345,18 @@ export default function Sidebar() {
   const location = useLocation();
   const collapsedBeforeReportsRef = useRef(false);
   const inReportsRef = useRef(false);
+
+  const preloadQuotesList = () => {
+    if (hasPreloadedQuotesRef.current) return;
+    hasPreloadedQuotesRef.current = true;
+
+    void import("../features/sales/Quotes/quoteQueries").then(({ fetchQuotesList, quoteQueryKeys }) => {
+      void queryClient.prefetchQuery({
+        queryKey: quoteQueryKeys.list(),
+        queryFn: fetchQuotesList,
+      });
+    });
+  };
 
   useEffect(() => {
     setOrganizationLogoBroken(false);
@@ -555,6 +581,11 @@ export default function Sidebar() {
                 openSection={openSection}
                 setOpenSection={setOpenSection}
                 onLinkClick={() => setIsMobileOpen(false)}
+                onChildHover={(path: string) => {
+                  if (path === "/sales/quotes") {
+                    preloadQuotesList();
+                  }
+                }}
               />
             ))}
           </div>
@@ -637,6 +668,11 @@ export default function Sidebar() {
                 openSection={openSection}
                 setOpenSection={setOpenSection}
                 onLinkClick={() => setIsMobileOpen(false)}
+                onChildHover={(path: string) => {
+                  if (path === "/sales/quotes") {
+                    preloadQuotesList();
+                  }
+                }}
               />
             ))}
           </div>

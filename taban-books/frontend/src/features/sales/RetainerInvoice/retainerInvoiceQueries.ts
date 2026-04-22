@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { getInvoicesPaginated, Invoice } from "../salesModel";
+import { getRetainerInvoices, RetainerInvoice } from "../salesModel";
 
 const RETAINER_LIST_STALE_TIME_MS = 30 * 1000;
 
@@ -28,7 +28,8 @@ const isRetainerInvoiceRecord = (invoice: Invoice | any) => {
   );
 };
 
-const filterRetainers = (rows: Invoice[] = []) => rows.filter((invoice) => isRetainerInvoiceRecord(invoice));
+// No longer needed as we fetch from dedicated API
+// const filterRetainers = (rows: Invoice[] = []) => rows.filter((invoice) => isRetainerInvoiceRecord(invoice));
 
 export const retainerInvoiceQueryKeys = {
   all: () => ["retainer-invoices"] as const,
@@ -36,14 +37,12 @@ export const retainerInvoiceQueryKeys = {
   list: () => ["retainer-invoices", "list", { limit: 1000, sort: "createdAt", order: "desc" }] as const,
 };
 
-export const fetchRetainerInvoices = async (): Promise<Invoice[]> => {
-  const response = await getInvoicesPaginated({ limit: 1000, sort: "createdAt", order: "desc" });
-  const invoices = Array.isArray(response?.data) ? response.data : [];
-  return filterRetainers(invoices);
+export const fetchRetainerInvoices = async (): Promise<RetainerInvoice[]> => {
+  return await getRetainerInvoices({ limit: 1000, sort: "createdAt", order: "desc" });
 };
 
 export const useRetainerListQuery = (options?: { enabled?: boolean }) =>
-  useQuery<Invoice[]>({
+  useQuery<RetainerInvoice[]>({
     queryKey: retainerInvoiceQueryKeys.list(),
     queryFn: fetchRetainerInvoices,
     enabled: options?.enabled ?? true,

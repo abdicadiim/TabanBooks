@@ -23,6 +23,7 @@ type CustomerDetailStatementTabProps = {
   onSelectStatementFilter: (value: string) => void;
   onDownloadPdf: () => void | Promise<void>;
   onSendEmail: () => void;
+  onPrefetchSendEmail?: () => void;
   getStatementDateRange: () => { startDate: Date; endDate: Date };
 };
 
@@ -63,6 +64,7 @@ export default function CustomerDetailStatementTab({
   onSelectStatementFilter,
   onDownloadPdf,
   onSendEmail,
+  onPrefetchSendEmail,
   getStatementDateRange,
 }: CustomerDetailStatementTabProps) {
   const periodOptions = ["this-month", "last-month", "this-quarter", "this-year"];
@@ -158,6 +160,8 @@ export default function CustomerDetailStatementTab({
             type="button"
             className="flex items-center gap-2 px-4 py-2 bg-[#156372] text-white rounded-md text-sm font-medium cursor-pointer hover:bg-[#0D4A52] transition-colors shadow-sm"
             onClick={onSendEmail}
+            onMouseEnter={onPrefetchSendEmail}
+            onFocus={onPrefetchSendEmail}
           >
             <Mail size={16} />
             Send Email

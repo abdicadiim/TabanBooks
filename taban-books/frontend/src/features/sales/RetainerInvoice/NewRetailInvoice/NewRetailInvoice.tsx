@@ -3,8 +3,8 @@ import { createPortal } from "react-dom";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { Search, X, Plus, ChevronDown, ChevronUp, Settings, Info, PlusCircle, FileText, MoreVertical } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { getCustomers, getInvoiceById, saveInvoice, updateInvoice, buildTaxOptionGroups, taxLabel, isTaxActive, normalizeCreatedTaxPayload, readTaxesLocal, createTaxLocal } from "../../salesModel";
-import { customersAPI, invoicesAPI, projectsAPI, reportingTagsAPI, taxesAPI, transactionNumberSeriesAPI } from "../../../../services/api";
+import { getCustomers, getRetainerInvoiceById, saveRetainerInvoice, updateRetainerInvoice, buildTaxOptionGroups, taxLabel, isTaxActive, normalizeCreatedTaxPayload, readTaxesLocal, createTaxLocal } from "../../salesModel";
+import { customersAPI, retainerInvoicesAPI, projectsAPI, reportingTagsAPI, taxesAPI, transactionNumberSeriesAPI } from "../../../../services/api";
 import { useOrganizationBranding } from "../../../../hooks/useOrganizationBranding";
 import NewTaxModal from "../../../../components/modals/NewTaxModal";
 
@@ -201,7 +201,7 @@ export default function NewRetailInvoice() {
           taxesAPI.getForTransactions().catch(() => null),
           projectsAPI.getAll({ limit: 1000 }).catch(() => ({ data: [] })),
           reportingTagsAPI.getAll().catch(() => ({ data: [] })),
-          isEditMode && id ? getInvoiceById(id).catch(() => null) : Promise.resolve(null),
+          isEditMode && id ? getRetainerInvoiceById(id).catch(() => null) : Promise.resolve(null),
         ]);
 
         setCustomers(Array.isArray(custs) ? custs : []);
@@ -951,7 +951,7 @@ export default function NewRetailInvoice() {
         : buildRetainerNumber(retainerPrefix, normalizedInvoiceNumber);
 
     const payload = {
-      invoiceNumber: finalInvoiceNumber,
+      retainerInvoiceNumber: finalInvoiceNumber,
       customer: customerId,
       customerName: resolvedCustomerName,
       date: invoiceDate,
@@ -978,16 +978,16 @@ export default function NewRetailInvoice() {
 
       let savedInvoice: any = null;
       if (isEditMode && id) {
-        savedInvoice = await updateInvoice(id, payload);
+        savedInvoice = await updateRetainerInvoice(id, payload);
       } else {
-        savedInvoice = await saveInvoice(payload);
+        savedInvoice = await saveRetainerInvoice(payload);
       }
 
       const resolvedInvoiceId = String(
         (savedInvoice as any)?.id || (savedInvoice as any)?._id || id || ""
       ).trim();
       try {
-        const key = "taban_books_invoices";
+        const key = "taban_books_retainer_invoices";
         const raw = localStorage.getItem(key);
         const parsed = raw ? JSON.parse(raw) : [];
         const list = Array.isArray(parsed) ? parsed : [];
@@ -997,7 +997,7 @@ export default function NewRetailInvoice() {
           ...savedInvoice,
           id: resolvedInvoiceId || (savedInvoice as any)?.id || (savedInvoice as any)?._id,
           _id: resolvedInvoiceId || (savedInvoice as any)?.id || (savedInvoice as any)?._id,
-          invoiceNumber: finalInvoiceNumber,
+          retainerInvoiceNumber: finalInvoiceNumber,
           updatedAt: new Date().toISOString(),
         };
         if (idx >= 0) {

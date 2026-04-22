@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
@@ -34,6 +34,7 @@ interface NewItemFormProps {
     onCreate: (data: any, selectedTagIds: string[]) => Promise<void>;
     baseCurrency?: any;
     initialData?: any;
+    formTitle?: string;
 }
 
 const REQUIRED_RED = "#ff0000";
@@ -136,7 +137,7 @@ const Textarea = ({ className = "", error, ...props }: TextareaProps) => {
     );
 };
 
-export default function NewItemForm({ onCancel, onCreate, baseCurrency, initialData }: NewItemFormProps) {
+export default function NewItemForm({ onCancel, onCreate, baseCurrency, initialData, formTitle }: NewItemFormProps) {
     const navigate = useNavigate();
     const { accentColor } = useOrganizationBranding();
     const uiAccent = accentColor || "#3b82f6";
@@ -272,7 +273,7 @@ export default function NewItemForm({ onCancel, onCreate, baseCurrency, initialD
             </style>
             {/* Header */}
             <div className="flex-none flex items-center justify-between px-6 py-4 bg-white border-b border-slate-200">
-                <h2 className="text-[18px] font-bold text-slate-800">New Item</h2>
+                <h2 className="text-[18px] font-bold text-slate-800">{formTitle || "New Item"}</h2>
                 <button type="button" onClick={onCancel} className="p-1 rounded-full hover:bg-slate-50 transition-colors">
                     <X size={20} className="text-slate-400" />
                 </button>

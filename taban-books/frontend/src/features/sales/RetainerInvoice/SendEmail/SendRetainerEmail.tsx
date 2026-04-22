@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Bold, Italic, Underline, Image as ImageIcon, Link as LinkIcon, Paperclip, HelpCircle, X } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { getCustomers, getInvoiceById, updateInvoice } from "../../salesModel";
-import { invoicesAPI, senderEmailsAPI } from "../../../../services/api";
+import { getCustomers, getRetainerInvoiceById, updateRetainerInvoice } from "../../salesModel";
+import { retainerInvoicesAPI, senderEmailsAPI } from "../../../../services/api";
 import { resolveVerifiedPrimarySender } from "../../../../utils/emailSenderDisplay";
 
 const formatDate = (value: any) => {
@@ -57,7 +57,7 @@ export default function SendRetainerEmail() {
 
       try {
         setLoading(true);
-        const data = await getInvoiceById(id);
+        const data = await getRetainerInvoiceById(id);
         if (cancelled) return;
         if (!data) {
           navigate("/sales/retainer-invoices");
@@ -206,7 +206,7 @@ Amount : ${currency}${amount.toFixed(2)}
     try {
       setSending(true);
       const message = bodyEditorRef.current?.innerHTML || emailData.body || "";
-      await invoicesAPI.sendEmail(id, {
+      await retainerInvoicesAPI.sendEmail(id, {
         from: `"${emailData.fromName}" <${emailData.fromEmail}>`,
         to: emailData.to.trim(),
         cc: splitEmailList(emailData.cc),
@@ -223,7 +223,7 @@ Amount : ${currency}${amount.toFixed(2)}
       };
       const existingComments = Array.isArray(invoice?.comments) ? invoice.comments : [];
       const currentStatus = String(invoice?.status || "").toLowerCase();
-      await updateInvoice(id, {
+      await updateRetainerInvoice(id, {
         comments: [...existingComments, sentComment],
         emailSent: true as any,
         emailSentAt: new Date().toISOString() as any,
