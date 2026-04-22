@@ -1264,14 +1264,14 @@ export default function NewRecurringBill() {
       </div>
 
       <div className="flex-1 bg-white">
-        <div className="px-6 py-6 w-full xl:w-[60%]">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+        <div className="px-6 py-6 w-full max-w-5xl">
+            <div className="flex flex-col gap-5">
               {/* Row 1 */}
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-red-600 flex items-center gap-1">
+              <div className="flex items-center">
+                <label className="w-[200px] text-sm font-medium text-red-600 flex items-center gap-1 shrink-0">
                   Vendor Name<span className="text-red-500">*</span>
                 </label>
-                <div className="relative flex items-center gap-0" ref={vendorRef}>
+                <div className="relative flex items-center gap-0 w-[400px]" ref={vendorRef}>
                   <div className="relative flex-1">
                     <input
                       type="text"
@@ -1359,24 +1359,12 @@ export default function NewRecurringBill() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-red-600 flex items-center gap-1">
-                  Profile Name<span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  className="px-3 py-2 text-sm border border-gray-300 rounded-md w-full box-border h-10 outline-none focus:border-teal-600"
-                  value={formData.profileName}
-                  onChange={(e) => setFormData({ ...formData, profileName: e.target.value })}
-                />
-              </div>
-
               {/* Row 2 */}
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-1">
+              <div className="flex items-center">
+                <label className="w-[200px] text-sm font-medium text-gray-700 flex items-center gap-1 shrink-0">
                   Location
                 </label>
-                <div className="relative">
+                <div className="relative w-[400px]">
                   <select
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm outline-none bg-white cursor-pointer focus:border-teal-600 hover:border-teal-600 appearance-none h-10"
                     value={warehouseLocation}
@@ -1392,11 +1380,25 @@ export default function NewRecurringBill() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-red-600 flex items-center gap-1">
+              <div className="w-full h-px bg-gray-100 my-2"></div>
+
+              <div className="flex items-center">
+                <label className="w-[200px] text-sm font-medium text-red-600 flex items-center gap-1 shrink-0">
+                  Profile Name<span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-md w-[400px] box-border h-10 outline-none focus:border-teal-600"
+                  value={formData.profileName}
+                  onChange={(e) => setFormData({ ...formData, profileName: e.target.value })}
+                />
+              </div>
+
+              <div className="flex items-center">
+                <label className="w-[200px] text-sm font-medium text-red-600 flex items-center gap-1 shrink-0">
                   Repeat Every<span className="text-red-500">*</span>
                 </label>
-                <div className="flex gap-2 items-start">
+                <div className="flex gap-2 items-start w-[400px]">
                   <div className="relative flex-1" ref={repeatEveryRef}>
                     <button
                       className="w-full h-10 px-3 py-2 text-sm border border-gray-300 rounded-md bg-white cursor-pointer flex items-center justify-between outline-none hover:border-teal-600"
@@ -1448,23 +1450,24 @@ export default function NewRecurringBill() {
               </div>
 
               {/* Row 3 */}
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-1">Start On</label>
-                <DatePicker
-                  value={formatDateForDisplay(formData.startOn)}
-                  onChange={(dateString) => {
-                    const parsed = parseDateFromDisplay(dateString);
-                    if (parsed) setFormData({ ...formData, startOn: parsed });
-                  }}
-                  placeholder="dd/MM/yyyy"
-                  minDate={new Date(new Date().setHours(0, 0, 0, 0))} // Start date cannot be in the past
-                />
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-1">Ends On</label>
-                <div className="flex gap-3 items-center h-10">
-                  <div className="flex-1 h-full">
+              <div className="flex items-center">
+                <label className="w-[200px] text-sm font-medium text-gray-700 flex items-center gap-1 shrink-0">
+                  Start On
+                </label>
+                <div className="flex items-center gap-4 flex-1">
+                  <div className="w-[200px]">
+                    <DatePicker
+                      value={formatDateForDisplay(formData.startOn)}
+                      onChange={(dateString) => {
+                        const parsed = parseDateFromDisplay(dateString);
+                        if (parsed) setFormData({ ...formData, startOn: parsed });
+                      }}
+                      placeholder="dd/MM/yyyy"
+                      minDate={new Date(new Date().setHours(0, 0, 0, 0))} // Start date cannot be in the past
+                    />
+                  </div>
+                  <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Ends On</label>
+                  <div className="w-[160px]">
                     <DatePicker
                       value={formData.neverExpires ? "" : formatDateForDisplay(formData.endsOn)}
                       onChange={(dateString) => {
@@ -1489,8 +1492,8 @@ export default function NewRecurringBill() {
               </div>
 
               {/* Row 4 */}
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-1">
+              <div className="flex items-center">
+                <div className="w-[200px] flex items-center gap-1 shrink-0">
                   <label className="text-sm font-medium text-gray-700">Accounts Payable</label>
                   <div className="relative group">
                     <Info size={14} className="text-gray-400 cursor-help" />
@@ -1499,7 +1502,7 @@ export default function NewRecurringBill() {
                     </div>
                   </div>
                 </div>
-                <div className="relative">
+                <div className="relative w-[400px]">
                   <select
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm outline-none bg-white cursor-pointer focus:border-teal-600 hover:border-teal-600 appearance-none h-10"
                     value={formData.accountsPayable}
@@ -1519,28 +1522,28 @@ export default function NewRecurringBill() {
                   </div>
                 </div>
               </div>
-              <div className="hidden md:block"></div>
 
               {/* Row 5 */}
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-1">Payment Terms</label>
-                <PaymentTermsDropdown
-                  value={formData.paymentTerms}
-                  onChange={(value) => setFormData({ ...formData, paymentTerms: value })}
-                  onConfigureTerms={() => setShowConfigurePaymentTermsModal(true)}
-                  customTerms={paymentTermsList.map(term => ({
-                    id: term.name,
-                    label: term.name,
-                    value: term.name,
-                    days: term.days,
-                    isDefault: term.isDefault
-                  }))}
-                />
+              <div className="flex items-center">
+                <label className="w-[200px] text-sm font-medium text-gray-700 flex items-center gap-1 shrink-0">
+                  Payment Terms
+                </label>
+                <div className="w-[400px]">
+                  <PaymentTermsDropdown
+                    value={formData.paymentTerms}
+                    onChange={(value) => setFormData({ ...formData, paymentTerms: value })}
+                    onConfigureTerms={() => setShowConfigurePaymentTermsModal(true)}
+                    customTerms={paymentTermsList.map(term => ({
+                      id: term.name,
+                      label: term.name,
+                      value: term.name,
+                      days: term.days,
+                      isDefault: term.isDefault
+                    }))}
+                  />
+                </div>
               </div>
-              <div className="hidden md:block"></div>
             </div>
-
-
           </div>
           {/* Item Table */}
           <div className="mb-8">
