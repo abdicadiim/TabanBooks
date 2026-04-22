@@ -594,6 +594,7 @@ export const retainerInvoicesAPI = {
   create: (data: any) => apiRequest('/retainer-invoices', { method: 'POST', body: data }),
   update: (id: any, data: any) => apiRequest(`/retainer-invoices/${id}`, { method: 'PUT', body: data }),
   delete: (id: any) => apiRequest(`/retainer-invoices/${id}`, { method: 'DELETE' }),
+  sendEmail: (id: any, data: any) => apiRequest(`/retainer-invoices/${id}/email`, { method: 'POST', body: data }),
 };
 
 // ============================================================================

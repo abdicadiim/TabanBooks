@@ -12,7 +12,7 @@ import {
 import { getCustomers, saveQuote, saveSalesperson, getQuotes, getQuoteById, updateQuote, getProjects, getSalespersonsFromAPI, updateSalesperson, getItemsFromAPI, getTaxes, Customer, Tax, Salesperson, Quote, ContactPerson, Project, buildTaxOptionGroups, taxLabel, normalizeCreatedTaxPayload, isTaxActive, readTaxesLocal, writeTaxesLocal } from "../../salesModel";
 
 import { getAllDocuments } from "../../../../utils/documentStorage";
-import { customersAPI, projectsAPI, salespersonsAPI, quotesAPI, itemsAPI, currenciesAPI, contactPersonsAPI, vendorsAPI, settingsAPI, chartOfAccountsAPI, documentsAPI, reportingTagsAPI, priceListsAPI, plansAPI, transactionNumberSeriesAPI } from "../../../../services/api";
+import { customersAPI, projectsAPI, salespersonsAPI, quotesAPI, itemsAPI, currenciesAPI, contactPersonsAPI, vendorsAPI, settingsAPI, chartOfAccountsAPI, documentsAPI, reportingTagsAPI, priceListsAPI, transactionNumberSeriesAPI } from "../../../../services/api";
 import { useAccountSelect } from "../../../../hooks/useAccountSelect";
 import { useCurrency } from "../../../../hooks/useCurrency";
 import { API_BASE_URL, getToken } from "../../../../services/auth";
@@ -44,6 +44,40 @@ type PriceListSwitchDialogState = {
   nextPriceListName: string;
   customerCurrency: string;
   nextPriceListCurrency: string;
+};
+
+const buildCatalogIdentityKey = (entry: any): string => {
+  const normalizedName = String(entry?.name || "").trim().toLowerCase();
+  const normalizedCode = String(entry?.code || entry?.sku || "").trim().toLowerCase();
+  const normalizedSourceId = String(entry?.sourceId || "").trim().toLowerCase();
+  return [normalizedName, normalizedCode, normalizedSourceId].filter(Boolean).join("|");
+};
+
+const dedupeCatalogEntries = (entries: any[]): any[] => {
+  const uniqueByIdentity = new Map<string, any>();
+
+  entries.forEach((entry: any) => {
+    const identityKey = buildCatalogIdentityKey(entry);
+    const entityKey = `${String(entry?.entityType || "item")}:${String(entry?.id || entry?.name || "")}`;
+    const key = identityKey || entityKey;
+    if (!key) return;
+
+    const existing = uniqueByIdentity.get(key);
+    if (!existing) {
+      uniqueByIdentity.set(key, entry);
+      return;
+    }
+
+    const shouldPreferCurrent =
+      String(existing?.entityType || "") !== "item" &&
+      String(entry?.entityType || "") === "item";
+
+    if (shouldPreferCurrent) {
+      uniqueByIdentity.set(key, entry);
+    }
+  });
+
+  return Array.from(uniqueByIdentity.values());
 };
 
 const NewQuote = () => {
@@ -1266,7 +1300,6 @@ const NewQuote = () => {
           projectsResult,
           salespersonsResult,
           itemsResult,
-            plansResult,
             txSeriesResult,
             quoteListResult,
             currenciesResult,
@@ -1278,7 +1311,6 @@ const NewQuote = () => {
             getProjects(),
             getSalespersonsFromAPI(),
             getItemsFromAPI(),
-            plansAPI.getAll({ limit: 5000 }),
             transactionNumberSeriesAPI.getAll({ limit: 10000 }),
             quotesAPI.getAll({ limit: 1 }),
             currenciesAPI.getAll(),
@@ -1431,63 +1463,7 @@ const NewQuote = () => {
           console.error("Error loading items:", itemsResult.reason);
         }
 
-        const normalizePlanRow = (plan: any, index: number) => {
-          const sourceId = String(plan?.id || plan?._id || plan?.planId || `plan-${index}`);
-          return {
-            ...plan,
-            entityType: "plan",
-            id: `plan:${sourceId}`,
-            sourceId,
-            name: String(plan?.planName || plan?.name || plan?.plan || "").trim(),
-            sku: String(plan?.planCode || plan?.code || plan?.sku || "").trim(),
-            code: String(plan?.planCode || plan?.code || plan?.sku || "").trim(),
-            rate: Number(plan?.price ?? plan?.rate ?? plan?.amount ?? 0) || 0,
-            stockOnHand: 0,
-            unit: String(plan?.billingFrequencyUnit || plan?.billingFrequency || plan?.unit || "plan"),
-            description: String(plan?.planDescription || plan?.description || ""),
-          };
-        };
-
-        let transformedPlans: any[] = [];
-        try {
-          if (plansResult.status === "fulfilled") {
-            const response: any = plansResult.value;
-            const rows =
-              response?.success && Array.isArray(response?.data)
-                ? response.data
-                : Array.isArray((response as any)?.data)
-                  ? (response as any).data
-                  : Array.isArray(response)
-                    ? response
-                    : [];
-            transformedPlans.push(
-              ...(Array.isArray(rows) ? rows.map(normalizePlanRow).filter((plan: any) => plan.name) : [])
-            );
-          } else {
-            console.error("Error loading plans from API:", plansResult.reason);
-          }
-        } catch (error) {
-          console.error("Error parsing plans from API response:", error);
-        }
-
-        transformedPlans = transformedPlans
-          .filter((plan: any) => {
-            const status = String(plan?.status || "").toLowerCase();
-            if (status === "inactive") return false;
-            if (plan?.isActive === false || plan?.is_active === false) return false;
-            return true;
-          })
-          .filter((plan: any) => String(plan?.name || "").trim().length > 0);
-
-        const combinedItemsAndPlans = [...transformedItems, ...transformedPlans];
-        const uniqueByEntityAndId = new Map<string, any>();
-        combinedItemsAndPlans.forEach((entry: any) => {
-          const key = `${String(entry.entityType || "item")}:${String(entry.id || entry.name || "")}`;
-          if (!key.endsWith(":")) {
-            uniqueByEntityAndId.set(key, entry);
-          }
-        });
-        setAvailableItems(Array.from(uniqueByEntityAndId.values()));
+        setAvailableItems(dedupeCatalogEntries(transformedItems));
 
         if (taxesResult.status === "fulfilled") {
           const fetchedTaxes = (taxesResult.value || []).map((t: any) => ({
@@ -3762,7 +3738,7 @@ const NewQuote = () => {
           description: item?.salesDescription || item?.description || "",
         }))
         .filter((item: any) => item.name);
-      setAvailableItems(transformedItems);
+      setAvailableItems(dedupeCatalogEntries(transformedItems));
       console.info("[NewQuote] ensureQuoteItemsLoaded", {
         loadedRows: Array.isArray(loadedItems) ? loadedItems.length : 0,
         activeRows: transformedItems.length,
@@ -4538,7 +4514,7 @@ const NewQuote = () => {
       }
 
       const normalizedItem = normalizeItemForQuote(savedItem);
-      setAvailableItems(prev => [...prev, normalizedItem]);
+      setAvailableItems(prev => dedupeCatalogEntries([...prev, normalizedItem]));
 
       if (newItemTargetRowId !== null && newItemTargetRowId !== undefined) {
         handleItemSelect(newItemTargetRowId, normalizedItem);
@@ -4584,7 +4560,7 @@ const NewQuote = () => {
     };
 
     // Add to availableItems for the current session
-    setAvailableItems(prev => [...prev, newItem]);
+    setAvailableItems(prev => dedupeCatalogEntries([...prev, newItem]));
 
     // Reset form and close modal
     setNewItemData({
@@ -5465,9 +5441,9 @@ const NewQuote = () => {
 
   return (
     <>
-      <div className="w-full h-full min-h-0 bg-white flex flex-col overflow-hidden">
+      <div className="w-full h-full min-h-0 flex flex-col bg-gray-50 overflow-hidden">
         {/* Header */}
-        <div className="sticky top-0 z-40 bg-white">
+        <div className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
           <div className="w-full px-8 h-16 flex justify-between items-center">
             <div className="h-full flex items-end gap-8">
               <button
@@ -5490,10 +5466,10 @@ const NewQuote = () => {
         </div>
 
         {/* Content */}
-        <div className="w-full flex-1 min-h-0 overflow-y-auto pb-28">
+        <div className="w-full flex-1 min-h-0 overflow-y-auto bg-gray-50 pb-28 custom-scrollbar">
           {/* Form Fields Section */}
-          <div className="bg-white overflow-visible">
-            <div className="px-6 py-6 border-b border-gray-200 bg-[#f5f6f8]">
+          <div className="bg-gray-50 overflow-visible">
+            <div className="px-6 py-6 border-b border-gray-200 bg-gray-50">
               {/* Customer Name */}
               <div className="flex items-start gap-4">
                 <label className="text-sm text-red-600 w-44 pt-2 flex-shrink-0">
@@ -5716,7 +5692,7 @@ const NewQuote = () => {
                   <input
                     type="text"
                     name="quoteNumber"
-                    className={`w-full px-3 py-2 border ${formErrors.quoteNumber ? 'border-red-500' : 'border-gray-300'} rounded text-sm text-gray-700 bg-gray-50 focus:outline-none`}
+                    className={`w-full px-3 py-2 border ${formErrors.quoteNumber ? 'border-red-500' : 'border-gray-300'} rounded text-sm text-gray-700 bg-white focus:outline-none focus:border-[#156372]`}
                     value={formData.quoteNumber}
                     readOnly
                   />
@@ -5739,7 +5715,7 @@ const NewQuote = () => {
                   <input
                     type="text"
                     name="referenceNumber"
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm text-gray-700 focus:outline-none focus:border-[#156372]"
+                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm text-gray-700 bg-white focus:outline-none focus:border-[#156372]"
                     value={formData.referenceNumber}
                     onChange={handleChange}
                   />
@@ -5755,7 +5731,7 @@ const NewQuote = () => {
                   <div className="w-48 relative" ref={quoteDatePickerRef}>
                     <input
                       type="text"
-                      className={`w-full px-3 py-2 border ${formErrors.quoteDate ? 'border-red-500' : 'border-gray-300'} rounded text-sm text-gray-700 focus:outline-none`}
+                      className={`w-full px-3 py-2 border ${formErrors.quoteDate ? 'border-red-500' : 'border-gray-300'} rounded text-sm text-gray-700 bg-white focus:outline-none focus:border-[#156372]`}
                       value={formatDateForDisplay(formData.quoteDate)}
                       readOnly
                       onClick={() => openExclusiveDropdown(isQuoteDatePickerOpen, setIsQuoteDatePickerOpen)}
@@ -6139,7 +6115,7 @@ const NewQuote = () => {
                                     const selectedItem = getSelectedItemForRow(item.id);
                                     const itemLabel = selectedItem ? selectedItem.name : (item.itemDetails || "");
                                     const skuLabel = selectedItem
-                                      ? `${selectedItem.entityType === "plan" ? "Code" : "SKU"}: ${selectedItem.code || selectedItem.sku || "-"}`
+                                      ? `SKU: ${selectedItem.code || selectedItem.sku || "-"}`
                                       : "";
                                     const rateLabel = selectedItem ? `Rate: ${formData.currency || ""}${Number(selectedItem.rate || 0).toFixed(2)}` : "";
 
@@ -6215,7 +6191,7 @@ const NewQuote = () => {
                                           getFilteredItems(item.id).map((availItem: any) => {
                                             const selected = String(selectedItemIds?.[item.id] || "") === String(availItem.id);
                                             const stockText = formatItemStock(availItem);
-                                            const skuText = `${availItem.entityType === "plan" ? "Code" : "SKU"}: ${availItem.code || availItem.sku || "-"}`;
+                                            const skuText = `SKU: ${availItem.code || availItem.sku || "-"}`;
                                             const rateText = `Rate: ${formData.currency || ""}${Number(availItem.rate || 0).toFixed(2)}`;
 
                                             return (

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import {
@@ -40,7 +40,7 @@ import {
   AlertTriangle,
   Loader2
 } from "lucide-react";
-import { saveInvoice, getInvoiceById, updateInvoice, updateQuote, getTaxes, saveTax, deleteTax, Customer, Tax, Salesperson, Invoice, ContactPerson, buildTaxOptionGroups, taxLabel, readTaxesLocal, TAXES_STORAGE_EVENT } from "../../salesModel";
+import { saveInvoice, getInvoiceById, updateInvoice, updateQuote, getTaxes, saveTax, deleteTax, Customer, Tax, Salesperson, Invoice, ContactPerson, buildTaxOptionGroups, taxLabel } from "../../salesModel";
 import { getAllDocuments } from "../../../../utils/documentStorage";
 import { customersAPI, salespersonsAPI, projectsAPI, invoicesAPI, expensesAPI, bankAccountsAPI, currenciesAPI, transactionNumberSeriesAPI, chartOfAccountsAPI, accountantAPI, reportingTagsAPI, priceListsAPI } from "../../../../services/api";
 import { useCurrency } from "../../../../hooks/useCurrency";
@@ -238,7 +238,6 @@ const [scanInput, setScanInput] = useState("");
 const documentSearch = "";
 const [bulkAddSearch, setBulkAddSearch] = useState("");
 const [bulkAccountSearch, setBulkAccountSearch] = useState("");
-const [shippingTaxSearch, setShippingTaxSearch] = useState("");
 const invoicePrefix = "INV-";
 const invoiceNextNumber = "000001";
 const invoiceNumberMode: "auto" | "manual" = "auto";
@@ -255,6 +254,7 @@ const [isPriceListDropdownOpen, setIsPriceListDropdownOpen] = useState(false);
 const [priceListSearch, setPriceListSearch] = useState("");
 const [catalogPriceListsRaw, setCatalogPriceListsRaw] = useState<any[]>([]);
 const [catalogPriceLists, setCatalogPriceLists] = useState<CatalogPriceListOption[]>([]);
+const invoiceTaxGroups = useMemo(() => buildTaxOptionGroups(taxOptions), [taxOptions]);
 const readStoredLocationOptions = (): string[] => {
   try {
     const raw = localStorage.getItem("taban_locations_cache");
@@ -312,7 +312,6 @@ const isRefreshingCustomersQuickAction = false;
 const isReloadingCustomerFrame = false;
 const [isSalespersonDropdownOpen, setIsSalespersonDropdownOpen] = useState(false);
 const [isScanModeOpen, setIsScanModeOpen] = useState(false);
-const [isShippingTaxDropdownOpen, setIsShippingTaxDropdownOpen] = useState(false);
 const isTaxExclusiveDropdownOpen = false;
 const [isAttachmentCountOpen, setIsAttachmentCountOpen] = useState(false);
 const [isAccountsReceivableDropdownOpen, setIsAccountsReceivableDropdownOpen] = useState(false);
@@ -331,8 +330,6 @@ const newContactPersonData: any = { firstName: "", lastName: "", email: "", mobi
 const contactPersonImage = null as any;
 const paymentData: any = { paymentMode: "Cash", depositTo: "Petty Cash", amountReceived: "", referenceNumber: "", taxDeducted: "no" };
 const [openItemDropdowns, setOpenItemDropdowns] = useState<Record<string, boolean>>({});
-const [openTaxDropdowns, setOpenTaxDropdowns] = useState<Record<string, boolean>>({});
-const [taxSearches, setTaxSearches] = useState<Record<string, string>>({});
   const [isNewTaxQuickModalOpen, setIsNewTaxQuickModalOpen] = useState(false);
   const [newTaxTargetItemId, setNewTaxTargetItemId] = useState<string | number | null>(null);
   const [itemSearches, setItemSearches] = useState<Record<string, string>>({});
@@ -348,6 +345,7 @@ const [taxSearches, setTaxSearches] = useState<Record<string, string>>({});
       sku: String(entry?.sku || entry?.code || entry?.itemCode || "").trim(),
       code: String(entry?.code || entry?.sku || entry?.itemCode || "").trim(),
       rate: Number(entry?.rate || entry?.price || entry?.sellingPrice || 0) || 0,
+      stockOnHand: Number(entry?.stockOnHand ?? entry?.stockQuantity ?? entry?.openingStock ?? 0) || 0,
       unit: String(entry?.unit || entry?.unitName || entry?.usageUnit || "pcs").trim(),
       description: String(entry?.description || entry?.salesDescription || "").trim(),
     }));
@@ -746,13 +744,11 @@ const dueDatePickerRef = useRef<HTMLDivElement | null>(null);
 const fileInputRef = useRef<HTMLInputElement | null>(null);
 const invoiceDatePickerRef = useRef<HTMLDivElement | null>(null);
 const itemDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
-const taxDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
 const paymentModeDropdownRef = useRef<HTMLDivElement | null>(null);
 const paymentTermsDropdownRef = useRef<HTMLDivElement | null>(null);
 const accountsReceivableDropdownRef = useRef<HTMLDivElement | null>(null);
 const priceListDropdownRef = useRef<HTMLDivElement | null>(null);
 const salespersonDropdownRef = useRef<HTMLDivElement | null>(null);
-const shippingTaxDropdownRef = useRef<HTMLDivElement | null>(null);
 const taxExclusiveDropdownRef = useRef<HTMLDivElement | null>(null);
 const bulkAccountDropdownRef = useRef<HTMLDivElement | null>(null);
 const bulkActionsRef = useRef<HTMLDivElement | null>(null);
@@ -1084,10 +1080,10 @@ const handleSaveAndSelectSalesperson = async () => {
 const handleSaveContactPerson = asyncNoop;
 const handleSaveNewItem = asyncNoop;
 const handleSaveNewTax = asyncNoop;
-const handleTaxSelect = (itemId: number | string, taxId: string) => {
+const handleTaxSelect = (itemId: number | string, taxValue: string) => {
   setFormData((prev) => {
     const updatedItems = prev.items.map((item) =>
-      String(item.id) === String(itemId) ? { ...item, tax: taxId } : item
+      String(item.id) === String(itemId) ? { ...item, tax: taxValue } : item
     );
     const nextState = { ...prev, items: updatedItems } as InvoiceFormState;
     const totals = calculateInvoiceTotalsFromData(nextState);
@@ -1098,8 +1094,6 @@ const handleTaxSelect = (itemId: number | string, taxId: string) => {
       total: totals.total,
     };
   });
-  setOpenTaxDropdowns((prev) => ({ ...prev, [String(itemId)]: false }));
-  setTaxSearches((prev) => ({ ...prev, [String(itemId)]: "" }));
 };
 const handleCancelNewSalesperson = () => {
   setNewSalespersonData({ name: "", email: "" });
@@ -1198,17 +1192,6 @@ const handleDateSelect = (date: Date, field: "invoiceDate" | "dueDate") => {
 const parseFileSize = (size: any) => `${Number(size || 0)} B`;
 const getTaxDisplayLabel = (tax: any) => `${tax?.name || "Tax"} [${Number(tax?.rate || 0)}%]`;
 const findTaxOptionById = (taxId: any) => taxOptions.find((tax: any) => String(tax.id || tax._id) === String(taxId));
-const getFilteredTaxes = (itemIdOrQuery: any = "") => {
-  const mappedSearch = taxSearches[String(itemIdOrQuery)];
-  const search = String(mappedSearch ?? itemIdOrQuery ?? "").toLowerCase().trim();
-  if (!search) return taxOptions;
-  return taxOptions.filter((tax: any) => {
-    const label = getTaxDisplayLabel(tax).toLowerCase();
-    const name = String(tax?.name || tax?.taxName || "").toLowerCase();
-    const rate = String(tax?.rate ?? "").toLowerCase();
-    return label.includes(search) || name.includes(search) || rate.includes(search);
-  });
-};
 const parseTaxRate = (value: any) => Number.parseFloat(String(value || 0).replace("%", "")) || 0;
 const isTaxInclusiveMode = (value: any) => String(value || "").toLowerCase().includes("inclusive");
 const getTaxBySelection = (selection: any) => {
@@ -1225,6 +1208,192 @@ const getTaxBySelection = (selection: any) => {
     return taxOptions.find((tax: any) => parseTaxRate((tax as any)?.rate) === rate);
   }
   return undefined;
+};
+type InvoiceTaxGroup = {
+  label: string;
+  options: Array<{ id: string; raw: any }>;
+};
+
+type InvoiceTaxDropdownProps = {
+  selectedId: string;
+  selectedLabel: string;
+  groups: InvoiceTaxGroup[];
+  onSelect: (taxId: string) => void;
+  placeholder?: string;
+  className?: string;
+};
+
+const InvoiceTaxDropdown = ({
+  selectedId,
+  selectedLabel,
+  groups,
+  onSelect,
+  placeholder = "Select a Tax",
+  className = "",
+}: InvoiceTaxDropdownProps) => {
+  const uiAccent = "#156372";
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
+
+  const updateMenuPosition = useCallback(() => {
+    const trigger = dropdownRef.current?.querySelector("button");
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    if (typeof window === "undefined") return;
+
+    const desiredWidth = Math.max(rect.width, 460);
+    const maxWidth = Math.max(280, window.innerWidth - 16);
+    const width = Math.min(desiredWidth, maxWidth);
+    const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
+
+    setMenuStyle({
+      position: "fixed",
+      left,
+      top: rect.bottom + 6,
+      width,
+      zIndex: 9999,
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(target) &&
+        menuRef.current &&
+        !menuRef.current.contains(target)
+      ) {
+        setIsOpen(false);
+        setSearch("");
+      }
+    };
+    if (isOpen) document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    updateMenuPosition();
+    const handleReposition = () => updateMenuPosition();
+    window.addEventListener("resize", handleReposition);
+    window.addEventListener("scroll", handleReposition, true);
+    return () => {
+      window.removeEventListener("resize", handleReposition);
+      window.removeEventListener("scroll", handleReposition, true);
+    };
+  }, [isOpen, updateMenuPosition]);
+
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredGroups = normalizedSearch
+    ? groups
+        .map((group) => ({
+          ...group,
+          options: group.options.filter((tax) => taxLabel(tax.raw ?? tax).toLowerCase().includes(normalizedSearch)),
+        }))
+        .filter((group) => group.options.length > 0)
+    : groups;
+
+  const hasTaxes = filteredGroups.some((group) => group.options.length > 0);
+  const displayLabel = selectedLabel || placeholder;
+
+  return (
+    <div className={`relative ${className}`} ref={dropdownRef}>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsOpen((prev) => {
+              const next = !prev;
+              if (next) {
+                requestAnimationFrame(() => updateMenuPosition());
+              }
+              return next;
+            });
+          }}
+          className="h-[34px] w-full rounded border border-[#156372] bg-white px-3 text-left text-[13px] text-slate-700 transition-colors hover:border-[#0f4f59] outline-none"
+          style={isOpen ? { borderColor: uiAccent } : { borderColor: uiAccent }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className={selectedId ? "text-slate-700 font-medium" : "text-slate-400"}>
+              {displayLabel}
+            </span>
+            <ChevronDown
+              size={14}
+              className={`transition-transform ${isOpen ? "rotate-180" : ""}`}
+              style={{ color: uiAccent }}
+            />
+          </div>
+        </button>
+      </div>
+      {isOpen && createPortal(
+        <div
+          ref={menuRef}
+          className="rounded-xl border border-[#d6dbe8] bg-white p-1 shadow-[0_16px_40px_rgba(15,23,42,0.14)] animate-in fade-in zoom-in-95 duration-100"
+          style={menuStyle}
+        >
+          <div className="p-2 pb-1">
+            <div
+              className="flex items-center gap-2 rounded-lg border bg-white px-3 py-1.5 transition-all focus-within:bg-white"
+              style={{ borderColor: uiAccent }}
+            >
+              <Search size={14} className="text-slate-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search..."
+                className="w-full border-none bg-transparent text-[13px] text-slate-700 outline-none placeholder:text-slate-400"
+                autoFocus
+              />
+            </div>
+          </div>
+          <div className="max-h-[260px] overflow-y-auto py-1 custom-scrollbar">
+            {!hasTaxes ? (
+              <div className="px-4 py-3 text-center text-[13px] text-slate-400">No taxes found</div>
+            ) : (
+              filteredGroups.map((group) => (
+                <React.Fragment key={group.label}>
+                  <div className="mt-2 px-4 py-1.5 text-black text-[10px] font-bold uppercase tracking-wider">
+                    {group.label}
+                  </div>
+                  <div className="mt-1 space-y-0.5 pb-1">
+                    {group.options.map((tax) => {
+                      const taxId = String(tax.id || "");
+                      const label = taxLabel(tax.raw ?? tax);
+                      const selected = String(selectedId || "") === taxId;
+                      return (
+                        <button
+                          key={taxId}
+                          type="button"
+                          onClick={() => {
+                            onSelect(taxId);
+                            setIsOpen(false);
+                            setSearch("");
+                          }}
+                          className={`flex w-full items-center justify-between rounded-lg px-4 py-2.5 text-[13px] transition-colors ${
+                            selected ? "font-bold text-black bg-[#156372]/5" : "text-slate-600 hover:bg-slate-50"
+                          }`}
+                        >
+                          <span>{label}</span>
+                          {selected && <Check size={14} className="text-[#156372]" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </React.Fragment>
+              ))
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
 };
 const getItemBaseAmount = (item: any) => Number(item?.quantity || 0) * Number(item?.rate || 0);
 const getTaxAmountFromBase = (base: number, rate: number, isInclusive: boolean) => {
@@ -1758,44 +1927,8 @@ useEffect(() => {
 }, [isEditMode, quoteDataFromState]);
 
 useEffect(() => {
-  const normalizeLocalTaxRow = (tax: any) => ({
-    id: tax?._id || tax?.id,
-    _id: tax?._id || tax?.id,
-    name: String(tax?.name || "").trim(),
-    rate: Number(tax?.rate || 0),
-    type: tax?.type || "both",
-    kind: tax?.kind,
-    taxType: tax?.taxType || tax?.tax_type,
-    description: tax?.description || "",
-    groupTaxes: Array.isArray(tax?.groupTaxes)
-      ? tax.groupTaxes.map((x: any) => String(x))
-      : Array.isArray(tax?.group_taxes)
-        ? tax.group_taxes.map((x: any) => String(x))
-        : Array.isArray(tax?.group_tax_ids)
-          ? tax.group_tax_ids.map((x: any) => String(x))
-          : Array.isArray(tax?.groupTaxesIds)
-            ? tax.groupTaxesIds.map((x: any) => String(x))
-            : [],
-    isGroup: tax?.isGroup === true || tax?.is_group === true || String(tax?.kind || "").toLowerCase() === "group",
-    isCompound: !!tax?.isCompound,
-    isDefault: !!tax?.isDefault,
-    isActive: tax?.isActive !== false,
-    createdAt: tax?.createdAt,
-    updatedAt: tax?.updatedAt,
-  });
-
   const loadTaxOptions = async () => {
     try {
-      const localRows = readTaxesLocal()
-        .filter((tax: any) => tax?.isActive !== false)
-        .map(normalizeLocalTaxRow)
-        .filter((tax: any) => tax.name);
-
-      if (localRows.length > 0) {
-        setTaxOptions(localRows);
-        return;
-      }
-
       const rows = await getTaxes();
       const normalized = Array.isArray(rows)
         ? rows.filter((tax: any) => String(tax?.status || "active").toLowerCase() !== "inactive")
@@ -1809,13 +1942,10 @@ useEffect(() => {
 
   loadTaxOptions();
 
-  const onTaxStorageUpdated = () => loadTaxOptions();
   const onWindowFocus = () => loadTaxOptions();
 
-  window.addEventListener(TAXES_STORAGE_EVENT, onTaxStorageUpdated as EventListener);
   window.addEventListener("focus", onWindowFocus);
   return () => {
-    window.removeEventListener(TAXES_STORAGE_EVENT, onTaxStorageUpdated as EventListener);
     window.removeEventListener("focus", onWindowFocus);
   };
 }, []);
@@ -1940,7 +2070,7 @@ const handleItemSelect = (itemId: number | string, selectedItem: any) => {
         sku: selectedItem.sku || item.sku || "",
         rate,
         tax: selectedItem.taxId || selectedItem.tax || item.tax || "",
-        stockOnHand: Number(selectedItem.stockOnHand || 0),
+        stockOnHand: Number(selectedItem.stockOnHand ?? selectedItem.stockQuantity ?? selectedItem.openingStock ?? 0) || 0,
         unit: selectedItem.unit || item.unit || "pcs",
       };
 
@@ -2551,9 +2681,9 @@ const handleCancel = () => {
 
 return (
   <>
-    <div className="w-full h-full min-h-0 bg-white flex flex-col overflow-hidden">
+    <div className="w-full h-full min-h-0 flex flex-col bg-gray-50 overflow-hidden">
       {/* Header */}
-      <div className="sticky top-0 z-40 flex-shrink-0 border-b border-gray-200 bg-white">
+      <div className="sticky top-0 z-40 flex-shrink-0 border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
         <div className="w-full px-6 py-4 flex justify-between items-center">
           <h1 className="text-lg font-normal text-gray-900 m-0 flex items-center gap-3">
             <FileText size={20} className="text-gray-500" />
@@ -2603,7 +2733,7 @@ return (
         </div>
       </div>
 
-      <div className="w-full flex-1 min-h-0 bg-white pb-24 overflow-y-auto">
+      <div className="w-full flex-1 min-h-0 bg-gray-50 pb-24 overflow-y-auto custom-scrollbar">
         <div className="w-full px-6 py-6 space-y-6">
           {/* Scan Mode Interface */}
           {isScanModeOpen && (
@@ -2811,7 +2941,7 @@ return (
                     setFormData((prev: any) => ({ ...prev, selectedLocation: e.target.value }));
                     e.currentTarget.blur();
                   }}
-                  className="w-full h-9 px-3 pr-8 border border-gray-300 rounded focus:outline-none focus:border-blue-400 text-sm appearance-none bg-white"
+                  className="w-full h-9 px-3 pr-8 border border-gray-300 rounded focus:outline-none focus:border-[#156372] text-sm appearance-none bg-white"
                 >
                   {locationOptions.map((option, index) => (
                     <option key={`location-top-${index}-${option}`} value={option}>{option}</option>
@@ -2850,7 +2980,7 @@ return (
               <input
                 type="text"
                 name="orderNumber"
-                className="w-[280px] h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-blue-400 text-sm"
+                className="w-[280px] h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-[#156372] text-sm"
                 value={formData.orderNumber}
                 onChange={handleChange}
               />
@@ -2865,7 +2995,7 @@ return (
                 <div className="relative flex-1" ref={invoiceDatePickerRef}>
                   <input
                     type="text"
-                    className="w-full h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-blue-400 text-sm cursor-pointer"
+                    className="w-full h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-[#156372] text-sm cursor-pointer"
                     value={formData.invoiceDate}
                     readOnly
                     placeholder="26 Jan 2026"
@@ -2955,7 +3085,7 @@ return (
                 <div className="relative" ref={dueDatePickerRef}>
                   <input
                     type="text"
-                    className="w-[140px] h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-blue-400 text-sm border-dashed text-gray-600 cursor-pointer"
+                    className="w-[140px] h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-[#156372] text-sm border-dashed text-gray-600 cursor-pointer"
                     value={formData.dueDate}
                     readOnly
                     placeholder="26 Jan 2026"
@@ -3186,7 +3316,7 @@ return (
               </div>
               <textarea
                 name="subject"
-                className="w-full max-w-[900px] h-14 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-400 text-sm resize-none"
+                className="w-full max-w-[900px] h-14 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-[#156372] text-sm resize-none"
                   placeholder="Let your customer know what this Invoice is for"
                 value={formData.subject}
                 onChange={handleChange}
@@ -3227,7 +3357,7 @@ return (
                     handleChange(e);
                     e.currentTarget.blur();
                   }}
-                  className="h-9 min-w-[152px] appearance-none rounded-md border border-transparent bg-white px-9 pr-8 text-[13px] text-slate-600 shadow-sm outline-none ring-1 ring-slate-200 transition focus:ring-2 focus:ring-blue-300"
+                  className="h-9 min-w-[152px] appearance-none rounded-md border border-transparent bg-white px-9 pr-8 text-[13px] text-slate-600 shadow-sm outline-none ring-1 ring-slate-200 transition focus:ring-2 focus:ring-[#156372]/30"
                 >
                   {taxExclusiveOptions.map((option, index) => (
                     <option key={`tax-exclusive-${index}-${option}`} value={option}>
@@ -3496,7 +3626,7 @@ return (
                             return (
                               <input
                                 type="number"
-                                className={`h-9 w-full rounded-md border border-transparent bg-transparent px-2 text-right text-sm outline-none transition hover:border-slate-200 focus:border-blue-300 ${isOverStock ? "text-slate-900 font-semibold" : "text-slate-700"}`}
+                                className={`h-9 w-full rounded-md border border-transparent bg-transparent px-2 text-right text-sm outline-none transition hover:border-slate-200 focus:border-[#156372] ${isOverStock ? "text-slate-900 font-semibold" : "text-slate-700"}`}
                                 value={item.quantity}
                                 onChange={(e) => handleItemChange(item.id, 'quantity', e.target.value)}
                               />
@@ -3506,7 +3636,7 @@ return (
                         <td className="px-3 align-top pt-4">
                           <input
                             type="number"
-                            className="h-9 w-full rounded-md border border-transparent bg-transparent px-2 text-right text-sm text-slate-700 outline-none transition hover:border-slate-200 focus:border-blue-300"
+                            className="h-9 w-full rounded-md border border-transparent bg-transparent px-2 text-right text-sm text-slate-700 outline-none transition hover:border-slate-200 focus:border-[#156372]"
                             value={item.rate}
                             onChange={(e) => handleItemChange(item.id, 'rate', e.target.value)}
                           />
@@ -3539,97 +3669,15 @@ return (
                           </td>
                         )}
                         <td className="w-[120px] min-w-[120px] px-3 align-top pt-4">
-                          <div className="relative" ref={(el) => { taxDropdownRefs.current[item.id] = el; }}>
-                            <button
-                              type="button"
-                              className="flex h-9 w-full items-center justify-between rounded-md border border-slate-200 bg-white px-2 text-left text-sm transition"
-                              onClick={() => setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
-                            >
-                              <span className={`${item.tax ? "text-slate-700" : "text-slate-400"} truncate`}>
-                                {item.tax ? (getTaxDisplayLabel(getTaxBySelection(item.tax)) || "Select a Tax") : "Select a Tax"}
-                              </span>
-                              <ChevronDown size={14} className={`text-slate-400 transition-transform ${openTaxDropdowns[item.id] ? "rotate-180" : ""}`} style={{ color: "#156372" }} />
-                            </button>
-                            {openTaxDropdowns[item.id] && (
-                              <div className="absolute left-0 top-full z-[140] mt-1 w-72 rounded-xl border border-[#d6dbe8] bg-white p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
-                                {(() => {
-                                  const searchValue = taxSearches[item.id] || "";
-                                  const grouped = buildTaxOptionGroups(taxOptions);
-                                  const filteredGroups = searchValue.trim()
-                                    ? grouped
-                                        .map((group) => ({
-                                          ...group,
-                                          options: group.options.filter((tax) =>
-                                            `${tax.name} [${tax.rate}%]`.toLowerCase().includes(searchValue.trim().toLowerCase())
-                                          ),
-                                        }))
-                                        .filter((group) => group.options.length > 0)
-                                    : grouped;
-                                  const hasTaxes = filteredGroups.some((group) => group.options.length > 0);
-
-                                  return (
-                                    <>
-                                      <div className="p-2">
-                                        <div className="flex items-center gap-2 rounded-lg border bg-slate-50/50 px-3 py-1.5 transition-all focus-within:bg-white" style={{ borderColor: "#156372" }}>
-                                          <Search size={14} className="text-slate-400" />
-                                          <input
-                                            type="text"
-                                            value={searchValue}
-                                            onChange={(e) => setTaxSearches(prev => ({ ...prev, [item.id]: e.target.value }))}
-                                            placeholder="Search..."
-                                            className="w-full border-none bg-transparent text-[13px] text-slate-700 outline-none placeholder:text-slate-400"
-                                            autoFocus
-                                          />
-                                        </div>
-                                      </div>
-                                      <div className="max-h-64 overflow-y-auto py-1 custom-scrollbar">
-                                        {!hasTaxes ? (
-                                          <div className="px-4 py-3 text-center text-[13px] text-slate-400">No taxes found</div>
-                                        ) : (
-                                          filteredGroups.map((group) => (
-                                            <div key={group.label}>
-                                              <div className="px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-widest text-slate-700">
-                                                {group.label}
-                                              </div>
-                                              {group.options.map((tax) => {
-                                                const taxId = tax.id;
-                                                const label = taxLabel(tax.raw ?? tax);
-                                                const selected = String(item.tax || "") === taxId;
-                                                return (
-                                                  <button
-                                                    key={taxId}
-                                                    type="button"
-                                                    onClick={() => handleTaxSelect(item.id, taxId)}
-                                                    className={`w-full px-4 py-2 text-left text-[13px] ${selected
-                                                      ? "text-[#156372] font-medium hover:bg-gray-50 hover:text-gray-900"
-                                                      : "text-slate-700 hover:bg-gray-50 hover:text-gray-900"
-                                                    }`}
-                                                  >
-                                                    {label}
-                                                  </button>
-                                                );
-                                              })}
-                                            </div>
-                                          ))
-                                        )}
-                                      </div>
-                                      <button
-                                        type="button"
-                                        className="w-full border-t border-gray-200 px-4 py-2 text-left text-[#156372] text-[13px] font-medium flex items-center gap-2 hover:bg-gray-50"
-                                        onClick={() => {
-                                          setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: false }));
-                                          setNewTaxTargetItemId(item.id);
-                                          setIsNewTaxQuickModalOpen(true);
-                                        }}
-                                      >
-                                        <Plus size={13} />
-                                        New Tax
-                                      </button>
-                                    </>
-                                  );
-                                })()}
-                              </div>
-                            )}
+                          <div className="relative">
+                            <InvoiceTaxDropdown
+                              selectedId={String(item.tax || "")}
+                              selectedLabel={getTaxDisplayLabel(getTaxBySelection(item.tax))}
+                              onSelect={(val) => handleTaxSelect(item.id, val)}
+                              groups={invoiceTaxGroups}
+                              placeholder="Select a Tax"
+                              className="w-full"
+                            />
                           </div>
                         </td>
                         <td className="px-3 pt-6 text-right align-top">
@@ -3742,7 +3790,7 @@ return (
                                         value={additionalInfoSearch}
                                         onChange={(e) => setAdditionalInfoSearch(e.target.value)}
                                         placeholder="Search"
-                                        className="h-9 w-full rounded-md border border-blue-300 pl-8 pr-2 text-sm outline-none focus:border-blue-400"
+                        className="h-9 w-full rounded-md border border-[#156372]/30 pl-8 pr-2 text-sm outline-none focus:border-[#156372]"
                                       />
                                     </div>
                                   </div>
@@ -3912,7 +3960,7 @@ return (
                               <div className="text-[12px] font-semibold text-slate-700">Project Details</div>
                               <input
                                 type="text"
-                                className="mt-2 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-400"
+                                className="mt-2 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-[#156372]"
                                 value={projectEditValue}
                                 onChange={(e) => setProjectEditValue(e.target.value)}
                               />
@@ -3942,7 +3990,7 @@ return (
                         <textarea
                           id={`project-desc-${item.id}`}
                           placeholder="Add a description to your item"
-                          className="mt-2 h-16 w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-[12px] text-slate-600 outline-none focus:border-blue-300"
+                          className="mt-2 h-16 w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-[12px] text-slate-600 outline-none focus:border-[#156372]"
                           value={item.description || ""}
                           onChange={(e) => handleItemChange(item.id, "description", e.target.value)}
                         />
@@ -3950,7 +3998,7 @@ return (
                       <td className="px-3 align-top pt-4">
                         <input
                           type="number"
-                          className="h-9 w-full rounded-md border border-transparent bg-transparent px-2 text-right text-sm text-slate-700 outline-none transition hover:border-slate-200 focus:border-blue-300"
+                          className="h-9 w-full rounded-md border border-transparent bg-transparent px-2 text-right text-sm text-slate-700 outline-none transition hover:border-slate-200 focus:border-[#156372]"
                           value={item.quantity}
                           onChange={(e) => handleItemChange(item.id, "quantity", e.target.value)}
                         />
@@ -3958,7 +4006,7 @@ return (
                       <td className="px-3 align-top pt-4">
                         <input
                           type="number"
-                          className="h-9 w-full rounded-md border border-transparent bg-transparent px-2 text-right text-sm text-slate-700 outline-none transition hover:border-slate-200 focus:border-blue-300"
+                          className="h-9 w-full rounded-md border border-transparent bg-transparent px-2 text-right text-sm text-slate-700 outline-none transition hover:border-slate-200 focus:border-[#156372]"
                           value={item.rate}
                           onChange={(e) => handleItemChange(item.id, "rate", e.target.value)}
                         />
@@ -3991,97 +4039,15 @@ return (
                         </td>
                       )}
                       <td className="w-[120px] min-w-[120px] px-3 align-top pt-4">
-                        <div className="relative" ref={(el) => { taxDropdownRefs.current[item.id] = el; }}>
-                          <button
-                            type="button"
-                            className="flex h-9 w-full items-center justify-between rounded-md border border-slate-200 bg-white px-2 text-left text-sm transition"
-                            onClick={() => setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
-                          >
-                            <span className={`${item.tax ? "text-slate-700" : "text-slate-400"} truncate`}>
-                              {item.tax ? (getTaxDisplayLabel(getTaxBySelection(item.tax)) || "Select a Tax") : "Select a Tax"}
-                            </span>
-                            <ChevronDown size={14} className={`text-slate-400 transition-transform ${openTaxDropdowns[item.id] ? "rotate-180" : ""}`} style={{ color: "#156372" }} />
-                          </button>
-                          {openTaxDropdowns[item.id] && (
-                            <div className="absolute left-0 top-full z-[140] mt-1 w-72 rounded-xl border border-[#d6dbe8] bg-white p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
-                              {(() => {
-                                const searchValue = taxSearches[item.id] || "";
-                                const grouped = buildTaxOptionGroups(taxOptions);
-                                const filteredGroups = searchValue.trim()
-                                  ? grouped
-                                      .map((group) => ({
-                                        ...group,
-                                        options: group.options.filter((tax) =>
-                                          `${tax.name} [${tax.rate}%]`.toLowerCase().includes(searchValue.trim().toLowerCase())
-                                        ),
-                                      }))
-                                      .filter((group) => group.options.length > 0)
-                                  : grouped;
-                                const hasTaxes = filteredGroups.some((group) => group.options.length > 0);
-
-                                return (
-                                  <>
-                                    <div className="p-2">
-                                      <div className="flex items-center gap-2 rounded-lg border bg-slate-50/50 px-3 py-1.5 transition-all focus-within:bg-white" style={{ borderColor: "#156372" }}>
-                                        <Search size={14} className="text-slate-400" />
-                                        <input
-                                          type="text"
-                                          value={searchValue}
-                                          onChange={(e) => setTaxSearches(prev => ({ ...prev, [item.id]: e.target.value }))}
-                                          placeholder="Search..."
-                                          className="w-full border-none bg-transparent text-[13px] text-slate-700 outline-none placeholder:text-slate-400"
-                                          autoFocus
-                                        />
-                                      </div>
-                                    </div>
-                                    <div className="max-h-64 overflow-y-auto py-1 custom-scrollbar">
-                                      {!hasTaxes ? (
-                                        <div className="px-4 py-3 text-center text-[13px] text-slate-400">No taxes found</div>
-                                      ) : (
-                                        filteredGroups.map((group) => (
-                                          <div key={group.label}>
-                                            <div className="px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-widest text-slate-700">
-                                              {group.label}
-                                            </div>
-                                            {group.options.map((tax) => {
-                                              const taxId = tax.id;
-                                              const label = taxLabel(tax.raw ?? tax);
-                                              const selected = String(item.tax || "") === taxId;
-                                              return (
-                                                <button
-                                                  key={taxId}
-                                                  type="button"
-                                                  onClick={() => handleTaxSelect(item.id, taxId)}
-                                                  className={`w-full px-4 py-2 text-left text-[13px] ${selected
-                                                    ? "text-[#156372] font-medium hover:bg-gray-50 hover:text-gray-900"
-                                                    : "text-slate-700 hover:bg-gray-50 hover:text-gray-900"
-                                                  }`}
-                                                >
-                                                  {label}
-                                                </button>
-                                              );
-                                            })}
-                                          </div>
-                                        ))
-                                      )}
-                                    </div>
-                                    <button
-                                      type="button"
-                                      className="w-full border-t border-gray-200 px-4 py-2 text-left text-[#156372] text-[13px] font-medium flex items-center gap-2 hover:bg-gray-50"
-                                      onClick={() => {
-                                        setOpenTaxDropdowns(prev => ({ ...prev, [item.id]: false }));
-                                        setNewTaxTargetItemId(item.id);
-                                        setIsNewTaxQuickModalOpen(true);
-                                      }}
-                                    >
-                                      <Plus size={13} />
-                                      New Tax
-                                    </button>
-                                  </>
-                                );
-                              })()}
-                            </div>
-                          )}
+                        <div className="relative">
+                          <InvoiceTaxDropdown
+                            selectedId={String(item.tax || "")}
+                            selectedLabel={getTaxDisplayLabel(getTaxBySelection(item.tax))}
+                            onSelect={(val) => handleTaxSelect(item.id, val)}
+                            groups={invoiceTaxGroups}
+                            placeholder="Select a Tax"
+                            className="w-full"
+                          />
                         </div>
                       </td>
                       <td className="px-3 pt-6 text-right align-top">
@@ -4114,7 +4080,7 @@ return (
                 <label className="mb-2 block text-sm font-medium text-slate-800">Customer Notes</label>
                 <textarea
                   name="customerNotes"
-                  className="h-20 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm leading-relaxed text-slate-700 outline-none transition focus:border-blue-300"
+                  className="h-20 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm leading-relaxed text-slate-700 outline-none transition focus:border-[#156372]"
                   value={formData.customerNotes}
                   onChange={handleChange}
                 />
@@ -4139,7 +4105,7 @@ return (
                           <input
                             type="number"
                             name="discount"
-                            className="h-8 w-16 rounded-l border border-slate-300 bg-white px-2 text-right text-sm outline-none focus:border-blue-300"
+                            className="h-8 w-16 rounded-l border border-slate-300 bg-white px-2 text-right text-sm outline-none focus:border-[#156372]"
                             value={formData.discount}
                             onChange={handleChange}
                           />
@@ -4186,117 +4152,26 @@ return (
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-[13px] text-slate-600">Shipping Charge Tax</span>
-                      <div className="relative min-w-[200px]" ref={shippingTaxDropdownRef}>
-                        <button
-                          type="button"
-                          className="flex h-8 w-full items-center justify-between rounded border border-slate-200 bg-white px-2 text-left text-sm transition"
-                          onClick={() => setIsShippingTaxDropdownOpen((prev) => !prev)}
-                        >
-                          <span className={`${formData.shippingChargeTax ? "text-slate-700" : "text-slate-400"} truncate`}>
-                            {formData.shippingChargeTax ? (getTaxDisplayLabel(getTaxBySelection(formData.shippingChargeTax)) || "Select a Tax") : "Select a Tax"}
-                          </span>
-                          <ChevronDown size={14} className={`text-slate-400 transition-transform ${isShippingTaxDropdownOpen ? "rotate-180" : ""}`} style={{ color: "#156372" }} />
-                        </button>
-                        {isShippingTaxDropdownOpen && (
-                          <div className="absolute top-full right-0 z-50 mt-1 w-72 rounded-xl border border-[#d6dbe8] bg-white p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
-                            {(() => {
-                              const grouped = buildTaxOptionGroups(taxOptions);
-                              const filteredGroups = shippingTaxSearch.trim()
-                                ? grouped
-                                    .map((group) => ({
-                                      ...group,
-                                      options: group.options.filter((tax) =>
-                                        `${tax.name} [${tax.rate}%]`.toLowerCase().includes(shippingTaxSearch.trim().toLowerCase())
-                                      ),
-                                    }))
-                                    .filter((group) => group.options.length > 0)
-                                : grouped;
-                              const hasTaxes = filteredGroups.some((group) => group.options.length > 0);
-
-                              return (
-                                <>
-                                  <div className="p-2">
-                                    <div className="flex items-center gap-2 rounded-lg border bg-slate-50/50 px-3 py-1.5 transition-all focus-within:bg-white" style={{ borderColor: "#156372" }}>
-                                      <Search size={14} className="text-slate-400" />
-                                      <input
-                                        type="text"
-                                        placeholder="Search..."
-                                        value={shippingTaxSearch}
-                                        onChange={(e) => setShippingTaxSearch(e.target.value)}
-                                        className="w-full border-none bg-transparent text-[13px] text-slate-700 outline-none placeholder:text-slate-400"
-                                        autoFocus
-                                      />
-                                    </div>
-                                  </div>
-                                  <div className="max-h-64 overflow-y-auto py-1 custom-scrollbar">
-                                    {!hasTaxes ? (
-                                      <div className="px-4 py-3 text-center text-[13px] text-slate-400">No taxes found</div>
-                                    ) : (
-                                      filteredGroups.map((group) => (
-                                        <div key={group.label}>
-                                          <div className="px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-widest text-slate-700">
-                                            {group.label}
-                                          </div>
-                                          {group.options.map((tax) => {
-                                            const taxId = tax.id;
-                                            const label = taxLabel(tax.raw ?? tax);
-                                            const selected = String(formData.shippingChargeTax || "") === taxId;
-                                            return (
-                                              <button
-                                                key={taxId}
-                                                type="button"
-                                                onClick={() => {
-                                                  setFormData((prev) => {
-                                                    const nextState = { ...prev, shippingChargeTax: taxId } as InvoiceFormState;
-                                                    const totals = calculateInvoiceTotalsFromData(nextState);
-                                                    return {
-                                                      ...nextState,
-                                                      subTotal: totals.subTotal,
-                                                      roundOff: totals.roundOff,
-                                                      total: totals.total
-                                                    };
-                                                  });
-                                                  setIsShippingTaxDropdownOpen(false);
-                                                  setShippingTaxSearch("");
-                                                }}
-                                                className={`w-full px-4 py-2 text-left text-[13px] ${selected
-                                                  ? "text-[#156372] font-medium hover:bg-gray-50 hover:text-gray-900"
-                                                  : "text-slate-700 hover:bg-gray-50 hover:text-gray-900"
-                                                }`}
-                                              >
-                                                {label}
-                                              </button>
-                                            );
-                                          })}
-                                        </div>
-                                      ))
-                                    )}
-                                  </div>
-                                  <button
-                                    type="button"
-                                    className="w-full border-t border-gray-200 px-4 py-2 text-left text-slate-600 text-[13px] font-medium hover:bg-gray-50"
-                                    onClick={() => {
-                                      setFormData((prev) => {
-                                        const nextState = { ...prev, shippingChargeTax: "" } as InvoiceFormState;
-                                        const totals = calculateInvoiceTotalsFromData(nextState);
-                                        return {
-                                          ...nextState,
-                                          subTotal: totals.subTotal,
-                                          roundOff: totals.roundOff,
-                                          total: totals.total
-                                        };
-                                      });
-                                      setIsShippingTaxDropdownOpen(false);
-                                      setShippingTaxSearch("");
-                                    }}
-                                  >
-                                    Clear Selection
-                                  </button>
-                                </>
-                              );
-                            })()}
-                          </div>
-                        )}
+                      <div className="relative min-w-[200px]">
+                        <InvoiceTaxDropdown
+                          selectedId={String(formData.shippingChargeTax || "")}
+                          selectedLabel={getTaxDisplayLabel(getTaxBySelection(formData.shippingChargeTax))}
+                          onSelect={(val) => {
+                            setFormData((prev) => {
+                              const nextState = { ...prev, shippingChargeTax: val } as InvoiceFormState;
+                              const totals = calculateInvoiceTotalsFromData(nextState);
+                              return {
+                                ...nextState,
+                                subTotal: totals.subTotal,
+                                roundOff: totals.roundOff,
+                                total: totals.total
+                              };
+                            });
+                          }}
+                          groups={invoiceTaxGroups}
+                          placeholder="Select a Tax"
+                          className="w-full min-w-[200px]"
+                        />
                       </div>
                     </div>
                   </>
@@ -4360,7 +4235,7 @@ return (
               <label className="mb-1.5 block text-[12px] font-medium text-slate-800">Terms & Conditions</label>
               <textarea
                 name="termsAndConditions"
-                className="h-[72px] w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-[13px] leading-relaxed text-slate-700 outline-none transition focus:border-blue-300"
+                className="h-[72px] w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-[13px] leading-relaxed text-slate-700 outline-none transition focus:border-[#156372]"
                 placeholder="Enter the terms and conditions of your business to be displayed in your transaction"
                 value={formData.termsAndConditions}
                 onChange={handleChange}
@@ -7036,7 +6911,7 @@ return (
                       <select
                         value={selectedBulkProjectId}
                         onChange={(e) => setSelectedBulkProjectId(e.target.value)}
-                        className="w-full h-11 px-4 pr-10 border border-gray-300 rounded-md text-[14px] text-gray-700 appearance-none bg-white focus:outline-none focus:border-blue-400"
+                            className="w-full h-11 px-4 pr-10 border border-gray-300 rounded-md text-[14px] text-gray-700 appearance-none bg-white focus:outline-none focus:border-[#156372]"
                       >
                         <option value="">Select a project</option>
                         {availableProjects.map((project) => (
@@ -7128,7 +7003,7 @@ return (
                                   [String(tag.key)]: e.target.value,
                                 }))
                               }
-                              className="w-full h-11 px-4 pr-10 border border-gray-300 rounded-md text-[14px] text-gray-700 appearance-none bg-white focus:outline-none focus:border-blue-400"
+                              className="w-full h-11 px-4 pr-10 border border-gray-300 rounded-md text-[14px] text-gray-700 appearance-none bg-white focus:outline-none focus:border-[#156372]"
                             >
                               <option value="">None</option>
                               {Array.isArray(tag.options) &&
@@ -7247,7 +7122,7 @@ return (
                                 [String(tag.key)]: e.target.value,
                               }))
                             }
-                            className="w-full h-11 px-4 pr-9 border border-gray-300 rounded-md text-sm text-gray-700 appearance-none bg-white focus:outline-none focus:border-blue-400"
+                            className="w-full h-11 px-4 pr-9 border border-gray-300 rounded-md text-sm text-gray-700 appearance-none bg-white focus:outline-none focus:border-[#156372]"
                           >
                             <option value="">None</option>
                             {Array.isArray(tag.options) &&

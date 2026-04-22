@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { MoreHorizontal, MessageSquare, X, Edit, Mail, FileText, Banknote, ChevronDown, ChevronRight, Search, Star, Download, Printer, Trash2, ArrowUpDown, Upload, Settings, RefreshCw, RotateCcw, HelpCircle, Bold, Italic, Underline, Strikethrough, AlignLeft, AlignCenter, AlignRight, Link as LinkIcon, Image as ImageIcon, Copy, Ban, AlertTriangle } from "lucide-react";
@@ -64,7 +64,8 @@ const toFiniteNumber = (value: any, fallback = 0) => {
 };
 
 const getInvoiceId = (invoice: any) => String(invoice?.id || invoice?._id || "");
-const isRetainerInvoice = (invoice: any) => String(invoice?.invoiceNumber || "").toUpperCase().startsWith("RET-");
+const isRetainerInvoice = (invoice: any) =>
+  String(invoice?.invoiceNumber || invoice?.retainerInvoiceNumber || "").toUpperCase().startsWith("RET-");
 const toStatusLabel = (value: any) => String(value || "draft").replace(/_/g, " ").trim().toUpperCase();
 const toStatusKey = (value: any) =>
   String(value || "")
@@ -81,8 +82,13 @@ const isLikelyCustomerId = (value: string) => {
 
 const deriveRetainerFinancialState = (invoice: any) => {
   const totalAmount = toFiniteNumber(invoice?.total ?? invoice?.amount, 0);
-  const paidAmount = toFiniteNumber(invoice?.amountPaid ?? invoice?.paidAmount, 0);
-  const explicitBalance = toFiniteNumber(invoice?.balance ?? invoice?.balanceDue, NaN);
+  const explicitBalance = toFiniteNumber(invoice?.balance ?? invoice?.balanceDue ?? invoice?.amountRemaining, NaN);
+  const paidAmountRaw = toFiniteNumber(invoice?.amountPaid ?? invoice?.paidAmount, NaN);
+  const paidAmount = Number.isFinite(paidAmountRaw)
+    ? paidAmountRaw
+    : Number.isFinite(explicitBalance)
+      ? Math.max(0, totalAmount - explicitBalance)
+      : 0;
   const balanceAmount = Number.isFinite(explicitBalance) ? explicitBalance : Math.max(0, totalAmount - paidAmount);
   const rawStatus = toStatusKey(invoice?.status || "draft");
   const rawDrawStatus = toStatusKey(invoice?.retainerDrawStatus || invoice?.drawStatus || "");
@@ -90,6 +96,7 @@ const deriveRetainerFinancialState = (invoice: any) => {
   const status = (() => {
     if (rawStatus === "void") return "void";
     if (["pending_approval", "approved", "drawn", "partially_drawn"].includes(rawStatus)) return rawStatus;
+    if (rawStatus === "partially_paid") return "partially_paid";
     if (paidAmount > 0 && balanceAmount <= 0) return "paid";
     if (paidAmount > 0 && balanceAmount > 0) return "partially_paid";
     if (rawStatus === "sent") return "sent";
@@ -210,6 +217,7 @@ const AttachmentIcon = ({ className = "h-3.5 w-3.5" }: { className?: string }) =
 export default function Retailinvoicedetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { accentColor } = useOrganizationBranding();
   const ensureRetainerListAllView = () => {
     try {
@@ -405,6 +413,12 @@ export default function Retailinvoicedetail() {
   }, []);
 
   useEffect(() => {
+    if (location.state && typeof (location.state as any).refreshTick === "number") {
+      setReloadTick((v) => v + 1);
+    }
+  }, [location.state]);
+
+  useEffect(() => {
     const docs = Array.isArray((invoice as any)?.attachedFiles)
       ? (invoice as any).attachedFiles
       : Array.isArray((invoice as any)?.documents)
@@ -456,7 +470,7 @@ export default function Retailinvoicedetail() {
   useEffect(() => {
     if (!invoice) return;
     const customerName = String(getCustomerDisplayName(invoice) || "Customer");
-    const invoiceNo = String((invoice as any)?.invoiceNumber || "-");
+    const invoiceNo = String((invoice as any)?.invoiceNumber || (invoice as any)?.retainerInvoiceNumber || "-");
     const recipient = String(
       (invoice as any)?.customerEmail ||
       (invoice as any)?.customer?.email ||
@@ -635,7 +649,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
   }, [invoice, subtotal, tax]);
 
   const balanceDue = useMemo(() => {
-    const direct = toFiniteNumber((invoice as any)?.balance ?? (invoice as any)?.balanceDue, NaN);
+    const direct = toFiniteNumber((invoice as any)?.balance ?? (invoice as any)?.balanceDue ?? (invoice as any)?.amountRemaining, NaN);
     if (Number.isFinite(direct)) return direct;
     const paid = toFiniteNumber((invoice as any)?.amountPaid ?? (invoice as any)?.paidAmount, 0);
     return Math.max(0, total - paid);
@@ -1470,6 +1484,9 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
 
   const navigateToRecordPaymentPage = () => {
     const invoiceId = String((invoice as any)?.id || (invoice as any)?._id || id || "");
+    const customerObject = (invoice as any)?.customer && typeof (invoice as any)?.customer === "object"
+      ? (invoice as any)?.customer
+      : null;
     const customerName = String(
       (invoice as any)?.customerName ||
       (typeof (invoice as any)?.customer === "string"
@@ -1480,28 +1497,41 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
           "") ||
       ""
     );
+    const paymentState = {
+      source: "retainer-invoice",
+      invoiceId,
+      invoiceNumber: String((invoice as any)?.invoiceNumber || (invoice as any)?.retainerInvoiceNumber || ""),
+      retainerInvoiceNumber: String((invoice as any)?.retainerInvoiceNumber || (invoice as any)?.invoiceNumber || ""),
+      customerId: String(
+        (invoice as any)?.customer?._id ||
+          (invoice as any)?.customer?.id ||
+          (invoice as any)?.customerId ||
+          (typeof (invoice as any)?.customer === "string" ? (invoice as any)?.customer : "") ||
+          ""
+      ),
+      customerName,
+      customerDetails: customerObject,
+      amountDue: Number((invoice as any)?.balance ?? (invoice as any)?.balanceDue ?? total ?? 0) || 0,
+      totalAmount: Number((invoice as any)?.total ?? (invoice as any)?.amount ?? total ?? 0) || 0,
+      currency: String((invoice as any)?.currency || "USD"),
+      location: String((invoice as any)?.location || (invoice as any)?.selectedLocation || "Head Office"),
+      amount: Number((invoice as any)?.balance ?? (invoice as any)?.balanceDue ?? total ?? 0) || 0,
+      invoice,
+      selectedInvoice: invoice,
+      paymentData: invoice,
+      retainerInvoice: invoice,
+      showOnlyInvoice: true,
+      returnInvoiceId: invoiceId
+    };
+
+    try {
+      sessionStorage.setItem("taban_payment_launch_state", JSON.stringify(paymentState));
+    } catch {
+      // ignore storage errors
+    }
+
     navigate("/payments/payments-received/new", {
-      state: {
-        source: "retainer-invoice",
-        invoiceId,
-        invoiceNumber: String((invoice as any)?.invoiceNumber || ""),
-        customerId: String(
-          (invoice as any)?.customer?._id ||
-            (invoice as any)?.customer?.id ||
-            (invoice as any)?.customerId ||
-            (typeof (invoice as any)?.customer === "string" ? (invoice as any)?.customer : "") ||
-            ""
-        ),
-        customerName,
-        amountDue: Number((invoice as any)?.balance ?? (invoice as any)?.balanceDue ?? total ?? 0) || 0,
-        totalAmount: Number((invoice as any)?.total ?? (invoice as any)?.amount ?? total ?? 0) || 0,
-        currency: String((invoice as any)?.currency || "USD"),
-        location: String((invoice as any)?.location || (invoice as any)?.selectedLocation || "Head Office"),
-        amount: Number((invoice as any)?.balance ?? (invoice as any)?.balanceDue ?? total ?? 0) || 0,
-        invoice,
-        showOnlyInvoice: true,
-        returnInvoiceId: invoiceId
-      },
+      state: paymentState,
     });
   };
 
@@ -1875,22 +1905,22 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 h-full min-h-0 bg-[#f3f4f8]">
-        <div className="sticky top-0 z-20">
+        <div className="sticky top-0 z-20 bg-white">
           <div className="flex items-center justify-between px-4 h-[74px] border-b border-gray-200 bg-white">
             <div className="min-w-0">
               <div className="text-sm text-gray-600 truncate">
                 Location: <span className="text-[#3b5ba9]">{locationText}</span>
               </div>
               <h1 className="text-lg md:text-[24px] leading-tight font-semibold text-gray-900 truncate">
-                {String((invoice as any)?.invoiceNumber || "-")}
+                {String((invoice as any)?.invoiceNumber || (invoice as any)?.retainerInvoiceNumber || "-")}
               </h1>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <div className="relative" ref={attachmentsDropdownRef}>
                 <button
                   type="button"
                   onClick={() => setIsAttachmentsDropdownOpen((prev) => !prev)}
-                  className="p-2 text-gray-600 hover:bg-gray-100 rounded-md cursor-pointer"
+                  className="h-9 w-9 inline-flex items-center justify-center rounded-md border border-[#d6d9e3] bg-white text-gray-600 hover:bg-gray-50 cursor-pointer"
                   title="Attachments"
                 >
                   <span className="inline-flex items-center gap-1">
@@ -1967,7 +1997,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
               <button
                 type="button"
                 onClick={() => setIsCommentsPanelOpen(true)}
-                className="p-2 text-gray-600 hover:bg-gray-100 rounded-md cursor-pointer"
+                className="h-9 w-9 inline-flex items-center justify-center rounded-md border border-[#d6d9e3] bg-white text-gray-600 hover:bg-gray-50 cursor-pointer"
                 title="Comments"
               >
                 <MessageSquare size={18} />
@@ -1978,7 +2008,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
                   ensureRetainerListAllView();
                   navigate("/sales/retainer-invoices");
                 }}
-                className="p-2 text-gray-600 hover:bg-gray-100 rounded-md cursor-pointer"
+                className="h-9 w-9 inline-flex items-center justify-center rounded-md border border-[#d6d9e3] bg-white text-gray-600 hover:bg-gray-50 cursor-pointer"
               >
                 <X size={18} />
               </button>
@@ -2274,7 +2304,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
                   </div>
                   <div className="text-right min-w-[360px]">
                     <div className="text-[44px] leading-[0.95] tracking-[0.02em] text-black">RETAINER INVOICE</div>
-                    <div className="text-[24px] mt-4 text-black">Retainer# <span className="font-semibold">{String((invoice as any)?.invoiceNumber || "-")}</span></div>
+                    <div className="text-[24px] mt-4 text-black">Retainer# <span className="font-semibold">{String((invoice as any)?.invoiceNumber || (invoice as any)?.retainerInvoiceNumber || "-")}</span></div>
                     <div className="text-[15px] mt-8 text-black">Balance Due</div>
                     <div className="text-[46px] leading-[1.02] font-semibold text-black mt-1">{currencyPrefix}{formatMoney(balanceDue)}</div>
                   </div>
@@ -2761,4 +2791,3 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
     </div>
   );
 }
-

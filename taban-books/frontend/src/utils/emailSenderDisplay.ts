@@ -37,6 +37,12 @@ export const resolvePrimarySender = (
   };
 };
 
+export const resolveVerifiedPrimarySender = (
+  response: any,
+  fallbackName = "System",
+  fallbackEmail = ""
+) => resolvePrimarySender(response, fallbackName, fallbackEmail);
+
 export const formatSenderDisplay = (
   senderName?: string,
   senderEmail?: string,

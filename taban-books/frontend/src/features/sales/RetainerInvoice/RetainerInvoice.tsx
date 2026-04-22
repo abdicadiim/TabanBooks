@@ -26,7 +26,8 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { deleteRetainerInvoice, getCustomers, RetainerInvoice, readTaxesLocal } from "../salesModel";
+import { deleteRetainerInvoice, getCustomers, readTaxesLocal } from "../salesModel";
+import type { RetainerInvoice as RetainerInvoiceRecord } from "../salesModel";
 import { useRetainerListQuery } from "./retainerInvoiceQueries";
 import { useOrganizationBranding } from "../../../hooks/useOrganizationBranding";
 import { useThemeColors } from "../../../hooks/useThemeColors";
@@ -58,7 +59,7 @@ type RetainerRow = {
   updatedAtTs: number;
   statusKey: string;
   drawStatusKey: string;
-  sourceInvoice: RetainerInvoice;
+  sourceInvoice: RetainerInvoiceRecord;
 };
 
 type RetainerColumnKey =

@@ -20,7 +20,17 @@ export interface IRetainerInvoice extends Document {
     organization: mongoose.Types.ObjectId;
     retainerInvoiceNumber: string;
     customer: mongoose.Types.ObjectId;
+    customerName?: string;
     date: Date;
+    invoiceDate?: Date;
+    reference?: string;
+    orderNumber?: string;
+    location?: string;
+    projectId?: mongoose.Types.ObjectId | null;
+    projectName?: string;
+    locationName?: string;
+    selectedLocation?: string;
+    reportingTags?: Array<Record<string, any>>;
 
     // Retainer specific fields
     retainerType: 'advance' | 'deposit' | 'prepayment';
@@ -34,9 +44,14 @@ export interface IRetainerInvoice extends Document {
     currency?: string;
 
     // Status and tracking
-    status: 'draft' | 'sent' | 'paid' | 'partially_used' | 'fully_used' | 'expired';
+    status: 'draft' | 'sent' | 'paid' | 'partially_paid' | 'partially_used' | 'fully_used' | 'expired';
     amountUsed?: number;
     amountRemaining?: number;
+    amountPaid?: number;
+    paidAmount?: number;
+    balance?: number;
+    balanceDue?: number;
+    paymentsReceived?: Array<Record<string, any>>;
 
     // Additional fields
     notes?: string;
@@ -94,6 +109,41 @@ const retainerInvoiceSchema = new Schema<IRetainerInvoice>(
             ref: "Customer",
             required: true,
         },
+        customerName: {
+            type: String,
+            default: "",
+        },
+        invoiceDate: {
+            type: Date,
+        },
+        reference: {
+            type: String,
+            default: "",
+        },
+        orderNumber: {
+            type: String,
+            default: "",
+        },
+        location: {
+            type: String,
+            default: "",
+        },
+        projectId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Project",
+        },
+        projectName: {
+            type: String,
+            default: "",
+        },
+        locationName: {
+            type: String,
+            default: "",
+        },
+        selectedLocation: {
+            type: String,
+            default: "",
+        },
         date: {
             type: Date,
             required: true,
@@ -129,7 +179,7 @@ const retainerInvoiceSchema = new Schema<IRetainerInvoice>(
         },
         status: {
             type: String,
-            enum: ['draft', 'sent', 'paid', 'partially_used', 'fully_used', 'expired'],
+            enum: ['draft', 'sent', 'paid', 'partially_paid', 'partially_used', 'fully_used', 'expired'],
             default: 'draft',
         },
         amountUsed: {
@@ -137,8 +187,32 @@ const retainerInvoiceSchema = new Schema<IRetainerInvoice>(
             default: 0,
         },
         amountRemaining: Number,
+        amountPaid: {
+            type: Number,
+            default: 0,
+        },
+        paidAmount: {
+            type: Number,
+            default: 0,
+        },
+        balance: {
+            type: Number,
+            default: 0,
+        },
+        balanceDue: {
+            type: Number,
+            default: 0,
+        },
+        paymentsReceived: {
+            type: [mongoose.Schema.Types.Mixed],
+            default: [],
+        },
         notes: String,
         terms: String,
+        reportingTags: {
+            type: [mongoose.Schema.Types.Mixed],
+            default: [],
+        },
     },
     {
         timestamps: true,

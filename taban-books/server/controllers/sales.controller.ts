@@ -54,6 +54,35 @@ import {
   mapQuoteToEstimate,
 } from "../utils/estimates.js";
 
+const RETAINER_NUMBER_PREFIX = "RET-";
+const RETAINER_NUMBER_DIGITS = 6;
+
+const buildNextRetainerInvoiceNumber = async (
+  organizationId: mongoose.Types.ObjectId,
+  preferredNumber?: string
+): Promise<string> => {
+  const preferred = String(preferredNumber || "").trim();
+  const prefixMatch = preferred.match(/^([A-Za-z-]*?)(\d+)$/);
+  const prefix = prefixMatch?.[1] || RETAINER_NUMBER_PREFIX;
+  const existing = await RetainerInvoice.find({
+    organization: organizationId,
+    retainerInvoiceNumber: new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\d+$`, "i"),
+  })
+    .select("retainerInvoiceNumber")
+    .lean();
+
+  let highest = 0;
+  for (const row of existing) {
+    const value = String((row as any)?.retainerInvoiceNumber || "");
+    const match = value.match(new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+)$`, "i"));
+    if (!match) continue;
+    highest = Math.max(highest, parseInt(match[1], 10) || 0);
+  }
+
+  const nextNumber = Math.max(highest + 1, 1);
+  return `${prefix}${String(nextNumber).padStart(RETAINER_NUMBER_DIGITS, "0")}`;
+};
+
 
 
 interface CustomerQuery {
@@ -7364,7 +7393,16 @@ export const createRetainerInvoice = async (req: AuthRequest, res: Response): Pr
     const {
       retainerInvoiceNumber,
       customer,
+      customerName = '',
       date,
+      invoiceDate,
+      reference = '',
+      orderNumber = '',
+      location = '',
+      projectId,
+      projectName = '',
+      locationName = '',
+      selectedLocation = '',
       retainerType = 'advance',
       validUntil,
       items = [],
@@ -7375,11 +7413,30 @@ export const createRetainerInvoice = async (req: AuthRequest, res: Response): Pr
       currency = 'USD',
       notes = '',
       terms = '',
+      reportingTags = [],
       status = 'draft'
     } = req.body;
 
+    let normalizedRetainerInvoiceNumber = String(retainerInvoiceNumber || "").trim();
+    const organizationId = req.user.organizationId;
+
+    if (!normalizedRetainerInvoiceNumber) {
+      normalizedRetainerInvoiceNumber = await buildNextRetainerInvoiceNumber(organizationId);
+    } else {
+      const existingRetainer = await RetainerInvoice.findOne({
+        organization: organizationId,
+        retainerInvoiceNumber: normalizedRetainerInvoiceNumber,
+      }).select("_id retainerInvoiceNumber");
+      if (existingRetainer) {
+        normalizedRetainerInvoiceNumber = await buildNextRetainerInvoiceNumber(
+          organizationId,
+          normalizedRetainerInvoiceNumber
+        );
+      }
+    }
+
     // Validate required fields
-    if (!retainerInvoiceNumber || !customer) {
+    if (!normalizedRetainerInvoiceNumber || !customer) {
       res.status(400).json({
         success: false,
         message: 'Missing required fields: retainerInvoiceNumber, customer'
@@ -7388,10 +7445,19 @@ export const createRetainerInvoice = async (req: AuthRequest, res: Response): Pr
     }
 
     const retainerInvoice = new RetainerInvoice({
-      organization: req.user.organizationId,
-      retainerInvoiceNumber,
+      organization: organizationId,
+      retainerInvoiceNumber: normalizedRetainerInvoiceNumber,
       customer,
+      customerName,
+      reference,
+      orderNumber,
+      location,
+      projectId: projectId ? new mongoose.Types.ObjectId(String(projectId)) : undefined,
+      projectName,
+      locationName,
+      selectedLocation,
       date: date ? new Date(date) : new Date(),
+      invoiceDate: invoiceDate ? new Date(invoiceDate) : (date ? new Date(date) : new Date()),
       retainerType,
       validUntil: validUntil ? new Date(validUntil) : undefined,
       items,
@@ -7403,14 +7469,21 @@ export const createRetainerInvoice = async (req: AuthRequest, res: Response): Pr
       status,
       amountUsed: 0,
       amountRemaining: total,
+      amountPaid: 0,
+      paidAmount: 0,
+      balance: total,
+      balanceDue: total,
+      paymentsReceived: [],
       notes,
-      terms
+      terms,
+      reportingTags
     });
 
     await retainerInvoice.save();
 
     const populatedRetainerInvoice = await RetainerInvoice.findById(retainerInvoice._id)
       .populate('customer', 'displayName name companyName email')
+      .populate('projectId', 'name projectName')
       .populate('items.item', 'name sku');
 
     res.status(201).json({
@@ -7420,6 +7493,64 @@ export const createRetainerInvoice = async (req: AuthRequest, res: Response): Pr
     });
   } catch (error: any) {
     console.error('[RETAINER INVOICES] Error creating retainer invoice:', error);
+
+    if (error?.code === 11000 || error?.code === 11001) {
+      try {
+        const fallbackInvoiceNumber = await buildNextRetainerInvoiceNumber(
+          req.user!.organizationId,
+          String(req.body?.retainerInvoiceNumber || "")
+        );
+        const retryInvoice = new RetainerInvoice({
+          organization: req.user!.organizationId,
+          retainerInvoiceNumber: fallbackInvoiceNumber,
+          customer: req.body?.customer,
+          customerName: String(req.body?.customerName || ""),
+          reference: String(req.body?.reference || ""),
+          orderNumber: String(req.body?.orderNumber || ""),
+          location: String(req.body?.location || ""),
+          projectId: req.body?.projectId ? new mongoose.Types.ObjectId(String(req.body.projectId)) : undefined,
+          projectName: String(req.body?.projectName || ""),
+          locationName: String(req.body?.locationName || ""),
+          selectedLocation: String(req.body?.selectedLocation || ""),
+          date: req.body?.date ? new Date(req.body.date) : new Date(),
+          invoiceDate: req.body?.invoiceDate ? new Date(req.body.invoiceDate) : (req.body?.date ? new Date(req.body.date) : new Date()),
+          retainerType: req.body?.retainerType || 'advance',
+          validUntil: req.body?.validUntil ? new Date(req.body.validUntil) : undefined,
+          items: Array.isArray(req.body?.items) ? req.body.items : [],
+          subtotal: Number(req.body?.subtotal || 0),
+          tax: Number(req.body?.tax || 0),
+          discount: Number(req.body?.discount || 0),
+          total: Number(req.body?.total || 0),
+          currency: String(req.body?.currency || "USD").toUpperCase(),
+          status: req.body?.status || 'draft',
+          amountUsed: 0,
+          amountRemaining: Number(req.body?.total || 0),
+          amountPaid: 0,
+          paidAmount: 0,
+          balance: Number(req.body?.total || 0),
+          balanceDue: Number(req.body?.total || 0),
+          paymentsReceived: [],
+          notes: String(req.body?.notes || ""),
+          terms: String(req.body?.terms || ""),
+          reportingTags: Array.isArray(req.body?.reportingTags) ? req.body.reportingTags : [],
+        });
+
+        await retryInvoice.save();
+        const populatedRetryInvoice = await RetainerInvoice.findById(retryInvoice._id)
+          .populate('customer', 'displayName name companyName email')
+          .populate('projectId', 'name projectName')
+          .populate('items.item', 'name sku');
+
+        res.status(201).json({
+          success: true,
+          message: 'Retainer invoice created successfully',
+          data: populatedRetryInvoice
+        });
+        return;
+      } catch (retryError: any) {
+        console.error('[RETAINER INVOICES] Retainer retry failed:', retryError);
+      }
+    }
 
     if (error.name === 'ValidationError') {
       const validationErrors = Object.values(error.errors || {}).map((err: any) => ({
@@ -7455,6 +7586,10 @@ export const updateRetainerInvoice = async (req: AuthRequest, res: Response): Pr
 
     const { id } = req.params;
     const updateData = req.body;
+
+    if (updateData.projectId) {
+      updateData.projectId = new mongoose.Types.ObjectId(String(updateData.projectId));
+    }
 
     const retainerInvoice = await RetainerInvoice.findById(id);
     if (!retainerInvoice) {
@@ -10329,6 +10464,101 @@ export const sendInvoiceEmail = async (req: AuthRequest, res: Response): Promise
   } catch (error: any) {
     console.error('[INVOICE EMAIL] Error sending email:', error);
     res.status(500).json({ success: false, message: 'Error sending email', error: error.message });
+  }
+};
+
+// Email retainer invoice
+export const sendRetainerInvoiceEmail = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user?.organizationId) {
+      res.status(401).json({ success: false, message: 'Unauthorized' });
+      return;
+    }
+
+    const { id } = req.params;
+    const { to, cc, bcc, subject, body, from, attachments, attachSystemPDF } = req.body;
+
+    if (!to) {
+      res.status(400).json({ success: false, message: 'Recipient email is required' });
+      return;
+    }
+
+    const retainerInvoice = await RetainerInvoice.findById(id)
+      .populate('customer', 'displayName name companyName email')
+      .populate('projectId', 'name projectName');
+
+    if (!retainerInvoice) {
+      res.status(404).json({ success: false, message: 'Retainer invoice not found' });
+      return;
+    }
+
+    if (retainerInvoice.organization.toString() !== req.user.organizationId.toString()) {
+      res.status(403).json({ success: false, message: 'Access denied' });
+      return;
+    }
+
+    const organization = await Organization.findById(req.user.organizationId).select("settings name");
+    const organizationSettings: any = organization?.settings || {};
+    const pdfEnabledInSettings = organizationSettings?.pdfSettings?.attachPDFRetainerInvoice !== false;
+    const encryptPdfEnabled = organizationSettings?.pdfSettings?.encryptPDF === true;
+    const shouldAttachSystemPdf = typeof attachSystemPDF === "boolean" ? attachSystemPDF : pdfEnabledInSettings;
+
+    const normalizedAttachments = Array.isArray(attachments)
+      ? attachments
+          .filter((a: any) => a && a.filename && (a.path || a.content))
+          .map((attachment: any) => {
+            const normalized = { ...attachment };
+            if (typeof normalized.content === "string") {
+              const contentStr = String(normalized.content || "").trim();
+              const isDataUri = /^data:.*;base64,/i.test(contentStr);
+              const isExplicitBase64 = String(normalized.encoding || "").toLowerCase() === "base64";
+              if (isDataUri || isExplicitBase64) {
+                const base64Content = isDataUri ? contentStr.split(",")[1] || "" : contentStr;
+                normalized.content = Buffer.from(base64Content, "base64");
+                delete normalized.encoding;
+              }
+            }
+            return normalized;
+          })
+      : [];
+
+    if (shouldAttachSystemPdf) {
+      const fileName = `${retainerInvoice.retainerInvoiceNumber || "retainer-invoice"}${encryptPdfEnabled ? "-protected" : ""}.pdf`;
+      const retainerDate = (retainerInvoice as any).invoiceDate || retainerInvoice.date;
+      const lines = [
+        `${organization?.name || "Taban"} Retainer Invoice`,
+        `Retainer Number: ${retainerInvoice.retainerInvoiceNumber || "-"}`,
+        `Retainer Date: ${retainerDate ? new Date(retainerDate).toLocaleDateString("en-GB") : "-"}`,
+        `Total: ${retainerInvoice.currency || ""} ${Number(retainerInvoice.total || 0).toFixed(2)}`,
+        `PDF Protection: ${encryptPdfEnabled ? "Enabled" : "Disabled"}`,
+      ];
+      normalizedAttachments.push({
+        filename: fileName,
+        content: buildSimplePdf(lines),
+        contentType: "application/pdf",
+      });
+    }
+
+    await sendEmail({
+      to,
+      cc,
+      bcc,
+      subject,
+      html: body,
+      from,
+      attachments: normalizedAttachments,
+      organizationId: req.user.organizationId
+    });
+
+    if (retainerInvoice.status === 'draft') {
+      retainerInvoice.status = 'sent';
+      await retainerInvoice.save();
+    }
+
+    res.json({ success: true, message: 'Retainer invoice email sent successfully' });
+  } catch (error: any) {
+    console.error('[RETAINER EMAIL] Error sending retainer invoice email:', error);
+    res.status(500).json({ success: false, message: 'Error sending retainer invoice email', error: error.message });
   }
 };
 

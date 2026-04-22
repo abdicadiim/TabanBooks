@@ -40,7 +40,7 @@ function LegacyPaymentsReceivedRedirect() {
     ? path.slice("/payments/payments-received".length)
     : "";
   const next = `/sales/payments-received${suffix}${location.search || ""}${location.hash || ""}`;
-  return <Navigate to={next} replace />;
+  return <Navigate to={next} replace state={location.state} />;
 }
 function AccountsReceivableDashboard() {
   return (

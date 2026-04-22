@@ -2442,9 +2442,9 @@ export default function NewRecurringInvoice() {
   };
 
   return (
-    <div className="w-full h-screen flex flex-col overflow-hidden bg-white">
+    <div className="w-full h-screen flex flex-col overflow-hidden bg-gray-50">
       {/* Header */}
-      <div className="flex-shrink-0 border-b border-gray-200 bg-white">
+      <div className="flex-shrink-0 border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
         <div className="w-full px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-2">
             <FileText size={24} className="text-gray-700" />
@@ -2455,7 +2455,7 @@ export default function NewRecurringInvoice() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto scrollbar-hide bg-white">
+      <div className="flex-1 overflow-y-auto scrollbar-hide bg-gray-50">
             <div className="w-full max-w-[980px] px-6 py-6 space-y-6 pb-24">
 
           {/* Main Form Content */}

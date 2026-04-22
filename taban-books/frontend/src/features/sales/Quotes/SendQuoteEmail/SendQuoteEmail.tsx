@@ -738,9 +738,9 @@ export default function SendQuoteEmail() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex h-full min-h-0 flex-col bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="shrink-0 bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-gray-900">
             Email To {quote.customerName || "Customer"}
@@ -755,7 +755,8 @@ export default function SendQuoteEmail() {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-4xl mx-auto p-6">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="max-w-4xl mx-auto p-6">
         {/* From Field */}
         <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
           <div className="mb-5">
@@ -1077,6 +1078,7 @@ export default function SendQuoteEmail() {
             {loading ? (sendingStage || "Sending...") : "Send"}
           </button>
         </div>
+      </div>
       </div>
 
       {/* New Contact Person Modal */}

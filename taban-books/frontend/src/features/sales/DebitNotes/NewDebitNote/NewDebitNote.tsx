@@ -1718,15 +1718,15 @@ export default function NewDebitNote() {
 
   if (isLoadingDebitNote) {
     return (
-      <div className="flex h-screen items-center justify-center bg-white text-slate-600">
+      <div className="flex h-screen items-center justify-center bg-gray-50 text-slate-600">
         Loading debit note...
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full min-h-0 overflow-y-auto bg-white">
-      <div className="border-b border-slate-200 bg-white px-6 py-4">
+    <div className="w-full h-full min-h-0 overflow-y-auto bg-gray-50">
+      <div className="border-b border-slate-200 bg-white/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-white/90">
         <div className="flex items-center justify-between">
           <h1 className="flex items-center gap-2 text-3xl font-semibold text-slate-900">
             <FileText size={22} className="text-slate-700" />
@@ -1743,8 +1743,8 @@ export default function NewDebitNote() {
         </div>
       </div>
 
-      <div className={`space-y-7 bg-[#fbfbfe] px-4 py-5 pb-56 ${isCustomerPanelOpen ? "lg:pr-[430px]" : ""}`}>
-        <section className="max-w-[1510px] rounded-md bg-[#f7f7fb] p-4">
+      <div className={`space-y-7 bg-gray-50 px-4 py-5 pb-56 ${isCustomerPanelOpen ? "lg:pr-[430px]" : ""}`}>
+        <section className="max-w-[1510px] rounded-md bg-white p-4">
           <div className="grid grid-cols-1 gap-4">
             <div className="grid grid-cols-[150px_minmax(0,1fr)_auto] items-start gap-3">
               <label className="pt-2 text-[13px] text-[#ef4444]">Customer Name*</label>
@@ -1754,7 +1754,7 @@ export default function NewDebitNote() {
                     <div className="flex">
                       <button
                         type="button"
-                        className="h-9 flex-1 rounded-l-md border border-slate-300 bg-white px-3 text-left text-[14px] text-slate-700 focus:border-blue-400"
+                        className="h-9 flex-1 rounded-l-md border border-slate-300 bg-white px-3 text-left text-[14px] text-slate-700 focus:border-[#156372]"
                         onClick={() => setIsCustomerDropdownOpen((prev) => !prev)}
                       >
                         {formData.customerName || "Select or add a customer"}
@@ -1780,7 +1780,7 @@ export default function NewDebitNote() {
                               placeholder="Search"
                               value={customerSearch}
                               onChange={(e) => setCustomerSearch(e.target.value)}
-                              className="h-8 w-full rounded-md border border-slate-300 pl-7 pr-2 text-[13px] focus:outline-none"
+                              className="h-8 w-full rounded-md border border-slate-300 pl-7 pr-2 text-[13px] focus:outline-none focus:border-[#156372]"
                             />
                           </div>
                         </div>
@@ -1922,7 +1922,7 @@ export default function NewDebitNote() {
                 <div className="relative w-full max-w-[320px]" ref={invoiceDropdownRef}>
                   <button
                     type="button"
-                    className="flex h-9 w-full items-center justify-between rounded border border-gray-300 bg-white px-3 text-left text-sm focus:border-blue-400 focus:outline-none"
+                    className="flex h-9 w-full items-center justify-between rounded border border-gray-300 bg-white px-3 text-left text-sm focus:border-[#156372] focus:outline-none"
                     onClick={() => setIsInvoiceDropdownOpen((prev) => !prev)}
                   >
                     <span className={selectedInvoice ? "truncate text-slate-900" : "truncate text-slate-400"}>
@@ -2008,7 +2008,7 @@ export default function NewDebitNote() {
               <div className="relative w-full max-w-[320px]" ref={reasonDropdownRef}>
                 <button
                   type="button"
-                  className="w-full h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-blue-400 text-sm bg-white flex items-center justify-between text-left"
+                  className="w-full h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-[#156372] text-sm bg-white flex items-center justify-between text-left"
                   onClick={() => setIsReasonDropdownOpen((prev) => !prev)}
                 >
                   <span>{formData.reason || ""}</span>
@@ -2024,7 +2024,7 @@ export default function NewDebitNote() {
                           placeholder="Search"
                           value={reasonSearch}
                           onChange={(e) => setReasonSearch(e.target.value)}
-                          className="w-full h-9 rounded border border-gray-300 pl-7 pr-2 text-sm focus:outline-none focus:border-blue-400 bg-white"
+                          className="w-full h-9 rounded border border-gray-300 pl-7 pr-2 text-sm focus:outline-none focus:border-[#156372] bg-white"
                         />
                       </div>
                     </div>
@@ -2057,7 +2057,7 @@ export default function NewDebitNote() {
               <div className="relative w-full max-w-[320px] space-y-1" ref={locationDropdownRef}>
                 <button
                   type="button"
-                  className="flex h-9 w-full items-center justify-between rounded border border-gray-300 bg-white px-3 text-left text-sm focus:border-blue-400 focus:outline-none"
+                  className="flex h-9 w-full items-center justify-between rounded border border-gray-300 bg-white px-3 text-left text-sm focus:border-[#156372] focus:outline-none"
                   onClick={() => setIsLocationDropdownOpen((prev) => !prev)}
                 >
                   <span className={formData.location ? "truncate text-slate-900" : "truncate text-slate-400"}>
@@ -2132,13 +2132,13 @@ export default function NewDebitNote() {
           </div>
           <div className="grid grid-cols-[150px_minmax(0,320px)] items-center gap-3">
             <label className="text-[13px] text-slate-700">Order Number</label>
-            <input className="w-full h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-blue-400 text-sm bg-white" value={formData.orderNumber} onChange={(e) => setField("orderNumber", e.target.value)} />
+            <input className="w-full h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-[#156372] text-sm bg-white" value={formData.orderNumber} onChange={(e) => setField("orderNumber", e.target.value)} />
           </div>
           <div className="grid grid-cols-[150px_minmax(0,320px)_70px_150px_70px_150px] items-center gap-3">
             <label className="text-[13px] text-[#ef4444]">Debit Note Date*</label>
             <div className="relative w-full max-w-[320px]" ref={debitNoteDatePickerRef}>
               <input
-                className="w-full h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-blue-400 text-sm bg-white cursor-pointer"
+                className="w-full h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-[#156372] text-sm bg-white cursor-pointer"
                 value={formData.debitNoteDate}
                 readOnly
                 onClick={() => setIsDebitNoteDatePickerOpen(!isDebitNoteDatePickerOpen)}
@@ -2201,7 +2201,7 @@ export default function NewDebitNote() {
             <span className="text-[13px] text-slate-700">Due Date</span>
             <div className="relative w-full max-w-[150px]" ref={dueDatePickerRef}>
               <input
-                className="w-full h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-blue-400 text-sm bg-white cursor-pointer"
+                className="w-full h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-[#156372] text-sm bg-white cursor-pointer"
                 value={formData.dueDate}
                 readOnly
                 onClick={() => setIsDueDatePickerOpen(!isDueDatePickerOpen)}
@@ -2255,9 +2255,9 @@ export default function NewDebitNote() {
           <div className="grid grid-cols-[150px_minmax(0,320px)] items-center gap-3">
             <label className="flex items-center gap-1 text-[13px] text-slate-700">Early Payment Discount <Info size={13} className="text-slate-400" /></label>
             <div className="grid grid-cols-[120px_52px_120px_34px] gap-2 max-w-[320px]">
-              <input className="w-full h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-blue-400 text-sm bg-white" value={formData.earlyPaymentDays} onChange={(e) => setField("earlyPaymentDays", e.target.value)} />
+              <input className="w-full h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-[#156372] text-sm bg-white" value={formData.earlyPaymentDays} onChange={(e) => setField("earlyPaymentDays", e.target.value)} />
               <div className="inline-flex h-9 items-center justify-center rounded-md border border-slate-300 bg-slate-50 text-sm">Days</div>
-              <input type="number" className="w-full h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-blue-400 text-sm bg-white text-right" value={formData.earlyPaymentPercent} onChange={(e) => setField("earlyPaymentPercent", Number(e.target.value || 0))} />
+              <input type="number" className="w-full h-9 px-3 border border-gray-300 rounded focus:outline-none focus:border-[#156372] text-sm bg-white text-right" value={formData.earlyPaymentPercent} onChange={(e) => setField("earlyPaymentPercent", Number(e.target.value || 0))} />
               <div className="inline-flex h-9 items-center justify-center rounded-md border border-slate-300 bg-slate-50 text-sm">%</div>
             </div>
           </div>
@@ -2266,7 +2266,7 @@ export default function NewDebitNote() {
             <div className="relative w-full max-w-[320px]" ref={salespersonDropdownRef}>
               <button
                 type="button"
-                className="flex h-9 w-full items-center justify-between rounded border border-gray-300 bg-white px-3 text-left text-sm focus:border-blue-400 focus:outline-none"
+                className="flex h-9 w-full items-center justify-between rounded border border-gray-300 bg-white px-3 text-left text-sm focus:border-[#156372] focus:outline-none"
                 onClick={() => setIsSalespersonDropdownOpen((prev) => !prev)}
               >
                 <span className={formData.salesperson ? "text-slate-900" : "text-slate-400"}>
@@ -2327,7 +2327,7 @@ export default function NewDebitNote() {
               }}>
                 <button
                   type="button"
-                  className="flex h-9 w-full items-center justify-between rounded border border-gray-300 bg-white px-3 text-left text-sm focus:border-blue-400 focus:outline-none"
+                  className="flex h-9 w-full items-center justify-between rounded border border-gray-300 bg-white px-3 text-left text-sm focus:border-[#156372] focus:outline-none"
                   onClick={() =>
                     setActiveHeaderReportingTagKey((prev) => (prev === tag.key ? null : tag.key))
                   }
@@ -2387,7 +2387,7 @@ export default function NewDebitNote() {
             <div className="relative" ref={taxModeDropdownRef}>
               <button
                 type="button"
-                className="flex h-9 w-[118px] items-center justify-between rounded border border-gray-300 bg-white px-3 text-sm text-slate-700 focus:border-blue-400 focus:outline-none"
+                className="flex h-9 w-[118px] items-center justify-between rounded border border-gray-300 bg-white px-3 text-sm text-slate-700 focus:border-[#156372] focus:outline-none"
                 onClick={() => {
                   setIsPriceListDropdownOpen(false);
                   setIsTaxModeDropdownOpen((prev) => !prev);
@@ -2430,7 +2430,7 @@ export default function NewDebitNote() {
             <div className="relative" ref={priceListDropdownRef}>
               <button
                 type="button"
-                className="flex h-9 w-[128px] items-center justify-between rounded border border-gray-300 bg-white px-3 text-sm text-slate-700 focus:border-blue-400 focus:outline-none"
+                className="flex h-9 w-[128px] items-center justify-between rounded border border-gray-300 bg-white px-3 text-sm text-slate-700 focus:border-[#156372] focus:outline-none"
                 onClick={() => {
                   setIsTaxModeDropdownOpen(false);
                   setIsPriceListDropdownOpen((prev) => !prev);

@@ -181,7 +181,7 @@ const QuoteDetail = () => {
     industry: ""
   });
   const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string>("");
   const [termsData, setTermsData] = useState({
     notes: "Looking forward for your business.",
     termsAndConditions: "",
@@ -195,7 +195,7 @@ const QuoteDetail = () => {
   const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [showImageViewer, setShowImageViewer] = useState(false);
   const attachmentsFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -472,17 +472,17 @@ const QuoteDetail = () => {
       }
 
       if (quoteResult.status === "fulfilled") {
-        const quoteData = quoteResult.value;
+        const quoteData = quoteResult.value as any;
         if (quoteData) {
           setQuote(quoteData);
           const dbAttachments = Array.isArray(quoteData.attachedFiles)
-            ? quoteData.attachedFiles.map((attachment, index) => normalizeAttachmentFromQuote(attachment, index))
+            ? quoteData.attachedFiles.map((attachment: any, index: number) => normalizeAttachmentFromQuote(attachment, index))
             : [];
           const dbComments = Array.isArray(quoteData.comments)
-            ? quoteData.comments.map((comment, index) => normalizeCommentFromQuote(comment, index))
+            ? quoteData.comments.map((comment: any, index: number) => normalizeCommentFromQuote(comment, index))
             : [];
           const dbActivityLogs = Array.isArray(quoteData.activityLogs)
-            ? quoteData.activityLogs.map((entry, index) => normalizeActivityLogFromQuote(entry, index))
+            ? quoteData.activityLogs.map((entry: any, index: number) => normalizeActivityLogFromQuote(entry, index))
             : [];
 
           if (dbAttachments.length > 0) {
@@ -541,7 +541,7 @@ const QuoteDetail = () => {
               id: `activity-seed-${quoteData.id || quoteData._id || quoteId}`,
               action: "Quote Created",
               description: `Quote ${quoteData.quoteNumber || quoteData.id || quoteId} was created.`,
-              actor: quoteData.createdBy || "System",
+              actor: (quoteData as any).createdBy || "System",
               timestamp: quoteData.createdAt || quoteData.quoteDate || new Date().toISOString(),
               level: "info"
             };
@@ -651,31 +651,32 @@ const QuoteDetail = () => {
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (isBulkActionsOpen && !event.target.closest('.quote-detail-bulk-actions-wrapper')) {
+      const target = event.target as HTMLElement;
+      if (isBulkActionsOpen && !target.closest('.quote-detail-bulk-actions-wrapper')) {
         setIsBulkActionsOpen(false);
       }
-      if (isBulkFieldDropdownOpen && !event.target.closest('.bulk-update-field-dropdown-wrapper')) {
+      if (isBulkFieldDropdownOpen && !target.closest('.bulk-update-field-dropdown-wrapper')) {
         setIsBulkFieldDropdownOpen(false);
       }
-      if (showMailDropdown && !event.target.closest('.quote-detail-dropdown-wrapper')) {
+      if (showMailDropdown && !target.closest('.quote-detail-dropdown-wrapper')) {
         setShowMailDropdown(false);
       }
-      if (showPdfDropdown && !event.target.closest('.quote-detail-dropdown-wrapper')) {
+      if (showPdfDropdown && !target.closest('.quote-detail-dropdown-wrapper')) {
         setShowPdfDropdown(false);
       }
-      if (showMoreDropdown && !event.target.closest('.quote-detail-dropdown-wrapper')) {
+      if (showMoreDropdown && !target.closest('.quote-detail-dropdown-wrapper')) {
         setShowMoreDropdown(false);
       }
-      if (showConvertDropdown && !event.target.closest('.quote-detail-dropdown-wrapper')) {
+      if (showConvertDropdown && !target.closest('.quote-detail-dropdown-wrapper')) {
         setShowConvertDropdown(false);
       }
-      if (showSidebarMoreDropdown && !event.target.closest('.quote-detail-sidebar-more-wrapper')) {
+      if (showSidebarMoreDropdown && !target.closest('.quote-detail-sidebar-more-wrapper')) {
         setShowSidebarMoreDropdown(false);
       }
-      if (isVisibilityDropdownOpen && visibilityDropdownRef.current && !visibilityDropdownRef.current.contains(event.target)) {
+      if (isVisibilityDropdownOpen && visibilityDropdownRef.current && !visibilityDropdownRef.current.contains(target)) {
         setIsVisibilityDropdownOpen(false);
       }
-      if (isCustomizeDropdownOpen && customizeDropdownRef.current && !customizeDropdownRef.current.contains(event.target)) {
+      if (isCustomizeDropdownOpen && customizeDropdownRef.current && !customizeDropdownRef.current.contains(target)) {
         setIsCustomizeDropdownOpen(false);
       }
     };
@@ -887,10 +888,10 @@ const QuoteDetail = () => {
         </body>
         </html>
       `);
-      printWindow.document.close();
-    }
-      printWindow.focus();
-      printWindow.print();
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
+      }
     }
   };
 
@@ -953,7 +954,7 @@ const QuoteDetail = () => {
         setAllQuotes(quotes);
 
         // If current quote was deleted, navigate to first available quote or quotes list
-        if (selectedQuotes.includes(quoteId)) {
+        if (quoteId && selectedQuotes.includes(quoteId)) {
           const remainingQuotes = quotes.filter(q => !selectedQuotes.includes(q.id));
           if (remainingQuotes.length > 0) {
             navigate(`/sales/quotes/${remainingQuotes[0].id}`);
@@ -964,12 +965,12 @@ const QuoteDetail = () => {
       } catch (error) {
         console.error("Error reloading quotes:", error);
         // If current quote was deleted, navigate to quotes list on error
-        if (selectedQuotes.includes(quoteId)) {
+        if (quoteId && selectedQuotes.includes(quoteId)) {
           navigate('/sales/quotes');
         }
       }
 
-      if (quoteId && !selectedQuotes.includes(quoteId)) {
+      if (quoteId && !selectedQuotes.includes(quoteId as string)) {
         await appendActivityLog(
           "Bulk Delete",
           `${selectedQuotes.length} quote(s) were deleted.`,
@@ -1058,29 +1059,28 @@ const QuoteDetail = () => {
     navigate("/sales/quotes/new");
   };
 
-  const formatDate = (dateString: any) => {
+  function formatDate(dateString: any) {
     if (!dateString) return "-";
     const date = new Date(dateString);
     return date.toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "short",
-      year: "numeric"
+      year: "numeric",
     });
-  };
+  }
 
-  const formatCurrency = (amount: any, currency = baseCurrency) => {
+  function formatCurrency(amount: any, currency = baseCurrency) {
     // Extract only the currency symbol (first 3-4 characters before any space or dash)
     const currencySymbol = currency ? currency.split(' - ')[0].split(' ')[0] : baseCurrency;
     return `${currencySymbol}${parseFloat(amount || 0).toLocaleString("en-US", {
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2
     })}`;
-  };
+  }
 
-  const toNumber = (value: any) => {
+  function toNumber(value: any) {
     const parsed = parseFloat(String(value ?? 0));
     return Number.isFinite(parsed) ? parsed : 0;
-  };
+  }
 
   const isSameDay = (a: Date, b: Date) =>
     a.getFullYear() === b.getFullYear() &&
@@ -1203,7 +1203,7 @@ const QuoteDetail = () => {
     );
   };
 
-  const getQuoteTotalsMeta = (quoteData: any) => {
+  function getQuoteTotalsMeta(quoteData: any) {
     const items = Array.isArray(quoteData?.items) ? quoteData.items : [];
     const computedSubTotal = items.reduce((sum: number, item: any) => {
       const quantity = toNumber(item?.quantity ?? 0);
@@ -1286,7 +1286,7 @@ const QuoteDetail = () => {
       taxLabel,
       total: toNumber(quoteData?.total ?? computedTotal)
     };
-  };
+  }
 
   const getStatusBadge = (status: any) => {
     const statusMap = {
@@ -1831,8 +1831,11 @@ const QuoteDetail = () => {
         </div>
       </body>
       </html>
-    `);
-    printWindow.document.close();
+      `);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+    }
   };
 
   const handleSendReminder = () => {
@@ -1919,7 +1922,7 @@ const QuoteDetail = () => {
   };
 
   // Generate HTML content for a specific quote (used for bulk export)
-  const generateQuoteHTMLForQuote = (quoteData: any) => {
+  function generateQuoteHTMLForQuote(quoteData: any) {
     if (!quoteData) return '';
 
     const itemsHTML = quoteData.items && quoteData.items.length > 0 ? quoteData.items.map((item: any, index: number) => {
@@ -1994,7 +1997,9 @@ const QuoteDetail = () => {
           .total-value { color: #111827; font-weight: 500; }
           .notes { margin-top: 18px; margin-bottom: 12px; border-top: 1px dashed #d1d5db; padding-top: 10px; }
           .notes-label { font-size: 13px; font-weight: 700; color: #111827; margin-bottom: 6px; letter-spacing: 0.2px; }
-          .notes-content { font-size: 11px; color: #4b5563; line-height: 1.5; }
+          .notes-content { font-size: 11px; color: #4b5563; white-space: pre-line; line-height: 1.5; }
+          .footer { margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 14px; text-align: center; }
+          .footer-text { font-size: 10px; color: #6b7280; }
         </style>
       </head>
       <body>
@@ -2088,7 +2093,7 @@ const QuoteDetail = () => {
       </body>
       </html>
     `;
-  };
+  }
 
   // PDF/Print handlers
   const handlePrintQuote = () => {
@@ -2190,8 +2195,8 @@ const QuoteDetail = () => {
           : [];
       const prefixedNumbers = quotePool
         .map((q: any) => String(q.quoteNumber || "").trim())
-        .filter((number) => number.startsWith(quotePrefix));
-      const maxSuffix = prefixedNumbers.reduce((max, number) => {
+        .filter((number: string) => number.startsWith(quotePrefix));
+      const maxSuffix = prefixedNumbers.reduce((max: number, number: string) => {
         const suffix = parseInt(number.replace(quotePrefix, ""), 10);
         return Number.isFinite(suffix) ? Math.max(max, suffix) : max;
       }, 0);
@@ -2311,7 +2316,7 @@ const QuoteDetail = () => {
     if (!quote) return;
 
     if (quoteId) {
-      setSelectedQuotes([quoteId]);
+      setSelectedQuotes([quoteId as string]);
     }
     setIsDeleteModalOpen(true);
   };
@@ -2595,10 +2600,10 @@ const QuoteDetail = () => {
     }
   };
 
-  const handleRemoveAttachment = async (id: string) => {
+  const handleRemoveAttachment = async (attachmentId: string) => {
     if (!quoteId) return;
 
-    const updatedAttachments = quoteAttachments.filter(att => att.id !== id);
+    const updatedAttachments = quoteAttachments.filter((att: any) => att.id !== attachmentId);
     setQuoteAttachments(updatedAttachments);
     localStorage.setItem(`quote_attachments_${quoteId}`, JSON.stringify(updatedAttachments));
 
@@ -4779,7 +4784,7 @@ const QuoteDetail = () => {
                   ))}
                   <button
                     className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 cursor-pointer"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => (fileInputRef.current as any)?.click()}
                   >
                     <Paperclip size={16} />
                     Attachments
@@ -4790,7 +4795,7 @@ const QuoteDetail = () => {
                     multiple
                     className="hidden"
                     onChange={(e) => {
-                      const files = Array.from(e.target.files);
+                      const files = Array.from(e.target.files || []);
                       const newAttachments = files.map(file => ({
                         name: file.name,
                         type: file.type,
@@ -5016,7 +5021,7 @@ const QuoteDetail = () => {
                       onDrop={handleDrop}
                       onDragOver={handleDragOver}
                       onDragLeave={handleDragLeave}
-                      onClick={() => attachmentsFileInputRef.current?.click()}
+                      onClick={() => (attachmentsFileInputRef.current as any)?.click()}
                     >
                       <div className="flex flex-col items-center gap-3">
                         <div className="w-16 h-16 flex items-center justify-center">
@@ -5087,7 +5092,7 @@ const QuoteDetail = () => {
                         onDrop={handleDrop}
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
-                        onClick={() => attachmentsFileInputRef.current?.click()}
+                        onClick={() => (attachmentsFileInputRef.current as any)?.click()}
                       >
                         <div className="flex flex-col items-center gap-2">
                           <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
@@ -5405,7 +5410,7 @@ const QuoteDetail = () => {
                           onMouseEnter={(e: any) => e.target.style.opacity = "0.9"}
                           onMouseLeave={(e: any) => e.target.style.opacity = "1"}
                           onClick={() => {
-                            setLogoPreview(null);
+                            setLogoPreview("");
                             setLogoFile(null);
                           }}
                         >
@@ -5423,12 +5428,12 @@ const QuoteDetail = () => {
                         ref={organizationAddressFileInputRef}
                         accept="image/*"
                         onChange={(e) => {
-                          const file = e.target.files[0];
+                          const file = e.target.files?.[0];
                           if (file) {
                             setLogoFile(file);
                             const reader = new FileReader();
                             reader.onloadend = () => {
-                              setLogoPreview(reader.result);
+                              setLogoPreview(reader.result as string || "");
                             };
                             reader.readAsDataURL(file);
                           }
@@ -5440,7 +5445,7 @@ const QuoteDetail = () => {
                         style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
                         onMouseEnter={(e: any) => e.target.style.opacity = "0.9"}
                         onMouseLeave={(e: any) => e.target.style.opacity = "1"}
-                        onClick={() => organizationAddressFileInputRef.current?.click()}
+                        onClick={() => (organizationAddressFileInputRef.current as any)?.click()}
                       >
                         Upload Logo
                       </button>
@@ -5657,7 +5662,9 @@ export default QuoteDetail;
 
 
 
-const sanitizeProfileForCache = (profile: any) => {
+
+// Helper functions moved out of component or converted to function declarations for hoisting
+function sanitizeProfileForCache(profile: any) {
   if (!profile || typeof profile !== "object") return {};
   const rawLogo = String(profile.logo || profile.logoUrl || "").trim();
   const nextLogo = rawLogo.startsWith("data:") ? "" : rawLogo;
@@ -5666,4 +5673,4 @@ const sanitizeProfileForCache = (profile: any) => {
     logo: nextLogo,
     logoUrl: nextLogo,
   };
-};
+}

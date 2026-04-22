@@ -336,7 +336,7 @@ export default function NewCustomer() {
 
   const loadTaxes = useCallback(async () => {
     try {
-      const response: any = await taxesAPI.getAll();
+      const response: any = await taxesAPI.getForTransactions("sales");
       const rows = Array.isArray(response?.data) ? response.data : (Array.isArray(response) ? response : []);
       const normalized = rows
         .filter((t: any) => t?.isActive !== false && t?.active !== false)
@@ -346,9 +346,21 @@ export default function NewCustomer() {
         }))
         .filter((t: any) => t.id);
       setAvailableTaxes(normalized);
-
     } catch (error) {
-      setAvailableTaxes([]);
+      try {
+        const fallback: any = await taxesAPI.getAll({ status: "active" });
+        const rows = Array.isArray(fallback?.data) ? fallback.data : (Array.isArray(fallback) ? fallback : []);
+        const normalized = rows
+          .filter((t: any) => t?.isActive !== false && t?.active !== false)
+          .map((t: any) => ({
+            ...t,
+            id: String(t?._id || t?.id || t?.tax_id || ""),
+          }))
+          .filter((t: any) => t.id);
+        setAvailableTaxes(normalized);
+      } catch {
+        setAvailableTaxes([]);
+      }
     }
   }, []);
 
@@ -2229,11 +2241,11 @@ export default function NewCustomer() {
                               closeAllDropdowns();
                               setIsTaxRateDropdownOpen(!wasOpen);
                             }}
-                            className="h-[34px] w-full rounded border border-gray-300 bg-white px-3 text-left text-[13px] transition-colors hover:border-gray-400 outline-none"
-                            style={isTaxRateDropdownOpen ? { borderColor: "#156372" } : {}}
+                            className="h-[34px] w-full rounded border border-[#156372] bg-white px-3 text-left text-[13px] text-slate-700 transition-colors hover:border-[#0f4f59] outline-none shadow-sm"
+                            style={isTaxRateDropdownOpen ? { borderColor: "#156372", boxShadow: "0 0 0 1px rgba(21, 99, 114, 0.18)" } : { borderColor: "#156372" }}
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <span className={formData.taxRate ? "text-black font-bold" : "text-[#6b7280]"}>
+                              <span className={formData.taxRate ? "text-slate-700 font-medium" : "text-slate-400"}>
                                 {selectedCustomerTaxLabel}
                               </span>
                               <ChevronDown
@@ -2244,12 +2256,9 @@ export default function NewCustomer() {
                             </div>
                           </button>
                           {isTaxRateDropdownOpen && (
-                            <div className="absolute left-0 top-full z-[9999] mt-1 w-full rounded-xl border border-[#d6dbe8] bg-white p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
-                              <div className="p-2">
-                                <div
-                                  className="flex items-center gap-2 rounded-lg border bg-slate-50/50 px-3 py-1.5 transition-all focus-within:bg-white"
-                                  style={{ borderColor: "#156372" }}
-                                >
+                            <div className="absolute left-0 top-full z-[9999] mt-1 w-full rounded-xl border border-[#d6dbe8] bg-white p-1 shadow-[0_16px_40px_rgba(15,23,42,0.14)] animate-in fade-in zoom-in-95 duration-100">
+                              <div className="p-2 pb-1">
+                                <div className="flex items-center gap-2 rounded-lg border bg-white px-3 py-1.5 transition-all focus-within:bg-white" style={{ borderColor: "#156372" }}>
                                   <Search size={14} className="text-slate-400" />
                                   <input
                                     type="text"
@@ -2261,17 +2270,17 @@ export default function NewCustomer() {
                                   />
                                 </div>
                               </div>
-                              <div className="max-h-64 overflow-y-auto py-1 custom-scrollbar">
+                              <div className="max-h-[260px] overflow-y-auto py-1 custom-scrollbar">
                                 {!hasCustomerTaxes ? (
                                   <div className="px-4 py-3 text-center text-[13px] text-slate-400">No taxes found</div>
                                 ) : (
                                   filteredCustomerTaxGroups.map((group) => {
                                     return (
                                       <React.Fragment key={group.label}>
-                                        <div className="mt-2 px-4 py-1.5 text-black text-[10px] font-bold uppercase tracking-wider">
+                                        <div className="mt-2 px-4 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-700">
                                           {group.label}
                                         </div>
-                                        <div className="mt-1 space-y-0.5">
+                                        <div className="mt-1 space-y-0.5 pb-1">
                                           {group.options.map((tax) => {
                                             const selected = String(formData.taxRate || "") === String(tax.id || "");
                                             const label = taxLabel(tax.raw) || `${tax.name} [${tax.rate}%]`;
@@ -2284,11 +2293,9 @@ export default function NewCustomer() {
                                                   setIsTaxRateDropdownOpen(false);
                                                   setTaxRateSearch("");
                                                 }}
-                                                className={`flex w-full items-center justify-between rounded-lg px-4 py-2 text-[13px] transition-colors ${
-                                                  selected ? "font-bold text-black bg-[#156372]/5" : "text-slate-600 hover:bg-slate-50"
-                                                }`}
+                                                className={`flex w-full items-center justify-between rounded-lg px-4 py-2.5 text-[13px] transition-colors ${selected ? "bg-[#eef8f9]" : "text-slate-600 hover:bg-[#eef8f9]"}`}
                                               >
-                                                <span>{label}</span>
+                                                <span className={selected ? "font-medium text-[#156372]" : ""}>{label}</span>
                                                 {selected && <Check size={14} className="text-[#156372]" />}
                                               </button>
                                             );

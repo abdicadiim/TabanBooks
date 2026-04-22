@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { Search, X, Plus, ChevronDown, ChevronUp, Settings, Info, PlusCircle, FileText, MoreVertical } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { getCustomers, getRetainerInvoiceById, saveRetainerInvoice, updateRetainerInvoice, buildTaxOptionGroups, taxLabel, isTaxActive, normalizeCreatedTaxPayload, readTaxesLocal, createTaxLocal } from "../../salesModel";
+import { getCustomers, getRetainerInvoiceById, saveRetainerInvoice, updateRetainerInvoice, buildTaxOptionGroups, taxLabel, isTaxActive, normalizeCreatedTaxPayload } from "../../salesModel";
 import { customersAPI, retainerInvoicesAPI, projectsAPI, reportingTagsAPI, taxesAPI, transactionNumberSeriesAPI } from "../../../../services/api";
 import { useOrganizationBranding } from "../../../../hooks/useOrganizationBranding";
 import NewTaxModal from "../../../../components/modals/NewTaxModal";
@@ -177,6 +177,33 @@ export default function NewRetailInvoice() {
     return `${safePrefix}${rawDigits.padStart(5, "0")}`;
   };
 
+  const resolveRetainerInvoiceNumber = async () => {
+    const currentInvoiceNumber = String(invoiceNumber || "").trim();
+    if (retainerNumberMode === "manual") {
+      return currentInvoiceNumber;
+    }
+
+    try {
+      const response: any = await transactionNumberSeriesAPI.getNextNumber({
+        module: "Retainer Invoice",
+        locationName: selectedLocation,
+      });
+      const nextNumber = String(
+        response?.data?.nextNumber || response?.data?.number || response?.nextNumber || response?.number || ""
+      ).trim();
+      if (nextNumber) {
+        setInvoiceNumber(nextNumber);
+        setRetainerPrefix(deriveRetainerPrefix(nextNumber));
+        setRetainerNextNumber(extractRetainerDigits(nextNumber) || "");
+        return nextNumber;
+      }
+    } catch (error) {
+      console.error("Error reserving retainer invoice number:", error);
+    }
+
+    return currentInvoiceNumber;
+  };
+
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -185,6 +212,11 @@ export default function NewRetailInvoice() {
           locationName: selectedLocation,
           reserve: false
         }).catch(() => null);
+        const customersPromise = getCustomers().catch(() => []);
+        const taxesPromise = taxesAPI.getForTransactions().catch(() => null);
+        const projectsPromise = projectsAPI.getAll({ limit: 1000 }).catch(() => ({ data: [] }));
+        const reportingTagsPromise = reportingTagsAPI.getAll().catch(() => ({ data: [] }));
+        const editInvoicePromise = isEditMode && id ? getRetainerInvoiceById(id).catch(() => null) : Promise.resolve(null);
 
         nextNumberPromise.then((nextNumResp) => {
           const nextNumber =
@@ -196,15 +228,16 @@ export default function NewRetailInvoice() {
           }
         });
 
-        const [custs, taxResp, projectResp, reportingTagsResp, editInvoiceResp] = await Promise.all([
-          getCustomers(),
-          taxesAPI.getForTransactions().catch(() => null),
-          projectsAPI.getAll({ limit: 1000 }).catch(() => ({ data: [] })),
-          reportingTagsAPI.getAll().catch(() => ({ data: [] })),
-          isEditMode && id ? getRetainerInvoiceById(id).catch(() => null) : Promise.resolve(null),
-        ]);
+        const custs = await customersPromise;
+        const normalizedCustomers = Array.isArray(custs) ? custs : [];
+        setCustomers(normalizedCustomers);
 
-        setCustomers(Array.isArray(custs) ? custs : []);
+        const [taxResp, projectResp, reportingTagsResp, editInvoiceResp] = await Promise.all([
+          taxesPromise,
+          projectsPromise,
+          reportingTagsPromise,
+          editInvoicePromise,
+        ]);
 
         const fallbackTaxesResp =
           Array.isArray((taxResp as any)?.data) && (taxResp as any).data.length > 0
@@ -229,14 +262,7 @@ export default function NewRetailInvoice() {
           }))
           .filter((t: TaxOption) => t.id);
 
-        const cachedTaxes = readTaxesLocal().map((t: any) => ({
-          ...t,
-          id: String(t._id || t.id || t.taxId || ""),
-          name: String(t.name || t.taxName || t.displayName || "Tax"),
-          rate: Number(t.rate ?? t.taxRate ?? t.percentage ?? t.taxPercentage ?? 0),
-        }));
-
-        const combined = [...apiTaxes, ...cachedTaxes]
+        const combined = apiTaxes
           .filter((t: TaxOption) => t.id)
           .filter((t: TaxOption) => isTaxActive(t))
           .filter(
@@ -412,9 +438,8 @@ export default function NewRetailInvoice() {
     loadData();
   }, [id, isEditMode]);
 
-  const handleTaxCreatedFromModal = (payload: any) => {
+  const handleTaxCreatedFromModal = async (payload: any) => {
     const normalizedInput = normalizeCreatedTaxPayload(payload);
-    let createdTax = normalizedInput.raw;
     const inputName = normalizedInput.name;
     const inputRate = normalizedInput.rate;
     const inputIsCompound = normalizedInput.isCompound;
@@ -425,17 +450,20 @@ export default function NewRetailInvoice() {
       return;
     }
 
+    let createdTax = normalizedInput.raw;
     try {
-      createdTax =
-        createTaxLocal({
-          name: inputName,
-          rate: Number.isFinite(inputRate) ? inputRate : 0,
-          isActive: true,
-          type: "both",
-          isCompound: inputIsCompound,
-        }) || createdTax;
+      const response: any = await taxesAPI.create({
+        name: inputName,
+        rate: Number.isFinite(inputRate) ? inputRate : 0,
+        isActive: true,
+        type: "both",
+        isCompound: inputIsCompound,
+      });
+      createdTax = response?.data || response || createdTax;
     } catch (error) {
-      console.error("Error creating tax in local settings storage:", error);
+      console.error("Error creating tax in database:", error);
+      toast.error("Failed to create tax");
+      return;
     }
 
     const option: any = {
@@ -944,11 +972,12 @@ export default function NewRetailInvoice() {
           ""
       ).trim();
 
-    const normalizedInvoiceNumber = String(invoiceNumber || "").trim();
+    const normalizedInvoiceNumber = await resolveRetainerInvoiceNumber();
     const finalInvoiceNumber =
       normalizedInvoiceNumber.toUpperCase().startsWith("RET-")
         ? normalizedInvoiceNumber
         : buildRetainerNumber(retainerPrefix, normalizedInvoiceNumber);
+    const resolvedProjectName = projects.find((p) => String(p.id) === String(projectId))?.name || "";
 
     const payload = {
       retainerInvoiceNumber: finalInvoiceNumber,
@@ -956,20 +985,24 @@ export default function NewRetailInvoice() {
       customerName: resolvedCustomerName,
       date: invoiceDate,
       invoiceDate,
-        dueDate: invoiceDate,
-        status,
-        items,
-        subtotal,
-        tax: totalTax,
-        total,
-        notes: customerNotes,
-        terms,
-        orderNumber: reference,
-        paymentTerms: "Due on Receipt",
-        currency: "USD",
-        taxExclusive: "Tax Exclusive",
-        location: selectedLocation,
-        selectedLocation,
+      dueDate: invoiceDate,
+      status,
+      items,
+      subtotal,
+      tax: totalTax,
+      total,
+      notes: customerNotes,
+      terms,
+      reference,
+      orderNumber: reference,
+      projectId: projectId || undefined,
+      projectName: resolvedProjectName,
+      paymentTerms: "Due on Receipt",
+      currency: "USD",
+      taxExclusive: "Tax Exclusive",
+      location: selectedLocation,
+      locationName: selectedLocation,
+      selectedLocation,
       reportingTags: Object.entries(reportingTagSelections)
         .filter(([, value]) => value && value !== "None")
         .map(([tagId, value]) => ({ tagId, value })),
@@ -1043,9 +1076,9 @@ export default function NewRetailInvoice() {
   };
 
   const inputBaseClass =
-    "h-[34px] w-full rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 shadow-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20";
+    "h-[34px] w-full rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 shadow-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-[#156372] focus:ring-2 focus:ring-[#156372]/20";
   const selectBaseClass =
-    "h-[34px] w-full appearance-none rounded-md border border-slate-200 bg-white px-3 pr-8 text-[13px] text-slate-700 shadow-sm outline-none transition-all hover:border-slate-300 focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 disabled:bg-slate-50 disabled:text-slate-400";
+    "h-[34px] w-full appearance-none rounded-md border border-slate-200 bg-white px-3 pr-8 text-[13px] text-slate-700 shadow-sm outline-none transition-all hover:border-slate-300 focus:border-[#156372] focus:ring-2 focus:ring-[#156372]/20 disabled:bg-slate-50 disabled:text-slate-400";
   const labelClass = "text-[13px] text-gray-700";
   const requiredLabelClass = "text-[13px] text-[#ef4444]";
 
@@ -1122,8 +1155,8 @@ export default function NewRetailInvoice() {
   };
 
   return (
-    <div className="flex min-h-[calc(100vh-98px)] flex-col bg-white">
-      <div className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white/90 px-6 py-4 backdrop-blur">
+    <div className="flex h-full min-h-0 flex-col bg-gray-50">
+      <div className="sticky top-0 z-30 shrink-0 flex items-center justify-between border-b border-gray-200 bg-white/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-white/90">
         <div className="flex items-center gap-2">
           <FileText size={18} className="text-slate-600" />
           <h1 className="text-[18px] font-semibold text-slate-900">
@@ -1142,9 +1175,10 @@ export default function NewRetailInvoice() {
         </button>
       </div>
 
-      <div className="w-full max-w-[980px] py-6">
-        <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-          <div className="p-6">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50">
+        <div className="w-full max-w-[980px] py-6">
+          <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="p-6 bg-gray-50">
               <div className="grid grid-cols-[220px_1fr] items-center gap-y-4 gap-x-4 max-w-[860px]">
                 <label className={requiredLabelClass}>Customer Name*</label>
                 <div className="relative flex items-center" ref={customerDropdownRef}>
@@ -1620,6 +1654,7 @@ export default function NewRetailInvoice() {
                   className="w-full max-w-[900px] h-20 rounded-md border border-slate-200 bg-white p-3 text-[13px] text-slate-700 shadow-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 resize-none"
                 />
               </div>
+            </div>
           </div>
         </div>
       </div>

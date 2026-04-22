@@ -2633,9 +2633,9 @@ export default function NewSalesReceipt() {
 
   return (
 
-    <div className="w-full h-screen overflow-hidden bg-[#f8fafc] flex flex-col">
+    <div className="w-full h-screen overflow-hidden bg-gray-50 flex flex-col">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+      <div className="bg-white/95 border-b border-gray-200 px-6 py-4 flex items-center justify-between backdrop-blur supports-[backdrop-filter]:bg-white/90">
         <div className="flex items-center gap-3">
           <FileText size={20} className="text-gray-900" />
           <h1 className="text-[17px] font-bold text-gray-900">{isEditMode ? "Edit Sales Receipt" : "New Sales Receipt"}</h1>
@@ -2648,10 +2648,10 @@ export default function NewSalesReceipt() {
         </button>
       </div>
 
-        <div className="flex-1 overflow-y-auto bg-white pb-72">
+        <div className="flex-1 overflow-y-auto bg-gray-50 pb-72 custom-scrollbar">
         <div className="w-full px-5 py-4">
-          <div className="w-full overflow-visible border border-[#e5e7eb] bg-white">
-            <div className="border-b border-[#eceef2] bg-[#f3f4f6] px-5 py-5">
+          <div className="w-full overflow-visible border border-gray-200 bg-white">
+            <div className="border-b border-gray-200 bg-gray-50 px-5 py-5">
               <div className="grid grid-cols-[140px_minmax(0,560px)] items-start gap-x-6 gap-y-5">
                 <label className="pt-3 text-[13px] font-medium text-[#374151]">Customer Name</label>
                 <div className="relative" ref={customerDropdownRef}>
@@ -3145,7 +3145,7 @@ export default function NewSalesReceipt() {
                     }
                   }}
                   placeholder="Scan or type item name/SKU and press Enter"
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#2563eb] focus:border-[#2563eb]"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
                   autoFocus
                 />
               </div>
@@ -3205,7 +3205,7 @@ export default function NewSalesReceipt() {
                             handleDeselectAllItems();
                           }
                         }}
-                        className="w-4 h-4 text-[#2563eb] border-gray-300 rounded focus:ring-[#2563eb] cursor-pointer"
+                        className="w-4 h-4 text-[#156372] border-gray-300 rounded focus:ring-[#156372] cursor-pointer"
                         style={{ accentColor: "#2563eb" }}
                       />
                     </th>
@@ -3236,7 +3236,7 @@ export default function NewSalesReceipt() {
                             type="checkbox"
                             checked={bulkSelectedItemIds.includes(item.id)}
                             onChange={() => handleToggleItemSelection(item.id)}
-                            className="w-4 h-4 text-[#2563eb] border-gray-300 rounded focus:ring-[#2563eb] cursor-pointer"
+                            className="w-4 h-4 text-[#156372] border-gray-300 rounded focus:ring-[#156372] cursor-pointer"
                             style={{ accentColor: "#2563eb" }}
                           />
                         </td>
@@ -3290,7 +3290,7 @@ export default function NewSalesReceipt() {
                                 value={item.description || ""}
                                 onChange={(e) => handleItemChange(item.id, "description", e.target.value)}
                                 rows={2}
-                                className="w-full px-3 py-2 border border-gray-100 rounded-md text-sm text-gray-700 bg-[#f7f8fb] focus:outline-none focus:ring-1 focus:ring-[#2563eb] focus:border-[#2563eb] resize-none"
+                                className="w-full px-3 py-2 border border-gray-100 rounded-md text-sm text-gray-700 bg-[#f7f8fb] focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] resize-none"
                               />
                             </div>
                           ) : (
@@ -3308,7 +3308,7 @@ export default function NewSalesReceipt() {
                                   setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }));
                                 }}
                                 onFocus={() => setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }))}
-                                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#2563eb] focus:border-[#2563eb]"
+                                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
                               />
                             </div>
                           )}
@@ -3391,7 +3391,7 @@ export default function NewSalesReceipt() {
                           onKeyDown={blockInvalidNumericKeys}
                           value={item.quantity}
                           onChange={(e) => handleItemChange(item.id, "quantity", sanitizeNumericInput(e.target.value))}
-                          className={`w-full px-3 py-2 text-sm text-gray-800 focus:outline-none ${item.itemId ? "border border-transparent bg-transparent text-center" : "border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-[#2563eb] focus:border-[#2563eb]"}`}
+                          className={`w-full px-3 py-2 text-sm text-gray-800 focus:outline-none ${item.itemId ? "border border-transparent bg-transparent text-center" : "border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"}`}
                           min="0"
                           step="0.01"
                         />
@@ -3423,7 +3423,7 @@ export default function NewSalesReceipt() {
                           onKeyDown={blockInvalidNumericKeys}
                           value={item.rate}
                           onChange={(e) => handleItemChange(item.id, "rate", sanitizeNumericInput(e.target.value))}
-                          className={`w-full px-3 py-2 text-sm text-gray-700 focus:outline-none ${item.itemId ? "border border-transparent bg-transparent text-right" : "border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-[#2563eb] focus:border-[#2563eb]"}`}
+                          className={`w-full px-3 py-2 text-sm text-gray-700 focus:outline-none ${item.itemId ? "border border-transparent bg-transparent text-right" : "border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"}`}
                           min="0"
                           step="0.01"
                         />
@@ -3907,7 +3907,7 @@ export default function NewSalesReceipt() {
                                   setNewHeaderItemId(null);
                                 }
                               }}
-                              className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#2563eb] focus:border-[#2563eb]"
+                              className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
                               autoFocus
                             />
                             <button
@@ -3964,7 +3964,7 @@ export default function NewSalesReceipt() {
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-2">Notes</label>
               <textarea
-                className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#2563eb] focus:border-[#2563eb] resize-none h-24 hover:border-gray-400"
+                className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] resize-none h-24 hover:border-gray-400"
                 value={formData.notes}
                 onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
               />
@@ -4042,7 +4042,7 @@ export default function NewSalesReceipt() {
                           type="number"
                           inputMode="decimal"
                           onKeyDown={blockInvalidNumericKeys}
-                          className="w-20 px-2 py-0.5 border border-gray-300 rounded text-sm text-right focus:outline-none focus:ring-1 focus:ring-[#2563eb] focus:border-[#2563eb]"
+                          className="w-20 px-2 py-0.5 border border-gray-300 rounded text-sm text-right focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
                           value={formData.shippingCharges}
                           onChange={(e) => handleSummaryChange("shippingCharges", sanitizeNumericInput(e.target.value))}
                         />
@@ -4167,7 +4167,7 @@ export default function NewSalesReceipt() {
                       type="number"
                       inputMode="decimal"
                       onKeyDown={blockInvalidNumericKeys}
-                      className="w-20 px-2 py-0.5 border border-gray-300 rounded text-sm text-right focus:outline-none focus:ring-1 focus:ring-[#2563eb] focus:border-[#2563eb]"
+                      className="w-20 px-2 py-0.5 border border-gray-300 rounded text-sm text-right focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
                       value={formData.adjustment}
                       onChange={(e) => handleSummaryChange("adjustment", sanitizeNumericInput(e.target.value))}
                     />
@@ -4209,7 +4209,7 @@ export default function NewSalesReceipt() {
             <div>
               <div className="text-sm font-medium text-gray-900 mb-2">Terms & Conditions</div>
               <textarea
-                className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#2563eb] focus:border-[#2563eb] resize-none h-24 hover:border-gray-400"
+                className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] resize-none h-24 hover:border-gray-400"
                 placeholder="Enter the terms and conditions of your business to be displayed in your transaction"
                 value={formData.termsAndConditions}
                 onChange={(e) => setFormData(prev => ({ ...prev, termsAndConditions: e.target.value }))}
@@ -4366,7 +4366,7 @@ export default function NewSalesReceipt() {
               <label className="text-sm font-medium text-gray-600 whitespace-nowrap">Reference#</label>
               <input
                 type="text"
-                className="flex-1 px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#2563eb] focus:border-[#2563eb] hover:border-gray-400 transition-colors"
+                className="flex-1 px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] hover:border-gray-400 transition-colors"
                 value={formData.referenceNumber}
                 onChange={(e) => setFormData(prev => ({ ...prev, referenceNumber: e.target.value }))}
               />
@@ -4726,7 +4726,7 @@ export default function NewSalesReceipt() {
                       <input
                         type="text"
                         placeholder="Search documents by name..."
-                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563eb] focus:border-[#2563eb] focus:bg-white transition-all"
+                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] focus:bg-white transition-all"
                         value={documentSearch}
                         onChange={(e) => setDocumentSearch(e.target.value)}
                       />
@@ -5198,7 +5198,7 @@ export default function NewSalesReceipt() {
                         <input
                           type="text"
                           placeholder={`Search in ${selectedCloudProvider}...`}
-                          className="w-full pl-10 pr-3 py-2 border border-gray-200 rounded-md text-sm outline-none focus:border-[#2563eb] transition-all font-medium text-slate-700"
+                          className="w-full pl-10 pr-3 py-2 border border-gray-200 rounded-md text-sm outline-none focus:border-[#156372] transition-all font-medium text-slate-700"
                           value={cloudSearchQuery}
                           onChange={(e) => setCloudSearchQuery(e.target.value)}
                         />
@@ -5460,7 +5460,7 @@ export default function NewSalesReceipt() {
                       placeholder="Type to search or scan the barcode of the item."
                       value={bulkAddSearch}
                       onChange={(e) => setBulkAddSearch(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#2563eb] focus:border-[#2563eb]"
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
                     />
                   </div>
                 </div>
@@ -5531,7 +5531,7 @@ export default function NewSalesReceipt() {
                               min="1"
                               value={selectedItem.quantity || 1}
                               onChange={(e) => handleBulkItemQuantityChange(selectedItem.id, e.target.value)}
-                              className="w-16 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#2563eb] focus:border-[#2563eb]"
+                              className="w-16 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
                               onClick={(e) => e.stopPropagation()}
                             />
                             <button

@@ -31,7 +31,7 @@ import {
   Check,
   Loader2
 } from "lucide-react";
-import { getCustomers, savePayment, getPaymentById, updatePayment, getInvoices, getInvoiceById, getNextPaymentNumber, updateInvoice, Invoice } from "../../salesModel";
+import { getCustomers, savePayment, getPaymentById, updatePayment, getInvoices, getInvoiceById, getNextPaymentNumber, updateInvoice, updateRetainerInvoice, Invoice } from "../../salesModel";
 import { getAllDocuments } from "../../../../utils/documentStorage";
 import { customersAPI, bankAccountsAPI, paymentsReceivedAPI, chartOfAccountsAPI, reportingTagsAPI, senderEmailsAPI } from "../../../../services/api";
 import ZohoSelect from "../../../../components/ZohoSelect";
@@ -53,6 +53,7 @@ export default function RecordPayment() {
     location.state?.invoice?.id ||
     location.state?.invoice?._id ||
     "";
+  const isRetainerSource = String(location.state?.source || "").toLowerCase() === "retainer-invoice";
   const { baseCurrency, symbol } = useCurrency();
   const baseCurrencyCode = baseCurrency?.code || "USD";
   const currencySymbol = symbol || "$";
@@ -547,20 +548,42 @@ export default function RecordPayment() {
   // Load invoice data if invoiceId is provided via state or param
   useEffect(() => {
     const initializeFromState = async () => {
+      let stateInvoice = location.state?.paymentData || location.state?.invoice || null;
+      if (!stateInvoice) {
+        try {
+          const raw = sessionStorage.getItem("taban_payment_launch_state");
+          const parsed = raw ? JSON.parse(raw) : null;
+          if (parsed && String(parsed?.source || "") === "retainer-invoice") {
+            stateInvoice = parsed.paymentData || parsed.invoice || parsed.retainerInvoice || null;
+          }
+        } catch {
+          // ignore storage parse errors
+        }
+      }
       // Priority 1: Use full invoice object from location state if available
-      if (location.state?.invoice && !isEditMode) {
-        const inv = location.state.invoice;
+      if (stateInvoice && !isEditMode) {
+        const inv = stateInvoice;
         setSelectedInvoice(inv);
-
-        const custName = location.state.customerName || inv.customerName || (typeof inv.customer === 'string' ? inv.customer : inv.customer?.displayName || inv.customer?.name) || "";
         const custId =
           location.state.customerId ||
           inv.customerId ||
           inv.customer?._id ||
           inv.customer?.id ||
           (typeof inv.customer === "string" ? inv.customer : "") ||
-          customers.find((c: any) => String(c?.name || "").trim().toLowerCase() === String(custName || "").trim().toLowerCase())?.id ||
           "";
+        const matchedCustomer = custId
+          ? customers.find((c: any) => String(c?.id || c?._id || "").trim() === String(custId).trim())
+          : null;
+        const custName = String(
+          location.state.customerName ||
+          inv.customerName ||
+          matchedCustomer?.displayName ||
+          matchedCustomer?.name ||
+          matchedCustomer?.companyName ||
+          (typeof inv.customer === 'string' ? inv.customer : inv.customer?.displayName || inv.customer?.name || "") ||
+          ""
+        ).trim();
+        setCustomerDetails(location.state.customerDetails || matchedCustomer || inv.customer || null);
         const amt = (location.state.amount || computeInvoiceDue(inv) || inv.balanceDue || inv.total || inv.amount || "").toString();
         setFormData(prev => ({
           ...prev,
@@ -584,6 +607,11 @@ export default function RecordPayment() {
           setLockedInvoiceId(invoiceIdStr);
           await loadUnpaidInvoices(custId, custName, invoiceIdStr, parseFloat(amt) || 0);
         }
+        try {
+          sessionStorage.removeItem("taban_payment_launch_state");
+        } catch {
+          // ignore storage errors
+        }
         return;
       }
 
@@ -594,17 +622,22 @@ export default function RecordPayment() {
           const inv = await getInvoiceById(targetInvoiceId);
           if (inv) {
             setSelectedInvoice(inv);
-            const customer = customers.find(c => c.id === inv.customerId || (typeof inv.customer === 'object' ? (inv.customer?._id === c.id || inv.customer?.id === c.id) : false));
-
-            const custName = inv.customerName || (typeof inv.customer === 'string' ? inv.customer : inv.customer?.displayName || inv.customer?.name) || "";
             const custId =
               inv.customerId ||
               inv.customer?._id ||
               inv.customer?.id ||
               (typeof inv.customer === "string" ? inv.customer : "") ||
-              customer?.id ||
-              customers.find((c: any) => String(c?.name || "").trim().toLowerCase() === String(custName || "").trim().toLowerCase())?.id ||
               "";
+            const customer = customers.find(c => String(c.id || c._id || "").trim() === String(custId).trim());
+            const custName = String(
+              inv.customerName ||
+              customer?.displayName ||
+              customer?.name ||
+              customer?.companyName ||
+              (typeof inv.customer === 'string' ? inv.customer : inv.customer?.displayName || inv.customer?.name || "") ||
+              ""
+            ).trim();
+            setCustomerDetails(customer || inv.customer || null);
             const amt = (computeInvoiceDue(inv) || inv.balanceDue || inv.total || inv.amount || "").toString();
             setFormData(prev => ({
               ...prev,
@@ -630,7 +663,7 @@ export default function RecordPayment() {
       }
 
       // Priority 3: Use customer from state (when coming from customer detail)
-      if (!isEditMode && !location.state?.invoice && !targetInvoiceId) {
+      if (!isEditMode && !stateInvoice && !targetInvoiceId) {
         const stateCustomerId = location.state?.customerId;
         const stateCustomerName = location.state?.customerName;
         if (stateCustomerId || stateCustomerName) {
@@ -1415,25 +1448,30 @@ export default function RecordPayment() {
     for (const [invoiceId, deltaRaw] of entries) {
       const delta = Number(deltaRaw) || 0;
       const current = await getInvoiceById(String(invoiceId));
-      if (!current) continue;
+      const localMatch = !current
+        ? unpaidInvoices.find((inv: any) => String(inv?.id || inv?._id || "").trim() === String(invoiceId).trim())
+        : null;
+      const currentRecord = current || localMatch;
+      if (!currentRecord) continue;
 
-      const totalAmount = roundMoney(parseFloat(String((current as any).total ?? (current as any).amount ?? 0)) || 0);
-      const currentPaid = roundMoney(parseFloat(String((current as any).amountPaid ?? (current as any).paidAmount ?? 0)) || 0);
+      const isRetainerTarget = isRetainerInvoiceRecord(currentRecord);
+      const totalAmount = roundMoney(parseFloat(String((currentRecord as any).total ?? (currentRecord as any).amount ?? 0)) || 0);
+      const currentPaid = roundMoney(parseFloat(String((currentRecord as any).amountPaid ?? (currentRecord as any).paidAmount ?? 0)) || 0);
       const nextPaid = Math.max(0, roundMoney(currentPaid + delta));
       const nextBalance = Math.max(0, roundMoney(totalAmount - nextPaid));
 
-      const currentStatusKey = toStatusKey((current as any).status || "sent");
-      let nextStatus: string = (current as any).status || "sent";
+      const currentStatusKey = toStatusKey((currentRecord as any).status || "sent");
+      let nextStatus: string = (currentRecord as any).status || "sent";
       if (currentStatusKey !== "void") {
         if (nextPaid > 0 && nextBalance <= 0) nextStatus = "paid";
-        else if (nextPaid > 0 && nextBalance > 0) nextStatus = "partially_paid";
+        else if (!isRetainerTarget && nextPaid > 0 && nextBalance > 0) nextStatus = "partially_paid";
         else nextStatus = currentStatusKey === "draft" ? "draft" : "sent";
       }
 
-      const existingPayments = Array.isArray((current as any).paymentsReceived)
-        ? [...(current as any).paymentsReceived]
-        : Array.isArray((current as any).payments)
-        ? [...(current as any).payments]
+      const existingPayments = Array.isArray((currentRecord as any).paymentsReceived)
+        ? [...(currentRecord as any).paymentsReceived]
+        : Array.isArray((currentRecord as any).payments)
+        ? [...(currentRecord as any).payments]
         : [];
 
       const paymentIdKey = String(paymentMeta.paymentId || "").trim();
@@ -1461,15 +1499,36 @@ export default function RecordPayment() {
             ]
           : normalizedExisting;
 
-      const patch: Partial<Invoice> & Record<string, any> = {
-        amountPaid: nextPaid,
-        paidAmount: nextPaid,
-        balanceDue: nextBalance,
-        balance: nextBalance,
-        status: nextStatus,
-        paymentsReceived: nextPaymentsReceived,
-      };
-      await updateInvoice(String(invoiceId), patch);
+      if (isRetainerTarget) {
+        const retainerStatus =
+          nextPaid > 0 && nextBalance > 0
+            ? "partially_paid"
+            : nextBalance <= 0
+              ? "paid"
+              : currentStatusKey === "draft"
+                ? "draft"
+                : "sent";
+        const retainerPatch: Record<string, any> = {
+          amountPaid: nextPaid,
+          paidAmount: nextPaid,
+          balanceDue: nextBalance,
+          balance: nextBalance,
+          amountRemaining: nextBalance,
+          status: retainerStatus,
+          paymentsReceived: nextPaymentsReceived,
+        };
+        await updateRetainerInvoice(String(invoiceId), retainerPatch);
+      } else {
+        const patch: Partial<Invoice> & Record<string, any> = {
+          amountPaid: nextPaid,
+          paidAmount: nextPaid,
+          balanceDue: nextBalance,
+          balance: nextBalance,
+          status: nextStatus,
+          paymentsReceived: nextPaymentsReceived,
+        };
+        await updateInvoice(String(invoiceId), patch);
+      }
     }
   };
 
@@ -1621,7 +1680,13 @@ export default function RecordPayment() {
             toast.success("Payment updated successfully.");
           }
           if (returnInvoiceId) {
-            navigate(`/sales/invoices/${returnInvoiceId}`);
+            navigate(
+              isRetainerSource
+                ? `/sales/retainer-invoices/${returnInvoiceId}`
+                : `/sales/invoices/${returnInvoiceId}`
+              ,
+              { state: { refreshTick: Date.now(), source: isRetainerSource ? "retainer-invoice" : "invoice" } }
+            );
           } else {
             navigate("/sales/payments-received");
           }
@@ -1652,7 +1717,13 @@ export default function RecordPayment() {
             toast.success("Payment saved successfully.");
           }
           if (returnInvoiceId) {
-            navigate(`/sales/invoices/${returnInvoiceId}`);
+            navigate(
+              isRetainerSource
+                ? `/sales/retainer-invoices/${returnInvoiceId}`
+                : `/sales/invoices/${returnInvoiceId}`
+              ,
+              { state: { refreshTick: Date.now(), source: isRetainerSource ? "retainer-invoice" : "invoice" } }
+            );
           } else {
             navigate("/sales/payments-received");
           }
@@ -2566,7 +2637,6 @@ export default function RecordPayment() {
                 <span className="italic">Settings</span> {"->"} <span className="italic">Sales</span> {"->"} <span className="italic">Payments Received</span>.
               </p>
             </div>
-          </div>
         </div>
 
         {/* Footer Actions */}
@@ -2993,7 +3063,6 @@ export default function RecordPayment() {
               {/* Main Content Area */}
               <div className="flex-1 flex flex-col items-center justify-center p-8 bg-white">
                 {selectedCloudProvider === "gdrive" ? (
-                  /* Google Drive Authentication Content */
                   <div className="flex flex-col items-center max-w-lg">
                     {/* Google Drive Logo */}
                     <div className="mb-8">
@@ -3075,7 +3144,6 @@ export default function RecordPayment() {
                     </button>
                   </div>
                 ) : selectedCloudProvider === "dropbox" ? (
-                  /* Dropbox Authentication Content */
                   <div className="flex flex-col items-center max-w-lg">
                     {/* Dropbox Logo */}
                     <div className="mb-8">
@@ -3137,7 +3205,6 @@ export default function RecordPayment() {
                     </button>
                   </div>
                 ) : selectedCloudProvider === "box" ? (
-                  /* Box Authentication Content */
                   <div className="flex flex-col items-center max-w-lg">
                     {/* Box Logo */}
                     <div className="mb-8">
@@ -3191,7 +3258,6 @@ export default function RecordPayment() {
                     </button>
                   </div>
                 ) : selectedCloudProvider === "onedrive" ? (
-                  /* OneDrive Authentication Content */
                   <div className="flex flex-col items-center max-w-lg">
                     {/* OneDrive Logo */}
                     <div className="mb-8">
@@ -3242,7 +3308,6 @@ export default function RecordPayment() {
                     </button>
                   </div>
                 ) : selectedCloudProvider === "zoho" || selectedCloudProvider === "gdrive" || selectedCloudProvider === "dropbox" || selectedCloudProvider === "box" ? (
-                  /* Functional Cloud Picker Content */
                   <div className="w-full flex-1 overflow-hidden flex flex-col">
                     {/* Search bar inside picker */}
                     <div className="mb-4 relative">
@@ -3301,7 +3366,6 @@ export default function RecordPayment() {
                     </div>
                   </div>
                 ) : selectedCloudProvider === "evernote" ? (
-                  /* Evernote Authentication Content */
                   <div className="flex flex-col items-center max-w-lg">
                     {/* Evernote Logo */}
                     <div className="mb-8">
@@ -3362,7 +3426,6 @@ export default function RecordPayment() {
                     </button>
                   </div>
                 ) : (
-                  /* Default Content for Zoho WorkDrive */
                   <div className="flex flex-col items-center justify-center">
                     <div className="relative w-full max-w-md h-64 mb-6 flex items-center justify-center">
                       <div className="relative w-full h-full">
@@ -3468,7 +3531,7 @@ export default function RecordPayment() {
         </div>
       )}
       {/* Advanced Customer Search Modal */}
-      {customerSearchModalOpen && typeof document !== 'undefined' && document.body && createPortal(
+      {customerSearchModalOpen && typeof document !== 'undefined' && document.body ? createPortal(
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
           onClick={() => setCustomerSearchModalOpen(false)}
@@ -3618,7 +3681,7 @@ export default function RecordPayment() {
           </div>
         </div>,
         document.body
-      )}
+      ) : null}
 
       <input
         type="file"
@@ -3630,7 +3693,7 @@ export default function RecordPayment() {
       />
 
       {/* Add Contact Person Modal */}
-      {isContactPersonModalOpen && createPortal(
+      {isContactPersonModalOpen && typeof document !== 'undefined' && document.body ? createPortal(
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000]" onClick={handleCancelContactPerson}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
@@ -3839,7 +3902,7 @@ export default function RecordPayment() {
           </div>
         </div>,
         document.body
-      )}
+      ) : null}
 
       </div>
     </div>

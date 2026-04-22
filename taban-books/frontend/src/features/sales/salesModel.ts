@@ -673,6 +673,21 @@ export interface RetainerInvoice extends Omit<Invoice, 'invoiceNumber'> {
   retainerType?: 'advance' | 'deposit' | 'prepayment';
 }
 
+const normalizeRetainerInvoiceRecord = (retainer: any, customerNameLookup?: Map<string, string>) => {
+  const invoiceNumber = String(retainer?.invoiceNumber || retainer?.retainerInvoiceNumber || "").trim();
+  const normalized = {
+    ...retainer,
+    invoiceNumber,
+    retainerInvoiceNumber: String(retainer?.retainerInvoiceNumber || invoiceNumber || "").trim(),
+  };
+
+  return {
+    ...normalized,
+    customerName: resolveInvoiceCustomerName(normalized, customerNameLookup),
+    status: normalized.status || "draft",
+  };
+};
+
 export const getRetainerInvoices = async (params: any = {}): Promise<RetainerInvoice[]> => {
   try {
     const [response, customers] = await Promise.all([
@@ -683,10 +698,8 @@ export const getRetainerInvoices = async (params: any = {}): Promise<RetainerInv
       const rows = response.data || [];
       const customerNameLookup = buildCustomerNameLookup(customers);
       return rows.map((retainer: any) => ({
-        ...retainer,
+        ...normalizeRetainerInvoiceRecord(retainer, customerNameLookup),
         id: retainer._id || retainer.id,
-        customerName: resolveInvoiceCustomerName(retainer, customerNameLookup),
-        status: retainer.status || "draft"
       }));
     }
     return [];
@@ -706,10 +719,8 @@ export const getRetainerInvoiceById = async (id: string): Promise<RetainerInvoic
       const customerNameLookup = buildCustomerNameLookup(customers);
       const retainer = response.data;
       return {
-        ...retainer,
+        ...normalizeRetainerInvoiceRecord(retainer, customerNameLookup),
         id: retainer._id || retainer.id,
-        customerName: resolveInvoiceCustomerName(retainer, customerNameLookup),
-        status: retainer.status || "draft"
       };
     }
     return null;
@@ -925,15 +936,21 @@ export const buildTaxOptionGroups = (taxes: any[] = []) => {
     const raw = tax?.raw ?? tax;
     if (!raw) return;
 
-    const typeKey = String(raw?.type || raw?.taxType || "other").trim().toLowerCase();
-    const label =
-      typeKey === "sales"
-        ? "Sales Taxes"
-        : typeKey === "purchase"
-          ? "Purchase Taxes"
-          : typeKey === "both"
-            ? "Sales & Purchase Taxes"
-            : "Other Taxes";
+    const typeKey = String(raw?.type || raw?.taxType || "").trim().toLowerCase();
+    const isGroup =
+      Boolean(raw?.isGroup || raw?.is_group) ||
+      typeKey === "tax-group" ||
+      typeKey === "group" ||
+      String(raw?.description || "").toLowerCase().includes("tax group") ||
+      Array.isArray(raw?.groupTaxes) ||
+      Array.isArray(raw?.groupTaxesIds) ||
+      Array.isArray(raw?.group_tax_ids);
+    const isCompound =
+      Boolean(raw?.isCompound || raw?.is_compound) ||
+      typeKey === "compound" ||
+      typeKey === "component" ||
+      String(raw?.description || "").toLowerCase().includes("compound tax");
+    const label = isGroup ? "Tax Group" : isCompound ? "Component Tax" : "Tax";
 
     const id = String(raw?._id || raw?.id || raw?.name || taxLabel(raw)).trim();
     if (!id) return;
@@ -2102,6 +2119,12 @@ export const saveQuote = async (quoteData: Partial<Quote>, retryCount = 0): Prom
       }
     };
 
+    const normalizeQuoteDiscountType = (value: any): "percent" | "amount" => {
+      const normalized = String(value || "").trim().toLowerCase();
+      if (normalized === "fixed" || normalized === "amount") return "amount";
+      return "percent";
+    };
+
     // Prepare data for backend API
     const apiData: any = {
       ...quoteData,
@@ -2123,7 +2146,7 @@ export const saveQuote = async (quoteData: Partial<Quote>, retryCount = 0): Prom
       tax: parseFloat(String(quoteData.tax ?? quoteData.taxAmount ?? quoteData.totalTax ?? 0)) || 0,
       totalTax: parseFloat(String(quoteData.totalTax ?? quoteData.taxAmount ?? quoteData.tax ?? 0)) || 0,
       discount: parseFloat(String(quoteData.discount || 0)) || 0,
-      discountType: quoteData.discountType || 'percent',
+      discountType: normalizeQuoteDiscountType(quoteData.discountType),
       discountAccount: quoteData.discountAccount || 'General Income',
       shippingCharges: parseFloat(String(quoteData.shippingCharges || 0)) || 0,
       shippingChargeTax: String(quoteData.shippingChargeTax || ''),
@@ -2218,6 +2241,12 @@ export const updateQuote = async (quoteId: string, quoteData: Partial<Quote>): P
       }
     };
 
+    const normalizeQuoteDiscountType = (value: any): "percent" | "amount" => {
+      const normalized = String(value || "").trim().toLowerCase();
+      if (normalized === "fixed" || normalized === "amount") return "amount";
+      return "percent";
+    };
+
     // Prepare data for backend API without forcing defaults on partial updates
     const apiData: any = { ...quoteData };
 
@@ -2283,7 +2312,7 @@ export const updateQuote = async (quoteId: string, quoteData: Partial<Quote>): P
     }
 
     if (quoteData.discountType !== undefined) {
-      apiData.discountType = quoteData.discountType;
+      apiData.discountType = normalizeQuoteDiscountType(quoteData.discountType);
     }
     if (quoteData.discountAccount !== undefined) {
       apiData.discountAccount = quoteData.discountAccount;

@@ -130,11 +130,11 @@ export default function TabanSelect({
             <div className={`relative w-full group/select`}>
                 <div
                     ref={controlRef}
-                    className={`w-full h-9 px-3 border rounded-md flex items-center transition-all outline-none ${disabled ? "bg-slate-50 border-gray-200 cursor-not-allowed opacity-70" : "bg-white"} ${isOpen ? "" : error ? "border-red-500 shadow-[0_0_0_1px_rgba(239,68,68,0.2)]" : disabled ? "" : "border-gray-200 hover:border-gray-300 shadow-sm"}`}
+                    className={`w-full h-9 px-3 border rounded-md flex items-center transition-all outline-none ${disabled ? "bg-slate-50 border-gray-200 cursor-not-allowed opacity-70" : "bg-white"} ${isOpen ? "" : error ? "border-red-500 shadow-[0_0_0_1px_rgba(239,68,68,0.2)]" : disabled ? "" : "border-gray-300 hover:border-[#2f6f86] shadow-sm"}`}
                     style={!disabled && isOpen ? {
                         borderColor: uiAccent,
-                        boxShadow: `0 0 0 2px ${toRgba(uiAccent, 0.12)}`,
-                        borderWidth: '1.5px'
+                        boxShadow: `0 0 0 1px ${toRgba(uiAccent, 0.18)}`,
+                        borderWidth: "1.5px"
                     } : {}}
                 >
                     <input
@@ -154,7 +154,7 @@ export default function TabanSelect({
                             }
                         }}
                         placeholder={value || placeholder}
-                        className={`bg-transparent border-none outline-none w-full h-full text-[13px] ${disabled ? "cursor-not-allowed" : ""} ${value && !isOpen ? "text-slate-700 font-medium" : "text-slate-400"}`}
+                        className={`bg-transparent border-none outline-none w-full h-full text-[13px] placeholder:text-slate-400 ${disabled ? "cursor-not-allowed" : ""} ${value && !isOpen ? "text-slate-700 font-medium" : "text-slate-400"}`}
                     />
                     <div className="flex items-center gap-1">
                         {value && !isOpen && !disabled && (
@@ -181,20 +181,20 @@ export default function TabanSelect({
             {!disabled && isOpen && menuStyle && typeof document !== "undefined" && createPortal(
                 <div
                     ref={menuRef}
-                    className={`fixed bg-white border border-gray-100 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] z-[10000] flex flex-col max-h-[350px] overflow-hidden animate-in fade-in zoom-in-95 duration-200 ${direction === "up" ? "origin-bottom" : "origin-top"}`}
+                    className={`fixed bg-white border border-[#d6dbe8] rounded-[14px] shadow-[0_16px_40px_rgba(15,23,42,0.14)] z-[10000] flex flex-col max-h-[350px] overflow-hidden animate-in fade-in zoom-in-95 duration-200 ${direction === "up" ? "origin-bottom" : "origin-top"}`}
                     style={{
                         left: menuStyle.left,
                         top: menuStyle.top,
                         width: menuStyle.width,
                         transform: direction === "up" ? "translateY(-100%)" : undefined,
                     }}
-                >
+                    >
                     {/* Options List */}
                     <div className="overflow-y-auto flex-1 py-2 custom-scrollbar focus-within:ring-0">
                         {Object.entries(groupedOptions).map(([group, groupOpts]: [string, any]) => (
                             <div key={group}>
                                 {group && groupOpts.length > 0 && (
-                                    <div className="px-4 py-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/50">
+                                    <div className="px-4 py-2 text-[10px] font-bold text-slate-700 uppercase tracking-[0.16em]">
                                         {group}
                                     </div>
                                 )}
@@ -210,13 +210,7 @@ export default function TabanSelect({
                                                 setIsOpen(false);
                                                 setSearchTerm("");
                                             }}
-                                            className={`w-full px-4 py-2.5 text-[13px] text-left flex items-center transition-all group/item ${isSelected ? "" : "text-slate-600"}`}
-                                            onMouseEnter={(e) => {
-                                                if (!isSelected) e.currentTarget.style.backgroundColor = "#eef8f9";
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                if (!isSelected) e.currentTarget.style.backgroundColor = "transparent";
-                                            }}
+                                            className={`w-full px-4 py-2.5 text-[13px] text-left flex items-center transition-colors group/item ${isSelected ? "" : "text-slate-600 hover:bg-[#eef8f9] hover:text-slate-900"}`}
                                             style={{
                                                 backgroundColor: isSelected ? "#eef8f9" : "transparent",
                                                 color: isSelected ? uiAccent : undefined,

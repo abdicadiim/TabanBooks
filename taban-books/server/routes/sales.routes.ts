@@ -213,6 +213,7 @@ router.post("/recurring-invoices/:id/generate-invoice", salesController.generate
 router.get("/retainer-invoices", salesController.getAllRetainerInvoices);
 router.get("/retainer-invoices/:id", salesController.getRetainerInvoiceById);
 router.post("/retainer-invoices", salesController.createRetainerInvoice);
+router.post("/retainer-invoices/:id/email", salesController.sendRetainerInvoiceEmail);
 router.put("/retainer-invoices/:id", salesController.updateRetainerInvoice);
 router.patch("/retainer-invoices/:id", salesController.updateRetainerInvoice);
 router.delete("/retainer-invoices/:id", salesController.deleteRetainerInvoice);

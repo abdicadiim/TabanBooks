@@ -151,10 +151,38 @@ export default function Quotes() {
   const [headerMenuPosition, setHeaderMenuPosition] = useState({ top: 0, left: 0 });
   const [viewDropdownPosition, setViewDropdownPosition] = useState({ top: 0, left: 0, width: 288 });
   const [moreMenuPosition, setMoreMenuPosition] = useState({ top: 0, left: 0 });
-  // const headerMenuRef = useRef<HTMLDivElement>(null);
   const headerMenuMenuRef = useRef<HTMLDivElement>(null);
   const viewDropdownMenuRef = useRef<HTMLDivElement>(null);
   const moreMenuMenuRef = useRef<HTMLDivElement>(null);
+
+  const filteredDefaultViews = defaultQuoteViews.filter(view =>
+    view.toLowerCase().includes(viewSearchQuery.toLowerCase())
+  );
+
+  const filteredCustomViews = customViews.filter(view =>
+    (view.name || view.viewName || "").toLowerCase().includes(viewSearchQuery.toLowerCase())
+  );
+
+  const isViewSelected = (viewName: string) => selectedView === viewName;
+
+  const handleDeleteCustomView = async (id: string | undefined, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!id) return;
+    if (confirm("Are you sure you want to delete this custom view?")) {
+      try {
+        console.log("Deleting custom view:", id);
+        const updated = customViews.filter(v => v.id !== id);
+        setCustomViews(updated);
+        if (selectedView === customViews.find(v => v.id === id)?.name) {
+          setSelectedView("All Quotes");
+        }
+        toast.success("Custom view deleted");
+      } catch (error) {
+        console.error("Error deleting custom view:", error);
+        toast.error("Failed to delete custom view");
+      }
+    }
+  };
 
   const formatAddressLines = (address: any, fallback: string[]) => {
     if (typeof address === "string") {
@@ -178,6 +206,18 @@ export default function Quotes() {
     return fallback.filter(Boolean);
   };
 
+  const getEffectiveStatus = (q: Quote) => {
+    return (q.status || "draft").toLowerCase();
+  };
+
+  const resolveCustomerName = (q: Quote) => {
+    if (q.customerName) return q.customerName;
+    if (typeof q.customer === 'object' && q.customer) {
+      return q.customer.displayName || q.customer.name || "";
+    }
+    return q.customer || "";
+  };
+
   const allColumnOptions = [
     { key: 'date', label: 'Date', locked: true },
     { key: 'location', label: 'Location', locked: true },
@@ -193,6 +233,7 @@ export default function Quotes() {
     { key: 'salesperson', label: 'Sales person', locked: false },
     { key: 'subTotal', label: 'Sub Total', locked: false },
   ];
+
   const lockedColumnKeys = allColumnOptions.filter((col) => col.locked).map((col) => col.key);
   const allColumnKeys = allColumnOptions.map((col) => col.key);
   const [tempColumnOrder, setTempColumnOrder] = useState<string[]>(allColumnKeys);
@@ -228,7 +269,7 @@ export default function Quotes() {
     salesperson: 150,
     subTotal: 150
   };
-  const [columnWidths, setColumnWidths] = useState(defaultColumnWidths);
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(defaultColumnWidths);
   const resizingRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
   const headerMenuRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -257,17 +298,7 @@ export default function Quotes() {
   const quotesListQuery = useQuotesListQuery();
   const isQuotesLoading = (quotesListQuery.isPending || quotesListQuery.isFetching) && !(quotesListQuery.data?.length);
   const exportStatusOptions = [
-    "All",
-    "Draft",
-    "Pending Approval",
-    "Approved",
-    "Sent",
-    "Invoiced",
-    "Accepted",
-    "Declined",
-    "Expired",
-    "Rejected",
-    "Partially Invoiced",
+    "All", "Draft", "Pending Approval", "Approved", "Sent", "Invoiced", "Accepted", "Declined", "Expired", "Rejected", "Partially Invoiced",
   ];
   const sortMenuOptions = [
     { key: "createdTime", label: "Created Time" },
@@ -280,35 +311,11 @@ export default function Quotes() {
   const MORE_MENU_WIDTH = 224;
   const MORE_MENU_MARGIN = 16;
   const searchTypeOptions = [
-    "Customers",
-    "Items",
-    "Inventory Adjustments",
-    "Banking",
-    "Quotes",
-    "Invoices",
-    "Payments Received",
-    "Recurring Invoices",
-    "Credit Notes",
-    "Vendors",
-    "Expenses",
-    "Recurring Expenses",
-    "Purchase Orders",
-    "Bills",
-    "Payments Made",
-    "Recurring Bills",
-    "Vendor Credits",
-    "Projects",
-    "Timesheet",
-    "Journals",
-    "Chart of Accounts",
-    "Documents",
-    "Task"
+    "Customers", "Items", "Inventory Adjustments", "Banking", "Quotes", "Invoices", "Payments Received", "Recurring Invoices", "Credit Notes", "Vendors", "Expenses", "Recurring Expenses", "Purchase Orders", "Bills", "Payments Made", "Recurring Bills", "Vendor Credits", "Projects", "Timesheet", "Journals", "Chart of Accounts", "Documents", "Task"
   ];
   const [advancedSearchData, setAdvancedSearchData] = useState<Record<string, any>>({
-    // Search Metadata
     searchType: "Quotes",
     filterType: "All",
-    // Customers
     displayName: "",
     companyName: "",
     lastName: "",
@@ -319,7 +326,6 @@ export default function Quotes() {
     email: "",
     phone: "",
     notes: "",
-    // Items
     itemName: "",
     description: "",
     purchaseRate: "",
@@ -327,20 +333,17 @@ export default function Quotes() {
     sku: "",
     rate: "",
     purchaseAccount: "",
-    // Inventory Adjustments
     referenceNumber: "",
     reason: "",
     itemDescription: "",
     adjustmentType: "All",
     dateFrom: "",
     dateTo: "",
-    // Banking
     totalRangeFrom: "",
     totalRangeTo: "",
     dateRangeFrom: "",
     dateRangeTo: "",
     transactionType: "",
-    // Quotes
     quoteNumber: "",
     referenceNumberQuote: "",
     itemNameQuote: "",
@@ -359,7 +362,6 @@ export default function Quotes() {
     totalRangeEnd: "",
     tax: "",
     addressLine: "",
-    // Invoices
     invoiceNumber: "",
     orderNumber: "",
     createdBetweenFrom: "",
@@ -375,7 +377,6 @@ export default function Quotes() {
     taxExemptionsInvoice: "",
     addressTypeInvoice: "Billing and Shipping",
     attentionInvoice: "",
-    // Payments Received
     paymentNumber: "",
     referenceNumberPayment: "",
     dateRangeFromPayment: "",
@@ -385,62 +386,49 @@ export default function Quotes() {
     statusPayment: "",
     paymentMethod: "",
     notesPayment: "",
-    // Expenses
     expenseNumber: "",
     vendorName: ""
   });
   const [isSearchTypeDropdownOpen, setIsSearchTypeDropdownOpen] = useState(false);
   const [searchTypeSearch, setSearchTypeSearch] = useState("");
-  const searchTypeDropdownRef = useRef(null);
+  const searchTypeDropdownRef = useRef<HTMLDivElement>(null);
   const [isQuoteNumberDropdownOpen, setIsQuoteNumberDropdownOpen] = useState(false);
-  const quoteNumberDropdownRef = useRef(null);
+  const quoteNumberDropdownRef = useRef<HTMLDivElement>(null);
   const [isFilterTypeDropdownOpen, setIsFilterTypeDropdownOpen] = useState(false);
   const [filterTypeSearch, setFilterTypeSearch] = useState("");
-  const filterTypeDropdownRef = useRef(null);
-
-  // Customer Name dropdown
+  const filterTypeDropdownRef = useRef<HTMLDivElement>(null);
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
-  const customerDropdownRef = useRef(null);
-
-  // Salesperson dropdown
+  const customerDropdownRef = useRef<HTMLDivElement>(null);
   const [isSalespersonDropdownOpen, setIsSalespersonDropdownOpen] = useState(false);
   const [salespersonSearch, setSalespersonSearch] = useState("");
-  const salespersonDropdownRef = useRef(null);
-
-  // Project Name dropdown
+  const salespersonDropdownRef = useRef<HTMLDivElement>(null);
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
-  const projectDropdownRef = useRef(null);
-
-  // Item Name dropdown for search
+  const projectDropdownRef = useRef<HTMLDivElement>(null);
   const [isItemNameDropdownOpen, setIsItemNameDropdownOpen] = useState(false);
-  const itemNameDropdownRef = useRef(null);
-
-  // Tax Exemptions dropdown for search
+  const itemNameDropdownRef = useRef<HTMLDivElement>(null);
   const [isTaxExemptionsDropdownOpen, setIsTaxExemptionsDropdownOpen] = useState(false);
-  const taxExemptionsDropdownRef = useRef(null);
-
-  // Invoice search dropdowns
+  const taxExemptionsDropdownRef = useRef<HTMLDivElement>(null);
   const [isCustomerNameInvoiceDropdownOpen, setIsCustomerNameInvoiceDropdownOpen] = useState(false);
-  const customerNameInvoiceDropdownRef = useRef(null);
+  const customerNameInvoiceDropdownRef = useRef<HTMLDivElement>(null);
   const [isSalespersonInvoiceDropdownOpen, setIsSalespersonInvoiceDropdownOpen] = useState(false);
-  const salespersonInvoiceDropdownRef = useRef(null);
+  const salespersonInvoiceDropdownRef = useRef<HTMLDivElement>(null);
   const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
-  const accountDropdownRef = useRef(null);
+  const accountDropdownRef = useRef<HTMLDivElement>(null);
   const [isItemNameInvoiceDropdownOpen, setIsItemNameInvoiceDropdownOpen] = useState(false);
-  const itemNameInvoiceDropdownRef = useRef(null);
+  const itemNameInvoiceDropdownRef = useRef<HTMLDivElement>(null);
   const [isProjectNameInvoiceDropdownOpen, setIsProjectNameInvoiceDropdownOpen] = useState(false);
-  const projectNameInvoiceDropdownRef = useRef(null);
+  const projectNameInvoiceDropdownRef = useRef<HTMLDivElement>(null);
   const [isTaxExemptionsInvoiceDropdownOpen, setIsTaxExemptionsInvoiceDropdownOpen] = useState(false);
-  const taxExemptionsInvoiceDropdownRef = useRef(null);
+  const taxExemptionsInvoiceDropdownRef = useRef<HTMLDivElement>(null);
   const [isStatusInvoiceDropdownOpen, setIsStatusInvoiceDropdownOpen] = useState(false);
-  const statusInvoiceDropdownRef = useRef(null);
-  const moreMenuRef = useRef(null);
-  const bulkFieldDropdownRef = useRef(null);
+  const statusInvoiceDropdownRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const bulkFieldDropdownRef = useRef<HTMLDivElement>(null);
 
   const tableMinWidth = useMemo(() => {
-    const columnsTotal = visibleColumns.reduce((sum, key) => sum + Number(columnWidths[key] || 120), 0);
+    const columnsTotal = visibleColumns.reduce((sum, key) => sum + Number((columnWidths as any)[key] || 120), 0);
     return 56 + 40 + columnsTotal;
   }, [visibleColumns, columnWidths]);
 
@@ -456,7 +444,7 @@ export default function Quotes() {
     resizingRef.current = {
       key,
       startX: e.clientX,
-      startWidth: Number(columnWidths[key] || 120),
+      startWidth: Number((columnWidths as any)[key] || 120),
     };
     setResizingColumn(key);
     document.body.style.cursor = "col-resize";
@@ -533,35 +521,24 @@ export default function Quotes() {
   };
 
   useEffect(() => {
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const handleViewSelect = (view: string) => {
+    setSelectedView(view);
+    setIsDropdownOpen(false);
+    setViewSearchQuery("");
+  };
+
+  useEffect(() => {
     void loadMetadata();
   }, [loadMetadata, location.pathname]);
 
-  const resolveCustomerName = (q: Quote) => {
-    // If it's already an object with a name, use it
-    if (typeof q.customer === 'object' && q.customer) {
-      const name = q.customer.displayName || q.customer.name || q.customer.companyName;
-      if (name) return name;
-    }
-
-    // Try to find by ID in our customers list
-    const customerId = q.customerId || (typeof q.customer === 'string' ? q.customer : q.customer?._id || q.customer?.id);
-    if (customerId) {
-      const found = customers.find(c => (c._id || c.id) === customerId);
-      if (found) return found.displayName || found.name || found.companyName || found.company_name;
-    }
-
-    // If customerName exists but looks like an ID, try one last time to match it as an ID
-    if (q.customerName && q.customerName.startsWith('cus-')) {
-      const found = customers.find(c => (c._id || c.id) === q.customerName);
-      if (found) return found.displayName || found.name || found.companyName;
-    }
-
-    // Fallback to what we have
-    return q.customerName || (typeof q.customer === 'string' ? q.customer : '') || 'N/A';
-  };
-
-  const getQuoteFieldValue = (quote, fieldName) => {
-    const getCustomerName = (q) => {
+  const getQuoteFieldValue = (quote: Quote, fieldName: string) => {
+    const getCustomerName = (q: Quote) => {
       if (q.customerName) return q.customerName;
       if (typeof q.customer === 'object' && q.customer) {
         return q.customer.displayName || q.customer.name || '';
@@ -569,7 +546,7 @@ export default function Quotes() {
       return q.customer || '';
     };
 
-    const fieldMap = {
+    const fieldMap: Record<string, any> = {
       "Date": quote.quoteDate || quote.date || "",
       "Quote#": quote.quoteNumber || quote.id || "",
       "Reference Number": quote.referenceNumber || "",
@@ -582,7 +559,7 @@ export default function Quotes() {
     return fieldMap[fieldName] !== undefined ? fieldMap[fieldName] : "";
   };
 
-  const evaluateCriterion = (fieldValue, comparator, value) => {
+  const evaluateCriterion = (fieldValue: any, comparator: string, value: any) => {
     const fieldStr = String(fieldValue || "").toLowerCase();
     const valueStr = String(value || "").toLowerCase();
 
@@ -600,23 +577,6 @@ export default function Quotes() {
     }
   };
 
-  const getEffectiveStatus = (quote: any) => {
-    const statusRaw = String(quote?.status || "").toLowerCase();
-    const expiry = parseDateSafe(quote?.expiryDate);
-    if (expiry) {
-      const expiryDate = new Date(expiry);
-      const today = new Date();
-      expiryDate.setHours(0, 0, 0, 0);
-      today.setHours(0, 0, 0, 0);
-      const isPast = expiryDate < today;
-      const protectedStatuses = ["converted", "invoiced", "accepted", "approved", "declined", "rejected"];
-      if (isPast && !protectedStatuses.includes(statusRaw)) {
-        return "expired";
-      }
-    }
-    return statusRaw || "draft";
-  };
-
   // Filter quotes based on selected view
   const filteredQuotes = useMemo(() => {
     // Ensure quotes is always an array
@@ -628,7 +588,7 @@ export default function Quotes() {
     const customView = customViews.find(v => v.name === selectedView);
     if (customView && customView.criteria) {
       return quotes.filter(quote => {
-        return customView.criteria.every(criterion => {
+        return customView.criteria.every((criterion: any) => {
           if (!criterion.field || !criterion.comparator) return true;
           const fieldValue = getQuoteFieldValue(quote, criterion.field);
           return evaluateCriterion(fieldValue, criterion.comparator, criterion.value);
@@ -698,8 +658,8 @@ export default function Quotes() {
           : bValue.localeCompare(aValue);
       } else {
         return sortConfig.direction === "asc"
-          ? aValue - bValue
-          : bValue - aValue;
+          ? (aValue as any) - (bValue as any)
+          : (bValue as any) - (aValue as any);
       }
     });
   }, [filteredQuotes, sortConfig]);
@@ -711,6 +671,11 @@ export default function Quotes() {
     () => sortedQuotes.slice(quotePageStart, quotePageStart + itemsPerPage),
     [sortedQuotes, quotePageStart, itemsPerPage]
   );
+  const selectedQuoteData = useMemo(
+    () => quotes.filter((quote) => quote.id && selectedQuotes.includes(quote.id)),
+    [quotes, selectedQuotes]
+  );
+  const currentQuote = selectedQuoteData[currentPreviewIndex] ?? null;
 
   useEffect(() => {
     if (currentPage > totalQuotePages) {
@@ -726,7 +691,7 @@ export default function Quotes() {
   };
 
   const buildQuoteExportRows = () => {
-    const getCustomerName = (q: Quote) => {
+    const getCustomerNameExport = (q: Quote) => {
       if (q.customerName) return q.customerName;
       if (typeof q.customer === 'object' && q.customer) {
         return q.customer.displayName || q.customer.name || '';
@@ -736,13 +701,13 @@ export default function Quotes() {
 
     return sortedQuotes.map(quote => ({
       "ESTIMATE_ID": quote.id || quote._id || "",
-      "Date": formatDate(quote.date || quote.quoteDate),
+      "Date": formatDate(String(quote.date || quote.quoteDate || "")),
       "Location": quote.selectedLocation || quote.location || "Head Office",
-      "Quote Number": quote.quoteNumber || quote.id,
+      "Quote Number": quote.quoteNumber || quote.id || "",
       "Reference number": quote.referenceNumber || "",
-      "Customer Name": getCustomerName(quote),
-      "Status": getStatusDisplay(quote.status),
-      "Amount": formatAmount(quote.total || quote.amount, quote.currency)
+      "Customer Name": getCustomerNameExport(quote),
+      "Status": getStatusDisplay(String(quote.status || "draft")),
+      "Amount": formatAmount(Number(quote.total || quote.amount || 0), quote.currency || "KES")
     }));
   };
 
@@ -775,7 +740,7 @@ export default function Quotes() {
 
     return sortedQuotes.filter((quote) => {
       if (statusFilterKey !== "all") {
-        const quoteStatusKey = normalizeStatusKey(quote.status || getStatusDisplay(quote.status));
+        const quoteStatusKey = normalizeStatusKey(quote.status || getStatusDisplay(String(quote.status || "draft")));
         if (quoteStatusKey !== statusFilterKey) return false;
       }
 
@@ -904,123 +869,146 @@ export default function Quotes() {
       link.click();
       document.body.removeChild(link);
     }
+  };
 
+  const handleExportQuotesFromMenu = async () => {
+    setIsExportQuotesModalOpen(true);
+    setIsExportStatusDropdownOpen(false);
+    setExportStatusSearch("");
     setIsMoreMenuOpen(false);
     setOpenMoreSubmenu(null);
   };
 
-  const handleNewCustomView = () => {
-    setIsDropdownOpen(false);
-    navigate("/sales/quotes/custom-view/new");
+  const handleExportCurrentViewFromMenu = () => {
+    setIsExportCurrentViewModalOpen(true);
+    setIsMoreMenuOpen(false);
+    setOpenMoreSubmenu(null);
   };
 
-  const handleDeleteCustomView = (viewId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (window.confirm("Are you sure you want to delete this custom view?")) {
-      deleteCustomView(viewId);
-      setCustomViews(prev => prev.filter(v => v.id !== viewId));
-      if (selectedView === customViews.find(v => v.id === viewId)?.name) {
-        setSelectedView("All Quotes");
-      }
+  const closeExportQuotesModal = () => {
+    setIsExportQuotesModalOpen(false);
+    setIsExportStatusDropdownOpen(false);
+    setExportStatusSearch("");
+  };
+
+  const handleConfirmExportQuotes = async () => {
+    const exportData = buildDetailedQuoteExportRows();
+    if (exportData.length === 0) {
+      alert("No quotes found for selected filters.");
+      return;
     }
+
+    const selected = String(exportQuotesData.fileFormat || "XLSX").toUpperCase();
+    const exportAs = selected === "CSV" ? "CSV" : "XLSX";
+
+    if (exportAs === "XLSX") {
+      const XLSX = await import("xlsx");
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Quotes");
+      XLSX.writeFile(workbook, `quotes_export_${new Date().toISOString().split("T")[0]}.xlsx`);
+    } else {
+      const headers = Object.keys(exportData[0] || {});
+      const csvContent = [
+        headers.join(","),
+        ...exportData.map((row: any) => headers.map((header) => `"${row[header] ?? ""}"`).join(","))
+      ].join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `quotes_export_${new Date().toISOString().split("T")[0]}.csv`);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    closeExportQuotesModal();
   };
 
-  const isViewSelected = (view: string) => selectedView === view;
+  function handleClickOutside(event: MouseEvent) {
+    const targetNode = event.target as Node;
+    const clickedHeaderMenu = headerMenuMenuRef.current?.contains(targetNode);
+    const clickedViewMenu = viewDropdownMenuRef.current?.contains(targetNode);
+    const clickedMoreMenu = moreMenuMenuRef.current?.contains(targetNode);
 
-  const filteredDefaultViews = defaultQuoteViews.filter(view =>
-    view.toLowerCase().includes(viewSearchQuery.toLowerCase())
-  );
+    if (moreMenuRef.current && !moreMenuRef.current.contains(targetNode) && !clickedMoreMenu) {
+      setIsMoreMenuOpen(false);
+      setOpenMoreSubmenu(null);
+    }
+    if (dropdownRef.current && !dropdownRef.current.contains(targetNode) && !clickedViewMenu) {
+      setIsDropdownOpen(false);
+    }
+    if (headerMenuRef.current && !headerMenuRef.current.contains(targetNode) && !clickedHeaderMenu) {
+      setIsHeaderMenuOpen(false);
+    }
 
-  const filteredCustomViews = customViews.filter(view =>
-    view.name.toLowerCase().includes(viewSearchQuery.toLowerCase())
-  );
+    if (searchTypeDropdownRef.current && !searchTypeDropdownRef.current.contains(targetNode)) {
+      setIsSearchTypeDropdownOpen(false);
+    }
+    if (filterTypeDropdownRef.current && !filterTypeDropdownRef.current.contains(targetNode)) {
+      setIsFilterTypeDropdownOpen(false);
+      setFilterTypeSearch("");
+    }
+    if (quoteNumberDropdownRef.current && !quoteNumberDropdownRef.current.contains(targetNode)) {
+      setIsQuoteNumberDropdownOpen(false);
+    }
+    if (customerDropdownRef.current && !customerDropdownRef.current.contains(targetNode)) {
+      setIsCustomerDropdownOpen(false);
+      setCustomerSearch("");
+    }
+    if (salespersonDropdownRef.current && !salespersonDropdownRef.current.contains(targetNode)) {
+      setIsSalespersonDropdownOpen(false);
+      setSalespersonSearch("");
+    }
+    if (projectDropdownRef.current && !projectDropdownRef.current.contains(targetNode)) {
+      setIsProjectDropdownOpen(false);
+      setProjectSearch("");
+    }
+    if (itemNameDropdownRef.current && !itemNameDropdownRef.current.contains(targetNode)) {
+      setIsItemNameDropdownOpen(false);
+    }
+    if (taxExemptionsDropdownRef.current && !taxExemptionsDropdownRef.current.contains(targetNode)) {
+      setIsTaxExemptionsDropdownOpen(false);
+    }
+    if (customerNameInvoiceDropdownRef.current && !customerNameInvoiceDropdownRef.current.contains(targetNode)) {
+      setIsCustomerNameInvoiceDropdownOpen(false);
+    }
+    if (salespersonInvoiceDropdownRef.current && !salespersonInvoiceDropdownRef.current.contains(targetNode)) {
+      setIsSalespersonInvoiceDropdownOpen(false);
+    }
+    if (accountDropdownRef.current && !accountDropdownRef.current.contains(targetNode)) {
+      setIsAccountDropdownOpen(false);
+    }
+    if (itemNameInvoiceDropdownRef.current && !itemNameInvoiceDropdownRef.current.contains(targetNode)) {
+      setIsItemNameInvoiceDropdownOpen(false);
+    }
+    if (projectNameInvoiceDropdownRef.current && !projectNameInvoiceDropdownRef.current.contains(targetNode)) {
+      setIsProjectNameInvoiceDropdownOpen(false);
+    }
+    if (taxExemptionsInvoiceDropdownRef.current && !taxExemptionsInvoiceDropdownRef.current.contains(targetNode)) {
+      setIsTaxExemptionsInvoiceDropdownOpen(false);
+    }
+    if (statusInvoiceDropdownRef.current && !statusInvoiceDropdownRef.current.contains(targetNode)) {
+      setIsStatusInvoiceDropdownOpen(false);
+    }
+    if (bulkFieldDropdownRef.current && !bulkFieldDropdownRef.current.contains(targetNode)) {
+      setIsBulkFieldDropdownOpen(false);
+    }
+  }
 
-  // Close dropdowns when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const clickedViewMenu = viewDropdownMenuRef.current?.contains(event.target as Node);
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node) && !clickedViewMenu) {
-        setIsDropdownOpen(false);
-        setViewSearchQuery(""); // Reset search query when dropdown closes
-      }
-      const clickedMoreMenu = moreMenuMenuRef.current?.contains(event.target as Node);
-      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node) && !clickedMoreMenu) {
-        setIsMoreMenuOpen(false);
-        setOpenMoreSubmenu(null);
-      }
-      if (bulkFieldDropdownRef.current && !bulkFieldDropdownRef.current.contains(event.target)) {
-        setIsBulkFieldDropdownOpen(false);
-        setBulkFieldSearch("");
-      }
-      if (searchTypeDropdownRef.current && !searchTypeDropdownRef.current.contains(event.target)) {
-        setIsSearchTypeDropdownOpen(false);
-        setSearchTypeSearch("");
-      }
-      if (quoteNumberDropdownRef.current && !quoteNumberDropdownRef.current.contains(event.target)) {
-        setIsQuoteNumberDropdownOpen(false);
-      }
-      if (filterTypeDropdownRef.current && !filterTypeDropdownRef.current.contains(event.target)) {
-        setIsFilterTypeDropdownOpen(false);
-        setFilterTypeSearch("");
-      }
-      if (customerDropdownRef.current && !customerDropdownRef.current.contains(event.target)) {
-        setIsCustomerDropdownOpen(false);
-        setCustomerSearch("");
-      }
-      if (salespersonDropdownRef.current && !salespersonDropdownRef.current.contains(event.target)) {
-        setIsSalespersonDropdownOpen(false);
-        setSalespersonSearch("");
-      }
-      if (projectDropdownRef.current && !projectDropdownRef.current.contains(event.target)) {
-        setIsProjectDropdownOpen(false);
-        setProjectSearch("");
-      }
-      if (itemNameDropdownRef.current && !itemNameDropdownRef.current.contains(event.target)) {
-        setIsItemNameDropdownOpen(false);
-      }
-      if (taxExemptionsDropdownRef.current && !taxExemptionsDropdownRef.current.contains(event.target)) {
-        setIsTaxExemptionsDropdownOpen(false);
-      }
-      if (customerNameInvoiceDropdownRef.current && !customerNameInvoiceDropdownRef.current.contains(event.target)) {
-        setIsCustomerNameInvoiceDropdownOpen(false);
-      }
-      if (salespersonInvoiceDropdownRef.current && !salespersonInvoiceDropdownRef.current.contains(event.target)) {
-        setIsSalespersonInvoiceDropdownOpen(false);
-      }
-      if (accountDropdownRef.current && !accountDropdownRef.current.contains(event.target)) {
-        setIsAccountDropdownOpen(false);
-      }
-      if (itemNameInvoiceDropdownRef.current && !itemNameInvoiceDropdownRef.current.contains(event.target)) {
-        setIsItemNameInvoiceDropdownOpen(false);
-      }
-      if (projectNameInvoiceDropdownRef.current && !projectNameInvoiceDropdownRef.current.contains(event.target)) {
-        setIsProjectNameInvoiceDropdownOpen(false);
-      }
-      if (taxExemptionsInvoiceDropdownRef.current && !taxExemptionsInvoiceDropdownRef.current.contains(event.target)) {
-        setIsTaxExemptionsInvoiceDropdownOpen(false);
-      }
-      if (statusInvoiceDropdownRef.current && !statusInvoiceDropdownRef.current.contains(event.target)) {
-        setIsStatusInvoiceDropdownOpen(false);
-      }
-      const clickedIcon = headerMenuRef.current?.contains(event.target as Node);
-      const clickedMenu = headerMenuMenuRef.current?.contains(event.target as Node);
-      if (!clickedIcon && !clickedMenu) {
-        setIsHeaderMenuOpen(false);
-      }
-    };
-
-    if (isDropdownOpen || isMoreMenuOpen || isBulkFieldDropdownOpen || isSearchTypeDropdownOpen || isQuoteNumberDropdownOpen || isFilterTypeDropdownOpen || isCustomerDropdownOpen || isSalespersonDropdownOpen || isProjectDropdownOpen || isItemNameDropdownOpen || isTaxExemptionsDropdownOpen || isCustomerNameInvoiceDropdownOpen || isSalespersonInvoiceDropdownOpen || isAccountDropdownOpen || isItemNameInvoiceDropdownOpen || isProjectNameInvoiceDropdownOpen || isTaxExemptionsInvoiceDropdownOpen || isStatusInvoiceDropdownOpen || isHeaderMenuOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
+    document.addEventListener("mousedown", handleClickOutside);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isDropdownOpen, isMoreMenuOpen, isBulkFieldDropdownOpen, isSearchTypeDropdownOpen, isQuoteNumberDropdownOpen, isFilterTypeDropdownOpen, isCustomerDropdownOpen, isSalespersonDropdownOpen, isProjectDropdownOpen, isItemNameDropdownOpen, isTaxExemptionsDropdownOpen, isCustomerNameInvoiceDropdownOpen, isSalespersonInvoiceDropdownOpen, isAccountDropdownOpen, isItemNameInvoiceDropdownOpen, isProjectNameInvoiceDropdownOpen, isTaxExemptionsInvoiceDropdownOpen, isStatusInvoiceDropdownOpen]);
+  }, [isDropdownOpen, isMoreMenuOpen, isBulkFieldDropdownOpen, isSearchTypeDropdownOpen, isQuoteNumberDropdownOpen, isFilterTypeDropdownOpen, isCustomerDropdownOpen, isSalespersonDropdownOpen, isProjectDropdownOpen, isItemNameDropdownOpen, isTaxExemptionsDropdownOpen, isCustomerNameInvoiceDropdownOpen, isSalespersonInvoiceDropdownOpen, isAccountDropdownOpen, isItemNameInvoiceDropdownOpen, isProjectNameInvoiceDropdownOpen, isTaxExemptionsInvoiceDropdownOpen, isStatusInvoiceDropdownOpen, isQuoteNumberDropdownOpen]);
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const paginatedIds = paginatedQuotes.map(q => q.id || q._id || "").filter(Boolean);
     if (e.target.checked) {
-      setSelectedQuotes(paginatedQuotes.map(q => q.id));
+      setSelectedQuotes(paginatedIds);
     } else {
       setSelectedQuotes([]);
     }
@@ -1036,120 +1024,135 @@ export default function Quotes() {
     });
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | undefined | null) => {
     if (!dateString) return "";
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "";
     const day = date.getDate();
     const month = date.toLocaleString('default', { month: 'short' });
     const year = date.getFullYear();
     return `${day} ${month} ${year}`;
   };
 
-  const formatCurrency = (amount: string | number, currency: string = "AMD") => {
+  const formatPreviewDate = (dateString: string | undefined | null) => {
+    return formatDate(dateString);
+  };
+
+  const formatCurrency = (amount: string | number | undefined | null, currency: string | undefined | null = "AMD") => {
     const num = Number(amount) || 0;
+    const curr = currency || "AMD";
     const currencySymbols: Record<string, string> = {
-      'USD': '$',
-      'EUR': '€',
-      'GBP': '£',
-      'AMD': '֏',
-      'AED': 'د.إ',
-      'INR': '₹',
-      'JPY': '¥',
-      'CNY': '¥',
-      'RUB': '₽',
-      'KES': 'KSh',
-      'NGN': '₦'
+      'USD': '$', 'EUR': '€', 'GBP': '£', 'AMD': '֏', 'AED': 'د.إ', 'INR': '₹', 'JPY': '¥', 'CNY': '¥', 'RUB': '₽', 'KES': 'KSh', 'NGN': '₦'
     };
-    const symbol = currencySymbols[currency] || currency;
+    const symbol = currencySymbols[curr] || curr;
     return `${symbol}${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  const formatAmount = (amount: string | number, currency: string = "AMD") => {
+  const formatAmount = (amount: string | number | undefined | null, currency: string | undefined | null = "AMD") => {
     const num = Number(amount) || 0;
+    const curr = currency || "AMD";
     const currencySymbols: Record<string, string> = {
-      'USD': '$',
-      'EUR': '€',
-      'GBP': '£',
-      'AMD': '֏',
-      'AED': 'د.إ',
-      'INR': '₹',
-      'JPY': '¥',
-      'CNY': '¥',
-      'RUB': '₽'
+      'USD': '$', 'EUR': '€', 'GBP': '£', 'AMD': '֏', 'AED': 'د.إ', 'INR': '₹', 'JPY': '¥', 'CNY': '¥', 'RUB': '₽'
     };
-    const symbol = currencySymbols[currency] || currency;
+    const symbol = currencySymbols[curr] || curr;
     return `${symbol}${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  const getStatusColor = (status: string) => {
-    const statusColors = {
-      draft: '#6B7280',
-      sent: '#3B82F6',
-      open: '#10B981',
-      approved: '#059669',
-      accepted: '#059669',
-      declined: '#EF4444',
-      rejected: '#EF4444',
-      expired: '#F59E0B',
-      converted: '#8B5CF6',
-      invoiced: '#059669'
-    };
-    return statusColors[status as keyof typeof statusColors] || '#6B7280';
-  };
-
-  const getStatusText = (status: string) => {
+  const getStatusColor = (status: string | undefined | null) => {
     const s = (status || '').toLowerCase();
-    const statusTexts = {
-      draft: 'Draft',
-      sent: 'Sent',
-      open: 'Open',
-      approved: 'Approved',
-      accepted: 'Accepted',
-      declined: 'Declined',
-      rejected: 'Declined',
-      expired: 'Expired',
-      converted: 'Invoiced',
-      invoiced: 'Invoiced'
+    const statusColors: Record<string, string> = {
+      draft: '#6B7280', sent: '#3B82F6', open: '#10B981', approved: '#059669', accepted: '#059669', declined: '#EF4444', rejected: '#EF4444', expired: '#F59E0B', converted: '#8B5CF6', invoiced: '#059669'
     };
-    return statusTexts[s as keyof typeof statusTexts] || status;
+    return statusColors[s as keyof typeof statusColors] || '#6B7280';
   };
 
-  const getStatusDisplay = (status: string) => {
+  const getStatusText = (status: string | undefined | null) => {
+    const s = (status || '').toLowerCase();
+    const statusTexts: Record<string, string> = {
+      draft: 'Draft', sent: 'Sent', open: 'Open', approved: 'Approved', accepted: 'Accepted', declined: 'Declined', rejected: 'Declined', expired: 'Expired', converted: 'Invoiced', invoiced: 'Invoiced'
+    };
+    return statusTexts[s as keyof typeof statusTexts] || status || "";
+  };
+
+  const getStatusDisplay = (status: string | undefined | null) => {
     return getStatusText(status);
   };
 
-  const getStatusClass = (status: string) => {
+  const getStatusClass = (status: string | undefined | null) => {
     const s = (status || '').toLowerCase();
-    const statusClasses = {
-      draft: 'bg-slate-100 text-slate-600 border-slate-200',
-      sent: 'bg-blue-50 text-blue-600 border-blue-100',
-      open: 'bg-[#156372]/10 text-[#156372] border-[#156372]/20',
-      approved: 'bg-emerald-50 text-emerald-600 border-emerald-100',
-      accepted: 'bg-emerald-50 text-emerald-600 border-emerald-100',
-      declined: 'bg-red-50 text-red-600 border-red-100',
-      rejected: 'bg-red-50 text-red-600 border-red-100',
-      expired: 'bg-amber-50 text-amber-600 border-amber-100',
-      converted: 'bg-indigo-50 text-indigo-600 border-indigo-100',
-      invoiced: 'bg-emerald-50 text-emerald-600 border-emerald-100'
+    const statusClasses: Record<string, string> = {
+      draft: 'bg-slate-100 text-slate-600 border-slate-200', sent: 'bg-blue-50 text-blue-600 border-blue-100', open: 'bg-[#156372]/10 text-[#156372] border-[#156372]/20', approved: 'bg-emerald-50 text-emerald-600 border-emerald-100', accepted: 'bg-emerald-50 text-emerald-600 border-emerald-100', declined: 'bg-red-50 text-red-600 border-red-100', rejected: 'bg-red-50 text-red-600 border-red-100', expired: 'bg-amber-50 text-amber-600 border-amber-100', converted: 'bg-indigo-50 text-indigo-600 border-indigo-100', invoiced: 'bg-emerald-50 text-emerald-600 border-emerald-100'
     };
     return statusClasses[s as keyof typeof statusClasses] || 'bg-slate-100 text-slate-600 border-slate-200';
   };
 
-  // Bulk action handlers
   const handleClearSelection = () => {
     setSelectedQuotes([]);
   };
 
-  const handleViewSelect = (view: string) => {
-    setSelectedView(view);
-    setIsDropdownOpen(false);
-    setViewSearchQuery("");
+  const handleCreateNewQuote = () => {
+    navigate("/sales/quotes/new");
   };
 
-  const handleBulkUpdate = () => {
-    setIsBulkUpdateModalOpen(true);
+  const handleCustomizeColumnsOpen = () => {
+    setTempVisibleColumns(ensureLockedColumns(visibleColumns));
+    setTempColumnOrder(buildTempColumnOrder(visibleColumns));
+    setColumnSearchTerm("");
+    setDraggedColumnKey(null);
+    setIsCustomizeColumnsModalOpen(true);
   };
 
+  const handleColumnDrop = (targetKey: string) => {
+    if (!draggedColumnKey || draggedColumnKey === targetKey) return;
+
+    setTempColumnOrder((prev) => {
+      const next = [...prev];
+      const fromIndex = next.indexOf(draggedColumnKey);
+      const toIndex = next.indexOf(targetKey);
+
+      if (fromIndex === -1 || toIndex === -1) return prev;
+
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  };
+
+  const handleImportQuotes = () => {
+    navigate("/sales/quotes/import");
+  };
+
+  const handleQuotePreferences = () => {
+    navigate("/settings/preferences/quotes");
+  };
+
+  const handleManageCustomFields = () => {
+    navigate("/settings/custom-fields/quotes");
+  };
+
+  const handleConfirmExportCurrentView = async () => {
+    await handleExportCurrentView(String(exportCurrentViewData.fileFormat || "CSV").toUpperCase() === "CSV" ? "CSV" : "XLSX");
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    try {
+      setIsDeletingQuotes(true);
+      await deleteQuotes(selectedQuotes);
+      await invalidateQuoteQueries(queryClient);
+      setSelectedQuotes([]);
+      setIsDeleteConfirmModalOpen(false);
+      toast.success("Quotes deleted successfully");
+    } catch (error) {
+      console.error("Error deleting quotes:", error);
+      toast.error("Failed to delete quotes");
+    } finally {
+      setIsDeletingQuotes(false);
+    }
+  };
+
+  const handleCancelBulkDelete = () => {
+    setIsDeleteConfirmModalOpen(false);
+  };
   const handleBulkMarkAsSent = () => {
     void (async () => {
       const selectedCount = selectedQuotes.length;
@@ -1267,7 +1270,7 @@ export default function Quotes() {
       if (advancedSearchData.itemDescription) {
         filtered = filtered.filter(q => {
           if (q.items && Array.isArray(q.items)) {
-            return q.items.some(item =>
+            return q.items.some((item: any) =>
               (item.description || "").toLowerCase().includes(advancedSearchData.itemDescription.toLowerCase())
             );
           }
@@ -1426,8 +1429,8 @@ export default function Quotes() {
     );
   };
 
-  const handleSelectCustomer = (customer) => {
-    setAdvancedSearchData(prev => ({ ...prev, customerName: customer.name }));
+  const handleSelectCustomer = (customer: Customer) => {
+    setAdvancedSearchData(prev => ({ ...prev, customerName: customer.displayName || customer.name || "" }));
     setIsCustomerDropdownOpen(false);
     setCustomerSearch("");
   };
@@ -1440,8 +1443,8 @@ export default function Quotes() {
     );
   };
 
-  const handleSelectSalesperson = (salesperson) => {
-    setAdvancedSearchData(prev => ({ ...prev, salesperson: salesperson.name }));
+  const handleSelectSalesperson = (salesperson: Salesperson) => {
+    setAdvancedSearchData(prev => ({ ...prev, salesperson: salesperson.displayName || salesperson.name || "" }));
     setIsSalespersonDropdownOpen(false);
     setSalespersonSearch("");
   };
@@ -1454,8 +1457,8 @@ export default function Quotes() {
     );
   };
 
-  const handleSelectProject = (project) => {
-    setAdvancedSearchData(prev => ({ ...prev, projectName: project.projectName || project.name }));
+  const handleSelectProject = (project: Project) => {
+    setAdvancedSearchData(prev => ({ ...prev, projectName: project.projectName || project.name || "" }));
     setIsProjectDropdownOpen(false);
     setProjectSearch("");
   };
@@ -1467,42 +1470,23 @@ export default function Quotes() {
     setIsDeleteConfirmModalOpen(true);
   };
 
-  const handleConfirmBulkDelete = async () => {
-    try {
-      setIsDeletingQuotes(true);
-      await deleteQuotes(selectedQuotes);
-      await invalidateQuoteQueries(queryClient);
-      setSelectedQuotes([]);
-      setIsDeleteConfirmModalOpen(false);
-    } catch (error) {
-      console.error("Error deleting quotes:", error);
-      alert("Failed to delete quotes. Please try again.");
-    } finally {
-      setIsDeletingQuotes(false);
-    }
+  const handleBulkUpdate = () => {
+    setIsBulkUpdateModalOpen(true);
   };
-
-  const handleCancelBulkDelete = () => {
-    setIsDeleteConfirmModalOpen(false);
-  };
-
-  // const handleBulkUpdate = () => {
-  //   setIsBulkUpdateModalOpen(true);
-  // };
 
   const handleBulkUpdateSubmit = async () => {
     if (!bulkUpdateField) {
-      toast.warn("Please select a field to update");
+      toast.error("Please select a field to update");
       return;
     }
 
     if (selectedQuotes.length === 0) {
-      toast.warn("Please select at least one quote to update");
+      toast.error("Please select at least one quote to update");
       return;
     }
 
     if (!String(bulkUpdateValue ?? "").trim() && bulkUpdateField !== "billingAddress" && bulkUpdateField !== "shippingAddress" && bulkUpdateField !== "billingAndShippingAddress") {
-      toast.warn("Please enter a value to update");
+      toast.error("Please enter a value to update");
       return;
     }
 
@@ -1568,7 +1552,7 @@ export default function Quotes() {
     );
   };
 
-  const handleSelectBulkField = (option) => {
+  const handleSelectBulkField = (option: { value: string; label: string }) => {
     setBulkUpdateField(option.value);
     setBulkUpdateValue("");
     setIsBulkFieldDropdownOpen(false);
@@ -1639,8 +1623,8 @@ export default function Quotes() {
       case "shippingAddress":
       case "billingAndShippingAddress":
         // Get customer name from first selected quote
-        const firstSelectedQuote = quotes.find(q => selectedQuotes.includes(q.id));
-        const getCustomerName = (q) => {
+        const firstSelectedQuote = quotes.find(q => q.id && selectedQuotes.includes(q.id));
+        const getCustomerName = (q: Quote | undefined) => {
           if (!q) return '';
           if (q.customerName) return q.customerName;
           if (typeof q.customer === 'object' && q.customer) {
@@ -1720,7 +1704,7 @@ export default function Quotes() {
   };
 
   const handleNextQuote = () => {
-    const selectedQuoteData = quotes.filter(q => selectedQuotes.includes(q.id));
+    const selectedQuoteData = quotes.filter(q => q.id && selectedQuotes.includes(q.id));
     if (currentPreviewIndex < selectedQuoteData.length - 1) {
       setCurrentPreviewIndex(currentPreviewIndex + 1);
     }
@@ -1826,7 +1810,7 @@ export default function Quotes() {
   };
 
   const handleExportPDF = async () => {
-    const selectedQuoteData = quotes.filter(q => selectedQuotes.includes(q.id));
+    const selectedQuoteData = quotes.filter(q => q.id && selectedQuotes.includes(q.id));
 
     if (selectedQuoteData.length === 0) {
       alert("No quotes selected for export");
@@ -1846,7 +1830,7 @@ export default function Quotes() {
   };
 
   const handleDownloadCurrentQuote = async () => {
-    const selectedQuoteData = quotes.filter(q => selectedQuotes.includes(q.id));
+    const selectedQuoteData = quotes.filter(q => q.id && selectedQuotes.includes(q.id));
     const currentQuote = selectedQuoteData[currentPreviewIndex];
     if (!currentQuote) return;
 
@@ -1945,7 +1929,7 @@ export default function Quotes() {
       const year = date.getFullYear();
       return `${day}/${month}/${year}`;
     })();
-    const getCustomerName = (q) => {
+    const getCustomerName = (q: Quote) => {
       if (q.customerName) return q.customerName;
       if (typeof q.customer === 'object' && q.customer) {
         return q.customer.displayName || q.customer.name || 'N/A';
@@ -2040,28 +2024,6 @@ export default function Quotes() {
     `;
   };
 
-
-  const handleCreateNewQuote = () => {
-    navigate("/sales/quotes/new");
-  };
-
-  const handleImportQuotes = () => {
-    navigate("/sales/quotes/import");
-    setIsMoreMenuOpen(false);
-  };
-
-  const handleQuotePreferences = () => {
-    navigate("/settings/quotes");
-    setIsMoreMenuOpen(false);
-    setOpenMoreSubmenu(null);
-  };
-
-  const handleManageCustomFields = () => {
-    navigate("/settings/quotes/new-field");
-    setIsMoreMenuOpen(false);
-    setOpenMoreSubmenu(null);
-  };
-
   const handleResetColumnWidth = () => {
     setColumnWidths(defaultColumnWidths);
     setIsMoreMenuOpen(false);
@@ -2074,274 +2036,30 @@ export default function Quotes() {
     setOpenMoreSubmenu(null);
   };
 
-  const handleExportQuotesFromMenu = async () => {
-    setIsExportQuotesModalOpen(true);
-    setIsExportStatusDropdownOpen(false);
-    setExportStatusSearch("");
-    setIsMoreMenuOpen(false);
-    setOpenMoreSubmenu(null);
-  };
-
-  const handleExportCurrentViewFromMenu = () => {
-    setIsExportCurrentViewModalOpen(true);
-    setIsMoreMenuOpen(false);
-    setOpenMoreSubmenu(null);
-  };
-
-  const closeExportQuotesModal = () => {
-    setIsExportQuotesModalOpen(false);
-    setIsExportStatusDropdownOpen(false);
-    setExportStatusSearch("");
-  };
-
-  const handleConfirmExportQuotes = async () => {
-    const exportData = buildDetailedQuoteExportRows();
-    if (exportData.length === 0) {
-      alert("No quotes found for selected filters.");
-      return;
-    }
-
-    const selected = String(exportQuotesData.fileFormat || "XLSX").toUpperCase();
-    const exportAs = selected === "CSV" ? "CSV" : "XLSX";
-
-    if (exportAs === "XLSX") {
-      const XLSX = await import("xlsx");
-      const worksheet = XLSX.utils.json_to_sheet(exportData);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Quotes");
-      XLSX.writeFile(workbook, `quotes_export_${new Date().toISOString().split("T")[0]}.xlsx`);
-    } else {
-      const headers = Object.keys(exportData[0] || {});
-      const csvContent = [
-        headers.join(","),
-        ...exportData.map((row: any) => headers.map((header) => `"${row[header] ?? ""}"`).join(","))
-      ].join("\n");
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const link = document.createElement("a");
-      const url = URL.createObjectURL(blob);
-      link.setAttribute("href", url);
-      link.setAttribute("download", `quotes_export_${new Date().toISOString().split("T")[0]}.csv`);
-      link.style.visibility = "hidden";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-
-    closeExportQuotesModal();
-  };
-
   const closeExportCurrentViewModal = () => {
     setIsExportCurrentViewModalOpen(false);
   };
 
-  const handleConfirmExportCurrentView = async () => {
-    const selectedFormat = exportCurrentViewData.fileFormat === "CSV" ? "CSV" : "XLSX";
-    await handleExportCurrentView(selectedFormat);
-    closeExportCurrentViewModal();
+  const renderMoreMenu = () => {
+    return null;
   };
-
-  const handleCustomizeColumnsOpen = () => {
-    setTempVisibleColumns(ensureLockedColumns([...visibleColumns]));
-    setTempColumnOrder(buildTempColumnOrder(visibleColumns));
-    setColumnSearchTerm("");
-    setIsCustomizeColumnsModalOpen(true);
-  };
-
-  const handleColumnDrop = (targetKey: string) => {
-    if (!draggedColumnKey || draggedColumnKey === targetKey) return;
-    setTempColumnOrder((prev) => {
-      const from = prev.indexOf(draggedColumnKey);
-      const to = prev.indexOf(targetKey);
-      if (from < 0 || to < 0) return prev;
-      const updated = [...prev];
-      const [moved] = updated.splice(from, 1);
-      updated.splice(to, 0, moved);
-      return updated;
-    });
-  };
-
-  const handleCreateCustomView = () => {
-    setIsDropdownOpen(false);
-    navigate("/sales/quotes/custom-view/new");
-  };
-
-  // Compute selected quotes data for print preview
-  const selectedQuoteData = quotes.filter(q => selectedQuotes.includes(q.id));
-  const currentQuote = isPrintPreviewOpen && selectedQuoteData.length > 0
-    ? selectedQuoteData[currentPreviewIndex]
-    : null;
-
-  // Helper function for formatting dates in preview
-  const formatPreviewDate = (dateString) => {
-    if (!dateString) return "-";
-    const date = new Date(dateString);
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
-  };
-
-  // Header height is fixed by layout; no runtime measurement needed.
 
   return (
     <div className="flex flex-col h-full min-h-0 w-full bg-white font-sans text-gray-800 antialiased relative overflow-hidden">
-      {/* Header Section */}
-      {selectedQuotes.length > 0 ? (
-        <div
-          className="flex-none relative z-30 flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white overflow-visible"
-        >
-          <div className="flex items-center gap-2 py-2.5">
-            <button
-              className="px-3 py-1 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
-              onClick={handleBulkUpdate}
-            >
-              Bulk Update
-            </button>
-            <button
-              className="px-4 py-2 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm flex items-center gap-2"
-              onClick={handleExportPDF}
-            >
-              <FileDown size={16} className="text-gray-500" />
-              Download PDF
-            </button>
-            <button
-              className="px-3 py-1 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
-              onClick={handleBulkMarkAsSent}
-            >
-              Mark As Sent
-            </button>
-            <button
-              className="px-3 py-1 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
-              onClick={handleBulkSubmitForApproval}
-            >
-              Submit for Approval
-            </button>
-            <button
-              className="px-3 py-1 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
-              onClick={handleBulkDelete}
-            >
-              Delete
-            </button>
-
-            <div className="mx-2 h-5 w-px bg-gray-200" />
-
-            <div className="inline-flex items-center gap-2 text-sm text-slate-500">
-              <span className="flex h-6 min-w-[24px] items-center justify-center rounded px-2 text-[13px] font-semibold text-white"
-                style={{ background: 'linear-gradient(90deg, #156372 0%, #0D4A52 100%)' }}>
-                {selectedQuotes.length}
-              </span>
-              <span className="text-sm text-gray-700">Selected</span>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setSelectedQuotes([])}
-            className="inline-flex items-center gap-1 text-sm text-red-500 hover:text-red-600"
-          >
-            <span>Esc</span>
-            <X size={16} className="text-red-500" />
-          </button>
-        </div>
-      ) : (
-        <div
-          className="flex-none flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white relative overflow-visible"
-        >
-          <div className="flex items-center gap-4">
-            <div className="relative" ref={dropdownRef}>
-              <button
-                type="button"
-                className="flex items-center gap-1.5 py-1.5 cursor-pointer group border-b-2 border-slate-900 bg-transparent outline-none"
-                onClick={() => {
-                  if (isDropdownOpen) {
-                    setIsDropdownOpen(false);
-                    return;
-                  }
-
-                  const rect = dropdownRef.current?.getBoundingClientRect();
-                  if (rect) {
-                    setViewDropdownPosition({
-                      top: rect.bottom + 8,
-                      left: rect.left,
-                      width: rect.width,
-                    });
-                  }
-                  setIsDropdownOpen(true);
-                }}
-              >
-                <span className="text-[15px] font-bold text-slate-900 transition-colors">
-                  {selectedView}
-                </span>
-                <ChevronDown size={14} className={`transition-transform duration-200 text-[#156372] ${isDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
-            </div>
-            {isDropdownOpen && typeof document !== "undefined" ? createPortal(
-              <div className="fixed inset-0 z-[2147483646] pointer-events-none">
-                <div
-                  ref={viewDropdownMenuRef}
-                  className="absolute bg-white border border-gray-200 rounded-lg shadow-2xl py-2 animate-in fade-in zoom-in-95 duration-200 overflow-hidden pointer-events-auto"
-                  style={{
-                    top: `${viewDropdownPosition.top}px`,
-                    left: `${viewDropdownPosition.left}px`,
-                    width: `${Math.max(288, viewDropdownPosition.width)}px`,
-                  }}
-                >
-                <div className="px-3 pb-2 border-b border-gray-100">
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-md border border-gray-200 focus-within:border-[#156372] focus-within:ring-1 focus-within:ring-[#156372]/10 transition-all">
-                    <Search size={14} className="text-gray-400" />
-                    <input
-                      autoFocus
-                      placeholder="Search Views"
-                      className="bg-transparent border-none outline-none text-sm w-full"
-                      value={viewSearchQuery}
-                      onChange={(e) => setViewSearchQuery(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="max-h-80 overflow-y-auto py-1">
-                  <div className="px-4 py-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50/50">DEFAULT VIEWS</div>
-                  {filteredDefaultViews.map(view => (
-                    <button
-                      key={view}
-                      onClick={() => handleViewSelect(view)}
-                      className={`flex items-center justify-between px-4 py-2 hover:bg-[#156372]/5 cursor-pointer group/item transition-colors w-full ${isViewSelected(view) ? 'bg-[#156372]/5' : ''}`}
-                    >
-                      <span className={`text-sm ${isViewSelected(view) ? 'text-[#156372] font-semibold' : 'text-gray-700'}`}>{view}</span>
-                      {isViewSelected(view) && <Check size={14} className="text-[#156372]" />}
-                    </button>
-                  ))}
-
-                  {filteredCustomViews.length > 0 && (
-                    <>
-                      <div className="px-4 py-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50/50 mt-2">CUSTOM VIEWS</div>
-                      {filteredCustomViews.map(view => (
-                        <button
-                          key={view.id}
-                          onClick={() => handleViewSelect(view.name)}
-                          className={`flex items-center justify-between px-4 py-2 hover:bg-[#156372]/5 cursor-pointer group/item transition-colors w-full ${isViewSelected(view.name) ? 'bg-[#156372]/5' : ''}`}
-                        >
-                          <span className={`text-sm ${isViewSelected(view.name) ? 'text-[#156372] font-semibold' : 'text-gray-700'}`}>{view.name}</span>
-                          <div className="flex items-center gap-2">
-                            <Trash2
-                              size={14}
-                              className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover/item:opacity-100"
-                              onClick={(e) => handleDeleteCustomView(view.id, e)}
-                            />
-                            {isViewSelected(view.name) && <Check size={14} className="text-[#156372]" />}
-                          </div>
-                        </button>
-                      ))}
-                    </>
-                  )}
-                </div>
-                </div>
-              </div>,
-              document.body
-            ) : null}
+      {/* Top Header Section */}
+      <div className="flex-none bg-white border-b border-[#eef1f6] px-4 py-3 z-10">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4 flex-1 min-w-0">
+            <h1 className="text-xl font-bold text-gray-900 truncate flex items-center gap-2">
+              <Database className="text-[#156372]" size={20} />
+              {selectedView}
+            </h1>
           </div>
 
           <div className="flex items-center gap-3">
             <button
               onClick={handleCreateNewQuote}
+
               className="inline-flex items-center gap-2 rounded-lg px-4 py-1 bg-[#156372] text-white text-sm font-semibold cursor-pointer hover:brightness-110 transition-all active:brightness-95 border-[#0D4A52] border-b-[3px] shadow-sm"
               style={{ background: 'linear-gradient(90deg, #156372 0%, #0D4A52 100%)' }}
               aria-label="Create new quote"
@@ -2379,115 +2097,11 @@ export default function Quotes() {
                 <MoreVertical size={18} />
               </button>
             </div>
-            {isMoreMenuOpen && typeof document !== "undefined" ? createPortal(
-              <div className="fixed inset-0 z-[2147483647] pointer-events-none">
-                <div
-                  ref={moreMenuMenuRef}
-                  className="absolute w-56 bg-white border border-gray-200 rounded-lg shadow-2xl py-2 animate-in fade-in slide-in-from-top-2 duration-200 pointer-events-auto"
-                  style={{
-                    top: `${moreMenuPosition.top}px`,
-                    left: `${moreMenuPosition.left}px`,
-                  }}
-                >
-                <div className="relative">
-                  <button
-                    onClick={() => setOpenMoreSubmenu((prev) => (prev === "sort" ? null : "sort"))}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 flex items-center justify-between"
-                  >
-                    <span className="flex items-center gap-3">
-                      <ArrowUpDown size={16} />
-                      Sort by
-                    </span>
-                    <ChevronRight size={15} />
-                  </button>
-                  {openMoreSubmenu === "sort" && (
-                    <div className="absolute top-0 right-full mr-2 w-52 bg-white border border-gray-200 rounded-lg shadow-xl py-1 z-[100001]">
-                      {sortMenuOptions.map((option) => {
-                        const isActive = sortConfig.key === option.key;
-                        return (
-                          <button
-                            key={option.key}
-                            onClick={() => handleSelectSortFromMenu(option.key)}
-                            className="w-full text-left px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 flex items-center justify-between"
-                          >
-                            <span>{option.label}</span>
-                            {isActive ? <Check size={14} className="text-gray-500" /> : null}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={handleImportQuotes}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 flex items-center gap-3"
-                >
-                  <Download size={16} />
-                  Import Quotes
-                </button>
-                <div className="relative">
-                  <button
-                    onClick={() => setOpenMoreSubmenu((prev) => (prev === "export" ? null : "export"))}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 flex items-center gap-3"
-                  >
-                    <Upload size={16} />
-                    <span className="flex-1">Export</span>
-                    <ChevronRight size={15} />
-                  </button>
-                  {openMoreSubmenu === "export" && (
-                    <div className="absolute top-0 right-full mr-2 w-52 bg-white border border-gray-200 rounded-lg shadow-xl py-1 z-[100001]">
-                      <button
-                        onClick={handleExportQuotesFromMenu}
-                        className="w-full text-left px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
-                      >
-                        Export Quotes
-                      </button>
-                      <button
-                        onClick={handleExportCurrentViewFromMenu}
-                        className="w-full text-left px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
-                      >
-                        Export Current View
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={handleQuotePreferences}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 flex items-center gap-3"
-                >
-                  <Settings size={16} />
-                  Preferences
-                </button>
-                <button
-                  onClick={handleManageCustomFields}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 flex items-center gap-3"
-                >
-                  <Columns size={16} />
-                  Manage Custom Fields
-                </button>
-                <div className="h-px bg-gray-100 my-1" />
-                <button
-                  onClick={refreshData}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 flex items-center gap-3"
-                >
-                  <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
-                  Refresh List
-                </button>
-                <button
-                  onClick={handleResetColumnWidth}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 flex items-center gap-3"
-                >
-                  <RefreshCw size={16} />
-                  Reset Column Width
-                </button>
-                </div>
-              </div>,
-              document.body
-            ) : null}
+            {renderMoreMenu()}
           </div>
         </div>
-      )}
-
+      </div>
+      
       {/* Main Content Area */}
       <div className="flex-1 overflow-hidden flex flex-col relative z-0">
         {isRefreshing && (
@@ -2611,7 +2225,7 @@ export default function Quotes() {
                         checked={selectedQuotes.length === paginatedQuotes.length && paginatedQuotes.length > 0}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setSelectedQuotes(paginatedQuotes.map(q => q.id));
+                            setSelectedQuotes(paginatedQuotes.map(q => q.id || q._id || "").filter(Boolean));
                           } else {
                             setSelectedQuotes([]);
                           }
@@ -2656,33 +2270,35 @@ export default function Quotes() {
                 {paginatedQuotes.map((quote) => {
                   const effectiveStatus = getEffectiveStatus(quote);
                   return (
-                  <tr
-                    key={quote.id}
-                    className={`group transition-all hover:bg-[#f8fafc] cursor-pointer ${selectedQuotes.includes(quote.id) ? 'bg-[#156372]/5' : ''}`}
-                    onClick={() =>
-                      navigate(`/sales/quotes/${quote.id}`, {
-                        state: { preloadedQuote: quote, preloadedQuotes: sortedQuotes },
-                      })
-                    }
-                  >
-                    <td className="px-4 py-3 bg-inherit" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 shrink-0" />
-                        <div className="h-5 w-px bg-transparent shrink-0" />
-                        <input
-                          type="checkbox"
-                          className="w-4 h-4 rounded border-gray-300 text-[#156372] focus:ring-0 cursor-pointer"
-                          checked={selectedQuotes.includes(quote.id)}
-                          onChange={() => {
-                            setSelectedQuotes(prev =>
-                              prev.includes(quote.id)
-                                ? prev.filter(id => id !== quote.id)
-                                : [...prev, quote.id]
-                            );
-                          }}
-                        />
-                      </div>
-                    </td>
+                    <tr
+                      key={quote.id}
+                      className={`group transition-all hover:bg-[#f8fafc] cursor-pointer ${quote.id && selectedQuotes.includes(quote.id) ? 'bg-[#156372]/5' : ''}`}
+                      onClick={() =>
+                        navigate(`/sales/quotes/${quote.id}`, {
+                          state: { preloadedQuote: quote, preloadedQuotes: sortedQuotes },
+                        })
+                      }
+                    >
+                      <td className="px-4 py-3 bg-inherit" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 shrink-0" />
+                          <div className="h-5 w-px bg-transparent shrink-0" />
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 rounded border-gray-300 text-[#156372] focus:ring-0 cursor-pointer"
+                            checked={!!quote.id && selectedQuotes.includes(quote.id)}
+                            onChange={() => {
+                              if (!quote.id) return;
+                              const quoteId = quote.id;
+                              setSelectedQuotes(prev =>
+                                prev.includes(quoteId)
+                                  ? prev.filter(id => id !== quoteId)
+                                  : [...prev, quoteId]
+                              );
+                            }}
+                          />
+                        </div>
+                      </td>
                     {visibleColumns.map((colKey) => (
                       <td
                         key={colKey}
@@ -2694,7 +2310,7 @@ export default function Quotes() {
                         }}
                       >
                         {colKey === 'date' ? (
-                          <span className="font-medium text-[#156372]">{formatDate(quote.date || quote.quoteDate)}</span>
+                          <span className="font-medium text-[#156372]">{formatDate(String(quote.date || quote.quoteDate || ""))}</span>
                         ) : colKey === 'location' ? (
                           <span className="text-[#156372]">{quote.selectedLocation || quote.location || "Head Office"}</span>
                         ) : colKey === 'quoteNumber' ? (
@@ -2705,7 +2321,7 @@ export default function Quotes() {
                             )}
                           </span>
                         ) : colKey === 'expiryDate' ? (
-                          <span className="text-gray-700">{formatDate(quote.expiryDate)}</span>
+                          <span className="text-gray-700">{formatDate(String(quote.expiryDate || ""))}</span>
                         ) : colKey === 'status' ? (
                           <span
                             className="font-medium uppercase tracking-wide"
@@ -2715,7 +2331,7 @@ export default function Quotes() {
                           </span>
                         ) : colKey === 'amount' ? (
                           <span className="font-medium text-[#156372]">
-                            {formatAmount(quote.total || quote.amount, quote.currency)}
+                            {formatAmount(Number(quote.total || quote.amount || 0), String(quote.currency || "AMD"))}
                           </span>
                         ) : colKey === 'customerName' ? (
                           <span className="text-[#156372]">
@@ -3985,7 +3601,7 @@ export default function Quotes() {
                     </thead>
                     <tbody>
                       {currentQuote.items && currentQuote.items.length > 0 ? (
-                        currentQuote.items.map((item, index) => (
+                        currentQuote.items.map((item: any, index: number) => (
                           <tr key={item.id || index} style={{ borderBottom: "1px solid #e5e7eb" }}>
                             <td style={{ padding: "12px", fontSize: "14px", color: "#111" }}>{index + 1}</td>
                             <td style={{ padding: "12px", fontSize: "14px", color: "#111" }}>
@@ -4410,6 +4026,6 @@ export default function Quotes() {
           </>
         )
       }
-    </div >
+    </div>
   );
 }
