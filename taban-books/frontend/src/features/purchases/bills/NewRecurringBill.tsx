@@ -1264,8 +1264,8 @@ export default function NewRecurringBill() {
       </div>
 
       <div className="flex-1 bg-white">
-        <div className="px-6 py-6 w-full">
-            <div className="grid grid-cols-2 gap-x-12 gap-y-6">
+        <div className="px-6 py-6 w-full xl:w-[60%]">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
               {/* Row 1 */}
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium text-red-600 flex items-center gap-1">
@@ -1275,7 +1275,7 @@ export default function NewRecurringBill() {
                   <div className="relative flex-1">
                     <input
                       type="text"
-                      className="px-3 py-2 text-sm border border-gray-300 rounded-l-md rounded-r-none w-full box-border h-10"
+                      className="px-3 py-2 text-sm border border-gray-300 rounded-l-md rounded-r-none w-full box-border h-10 bg-white"
                       placeholder="Select a Vendor"
                       value={typeof formData.vendorName === 'string' ? formData.vendorName : (formData.vendorName as any)?.displayName || (formData.vendorName as any)?.name || ""}
                       readOnly
@@ -1360,7 +1360,7 @@ export default function NewRecurringBill() {
               </div>
 
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                <label className="text-sm font-medium text-red-600 flex items-center gap-1">
                   Profile Name<span className="text-red-500">*</span>
                 </label>
                 <input
@@ -1374,6 +1374,26 @@ export default function NewRecurringBill() {
               {/* Row 2 */}
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                  Location
+                </label>
+                <div className="relative">
+                  <select
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm outline-none bg-white cursor-pointer focus:border-teal-600 hover:border-teal-600 appearance-none h-10"
+                    value={warehouseLocation}
+                    onChange={(e) => setWarehouseLocation(e.target.value)}
+                  >
+                    <option value="Head Office">Head Office</option>
+                    <option value="Branch 1">Branch 1</option>
+                    <option value="Store">Store</option>
+                  </select>
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                    <ChevronDown size={16} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-red-600 flex items-center gap-1">
                   Repeat Every<span className="text-red-500">*</span>
                 </label>
                 <div className="flex gap-2 items-start">
@@ -1427,6 +1447,7 @@ export default function NewRecurringBill() {
                 </div>
               </div>
 
+              {/* Row 3 */}
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium text-gray-700 flex items-center gap-1">Start On</label>
                 <DatePicker
@@ -1440,7 +1461,6 @@ export default function NewRecurringBill() {
                 />
               </div>
 
-              {/* Row 3 */}
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium text-gray-700 flex items-center gap-1">Ends On</label>
                 <div className="flex gap-3 items-center h-10">
@@ -1456,18 +1476,19 @@ export default function NewRecurringBill() {
                       minDate={formData.startOn ? new Date(formData.startOn) : undefined} // End date cannot be before start date
                     />
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <input
                       type="checkbox"
-                      className="w-4 h-4 cursor-pointer"
+                      className="w-4 h-4 cursor-pointer accent-teal-600"
                       checked={formData.neverExpires}
                       onChange={(e) => setFormData({ ...formData, neverExpires: e.target.checked, endsOn: "" })}
                     />
-                    <label className="text-sm text-gray-700 cursor-pointer">Never Expires</label>
+                    <label className="text-sm text-gray-700 cursor-pointer whitespace-nowrap">Never Expires</label>
                   </div>
                 </div>
               </div>
 
+              {/* Row 4 */}
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-1">
                   <label className="text-sm font-medium text-gray-700">Accounts Payable</label>
@@ -1498,8 +1519,9 @@ export default function NewRecurringBill() {
                   </div>
                 </div>
               </div>
+              <div className="hidden md:block"></div>
 
-              {/* Row 4 */}
+              {/* Row 5 */}
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium text-gray-700 flex items-center gap-1">Payment Terms</label>
                 <PaymentTermsDropdown
@@ -1515,6 +1537,7 @@ export default function NewRecurringBill() {
                   }))}
                 />
               </div>
+              <div className="hidden md:block"></div>
             </div>
 
 

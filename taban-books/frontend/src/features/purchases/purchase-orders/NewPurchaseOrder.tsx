@@ -211,6 +211,20 @@ type ReportingTagOption = {
   options?: string[] | Array<{ value?: string; label?: string; name?: string }>;
 };
 
+type PurchaseOrderFieldErrorKey =
+  | "vendorName"
+  | "warehouseLocation"
+  | "deliveryAddress"
+  | "customer"
+  | "purchaseOrderNumber"
+  | "date"
+  | "deliveryDate"
+  | "paymentTerms"
+  | "reportingTags"
+  | "items";
+
+type PurchaseOrderItemError = Partial<Record<"itemDetails" | "account" | "quantity" | "rate", string>>;
+
 const createEmptyItem = (id: number): PurchaseOrderItem => ({
   id,
   itemDetails: "",
@@ -306,6 +320,8 @@ export default function NewPurchaseOrder() {
   const [bulkItems, setBulkItems] = useState<BulkItemOption[]>([]);
   const [bulkItemsSearch, setBulkItemsSearch] = useState("");
   const [bulkSelectedItemIds, setBulkSelectedItemIds] = useState<Record<string, boolean>>({});
+  const [validationErrors, setValidationErrors] = useState<Partial<Record<PurchaseOrderFieldErrorKey, string>>>({});
+  const [itemValidationErrors, setItemValidationErrors] = useState<Record<number, PurchaseOrderItemError>>({});
   const [saveLoadingState, setSaveLoadingState] = useState<null | "draft" | "issued">(null);
   const submitLockRef = useRef(false);
   const [openTaxDropdowns, setOpenTaxDropdowns] = useState<Record<string, boolean>>({});
@@ -955,6 +971,7 @@ export default function NewPurchaseOrder() {
   const selectVendor = (vendor: VendorRecord) => {
     const vendorName =
       vendor.displayName || vendor.name || vendor.formData?.displayName || vendor.formData?.name || "";
+    clearFieldError("vendorName");
     setFormData((prev) => ({
       ...prev,
       vendorName,
@@ -1246,12 +1263,134 @@ export default function NewPurchaseOrder() {
     setProjectDropdownOpen(false);
   };
 
+  const getFieldInputClass = (field: PurchaseOrderFieldErrorKey, baseClass: string) =>
+    `${baseClass} ${validationErrors[field] ? "border-red-400 ring-1 ring-red-100" : ""}`;
+
+  const clearFieldError = (field: PurchaseOrderFieldErrorKey) => {
+    setValidationErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const clearItemFieldError = (itemId: number, field: keyof PurchaseOrderItemError) => {
+    setItemValidationErrors((prev) => {
+      if (!prev[itemId]?.[field]) return prev;
+      const next = { ...prev };
+      next[itemId] = { ...next[itemId] };
+      delete next[itemId][field];
+      if (Object.keys(next[itemId]).length === 0) {
+        delete next[itemId];
+      }
+      return next;
+    });
+  };
+
+  const validatePurchaseOrderForm = () => {
+    const nextErrors: Partial<Record<PurchaseOrderFieldErrorKey, string>> = {};
+    const nextItemErrors: Record<number, PurchaseOrderItemError> = {};
+    const { resolvedVendorId, resolvedVendorName } = resolveVendorForSubmit();
+
+    if (!resolvedVendorId && !resolvedVendorName) {
+      nextErrors.vendorName = "Please select a valid vendor.";
+    }
+
+    if (!String(warehouseLocation || "").trim()) {
+      nextErrors.warehouseLocation = "Please select a location.";
+    }
+
+    if (formData.deliveryAddressType === "Customer") {
+      if (!selectedCustomer) {
+        nextErrors.customer = "Please select a customer.";
+      }
+      if (!deliveryAddress) {
+        nextErrors.deliveryAddress = "Please choose a valid delivery address.";
+      }
+    } else if (!deliveryAddress) {
+      nextErrors.deliveryAddress = "Please choose a delivery location.";
+    }
+
+    if (!String(formData.purchaseOrderNumber || "").trim()) {
+      nextErrors.purchaseOrderNumber = "Purchase order number is required.";
+    }
+
+    if (!String(formData.date || "").trim()) {
+      nextErrors.date = "Date is required.";
+    }
+
+    if (!String(formData.paymentTerms || "").trim()) {
+      nextErrors.paymentTerms = "Payment terms are required.";
+    }
+
+    if (formData.deliveryDate && formData.date) {
+      const orderDate = new Date(formData.date);
+      const deliveryDate = new Date(formData.deliveryDate);
+      if (!Number.isNaN(orderDate.getTime()) && !Number.isNaN(deliveryDate.getTime()) && deliveryDate < orderDate) {
+        nextErrors.deliveryDate = "Delivery date cannot be earlier than the purchase order date.";
+      }
+    }
+
+    const missingRequiredReportingTags = availableReportingTags.filter((tag) => {
+      const tagId = String(tag?._id || tag?.id || "").trim();
+      return Boolean(tagId) && Boolean(tag?.isRequired || tag?.required || tag?.isMandatory) && !String(reportingTagDrafts[tagId] || "").trim();
+    });
+    if (missingRequiredReportingTags.length > 0) {
+      nextErrors.reportingTags = "Please select all required reporting tags.";
+    }
+
+    const normalizedItems = Array.isArray(formData.items) ? formData.items : [];
+    if (!normalizedItems.length) {
+      nextErrors.items = "At least one item row is required.";
+    } else {
+      normalizedItems.forEach((item) => {
+        const rowErrors: PurchaseOrderItemError = {};
+        const quantity = Number(item.quantity);
+        const rate = Number(item.rate);
+
+        if (!String(item.itemDetails || "").trim()) {
+          rowErrors.itemDetails = "Select an item.";
+        }
+        if (!String(item.account || "").trim()) {
+          rowErrors.account = "Select an account.";
+        }
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+          rowErrors.quantity = "Enter a quantity greater than 0.";
+        }
+        if (!Number.isFinite(rate) || rate < 0) {
+          rowErrors.rate = "Enter a valid rate.";
+        }
+
+        if (Object.keys(rowErrors).length > 0) {
+          nextItemErrors[item.id] = rowErrors;
+        }
+      });
+    }
+
+    if (Object.keys(nextItemErrors).length > 0 && !nextErrors.items) {
+      nextErrors.items = "Please fix the highlighted item rows.";
+    }
+
+    setValidationErrors(nextErrors);
+    setItemValidationErrors(nextItemErrors);
+
+    return {
+      isValid: Object.keys(nextErrors).length === 0 && Object.keys(nextItemErrors).length === 0,
+      resolvedVendorId,
+      resolvedVendorName,
+    };
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     const nextValue =
       e.target instanceof HTMLInputElement && e.target.type === "checkbox"
         ? e.target.checked
         : value;
+    if (name === "purchaseOrderNumber") clearFieldError("purchaseOrderNumber");
+    if (name === "date") clearFieldError("date");
+    if (name === "deliveryDate") clearFieldError("deliveryDate");
     setFormData((prev) => ({
       ...prev,
       [name]: nextValue,
@@ -1261,6 +1400,8 @@ export default function NewPurchaseOrder() {
   // Handle delivery address type change
   const handleDeliveryAddressTypeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value as PurchaseOrderFormData["deliveryAddressType"];
+    clearFieldError("deliveryAddress");
+    clearFieldError("customer");
     setFormData((prev) => ({ ...prev, deliveryAddressType: value }));
 
     if (value === "Organization" && organizationData) {
@@ -1284,6 +1425,8 @@ export default function NewPurchaseOrder() {
   };
 
   const handleItemSelect = (id: number, selectedItem: SelectableItem) => {
+    clearItemFieldError(id, "itemDetails");
+    clearFieldError("items");
     setFormData((prev) => {
       const updatedItems = prev.items.map((item) => {
         if (item.id === id) {
@@ -1316,6 +1459,10 @@ export default function NewPurchaseOrder() {
   };
 
   const handleItemChange = (id: number, field: PurchaseOrderItemField, value: string) => {
+    if (field === "itemDetails" || field === "account" || field === "quantity" || field === "rate") {
+      clearItemFieldError(id, field);
+      clearFieldError("items");
+    }
     setFormData((prev) => {
       const updatedItems = prev.items.map((item) =>
         item.id === id ? { ...item, [field]: value } : item
@@ -1554,9 +1701,9 @@ export default function NewPurchaseOrder() {
     setSaveLoadingState(status === "issued" ? "issued" : "draft");
 
     try {
-      const { resolvedVendorId, resolvedVendorName } = resolveVendorForSubmit();
-      if (!resolvedVendorId && !resolvedVendorName) {
-        alert("Please select a valid vendor before saving the purchase order.");
+      const { isValid, resolvedVendorId, resolvedVendorName } = validatePurchaseOrderForm();
+      if (!isValid) {
+        alert("Please fix the validation errors before saving this purchase order.");
         return;
       }
 
@@ -1838,7 +1985,9 @@ export default function NewPurchaseOrder() {
                       <button
                         type="button"
                         onClick={() => setVendorDropdownOpen((prev) => !prev)}
-                        className="relative flex h-9 flex-1 items-center rounded-md rounded-r-none border border-gray-300 bg-white px-3 pr-14 text-left text-sm text-gray-900 outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
+                        className={`relative flex h-9 flex-1 items-center rounded-md rounded-r-none border bg-white px-3 pr-14 text-left text-sm text-gray-900 outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372] ${
+                          validationErrors.vendorName ? "border-red-400 ring-1 ring-red-100" : "border-gray-300"
+                        }`}
                       >
                         <span className={formData.vendorName ? "text-gray-900" : "text-gray-400"}>
                           {formData.vendorName || "Select a Vendor"}
@@ -1948,6 +2097,9 @@ export default function NewPurchaseOrder() {
                         </div>
                       </div>
                     )}
+                    {validationErrors.vendorName ? (
+                      <p className="mt-2 text-sm text-red-500">{validationErrors.vendorName}</p>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -1957,13 +2109,20 @@ export default function NewPurchaseOrder() {
                 <label className="block text-sm font-medium text-gray-700">
                   Location
                 </label>
-                <div className="max-w-[330px]">
-                  <LocationSelectDropdown
-                    value={warehouseLocation}
-                    options={locationOptions}
-                    onSelect={(location) => setWarehouseLocation(location.label)}
+                      <div className="max-w-[330px]">
+                        <LocationSelectDropdown
+                          value={warehouseLocation}
+                          options={locationOptions}
+                    onSelect={(location) => {
+                      setWarehouseLocation(location.label);
+                      clearFieldError("warehouseLocation");
+                      clearFieldError("deliveryAddress");
+                    }}
                     placeholder="Select Warehouse"
                   />
+                  {validationErrors.warehouseLocation ? (
+                    <p className="mt-2 text-sm text-red-500">{validationErrors.warehouseLocation}</p>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -2061,12 +2220,19 @@ export default function NewPurchaseOrder() {
 
                     {formData.deliveryAddressType === "Organization" ? (
                       <div className="max-w-[330px]">
-                        <LocationSelectDropdown
-                          value={warehouseLocation}
-                          options={locationOptions}
-                          onSelect={(location) => setWarehouseLocation(location.label)}
+                    <LocationSelectDropdown
+                      value={warehouseLocation}
+                      options={locationOptions}
+                      onSelect={(location) => {
+                        setWarehouseLocation(location.label);
+                        clearFieldError("warehouseLocation");
+                        clearFieldError("deliveryAddress");
+                          }}
                           placeholder="Select Warehouse"
                         />
+                        {validationErrors.deliveryAddress ? (
+                          <p className="mt-2 text-sm text-red-500">{validationErrors.deliveryAddress}</p>
+                        ) : null}
                       </div>
                     ) : (
                       <div className="max-w-[720px] space-y-5" ref={customerDropdownRef}>
@@ -2075,7 +2241,9 @@ export default function NewPurchaseOrder() {
                             <button
                               type="button"
                               onClick={() => setCustomerDropdownOpen((prev) => !prev)}
-                              className="relative flex h-9 flex-1 items-center rounded-md rounded-r-none border border-gray-300 bg-white px-3 text-left text-sm text-gray-900 outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
+                              className={`relative flex h-9 flex-1 items-center rounded-md rounded-r-none border bg-white px-3 text-left text-sm text-gray-900 outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372] ${
+                                validationErrors.customer || validationErrors.deliveryAddress ? "border-red-400 ring-1 ring-red-100" : "border-gray-300"
+                              }`}
                             >
                               <span className={`${selectedCustomer ? "text-gray-900" : "text-gray-400"}`}>
                                 {selectedCustomer?.displayName || "Select Customer"}
@@ -2117,6 +2285,8 @@ export default function NewPurchaseOrder() {
                                       key={i}
                                       type="button"
                                       onClick={() => {
+                                        clearFieldError("customer");
+                                        clearFieldError("deliveryAddress");
                                         setSelectedCustomer(customer);
                                         setCustomerSearch("");
                                         setCustomerDropdownOpen(false);
@@ -2175,6 +2345,12 @@ export default function NewPurchaseOrder() {
                             </div>
                           )}
                         </div>
+                        {validationErrors.customer ? (
+                          <p className="text-sm text-red-500">{validationErrors.customer}</p>
+                        ) : null}
+                        {validationErrors.deliveryAddress ? (
+                          <p className="text-sm text-red-500">{validationErrors.deliveryAddress}</p>
+                        ) : null}
 
                         {selectedCustomer ? (
                           <div className="w-full min-w-0">
@@ -2239,7 +2415,7 @@ export default function NewPurchaseOrder() {
                     name="purchaseOrderNumber"
                     value={formData.purchaseOrderNumber}
                     onChange={handleChange}
-                    className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 focus:ring-1 focus:ring-[#156372] outline-none"
+                    className={getFieldInputClass("purchaseOrderNumber", "w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 focus:ring-1 focus:ring-[#156372] outline-none")}
                     required
                   />
                   <button
@@ -2250,6 +2426,9 @@ export default function NewPurchaseOrder() {
                     <Settings size={14} />
                   </button>
                 </div>
+                {validationErrors.purchaseOrderNumber ? (
+                  <p className="mt-2 text-sm text-red-500">{validationErrors.purchaseOrderNumber}</p>
+                ) : null}
               </div>
 
               <div className="grid gap-4 md:grid-cols-[170px_minmax(0,1fr)] md:items-center">
@@ -2270,8 +2449,11 @@ export default function NewPurchaseOrder() {
                   name="date"
                   value={formData.date}
                   onChange={handleChange}
-                  className="w-full max-w-[330px] rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-1 focus:ring-[#156372]"
+                  className={getFieldInputClass("date", "w-full max-w-[330px] rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-1 focus:ring-[#156372]")}
                 />
+                {validationErrors.date ? (
+                  <p className="text-sm text-red-500">{validationErrors.date}</p>
+                ) : null}
               </div>
 
               <div className="grid gap-4 md:grid-cols-[170px_minmax(0,1fr)] md:items-center">
@@ -2282,17 +2464,26 @@ export default function NewPurchaseOrder() {
                     name="deliveryDate"
                     value={formData.deliveryDate}
                     onChange={handleChange}
-                    className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-1 focus:ring-[#156372]"
+                    className={getFieldInputClass("deliveryDate", "w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-1 focus:ring-[#156372]")}
                   />
+                  {validationErrors.deliveryDate ? (
+                    <p className="mt-2 text-sm text-red-500">{validationErrors.deliveryDate}</p>
+                  ) : null}
                   <div className="grid gap-2 md:grid-cols-[170px_minmax(0,1fr)] md:items-center">
                     <label className="block text-sm font-medium text-gray-700">Payment Terms</label>
                     <div className="min-w-[220px]">
                       <PaymentTermsDropdown
                         value={formData.paymentTerms}
-                        onChange={(val) => setFormData({ ...formData, paymentTerms: val })}
+                        onChange={(val) => {
+                          clearFieldError("paymentTerms");
+                          setFormData({ ...formData, paymentTerms: val });
+                        }}
                         onConfigureTerms={() => setConfigureTermsOpen(true)}
                         customTerms={paymentTermsList}
                       />
+                      {validationErrors.paymentTerms ? (
+                        <p className="mt-2 text-sm text-red-500">{validationErrors.paymentTerms}</p>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -2318,12 +2509,16 @@ export default function NewPurchaseOrder() {
                 <div className="flex items-center gap-2">
                   <label className="text-sm text-gray-500">Warehouse Location</label>
                   <div className="w-[210px]">
-                    <LocationSelectDropdown
-                      value={warehouseLocation}
-                      options={locationOptions}
-                      onSelect={(location) => setWarehouseLocation(location.label)}
-                      placeholder="Select Warehouse"
-                    />
+                        <LocationSelectDropdown
+                          value={warehouseLocation}
+                          options={locationOptions}
+                          onSelect={(location) => {
+                            setWarehouseLocation(location.label);
+                            clearFieldError("warehouseLocation");
+                            clearFieldError("deliveryAddress");
+                          }}
+                          placeholder="Select Warehouse"
+                        />
                   </div>
                 </div>
 
@@ -2462,16 +2657,24 @@ export default function NewPurchaseOrder() {
                                 onSelect={(selectedItem) => handleItemSelect(item.id, selectedItem)}
                                 className="flex-1"
                               />
+                              {itemValidationErrors[item.id]?.itemDetails ? (
+                                <p className="mt-1 text-xs text-red-500">{itemValidationErrors[item.id]?.itemDetails}</p>
+                              ) : null}
                             </div>
                           </div>
                         </td>
                         <td className="px-3 py-2.5 text-sm">
-                          <AccountSelectDropdown
-                            value={item.account}
-                            onSelect={(acc) => handleItemChange(item.id, "account", acc.name)}
-                            className="w-full"
-                            allowedTypes={PURCHASE_ACCOUNT_TYPES}
-                          />
+                          <div>
+                            <AccountSelectDropdown
+                              value={item.account}
+                              onSelect={(acc) => handleItemChange(item.id, "account", acc.name)}
+                              className="w-full"
+                              allowedTypes={PURCHASE_ACCOUNT_TYPES}
+                            />
+                            {itemValidationErrors[item.id]?.account ? (
+                              <p className="mt-1 text-xs text-red-500">{itemValidationErrors[item.id]?.account}</p>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="px-3 py-2.5 text-sm">
                           <div className="flex items-center justify-end">
@@ -2479,9 +2682,14 @@ export default function NewPurchaseOrder() {
                               type="text"
                               value={item.quantity}
                               onChange={(e) => handleItemChange(item.id, "quantity", e.target.value)}
-                              className="h-11 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none focus:border-teal-600"
+                              className={`h-11 w-full rounded-lg border bg-gray-50 px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none focus:border-teal-600 ${
+                                itemValidationErrors[item.id]?.quantity ? "border-red-400 ring-1 ring-red-100" : "border-gray-200"
+                              }`}
                             />
                           </div>
+                          {itemValidationErrors[item.id]?.quantity ? (
+                            <p className="mt-1 text-xs text-red-500">{itemValidationErrors[item.id]?.quantity}</p>
+                          ) : null}
                         </td>
                         <td className="px-3 py-2.5 text-sm">
                           <div className="flex items-center justify-end">
@@ -2489,9 +2697,14 @@ export default function NewPurchaseOrder() {
                               type="text"
                               value={item.rate}
                               onChange={(e) => handleItemChange(item.id, "rate", e.target.value)}
-                              className="h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none focus:border-teal-600"
+                              className={`h-11 w-full rounded-lg border bg-white px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none focus:border-teal-600 ${
+                                itemValidationErrors[item.id]?.rate ? "border-red-400 ring-1 ring-red-100" : "border-gray-200"
+                              }`}
                             />
                           </div>
+                          {itemValidationErrors[item.id]?.rate ? (
+                            <p className="mt-1 text-xs text-red-500">{itemValidationErrors[item.id]?.rate}</p>
+                          ) : null}
                         </td>
                         <td className="px-3 py-2.5 text-sm">
                           <div className="flex items-center justify-end">
@@ -2568,6 +2781,12 @@ export default function NewPurchaseOrder() {
                       <ChevronDown size={12} className="text-gray-400" />
                     </button>
                   </div>
+                  {validationErrors.reportingTags ? (
+                    <p className="mt-2 text-sm text-red-500">{validationErrors.reportingTags}</p>
+                  ) : null}
+                  {validationErrors.items ? (
+                    <p className="mt-2 text-sm text-red-500">{validationErrors.items}</p>
+                  ) : null}
                 </div>
               </div>
 
@@ -2902,10 +3121,11 @@ export default function NewPurchaseOrder() {
                     <button
                       key={`${activeReportingTagId}-${option.value || "none"}`}
                       type="button"
-                      onClick={() => {
-                        setReportingTagDrafts((prev) => ({ ...prev, [activeReportingTagId]: option.value }));
-                        setReportingTagOptionOpenKey(null);
-                        setReportingTagSearches((prev) => ({ ...prev, [activeReportingTagId]: "" }));
+                              onClick={() => {
+                                clearFieldError("reportingTags");
+                                setReportingTagDrafts((prev) => ({ ...prev, [activeReportingTagId]: option.value }));
+                                setReportingTagOptionOpenKey(null);
+                                setReportingTagSearches((prev) => ({ ...prev, [activeReportingTagId]: "" }));
                       }}
                       className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm ${
                         isSelected
