@@ -6,6 +6,7 @@
 import { Request, Response } from "express";
 import PurchaseOrder from "../models/PurchaseOrder.js";
 import Vendor from "../models/Vendor.js";
+import Project from "../models/Project.js";
 import TransactionNumberSeries from "../models/TransactionNumberSeries.js";
 import mongoose from "mongoose";
 import { sendEmail } from "../services/email.service.js";
@@ -24,6 +25,58 @@ interface AuthRequest extends Request {
 const normalizeText = (value: any): string => String(value ?? '').trim();
 
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const normalizeReportingTags = (rows: any): Array<{ tagId: string; name?: string; value: string }> => {
+  if (!Array.isArray(rows)) return [];
+
+  return rows
+    .map((row: any) => {
+      const tagId = normalizeText(row?.tagId || row?.id);
+      const value = normalizeText(row?.value);
+      const name = normalizeText(row?.name);
+
+      if (!tagId || !value) return null;
+
+      return {
+        tagId,
+        ...(name ? { name } : {}),
+        value,
+      };
+    })
+    .filter(Boolean) as Array<{ tagId: string; name?: string; value: string }>;
+};
+
+const resolveProjectForOrganization = async ({
+  organizationId,
+  projectId,
+  projectName,
+}: {
+  organizationId: string;
+  projectId?: any;
+  projectName?: any;
+}) => {
+  const normalizedProjectId = normalizeText(projectId);
+  const normalizedProjectName = normalizeText(projectName);
+
+  if (normalizedProjectId && mongoose.Types.ObjectId.isValid(normalizedProjectId)) {
+    const projectById = await Project.findOne({
+      _id: normalizedProjectId,
+      organization: organizationId
+    });
+    if (projectById) return projectById;
+  }
+
+  if (normalizedProjectName) {
+    const exactMatch = new RegExp(`^${escapeRegex(normalizedProjectName)}$`, "i");
+    const projectByName = await Project.findOne({
+      organization: organizationId,
+      name: exactMatch
+    });
+    if (projectByName) return projectByName;
+  }
+
+  return null;
+};
 
 const resolveVendorForOrganization = async ({
   organizationId,
@@ -100,6 +153,9 @@ export const createPurchaseOrder = async (req: AuthRequest, res: Response): Prom
       total,
       sub_total,
       items,
+      project_id,
+      project_name,
+      reporting_tags,
       notes,
       terms
     } = req.body;
@@ -117,6 +173,12 @@ export const createPurchaseOrder = async (req: AuthRequest, res: Response): Prom
       });
       return;
     }
+
+    const project = await resolveProjectForOrganization({
+      organizationId: req.user.organizationId,
+      projectId: project_id,
+      projectName: project_name
+    });
 
     // Check if purchase order number already exists
     const existingPO = await PurchaseOrder.findOne({
@@ -152,6 +214,9 @@ export const createPurchaseOrder = async (req: AuthRequest, res: Response): Prom
       purchaseOrderNumber: purchase_order_number,
       vendor: vendor._id,
       vendorName: vendor.name || vendor.displayName || vendor.companyName || '',
+      projectId: project?._id,
+      projectName: project?.name || normalizeText(project_name) || undefined,
+      reportingTags: normalizeReportingTags(reporting_tags),
       date: new Date(date),
       expectedDate: delivery_date ? new Date(delivery_date) : undefined,
       items: purchaseOrderItems,
@@ -385,6 +450,29 @@ export const updatePurchaseOrder = async (req: AuthRequest, res: Response): Prom
       updateData.vendor = vendor._id;
       delete updateData.vendor_id;
       delete updateData.vendor_name;
+    }
+
+    if (
+      updateData.project_id !== undefined ||
+      updateData.projectId !== undefined ||
+      updateData.project_name !== undefined ||
+      updateData.projectName !== undefined
+    ) {
+      const project = await resolveProjectForOrganization({
+        organizationId: req.user.organizationId,
+        projectId: updateData.project_id || updateData.projectId,
+        projectName: updateData.project_name || updateData.projectName
+      });
+
+      updateData.projectId = project?._id;
+      updateData.projectName = project?.name || normalizeText(updateData.project_name || updateData.projectName) || undefined;
+      delete updateData.project_id;
+      delete updateData.project_name;
+    }
+
+    if (updateData.reporting_tags !== undefined || updateData.reportingTags !== undefined) {
+      updateData.reportingTags = normalizeReportingTags(updateData.reporting_tags ?? updateData.reportingTags);
+      delete updateData.reporting_tags;
     }
 
     const purchaseOrder = await PurchaseOrder.findOneAndUpdate(

@@ -17,11 +17,20 @@ interface IPurchaseOrderItem {
   account?: string;
 }
 
+interface IPurchaseOrderReportingTag {
+  tagId: string;
+  name?: string;
+  value: string;
+}
+
 export interface IPurchaseOrder extends Document {
   organization: mongoose.Types.ObjectId;
   purchaseOrderNumber: string;
   vendor: mongoose.Types.ObjectId;
   vendorName?: string;
+  projectId?: mongoose.Types.ObjectId;
+  projectName?: string;
+  reportingTags?: IPurchaseOrderReportingTag[];
   date: Date;
   expectedDate?: Date;
   items: IPurchaseOrderItem[];
@@ -85,6 +94,23 @@ const purchaseOrderItemSchema = new Schema<IPurchaseOrderItem>({
   },
 });
 
+const purchaseOrderReportingTagSchema = new Schema<IPurchaseOrderReportingTag>({
+  tagId: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  name: {
+    type: String,
+    trim: true,
+  },
+  value: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+}, { _id: false });
+
 const purchaseOrderSchema = new Schema<IPurchaseOrder>(
   {
     organization: {
@@ -104,6 +130,18 @@ const purchaseOrderSchema = new Schema<IPurchaseOrder>(
     },
     vendorName: {
       type: String,
+    },
+    projectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Project",
+    },
+    projectName: {
+      type: String,
+      trim: true,
+    },
+    reportingTags: {
+      type: [purchaseOrderReportingTagSchema],
+      default: [],
     },
     date: {
       type: Date,

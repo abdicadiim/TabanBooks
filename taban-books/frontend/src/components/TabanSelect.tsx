@@ -154,7 +154,7 @@ export default function TabanSelect({
                             }
                         }}
                         placeholder={value || placeholder}
-                        className={`bg-transparent border-none outline-none w-full h-full text-[13px] placeholder:text-slate-400 ${disabled ? "cursor-not-allowed" : ""} ${value && !isOpen ? "text-slate-700 font-medium" : "text-slate-400"}`}
+                        className={`bg-transparent border-none outline-none w-full h-full text-[13px] leading-none placeholder:text-slate-400 ${disabled ? "cursor-not-allowed" : ""} ${value && !isOpen ? "text-slate-700 font-medium" : "text-slate-400"}`}
                     />
                     <div className="flex items-center gap-1">
                         {value && !isOpen && !disabled && (
@@ -257,7 +257,7 @@ export default function TabanSelect({
                                     onAddNew();
                                     setIsOpen(false);
                                 }}
-                                className="w-full px-4 py-3 text-[13px] font-medium flex items-center gap-2 transition-colors"
+                                className="w-full px-4 py-2.5 text-[13px] font-medium flex items-center gap-2 transition-colors"
                                 style={{ color: uiAccent }}
                                 onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#eef8f9"; }}
                                 onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}

@@ -46,17 +46,6 @@ const deriveOutstandingBillStatus = (bill: any, balance: number, settledAmount: 
         return "paid";
     }
 
-    if (settledAmount > 0) {
-        return "partially paid";
-    }
-
-    const dueDate = normalizeDateOnly(bill.dueDate);
-    const today = normalizeDateOnly(new Date());
-
-    if (dueDate && today && dueDate.getTime() < today.getTime()) {
-        return "overdue";
-    }
-
     return "open";
 };
 

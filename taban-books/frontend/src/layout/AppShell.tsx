@@ -22,7 +22,7 @@ export default function AppShell() {
       <Header />
       <Sidebar />
 
-      <main className="h-full min-h-screen box-border overflow-hidden pt-[72px] pb-4 pl-4 pr-4 md:pl-[calc(var(--sidebar-width)+24px)]">
+      <main className="h-full min-h-0 box-border overflow-y-auto overflow-x-hidden pt-[72px] pb-4 pl-0 pr-4 md:pl-[calc(var(--sidebar-width)+28px)]">
         <Outlet />
       </main>
     </div>

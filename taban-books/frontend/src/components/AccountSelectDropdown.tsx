@@ -1,119 +1,172 @@
-import React, { useRef, useEffect } from 'react';
-import { Plus, Check, ChevronDown, ChevronRight, Search } from 'lucide-react';
-import { useAccountSelect, Account } from '../hooks/useAccountSelect';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Check, ChevronDown, Search, Plus } from "lucide-react";
+import { useAccountSelect, Account } from "../hooks/useAccountSelect";
 
 interface AccountSelectDropdownProps {
-    value?: string; // Account name or ID depending on usage, currently using name to match existing text input behavior
-    onSelect: (account: Account) => void;
-    placeholder?: string;
-    className?: string;
-    allowedTypes?: string[];
+  value?: string;
+  onSelect: (account: Account) => void;
+  placeholder?: string;
+  className?: string;
+  allowedTypes?: string[];
 }
 
 export const AccountSelectDropdown: React.FC<AccountSelectDropdownProps> = ({
-    value,
-    onSelect,
-    placeholder = "Select an account",
-    className = "",
-    allowedTypes,
+  value,
+  onSelect,
+  placeholder = "Select an account",
+  className = "",
+  allowedTypes,
 }) => {
-    const {
-        searchTerm,
-        setSearchTerm,
-        isOpen,
-        setIsOpen,
-        groupedAccounts,
-        loading,
-        dropdownRef,
-        handleSearchChange,
-        handleSelectAccount,
-    } = useAccountSelect({
-        onSelect: (account) => {
-            onSelect(account);
-        },
-        initialValue: value,
-        allowedTypes
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = useState<{ left: number; top: number; width: number } | null>(null);
+  const {
+    searchTerm,
+    setSearchTerm,
+    isOpen,
+    setIsOpen,
+    groupedAccounts,
+    loading,
+    dropdownRef,
+    handleSearchChange,
+    handleSelectAccount,
+  } = useAccountSelect({
+    onSelect: (account) => {
+      onSelect(account);
+    },
+    initialValue: value,
+    allowedTypes,
+  });
+
+  useEffect(() => {
+    if (!isOpen || !dropdownRef.current) return;
+
+    const updateMenuPosition = () => {
+      if (!dropdownRef.current) return;
+      const rect = dropdownRef.current.getBoundingClientRect();
+      setMenuStyle({
+        left: rect.left,
+        top: rect.bottom + 6,
+        width: Math.max(rect.width, 300),
+      });
+    };
+
+    updateMenuPosition();
+
+    const handleScrollOrResize = () => updateMenuPosition();
+    window.addEventListener("resize", handleScrollOrResize);
+    window.addEventListener("scroll", handleScrollOrResize, true);
+
+    return () => {
+      window.removeEventListener("resize", handleScrollOrResize);
+      window.removeEventListener("scroll", handleScrollOrResize, true);
+    };
+  }, [isOpen, dropdownRef]);
+
+  const groups = useMemo(() => Object.entries(groupedAccounts), [groupedAccounts]);
+
+  const toggleDropdown = () => {
+    setIsOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setSearchTerm("");
+      }
+      return next;
     });
+  };
 
-    // Update search term when value prop changes (e.g. initial load)
-    useEffect(() => {
-        if (value && value !== searchTerm) {
-            setSearchTerm(value);
-        }
-    }, [value]);
+  const displayValue = value?.trim() || "";
 
-    return (
-        <div className={`relative ${className}`} ref={dropdownRef}>
-            <div className="relative">
-                <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={handleSearchChange}
-                    onFocus={() => setIsOpen(true)}
-                    placeholder={placeholder}
-                    className="w-full border-none outline-none bg-transparent text-sm text-gray-900 placeholder:text-gray-400 cursor-pointer" // cursor-pointer to hint interactivity
-                    autoComplete="off"
-                />
-                {/* Optional: Add a chevron to indicate it's a dropdown */}
-                <div className="absolute right-0 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
-                    {/* <ChevronDown size={14} />  - hidden for now to match clean look */}
-                </div>
+  return (
+    <div className={`relative w-full ${className}`} ref={dropdownRef}>
+      <button
+        type="button"
+        ref={triggerRef}
+        onClick={toggleDropdown}
+        className="flex h-11 w-full items-center justify-between gap-2 rounded-md border border-transparent bg-transparent px-0 text-left text-sm text-slate-600 outline-none"
+      >
+        <span className={displayValue ? "text-slate-700" : "text-slate-400"}>
+          {displayValue || placeholder}
+        </span>
+        <span className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600">
+          <ChevronDown size={14} className="shrink-0" />
+        </span>
+      </button>
+
+      {isOpen && menuStyle && typeof document !== "undefined" ? createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-[13000] overflow-hidden rounded-lg bg-white shadow-[0_16px_36px_rgba(15,23,42,0.14)]"
+          style={{
+            left: menuStyle.left,
+            top: menuStyle.top,
+            width: menuStyle.width,
+          }}
+          onMouseDown={(event) => {
+            event.stopPropagation();
+          }}
+        >
+          <div className="border-b border-slate-200 bg-white px-3 py-2.5">
+            <div className="flex items-center gap-2 rounded-md border border-blue-400 bg-white px-2.5 py-2 focus-within:border-blue-500">
+              <Search size={14} className="shrink-0 text-slate-400" />
+              <input
+                type="text"
+                className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                placeholder="Search..."
+                value={searchTerm}
+                onChange={handleSearchChange}
+                autoFocus
+              />
             </div>
+          </div>
 
-            {isOpen && (
-                <div className="absolute left-0 top-full mt-1 w-[300px] bg-white border border-blue-500 rounded-md shadow-lg z-[9999] max-h-[400px] flex flex-col">
-                    <div className="p-2 border-b border-gray-100">
-                        <div className="relative">
-                            <Search size={14} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                            <input
-                                type="text"
-                                className="w-full pl-8 pr-2 py-1 text-sm border border-gray-200 rounded focus:outline-none focus:border-blue-500"
-                                placeholder="Search..."
-                                value={searchTerm}
-                                onChange={handleSearchChange}
-                                autoFocus
-                            />
-                        </div>
-                    </div>
-
-                    <div className="overflow-y-auto flex-1">
-                        {loading ? (
-                            <div className="p-4 text-center text-gray-500 text-sm">Loading...</div>
-                        ) : Object.keys(groupedAccounts).length > 0 ? (
-                            Object.entries(groupedAccounts).map(([type, accounts]) => (
-                                <div key={type} className="border-b border-gray-100 last:border-0">
-                                    <div className="px-3 py-1.5 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider sticky top-0">
-                                        {type}
-                                    </div>
-                                    {accounts.map((account) => (
-                                        <div
-                                            key={account.id}
-                                            onClick={() => handleSelectAccount(account)}
-                                            className="px-4 py-2 cursor-pointer text-sm text-gray-700 flex justify-between items-center"
-                                        >
-                                            <span>{account.name}</span>
-                                            {/* Optional: Checkmark if selected */}
-                                            {value === account.name && <Check size={14} className="text-blue-600" />}
-                                        </div>
-                                    ))}
-                                </div>
-                            ))
-                        ) : (
-                            <div className="p-4 text-center text-gray-500 text-sm">
-                                No accounts found.
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Footer - New Account */}
-                    <div className="border-t border-gray-200 p-2 bg-gray-50 rounded-b-md">
-                        <button className="flex items-center text-blue-500 text-sm font-medium w-full px-2 py-1 rounded transition-colors">
-                            <Plus size={16} className="mr-2" />
-                            New Account
-                        </button>
-                    </div>
+          <div className="max-h-[260px] overflow-y-auto bg-white">
+            {loading ? (
+              <div className="px-4 py-4 text-sm text-slate-500">Loading...</div>
+            ) : groups.length > 0 ? (
+              groups.map(([group, accounts]) => (
+                <div key={group} className="border-b border-slate-100 last:border-b-0">
+                  <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    {group}
+                  </div>
+                  {accounts.map((account) => {
+                    const isSelected = displayValue === account.name;
+                    return (
+                      <button
+                        key={account.id}
+                        type="button"
+                        onClick={() => handleSelectAccount(account)}
+                        className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
+                          isSelected ? "bg-[#3B82F6] text-white" : "text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        <span className="truncate">{account.name}</span>
+                        {isSelected && <Check size={15} className="shrink-0 text-white" />}
+                      </button>
+                    );
+                  })}
                 </div>
+              ))
+            ) : (
+              <div className="px-4 py-4 text-sm text-slate-500">
+                No accounts found.
+              </div>
             )}
-        </div>
-    );
+          </div>
+
+          <div className="border-t border-slate-200 bg-white px-3 py-2.5">
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-sm font-medium text-blue-600 transition-colors hover:bg-blue-50"
+            >
+              <Plus size={16} />
+              New Account
+            </button>
+          </div>
+        </div>,
+        document.body
+      ) : null}
+    </div>
+  );
 };

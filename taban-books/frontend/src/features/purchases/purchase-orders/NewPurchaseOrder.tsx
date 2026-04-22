@@ -18,19 +18,27 @@ import {
   Settings,
   GripVertical,
   Image as ImageIcon,
-  Grid3x3,
   MoreVertical,
   Check,
+  Tag,
+  Mail,
+  Building2,
 } from "lucide-react";
 
 import { PaymentTermsDropdown } from "../../../components/PaymentTermsDropdown";
 import { ConfigurePaymentTermsModal } from "../../../components/ConfigurePaymentTermsModal";
 import { ItemSelectDropdown } from "../../../components/ItemSelectDropdown";
 import { AccountSelectDropdown } from "../../../components/AccountSelectDropdown";
+import { LocationSelectDropdown, LocationOption } from "../../../components/LocationSelectDropdown";
 import { defaultPaymentTerms, PaymentTerm } from "../../../hooks/usePaymentTermsDropdown";
 import { API_BASE_URL, getToken } from "../../../services/auth";
-import { purchaseOrdersAPI, vendorsAPI, customersAPI, taxesAPI, itemsAPI } from "../../../services/api";
+import { purchaseOrdersAPI, vendorsAPI, customersAPI, taxesAPI, itemsAPI, locationsAPI, projectsAPI, reportingTagsAPI } from "../../../services/api";
 import { filterActiveRecords } from "../shared/activeFilters";
+import {
+  isReportingTagActive,
+  normalizeReportingTagAppliesTo,
+  normalizeReportingTagOptions,
+} from "../../sales/Customers/customerReportingTags";
 
 type RecordId = string | number;
 
@@ -76,6 +84,7 @@ type CustomerOption = {
   companyName: string;
   avatar: string;
   billingAddress?: AddressRecord | null;
+  shippingAddress?: AddressRecord | null;
 };
 
 type OrganizationRecord = {
@@ -176,6 +185,32 @@ type EnabledSettings = {
   };
 };
 
+type PurchaseLocationOption = LocationOption & {
+  source?: string;
+};
+
+type TransactionLevelOption = {
+  id: string;
+  label: string;
+  description?: string;
+};
+
+type ProjectOption = {
+  id: string;
+  name: string;
+};
+
+type ReportingTagOption = {
+  _id?: RecordId;
+  id?: RecordId;
+  name?: string;
+  isRequired?: boolean;
+  required?: boolean;
+  isMandatory?: boolean;
+  moduleLevel?: Record<string, "transaction" | "lineItem">;
+  options?: string[] | Array<{ value?: string; label?: string; name?: string }>;
+};
+
 const createEmptyItem = (id: number): PurchaseOrderItem => ({
   id,
   itemDetails: "",
@@ -226,10 +261,9 @@ export default function NewPurchaseOrder() {
     notes: "",
     termsAndConditions: "",
   });
-  const [vendorOpen, setVendorOpen] = useState(false);
-  const [vendorSearch, setVendorSearch] = useState("");
   const [vendors, setVendors] = useState<VendorRecord[]>([]);
-  const vendorRef = useRef<HTMLDivElement>(null);
+  const [vendorDropdownOpen, setVendorDropdownOpen] = useState(false);
+  const [vendorDropdownSearch, setVendorDropdownSearch] = useState("");
   const [vendorSearchModalOpen, setVendorSearchModalOpen] = useState(false);
 
   // Vendor search modal state
@@ -251,14 +285,20 @@ export default function NewPurchaseOrder() {
   const bulkActionsRef = useRef<HTMLDivElement>(null);
   const [itemMenuOpen, setItemMenuOpen] = useState<number | null>(null); // Track which item's menu is open
   const itemMenuRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const itemMenuTriggerRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+  const itemMenuPortalRef = useRef<HTMLDivElement | null>(null);
+  const [itemMenuStyle, setItemMenuStyle] = useState<{ left: number; top: number } | null>(null);
   const [billingAddress, setBillingAddress] = useState<AddressRecord | null>(null);
   const [shippingAddress, setShippingAddress] = useState<AddressRecord | null>(null);
   const [deliveryAddress, setDeliveryAddress] = useState<AddressRecord | null>(null);
   const [organizationData, setOrganizationData] = useState<OrganizationRecord | null>(null);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerOption | null>(null);
+  const [customerBillingAddress, setCustomerBillingAddress] = useState<AddressRecord | null>(null);
+  const [customerShippingAddress, setCustomerShippingAddress] = useState<AddressRecord | null>(null);
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
+  const vendorDropdownRef = useRef<HTMLDivElement>(null);
   const customerDropdownRef = useRef<HTMLDivElement>(null);
   const [taxOptions, setTaxOptions] = useState<TaxOption[]>([]);
   const [bulkItemsModalOpen, setBulkItemsModalOpen] = useState(false);
@@ -269,31 +309,76 @@ export default function NewPurchaseOrder() {
   const [saveLoadingState, setSaveLoadingState] = useState<null | "draft" | "issued">(null);
   const submitLockRef = useRef(false);
   const [openTaxDropdowns, setOpenTaxDropdowns] = useState<Record<string, boolean>>({});
+  const [taxDropdownMenuStyles, setTaxDropdownMenuStyles] = useState<Record<string, { left: number; top: number; width: number }>>({});
   const [taxSearches, setTaxSearches] = useState<Record<string, string>>({});
   const taxDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [warehouseLocation, setWarehouseLocation] = useState("Head Office");
-  const [warehouseDropdownOpen, setWarehouseDropdownOpen] = useState(false);
-  const [warehouseSearch, setWarehouseSearch] = useState("");
-  const warehouseDropdownRef = useRef<HTMLDivElement>(null);
-  const [taxPreferenceDropdownOpen, setTaxPreferenceDropdownOpen] = useState(false);
-  const [taxPreferenceSearch, setTaxPreferenceSearch] = useState("");
-  const taxPreferenceDropdownRef = useRef<HTMLDivElement>(null);
+  const [locationOptions, setLocationOptions] = useState<PurchaseLocationOption[]>([]);
   const [transactionLevelDropdownOpen, setTransactionLevelDropdownOpen] = useState(false);
   const [transactionLevelSearch, setTransactionLevelSearch] = useState("");
+  const [transactionLevelMenuStyle, setTransactionLevelMenuStyle] = useState<{ left: number; top: number; width: number } | null>(null);
   const transactionLevelDropdownRef = useRef<HTMLDivElement>(null);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
+  const [projectSearch, setProjectSearch] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [selectedProjectName, setSelectedProjectName] = useState("");
+  const projectDropdownRef = useRef<HTMLDivElement>(null);
+  const projectMenuRef = useRef<HTMLDivElement>(null);
+  const [projectMenuStyle, setProjectMenuStyle] = useState<{ left: number; top: number; width: number } | null>(null);
+  const [availableReportingTags, setAvailableReportingTags] = useState<ReportingTagOption[]>([]);
+  const [reportingTagsOpen, setReportingTagsOpen] = useState(false);
+  const [isReportingTagsLoading, setIsReportingTagsLoading] = useState(false);
+  const [reportingTagDrafts, setReportingTagDrafts] = useState<Record<string, string>>({});
+  const [reportingTagOptionOpenKey, setReportingTagOptionOpenKey] = useState<string | null>(null);
+  const [reportingTagSearches, setReportingTagSearches] = useState<Record<string, string>>({});
+  const reportingTagsRef = useRef<HTMLDivElement>(null);
+  const reportingTagsMenuRef = useRef<HTMLDivElement>(null);
+  const reportingTagOptionTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const reportingTagOptionMenuRef = useRef<HTMLDivElement | null>(null);
+  const [reportingTagsMenuStyle, setReportingTagsMenuStyle] = useState<{ left: number; top: number; width: number } | null>(null);
+  const [reportingTagOptionMenuStyle, setReportingTagOptionMenuStyle] = useState<{ left: number; top: number; width: number } | null>(null);
   const discountMode = enabledSettings?.discountSettings?.discountType ?? "transaction";
   const showTransactionDiscount = discountMode === "transaction";
   const taxMode = enabledSettings?.taxSettings?.taxInclusive ?? "both";
-  const lockTaxExclusive = taxMode === "inclusive" || taxMode === "exclusive";
-  const computedTaxExclusive = taxMode === "exclusive" ? true : taxMode === "inclusive" ? false : formData.taxExclusive;
-  const warehouseOptions = ["Head Office"];
-  const taxPreferenceOptions = ["Tax Exclusive", "Tax Inclusive"];
-  const transactionLevelOptions = ["At Transaction Level", "At Line Item Level"];
+  const transactionLevelOptions: TransactionLevelOption[] = [
+    {
+      id: "At Transaction Level",
+      label: "At Transaction Level",
+      description: "Apply discount and taxes to the full order.",
+    },
+    {
+      id: "At Line Item Level",
+      label: "At Line Item Level",
+      description: "Apply discount and taxes separately for each row.",
+    },
+  ];
+
+  const updateTaxDropdownMenuPosition = (itemId: string) => {
+    const ref = taxDropdownRefs.current[itemId];
+    if (!ref) return;
+
+    const rect = ref.getBoundingClientRect();
+    setTaxDropdownMenuStyles((prev) => ({
+      ...prev,
+      [itemId]: {
+        left: rect.left,
+        top: rect.bottom + 6,
+        width: Math.max(rect.width, 240),
+      },
+    }));
+  };
 
   // Edit Mode State
   const location = useLocation();
   const { id: routeOrderId } = useParams();
-  const { editOrder: stateEditOrder, isEdit: stateIsEdit, clonedData } = location.state || {};
+  const {
+    editOrder: stateEditOrder,
+    isEdit: stateIsEdit,
+    clonedData,
+    projectId: stateProjectId,
+    projectName: stateProjectName,
+  } = location.state || {};
   const [editOrder, setEditOrder] = useState<any>(stateEditOrder || null);
   const isEdit = !!(stateIsEdit || routeOrderId);
 
@@ -321,6 +406,15 @@ export default function NewPurchaseOrder() {
   // Initialize form with edit data
   useEffect(() => {
     if (isEdit && editOrder) {
+      const rawProjectId = String(editOrder.projectId || editOrder.project_id || editOrder.project?._id || editOrder.project?.id || "").trim();
+      const rawProjectName = String(editOrder.projectName || editOrder.project_name || editOrder.project?.name || "").trim();
+      const nextReportingTagDrafts: Record<string, string> = {};
+      (Array.isArray(editOrder.reportingTags) ? editOrder.reportingTags : Array.isArray(editOrder.reporting_tags) ? editOrder.reporting_tags : []).forEach((entry: any) => {
+        const tagId = String(entry?.tagId || entry?.id || "").trim();
+        const value = String(entry?.value || "").trim();
+        if (tagId && value) nextReportingTagDrafts[tagId] = value;
+      });
+
       setFormData({
         vendorName: editOrder.vendor?.name || editOrder.vendor_name || "",
         vendorId: editOrder.vendor?._id || editOrder.vendor?.id || editOrder.vendor_id || editOrder.vendor || "",
@@ -352,12 +446,24 @@ export default function NewPurchaseOrder() {
         notes: editOrder.notes || "",
         termsAndConditions: editOrder.terms || editOrder.termsAndConditions || editOrder.terms_and_conditions || "",
       });
+      setSelectedProjectId(rawProjectId);
+      setSelectedProjectName(rawProjectName);
+      setReportingTagDrafts(nextReportingTagDrafts);
     }
   }, [isEdit, editOrder]);
 
   // Initialize form with cloned data
   useEffect(() => {
     if (!clonedData || isEdit) return;
+
+    const rawProjectId = String(clonedData.projectId || clonedData.project_id || stateProjectId || "").trim();
+    const rawProjectName = String(clonedData.projectName || clonedData.project_name || stateProjectName || "").trim();
+    const nextReportingTagDrafts: Record<string, string> = {};
+    (Array.isArray(clonedData.reportingTags) ? clonedData.reportingTags : Array.isArray(clonedData.reporting_tags) ? clonedData.reporting_tags : []).forEach((entry: any) => {
+      const tagId = String(entry?.tagId || entry?.id || "").trim();
+      const value = String(entry?.value || "").trim();
+      if (tagId && value) nextReportingTagDrafts[tagId] = value;
+    });
 
     setFormData((prev) => ({
       ...prev,
@@ -393,7 +499,18 @@ export default function NewPurchaseOrder() {
       notes: clonedData.notes || "",
       termsAndConditions: clonedData.terms || clonedData.termsAndConditions || clonedData.terms_and_conditions || "",
     }));
-  }, [clonedData, isEdit]);
+    setSelectedProjectId(rawProjectId);
+    setSelectedProjectName(rawProjectName);
+    setReportingTagDrafts(nextReportingTagDrafts);
+  }, [clonedData, isEdit, stateProjectId, stateProjectName]);
+
+  useEffect(() => {
+    if (isEdit || clonedData) return;
+    if (!stateProjectId && !stateProjectName) return;
+
+    setSelectedProjectId(String(stateProjectId || "").trim());
+    setSelectedProjectName(String(stateProjectName || "").trim());
+  }, [clonedData, isEdit, stateProjectId, stateProjectName]);
 
   // Payment Terms Configuration State
   const [configureTermsOpen, setConfigureTermsOpen] = useState(false);
@@ -594,6 +711,7 @@ export default function NewPurchaseOrder() {
             companyName: customer.companyName || '',
             avatar: (customer.displayName || customer.name || 'C')[0].toUpperCase(),
             billingAddress: customer.billingAddress || null,
+            shippingAddress: customer.shippingAddress || null,
           }));
           setCustomers(formattedCustomers);
         }
@@ -603,6 +721,181 @@ export default function NewPurchaseOrder() {
     };
     loadCustomers();
   }, []);
+
+  useEffect(() => {
+    const loadLocations = async () => {
+      try {
+        const response = await locationsAPI.getAll();
+        const rawRows = filterActiveRecords<any>(
+          Array.isArray(response?.data)
+            ? response.data
+            : Array.isArray(response?.locations)
+              ? response.locations
+              : Array.isArray(response)
+                ? response
+                : []
+        );
+
+        const mappedLocations: PurchaseLocationOption[] = rawRows
+          .map((row: any) => {
+            const label = String(
+              row?.name ||
+              row?.locationName ||
+              row?.location_name ||
+              row?.branchName ||
+              row?.displayName ||
+              row?.title ||
+              ""
+            ).trim();
+            if (!label) return null;
+
+            return {
+              id: String(row?._id || row?.id || row?.location_id || row?.locationId || label),
+              label,
+              isDefault: Boolean(row?.isDefault),
+              type: String(row?.type || row?.locationType || row?.branchType || "").trim() || undefined,
+              source: String(row?.source || "").trim() || undefined,
+            } as PurchaseLocationOption;
+          })
+          .filter(Boolean) as PurchaseLocationOption[];
+
+        const sortedLocations = mappedLocations.sort((a, b) => {
+          if (a.isDefault && !b.isDefault) return -1;
+          if (!a.isDefault && b.isDefault) return 1;
+          return a.label.localeCompare(b.label);
+        });
+
+        setLocationOptions(sortedLocations);
+
+        const preferredLocation =
+          sortedLocations.find((loc) => loc.isDefault) ||
+          sortedLocations.find((loc) => loc.label.trim().toLowerCase() === "head office") ||
+          sortedLocations[0] ||
+          null;
+
+        if (preferredLocation) {
+          setWarehouseLocation((current) => {
+            const currentMatches = sortedLocations.some(
+              (loc) => loc.label.trim().toLowerCase() === String(current || "").trim().toLowerCase()
+            );
+            return currentMatches ? current : preferredLocation.label;
+          });
+        } else {
+          setWarehouseLocation((current) => current || "Head Office");
+        }
+      } catch (error) {
+        console.error("Error loading locations:", error);
+        setLocationOptions([{ id: "head-office", label: "Head Office", isDefault: true }]);
+        setWarehouseLocation((current) => current || "Head Office");
+      }
+    };
+
+    loadLocations();
+  }, []);
+
+  useEffect(() => {
+    const loadProjects = async () => {
+      try {
+        const response = await projectsAPI.getAll();
+        const rawProjects = filterActiveRecords<any>(
+          Array.isArray(response?.data)
+            ? response.data
+            : Array.isArray(response)
+              ? response
+              : []
+        );
+
+        const normalizedProjects = rawProjects
+          .map((project: any) => ({
+            id: String(project?._id || project?.id || "").trim(),
+            name: String(project?.name || project?.projectName || "").trim(),
+          }))
+          .filter((project: ProjectOption) => project.id && project.name)
+          .sort((a: ProjectOption, b: ProjectOption) => a.name.localeCompare(b.name));
+
+        setProjects(normalizedProjects);
+      } catch (error) {
+        console.error("Error loading projects:", error);
+        setProjects([]);
+      }
+    };
+
+    loadProjects();
+  }, []);
+
+  useEffect(() => {
+    const loadReportingTags = async () => {
+      try {
+        setIsReportingTagsLoading(true);
+        const response = await reportingTagsAPI.getAll({ limit: 10000 });
+        const rows = Array.isArray(response) ? response : (response?.data || []);
+        const normalizedRows = (Array.isArray(rows) ? rows : [])
+          .filter((tag: any) => isReportingTagActive(tag))
+          .filter((tag: any) => {
+            const appliesTo = normalizeReportingTagAppliesTo(tag);
+            return appliesTo.some((entry) =>
+              entry === "purchaseorder" ||
+              entry === "purchase order" ||
+              entry === "purchases"
+            );
+          })
+          .map((tag: any) => ({
+            ...tag,
+            isRequired: Boolean(tag?.isRequired || tag?.required || tag?.isMandatory),
+            options: normalizeReportingTagOptions(tag),
+          }));
+
+        setAvailableReportingTags(normalizedRows);
+      } catch (error) {
+        console.error("Error loading reporting tags:", error);
+        setAvailableReportingTags([]);
+      } finally {
+        setIsReportingTagsLoading(false);
+      }
+    };
+
+    loadReportingTags();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedProjectId && !selectedProjectName) return;
+    if (!projects.length) return;
+
+    const matchedProject = projects.find((project) =>
+      project.id === selectedProjectId ||
+      project.name.toLowerCase() === selectedProjectName.toLowerCase()
+    );
+
+    if (!matchedProject) return;
+
+    setSelectedProjectId(matchedProject.id);
+    setSelectedProjectName(matchedProject.name);
+  }, [projects, selectedProjectId, selectedProjectName]);
+
+  useEffect(() => {
+    if (!transactionLevelDropdownOpen || !transactionLevelDropdownRef.current) return;
+
+    const updatePosition = () => {
+      if (!transactionLevelDropdownRef.current) return;
+      const rect = transactionLevelDropdownRef.current.getBoundingClientRect();
+      setTransactionLevelMenuStyle({
+        left: rect.left,
+        top: rect.bottom + 6,
+        width: Math.max(rect.width, 220),
+      });
+    };
+
+    updatePosition();
+
+    const handleScrollOrResize = () => updatePosition();
+    window.addEventListener("resize", handleScrollOrResize);
+    window.addEventListener("scroll", handleScrollOrResize, true);
+
+    return () => {
+      window.removeEventListener("resize", handleScrollOrResize);
+      window.removeEventListener("scroll", handleScrollOrResize, true);
+    };
+  }, [transactionLevelDropdownOpen]);
 
   // Vendor search handler
   const handleVendorSearch = () => {
@@ -641,6 +934,77 @@ export default function NewPurchaseOrder() {
   const vendorEndIndex = vendorStartIndex + vendorResultsPerPage;
   const vendorPaginatedResults = vendorSearchResults.slice(vendorStartIndex, vendorEndIndex);
   const vendorTotalPages = Math.ceil(vendorSearchResults.length / vendorResultsPerPage);
+  const filteredVendorDropdownOptions = vendors.filter((vendor) => {
+    const searchTerm = vendorDropdownSearch.toLowerCase().trim();
+    if (!searchTerm) return true;
+    const fields = [
+      vendor.displayName,
+      vendor.name,
+      vendor.email,
+      vendor.companyName,
+      vendor.formData?.displayName,
+      vendor.formData?.name,
+      vendor.formData?.email,
+      vendor.formData?.companyName,
+    ]
+      .map((value) => String(value || "").toLowerCase())
+      .filter(Boolean);
+    return fields.some((value) => value.includes(searchTerm));
+  });
+
+  const selectVendor = (vendor: VendorRecord) => {
+    const vendorName =
+      vendor.displayName || vendor.name || vendor.formData?.displayName || vendor.formData?.name || "";
+    setFormData((prev) => ({
+      ...prev,
+      vendorName,
+      vendorId: vendor._id || vendor.id || "",
+    }));
+    setBillingAddress(vendor.billingAddress || null);
+    setShippingAddress(vendor.shippingAddress || null);
+    setVendorDropdownSearch("");
+    setVendorDropdownOpen(false);
+    setVendorSearchModalOpen(false);
+    setVendorSearchTerm("");
+    setVendorSearchResults([]);
+  };
+
+  const clearVendorSelection = () => {
+    setFormData((prev) => ({
+      ...prev,
+      vendorName: "",
+      vendorId: "",
+    }));
+    setBillingAddress(null);
+    setShippingAddress(null);
+    setVendorDropdownSearch("");
+    setVendorDropdownOpen(false);
+    setVendorSearchModalOpen(false);
+    setVendorSearchTerm("");
+    setVendorSearchResults([]);
+  };
+
+  const renderAddressLines = (address: AddressRecord | null | undefined, fallbackName: string) => {
+    if (!address) {
+      return <p className="text-xs text-gray-400 italic">No address available</p>;
+    }
+
+    const primaryName = address.attention || address.name || fallbackName;
+    const cityState = [address.city, address.state].filter(Boolean).join(", ");
+    const countryZip = [address.country, address.zipCode].filter(Boolean).join(" ");
+
+    return (
+      <div className="text-sm leading-7 text-gray-800">
+        <p className="font-semibold text-black">{primaryName}</p>
+        {address.street1 && <p>{address.street1}</p>}
+        {address.street2 && <p>{address.street2}</p>}
+        {cityState && <p>{cityState}</p>}
+        {countryZip && <p>{countryZip}</p>}
+        {address.phone && <p>Phone: {address.phone}</p>}
+        {address.fax && <p>Fax: {address.fax}</p>}
+      </div>
+    );
+  };
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -648,10 +1012,6 @@ export default function NewPurchaseOrder() {
       const target = event.target;
       if (!(target instanceof Node)) return;
 
-      if (vendorRef.current && !vendorRef.current.contains(target)) {
-        setVendorOpen(false);
-        setVendorSearch("");
-      }
       if (uploadMenuRef.current && !uploadMenuRef.current.contains(target)) {
         setUploadMenuOpen(false);
       }
@@ -662,14 +1022,36 @@ export default function NewPurchaseOrder() {
         setBulkActionsOpen(false);
       }
       // Close item menu if clicking outside
-      Object.values(itemMenuRefs.current).forEach((ref) => {
-        if (ref && !ref.contains(target)) {
-          setItemMenuOpen(null);
-        }
-      });
+      const clickedInsideItemTrigger = Object.values(itemMenuTriggerRefs.current).some((ref) => ref?.contains(target));
+      const clickedInsideItemMenu = Boolean(itemMenuPortalRef.current?.contains(target));
+      if (!clickedInsideItemTrigger && !clickedInsideItemMenu) {
+        setItemMenuOpen(null);
+      }
       // Close customer dropdown if clicking outside
+      if (vendorDropdownRef.current && !vendorDropdownRef.current.contains(target)) {
+        setVendorDropdownOpen(false);
+      }
       if (customerDropdownRef.current && !customerDropdownRef.current.contains(target)) {
         setCustomerDropdownOpen(false);
+      }
+      if (
+        projectDropdownRef.current &&
+        !projectDropdownRef.current.contains(target) &&
+        (!projectMenuRef.current || !projectMenuRef.current.contains(target))
+      ) {
+        setProjectDropdownOpen(false);
+      }
+      if (
+        reportingTagsRef.current &&
+        !reportingTagsRef.current.contains(target) &&
+        (!reportingTagsMenuRef.current || !reportingTagsMenuRef.current.contains(target)) &&
+        (!reportingTagOptionMenuRef.current || !reportingTagOptionMenuRef.current.contains(target))
+      ) {
+        setReportingTagsOpen(false);
+        setReportingTagOptionOpenKey(null);
+      }
+      if (transactionLevelDropdownRef.current && !transactionLevelDropdownRef.current.contains(target)) {
+        setTransactionLevelDropdownOpen(false);
       }
       Object.keys(openTaxDropdowns).forEach((itemId) => {
         if (!openTaxDropdowns[itemId]) return;
@@ -678,26 +1060,17 @@ export default function NewPurchaseOrder() {
           setOpenTaxDropdowns((prev) => ({ ...prev, [itemId]: false }));
         }
       });
-      if (warehouseDropdownRef.current && !warehouseDropdownRef.current.contains(target)) {
-        setWarehouseDropdownOpen(false);
-      }
-      if (taxPreferenceDropdownRef.current && !taxPreferenceDropdownRef.current.contains(target)) {
-        setTaxPreferenceDropdownOpen(false);
-      }
-      if (transactionLevelDropdownRef.current && !transactionLevelDropdownRef.current.contains(target)) {
-        setTransactionLevelDropdownOpen(false);
-      }
     };
 
     if (
-      vendorOpen ||
       uploadMenuOpen ||
       vendorSearchCriteriaOpen ||
       bulkActionsOpen ||
       itemMenuOpen ||
+      vendorDropdownOpen ||
       customerDropdownOpen ||
-      warehouseDropdownOpen ||
-      taxPreferenceDropdownOpen ||
+      projectDropdownOpen ||
+      reportingTagsOpen ||
       transactionLevelDropdownOpen
     ) {
       document.addEventListener("mousedown", handleClickOutside);
@@ -707,17 +1080,171 @@ export default function NewPurchaseOrder() {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [
-    vendorOpen,
     uploadMenuOpen,
     vendorSearchCriteriaOpen,
     bulkActionsOpen,
     itemMenuOpen,
+    vendorDropdownOpen,
     customerDropdownOpen,
-    warehouseDropdownOpen,
-    taxPreferenceDropdownOpen,
+    projectDropdownOpen,
+    reportingTagsOpen,
     transactionLevelDropdownOpen,
     openTaxDropdowns,
   ]);
+
+  useEffect(() => {
+    const openTaxIds = Object.keys(openTaxDropdowns).filter((itemId) => openTaxDropdowns[itemId]);
+    if (openTaxIds.length === 0) return;
+
+    const refresh = () => {
+      openTaxIds.forEach((itemId) => updateTaxDropdownMenuPosition(itemId));
+    };
+
+    refresh();
+    window.addEventListener("resize", refresh);
+    window.addEventListener("scroll", refresh, true);
+
+    return () => {
+      window.removeEventListener("resize", refresh);
+      window.removeEventListener("scroll", refresh, true);
+    };
+  }, [openTaxDropdowns]);
+
+  useEffect(() => {
+    const syncOverlayPositions = () => {
+      if (projectDropdownOpen && projectDropdownRef.current) {
+        const rect = projectDropdownRef.current.getBoundingClientRect();
+        setProjectMenuStyle({
+          left: rect.left,
+          top: rect.bottom + 8,
+          width: Math.max(rect.width, 240),
+        });
+      }
+
+      if (reportingTagsOpen && reportingTagsRef.current) {
+        const rect = reportingTagsRef.current.getBoundingClientRect();
+        setReportingTagsMenuStyle({
+          left: rect.left,
+          top: rect.bottom + 8,
+          width: Math.max(rect.width + 190, 440),
+        });
+      }
+    };
+
+    if (!projectDropdownOpen && !reportingTagsOpen) return;
+
+    syncOverlayPositions();
+    window.addEventListener("resize", syncOverlayPositions);
+    window.addEventListener("scroll", syncOverlayPositions, true);
+
+    return () => {
+      window.removeEventListener("resize", syncOverlayPositions);
+      window.removeEventListener("scroll", syncOverlayPositions, true);
+    };
+  }, [projectDropdownOpen, reportingTagsOpen]);
+
+  useEffect(() => {
+    if (itemMenuOpen === null) {
+      setItemMenuStyle(null);
+      return;
+    }
+
+    const syncItemMenuPosition = () => {
+      const trigger = itemMenuTriggerRefs.current[itemMenuOpen];
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      setItemMenuStyle({
+        left: rect.left - 186 + rect.width,
+        top: rect.bottom + 8,
+      });
+    };
+
+    syncItemMenuPosition();
+    window.addEventListener("resize", syncItemMenuPosition);
+    window.addEventListener("scroll", syncItemMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", syncItemMenuPosition);
+      window.removeEventListener("scroll", syncItemMenuPosition, true);
+    };
+  }, [itemMenuOpen]);
+
+  useEffect(() => {
+    if (!reportingTagOptionOpenKey) {
+      setReportingTagOptionMenuStyle(null);
+      return;
+    }
+
+    const syncOptionMenuPosition = () => {
+      const trigger = reportingTagOptionTriggerRefs.current[reportingTagOptionOpenKey];
+      if (!trigger) return;
+
+      const rect = trigger.getBoundingClientRect();
+      setReportingTagOptionMenuStyle({
+        left: rect.left,
+        top: rect.bottom + 8,
+        width: rect.width,
+      });
+    };
+
+    syncOptionMenuPosition();
+    window.addEventListener("resize", syncOptionMenuPosition);
+    window.addEventListener("scroll", syncOptionMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", syncOptionMenuPosition);
+      window.removeEventListener("scroll", syncOptionMenuPosition, true);
+    };
+  }, [reportingTagOptionOpenKey]);
+
+  const filteredProjects = projects.filter((project) =>
+    project.name.toLowerCase().includes(projectSearch.trim().toLowerCase())
+  );
+
+  const selectedReportingTagsCount = availableReportingTags.reduce((count, tag) => {
+    const tagId = String(tag?._id || tag?.id || "").trim();
+    return tagId && reportingTagDrafts[tagId] ? count + 1 : count;
+  }, 0);
+
+  const requiredReportingTagsCount = availableReportingTags.filter((tag) => Boolean(tag?.isRequired || tag?.required || tag?.isMandatory)).length;
+  const hasRequiredReportingTags = requiredReportingTagsCount > 0;
+  const reportingTagsSummary = availableReportingTags.length
+    ? `${selectedReportingTagsCount} out of ${availableReportingTags.length} selected.`
+    : "No reporting tags";
+  const activeReportingTagId = reportingTagOptionOpenKey?.replace("purchase-order-reporting-tag-", "") || "";
+  const activeReportingTag = availableReportingTags.find((tag) => String(tag?._id || tag?.id || "").trim() === activeReportingTagId) || null;
+  const activeReportingTagValue = activeReportingTagId ? String(reportingTagDrafts[activeReportingTagId] || "") : "";
+  const activeReportingTagOptions = activeReportingTag
+    ? [
+        { value: "", label: "None" },
+        ...((Array.isArray(activeReportingTag.options) ? activeReportingTag.options : []) as any[])
+          .map((option: any) => {
+            const value = typeof option === "string"
+              ? option
+              : String(option?.value || option?.label || option?.name || "").trim();
+            return { value, label: value };
+          })
+          .filter((option: { value: string; label: string }) => option.value),
+      ]
+    : [];
+  const activeReportingTagSearch = activeReportingTagId ? String(reportingTagSearches[activeReportingTagId] || "").trim().toLowerCase() : "";
+  const filteredActiveReportingTagOptions = activeReportingTagOptions.filter((option) =>
+    option.label.toLowerCase().includes(activeReportingTagSearch)
+  );
+
+  const handleProjectSelect = (project: ProjectOption) => {
+    setSelectedProjectId(project.id);
+    setSelectedProjectName(project.name);
+    setProjectSearch("");
+    setProjectDropdownOpen(false);
+  };
+
+  const clearProjectSelection = () => {
+    setSelectedProjectId("");
+    setSelectedProjectName("");
+    setProjectSearch("");
+    setProjectDropdownOpen(false);
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -748,6 +1275,8 @@ export default function NewPurchaseOrder() {
         zipCode: organizationData.address?.zipCode || '',
       });
       setSelectedCustomer(null);
+      setCustomerBillingAddress(null);
+      setCustomerShippingAddress(null);
     } else if (value === "Customer") {
       // Clear delivery address until customer is selected
       setDeliveryAddress(null);
@@ -805,6 +1334,40 @@ export default function NewPurchaseOrder() {
     }));
   };
 
+  const insertRowAfter = (id: number) => {
+    setFormData((prev) => {
+      const index = prev.items.findIndex((item) => item.id === id);
+      if (index === -1) return prev;
+
+      const nextItems = [...prev.items];
+      nextItems.splice(index + 1, 0, createEmptyItem(Date.now()));
+      return {
+        ...prev,
+        items: nextItems,
+      };
+    });
+  };
+
+  const cloneRow = (id: number) => {
+    setFormData((prev) => {
+      const index = prev.items.findIndex((item) => item.id === id);
+      if (index === -1) return prev;
+
+      const sourceRow = prev.items[index];
+      const clonedRow: PurchaseOrderItem = {
+        ...sourceRow,
+        id: Date.now(),
+      };
+
+      const nextItems = [...prev.items];
+      nextItems.splice(index + 1, 0, clonedRow);
+      return recalcForm({
+        ...prev,
+        items: nextItems,
+      });
+    });
+  };
+
   const removeRow = (id: number) => {
     if (formData.items.length > 1) {
       setFormData((prev) =>
@@ -815,10 +1378,6 @@ export default function NewPurchaseOrder() {
       );
     }
   };
-
-  const filteredVendors = vendors.filter((vendor) =>
-    (vendor.name || vendor.formData?.name || vendor.displayName || "").toLowerCase().includes(vendorSearch.toLowerCase())
-  );
 
   const loadBulkItems = async () => {
     try {
@@ -1010,6 +1569,21 @@ export default function NewPurchaseOrder() {
         vendor_id: resolvedVendorId,
         status: "draft", // Always save as draft initially, status will change to ISSUED after email is sent
         delivery_date: formData.deliveryDate,
+        project_id: selectedProjectId || undefined,
+        project_name: selectedProjectName || undefined,
+        reporting_tags: availableReportingTags
+          .map((tag) => {
+            const tagId = String(tag?._id || tag?.id || "").trim();
+            const value = String(reportingTagDrafts[tagId] || "").trim();
+            if (!tagId || !value) return null;
+            return {
+              tagId,
+              name: String(tag?.name || "Tag").trim(),
+              value,
+            };
+          })
+          .filter(Boolean),
+        transaction_level: formData.transactionLevel,
         total: parseFloat(formData.total),
         sub_total: parseFloat(formData.subTotal),
         items: (formData.items || []).map(item => ({
@@ -1226,167 +1800,186 @@ export default function NewPurchaseOrder() {
   };
 
   return (
-    <div className="flex flex-col" style={{ backgroundColor: "#f9fafb" }}>
+    <div className="flex flex-col h-screen overflow-hidden bg-white" style={{ backgroundColor: "#ffffff" }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white flex-shrink-0">
-        <h1 className="text-xl font-semibold text-gray-900">New Purchase Order</h1>
+      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 bg-white flex-shrink-0">
+        <h1 className="text-lg font-semibold text-gray-900">{isEdit ? "Edit Purchase Order" : "New Purchase Order"}</h1>
         <button
           type="button"
           onClick={handleCancel}
           className="p-1 text-gray-500 hover:text-gray-700"
         >
-          <X size={24} />
+          <X size={20} />
         </button>
       </div>
 
-      <form onSubmit={(e) => handleSubmit(e, "issued")} className="flex-1" style={{ backgroundColor: "#f9fafb" }}>
-        <div className="w-full pr-6 py-6">
+      <form onSubmit={(e) => handleSubmit(e, "issued")} className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 overflow-y-auto">
+          <div className="flex flex-col">
+            {/* Main Content Area */}
+            <div className="pl-0 pr-6 py-6 space-y-6">
           {/* Vendor and Delivery Section */}
-          <div className="mb-6">
-            <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6 mb-6">
-              <div className="sm:col-span-3">
-                <label className="block text-sm/6 font-medium text-gray-900">
+          <div className="mb-2 max-w-[860px] space-y-4">
+              <div className="grid gap-4 md:grid-cols-[170px_minmax(0,1fr)] md:items-center">
+                <label className="block text-sm font-medium text-gray-700">
                   Vendor Name <span className="text-red-500">*</span>
                 </label>
-                <div className="mt-2 relative" ref={vendorRef}>
-                  <div className="flex">
-                    <input
-                      type="text"
-                      value={vendorSearch || formData.vendorName}
-                      onChange={(e) => {
-                        setVendorSearch(e.target.value);
-                        if (!vendorOpen) setVendorOpen(true);
-                      }}
-                      onFocus={() => setVendorOpen(true)}
-                      placeholder="Select a Vendor"
-                      className="flex-1 rounded-md rounded-r-none bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                      style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setVendorSearchModalOpen(true);
-                      }}
-                      className="ml-0 px-2 py-1.5 bg-[#156372] text-white rounded-md rounded-l-none hover:bg-[#156372] flex items-center justify-center"
-                      style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
-                    >
-                      <Search size={14} />
-                    </button>
-                  </div>
-                  {vendorOpen && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: "100%",
-                        left: 0,
-                        right: 0,
-                        backgroundColor: "#ffffff",
-                        border: "1px solid #d1d5db",
-                        borderRadius: "6px",
-                        marginTop: "4px",
-                        maxHeight: "200px",
-                        overflowY: "auto",
-                        zIndex: 1000,
-                        boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
-                      }}
-                    >
-                      {filteredVendors.length > 0 ? (
-                        <>
-                          {filteredVendors.map((vendor, index) => (
-                            <div
-                              key={vendor._id || vendor.id || `${vendor.displayName || vendor.name || "vendor"}-${index}`}
-                              onClick={() => {
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  vendorName: vendor.displayName || vendor.name || vendor.formData?.displayName || vendor.formData?.name || "",
-                                  vendorId: vendor._id || vendor.id || "",
-                                }));
-                                setBillingAddress(vendor.billingAddress || null);
-                                setShippingAddress(vendor.shippingAddress || null);
-                                setVendorSearch("");
-                                setVendorOpen(false);
-                              }}
-                              style={{
-                                padding: "10px 12px",
-                                cursor: "pointer",
-                                borderBottom: "1px solid #f3f4f6",
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor = "#f9fafb";
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor = "transparent";
-                              }}
-                            >
-                              {vendor.name || vendor.formData?.name || "Unnamed Vendor"}
-                            </div>
-                          ))}
-                          <div
-                            style={{
-                              padding: "10px 12px",
-                              borderTop: "1px solid #e5e7eb",
-                              backgroundColor: "#f9fafb",
+                <div className="max-w-[540px]" ref={vendorDropdownRef}>
+                  <input
+                    tabIndex={-1}
+                    aria-hidden="true"
+                    required
+                    value={formData.vendorName}
+                    onChange={() => {}}
+                    className="absolute h-0 w-0 opacity-0 pointer-events-none"
+                  />
+                  <div className="relative">
+                    <div className="flex items-stretch gap-0">
+                      <button
+                        type="button"
+                        onClick={() => setVendorDropdownOpen((prev) => !prev)}
+                        className="relative flex h-9 flex-1 items-center rounded-md rounded-r-none border border-gray-300 bg-white px-3 pr-14 text-left text-sm text-gray-900 outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
+                      >
+                        <span className={formData.vendorName ? "text-gray-900" : "text-gray-400"}>
+                          {formData.vendorName || "Select a Vendor"}
+                        </span>
+                        {formData.vendorName ? (
+                          <button
+                            type="button"
+                            aria-label="Clear vendor"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              clearVendorSelection();
                             }}
+                            className="absolute right-8 top-1/2 -translate-y-1/2 text-red-500 hover:text-red-600"
                           >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setVendorOpen(false);
-                                navigate("/purchases/vendors/new");
-                              }}
-                              className="w-full flex items-center gap-2 px-3 py-2 bg-[#156372] text-white rounded-md hover:bg-[#0D4A52] text-sm font-medium"
-                            >
-                              <Plus size={16} />
-                              New Vendor
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div style={{ padding: "10px 12px", color: "#6b7280" }}>
-                            No vendors found
-                          </div>
-                          <div
-                            style={{
-                              padding: "10px 12px",
-                              borderTop: "1px solid #e5e7eb",
-                              backgroundColor: "#f9fafb",
-                            }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setVendorOpen(false);
-                                navigate("/purchases/vendors/new");
-                              }}
-                              className="w-full flex items-center gap-2 px-3 py-2 bg-[#156372] text-white rounded-md hover:bg-[#0D4A52] text-sm font-medium"
-                            >
-                              <Plus size={16} />
-                              New Vendor
-                            </button>
-                          </div>
-                        </>
-                      )}
+                            <X size={14} />
+                          </button>
+                        ) : null}
+                        {vendorDropdownOpen ? (
+                          <ChevronUp size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#156372]" />
+                        ) : (
+                          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVendorDropdownOpen(true)}
+                        className="ml-0 flex h-9 items-center justify-center rounded-md rounded-l-none border border-[#156372] bg-[#156372] px-3 text-white hover:bg-[#0D4A52]"
+                        style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
+                      >
+                        <Search size={14} />
+                      </button>
                     </div>
-                  )}
+
+                    {vendorDropdownOpen && (
+                      <div className="absolute left-0 right-0 top-full z-20 rounded-xl border border-[#d7e3ff] bg-white p-2 shadow-[0_8px_24px_rgba(15,23,42,0.12)]">
+                        <div className="relative mb-2">
+                          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="text"
+                            value={vendorDropdownSearch}
+                            onChange={(e) => setVendorDropdownSearch(e.target.value)}
+                            placeholder="Search"
+                            className="h-9 w-full rounded-md border border-[#8ab4ff] bg-white pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
+                          />
+                        </div>
+
+                        <div className="max-h-64 overflow-y-auto">
+                          {filteredVendorDropdownOptions.length > 0 ? (
+                            filteredVendorDropdownOptions.map((vendor, index) => {
+                              const vendorName =
+                                vendor.displayName || vendor.name || vendor.formData?.displayName || vendor.formData?.name || "";
+                              const vendorEmail = vendor.email || vendor.formData?.email || "";
+                              const vendorCompany = vendor.companyName || vendor.formData?.companyName || "";
+                              const isSelected = formData.vendorId === (vendor._id || vendor.id || "");
+                              return (
+                                <button
+                                  key={vendor._id || vendor.id || `${vendorName}-${index}`}
+                                  type="button"
+                                  onClick={() => selectVendor(vendor)}
+                                  className={`mb-2 flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors last:mb-0 ${
+                                    isSelected ? "bg-[#eef4ff] text-[#0f172a] ring-1 ring-[#cfe0ff]" : "bg-white text-[#0f172a] hover:bg-[#f8fafc]"
+                                  }`}
+                                >
+                                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-medium ${
+                                    isSelected ? "bg-white text-[#156372]" : "bg-[#f1f5f9] text-gray-600"
+                                  }`}>
+                                    {(vendorName || "V").charAt(0).toUpperCase()}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className={`text-sm font-medium ${isSelected ? "text-[#0f172a]" : "text-[#0f172a]"}`}>
+                                      {vendorName}
+                                    </div>
+                                    <div className={`mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm ${
+                                      isSelected ? "text-[#64748b]" : "text-[#64748b]"
+                                    }`}>
+                                      {vendorEmail ? (
+                                        <span className="inline-flex items-center gap-1">
+                                          <Mail size={12} />
+                                          <span>{vendorEmail}</span>
+                                        </span>
+                                      ) : null}
+                                      {vendorCompany ? (
+                                        <span className="inline-flex items-center gap-1">
+                                          <Building2 size={12} />
+                                          <span>{vendorCompany}</span>
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <div className="px-3 py-4 text-sm text-gray-500">No vendors found</div>
+                          )}
+                        </div>
+
+                        <div className="mt-2 border-t border-gray-100 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => navigate("/purchases/vendors/new")}
+                            className="inline-flex items-center gap-2 px-3 py-2 text-sm text-[#156372] hover:text-[#0D4A52]"
+                          >
+                            <Plus size={14} />
+                            <span>New Vendor</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Location Field */}
+              <div className="grid gap-4 md:grid-cols-[170px_minmax(0,1fr)] md:items-center">
+                <label className="block text-sm font-medium text-gray-700">
+                  Location
+                </label>
+                <div className="max-w-[330px]">
+                  <LocationSelectDropdown
+                    value={warehouseLocation}
+                    options={locationOptions}
+                    onSelect={(location) => setWarehouseLocation(location.label)}
+                    placeholder="Select Warehouse"
+                  />
                 </div>
               </div>
             </div>
 
             {/* Billing and Shipping Address (Auto-populated) */}
             {(billingAddress || shippingAddress) && (
-              <div className="grid grid-cols-2 gap-8 mb-8 p-4 bg-white border border-gray-100 rounded-lg shadow-sm">
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Billing Address</span>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-6 mb-6">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Billing Address</span>
                     <button type="button" className="text-gray-400 hover:text-gray-600">
-                      <Pencil size={12} />
+                      <Pencil size={10} />
                     </button>
                   </div>
                   {billingAddress ? (
-                    <div className="text-sm text-gray-800 space-y-0.5">
+                    <div className="text-xs text-gray-800 space-y-0.5">
                       <p className="font-bold text-black">{billingAddress.attention || formData.vendorName}</p>
                       <p>{billingAddress.street1}</p>
                       <p>{billingAddress.street2}</p>
@@ -1394,21 +1987,21 @@ export default function NewPurchaseOrder() {
                       <p>{billingAddress.state} {billingAddress.zipCode}</p>
                       <p>{billingAddress.country}</p>
                       {billingAddress.phone && <p className="text-gray-600">Phone: {billingAddress.phone}</p>}
-                      {billingAddress.fax && <p className="text-gray-600">Fax Number: {billingAddress.fax}</p>}
+                      {billingAddress.fax && <p className="text-gray-600">Fax: {billingAddress.fax}</p>}
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-400 italic">No billing address provided</p>
+                    <p className="text-xs text-gray-400 italic">No billing address</p>
                   )}
                 </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Shipping Address</span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Shipping Address</span>
                     <button type="button" className="text-gray-400 hover:text-gray-600">
-                      <Pencil size={12} />
+                      <Pencil size={10} />
                     </button>
                   </div>
                   {shippingAddress ? (
-                    <div className="text-sm text-gray-800 space-y-0.5">
+                    <div className="text-xs text-gray-800 space-y-0.5">
                       <p className="font-bold text-black">{shippingAddress.attention || formData.vendorName}</p>
                       <p>{shippingAddress.street1}</p>
                       <p>{shippingAddress.street2}</p>
@@ -1416,849 +2009,946 @@ export default function NewPurchaseOrder() {
                       <p>{shippingAddress.state} {shippingAddress.zipCode}</p>
                       <p>{shippingAddress.country}</p>
                       {shippingAddress.phone && <p className="text-gray-600">Phone: {shippingAddress.phone}</p>}
-                      {shippingAddress.fax && <p className="text-gray-600">Fax Number: {shippingAddress.fax}</p>}
+                      {shippingAddress.fax && <p className="text-gray-600">Fax: {shippingAddress.fax}</p>}
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-400 italic">No shipping address provided</p>
+                    <p className="text-xs text-gray-400 italic">No shipping address</p>
                   )}
                 </div>
               </div>
             )}
 
-            {/* Delivery Address (Always visible) */}
-            <div className="sm:col-span-6">
-              <label className="block text-sm/6 font-medium text-gray-900">
-                Delivery Address <span className="text-red-500">*</span>
-              </label>
-              <div className="mt-2 flex gap-4 mb-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="deliveryAddressType"
-                    value="Organization"
-                    checked={formData.deliveryAddressType === "Organization"}
-                    onChange={handleDeliveryAddressTypeChange}
-                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <span className="text-sm text-gray-900">Organization</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="deliveryAddressType"
-                    value="Customer"
-                    checked={formData.deliveryAddressType === "Customer"}
-                    onChange={handleDeliveryAddressTypeChange}
-                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <span className="text-sm text-gray-900">Customer</span>
-                </label>
-              </div>
-
-              {/* Customer Dropdown (when Customer is selected) */}
-              {formData.deliveryAddressType === "Customer" && (
-                <div className="mb-4 relative max-w-[60%]" ref={customerDropdownRef}>
-                  <div className="flex gap-2">
-                    <div className="flex-1 relative">
-                      <input
-                        type="text"
-                        value={selectedCustomer?.displayName || customerSearch}
-                        onChange={(e) => {
-                          setCustomerSearch(e.target.value);
-                          if (!customerDropdownOpen) setCustomerDropdownOpen(true);
-                        }}
-                        onFocus={() => setCustomerDropdownOpen(true)}
-                        placeholder="Select Customer"
-                        className="block w-full rounded-md rounded-r-none bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                      />
-                      {customerDropdownOpen && (
-                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto z-50">
-                          {customers.filter(c =>
-                            c.displayName.toLowerCase().includes(customerSearch.toLowerCase()) ||
-                            c.customerNumber.toLowerCase().includes(customerSearch.toLowerCase())
-                          ).map((customer, index) => (
-                            <div
-                              key={customer._id || customer.id || `${customer.displayName || customer.customerNumber || "customer"}-${index}`}
-                              onClick={() => {
-                                setSelectedCustomer(customer);
-                                setCustomerSearch("");
-                                setCustomerDropdownOpen(false);
-                                // Set customer delivery address
-                                if (customer.billingAddress) {
-                                  setDeliveryAddress({
-                                    name: customer.displayName,
-                                    address1: customer.billingAddress.street1 || '',
-                                    address2: customer.billingAddress.street2 || '',
-                                    city: customer.billingAddress.city || '',
-                                    state: customer.billingAddress.state || '',
-                                    country: customer.billingAddress.country || '',
-                                    zipCode: customer.billingAddress.zipCode || '',
-                                  });
-                                }
-                              }}
-                              className="px-3 py-2.5 hover:bg-teal-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-[#156372] text-white flex items-center justify-center text-sm font-semibold">
-                                  {customer.avatar}
-                                </div>
-                                <div className="flex-1">
-                                  <div className="text-sm font-medium text-gray-900">
-                                    {customer.displayName} | {customer.customerNumber}
-                                  </div>
-                                  {customer.email && (
-                                    <div className="text-xs text-gray-500 flex items-center gap-1">
-                                      <span>✉</span> {customer.email}
-                                    </div>
-                                  )}
-                                  {customer.companyName && (
-                                    <div className="text-xs text-gray-500 flex items-center gap-1">
-                                      <span>🏢</span> {customer.companyName}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setCustomerDropdownOpen(!customerDropdownOpen)}
-                      className="px-3 py-1.5 bg-[#156372] text-white rounded-md rounded-l-none hover:bg-[#0D4A52] flex items-center justify-center"
-                    >
-                      <Search size={14} />
-                    </button>
-                  </div>
-                  {customers.length > 0 && (
-                    <p className="mt-2 text-xs text-gray-500">
-                      Stock on Hand will not be affected only in case of dropshipments. Selecting the Customer option in the Deliver field of a normal purchase order will have an effect on your stock level
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* Display selected address */}
-              {deliveryAddress && (
-                <div className="p-4 bg-gray-50 rounded-md border border-gray-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                      {deliveryAddress.name}
-                      {formData.deliveryAddressType === "Organization" && (
-                        <LinkIcon size={14} className="text-gray-400" />
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-sm text-gray-600 leading-relaxed">
-                    {deliveryAddress.address1 && <>{deliveryAddress.address1}<br /></>}
-                    {deliveryAddress.address2 && <>{deliveryAddress.address2}<br /></>}
-                    {deliveryAddress.city && <>{deliveryAddress.city}{deliveryAddress.state && `, ${deliveryAddress.state}`}<br /></>}
-                    {deliveryAddress.country && <>{deliveryAddress.country}{deliveryAddress.zipCode && `, ${deliveryAddress.zipCode}`}</>}
-                  </div>
-                  {formData.deliveryAddressType === "Organization" && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        // Handle change destination
-                      }}
-                      className="mt-3 text-sm text-teal-700 hover:text-teal-800"
-                    >
-                      Change destination to deliver
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
           </div>
 
-          {/* Order Details */}
-          <div className="mb-6">
-            <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
-              <div className="sm:col-span-3">
-                <label className="block text-sm/6 font-medium text-gray-900">
-                  Purchase Order# <span className="text-red-500">*</span>
-                  <Info size={14} className="inline ml-1 text-gray-400" />
+          <div className="pl-0 pr-6 pt-2 mt-2">
+            <div className="max-w-[640px] space-y-4">
+              <div className="pt-4 border-t border-gray-100">
+                <div className="grid gap-3 md:grid-cols-[170px_minmax(0,1fr)] md:items-start">
+                  <label className="block text-sm font-medium text-red-500 md:pt-2">
+                    Delivery Address<span className="text-red-500">*</span>
+                  </label>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-4 text-sm text-gray-700">
+                      <label className="inline-flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="deliveryAddressType"
+                          checked={formData.deliveryAddressType === "Organization"}
+                          onChange={() =>
+                            handleDeliveryAddressTypeChange({
+                              target: { value: "Organization", name: "deliveryAddressType" },
+                            } as any)
+                          }
+                          className="h-4 w-4 text-[#156372] focus:ring-[#156372]"
+                        />
+                        <span>Locations</span>
+                      </label>
+                      <label className="inline-flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="deliveryAddressType"
+                          checked={formData.deliveryAddressType === "Customer"}
+                          onChange={() =>
+                            handleDeliveryAddressTypeChange({
+                              target: { value: "Customer", name: "deliveryAddressType" },
+                            } as any)
+                          }
+                          className="h-4 w-4 text-[#156372] focus:ring-[#156372]"
+                        />
+                        <span>Customer</span>
+                      </label>
+                    </div>
+
+                    {formData.deliveryAddressType === "Organization" ? (
+                      <div className="max-w-[330px]">
+                        <LocationSelectDropdown
+                          value={warehouseLocation}
+                          options={locationOptions}
+                          onSelect={(location) => setWarehouseLocation(location.label)}
+                          placeholder="Select Warehouse"
+                        />
+                      </div>
+                    ) : (
+                      <div className="max-w-[720px] space-y-5" ref={customerDropdownRef}>
+                        <div className="relative max-w-[330px]">
+                          <div className="flex items-stretch gap-0">
+                            <button
+                              type="button"
+                              onClick={() => setCustomerDropdownOpen((prev) => !prev)}
+                              className="relative flex h-9 flex-1 items-center rounded-md rounded-r-none border border-gray-300 bg-white px-3 text-left text-sm text-gray-900 outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
+                            >
+                              <span className={`${selectedCustomer ? "text-gray-900" : "text-gray-400"}`}>
+                                {selectedCustomer?.displayName || "Select Customer"}
+                              </span>
+                              {customerDropdownOpen ? (
+                                <ChevronUp size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#156372]" />
+                              ) : (
+                                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setCustomerDropdownOpen(true)}
+                              className="ml-0 flex h-9 items-center justify-center rounded-md rounded-l-none border border-[#156372] bg-[#156372] px-3 text-white hover:bg-[#0D4A52]"
+                              style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
+                            >
+                              <Search size={14} />
+                            </button>
+                          </div>
+
+                          {customerDropdownOpen && (
+                            <div className="absolute left-0 right-0 top-full z-20 rounded-xl border border-[#d7e3ff] bg-white p-3 shadow-[0_8px_24px_rgba(37,99,235,0.12)]">
+                              <div className="relative mb-2">
+                                <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <input
+                                  type="text"
+                                  value={customerSearch}
+                                  onChange={(e) => setCustomerSearch(e.target.value)}
+                                  placeholder="Search"
+                                  className="h-9 w-full rounded-md border border-[#8ab4ff] bg-white pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
+                                />
+                              </div>
+
+                              <div className="max-h-56 space-y-2 overflow-y-auto">
+                                {customers
+                                  .filter((c) => c.displayName.toLowerCase().includes(customerSearch.toLowerCase()))
+                                  .map((customer, i) => (
+                                    <button
+                                      key={i}
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedCustomer(customer);
+                                        setCustomerSearch("");
+                                        setCustomerDropdownOpen(false);
+                                        const nextBillingAddress = customer.billingAddress || null;
+                                        const nextShippingAddress = customer.shippingAddress || customer.billingAddress || null;
+
+                                        setCustomerBillingAddress(nextBillingAddress);
+                                        setCustomerShippingAddress(nextShippingAddress);
+
+                                        if (nextShippingAddress || nextBillingAddress) {
+                                          const deliverySource = nextShippingAddress || nextBillingAddress;
+                                          setDeliveryAddress({
+                                            name: customer.displayName,
+                                            address1: deliverySource?.street1 || "",
+                                            address2: deliverySource?.street2 || "",
+                                            city: deliverySource?.city || "",
+                                            state: deliverySource?.state || "",
+                                            country: deliverySource?.country || "",
+                                            zipCode: deliverySource?.zipCode || "",
+                                            phone: deliverySource?.phone || "",
+                                            fax: deliverySource?.fax || "",
+                                          });
+                                        } else {
+                                          setDeliveryAddress(null);
+                                        }
+                                      }}
+                                      className="flex w-full items-center gap-3 rounded-lg bg-[#eaf2ff] px-4 py-3 text-left transition-colors hover:bg-[#dbeafe]"
+                                    >
+                                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-sm font-medium text-gray-600">
+                                        {(customer.displayName || "C").charAt(0).toUpperCase()}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <div className="truncate text-sm font-medium text-white/0 sr-only">{customer.displayName}</div>
+                                        <div className="text-sm font-medium text-[#0f172a]">{customer.displayName}</div>
+                                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[#2563eb]">
+                                          {customer.email ? (
+                                            <span className="inline-flex items-center gap-1 text-[#2563eb]">
+                                              <Mail size={12} />
+                                              <span className="text-[#2563eb]">{customer.email}</span>
+                                            </span>
+                                          ) : null}
+                                          {customer.companyName ? (
+                                            <span className="inline-flex items-center gap-1 text-[#2563eb]">
+                                              <Building2 size={12} />
+                                              <span className="text-[#2563eb]">{customer.companyName}</span>
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                      </div>
+                                    </button>
+                                  ))}
+                                {customers.filter((c) => c.displayName.toLowerCase().includes(customerSearch.toLowerCase())).length === 0 ? (
+                                  <div className="px-2 py-3 text-sm text-gray-500">No customers found</div>
+                                ) : null}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {selectedCustomer ? (
+                          <div className="w-full min-w-0">
+                            <div className="grid gap-x-8 gap-y-6 md:grid-cols-2">
+                              <div className="min-w-0">
+                                <div className="mb-2 flex items-center gap-2">
+                                  <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">Billing Address</span>
+                                  <button type="button" className="text-gray-400 hover:text-gray-600">
+                                    <Pencil size={10} />
+                                  </button>
+                                </div>
+                                {renderAddressLines(customerBillingAddress, selectedCustomer.displayName)}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="mb-2 flex items-center gap-2">
+                                  <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">Shipping Address</span>
+                                  <button type="button" className="text-gray-400 hover:text-gray-600">
+                                    <Pencil size={10} />
+                                  </button>
+                                </div>
+                                {renderAddressLines(customerShippingAddress, selectedCustomer.displayName)}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="max-w-[360px] text-sm leading-7 text-slate-500">
+                            Stock on Hand will not be affected only in case of dropshipments. Selecting the Customer option in the Deliver To field of a normal purchase order will have an effect on your stock level
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {formData.deliveryAddressType === "Organization" && deliveryAddress && (
+                      <div className="pt-1 text-[#1e293b]">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm font-medium">{deliveryAddress.name}</span>
+                          <button type="button" className="text-[#2563eb] hover:text-[#1d4ed8]">
+                            <Pencil size={12} />
+                          </button>
+                        </div>
+                        <div className="text-sm leading-7 text-slate-600">
+                          {deliveryAddress.address1 && <div>{deliveryAddress.address1}</div>}
+                          <div>{deliveryAddress.city}{deliveryAddress.state ? `, ${deliveryAddress.state}` : ""}</div>
+                          <div>{deliveryAddress.country}{deliveryAddress.zipCode ? ` ${deliveryAddress.zipCode}` : ""}</div>
+                        </div>
+                        <button type="button" className="mt-3 text-sm text-[#2563eb] hover:text-[#1d4ed8]">
+                          Change destination to deliver
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-[170px_minmax(0,1fr)] md:items-center">
+                <label className="block text-sm font-medium text-red-500">
+                  Purchase Order#<span className="text-red-500">*</span>
                 </label>
-                <div className="mt-2 relative">
+                <div className="relative max-w-[330px]">
                   <input
                     type="text"
                     name="purchaseOrderNumber"
                     value={formData.purchaseOrderNumber}
                     onChange={handleChange}
-                    className="block w-full rounded-md bg-white px-3 py-1.5 pr-10 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                    className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 focus:ring-1 focus:ring-[#156372] outline-none"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setPoConfigModalOpen(true)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-teal-700 hover:text-teal-800"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[#156372] hover:text-[#0D4A52]"
                   >
-                    <Settings size={16} />
+                    <Settings size={14} />
                   </button>
                 </div>
               </div>
-              <div className="sm:col-span-3">
-                <label className="block text-sm/6 font-medium text-gray-900">Reference#</label>
-                <div className="mt-2">
-                  <input
-                    type="text"
-                    name="referenceNumber"
-                    value={formData.referenceNumber}
-                    onChange={handleChange}
-                    className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                  />
-                </div>
+
+              <div className="grid gap-4 md:grid-cols-[170px_minmax(0,1fr)] md:items-center">
+                <label className="block text-sm font-medium text-gray-700">Reference#</label>
+                <input
+                  type="text"
+                  name="referenceNumber"
+                  value={formData.referenceNumber}
+                  onChange={handleChange}
+                  className="w-full max-w-[330px] rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:ring-1 focus:ring-[#156372] outline-none"
+                />
               </div>
-              <div className="sm:col-span-3">
-                <label className="block text-sm/6 font-medium text-gray-900">Date</label>
-                <div className="mt-2">
-                  <input
-                    type="date"
-                    name="date"
-                    value={formData.date}
-                    onChange={handleChange}
-                    className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                  />
-                </div>
+
+              <div className="grid gap-4 md:grid-cols-[170px_minmax(0,1fr)] md:items-center">
+                <label className="block text-sm font-medium text-gray-700">Date</label>
+                <input
+                  type="date"
+                  name="date"
+                  value={formData.date}
+                  onChange={handleChange}
+                  className="w-full max-w-[330px] rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-1 focus:ring-[#156372]"
+                />
               </div>
-              <div className="sm:col-span-3">
-                <label className="block text-sm/6 font-medium text-gray-900">Delivery Date</label>
-                <div className="mt-2">
+
+              <div className="grid gap-4 md:grid-cols-[170px_minmax(0,1fr)] md:items-center">
+                <label className="block text-sm font-medium text-gray-700">Delivery Date</label>
+                <div className="grid gap-6 md:grid-cols-[330px_minmax(320px,1fr)] md:items-center">
                   <input
                     type="date"
                     name="deliveryDate"
                     value={formData.deliveryDate}
                     onChange={handleChange}
-                    className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                    className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-1 focus:ring-[#156372]"
                   />
+                  <div className="grid gap-2 md:grid-cols-[170px_minmax(0,1fr)] md:items-center">
+                    <label className="block text-sm font-medium text-gray-700">Payment Terms</label>
+                    <div className="min-w-[220px]">
+                      <PaymentTermsDropdown
+                        value={formData.paymentTerms}
+                        onChange={(val) => setFormData({ ...formData, paymentTerms: val })}
+                        onConfigureTerms={() => setConfigureTermsOpen(true)}
+                        customTerms={paymentTermsList}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="sm:col-span-3">
-                <label className="block text-sm/6 font-medium text-gray-900">Payment Terms</label>
-                <div className="mt-2">
-                  <PaymentTermsDropdown
-                    value={formData.paymentTerms}
-                    onChange={(value) => setFormData({ ...formData, paymentTerms: value })}
-                    onConfigureTerms={() => setConfigureTermsOpen(true)}
-                    customTerms={paymentTermsList}
-                  />
-                </div>
-              </div>
-              <div className="sm:col-span-3">
-                <label className="block text-sm/6 font-medium text-gray-900">Shipment Preference</label>
-                <div className="mt-2">
-                  <input
-                    type="text"
-                    name="shipmentPreference"
-                    value={formData.shipmentPreference}
-                    onChange={handleChange}
-                    placeholder="Choose the shipment preference or type to ad"
-                    className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-                  />
-                </div>
+              
+              <div className="grid gap-4 md:grid-cols-[170px_minmax(0,1fr)] md:items-center">
+                <label className="block text-sm font-medium text-gray-700">Shipment Preference</label>
+                <input
+                  type="text"
+                  name="shipmentPreference"
+                  value={formData.shipmentPreference}
+                  onChange={handleChange}
+                  placeholder="Choose the shipment preference or type to add"
+                  className="w-full max-w-[330px] rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:ring-1 focus:ring-[#156372] outline-none"
+                />
               </div>
             </div>
           </div>
 
-          {/* Item Bar */}
-          <div className="mb-4 rounded-lg border border-gray-200 bg-white">
-            <div className="flex flex-wrap items-center gap-0 text-sm">
-              <div className="relative flex items-center gap-2 px-4 py-3 border-r border-gray-200" ref={warehouseDropdownRef}>
-                <span className="text-gray-500">Warehouse Location</span>
-                <button
-                  type="button"
-                  className="flex items-center gap-1 text-gray-800"
-                  onClick={() => {
-                    setWarehouseDropdownOpen((prev) => !prev);
-                    setTaxPreferenceDropdownOpen(false);
-                    setTransactionLevelDropdownOpen(false);
-                  }}
-                >
-                  <span>{warehouseLocation}</span>
-                  {warehouseDropdownOpen ? (
-                    <ChevronUp size={14} className="text-gray-500" />
-                  ) : (
-                    <ChevronDown size={14} className="text-gray-500" />
-                  )}
-                </button>
-                {warehouseDropdownOpen && (
-                  <div className="absolute left-0 top-full mt-1 w-[250px] bg-white border border-gray-200 rounded-md shadow-lg z-50 p-2">
-                    <div className="flex items-center gap-2 border border-blue-300 rounded-md px-2 py-1.5 mb-2">
-                      <Search size={14} className="text-gray-400" />
-                      <input
-                        type="text"
-                        value={warehouseSearch}
-                        onChange={(e) => setWarehouseSearch(e.target.value)}
-                        className="w-full text-sm focus:outline-none"
-                        placeholder="Search"
-                      />
-                    </div>
-                    {warehouseOptions
-                      .filter((opt) => opt.toLowerCase().includes(warehouseSearch.toLowerCase()))
-                      .map((opt) => (
-                        <button
-                          key={opt}
-                          type="button"
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded text-sm ${
-                            warehouseLocation === opt
-                              ? "bg-[#156372] text-white"
-                              : "text-gray-700 hover:bg-gray-50"
-                          }`}
-                          onClick={() => {
-                            setWarehouseLocation(opt);
-                            setWarehouseDropdownOpen(false);
-                            setWarehouseSearch("");
-                          }}
-                        >
-                          <span>{opt}</span>
-                          {warehouseLocation === opt && <Check size={14} />}
-                        </button>
-                      ))}
+          <div className="mt-6 mb-8">
+            <div className="mr-24 max-w-[1180px]">
+              <div className="mb-4 flex flex-wrap items-center gap-3 border-b border-gray-100 pb-4">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-500">Warehouse Location</label>
+                  <div className="w-[210px]">
+                    <LocationSelectDropdown
+                      value={warehouseLocation}
+                      options={locationOptions}
+                      onSelect={(location) => setWarehouseLocation(location.label)}
+                      placeholder="Select Warehouse"
+                    />
                   </div>
-                )}
+                </div>
+
+                <div ref={transactionLevelDropdownRef} className="ml-2 flex items-center gap-2 border-l border-gray-200 pl-5">
+                  <Tag size={16} className="text-gray-500" />
+                  <div className="relative w-[220px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTransactionLevelDropdownOpen((prev) => {
+                          const next = !prev;
+                          if (next) setTransactionLevelSearch("");
+                          return next;
+                        });
+                      }}
+                      className="flex h-10 w-full items-center justify-between bg-transparent px-0 text-left text-sm text-gray-700 outline-none transition-colors hover:text-[#156372] focus:text-[#156372]"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Info size={16} className="text-gray-500" />
+                        <span className={formData.transactionLevel ? "text-gray-900" : "text-gray-400"}>
+                          {formData.transactionLevel || "At Transaction Level"}
+                        </span>
+                      </span>
+                      <ChevronDown
+                        size={16}
+                        className={`text-gray-400 transition-transform ${transactionLevelDropdownOpen ? "rotate-180 text-[#3B82F6]" : ""}`}
+                      />
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div className="relative flex items-center gap-2 px-4 py-3 border-r border-gray-200" ref={taxPreferenceDropdownRef}>
-                <Grid3x3 size={14} className="text-gray-500" />
-                <button
-                  type="button"
-                  disabled={lockTaxExclusive}
-                  className="flex items-center gap-1 text-gray-800 disabled:opacity-60"
-                  onClick={() => {
-                    if (lockTaxExclusive) return;
-                    setTaxPreferenceDropdownOpen((prev) => !prev);
-                    setWarehouseDropdownOpen(false);
-                    setTransactionLevelDropdownOpen(false);
+
+              {transactionLevelDropdownOpen && transactionLevelMenuStyle && typeof document !== "undefined" && document.body && createPortal(
+                <div
+                  className="fixed z-[13000] overflow-hidden rounded-lg bg-white shadow-[0_16px_36px_rgba(15,23,42,0.14)]"
+                  style={{
+                    left: transactionLevelMenuStyle.left,
+                    top: transactionLevelMenuStyle.top,
+                    width: transactionLevelMenuStyle.width,
+                  }}
+                  onMouseDown={(event) => {
+                    event.stopPropagation();
                   }}
                 >
-                  <span>{computedTaxExclusive ? "Tax Exclusive" : "Tax Inclusive"}</span>
-                  {taxPreferenceDropdownOpen ? (
-                    <ChevronUp size={14} className="text-gray-500" />
-                  ) : (
-                    <ChevronDown size={14} className="text-gray-500" />
-                  )}
-                </button>
-                {taxPreferenceDropdownOpen && (
-                  <div className="absolute left-0 top-full mt-1 w-[250px] bg-white border border-gray-200 rounded-md shadow-lg z-50 p-2">
-                    <div className="flex items-center gap-2 border border-blue-300 rounded-md px-2 py-1.5 mb-2">
-                      <Search size={14} className="text-gray-400" />
+                  <div className="border-b border-slate-200 bg-white p-2.5">
+                    <div className="flex items-center gap-2 rounded-md border border-blue-400 bg-white px-2.5 py-2 focus-within:border-blue-500">
+                      <Search size={14} className="shrink-0 text-slate-400" />
                       <input
                         type="text"
-                        value={taxPreferenceSearch}
-                        onChange={(e) => setTaxPreferenceSearch(e.target.value)}
-                        className="w-full text-sm focus:outline-none"
+                        className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
                         placeholder="Search"
+                        value={transactionLevelSearch}
+                        onChange={(event) => setTransactionLevelSearch(event.target.value)}
+                        autoFocus
                       />
                     </div>
-                    <div className="px-2 py-1 text-xs font-semibold text-gray-500">Item Tax Preference</div>
-                    {taxPreferenceOptions
-                      .filter((opt) => opt.toLowerCase().includes(taxPreferenceSearch.toLowerCase()))
-                      .map((opt) => {
-                        const isSelected =
-                          (computedTaxExclusive && opt === "Tax Exclusive") ||
-                          (!computedTaxExclusive && opt === "Tax Inclusive");
+                  </div>
+
+                  <div className="max-h-[220px] overflow-y-auto bg-white p-1">
+                    <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Discount Type
+                    </div>
+                    {transactionLevelOptions
+                      .filter((option) => option.label.toLowerCase().includes(transactionLevelSearch.trim().toLowerCase()))
+                      .map((option) => {
+                        const isSelected = formData.transactionLevel === option.label;
                         return (
                           <button
-                            key={opt}
+                            key={option.id}
                             type="button"
-                            className={`w-full flex items-center justify-between px-3 py-2 rounded text-sm ${
-                              isSelected ? "bg-[#156372] text-white" : "text-gray-700 hover:bg-gray-50"
-                            }`}
                             onClick={() => {
-                              setFormData((prev) => recalcForm({
-                                ...prev,
-                                taxExclusive: opt === "Tax Exclusive",
-                              }));
-                              setTaxPreferenceDropdownOpen(false);
-                              setTaxPreferenceSearch("");
+                              setFormData((prev) => ({ ...prev, transactionLevel: option.label }));
+                              setTransactionLevelDropdownOpen(false);
                             }}
+                            className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-left text-sm transition-colors ${
+                              isSelected ? "bg-[#3B82F6] text-white" : "text-slate-700 hover:bg-slate-50"
+                            }`}
                           >
-                            <span>{opt}</span>
-                            {isSelected && <Check size={14} />}
+                            <span className="min-w-0 truncate">{option.label}</span>
+                            {isSelected && <Check size={15} className="shrink-0 text-white" />}
                           </button>
                         );
                       })}
                   </div>
-                )}
-              </div>
-              <div className="relative flex items-center gap-2 px-4 py-3" ref={transactionLevelDropdownRef}>
-                <Info size={14} className="text-gray-500" />
-                <button
-                  type="button"
-                  className="flex items-center gap-1 text-gray-800"
-                  onClick={() => {
-                    setTransactionLevelDropdownOpen((prev) => !prev);
-                    setWarehouseDropdownOpen(false);
-                    setTaxPreferenceDropdownOpen(false);
-                  }}
-                >
-                  <span>{formData.transactionLevel}</span>
-                  {transactionLevelDropdownOpen ? (
-                    <ChevronUp size={14} className="text-gray-500" />
-                  ) : (
-                    <ChevronDown size={14} className="text-gray-500" />
-                  )}
-                </button>
-                {transactionLevelDropdownOpen && (
-                  <div className="absolute left-0 top-full mt-1 w-[250px] bg-white border border-gray-200 rounded-md shadow-lg z-50 p-2">
-                    <div className="flex items-center gap-2 border border-blue-300 rounded-md px-2 py-1.5 mb-2">
-                      <Search size={14} className="text-gray-400" />
-                      <input
-                        type="text"
-                        value={transactionLevelSearch}
-                        onChange={(e) => setTransactionLevelSearch(e.target.value)}
-                        className="w-full text-sm focus:outline-none"
-                        placeholder="Search"
-                      />
-                    </div>
-                    <div className="px-2 py-1 text-xs font-semibold text-gray-500">Discount Type</div>
-                    {transactionLevelOptions
-                      .filter((opt) => opt.toLowerCase().includes(transactionLevelSearch.toLowerCase()))
-                      .map((opt) => (
-                        <button
-                          key={opt}
-                          type="button"
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded text-sm ${
-                            formData.transactionLevel === opt
-                              ? "bg-[#156372] text-white"
-                              : "text-gray-700 hover:bg-gray-50"
-                          }`}
-                          onClick={() => {
-                            setFormData((prev) => ({ ...prev, transactionLevel: opt }));
-                            setTransactionLevelDropdownOpen(false);
-                            setTransactionLevelSearch("");
-                          }}
-                        >
-                          <span>{opt}</span>
-                          {formData.transactionLevel === opt && <Check size={14} />}
-                        </button>
-                      ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+                </div>,
+                document.body
+              )}
 
-          {/* Items Table */}
-          <div className="mb-4 rounded-lg border border-gray-200 bg-white overflow-visible">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
-              <h3 className="text-sm font-semibold text-gray-900">Item Table</h3>
-              <div className="relative" ref={bulkActionsRef}>
+              <div className="flex items-center justify-between rounded-t-xl border border-gray-200 border-b-0 bg-gray-50 px-4 py-4">
+                <h3 className="text-[18px] font-semibold text-gray-900">Item Table</h3>
                 <button
                   type="button"
-                  onClick={() => setBulkActionsOpen(!bulkActionsOpen)}
-                  className="text-sm text-[#156372] hover:text-[#0D4A52] flex items-center gap-1"
+                  className="inline-flex items-center gap-2 rounded px-2 py-1 text-[14px] font-medium text-[#156372] hover:bg-teal-50"
                 >
-                  <Check size={14} />
-                  <span>Bulk Actions</span>
+                  <Check size={16} className="text-[#156372]" />
+                  Bulk Actions
                 </button>
-                {bulkActionsOpen && (
-                  <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[200px]">
-                    <button
-                      type="button"
-                      className="w-full px-4 py-2 text-left text-sm bg-[#156372] text-white rounded-t-md hover:bg-[#0D4A52]"
-                    >
-                      Bulk Update Line Items
-                    </button>
-                    <button
-                      type="button"
-                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-b-md"
-                    >
-                      Show All Additional Information
-                    </button>
-                  </div>
-                )}
               </div>
-            </div>
-            <div className="overflow-visible">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-r border-gray-200" style={{ width: "36%" }}>ITEM DETAILS</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-r border-gray-200" style={{ width: "18%" }}>ACCOUNT</th>
-                    <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider border-r border-gray-200" style={{ width: "9%" }}>QUANTITY</th>
-                    <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider border-r border-gray-200" style={{ width: "10%" }}>
-                      <div className="flex items-center justify-end gap-2">
-                        <span>RATE</span>
-                        <Grid3x3 size={14} className="text-gray-400" />
-                      </div>
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-r border-gray-200" style={{ width: "13%" }}>TAX</th>
-                    <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider" style={{ width: "12%" }}>AMOUNT</th>
-                    <th className="px-3 py-3 overflow-visible" style={{ width: "2%" }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {formData.items.map((item, index) => (
-                    <tr key={item.id || item.itemId || `${item.itemDetails || "line-item"}-${index}`} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="px-3 py-2 border-r border-gray-200 relative overflow-visible">
-                        <div className="flex items-center gap-2">
-                          <GripVertical size={16} className="text-gray-400 cursor-move" />
-                          <div className="w-8 h-8 rounded border border-gray-200 bg-gray-50 flex items-center justify-center flex-shrink-0">
-                            <ImageIcon size={16} className="text-gray-400" />
+
+              <div className="overflow-visible rounded-b-2xl border border-t-0 border-gray-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.04)]">
+                <table className="w-full table-fixed border-collapse">
+                  <colgroup>
+                    <col style={{ width: "34%" }} />
+                    <col style={{ width: "20%" }} />
+                    <col style={{ width: "12%" }} />
+                    <col style={{ width: "12%" }} />
+                    <col style={{ width: "20%" }} />
+                    <col style={{ width: "2%" }} />
+                  </colgroup>
+                  <thead className="border-b border-gray-200 bg-gray-50/80">
+                    <tr>
+                      <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">ITEM DETAILS</th>
+                      <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">ACCOUNT</th>
+                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">QUANTITY</th>
+                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">RATE</th>
+                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">AMOUNT</th>
+                      <th className="px-2 py-3"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                      {formData.items.map((item, index) => (
+                        <tr key={item.id || index} className="group border-b border-gray-200 align-top min-h-[118px]">
+                        <td className="px-3 py-2.5 text-sm">
+                          <div className="relative flex items-center gap-2">
+                            <div className="flex flex-col gap-1 cursor-move px-0.5 py-1.5">
+                              <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
+                              <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
+                              <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
+                            </div>
+                            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50">
+                              <ImageIcon size={18} className="text-gray-300" />
+                            </div>
+                            <div className="relative flex-1">
+                              <ItemSelectDropdown
+                                value={item.itemDetails}
+                                onSelect={(selectedItem) => handleItemSelect(item.id, selectedItem)}
+                                className="flex-1"
+                              />
+                            </div>
                           </div>
-                          <ItemSelectDropdown
-                            value={item.itemDetails}
-                            onSelect={(selectedItem) => handleItemSelect(item.id, selectedItem)}
-                            className="flex-1"
-                          />
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 border-r border-gray-200 relative overflow-visible">
-                        <div className="min-w-[150px]">
+                        </td>
+                        <td className="px-3 py-2.5 text-sm">
                           <AccountSelectDropdown
                             value={item.account}
-                            onSelect={(account) => handleItemChange(item.id, "account", account.name)}
+                            onSelect={(acc) => handleItemChange(item.id, "account", acc.name)}
                             className="w-full"
                             allowedTypes={PURCHASE_ACCOUNT_TYPES}
                           />
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 border-r border-gray-200">
-                        <input
-                          type="text"
-                          value={item.quantity}
-                          onChange={(e) => handleItemChange(item.id, "quantity", e.target.value)}
-                          className="w-full border-none outline-none bg-transparent text-sm text-gray-900 text-right"
-                        />
-                      </td>
-                      <td className="px-3 py-2 border-r border-gray-200">
-                        <input
-                          type="text"
-                          value={item.rate}
-                          onChange={(e) => handleItemChange(item.id, "rate", e.target.value)}
-                          className="w-full border-none outline-none bg-transparent text-sm text-gray-900 text-right"
-                        />
-                      </td>
-                      <td className="px-3 py-2 border-r border-gray-200 relative overflow-visible" ref={(el) => { taxDropdownRefs.current[String(item.id)] = el; }}>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setOpenTaxDropdowns((prev) => ({ ...prev, [String(item.id)]: !prev[String(item.id)] }))
-                          }
-                          className="w-full flex items-center justify-between text-sm text-gray-700 hover:text-gray-900"
-                        >
-                          <span className={item.tax ? "text-gray-900" : "text-gray-500"}>
-                            {item.tax ? getTaxLabel(item.tax) : "Select a Tax"}
-                          </span>
-                          <ChevronDown size={14} className="text-gray-500" />
-                        </button>
-                        {openTaxDropdowns[String(item.id)] && (
-                          <div className="absolute left-0 top-full mt-1 w-[250px] bg-white border border-gray-200 rounded-md shadow-lg z-[9999] p-2">
-                            <div className="flex items-center gap-2 border border-blue-300 rounded-md px-2 py-1.5 mb-2">
-                              <Search size={14} className="text-gray-400" />
-                              <input
-                                type="text"
-                                value={taxSearches[String(item.id)] || ""}
-                                onChange={(e) =>
-                                  setTaxSearches((prev) => ({ ...prev, [String(item.id)]: e.target.value }))
-                                }
-                                className="w-full text-sm focus:outline-none"
-                                placeholder="Search"
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              className={`w-full flex items-center justify-between px-3 py-2 rounded text-sm ${
-                                !item.tax ? "bg-[#156372] text-white" : "text-gray-700 hover:bg-gray-50"
-                              }`}
-                              onClick={() => {
-                                handleItemChange(item.id, "tax", "");
-                                setOpenTaxDropdowns((prev) => ({ ...prev, [String(item.id)]: false }));
-                                setTaxSearches((prev) => ({ ...prev, [String(item.id)]: "" }));
-                              }}
-                            >
-                              <span>Non-Taxable</span>
-                              {!item.tax && <Check size={14} />}
-                            </button>
-                            <div className="px-2 py-1 text-xs font-semibold text-gray-500">Tax</div>
-                            {taxOptions
-                              .filter((tax: any) =>
-                                `${tax.name} ${tax.rate}`.toLowerCase().includes((taxSearches[String(item.id)] || "").toLowerCase())
-                              )
-                              .map((tax: any) => {
-                                const taxId = String(tax.id || tax._id);
-                                const selected = String(item.tax || "") === taxId;
-                                return (
-                                  <button
-                                    key={taxId}
-                                    type="button"
-                                    className={`w-full flex items-center justify-between px-3 py-2 rounded text-sm ${
-                                      selected ? "bg-[#156372] text-white" : "text-gray-700 hover:bg-gray-50"
-                                    }`}
-                                    onClick={() => {
-                                      handleItemChange(item.id, "tax", taxId);
-                                      setOpenTaxDropdowns((prev) => ({ ...prev, [String(item.id)]: false }));
-                                      setTaxSearches((prev) => ({ ...prev, [String(item.id)]: "" }));
-                                    }}
-                                  >
-                                    <span>{getTaxLabel(taxId)}</span>
-                                    {selected && <Check size={14} />}
-                                  </button>
-                                );
-                              })}
-                            <button
-                              type="button"
-                              onClick={() => navigate("/settings/taxes/new", { state: { from: "/purchases/purchase-orders/new" } })}
-                              className="w-full mt-1 flex items-center gap-2 px-3 py-2 text-sm text-teal-700 hover:bg-teal-50 rounded"
-                            >
-                              <Plus size={14} />
-                              New Tax
-                            </button>
+                        </td>
+                        <td className="px-3 py-2.5 text-sm">
+                          <div className="flex items-center justify-end">
+                            <input
+                              type="text"
+                              value={item.quantity}
+                              onChange={(e) => handleItemChange(item.id, "quantity", e.target.value)}
+                              className="h-11 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none focus:border-teal-600"
+                            />
                           </div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center justify-end">
+                        </td>
+                        <td className="px-3 py-2.5 text-sm">
+                          <div className="flex items-center justify-end">
+                            <input
+                              type="text"
+                              value={item.rate}
+                              onChange={(e) => handleItemChange(item.id, "rate", e.target.value)}
+                              className="h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none focus:border-teal-600"
+                            />
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-sm">
+                          <div className="flex items-center justify-end">
+                            <input
+                              type="text"
+                              value={item.amount}
+                              readOnly
+                              className="h-11 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none"
+                            />
+                          </div>
+                        </td>
+                          <td className="relative w-0 px-0 py-2.5 text-sm overflow-visible">
+                            <div className="pointer-events-none absolute -right-16 top-1/2 z-10 flex -translate-y-1/2 items-center gap-2 opacity-0 transition-all duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+                              <button
+                                type="button"
+                                ref={(element) => {
+                                  itemMenuTriggerRefs.current[item.id] = element;
+                                }}
+                                onClick={() => {
+                                  setItemMenuOpen((prev) => prev === item.id ? null : item.id);
+                                }}
+                                className="flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-400 shadow-sm hover:bg-gray-50 hover:text-gray-600"
+                              >
+                                <MoreVertical size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeRow(item.id)}
+                                className="flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white text-rose-400 shadow-sm hover:bg-rose-50 hover:text-rose-500"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div className="border-t border-gray-200 bg-gray-50/60 px-3 py-2.5">
+                  <div className="flex flex-wrap items-center gap-6 text-sm">
+                    <button
+                      type="button"
+                      ref={projectDropdownRef}
+                      onClick={() => {
+                        setProjectDropdownOpen((prev) => !prev);
+                        setReportingTagsOpen(false);
+                        setReportingTagOptionOpenKey(null);
+                      }}
+                      className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+                    >
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-gray-400/20 text-gray-500">
+                        <Building2 size={12} />
+                      </span>
+                      <span className={selectedProjectName ? "text-gray-800" : "text-gray-500"}>
+                        {selectedProjectName || "Select a project"}
+                      </span>
+                      <ChevronDown size={12} className="text-gray-400" />
+                    </button>
+                    <button
+                      type="button"
+                      ref={reportingTagsRef}
+                      onClick={() => {
+                        setReportingTagsOpen((prev) => !prev);
+                        setProjectDropdownOpen(false);
+                      }}
+                      className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+                    >
+                      <Tag size={12} className={hasRequiredReportingTags ? "text-green-500" : "text-gray-400"} />
+                      <span className={hasRequiredReportingTags ? "text-red-500" : "text-gray-600"}>
+                        {hasRequiredReportingTags ? "Reporting Tags*" : "Reporting Tags"}
+                      </span>
+                      <span className="text-gray-500">{reportingTagsSummary}</span>
+                      <ChevronDown size={12} className="text-gray-400" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-start">
+                <div className="space-y-6">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={addNewRow}
+                      className="inline-flex shrink-0 items-center gap-2 rounded-md bg-[#eef2ff] px-4 py-2.5 text-sm font-medium text-[#156372] shadow-sm hover:bg-[#e0e7ff]"
+                    >
+                      <Plus size={14} className="text-[#3b82f6]" />
+                      Add New Row
+                      <ChevronDown size={14} className="text-gray-400" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openBulkItemsModal}
+                      className="inline-flex shrink-0 items-center gap-2 rounded-md bg-[#eef2ff] px-4 py-2.5 text-sm font-medium text-[#156372] shadow-sm hover:bg-[#e0e7ff]"
+                    >
+                      <Plus size={14} className="text-[#3b82f6]" />
+                      Add Items in Bulk
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-900">Notes</label>
+                    <textarea
+                      name="notes"
+                      value={formData.notes}
+                      onChange={handleChange}
+                      placeholder="Will be displayed on purchase order"
+                      className="min-h-[80px] w-full rounded-md border border-gray-300 bg-white px-3 py-3 text-sm font-inherit outline-none resize-y focus:border-teal-600"
+                    />
+                  </div>
+                </div>
+
+                <div className="w-full max-w-[420px] flex-shrink-0 xl:ml-auto">
+                  <div className="rounded-3xl border border-gray-200 bg-gray-50/80 px-5 py-5 shadow-[0_14px_30px_rgba(15,23,42,0.04)]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[14px] font-semibold text-gray-900">Sub Total</span>
+                      <span className="text-[14px] font-semibold text-gray-900 tabular-nums">{formData.subTotal}</span>
+                    </div>
+                    {showTransactionDiscount && (
+                      <div className="mt-5 grid grid-cols-[1fr_auto] items-center gap-4">
+                        <label className="text-[14px] font-medium text-gray-700">Discount</label>
+                        <div className="flex items-center gap-2">
                           <input
                             type="text"
-                            value={item.amount}
-                            readOnly
-                            className="w-full border-none outline-none bg-transparent text-sm text-gray-900 text-right"
+                            value={formData.discountPercent}
+                            onChange={handleDiscountChange}
+                            className="h-10 w-28 rounded-l-lg border border-gray-200 bg-white px-3 text-right text-sm outline-none focus:border-teal-600"
+                            min="0"
+                            max="100"
                           />
+                          <span className="-ml-2 flex h-10 w-8 items-center justify-center rounded-r-lg border border-l-0 border-gray-200 bg-white text-sm text-gray-600">%</span>
+                          <span className="w-24 text-right text-[14px] font-medium text-gray-900 tabular-nums">{formData.discountAmount}</span>
                         </div>
-                      </td>
-                      <td className="px-3 py-2 relative overflow-visible">
-                        <div className="flex items-center justify-end gap-2">
-                          <div
-                            className="relative"
-                            ref={(el) => {
-                              itemMenuRefs.current[item.id] = el;
-                            }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => setItemMenuOpen(itemMenuOpen === item.id ? null : item.id)}
-                              className="p-1 text-gray-400 hover:text-gray-600"
-                            >
-                              <MoreVertical size={16} />
-                            </button>
-                            {itemMenuOpen === item.id && (
-                              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-[9999] min-w-[180px]">
-                                <button
-                                  type="button"
-                                  className="w-full px-4 py-2 text-left text-sm bg-[#156372] text-white rounded-t-md hover:bg-[#0D4A52]"
-                                >
-                                  Show Additional Information
-                                </button>
-                                <button
-                                  type="button"
-                                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-                                >
-                                  Clone
-                                </button>
-                                <button
-                                  type="button"
-                                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-                                >
-                                  Insert New Row
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setItemMenuOpen(null);
-                                    openBulkItemsModal();
-                                  }}
-                                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-                                >
-                                  Insert Items in Bulk
-                                </button>
-                                <button
-                                  type="button"
-                                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-b-md"
-                                >
-                                  Insert New Header
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeRow(item.id)}
-                            className="p-1 text-red-500 hover:text-red-700"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="px-3 py-2 border-t border-gray-200 bg-gray-50 flex items-center gap-6 text-sm text-gray-600">
-              <button type="button" className="flex items-center gap-1 hover:text-gray-900">
-                <List size={14} />
-                Select a project
-                <ChevronDown size={12} />
-              </button>
-              <button type="button" className="flex items-center gap-1 hover:text-gray-900">
-                <Grid3x3 size={14} />
-                Reporting Tags
-                <ChevronDown size={12} />
-              </button>
-            </div>
-
-            <div className="px-3 py-3 flex gap-3">
-              <button
-                type="button"
-                onClick={addNewRow}
-                className="px-3 py-1.5 bg-[#e9f5f7] text-[#156372] rounded-md hover:bg-[#d7eef2] text-sm font-medium flex items-center gap-2"
-              >
-                <Plus size={16} />
-                Add New Row
-                <ChevronDown size={14} />
-              </button>
-              <button
-                type="button"
-                onClick={openBulkItemsModal}
-                className="px-3 py-1.5 bg-[#e9f5f7] text-[#156372] rounded-md hover:bg-[#d7eef2] text-sm font-medium flex items-center gap-2"
-              >
-                <List size={16} />
-                Add Items in Bulk
-              </button>
-            </div>
-          </div>
-
-          {/* Notes + Summary */}
-          <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div>
-              <label className="block text-sm/6 font-medium text-gray-900 mb-2">Notes</label>
-              <div className="relative">
-                <textarea
-                  name="notes"
-                  value={formData.notes}
-                  onChange={handleChange}
-                  placeholder="Will be displayed on purchase order"
-                  className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6 min-h-[100px] resize-y"
-                />
-                <Pencil
-                  size={16}
-                  className="absolute bottom-3 right-3 text-gray-400"
-                />
-              </div>
-            </div>
-            <div className="rounded-lg border border-gray-200 bg-[#fafafa] p-4">
-              <div className="flex justify-between mb-5">
-                <span className="text-sm font-medium text-gray-900">Sub Total</span>
-                <span className="text-sm font-semibold text-gray-900">{formData.subTotal}</span>
-              </div>
-              {(() => {
-                const taxMap: Record<string, number> = {};
-                const discountFactor = Math.max(0, 1 - (showTransactionDiscount ? (parseFloat(formData.discountPercent) || 0) : 0) / 100);
-                formData.items.forEach((item: any) => {
-                  if (!item.tax) return;
-                  const line = computeLine(item, !!formData.taxExclusive);
-                  taxMap[item.tax] = (taxMap[item.tax] || 0) + line.tax * discountFactor;
-                });
-                return Object.entries(taxMap).map(([taxId, amount]) => (
-                  <div key={taxId} className="flex justify-between mb-3">
-                    <span className="text-sm text-gray-700">{getTaxLabel(taxId)}</span>
-                    <span className="text-sm font-medium text-gray-900">{amount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="mt-5 flex items-center justify-between border-t border-gray-200 pt-5">
+                      <span className="text-[17px] font-semibold text-gray-900">Total</span>
+                      <div className="text-right">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">USD</div>
+                        <span className="text-[17px] font-semibold text-gray-900 tabular-nums">{formData.total}</span>
+                      </div>
+                    </div>
                   </div>
-                ));
-              })()}
-              {showTransactionDiscount && (
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="text-sm text-gray-700 flex-1">Discount</span>
-                  <input
-                    type="text"
-                    value={formData.discountPercent}
-                    onChange={handleDiscountChange}
-                    className="w-20 rounded-md bg-white px-2 py-1 text-sm text-gray-900 border border-gray-300 text-right focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600"
-                  />
-                  <span className="text-sm text-gray-700">%</span>
-                  <span className="text-sm font-medium text-gray-900 min-w-[64px] text-right">{formData.discountAmount}</span>
                 </div>
-              )}
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-sm text-gray-700 flex-1">Adjustment</span>
-                <input
-                  type="text"
-                  value={formData.adjustment}
-                  onChange={handleAdjustmentChange}
-                  className="w-24 rounded-md bg-white px-2 py-1 text-sm text-gray-900 border border-gray-300 text-right focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600"
-                />
-                <Info size={14} className="text-gray-400" />
-                <span className="text-sm font-medium text-gray-900 min-w-[64px] text-right">{formData.adjustment || "0.00"}</span>
               </div>
-              <div className="border-t border-gray-200 pt-4 flex justify-between items-center">
-                <span className="text-[22px] font-semibold text-gray-900">Total</span>
-                <span className="text-[30px] font-bold text-gray-900 leading-none">{formData.total}</span>
-              </div>
-            </div>
-          </div>
 
-          {/* Terms & Conditions and File Upload */}
-          <div className="mb-6">
-            <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
-              <div className="sm:col-span-3">
-                <label className="block text-sm/6 font-medium text-gray-900 mb-2">Terms & Conditions</label>
-                <div className="relative">
+              <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-900">Terms &amp; Conditions</label>
                   <textarea
                     name="termsAndConditions"
                     value={formData.termsAndConditions}
                     onChange={handleChange}
-                    placeholder="Enter the terms and conditions of your business to be displayed in your transaction"
-                    className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6 min-h-[100px] resize-y"
-                  />
-                  <Pencil
-                    size={16}
-                    className="absolute bottom-3 right-3 text-gray-400"
+                    placeholder="Enter terms and conditions..."
+                    className="min-h-[96px] w-full rounded-md border border-gray-300 bg-white px-3 py-3 text-sm outline-none resize-y focus:border-teal-600"
                   />
                 </div>
-              </div>
-              <div className="sm:col-span-3">
-                <label className="block text-sm/6 font-medium text-gray-900 mb-2">Attach File(s) to Purchase Order</label>
-                <div className="relative" ref={uploadMenuRef}>
-                  <button
-                    type="button"
-                    onClick={() => setUploadMenuOpen(!uploadMenuOpen)}
-                    className="w-full rounded-md border-2 border-dashed border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:border-gray-400 flex items-center justify-between"
-                  >
-                    <span className="flex items-center gap-2">
-                      <UploadIcon size={16} />
-                      Upload File
-                    </span>
-                    <ChevronDown size={14} />
-                  </button>
-                  {uploadMenuOpen && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          fileInputRef.current?.click();
-                          setUploadMenuOpen(false);
-                        }}
-                        className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-                      >
-                        Attach From Desktop
-                      </button>
-                    </div>
-                  )}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                  />
-                  <p className="mt-2 text-xs text-gray-500">
-                    You can upload a maximum of 10 files, 10MB each
-                  </p>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-900">Attach File(s) to Purchase Order</label>
+                  <div className="relative" ref={uploadMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setUploadMenuOpen(!uploadMenuOpen)}
+                      className="inline-flex w-full items-center justify-between rounded-md border border-dashed border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 hover:border-gray-400"
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <UploadIcon size={16} />
+                        Upload File
+                      </span>
+                      <ChevronDown size={14} />
+                    </button>
+                    {uploadMenuOpen && (
+                      <div className="absolute left-0 right-0 top-full z-50 mt-2 rounded-lg border border-gray-200 bg-white shadow-md">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            fileInputRef.current?.click();
+                            setUploadMenuOpen(false);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-900 hover:bg-teal-50"
+                        >
+                          Attach From Desktop
+                        </button>
+                      </div>
+                    )}
+                    <input ref={fileInputRef} type="file" multiple className="hidden" />
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-
-          {/* Additional Fields */}
-          <div className="mb-6">
-            <p className="text-sm text-gray-600">
-              Additional Fields: Start adding custom fields for your purchase orders by going to Settings → Purchases → Purchase Orders.
-            </p>
-          </div>
         </div>
-      </form>
+      </div>
+    </form>
+
+      {itemMenuOpen !== null && itemMenuStyle && typeof document !== "undefined" && document.body && createPortal(
+        <div
+          ref={itemMenuPortalRef}
+          className="fixed z-[1250] min-w-[196px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_16px_32px_rgba(15,23,42,0.18)]"
+          style={{
+            left: itemMenuStyle.left,
+            top: itemMenuStyle.top,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setItemMenuOpen(null)}
+            className="m-1 flex w-[calc(100%-8px)] items-center rounded-lg border-2 border-blue-500 bg-[#4b8bf4] px-3 py-2 text-left text-sm font-medium text-white shadow-sm"
+          >
+            Hide Additional Information
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              cloneRow(itemMenuOpen);
+              setItemMenuOpen(null);
+            }}
+            className="flex w-full items-center px-3 py-3 text-left text-sm text-slate-700 hover:bg-slate-50"
+          >
+            Clone
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              insertRowAfter(itemMenuOpen);
+              setItemMenuOpen(null);
+            }}
+            className="flex w-full items-center border-t border-slate-100 px-3 py-3 text-left text-sm text-slate-700 hover:bg-slate-50"
+          >
+            Insert New Row
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              openBulkItemsModal();
+              setItemMenuOpen(null);
+            }}
+            className="flex w-full items-center border-t border-slate-100 px-3 py-3 text-left text-sm text-slate-700 hover:bg-slate-50"
+          >
+            Insert Items in Bulk
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              insertRowAfter(itemMenuOpen);
+              setItemMenuOpen(null);
+            }}
+            className="flex w-full items-center border-t border-slate-100 px-3 py-3 text-left text-sm text-slate-700 hover:bg-slate-50"
+          >
+            Insert New Header
+          </button>
+        </div>,
+        document.body
+      )}
+
+      {projectDropdownOpen && projectMenuStyle && typeof document !== "undefined" && document.body && createPortal(
+        <div
+          ref={projectMenuRef}
+          className="z-[1200] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_16px_32px_rgba(15,23,42,0.16)]"
+          style={{
+            position: "fixed",
+            left: projectMenuStyle.left,
+            top: projectMenuStyle.top,
+            width: projectMenuStyle.width,
+          }}
+        >
+          <div className="border-b border-slate-200 p-2">
+            <div className="flex items-center gap-2 rounded-lg border border-blue-400 bg-white px-3 py-2 shadow-[0_0_0_3px_rgba(59,130,246,0.08)]">
+              <Search size={15} className="text-slate-400" />
+              <input
+                autoFocus
+                type="text"
+                value={projectSearch}
+                onChange={(e) => setProjectSearch(e.target.value)}
+                placeholder="Search"
+                className="w-full border-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+              />
+            </div>
+          </div>
+          <div className="max-h-56 overflow-y-auto p-1">
+            {selectedProjectName ? (
+              <button
+                type="button"
+                onClick={clearProjectSelection}
+                className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50"
+              >
+                None
+              </button>
+            ) : null}
+            {filteredProjects.length ? (
+              filteredProjects.map((project) => {
+                const isSelected = project.id === selectedProjectId;
+                return (
+                  <button
+                    key={project.id}
+                    type="button"
+                    onClick={() => handleProjectSelect(project)}
+                    className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm ${
+                      isSelected
+                        ? "bg-[#4b8bf4] text-white shadow-sm"
+                        : "text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    {project.name}
+                  </button>
+                );
+              })
+            ) : (
+              <div className="px-3 py-2 text-sm text-slate-500">No projects found.</div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {reportingTagsOpen && reportingTagsMenuStyle && typeof document !== "undefined" && document.body && createPortal(
+        <div
+          ref={reportingTagsMenuRef}
+          className="z-[1200] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_36px_rgba(15,23,42,0.16)]"
+          style={{
+            position: "fixed",
+            left: reportingTagsMenuStyle.left,
+            top: reportingTagsMenuStyle.top,
+            width: reportingTagsMenuStyle.width,
+          }}
+        >
+          <div className="border-b border-slate-200 px-4 py-3 text-lg font-medium text-slate-800">
+            Reporting Tags
+          </div>
+          <div className="space-y-4 px-5 py-5">
+            {isReportingTagsLoading ? (
+              <div className="text-sm text-slate-500">Loading reporting tags...</div>
+            ) : availableReportingTags.length === 0 ? (
+              <div className="text-sm text-slate-500">There are no reporting tags for purchase orders.</div>
+            ) : (
+              availableReportingTags.map((tag) => {
+                const tagId = String(tag?._id || tag?.id || "").trim();
+                if (!tagId) return null;
+
+                const selectedValue = String(reportingTagDrafts[tagId] || "");
+                const normalizedOptions = [
+                  { value: "", label: "None" },
+                  ...((Array.isArray(tag?.options) ? tag.options : []) as any[]).map((option: any) => {
+                    const value = typeof option === "string"
+                      ? option
+                      : String(option?.value || option?.label || option?.name || "").trim();
+                    return { value, label: value };
+                  }).filter((option: { value: string; label: string }) => option.value),
+                ];
+                const optionKey = `purchase-order-reporting-tag-${tagId}`;
+                const selectedLabel = normalizedOptions.find((option) => option.value === selectedValue)?.label || "None";
+                const isOptionOpen = reportingTagOptionOpenKey === optionKey;
+
+                return (
+                  <div key={tagId} className="max-w-[320px]">
+                    <label className={`mb-2 block text-sm ${tag?.isRequired ? "text-red-500" : "text-slate-700"}`}>
+                      {String(tag?.name || "Reporting Tag")}
+                      {tag?.isRequired ? " *" : ""}
+                    </label>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        ref={(element) => {
+                          reportingTagOptionTriggerRefs.current[optionKey] = element;
+                        }}
+                        onClick={() => {
+                          setReportingTagOptionOpenKey((prev) => prev === optionKey ? null : optionKey);
+                        }}
+                        className="flex h-11 w-full items-center justify-between rounded-lg border border-blue-400 bg-white px-3 text-sm text-slate-700 shadow-[0_0_0_3px_rgba(59,130,246,0.08)]"
+                      >
+                        <span className={selectedValue ? "text-slate-700" : "text-slate-500"}>{selectedLabel}</span>
+                        <ChevronDown size={16} className={`text-slate-500 transition-transform ${isOptionOpen ? "rotate-180" : ""}`} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+          {activeReportingTag && reportingTagOptionMenuStyle && typeof document !== "undefined" && document.body && createPortal(
+            <div
+              ref={reportingTagOptionMenuRef}
+              className="fixed z-[1300] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_14px_28px_rgba(15,23,42,0.16)]"
+              style={{
+                left: reportingTagOptionMenuStyle.left,
+                top: reportingTagOptionMenuStyle.top,
+                width: reportingTagOptionMenuStyle.width,
+              }}
+            >
+              <div className="border-b border-slate-200 p-2">
+                <div className="flex items-center gap-2 rounded-lg border border-blue-400 bg-white px-3 py-2 shadow-[0_0_0_3px_rgba(59,130,246,0.08)]">
+                  <Search size={15} className="text-slate-400" />
+                  <input
+                    type="text"
+                    value={reportingTagSearches[activeReportingTagId] || ""}
+                    onChange={(e) => setReportingTagSearches((prev) => ({ ...prev, [activeReportingTagId]: e.target.value }))}
+                    placeholder="Search"
+                    className="w-full border-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                  />
+                </div>
+              </div>
+              <div className="max-h-52 overflow-y-auto p-1">
+                {filteredActiveReportingTagOptions.map((option) => {
+                  const isSelected = option.value === activeReportingTagValue;
+                  return (
+                    <button
+                      key={`${activeReportingTagId}-${option.value || "none"}`}
+                      type="button"
+                      onClick={() => {
+                        setReportingTagDrafts((prev) => ({ ...prev, [activeReportingTagId]: option.value }));
+                        setReportingTagOptionOpenKey(null);
+                        setReportingTagSearches((prev) => ({ ...prev, [activeReportingTagId]: "" }));
+                      }}
+                      className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm ${
+                        isSelected
+                          ? "bg-[#4b8bf4] text-white shadow-sm"
+                          : "text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+                {!filteredActiveReportingTagOptions.length ? (
+                  <div className="px-3 py-2 text-sm text-slate-500">No options found.</div>
+                ) : null}
+              </div>
+            </div>,
+            document.body
+          )}
+          <div className="flex items-center gap-3 border-t border-slate-200 px-5 py-4">
+            <button
+              type="button"
+              onClick={() => {
+                setReportingTagsOpen(false);
+                setReportingTagOptionOpenKey(null);
+              }}
+              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setReportingTagsOpen(false);
+                setReportingTagOptionOpenKey(null);
+              }}
+              className="rounded-md bg-[#22c55e] px-4 py-2 text-sm font-medium text-white hover:bg-[#16a34a]"
+            >
+              Save
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Advanced Vendor Search Modal */}
       {vendorSearchModalOpen && typeof document !== 'undefined' && document.body && createPortal(
@@ -2353,16 +3043,7 @@ export default function NewPurchaseOrder() {
                       <tr
                         key={vendor._id || vendor.id || `${vendor.displayName || vendor.name || "vendor"}-${index}`}
                         className="hover:bg-gray-50 cursor-pointer"
-                        onClick={() => {
-                          setFormData((prev) => ({
-                            ...prev,
-                            vendorName: vendor.displayName || vendor.name || vendor.formData?.displayName || vendor.formData?.name || "",
-                            vendorId: vendor._id || vendor.id || "",
-                          }));
-                          setVendorSearchModalOpen(false);
-                          setVendorSearchTerm("");
-                          setVendorSearchResults([]);
-                        }}
+                        onClick={() => selectVendor(vendor)}
                       >
                         <td className="px-4 py-3 text-sm text-teal-700 hover:underline">
                           {vendor.displayName || vendor.name || vendor.formData?.displayName || vendor.formData?.name || ""}
@@ -2411,7 +3092,7 @@ export default function NewPurchaseOrder() {
       {/* Configure Purchase Order# Preferences Modal */}
       {poConfigModalOpen && typeof document !== 'undefined' && document.body && createPortal(
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
+          className="fixed inset-0 z-50 flex items-center justify-center"
           onClick={() => setPoConfigModalOpen(false)}
         >
           <div

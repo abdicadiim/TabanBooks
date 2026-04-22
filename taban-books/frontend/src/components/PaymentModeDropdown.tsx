@@ -143,7 +143,7 @@ export default function PaymentModeDropdown({
         <>
             <div className={`relative w-full ${className}`} ref={dropdownRef}>
                 <div
-                    className={`flex items-center justify-between px-3 py-1.5 border border-gray-300 rounded text-sm bg-white cursor-pointer hover:border-gray-400 transition-colors min-h-[36px] ${disabled ? "bg-gray-100 cursor-not-allowed opacity-60" : ""}`}
+                    className={`flex items-center justify-between px-3 py-1 border border-gray-300 rounded text-sm bg-white cursor-pointer hover:border-gray-400 transition-colors min-h-[30px] ${disabled ? "bg-gray-100 cursor-not-allowed opacity-60" : ""}`}
                     onClick={() => !disabled && setIsOpen(!isOpen)}
                 >
                     <span className={value ? "text-gray-900" : "text-gray-400"}>
@@ -163,7 +163,7 @@ export default function PaymentModeDropdown({
                                 <Search size={14} className="text-gray-400" />
                                 <input
                                     autoFocus
-                                    className="w-full outline-none text-sm"
+                                className="w-full outline-none text-sm"
                                     placeholder="Search"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -179,7 +179,7 @@ export default function PaymentModeDropdown({
                                 filteredModes.map((mode) => (
                                     <div
                                         key={mode._id}
-                                        className="px-4 py-2 text-sm cursor-pointer flex items-center justify-between transition-colors"
+                                        className="px-4 py-1.5 text-sm cursor-pointer flex items-center justify-between transition-colors"
                                         style={{
                                             backgroundColor:
                                                 selectedValue === mode.name ? "#2563eb" : "transparent",
@@ -205,7 +205,7 @@ export default function PaymentModeDropdown({
                         </div>
 
                         <div
-                            className="px-4 py-3 border-t border-gray-100 flex items-center gap-2 text-sm font-medium text-blue-600 cursor-pointer hover:bg-gray-50 transition-colors"
+                            className="px-4 py-2.5 border-t border-gray-100 flex items-center gap-2 text-sm font-medium text-blue-600 cursor-pointer hover:bg-gray-50 transition-colors"
                             onClick={() => {
                                 setIsConfigureModalOpen(true);
                                 setIsOpen(false);

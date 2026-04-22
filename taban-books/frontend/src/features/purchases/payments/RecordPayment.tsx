@@ -770,15 +770,6 @@ export default function RecordPayment() {
       borderTop: "1px solid #e5e7eb",
       backgroundColor: "#f9fafb",
     },
-    summaryBox: {
-      backgroundColor: "#f4ede4",
-      borderRadius: "16px",
-      padding: "20px",
-      display: "flex",
-      flexDirection: "column",
-      gap: "12px",
-      width: "430px",
-    },
     summaryItem: {
       display: "flex",
       justifyContent: "space-between",
@@ -1340,7 +1331,7 @@ export default function RecordPayment() {
               </div>
             )}
               <div style={{ marginTop: "24px", display: "flex", justifyContent: "center" }}>
-                <div style={styles.summaryBox}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "430px" }}>
                   <div style={styles.summaryItem}>
                     <span style={styles.summaryLabel}>Amount Paid:</span>
                     <span style={styles.summaryValue}>{parseFloat(formData.paymentAmount || "0").toFixed(2)}</span>

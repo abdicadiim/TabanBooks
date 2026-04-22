@@ -1172,8 +1172,6 @@ export default function BillDetail() {
   const billBalanceDue = toFiniteNumber(bill.balanceDue ?? bill.total, 0);
   const isBillPaid = billStatusText === "PAID" || billBalanceDue <= 0;
   const isBillUnpaid = !isBillPaid;
-  const isBillOverdue = isBillUnpaid && calculateOverdueDays(bill.dueDate) > 0;
-
   const handlePaymentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     // @ts-ignore
@@ -1824,36 +1822,209 @@ export default function BillDetail() {
       borderBottom: "1px solid #f3f4f6",
     },
     paymentForm: {
-      padding: '24px',
-      backgroundColor: '#ffffff',
+      padding: '0',
+      background: 'transparent',
+      border: 'none',
+      borderRadius: '0',
+      boxShadow: 'none',
+      maxWidth: 'none',
+      width: '100%',
+    },
+    paymentFormHeader: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: '16px',
+      marginBottom: '24px',
+      paddingBottom: '18px',
+      borderBottom: '1px solid #e6edf5',
+    },
+    paymentFormTitleWrap: {
+      display: 'flex',
+      flexDirection: 'column' as const,
+      gap: '6px',
+    },
+    paymentFormEyebrow: {
+      fontSize: '11px',
+      fontWeight: 700,
+      letterSpacing: '0.14em',
+      textTransform: 'uppercase' as const,
+      color: '#156372',
+    },
+    paymentFormTitle: {
+      fontSize: '30px',
+      fontWeight: 700,
+      color: '#0f172a',
+      margin: 0,
+      lineHeight: 1.15,
+    },
+    paymentFormHint: {
+      fontSize: '13px',
+      color: '#64748b',
+      maxWidth: '480px',
+      lineHeight: 1.5,
+    },
+    paymentSummaryBadge: {
+      minWidth: '180px',
+      padding: '14px 16px',
+      borderRadius: '16px',
+      background: 'linear-gradient(135deg, #156372 0%, #0f4e5a 100%)',
+      color: '#ffffff',
+      boxShadow: '0 14px 32px rgba(21, 99, 114, 0.22)',
+    },
+    paymentSummaryLabel: {
+      fontSize: '11px',
+      fontWeight: 700,
+      letterSpacing: '0.14em',
+      textTransform: 'uppercase' as const,
+      opacity: 0.8,
+      marginBottom: '8px',
+    },
+    paymentSummaryValue: {
+      fontSize: '28px',
+      fontWeight: 700,
+      lineHeight: 1,
+    },
+    paymentSummarySubtext: {
+      marginTop: '8px',
+      fontSize: '12px',
+      opacity: 0.82,
+    },
+    paymentGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+      gap: '28px 0px',
+      alignItems: 'start',
+    },
+    paymentColumn: {
+      display: 'flex',
+      flexDirection: 'column' as const,
+      gap: '4px',
+    },
+    paymentColumnNarrow: {
+      width: '100%',
+    },
+    paymentCompactColumn: {
+      width: '100%',
+      minWidth: '0',
+    },
+    paymentControlShell: {
+      width: '100%',
+    },
+    paymentSectionLabel: {
+      fontSize: '12px',
+      fontWeight: 700,
+      letterSpacing: '0.08em',
+      textTransform: 'uppercase' as const,
+      color: '#64748b',
+      marginBottom: '8px',
     },
     formGroup: {
-      marginBottom: '20px',
+      marginBottom: '18px',
     },
     label: {
       display: 'block',
       fontSize: '13px',
-      fontWeight: '500',
-      color: '#374151',
-      marginBottom: '6px',
+      fontWeight: '600',
+      color: '#334155',
+      marginBottom: '8px',
     },
     input: {
       width: '100%',
       padding: '8px 12px',
-      fontSize: '14px',
-      border: '1px solid #d1d5db',
-      borderRadius: '4px',
+      fontSize: '13px',
+      lineHeight: '1.2',
+      border: '1px solid #cbd5e1',
+      borderRadius: '0px',
       outline: 'none',
+      backgroundColor: '#ffffff',
+      color: '#0f172a',
+      boxSizing: 'border-box' as const,
+      boxShadow: 'inset 0 1px 2px rgba(15, 23, 42, 0.04)',
     },
     select: {
       width: '100%',
       padding: '8px 12px',
-      fontSize: '14px',
-      border: '1px solid #d1d5db',
-      borderRadius: '4px',
+      fontSize: '13px',
+      lineHeight: '1.2',
+      border: '1px solid #cbd5e1',
+      borderRadius: '0px',
       outline: 'none',
       backgroundColor: '#ffffff',
-    }
+    },
+    paymentCheckboxRow: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '10px',
+      marginBottom: '18px',
+      color: '#334155',
+      fontSize: '14px',
+      fontWeight: 500,
+    },
+    paymentDivider: {
+      height: '1px',
+      backgroundColor: '#e6edf5',
+      margin: '22px 0 20px',
+    },
+    paymentNotesBox: {
+      minHeight: '110px',
+      resize: 'vertical' as const,
+      paddingTop: '12px',
+    },
+    attachmentButton: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '8px',
+      padding: '10px 16px',
+      border: '1px dashed #94a3b8',
+      borderRadius: '12px',
+      cursor: 'pointer',
+      fontSize: '14px',
+      fontWeight: 600,
+      color: '#0f172a',
+      backgroundColor: '#f8fafc',
+    },
+    uploadedFileItem: {
+      fontSize: '13px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      marginBottom: '8px',
+      padding: '9px 12px',
+      border: '1px solid #e2e8f0',
+      borderRadius: '10px',
+      backgroundColor: '#ffffff',
+      color: '#334155',
+    },
+    paymentActions: {
+      display: 'flex',
+      gap: '12px',
+      alignItems: 'center',
+      flexWrap: 'wrap' as const,
+      marginTop: '8px',
+    },
+    secondaryActionButton: {
+      border: '1px solid #cbd5e1',
+      backgroundColor: '#ffffff',
+      color: '#334155',
+      padding: '10px 16px',
+      borderRadius: '12px',
+      fontSize: '14px',
+      fontWeight: 600,
+      cursor: 'pointer',
+      boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
+    },
+    primaryActionButton: {
+      border: 'none',
+      background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+      color: '#ffffff',
+      padding: '10px 18px',
+      borderRadius: '12px',
+      fontSize: '14px',
+      fontWeight: 700,
+      cursor: 'pointer',
+      boxShadow: '0 12px 24px rgba(21, 128, 61, 0.22)',
+    },
   };
 
   return (
@@ -2375,9 +2546,7 @@ export default function BillDetail() {
               <span style={{ backgroundColor: "#8b5cf6", color: "#fff", borderRadius: "50%", padding: "4px", display: "flex", alignItems: "center", justifyContent: "center" }}>âœ¨</span>
               <span>
                 <strong>WHAT'S NEXT?</strong>{" "}
-                {isBillOverdue
-                  ? "Payment for this bill is overdue. You can record the payment for this bill if paid."
-                  : "This bill is still open. You can now record payment for this bill."}
+                {"This bill is still open. You can now record payment for this bill."}
               </span>
             </div>
             <button
@@ -2418,11 +2587,28 @@ export default function BillDetail() {
         <div style={styles.contentArea}>
           {isRecordingPayment ? (
             <div style={styles.paymentForm}>
-              <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '24px' }}>Payment for {bill.billNumber}</h2>
+              <div style={styles.paymentFormHeader}>
+                <div style={styles.paymentFormTitleWrap}>
+                  <span style={styles.paymentFormEyebrow}>Record Payment</span>
+                  <h2 style={styles.paymentFormTitle}>Payment for {bill.billNumber}</h2>
+                  <div style={styles.paymentFormHint}>
+                    Review the outstanding bill, enter the payment information, and save it using the polished layout shown in your reference.
+                  </div>
+                </div>
+                <div style={styles.paymentSummaryBadge}>
+                  <div style={styles.paymentSummaryLabel}>Balance Due</div>
+                  <div style={styles.paymentSummaryValue}>
+                    {resolvedBaseCurrencySymbol}{parseFloat(String(bill.balanceDue || 0)).toFixed(2)}
+                  </div>
+                  <div style={styles.paymentSummarySubtext}>
+                    Due date {formatDateShort(bill.dueDate)}
+                  </div>
+                </div>
+              </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
-                {/* Left Column */}
-                <div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0px' }}>
+                <div style={styles.paymentSectionLabel}>Payment Details</div>
+                <div style={styles.paymentCompactColumn}>
                   <div style={styles.formGroup}>
                     <label style={styles.label}>Payment Made *({resolvedBaseCurrency})</label>
                     <input
@@ -2435,14 +2621,69 @@ export default function BillDetail() {
                     />
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Payment Mode</label>
+                    <div style={styles.paymentControlShell}>
+                      <PaymentModeDropdown
+                        value={paymentFormData.paymentMode}
+                        onChange={(value) => setPaymentFormData(prev => ({ ...prev, paymentMode: value }))}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Payment #*</label>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="text"
+                        name="paymentNumber"
+                        value={paymentFormData.paymentNumber}
+                        onChange={handlePaymentChange}
+                        style={styles.input}
+                      />
+                      <Settings size={14} style={{ position: 'absolute', right: '12px', top: '12px', color: '#6b7280' }} />
+                    </div>
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Paid Through*</label>
+                    <div style={styles.paymentControlShell}>
+                      <TabanSelect
+                        value={paymentFormData.paidThrough}
+                        options={paidThroughAccounts}
+                        groupBy="accountType"
+                        placeholder="Select Paid Through Account"
+                        onChange={(val) => {
+                          const account = paidThroughAccounts.find(a => a.name === val);
+                          setPaymentFormData(prev => ({
+                            ...prev,
+                            paidThrough: val,
+                            paidThroughId: account?._id || account?.id || ""
+                          }));
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Reference#</label>
+                    <input
+                      type="text"
+                      name="reference"
+                      value={paymentFormData.reference}
+                      onChange={handlePaymentChange}
+                      style={styles.input}
+                    />
+                  </div>
+
+                  <div style={styles.paymentCheckboxRow}>
                     <input
                       type="checkbox"
                       name="deductTDS"
                       checked={paymentFormData.deductTDS}
                       onChange={handlePaymentChange}
                     />
-                    <span style={{ fontSize: '14px' }}>Deduct TDS Tax</span>
+                    <span>Deduct TDS Tax</span>
                   </div>
 
                   <div style={styles.formGroup}>
@@ -2477,61 +2718,9 @@ export default function BillDetail() {
                     />
                   </div>
                 </div>
-
-                {/* Right Column */}
-                <div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Payment Mode</label>
-                    <PaymentModeDropdown
-                      value={paymentFormData.paymentMode}
-                      onChange={(value) => setPaymentFormData(prev => ({ ...prev, paymentMode: value }))}
-                    />
-                  </div>
-
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Payment #*</label>
-                    <div style={{ position: 'relative' }}>
-                      <input
-                        type="text"
-                        name="paymentNumber"
-                        value={paymentFormData.paymentNumber}
-                        onChange={handlePaymentChange}
-                        style={styles.input}
-                      />
-                      <Settings size={14} style={{ position: 'absolute', right: '12px', top: '12px', color: '#6b7280' }} />
-                    </div>
-                  </div>
-
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Paid Through*</label>
-                    <TabanSelect
-                      value={paymentFormData.paidThrough}
-                      options={paidThroughAccounts}
-                      groupBy="accountType"
-                      placeholder="Select Paid Through Account"
-                      onChange={(val) => {
-                        const account = paidThroughAccounts.find(a => a.name === val);
-                        setPaymentFormData(prev => ({
-                          ...prev,
-                          paidThrough: val,
-                          paidThroughId: account?._id || account?.id || ""
-                        }));
-                      }}
-                    />
-                  </div>
-
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Reference#</label>
-                    <input
-                      type="text"
-                      name="reference"
-                      value={paymentFormData.reference}
-                      onChange={handlePaymentChange}
-                      style={styles.input}
-                    />
-                  </div>
-                </div>
               </div>
+
+              <div style={styles.paymentDivider} />
 
               <div style={styles.formGroup}>
                 <label style={styles.label}>Notes</label>
@@ -2539,7 +2728,7 @@ export default function BillDetail() {
                   name="notes"
                   value={paymentFormData.notes}
                   onChange={handlePaymentChange}
-                  style={{ ...styles.input, height: '80px', paddingTop: '8px' }}
+                  style={{ ...styles.input, ...styles.paymentNotesBox }}
                 ></textarea>
               </div>
 
@@ -2547,16 +2736,7 @@ export default function BillDetail() {
                 <label style={styles.label}>Attachments</label>
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '8px 16px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '14px'
-                  }}
+                  style={styles.attachmentButton}
                 >
                   <Upload size={14} /> Upload File <ChevronDown size={14} />
                 </div>
@@ -2566,7 +2746,7 @@ export default function BillDetail() {
                 {uploadedFiles.length > 0 && (
                   <div style={{ marginTop: '12px' }}>
                     {uploadedFiles.map(file => (
-                      <div key={file.id} style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <div key={file.id} style={styles.uploadedFileItem}>
                         <Paperclip size={12} /> {file.name}
                       </div>
                     ))}
@@ -2574,23 +2754,23 @@ export default function BillDetail() {
                 )}
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px' }}>
+              <div style={{ ...styles.paymentCheckboxRow, marginBottom: '24px' }}>
                 <input type="checkbox" />
-                <span style={{ fontSize: '14px' }}>Send a Payment Made email notification.</span>
+                <span>Send a Payment Made email notification.</span>
               </div>
 
-              <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={styles.paymentActions}>
                 <button
                   onClick={() => handlePaymentSubmit('draft')}
-                  style={{ ...styles.toolbarButton, padding: '8px 16px' }}
+                  style={styles.secondaryActionButton}
                 >Save as Draft</button>
                 <button
                   onClick={() => handlePaymentSubmit('paid')}
-                  style={{ ...styles.toolbarButton, ...styles.recordPaymentBtn, padding: '8px 16px' }}
+                  style={styles.primaryActionButton}
                 >Save as Paid</button>
                 <button
                   onClick={() => setIsRecordingPayment(false)}
-                  style={{ ...styles.toolbarButton, padding: '8px 16px' }}
+                  style={styles.secondaryActionButton}
                 >Cancel</button>
               </div>
             </div>
@@ -2730,14 +2910,11 @@ export default function BillDetail() {
 
               {showPdfView && (
                 <div style={styles.billDocument} ref={billDocumentRef}>
-                  {getBillStatusDisplay(bill).text.startsWith("OVERDUE") && (
-                    <div style={styles.ribbon}><span style={styles.ribbonText}>Overdue</span></div>
+                  {getBillStatusDisplay(bill).text === "OPEN" && (
+                    <div style={styles.ribbon}><span style={styles.ribbonText}>Open</span></div>
                   )}
                   {getBillStatusDisplay(bill).text === "PAID" && (
                     <div style={styles.ribbon}><span style={{ ...styles.ribbonText, backgroundColor: "#10b981" }}>Paid</span></div>
-                  )}
-                  {getBillStatusDisplay(bill).text === "PARTIALLY PAID" && (
-                    <div style={styles.ribbon}><span style={{ ...styles.ribbonText, backgroundColor: "#156372" }}>Partially Paid</span></div>
                   )}
                   {getBillStatusDisplay(bill).text === "VOID" && (
                     <div style={styles.ribbon}><span style={{ ...styles.ribbonText, backgroundColor: "#6b7280" }}>Void</span></div>
@@ -2995,5 +3172,3 @@ export default function BillDetail() {
     </div>
   );
 }
-
-

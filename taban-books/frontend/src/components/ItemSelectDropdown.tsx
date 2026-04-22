@@ -1,5 +1,6 @@
-import React from 'react';
-import { Plus, Image as ImageIcon, Search } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Plus } from 'lucide-react';
 import { useItemSelect, Item } from '../hooks/useItemSelect';
 
 interface ItemSelectDropdownProps {
@@ -15,9 +16,10 @@ export const ItemSelectDropdown: React.FC<ItemSelectDropdownProps> = ({
     placeholder = "Type or click to select an item.",
     className = "",
 }) => {
+    const menuRef = useRef<HTMLDivElement>(null);
+    const [menuStyle, setMenuStyle] = useState<{ left: number; top: number; width: number } | null>(null);
     const {
         searchTerm,
-        setSearchTerm,
         isOpen,
         setIsOpen,
         items,
@@ -33,8 +35,30 @@ export const ItemSelectDropdown: React.FC<ItemSelectDropdownProps> = ({
         initialValue: value
     });
 
-    // Sync searchTerm with external value if needed (optional, depends on UX)
-    // For now, we rely on the hook's internal state for input, but initialize with value
+    useEffect(() => {
+        if (!isOpen || !dropdownRef.current) return;
+
+        const updateMenuPosition = () => {
+            if (!dropdownRef.current) return;
+            const rect = dropdownRef.current.getBoundingClientRect();
+            setMenuStyle({
+                left: rect.left,
+                top: rect.bottom + 6,
+                width: Math.max(rect.width, 420),
+            });
+        };
+
+        updateMenuPosition();
+
+        const handleScrollOrResize = () => updateMenuPosition();
+        window.addEventListener("resize", handleScrollOrResize);
+        window.addEventListener("scroll", handleScrollOrResize, true);
+
+        return () => {
+            window.removeEventListener("resize", handleScrollOrResize);
+            window.removeEventListener("scroll", handleScrollOrResize, true);
+        };
+    }, [isOpen, dropdownRef]);
 
     return (
         <div className={`relative ${className}`} ref={dropdownRef}>
@@ -47,46 +71,53 @@ export const ItemSelectDropdown: React.FC<ItemSelectDropdownProps> = ({
                 className="w-full border-none outline-none bg-transparent text-sm text-gray-900 placeholder:text-gray-400"
             />
 
-            {isOpen && (
-                <div className="absolute left-0 top-full mt-1 w-[400px] bg-white border border-gray-200 rounded-md shadow-lg z-[9999]">
-                    {/* Header/Add New */}
-                    <div className="bg-blue-600 text-white p-2 hidden"> {/* Hidden header based on design, optional */}
-                        <span className="font-semibold">Items</span>
-                    </div>
-
+            {isOpen && menuStyle && typeof document !== "undefined" ? createPortal(
+                <div
+                    ref={menuRef}
+                    className="fixed z-[13000] overflow-hidden rounded-md border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.18)]"
+                    style={{
+                        left: menuStyle.left,
+                        top: menuStyle.top,
+                        width: menuStyle.width,
+                    }}
+                    onMouseDown={(event) => {
+                        event.stopPropagation();
+                    }}
+                >
                     <div className="max-h-60 overflow-y-auto">
                         {loading ? (
                             <div className="p-4 text-center text-gray-500 text-sm">Loading...</div>
                         ) : items.length > 0 ? (
                             items.map((item) => (
-                                <div
+                                <button
                                     key={item.id}
+                                    type="button"
                                     onClick={() => handleSelectItem(item)}
-                                    className="px-4 py-3 cursor-pointer border-b border-gray-100 last:border-0"
+                                    className="w-full border-b border-slate-100 px-4 py-3 text-left last:border-b-0 hover:bg-[#f3f8ff]"
                                 >
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-gray-900 mb-0.5 truncate">
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div className="min-w-0 flex-1">
+                                            <div className="truncate font-medium text-slate-900">
                                                 {item.name}
                                             </div>
-                                            <div className="text-xs text-gray-500 flex items-center gap-2">
+                                            <div className="mt-1 text-xs text-slate-500">
                                                 <span>SKU: {item.sku || 'N/A'}</span>
-                                                <span className="w-1 h-1 rounded-full bg-gray-300"></span>
-                                                <span>Purchase Rate: AED {item.purchaseRate?.toFixed(2) || '0.00'}</span>
+                                                <span className="mx-1.5 inline-block h-1 w-1 rounded-full bg-slate-300 align-middle" />
+                                                <span>Purchase Rate: KES {item.purchaseRate?.toFixed(2) || '0.00'}</span>
                                             </div>
                                         </div>
                                         {item.trackInventory && (
-                                            <div className="text-right ml-4 flex-shrink-0">
-                                                <div className="text-[10px] uppercase font-bold text-gray-400 mb-0.5">
+                                            <div className="flex-shrink-0 text-right">
+                                                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                                                     Stock on Hand
                                                 </div>
-                                                <div className={`text-sm font-semibold ${item.stockOnHand && item.stockOnHand > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                                <div className={`text-sm font-semibold ${item.stockOnHand && item.stockOnHand > 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                                                     {item.stockOnHand?.toFixed(2) || '0.00'} {item.unit || ''}
                                                 </div>
                                             </div>
                                         )}
                                     </div>
-                                </div>
+                                </button>
                             ))
                         ) : (
                             <div className="p-4 text-center text-gray-500 text-sm">
@@ -95,15 +126,15 @@ export const ItemSelectDropdown: React.FC<ItemSelectDropdownProps> = ({
                         )}
                     </div>
 
-                    {/* Footer - Add New Item */}
-                    <div className="border-t border-gray-200 p-2">
-                        <button className="flex items-center text-blue-500 text-sm font-medium w-full px-2 py-1 rounded">
+                    <div className="border-t border-slate-100 p-2">
+                        <button className="flex w-full items-center rounded px-2 py-1 text-left text-sm font-medium text-[#156372] hover:bg-slate-50">
                             <Plus size={16} className="mr-2" />
                             Add New Item
                         </button>
                     </div>
-                </div>
-            )}
+                </div>,
+                document.body
+            ) : null}
         </div>
     );
 };

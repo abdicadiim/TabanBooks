@@ -1877,8 +1877,8 @@ export default function RecordPayment() {
       : []);
 
   return (
-    <div className="w-full h-screen bg-gray-50 overflow-y-auto">
-      <div className="flex flex-col min-h-screen">
+    <div className="w-full h-screen bg-white overflow-y-auto">
+      <div className="flex flex-col min-h-screen bg-white">
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-white sticky top-0 z-10">
           <h1 className="text-xl font-bold text-gray-800">
@@ -2489,7 +2489,7 @@ export default function RecordPayment() {
                   </div>
                 </div>
 
-                <div className="w-[400px] bg-[#f9fafb] border border-gray-100 rounded-lg p-6 space-y-4">
+                <div className="w-[400px] space-y-4">
                   <div className="flex justify-between items-center text-[13px]">
                     <span className="text-gray-600 font-medium">Amount Received :</span>
                     <span className="text-gray-900">{(parseFloat(formData.amountReceived) || 0).toFixed(2)}</span>
@@ -3904,7 +3904,6 @@ export default function RecordPayment() {
         document.body
       ) : null}
 
-      </div>
     </div>
   );
 }

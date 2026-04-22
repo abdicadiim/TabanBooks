@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
-import { ChevronDown, ChevronUp, Plus, MoreVertical, Star, X, Printer, Trash2, Play, Square, Check, Download, Upload, Settings, RefreshCw, ChevronRight, ArrowUpDown, Search, Lock, User, Users } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, MoreVertical, Star, X, Printer, Trash2, Play, Square, Check, Download, Upload, Settings, RefreshCw, ChevronRight, ArrowUpDown, Search, Lock, User, Users, FileText, CheckCircle } from "lucide-react";
 import BulkUpdateModal from "../shared/BulkUpdateModal";
 import DeleteConfirmationModal from "../shared/DeleteConfirmationModal";
 import ExportBills from "./ExportBills";
@@ -387,9 +387,13 @@ export default function RecurringBills() {
       boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
     },
     header: {
-      padding: "16px 24px",
+      padding: "20px 24px",
       borderBottom: "1px solid #e5e7eb",
-      backgroundColor: "#f9fafb",
+      backgroundColor: "#ffffff",
+      position: "sticky",
+      top: 0,
+      zIndex: 50,
+      marginBottom: "20px", // Space for the first header
     },
     headerContent: {
       display: "flex",
@@ -616,6 +620,10 @@ export default function RecurringBills() {
       textAlign: "left",
       textTransform: "uppercase",
       letterSpacing: "0.5px",
+      position: "sticky",
+      top: "74px", // Height of the sticky main header + space
+      backgroundColor: "#f9fafb",
+      zIndex: 40,
     },
     tableRow: {
       borderBottom: "1px solid #f3f4f6",
@@ -638,6 +646,173 @@ export default function RecurringBills() {
       backgroundColor: "#e5e7eb",
       borderRadius: "4px",
       animation: "pulse 1.5s ease-in-out infinite",
+    },
+    // Advanced Empty State Styles
+    advancedEmptyState: {
+      padding: "60px 24px",
+      backgroundColor: "#ffffff",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      textAlign: "center",
+      maxWidth: "1000px",
+      margin: "0 auto",
+    },
+    emptyStateIconBox: {
+      width: "64px",
+      height: "64px",
+      backgroundColor: "#f3f4f6",
+      borderRadius: "16px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: "24px",
+      color: "#156372",
+    },
+    emptyStateHeading: {
+      fontSize: "28px",
+      fontWeight: "700",
+      color: "#111827",
+      marginBottom: "12px",
+    },
+    emptyStateSubheading: {
+      fontSize: "16px",
+      color: "#4b5563",
+      marginBottom: "32px",
+      maxWidth: "600px",
+      lineHeight: "1.5",
+    },
+    emptyStateMainButton: {
+      backgroundColor: "#156372", // System color
+      color: "#ffffff",
+      padding: "12px 24px",
+      borderRadius: "6px",
+      fontSize: "14px",
+      fontWeight: "600",
+      border: "none",
+      cursor: "pointer",
+      textTransform: "uppercase",
+      marginBottom: "16px",
+      boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
+      transition: "background-color 0.2s",
+    },
+    emptyStateLink: {
+      color: "#156372", // System color
+      fontSize: "14px",
+      fontWeight: "500",
+      textDecoration: "none",
+      cursor: "pointer",
+      marginBottom: "60px",
+    },
+    lifecycleSection: {
+      width: "100%",
+      borderTop: "1px solid #f3f4f6",
+      paddingTop: "60px",
+      marginBottom: "60px",
+    },
+    lifecycleTitle: {
+      fontSize: "18px",
+      fontWeight: "600",
+      color: "#111827",
+      marginBottom: "40px",
+    },
+    diagramContainer: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: "0",
+      width: "100%",
+      maxWidth: "800px",
+      margin: "0 auto",
+    },
+    diagramStep: {
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      gap: "12px",
+      width: "140px",
+      position: "relative",
+    },
+    diagramIconWrapper: {
+      width: "48px",
+      height: "48px",
+      borderRadius: "8px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      color: "#156372",
+      backgroundColor: "#eff6ff",
+      border: "1px solid #dbeafe",
+    },
+    diagramIconWrapperGreen: {
+      width: "48px",
+      height: "48px",
+      borderRadius: "8px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      color: "#156372",
+      backgroundColor: "#eff6ff",
+      border: "1px solid #dbeafe",
+    },
+    diagramLabel: {
+      fontSize: "10px",
+      fontWeight: "700",
+      color: "#4b5563",
+      textTransform: "uppercase",
+      textAlign: "center",
+      lineHeight: "1.2",
+    },
+    diagramConnector: {
+      flex: 1,
+      height: "1px",
+      borderTop: "1px dashed #d1d5db",
+      margin: "0 -20px 24px -20px",
+      minWidth: "40px",
+      position: "relative",
+      top: "-12px",
+    },
+    connectorArrow: {
+      position: "absolute",
+      right: "-2px",
+      top: "-4.5px",
+      width: "0",
+      height: "0",
+      borderTop: "4px solid transparent",
+      borderBottom: "4px solid transparent",
+      borderLeft: "6px solid #d1d5db",
+    },
+    capabilitiesSection: {
+      textAlign: "left",
+      width: "100%",
+      maxWidth: "500px",
+      margin: "0 auto",
+    },
+    capabilitiesTitle: {
+      fontSize: "16px",
+      fontWeight: "600",
+      color: "#111827",
+      marginBottom: "20px",
+    },
+    capabilityList: {
+      listStyle: "none",
+      padding: 0,
+      margin: 0,
+      display: "flex",
+      flexDirection: "column",
+      gap: "12px",
+    },
+    capabilityItem: {
+      display: "flex",
+      alignItems: "flex-start",
+      gap: "10px",
+      fontSize: "14px",
+      color: "#4b5563",
+    },
+    capabilityIcon: {
+      color: "#156372",
+      marginTop: "2px",
+      flexShrink: 0,
     },
   };
 
@@ -705,7 +880,11 @@ export default function RecurringBills() {
           backgroundColor: "#ffffff",
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between"
+          justifyContent: "space-between",
+          position: "sticky",
+          top: 0,
+          zIndex: 60,
+          marginBottom: "10px"
         }}>
           <div style={{
             display: "flex",
@@ -1293,164 +1472,262 @@ export default function RecurringBills() {
 
       {/* Main Content */}
       <div style={styles.tableContainer}>
-        <table style={styles.table}>
-          <thead>
-            <tr style={styles.tableHeaderRow}>
-              <th style={styles.tableHeaderCell}>
-                <input
-                  type="checkbox"
-                  checked={selectedBills.length === filteredBills.length && filteredBills.length > 0}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedBills(filteredBills.map(b => b.id));
-                    } else {
-                      setSelectedBills([]);
-                    }
-                  }}
-                  style={{ cursor: "pointer" }}
-                />
-              </th>
-              <th style={styles.tableHeaderCell}>VENDOR NAME</th>
-              <th style={styles.tableHeaderCell}>PROFILE NAME</th>
-              <th style={styles.tableHeaderCell}>FREQUENCY</th>
-              <th style={styles.tableHeaderCell}>LAST BILL DATE</th>
-              <th style={styles.tableHeaderCell}>NEXT BILL DATE</th>
-              <th style={styles.tableHeaderCell}>STATUS</th>
-              <th style={styles.tableHeaderCell}>AMOUNT</th>
-              <th style={styles.tableHeaderCell}>
-                <button
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: "4px",
-                    display: "flex",
-                    alignItems: "center",
-                    color: "#6b7280",
-                  }}
-                  onClick={() => setShowSearchModal(true)}
-                >
-                  <Search size={16} />
-                </button>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {isRefreshing ? (
-              // Skeleton loading rows
-              Array.from({ length: 5 }).map((_, index) => (
-                <tr key={`skeleton-${index}`} style={styles.tableRow}>
-                  <td style={styles.tableCell}>
-                    <div style={styles.skeletonCheckbox}></div>
-                  </td>
-                  <td style={styles.tableCell}>
-                    <div style={{ ...styles.skeletonCell, width: "120px" }}></div>
-                  </td>
-                  <td style={styles.tableCell}>
-                    <div style={{ ...styles.skeletonCell, width: "100px" }}></div>
-                  </td>
-                  <td style={styles.tableCell}>
-                    <div style={{ ...styles.skeletonCell, width: "80px" }}></div>
-                  </td>
-                  <td style={styles.tableCell}>
-                    <div style={{ ...styles.skeletonCell, width: "90px" }}></div>
-                  </td>
-                  <td style={styles.tableCell}>
-                    <div style={{ ...styles.skeletonCell, width: "90px" }}></div>
-                  </td>
-                  <td style={styles.tableCell}>
-                    <div style={{ ...styles.skeletonCell, width: "70px" }}></div>
-                  </td>
-                  <td style={styles.tableCell}>
-                    <div style={{ ...styles.skeletonCell, width: "80px" }}></div>
-                  </td>
-                </tr>
-              ))
-            ) : (
-              filteredBills.map((bill) => (
-                <tr
-                  key={bill.id}
-                  style={{
-                    ...styles.tableRow,
-                    ...(selectedBills.includes(bill.id) ? { backgroundColor: "#eff6ff" } : {}),
-                  }}
-                  onClick={(e) => {
-                    // Don't navigate if clicking on checkbox
-                    if (e.target.type !== "checkbox" && !e.target.closest('input[type="checkbox"]')) {
-                      navigate(`/purchases/recurring-bills/${bill.id}`);
-                    }
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!selectedBills.includes(bill.id)) {
-                      e.currentTarget.style.backgroundColor = "#f9fafb";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!selectedBills.includes(bill.id)) {
-                      e.currentTarget.style.backgroundColor = "transparent";
-                    }
-                  }}
-                >
-                  <td style={styles.tableCell} onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={selectedBills.includes(bill.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedBills([...selectedBills, bill.id]);
-                        } else {
-                          setSelectedBills(selectedBills.filter(id => id !== bill.id));
-                        }
-                      }}
-                      style={{ cursor: "pointer" }}
-                    />
-                  </td>
-                  <td style={styles.tableCell}>{bill.vendorName}</td>
-                  <td style={styles.tableCell}>
-                    <span
-                      style={{ color: "#156372", cursor: "pointer" }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/purchases/recurring-bills/${bill.id}`);
-                      }}
-                      onMouseEnter={(e) => {
-                        e.target.style.textDecoration = "none";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.target.style.textDecoration = "none";
-                      }}
-                    >
-                      {bill.profileName}
-                    </span>
-                  </td>
-                  <td style={styles.tableCell}>{bill.frequency}</td>
-                  <td style={styles.tableCell}>{bill.lastBillDate || "-"}</td>
-                  <td style={styles.tableCell}>{formatDate(bill.nextBillDate)}</td>
-                  <td style={styles.tableCell}>
-                    <span style={{
-                      color: bill.status === "ACTIVE" ? "#10b981" :
-                        bill.status === "STOPPED" ? "#156372" :
-                          bill.status === "EXPIRED" ? "#f59e0b" : "#6b7280",
-                      fontWeight: "500"
-                    }}>
-                      {bill.status}
-                    </span>
-                  </td>
-                  <td style={styles.tableCell}>
-                    {displayCurrencySymbol} {parseFloat(bill.amount || 0).toFixed(2)}
-                  </td>
-                </tr>
-              ))
-            )}
-            {filteredBills.length === 0 && !isRefreshing && (
-              <tr>
-                <td colSpan="9" style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>
-                  No recurring bills found
-                </td>
+        {recurringBills.length === 0 && !isRefreshing ? (
+          <div style={styles.advancedEmptyState}>
+            <div style={styles.emptyStateHeading}>Create. Set. Repeat.</div>
+            <div style={styles.emptyStateSubheading}>
+              Do you pay bills every so often? Start paying your vendors on time by creating recurring bills.
+            </div>
+            
+            <button 
+              style={styles.emptyStateMainButton}
+              onClick={() => navigate("/purchases/recurring-bills/new")}
+              onMouseEnter={(e) => e.target.style.backgroundColor = "#0D4A52"}
+              onMouseLeave={(e) => e.target.style.backgroundColor = "#156372"}
+            >
+              CREATE RECURRING BILL
+            </button>
+            
+            <button 
+              style={styles.emptyStateLink}
+              onClick={() => navigate("/purchases/recurring-bills/import")}
+            >
+              Import Recurring Bills
+            </button>
+
+            {/* Lifecycle Section */}
+            <div style={styles.lifecycleSection}>
+              <div style={styles.lifecycleTitle}>Life cycle of a Recurring Bill</div>
+              
+              <div style={styles.diagramContainer}>
+                {/* Step 1 */}
+                <div style={styles.diagramStep}>
+                  <div style={styles.diagramIconWrapper}>
+                    <RefreshCw size={20} />
+                  </div>
+                  <div style={styles.diagramLabel}>ROUTINE PURCHASE</div>
+                </div>
+                
+                {/* Connector */}
+                <div style={styles.diagramConnector}>
+                  <div style={styles.connectorArrow}></div>
+                </div>
+                
+                {/* Step 2 */}
+                <div style={styles.diagramStep}>
+                  <div style={styles.diagramIconWrapper}>
+                    <User size={20} />
+                  </div>
+                  <div style={styles.diagramLabel}>CREATE RECURRING PROFILE</div>
+                </div>
+                
+                {/* Connector */}
+                <div style={styles.diagramConnector}>
+                  <div style={styles.connectorArrow}></div>
+                </div>
+                
+                {/* Step 3 */}
+                <div style={styles.diagramStep}>
+                  <div style={styles.diagramIconWrapper}>
+                    <FileText size={20} />
+                  </div>
+                  <div style={styles.diagramLabel}>GENERATED BILL</div>
+                </div>
+                
+                {/* Connector */}
+                <div style={styles.diagramConnector}>
+                  <div style={styles.connectorArrow}></div>
+                </div>
+                
+                {/* Step 4 */}
+                <div style={styles.diagramStep}>
+                  <div style={styles.diagramIconWrapperGreen}>
+                    <CheckCircle size={20} />
+                  </div>
+                  <div style={styles.diagramLabel}>RECORD PAYMENT</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Capabilities Section */}
+            <div style={styles.capabilitiesSection}>
+              <div style={styles.capabilitiesTitle}>In the Recurring Bills module, you can:</div>
+              <ul style={styles.capabilityList}>
+                <li style={styles.capabilityItem}>
+                  <CheckCircle size={16} style={styles.capabilityIcon} />
+                  <span>Create a recurring profile to automatically generate bills.</span>
+                </li>
+                <li style={styles.capabilityItem}>
+                  <CheckCircle size={16} style={styles.capabilityIcon} />
+                  <span>View when each bill was generated under the recurring profile.</span>
+                </li>
+                <li style={styles.capabilityItem}>
+                  <CheckCircle size={16} style={styles.capabilityIcon} />
+                  <span>Create an individual bill within the recurring profile.</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        ) : (
+          <table style={styles.table}>
+            <thead>
+              <tr style={styles.tableHeaderRow}>
+                <th style={styles.tableHeaderCell}>
+                  <input
+                    type="checkbox"
+                    checked={selectedBills.length === filteredBills.length && filteredBills.length > 0}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedBills(filteredBills.map(b => b.id));
+                      } else {
+                        setSelectedBills([]);
+                      }
+                    }}
+                    style={{ cursor: "pointer" }}
+                  />
+                </th>
+                <th style={styles.tableHeaderCell}>VENDOR NAME</th>
+                <th style={styles.tableHeaderCell}>PROFILE NAME</th>
+                <th style={styles.tableHeaderCell}>FREQUENCY</th>
+                <th style={styles.tableHeaderCell}>LAST BILL DATE</th>
+                <th style={styles.tableHeaderCell}>NEXT BILL DATE</th>
+                <th style={styles.tableHeaderCell}>STATUS</th>
+                <th style={styles.tableHeaderCell}>AMOUNT</th>
+                <th style={styles.tableHeaderCell}>
+                  <button
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: "4px",
+                      display: "flex",
+                      alignItems: "center",
+                      color: "#6b7280",
+                    }}
+                    onClick={() => setShowSearchModal(true)}
+                  >
+                    <Search size={16} />
+                  </button>
+                </th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {isRefreshing ? (
+                // Skeleton loading rows
+                Array.from({ length: 5 }).map((_, index) => (
+                  <tr key={`skeleton-${index}`} style={styles.tableRow}>
+                    <td style={styles.tableCell}>
+                      <div style={styles.skeletonCheckbox}></div>
+                    </td>
+                    <td style={styles.tableCell}>
+                      <div style={{ ...styles.skeletonCell, width: "120px" }}></div>
+                    </td>
+                    <td style={styles.tableCell}>
+                      <div style={{ ...styles.skeletonCell, width: "100px" }}></div>
+                    </td>
+                    <td style={styles.tableCell}>
+                      <div style={{ ...styles.skeletonCell, width: "80px" }}></div>
+                    </td>
+                    <td style={styles.tableCell}>
+                      <div style={{ ...styles.skeletonCell, width: "90px" }}></div>
+                    </td>
+                    <td style={styles.tableCell}>
+                      <div style={{ ...styles.skeletonCell, width: "90px" }}></div>
+                    </td>
+                    <td style={styles.tableCell}>
+                      <div style={{ ...styles.skeletonCell, width: "70px" }}></div>
+                    </td>
+                    <td style={styles.tableCell}>
+                      <div style={{ ...styles.skeletonCell, width: "80px" }}></div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                filteredBills.map((bill) => (
+                  <tr
+                    key={bill.id}
+                    style={{
+                      ...styles.tableRow,
+                      ...(selectedBills.includes(bill.id) ? { backgroundColor: "#eff6ff" } : {}),
+                    }}
+                    onClick={(e) => {
+                      // Don't navigate if clicking on checkbox
+                      if (e.target.type !== "checkbox" && !e.target.closest('input[type="checkbox"]')) {
+                        navigate(`/purchases/recurring-bills/${bill.id}`);
+                      }
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!selectedBills.includes(bill.id)) {
+                        e.currentTarget.style.backgroundColor = "#f9fafb";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!selectedBills.includes(bill.id)) {
+                        e.currentTarget.style.backgroundColor = "transparent";
+                      }
+                    }}
+                  >
+                    <td style={styles.tableCell} onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedBills.includes(bill.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedBills([...selectedBills, bill.id]);
+                          } else {
+                            setSelectedBills(selectedBills.filter(id => id !== bill.id));
+                          }
+                        }}
+                        style={{ cursor: "pointer" }}
+                      />
+                    </td>
+                    <td style={styles.tableCell}>{bill.vendorName}</td>
+                    <td style={styles.tableCell}>
+                      <span
+                        style={{ color: "#156372", cursor: "pointer" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/purchases/recurring-bills/${bill.id}`);
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.textDecoration = "none";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.textDecoration = "none";
+                        }}
+                      >
+                        {bill.profileName}
+                      </span>
+                    </td>
+                    <td style={styles.tableCell}>{bill.frequency}</td>
+                    <td style={styles.tableCell}>{bill.lastBillDate || "-"}</td>
+                    <td style={styles.tableCell}>{formatDate(bill.nextBillDate)}</td>
+                    <td style={styles.tableCell}>
+                      <span style={{
+                        color: bill.status === "ACTIVE" ? "#10b981" :
+                          bill.status === "STOPPED" ? "#156372" :
+                            bill.status === "EXPIRED" ? "#f59e0b" : "#6b7280",
+                        fontWeight: "500"
+                      }}>
+                        {bill.status}
+                      </span>
+                    </td>
+                    <td style={styles.tableCell}>
+                      {displayCurrencySymbol} {parseFloat(bill.amount || 0).toFixed(2)}
+                    </td>
+                  </tr>
+                ))
+              )}
+              {filteredBills.length === 0 && recurringBills.length > 0 && !isRefreshing && (
+                <tr>
+                  <td colSpan="9" style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>
+                    No recurring bills found for the selected criteria
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* New Custom View Modal */}
