@@ -60,24 +60,24 @@ const QuoteDetail = () => {
   const location = useLocation();
   const preloadedQuote = (location.state as any)?.preloadedQuote || null;
   const preloadedQuotes = (location.state as any)?.preloadedQuotes || null;
-  const [quote, setQuote] = useState(preloadedQuote);
-  const [allQuotes, setAllQuotes] = useState(preloadedQuotes || []);
-  const [loading, setLoading] = useState(!preloadedQuote);
-  const [baseCurrency, setBaseCurrency] = useState("USD");
+  const [quote, setQuote] = useState<any>(preloadedQuote);
+  const [allQuotes, setAllQuotes] = useState<any[]>(preloadedQuotes || []);
+  const [loading, setLoading] = useState<boolean>(!preloadedQuote);
+  const [baseCurrency, setBaseCurrency] = useState<string>("USD");
   const [linkedInvoices, setLinkedInvoices] = useState<any[]>([]);
-  const [linkedInvoicesLoading, setLinkedInvoicesLoading] = useState(false);
+  const [linkedInvoicesLoading, setLinkedInvoicesLoading] = useState<boolean>(false);
   const linkedInvoicesLoadedForQuoteRef = useRef<string>("");
-  const [activeTab, setActiveTab] = useState("details");
-  const [showPdfView, setShowPdfView] = useState(true);
-  const [showMailDropdown, setShowMailDropdown] = useState(false);
   const [showPdfDropdown, setShowPdfDropdown] = useState(false);
+  const [showMailDropdown, setShowMailDropdown] = useState(false);
   const [showMoreDropdown, setShowMoreDropdown] = useState(false);
   const [showConvertDropdown, setShowConvertDropdown] = useState(false);
   const [showSidebarMoreDropdown, setShowSidebarMoreDropdown] = useState(false);
+  const [showPdfView, setShowPdfView] = useState(false);
   const [isCloningQuote, setIsCloningQuote] = useState(false);
   const [selectedQuotes, setSelectedQuotes] = useState<string[]>([]);
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState("All Quotes");
+  const [activeTab, setActiveTab] = useState<"details" | "invoices" | "activity" | "retainerInvoices">("details");
   const [isBulkActionsOpen, setIsBulkActionsOpen] = useState(false);
   const [isBulkUpdateModalOpen, setIsBulkUpdateModalOpen] = useState(false);
   const [isMarkAsSentModalOpen, setIsMarkAsSentModalOpen] = useState(false);
@@ -181,7 +181,7 @@ const QuoteDetail = () => {
     industry: ""
   });
   const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string>("");
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [termsData, setTermsData] = useState({
     notes: "Looking forward for your business.",
     termsAndConditions: "",
@@ -651,32 +651,32 @@ const QuoteDetail = () => {
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (isBulkActionsOpen && !target.closest('.quote-detail-bulk-actions-wrapper')) {
+      const target = event.target as Node;
+      if (isBulkActionsOpen && !(target as Element).closest('.quote-detail-bulk-actions-wrapper')) {
         setIsBulkActionsOpen(false);
       }
-      if (isBulkFieldDropdownOpen && !target.closest('.bulk-update-field-dropdown-wrapper')) {
+      if (isBulkFieldDropdownOpen && !(target as Element).closest('.bulk-update-field-dropdown-wrapper')) {
         setIsBulkFieldDropdownOpen(false);
       }
-      if (showMailDropdown && !target.closest('.quote-detail-dropdown-wrapper')) {
+      if (showMailDropdown && !(target as Element).closest('.quote-detail-dropdown-wrapper')) {
         setShowMailDropdown(false);
       }
-      if (showPdfDropdown && !target.closest('.quote-detail-dropdown-wrapper')) {
+      if (showPdfDropdown && !(target as Element).closest('.quote-detail-dropdown-wrapper')) {
         setShowPdfDropdown(false);
       }
-      if (showMoreDropdown && !target.closest('.quote-detail-dropdown-wrapper')) {
+      if (showMoreDropdown && !(target as Element).closest('.quote-detail-dropdown-wrapper')) {
         setShowMoreDropdown(false);
       }
-      if (showConvertDropdown && !target.closest('.quote-detail-dropdown-wrapper')) {
+      if (showConvertDropdown && !(target as Element).closest('.quote-detail-dropdown-wrapper')) {
         setShowConvertDropdown(false);
       }
-      if (showSidebarMoreDropdown && !target.closest('.quote-detail-sidebar-more-wrapper')) {
+      if (showSidebarMoreDropdown && !(target as Element).closest('.quote-detail-sidebar-more-wrapper')) {
         setShowSidebarMoreDropdown(false);
       }
-      if (isVisibilityDropdownOpen && visibilityDropdownRef.current && !visibilityDropdownRef.current.contains(target)) {
+      if (isVisibilityDropdownOpen && visibilityDropdownRef.current && !(visibilityDropdownRef.current as any).contains(target)) {
         setIsVisibilityDropdownOpen(false);
       }
-      if (isCustomizeDropdownOpen && customizeDropdownRef.current && !customizeDropdownRef.current.contains(target)) {
+      if (isCustomizeDropdownOpen && customizeDropdownRef.current && !(customizeDropdownRef.current as any).contains(target)) {
         setIsCustomizeDropdownOpen(false);
       }
     };
@@ -888,7 +888,7 @@ const QuoteDetail = () => {
         </body>
         </html>
       `);
-        printWindow.document.close();
+      printWindow.document.close();
         printWindow.focus();
         printWindow.print();
       }
@@ -1059,7 +1059,7 @@ const QuoteDetail = () => {
     navigate("/sales/quotes/new");
   };
 
-  function formatDate(dateString: any) {
+  const formatDate = (dateString: any) => {
     if (!dateString) return "-";
     const date = new Date(dateString);
     return date.toLocaleDateString("en-GB", {
@@ -1067,20 +1067,20 @@ const QuoteDetail = () => {
       month: "short",
       year: "numeric",
     });
-  }
+  };
 
-  function formatCurrency(amount: any, currency = baseCurrency) {
+  const formatCurrency = (amount: any, currency = baseCurrency) => {
     // Extract only the currency symbol (first 3-4 characters before any space or dash)
     const currencySymbol = currency ? currency.split(' - ')[0].split(' ')[0] : baseCurrency;
     return `${currencySymbol}${parseFloat(amount || 0).toLocaleString("en-US", {
       minimumFractionDigits: 2,
     })}`;
-  }
+  };
 
-  function toNumber(value: any) {
+  const toNumber = (value: any) => {
     const parsed = parseFloat(String(value ?? 0));
     return Number.isFinite(parsed) ? parsed : 0;
-  }
+  };
 
   const isSameDay = (a: Date, b: Date) =>
     a.getFullYear() === b.getFullYear() &&
@@ -1922,7 +1922,7 @@ const QuoteDetail = () => {
   };
 
   // Generate HTML content for a specific quote (used for bulk export)
-  function generateQuoteHTMLForQuote(quoteData: any) {
+  const generateQuoteHTMLForQuote = (quoteData: any) => {
     if (!quoteData) return '';
 
     const itemsHTML = quoteData.items && quoteData.items.length > 0 ? quoteData.items.map((item: any, index: number) => {
@@ -2316,7 +2316,7 @@ const QuoteDetail = () => {
     if (!quote) return;
 
     if (quoteId) {
-      setSelectedQuotes([quoteId as string]);
+      setSelectedQuotes([String(quoteId)]);
     }
     setIsDeleteModalOpen(true);
   };
@@ -2698,7 +2698,7 @@ const QuoteDetail = () => {
       const updatedQuote = await updateQuote(quoteId, { comments: commentsPayload });
       setQuote(updatedQuote);
       const normalizedComments = Array.isArray(updatedQuote?.comments)
-        ? updatedQuote.comments.map((entry, index) => normalizeCommentFromQuote(entry, index))
+        ? (updatedQuote.comments as any[]).map((entry, index) => normalizeCommentFromQuote(entry, index))
         : updatedComments;
       setComments(normalizedComments);
       localStorage.setItem(`quote_comments_${quoteId}`, JSON.stringify(normalizedComments));
@@ -4794,14 +4794,14 @@ const QuoteDetail = () => {
                     type="file"
                     multiple
                     className="hidden"
-                    onChange={(e) => {
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       const files = Array.from(e.target.files || []);
                       const newAttachments = files.map(file => ({
                         name: file.name,
                         type: file.type,
                         file: file,
                       }));
-                      setAttachments([...attachments, ...newAttachments]);
+                      setAttachments([...attachments, ...newAttachments] as any);
                     }}
                   />
                 </div>
@@ -4817,8 +4817,8 @@ const QuoteDetail = () => {
                 <button
                   className="px-4 py-2 text-white rounded-md text-sm font-medium cursor-pointer transition-colors"
                   style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                  onMouseEnter={(e: any) => e.target.style.opacity = "0.9"}
-                  onMouseLeave={(e: any) => e.target.style.opacity = "1"}
+                  onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.opacity = "0.9"}
+                  onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.opacity = "1"}
                   onClick={() => {
                     if (!emailData.sendTo) {
                       toast.error("Please enter a recipient email address.");
@@ -4839,7 +4839,7 @@ const QuoteDetail = () => {
         {showShareModal && quote && (
           <div
             className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
-            onClick={(e) => {
+            onClick={(e: React.MouseEvent<HTMLDivElement>) => {
               if (e.target === e.currentTarget) {
                 setShowShareModal(false);
               }
@@ -4848,7 +4848,7 @@ const QuoteDetail = () => {
             <div
               className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] flex flex-col"
               ref={shareModalRef}
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between p-6 border-b border-gray-200">
                 <h2 className="text-xl font-semibold text-gray-900">
@@ -4914,7 +4914,7 @@ const QuoteDetail = () => {
                   <input
                     type="text"
                     value={linkExpirationDate}
-                    onChange={(e) => setLinkExpirationDate(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLinkExpirationDate(e.target.value)}
                     placeholder="DD/MM/YYYY"
                     className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -4946,8 +4946,8 @@ const QuoteDetail = () => {
                     <button
                       className="px-4 py-2 text-white rounded-md text-sm font-medium cursor-pointer transition-colors"
                       style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                      onMouseEnter={(e: any) => e.target.style.opacity = "0.9"}
-                      onMouseLeave={(e: any) => e.target.style.opacity = "1"}
+                      onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.opacity = "0.9"}
+                      onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.opacity = "1"}
                       onClick={handleCopyLink}
                     >
                       Copy Link
@@ -4959,8 +4959,8 @@ const QuoteDetail = () => {
                     <button
                       className="px-4 py-2 text-white rounded-md text-sm font-medium cursor-pointer transition-colors"
                       style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                      onMouseEnter={(e: any) => e.target.style.opacity = "0.9"}
-                      onMouseLeave={(e: any) => e.target.style.opacity = "1"}
+                      onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.opacity = "0.9"}
+                      onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.opacity = "1"}
                       onClick={handleGenerateLink}
                     >
                       Generate Link
@@ -4989,7 +4989,7 @@ const QuoteDetail = () => {
         {showAttachmentsModal && (
           <div
             className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
-            onClick={(e) => {
+            onClick={(e: React.MouseEvent<HTMLDivElement>) => {
               if (e.target === e.currentTarget) {
                 setShowAttachmentsModal(false);
               }
@@ -4997,7 +4997,7 @@ const QuoteDetail = () => {
           >
             <div
               className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] flex flex-col"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}
             >
               {/* Header */}
               <div className="flex items-center justify-between p-6 border-b border-gray-200">
@@ -5045,7 +5045,7 @@ const QuoteDetail = () => {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {quoteAttachments.map((attachment) => {
+                    {quoteAttachments.map((attachment: any) => {
                       const isImage = isImageFileAttachment(attachment);
                       const previewSource = attachment.preview || attachment.url;
                       return (
@@ -5074,7 +5074,7 @@ const QuoteDetail = () => {
                             </div>
                           </div>
                           <button
-                            onClick={(e) => {
+                            onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                               e.stopPropagation();
                               handleRemoveAttachment(attachment.id);
                             }}
@@ -5116,7 +5116,7 @@ const QuoteDetail = () => {
                   type="file"
                   multiple
                   className="hidden"
-                  onChange={(e) => {
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                     const files = Array.from(e.target.files || []);
                     if (files.length > 0) {
                       handleFileUpload(files);
@@ -5138,7 +5138,7 @@ const QuoteDetail = () => {
               setSelectedImage(null);
             }}
           >
-            <div className="max-w-4xl max-h-[90vh] p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="max-w-4xl max-h-[90vh] p-4" onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}>
               <button
                 className="absolute top-4 right-4 p-2 bg-white rounded-full hover:bg-gray-100 text-gray-900"
                 onClick={() => {
@@ -5163,8 +5163,8 @@ const QuoteDetail = () => {
             onClose={() => setShowCommentsSidebar(false)}
             quoteId={String(quoteId || quote?.id || quote?._id || "")}
             comments={comments}
-            onCommentsChange={(nextComments) => {
-              setComments(nextComments as any);
+            onCommentsChange={(nextComments: any) => {
+              setComments(nextComments);
               setQuote((prev: any) => (prev ? { ...prev, comments: nextComments } : prev));
             }}
             updateQuote={updateQuote}
@@ -5176,7 +5176,7 @@ const QuoteDetail = () => {
           <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-end">
             <div
               className="bg-white w-full max-w-md h-full shadow-xl flex flex-col"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}
             >
               {/* Header */}
               <div className="flex items-center justify-between p-6 border-b border-gray-200">
@@ -5216,7 +5216,7 @@ const QuoteDetail = () => {
                 </div>
                 <textarea
                   value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewComment(e.target.value)}
                   placeholder="Add a comment..."
                   className="w-full p-3 border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                   rows={4}
@@ -5231,7 +5231,12 @@ const QuoteDetail = () => {
                     ? 'bg-gray-300 text-gray-700 hover:bg-gray-400'
                     : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                     }`}
-                  onClick={handleAddComment}
+                  onClick={() => handleAddComment({
+                    text: newComment,
+                    bold: commentBold,
+                    italic: commentItalic,
+                    underline: commentUnderline
+                  })}
                   disabled={!newComment.trim() || isSavingComment}
                 >
                   {isSavingComment ? "Saving..." : "Add Comment"}
@@ -5248,7 +5253,7 @@ const QuoteDetail = () => {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {comments.map((comment) => (
+                      {comments.map((comment: any) => (
                         <div key={comment.id} className="border-b border-gray-200 pb-4 last:border-0">
                           <div className="flex items-start gap-2 mb-2">
                             <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold" style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}>
@@ -5285,7 +5290,7 @@ const QuoteDetail = () => {
         {showCustomFieldsModal && (
           <div
             className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
-            onClick={(e) => {
+            onClick={(e: React.MouseEvent<HTMLDivElement>) => {
               if (e.target === e.currentTarget) {
                 setShowCustomFieldsModal(false);
               }
@@ -5293,7 +5298,7 @@ const QuoteDetail = () => {
           >
             <div
               className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}
             >
               {/* Header */}
               <div className="flex items-center justify-between p-6 border-b border-gray-200">
@@ -5313,8 +5318,8 @@ const QuoteDetail = () => {
                   <button
                     className="flex items-center gap-2 px-4 py-2 text-white rounded-md text-sm font-medium cursor-pointer transition-colors"
                     style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                    onMouseEnter={(e: any) => e.target.style.opacity = "0.9"}
-                    onMouseLeave={(e: any) => e.target.style.opacity = "1"}
+                    onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.opacity = "0.9"}
+                    onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.opacity = "1"}
                   >
                     <Plus size={16} />
                     New
@@ -5334,7 +5339,7 @@ const QuoteDetail = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {customFields.map((field) => (
+                      {customFields.map((field: any) => (
                         <tr key={field.id} className="border-b border-gray-200 hover:bg-gray-50">
                           <td className="px-4 py-3 text-gray-900">
                             <div className="flex items-center gap-2">
@@ -5375,7 +5380,7 @@ const QuoteDetail = () => {
           <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
             <div
               className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}
             >
               {/* Modal Header */}
               <div className="flex items-center justify-between p-6 border-b border-gray-200">
@@ -5383,8 +5388,8 @@ const QuoteDetail = () => {
                 <button
                   className="p-2 text-white rounded transition-colors"
                   style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                  onMouseEnter={(e: any) => e.target.style.opacity = "0.9"}
-                  onMouseLeave={(e: any) => e.target.style.opacity = "1"}
+                  onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.opacity = "0.9"}
+                  onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.opacity = "1"}
                   onClick={() => setIsOrganizationAddressModalOpen(false)}
                 >
                   <X size={20} />
@@ -5407,8 +5412,8 @@ const QuoteDetail = () => {
                         <button
                           className="absolute -top-2 -right-2 p-1 text-white rounded-full transition-colors"
                           style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                          onMouseEnter={(e: any) => e.target.style.opacity = "0.9"}
-                          onMouseLeave={(e: any) => e.target.style.opacity = "1"}
+                          onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.opacity = "0.9"}
+                          onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.opacity = "1"}
                           onClick={() => {
                             setLogoPreview("");
                             setLogoFile(null);
@@ -5427,13 +5432,13 @@ const QuoteDetail = () => {
                         type="file"
                         ref={organizationAddressFileInputRef}
                         accept="image/*"
-                        onChange={(e) => {
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                           const file = e.target.files?.[0];
                           if (file) {
                             setLogoFile(file);
                             const reader = new FileReader();
                             reader.onloadend = () => {
-                              setLogoPreview(reader.result as string || "");
+                              setLogoPreview(reader.result as string);
                             };
                             reader.readAsDataURL(file);
                           }
@@ -5443,8 +5448,8 @@ const QuoteDetail = () => {
                       <button
                         className="px-4 py-2 text-white rounded-md text-sm font-medium transition-colors"
                         style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                        onMouseEnter={(e: any) => e.target.style.opacity = "0.9"}
-                        onMouseLeave={(e: any) => e.target.style.opacity = "1"}
+                        onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.opacity = "0.9"}
+                        onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.opacity = "1"}
                         onClick={() => (organizationAddressFileInputRef.current as any)?.click()}
                       >
                         Upload Logo
