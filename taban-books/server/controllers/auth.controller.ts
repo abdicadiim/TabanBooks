@@ -53,6 +53,8 @@ interface LoginBody {
   password: string;
 }
 
+const normalizeEmail = (email: string = ""): string => String(email || "").trim().toLowerCase();
+
 const DEFAULT_BRANDING = {
   appearance: "dark",
   accentColor: "#3b82f6",
@@ -159,7 +161,8 @@ export const signup = async (req: Request<{}, {}, SignupBody>, res: Response): P
   try {
     logRequest(req, { controller: 'signup', action: 'user_registration' });
 
-    const { name, email, password, organizationName } = req.body;
+    const { name, password, organizationName } = req.body;
+    const email = normalizeEmail(req.body.email);
 
     // Validate input
     if (!name || !email || !password || !organizationName) {
@@ -288,7 +291,8 @@ export const login = async (req: Request<{}, {}, LoginBody>, res: Response): Pro
   try {
     logRequest(req, { controller: 'login', action: 'user_authentication' });
 
-    const { email, password } = req.body;
+    const password = req.body.password;
+    const email = normalizeEmail(req.body.email);
 
     if (!email || !password) {
       logError(new Error("Missing email or password"), { controller: 'login' });
@@ -682,7 +686,7 @@ export const verifyAccount = async (req: AuthRequest, res: Response): Promise<vo
  */
 export const checkUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email } = req.body;
+    const email = normalizeEmail(req.body.email);
     if (!email) {
       res.status(400).json({ success: false, message: "Email is required" });
       return;
@@ -717,7 +721,7 @@ export const checkUser = async (req: Request, res: Response): Promise<void> => {
  */
 export const sendLoginOTP = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email } = req.body;
+    const email = normalizeEmail(req.body.email);
     if (!email) {
       res.status(400).json({ success: false, message: "Email is required" });
       return;
@@ -762,7 +766,8 @@ export const sendLoginOTP = async (req: Request, res: Response): Promise<void> =
  */
 export const verifyLoginOTP = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, otp } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const { otp } = req.body;
     if (!email || !otp) {
       res.status(400).json({ success: false, message: "Email and OTP are required" });
       return;

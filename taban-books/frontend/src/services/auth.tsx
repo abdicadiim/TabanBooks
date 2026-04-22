@@ -426,10 +426,29 @@ export const checkUser = async (email: string): Promise<{ hasPassword: boolean; 
       body: JSON.stringify({ email }),
     });
 
-    const data = await response.json();
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      if (response.status === 404 && text.includes('<!DOCTYPE')) {
+        throw new Error('Backend server is not running. Please start the server on port 5000.');
+      }
+      throw new Error(
+        text
+          ? `Server returned non-JSON response (${response.status}): ${text.substring(0, 100)}`
+          : `Server returned an empty response (${response.status})`,
+      );
+    }
+
+    const data = await response.json().catch(() => {
+      throw new Error(`Server returned invalid JSON (${response.status})`);
+    });
     if (!response.ok) throw new Error(data.message || 'Error checking user');
     return data.data;
-  } catch (error) {
+  } catch (error: any) {
+    if ((error.message && error.message.includes('Failed to fetch')) || (error.message && error.message.includes('NetworkError'))) {
+      console.error('Check user error: Cannot connect to backend server. Make sure the server is running on port 5000.');
+      throw new Error('Cannot connect to backend server. Please ensure the server is running.');
+    }
     console.error('Check user error:', error);
     throw error;
   }
