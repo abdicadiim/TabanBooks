@@ -152,12 +152,18 @@ Amount : ${currency}${amount.toFixed(2)}
 
       try {
         const primarySenderRes = await senderEmailsAPI.getPrimary();
-        const sender = resolveVerifiedPrimarySender(primarySenderRes, fallbackName, fallbackEmail);
-        if (!cancelled) {
+        const primaryData = primarySenderRes?.data;
+        if (!cancelled && primaryData) {
           setEmailData((prev) => ({
             ...prev,
-            fromName: sender.name,
-            fromEmail: sender.email || fallbackEmail,
+            fromName: primaryData.email || primaryData.name || fallbackName,
+            fromEmail: primaryData.email || fallbackEmail,
+          }));
+        } else if (!cancelled) {
+          setEmailData((prev) => ({
+            ...prev,
+            fromName: fallbackName,
+            fromEmail: fallbackEmail,
           }));
         }
       } catch (error) {

@@ -28,7 +28,7 @@ export interface ApiRequestOptions {
   [key: string]: any;
 }
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL
+export const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL
   ? `${(import.meta as any).env.VITE_API_BASE_URL}/api`
   : '/api';
 const API_DEBUG_ENABLED = (import.meta as any).env?.VITE_API_DEBUG === 'true';
@@ -606,6 +606,7 @@ export const debitNotesAPI = {
   create: (data: any) => apiRequest('/debit-notes', { method: 'POST', body: data }),
   update: (id: any, data: any) => apiRequest(`/debit-notes/${id}`, { method: 'PUT', body: data }),
   delete: (id: any) => apiRequest(`/debit-notes/${id}`, { method: 'DELETE' }),
+  sendEmail: (id: any, data: any) => apiRequest(`/debit-notes/${id}/email`, { method: 'POST', body: data }),
 };
 
 // ============================================================================
@@ -1238,9 +1239,9 @@ export const currenciesAPI = {
 // ============================================================================
 
 export const taxesAPI = {
-  getAll: (params: any = {}) => {
+  getAll: (params: any = {}, options: ApiRequestOptions = {}) => {
     const queryString = new URLSearchParams(params).toString();
-    return apiRequest(`/settings/taxes${queryString ? `?${queryString}` : ''}`);
+    return apiRequest(`/settings/taxes${queryString ? `?${queryString}` : ""}`, options);
   },
   getForTransactions: (type: "sales" | "purchase" | "both" | "" = "") => {
     const params: any = { forTransactions: "true" };

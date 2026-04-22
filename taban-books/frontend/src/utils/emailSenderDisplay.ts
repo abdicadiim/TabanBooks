@@ -23,7 +23,7 @@ const extractSender = (response: any): SenderLike => {
   };
 };
 
-export const resolveVerifiedPrimarySender = (
+export const resolvePrimarySender = (
   response: any,
   fallbackName = "System",
   fallbackEmail = ""
@@ -31,7 +31,7 @@ export const resolveVerifiedPrimarySender = (
   const sender = extractSender(response);
 
   return {
-    name: sender.name || normalizeText(fallbackName) || "System",
+    name: sender.email || sender.name || normalizeText(fallbackName) || "System",
     email: sender.email || normalizeText(fallbackEmail),
     isVerified: Boolean(sender.isVerified),
   };
@@ -45,5 +45,5 @@ export const formatSenderDisplay = (
   const name = normalizeText(senderName) || normalizeText(fallbackName) || "System";
   const email = normalizeText(senderEmail);
 
-  return email ? `${name} <${email}>` : name;
+  return email ? `"${email}" <${email}>` : name;
 };

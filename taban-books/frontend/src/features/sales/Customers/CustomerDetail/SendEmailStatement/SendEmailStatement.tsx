@@ -91,12 +91,11 @@ export default function SendEmailStatement() {
 
         const entityData = entityResponse?.data || entityResponse;
 
-        if (entityData) {
-          setCustomer(entityData); // Still using 'customer' state for 'entity' to minimize changes
-
+        const primaryData = senderResponse?.data;
+        if (primaryData) {
           const fromAddress = formatSenderDisplay(
-            senderResponse?.data?.name || "The Team",
-            senderResponse?.data?.email || "billing@example.com",
+            primaryData.email || primaryData.name || "The Team",
+            primaryData.email || "billing@example.com",
             "The Team"
           );
 
@@ -105,7 +104,7 @@ export default function SendEmailStatement() {
             Attached with this email is a list of all transactions for the period between ${formatDate(startDate)} to ${formatDate(endDate)}.<br/>
             If you have any questions, just drop us an email or call us.<br/><br/>
             Regards,<br/>
-            ${senderResponse?.data?.isVerified ? senderResponse.data.name : "The Team"}`;
+            ${primaryData.email || primaryData.name || "The Team"}`;
           let templateSubject = `Account Statement from ${formatDate(startDate)} to ${formatDate(endDate)}`;
           let templateBody = initialBody;
           const templateKey = entityType === "vendor" ? "vendor_statement" : "customer_statement";
@@ -119,14 +118,14 @@ export default function SendEmailStatement() {
                 EndDate: formatDate(endDate),
                 CustomerName: entityData.displayName || entityData.name || "Customer",
                 VendorName: entityData.displayName || entityData.name || "Vendor",
-                SenderName: senderResponse?.data?.name || "The Team",
+                SenderName: primaryData.email || primaryData.name || "The Team",
               });
               templateBody = applyEmailTemplate(template.emailBody || template.body || templateBody, {
                 StartDate: formatDate(startDate),
                 EndDate: formatDate(endDate),
                 CustomerName: entityData.displayName || entityData.name || "Customer",
                 VendorName: entityData.displayName || entityData.name || "Vendor",
-                SenderName: senderResponse?.data?.name || "The Team",
+                SenderName: primaryData.email || primaryData.name || "The Team",
               }).replace(/\n/g, "<br/>");
             }
           } catch (templateError) {
@@ -211,7 +210,7 @@ export default function SendEmailStatement() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#156372]"></div>
       </div>
     );
   }
@@ -242,7 +241,7 @@ export default function SendEmailStatement() {
           <button
             onClick={handleSend}
             disabled={isSending}
-            className={`px-4 py-2 bg-red-600 text-white font-medium rounded-md text-sm hover:bg-red-700 transition-colors flex items-center gap-2 ${isSending ? 'opacity-70 cursor-not-allowed' : ''}`}
+            className={`px-4 py-2 bg-[#156372] text-white font-medium rounded-md text-sm hover:bg-[#0f4e5a] transition-colors flex items-center gap-2 ${isSending ? 'opacity-70 cursor-not-allowed' : ''}`}
           >
             {isSending ? 'Sending...' : 'Send'}
           </button>

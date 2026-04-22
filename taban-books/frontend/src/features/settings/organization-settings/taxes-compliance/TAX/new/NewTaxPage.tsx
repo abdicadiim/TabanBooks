@@ -1,7 +1,8 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Info } from "lucide-react";
 import { getToken, API_BASE_URL } from "../../../../../../services/auth";
+import toast from "react-hot-toast";
 
 export default function NewTaxPage() {
     const navigate = useNavigate();
@@ -11,9 +12,6 @@ export default function NewTaxPage() {
     const [taxName, setTaxName] = useState("");
     const [taxRate, setTaxRate] = useState("");
     const [isCompoundTax, setIsCompoundTax] = useState(false);
-    const [isDigitalServiceTax, setIsDigitalServiceTax] = useState(false);
-    const [digitalServiceCountry, setDigitalServiceCountry] = useState("");
-    const [trackTaxByCountryScheme, setTrackTaxByCountryScheme] = useState(false);
     const [isLoading, setIsLoading] = useState(isEditMode);
 
     useEffect(() => {
@@ -26,7 +24,7 @@ export default function NewTaxPage() {
             const token = getToken();
             if (!token) {
                 setIsLoading(false);
-                alert("You are not logged in. Please sign in again.");
+                toast.error("You are not logged in. Please sign in again.");
                 navigate("/settings/taxes");
                 return;
             }
@@ -47,12 +45,9 @@ export default function NewTaxPage() {
                 setTaxName(tax.name || "");
                 setTaxRate(tax.rate !== undefined && tax.rate !== null ? String(tax.rate) : "");
                 setIsCompoundTax(Boolean(tax.isCompound));
-                setIsDigitalServiceTax(Boolean(tax.isDigitalServiceTax));
-                setDigitalServiceCountry(tax.digitalServiceCountry || "");
-                setTrackTaxByCountryScheme(Boolean(tax.trackTaxByCountryScheme));
             } catch (err: any) {
                 console.error("Error loading tax:", err);
-                alert(err.message || "Failed to load tax");
+                toast.error(err.message || "Failed to load tax");
                 navigate("/settings/taxes");
             } finally {
                 setIsLoading(false);
@@ -64,13 +59,13 @@ export default function NewTaxPage() {
 
     const handleSave = async () => {
         if (!taxName || !taxRate) {
-            alert("Tax name and rate are required.");
+            toast.error("Tax name and rate are required.");
             return;
         }
 
         const token = getToken();
         if (!token) {
-            alert("You are not logged in. Please sign in again.");
+            toast.error("You are not logged in. Please sign in again.");
             return;
         }
 
@@ -88,9 +83,6 @@ export default function NewTaxPage() {
                         rate: parseFloat(taxRate),
                         type: "both",
                         isCompound: isCompoundTax,
-                        isDigitalServiceTax,
-                        digitalServiceCountry: isDigitalServiceTax ? digitalServiceCountry : undefined,
-                        trackTaxByCountryScheme,
                     }),
                 }
             );
@@ -107,10 +99,11 @@ export default function NewTaxPage() {
                 throw new Error(data.message || (isEditMode ? "Failed to update tax" : "Failed to create tax"));
             }
 
+            toast.success(isEditMode ? "Tax updated successfully" : "Tax created successfully");
             navigate("/settings/taxes");
         } catch (err: any) {
             console.error("Error saving tax:", err);
-            alert(err.message || (isEditMode ? "Failed to update tax" : "Failed to create tax"));
+            toast.error(err.message || (isEditMode ? "Failed to update tax" : "Failed to create tax"));
         }
     };
 
@@ -179,49 +172,6 @@ export default function NewTaxPage() {
                         </div>
                     </div>
 
-                    <div className="space-y-3">
-                        <div className="flex items-start gap-3">
-                            <input
-                                type="checkbox"
-                                id="digitalServiceTax"
-                                checked={isDigitalServiceTax}
-                                onChange={(e) => setIsDigitalServiceTax(e.target.checked)}
-                                className="mt-1 h-4 w-4 text-[#156372] focus:ring-[#156372] border-gray-300 rounded"
-                            />
-                            <label htmlFor="digitalServiceTax" className="text-sm text-gray-700 cursor-pointer">
-                                This tax applies to digital services sold to overseas customers.
-                            </label>
-                        </div>
-
-                        {isDigitalServiceTax && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Country
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={digitalServiceCountry}
-                                        onChange={(e) => setDigitalServiceCountry(e.target.value)}
-                                        className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        placeholder="e.g. Germany"
-                                    />
-                                </div>
-                                <div className="flex items-center gap-3 mt-7">
-                                    <input
-                                        type="checkbox"
-                                        id="trackTaxByCountryScheme"
-                                        checked={trackTaxByCountryScheme}
-                                        onChange={(e) => setTrackTaxByCountryScheme(e.target.checked)}
-                                        className="h-4 w-4 text-[#156372] focus:ring-[#156372] border-gray-300 rounded"
-                                    />
-                                    <label htmlFor="trackTaxByCountryScheme" className="text-sm text-gray-700 cursor-pointer">
-                                        Track country-wise for VAT MOSS/OSS/IOSS
-                                    </label>
-                                </div>
-                            </div>
-                        )}
-                    </div>
 
                     <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
                         <button

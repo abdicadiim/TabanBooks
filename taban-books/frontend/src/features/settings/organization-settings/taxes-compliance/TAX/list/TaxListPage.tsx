@@ -1,7 +1,9 @@
-﻿import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, MoreVertical, ChevronDown, ChevronRight, Download, Upload, X, Search, Eye, Pencil, Trash2, CircleOff, CheckCircle2, RotateCw, ReceiptText } from "lucide-react";
-import { getToken, API_BASE_URL } from "../../../../../../services/auth";
+import { Plus, MoreVertical, ChevronDown, ChevronRight, Download, Upload, X, Search, Eye, Pencil, Trash2, CircleOff, CheckCircle2, RotateCw, ReceiptText, AlertTriangle } from "lucide-react";
+import { getToken } from "../../../../../../services/auth";
+import { API_BASE_URL, taxesAPI } from "../../../../../../services/api";
+import toast from "react-hot-toast";
 import ExportTaxModal from "../../../../ExportTaxModal"; // Assuming we might move this too but for now point to old or siblings
 
 const TAX_GROUP_MARKER = "__taban_tax_group__";
@@ -30,6 +32,8 @@ export default function TaxListPage() {
     const [associatedLoading, setAssociatedLoading] = useState(false);
     const [associatedError, setAssociatedError] = useState<string | null>(null);
     const [associatedData, setAssociatedData] = useState<any | null>(null);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [taxIdsToDelete, setTaxIdsToDelete] = useState<any[]>([]);
 
     const newTaxDropdownRef = useRef<HTMLDivElement>(null);
     const moreMenuRef = useRef<HTMLDivElement>(null);
@@ -62,13 +66,13 @@ export default function TaxListPage() {
                 return;
             }
             try {
-                const response = await fetch(`${API_BASE_URL}/settings/taxes`, {
-                    headers: { Authorization: `Bearer ${token}` },
+                const data = await taxesAPI.getAll({}, {
+                    meta: {
+                        source: "TaxListPage",
+                        cacheTtlMs: 30000, // Cache for 30s for immediate back/forth navigation
+                    }
                 });
 
-                if (!response.ok) throw new Error("Failed to load taxes");
-
-                const data = await response.json();
                 if (data.success && Array.isArray(data.data)) {
                     const normalized = data.data.map((tax: any) => {
                         const isTaxGroup =
@@ -122,13 +126,26 @@ export default function TaxListPage() {
         else setSelectedIds(selectedIds.filter(selectedId => selectedId !== id));
     };
 
-    const handleDelete = async (idsToDelete?: any[]) => {
+    const handleDelete = (idsToDelete?: any[]) => {
         const targetIds = idsToDelete && idsToDelete.length > 0 ? idsToDelete : selectedIds;
         if (targetIds.length === 0) return;
+        setTaxIdsToDelete(targetIds);
+        setShowDeleteModal(true);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (taxIdsToDelete.length === 0) return;
         const token = getToken();
         if (!token) return;
 
+        setShowDeleteModal(false);
+        const targetIds = [...taxIdsToDelete];
+        setTaxIdsToDelete([]);
+
+        let deletedCount = 0;
+        let deactivatedCount = 0;
         let failedDeletes = 0;
+
         for (const id of targetIds) {
             try {
                 const response = await fetch(`${API_BASE_URL}/settings/taxes/${id}`, {
@@ -139,11 +156,27 @@ export default function TaxListPage() {
                 if (!response.ok || !data.success) {
                     failedDeletes += 1;
                     console.error("Error deleting tax:", id, data?.message || response.statusText);
+                } else {
+                    if (data.isSoftDeleted) deactivatedCount++;
+                    else deletedCount++;
                 }
             } catch (err) {
                 failedDeletes += 1;
                 console.error("Error deleting tax:", id, err);
             }
+        }
+
+        if (deletedCount > 0 || deactivatedCount > 0) {
+            const total = deletedCount + deactivatedCount;
+            let successMsg = `${total} tax${total > 1 ? "es" : ""} processed successfully.`;
+            if (deactivatedCount > 0) {
+                successMsg += ` (${deactivatedCount} deactivated due to records)`;
+            }
+            toast.success(successMsg);
+        }
+
+        if (failedDeletes > 0) {
+            toast.error(`Failed to delete ${failedDeletes} tax record(s).`);
         }
 
         setTaxes(prev => prev.filter(tax => !targetIds.includes(tax.id)));
@@ -593,6 +626,44 @@ export default function TaxListPage() {
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showDeleteModal && (
+                <div className="fixed inset-0 z-[12000] flex items-start justify-center bg-black/40 pt-20">
+                    <div className="w-full max-w-[520px] overflow-hidden rounded-xl bg-white shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
+                        <div className="flex items-start justify-between border-b border-gray-100 px-5 py-4">
+                            <div className="flex items-center gap-3">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                                    <AlertTriangle size={16} />
+                                </div>
+                                <div className="text-[15px] font-semibold text-slate-800">Delete tax?</div>
+                            </div>
+                            <button
+                                className="text-gray-400 hover:text-gray-600"
+                                onClick={() => setShowDeleteModal(false)}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="px-5 py-4 text-sm text-slate-600">
+                            You cannot retrieve this tax once it has been deleted.
+                        </div>
+                        <div className="flex items-center gap-3 border-t border-gray-100 px-5 py-4">
+                            <button
+                                className="rounded-md bg-[#156372] px-4 py-2 text-sm font-medium text-white hover:bg-[#0f4e59]"
+                                onClick={handleConfirmDelete}
+                            >
+                                Delete
+                            </button>
+                            <button
+                                className="rounded-md border border-gray-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-gray-50"
+                                onClick={() => setShowDeleteModal(false)}
+                            >
+                                Cancel
+                            </button>
                         </div>
                     </div>
                 </div>

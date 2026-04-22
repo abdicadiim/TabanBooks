@@ -123,10 +123,13 @@ export default function SendPaymentReceiptEmail() {
 
       try {
         const primarySenderRes = await senderEmailsAPI.getPrimary();
-        const sender = resolveVerifiedPrimarySender(primarySenderRes, fallbackName, fallbackEmail);
-        if (!cancelled) {
-          setSenderName(sender.name);
-          setSenderEmail(sender.email || fallbackEmail);
+        const primaryData = primarySenderRes?.data;
+        if (!cancelled && primaryData) {
+          setSenderName(primaryData.email || primaryData.name || fallbackName);
+          setSenderEmail(primaryData.email || fallbackEmail);
+        } else if (!cancelled) {
+          setSenderName(fallbackName);
+          setSenderEmail(fallbackEmail);
         }
       } catch (error) {
         console.error("Failed to load verified sender for payment receipt email:", error);

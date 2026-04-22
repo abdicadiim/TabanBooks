@@ -44,6 +44,45 @@ export const getSenderEmails = async (req: Request, res: Response): Promise<void
 };
 
 /**
+ * Helper to send verification email to a sender
+ */
+const sendSenderVerificationEmailHelper = async (sender: any, organizationId: string) => {
+    const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5174";
+    const verificationLink = `${FRONTEND_URL}/accept-invitation?email=${encodeURIComponent(sender.email)}&name=${encodeURIComponent(sender.name)}&type=sender&senderId=${sender._id}`;
+
+    const message = `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1e293b; background-color: #f8fafc; padding: 40px 20px;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+          <div style="background-color: #156372; padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Verify Sender Email</h1>
+          </div>
+          <div style="padding: 40px;">
+            <p style="font-size: 16px; margin: 0 0 24px;">Hello <strong>${sender.name}</strong>,</p>
+            <p style="font-size: 16px; margin: 0 0 24px;">You have been added as a sender for <strong>all system communication</strong> on Taban Books. Once verified and set as primary, this email will be used for all invoices, receipts, and official documents sent from the system.</p>
+            
+            <div style="text-align: center; margin: 40px 0;">
+              <a href="${verificationLink}" style="background-color: #156372; color: #ffffff; padding: 16px 32px; border-radius: 8px; font-weight: 600; text-decoration: none; display: inline-block; box-shadow: 0 4px 12px rgba(21, 99, 114, 0.2);">Verify & Activate for All System Emails</a>
+            </div>
+
+            <p style="font-size: 14px; color: #64748b; line-height: 1.5; margin: 0;">By completing this verification, you authorize this address to be the primary source for all automated financial and administrative notices.</p>
+          </div>
+          <div style="background-color: #f1f5f9; padding: 24px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="font-size: 12px; color: #94a3b8; margin: 0;">&copy; 2026 Taban Books. All rights reserved.</p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    return await sendEmail({
+        to: sender.email,
+        subject: "Action Required: Verify your sender email for Taban Books",
+        html: message,
+        text: `Please verify your sender email by following this link: ${verificationLink}`,
+        organizationId,
+    });
+};
+
+/**
  * Create a new sender email
  * POST /api/settings/sender-emails
  */
@@ -67,8 +106,7 @@ export const createSenderEmail = async (req: Request, res: Response): Promise<vo
             name,
             email,
             isPrimary: isPrimary || false,
-            // New senders should be verified before being fully trusted.
-            isVerified: Boolean(isPrimary),
+            isVerified: false, // New senders MUST verify via OTP link
             smtpHost,
             smtpPort,
             smtpUser,
@@ -76,7 +114,10 @@ export const createSenderEmail = async (req: Request, res: Response): Promise<vo
             smtpSecure
         });
 
-        res.status(201).json({ success: true, data: senderEmail });
+        // Send the verification email immediately
+        await sendSenderVerificationEmailHelper(senderEmail, organizationId);
+
+        res.status(201).json({ success: true, message: "Sender created and verification email sent.", data: senderEmail });
     } catch (error: any) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -152,21 +193,7 @@ export const resendSenderVerification = async (req: Request, res: Response): Pro
             return;
         }
 
-        const message = `
-          <div style="font-family: Arial, sans-serif; color: #0f172a; line-height: 1.6;">
-            <h2 style="margin: 0 0 12px;">Sender email verified</h2>
-            <p style="margin: 0 0 12px;">The sender email <strong>${sender.email}</strong> has been verified for your Taban Books organization.</p>
-            <p style="margin: 0;">You can now use this address for outgoing mail.</p>
-          </div>
-        `;
-
-        const mailResult = await sendEmail({
-            to: sender.email,
-            subject: "Your sender email has been verified",
-            html: message,
-            text: `The sender email ${sender.email} has been verified for your Taban Books organization.`,
-            organizationId,
-        });
+        const mailResult = await sendSenderVerificationEmailHelper(sender, organizationId);
 
         if (!mailResult.success) {
             res.status(500).json({
@@ -175,9 +202,6 @@ export const resendSenderVerification = async (req: Request, res: Response): Pro
             });
             return;
         }
-
-        sender.isVerified = true;
-        await sender.save();
 
         res.json({
             success: true,
@@ -231,7 +255,7 @@ export const getPrimarySender = async (req: Request, res: Response): Promise<voi
         }
 
         const primarySender = await SenderEmail.findOne({ organization: organizationId, isPrimary: true });
-        if (primarySender?.isVerified) {
+        if (primarySender) {
             res.json({ success: true, data: primarySender });
             return;
         }
@@ -239,11 +263,6 @@ export const getPrimarySender = async (req: Request, res: Response): Promise<voi
         const verifiedSender = await SenderEmail.findOne({ organization: organizationId, isVerified: true });
         if (verifiedSender) {
             res.json({ success: true, data: verifiedSender });
-            return;
-        }
-
-        if (primarySender) {
-            res.json({ success: true, data: primarySender });
             return;
         }
 

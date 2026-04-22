@@ -1,7 +1,8 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { User, Mail, ShieldCheck } from "lucide-react";
-import { sendLoginOTP } from "../services/auth";
+import { User, Mail, ShieldCheck, CheckCircle2, AlertCircle, X, ChevronRight, Lock, ReceiptText } from "lucide-react";
+import { sendLoginOTP, verifyLoginOTP } from "../services/auth";
+import { senderEmailsAPI } from "../services/api";
 
 export default function AcceptInvitation() {
     const navigate = useNavigate();
@@ -10,124 +11,247 @@ export default function AcceptInvitation() {
         name: "",
         email: "",
         inviter: "",
-        org: "d",
-        inviterEmail: ""
+        org: "",
+        inviterEmail: "",
+        type: "", // 'sender' or 'user'
+        senderId: ""
     });
 
+    const [step, setStep] = useState(1); // 1: Invite, 2: OTP
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+    const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+
     useEffect(() => {
-        // Extract data from query params for better demonstration
         const name = searchParams.get("name") || "User";
         const email = searchParams.get("email") || "";
         const inviter = searchParams.get("inviter") || "Admin";
-        const org = searchParams.get("org") || "d";
+        const org = searchParams.get("org") || "Organization";
         const inviterEmail = searchParams.get("inviterEmail") || "admin@example.com";
+        const type = searchParams.get("type") || "user";
+        const senderId = searchParams.get("senderId") || "";
 
-        setInvitationData({ name, email, inviter, org, inviterEmail });
+        setInvitationData({ name, email, inviter, org, inviterEmail, type, senderId });
     }, [searchParams]);
 
-    const [isLoading, setIsLoading] = useState(false);
+    const isSenderMode = invitationData.type === "sender";
 
-    const handleAccept = async () => {
+    const handleAcceptClick = async () => {
         if (!invitationData.email) return;
-
         setIsLoading(true);
+        setError(null);
         try {
-            // Send OTP directly from here
             await sendLoginOTP(invitationData.email);
-            // Redirect to login page at Step 3 (OTP)
-            navigate("/login", {
-                state: {
-                    email: invitationData.email,
-                    step: 3
-                }
-            });
+            setStep(2);
         } catch (error: any) {
-            alert(error.message || "Failed to initiate acceptance. Please try again.");
+            setError(error.message || "Failed to send verification code.");
         } finally {
             setIsLoading(false);
         }
     };
 
-    const handleReject = () => {
-        // Just a placeholder for reject
-        alert("Invitation rejected");
+    const handleOtpChange = (index: number, value: string) => {
+        if (!/^\d*$/.test(value)) return;
+        const newOtp = [...otp];
+        newOtp[index] = value.slice(-1);
+        setOtp(newOtp);
+
+        if (value && index < 5) {
+            otpRefs.current[index + 1]?.focus();
+        }
+    };
+
+    const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
+        if (e.key === "Backspace" && !otp[index] && index > 0) {
+            otpRefs.current[index - 1]?.focus();
+        }
+    };
+
+    const handlePaste = (e: React.ClipboardEvent) => {
+        e.preventDefault();
+        const data = e.clipboardData.getData("text").trim().slice(0, 6);
+        if (!/^\d+$/.test(data)) return;
+
+        const newOtp = [...otp];
+        data.split("").forEach((digit, index) => {
+            if (index < 6) newOtp[index] = digit;
+        });
+        setOtp(newOtp);
+
+        // Focus the last filled input or the next empty one
+        const focusIndex = data.length === 6 ? 5 : data.length;
+        otpRefs.current[focusIndex]?.focus();
+    };
+
+    const handleVerifyOtp = async () => {
+        const fullOtp = otp.join("");
+        if (fullOtp.length < 6) return;
+
+        setIsLoading(true);
+        setError(null);
+        try {
+            // Verify the OTP (logs the user in if needed)
+            await verifyLoginOTP(invitationData.email, fullOtp);
+            
+            // If it's a sender verification flow, we need to mark the sender as verified
+            if (isSenderMode && invitationData.senderId) {
+                await senderEmailsAPI.update(invitationData.senderId, { 
+                    isVerified: true
+                });
+            }
+
+            navigate("/");
+        } catch (error: any) {
+            setError(error.message || "Invalid verification code.");
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
-        <div className="min-h-screen bg-[#f8f9fa] flex flex-col items-center justify-center p-4 font-sans">
-            {/* Logos section - Using stylized Taban Books-like boxes for Tablet Books/Books */}
-            <div className="flex flex-col items-center mb-8">
-                <div className="flex gap-1 mb-2">
-                    <div className="w-5 h-5 rounded-[4px] border-2 border-[#fb4e4e] transform -rotate-6"></div>
-                    <div className="w-5 h-5 rounded-[4px] border-2 border-[#00c652] transform rotate-3"></div>
-                    <div className="w-5 h-5 rounded-[4px] border-2 border-[#1a73e8] transform -rotate-3"></div>
-                    <div className="w-5 h-5 rounded-[4px] border-2 border-[#fbb000] rotate-6"></div>
-                </div>
-                <span className="text-[12px] font-bold text-gray-400 tracking-[0.2em] uppercase">TABAN BOOKS</span>
-            </div>
+        <div className="min-h-screen bg-[#f1f5f9] flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
+            {/* Background Decorative Elements - Silver/Metallic theme */}
+            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-slate-300/40 rounded-full blur-[120px]"></div>
+            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#156372]/5 rounded-full blur-[120px]"></div>
 
-            <div className="w-full max-w-[580px] bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-10">
-                    {/* Header row with Avatar and Books logo */}
-                    <div className="flex justify-between items-start mb-8">
-                        <div className="w-20 h-20 rounded-full bg-[#f0f7ff] flex items-center justify-center border border-[#e0f0ff] shadow-sm">
-                            <div className="text-[32px] font-semibold text-[#0066ff]">
-                                {invitationData.name ? invitationData.name.charAt(0).toUpperCase() : "U"}
+            <div className="w-full max-w-[540px] bg-white rounded-2xl shadow-[0_20px_50px_rgba(30,41,59,0.08)] border border-slate-200 overflow-hidden z-10 transition-all duration-500">
+                {step === 1 ? (
+                    <div className="p-10">
+                        <div className="flex justify-between items-center mb-10">
+                            <div className="h-16 w-16 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center shadow-sm">
+                                <div className="text-[28px] font-bold text-[#156372]">
+                                    {isSenderMode ? <Lock size={32} /> : (invitationData.org ? invitationData.org.charAt(0).toUpperCase() : "O")}
+                                </div>
+                            </div>
+                            <div className="h-10 px-4 rounded-full bg-emerald-50 border border-emerald-100 flex items-center gap-2 text-emerald-700 text-sm font-semibold">
+                                <ShieldCheck size={16} />
+                                {isSenderMode ? "Sender Verification" : "Official Invitation"}
                             </div>
                         </div>
-                        <div className="flex items-center gap-2 text-[#374151]">
-                            <div className="bg-[#1a83ff] p-1.5 rounded text-white">
-                                <ShieldCheck size={18} />
+
+                        <div className="mb-10 text-center sm:text-left">
+                            <h2 className="text-2xl font-bold text-slate-900 mb-2">
+                                {isSenderMode ? "Verify Sender Email" : `Join ${invitationData.org}`}
+                            </h2>
+                            <p className="text-slate-600 text-[15px] leading-relaxed">
+                                {isSenderMode 
+                                    ? `Please verify that you own ${invitationData.email} before it can be used for all organization communications and official documents.`
+                                    : `You have been invited by ${invitationData.inviter} to collaborate on Taban Books.`}
+                            </p>
+                        </div>
+
+                        <div className="bg-slate-50 rounded-xl p-6 mb-10 border border-slate-200/50">
+                            <div className="flex items-center gap-4 mb-4 pb-4 border-b border-slate-200">
+                                <div className="h-10 w-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400 shadow-sm">
+                                    <Mail size={18} />
+                                </div>
+                                <div>
+                                    <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">
+                                        {isSenderMode ? "SYSTEM SENDER ADDRESS" : "INVITATION SENT TO"}
+                                    </div>
+                                    <div className="text-sm font-bold text-slate-800">{invitationData.email}</div>
+                                </div>
                             </div>
-                            <span className="font-bold text-[18px]">Books</span>
+                            <p className="text-xs text-slate-500 leading-relaxed italic">
+                                {isSenderMode 
+                                    ? "By verifying, this address will handle all system-wide communications including invoices, receipts, and automated notifications."
+                                    : "By accepting, you'll gain access to the financial registers and tools of this organization."}
+                            </p>
                         </div>
-                    </div>
 
-                    {/* Invitation Details */}
-                    <div className="mb-10">
-                        <h2 className="text-[20px] font-bold text-gray-900 mb-1">{invitationData.org}</h2>
-                        <div className="text-[15px] text-gray-500">
-                            Invited by {invitationData.inviter} <span className="text-blue-500">({invitationData.inviterEmail})</span>
-                        </div>
-                    </div>
+                        {error && (
+                            <div className="mb-6 p-4 rounded-lg bg-rose-50 border border-rose-100 flex items-center gap-3 text-rose-600 text-sm">
+                                <AlertCircle size={18} />
+                                {error}
+                            </div>
+                        )}
 
-                    <div className="border-t border-dashed border-gray-200 my-8"></div>
-
-                    <div className="space-y-6">
-                        <h3 className="text-[22px] font-bold text-gray-900">Join Our Organization</h3>
-                        <p className="text-[16px] text-gray-600 leading-relaxed">
-                            We invite you to join Books of our organization <span className="font-bold text-gray-900">{invitationData.org}</span>. Sign in to your Taban Books account associated with the email address <span className="font-bold text-gray-900">{invitationData.email}</span> to view the invitation.
-                        </p>
-
-                        <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                        <div className="flex flex-col sm:flex-row gap-4">
                             <button
-                                onClick={handleAccept}
+                                onClick={handleAcceptClick}
                                 disabled={isLoading}
-                                className="flex-1 bg-[#1a83ff] hover:bg-[#0070f3] text-white py-3.5 px-6 rounded-md font-bold text-[15px] transition-all shadow-sm active:scale-[0.98] disabled:opacity-70 flex items-center justify-center gap-2"
+                                className="flex-[2] bg-[#156372] hover:bg-[#0f4e5a] text-white h-14 rounded-xl font-bold text-base transition-all shadow-[0_4px_15px_rgba(21,99,114,0.2)] active:scale-[0.98] disabled:opacity-70 flex items-center justify-center gap-3"
                             >
                                 {isLoading ? (
                                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                                 ) : (
-                                    "Accept"
+                                    <>{isSenderMode ? "Verify Now" : "Accept Invitation"} <ChevronRight size={18} /></>
                                 )}
                             </button>
                             <button
-                                onClick={handleReject}
-                                className="flex-1 bg-white hover:bg-gray-50 text-gray-600 py-3.5 px-6 rounded-md border border-gray-300 font-bold text-[15px] transition-all active:scale-[0.98]"
+                                onClick={() => navigate("/login")}
+                                className="flex-1 bg-white hover:bg-slate-50 text-slate-600 h-14 rounded-xl border border-slate-200 font-semibold text-base transition-all active:scale-[0.98]"
                             >
-                                Reject
+                                {isSenderMode ? "Cancel" : "Reject"}
                             </button>
                         </div>
                     </div>
-                </div>
-            </div>
+                ) : (
+                    <div className="p-10">
+                        <button 
+                            onClick={() => setStep(1)}
+                            className="absolute right-6 top-6 h-8 w-8 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 transition-colors"
+                        >
+                            <X size={20} />
+                        </button>
 
-            <div className="mt-8 text-center">
-                <p className="text-[14px] text-gray-500">
-                    Please contact <span className="text-blue-500">{invitationData.inviterEmail}</span> for any queries.
-                </p>
+                        <div className="flex flex-col items-center text-center">
+                            <div className="h-16 w-16 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center mb-8 shadow-sm">
+                                <Lock size={28} className="text-[#156372]" />
+                            </div>
+                            
+                            <h2 className="text-2xl font-bold text-slate-900 mb-2">Verify your identity</h2>
+                            <p className="text-slate-600 text-[15px] max-w-[320px] mb-10">
+                                We've sent a 6-digit verification code to <span className="font-bold text-slate-900">{invitationData.email}</span>. Please enter it below.
+                            </p>
+
+                            <div className="flex gap-2 max-w-[360px] mb-10" onPaste={handlePaste}>
+                                {otp.map((digit, i) => (
+                                    <input
+                                        key={i}
+                                        ref={(el) => { otpRefs.current[i] = el; }}
+                                        type="text"
+                                        maxLength={1}
+                                        value={digit}
+                                        onFocus={(e) => e.target.select()}
+                                        onChange={(e) => handleOtpChange(i, e.target.value)}
+                                        onKeyDown={(e) => handleKeyDown(i, e)}
+                                        className="w-[52px] h-16 text-center text-2xl font-extrabold rounded-xl border-2 border-slate-200 bg-slate-50 focus:border-[#156372] focus:bg-white focus:outline-none transition-all text-slate-800"
+                                    />
+                                ))}
+                            </div>
+
+                            {error && (
+                                <div className="w-full mb-8 p-4 rounded-xl bg-rose-50 border border-rose-100 flex items-center gap-3 text-rose-600 text-sm text-left">
+                                    <AlertCircle size={18} className="shrink-0" />
+                                    {error}
+                                </div>
+                            )}
+
+                            <button
+                                onClick={handleVerifyOtp}
+                                disabled={isLoading || otp.some(d => !d)}
+                                className="w-full bg-[#156372] hover:bg-[#0f4e5a] text-white h-14 rounded-xl font-bold text-base transition-all shadow-[0_4px_15px_rgba(21,99,114,0.2)] active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-3"
+                            >
+                                {isLoading ? (
+                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                ) : (
+                                    <>Complete Verification <CheckCircle2 size={18} /></>
+                                )}
+                            </button>
+
+                            <button 
+                                onClick={handleAcceptClick}
+                                disabled={isLoading}
+                                className="mt-8 text-sm font-bold text-[#156372] hover:underline flex items-center gap-2"
+                            >
+                                Resend code
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
 }
-

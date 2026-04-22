@@ -68,7 +68,10 @@ function AppBrandingSync() {
 function AppContent() {
   const { loading } = useAppBootstrap();
 
-  if (loading) {
+  // Skip blocking loader for invitation/sender verification routes to provide instant landing
+  const isInvitationPath = window.location.pathname.startsWith("/accept-invitation");
+
+  if (loading && !isInvitationPath) {
     return <FullScreenLoader subtitle="Initializing system modules..." />;
   }
 

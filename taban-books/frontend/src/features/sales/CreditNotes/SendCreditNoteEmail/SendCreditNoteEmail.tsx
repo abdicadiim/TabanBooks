@@ -89,9 +89,10 @@ export default function SendCreditNoteEmail() {
 
           try {
             const primarySenderRes = await senderEmailsAPI.getPrimary();
-            if (primarySenderRes?.success && primarySenderRes.data?.isVerified) {
-              resolvedSenderName = primarySenderRes.data.name || resolvedSenderName;
-              resolvedSenderEmail = primarySenderRes.data.email || resolvedSenderEmail;
+            const primaryData = primarySenderRes?.data;
+            if (primaryData) {
+              resolvedSenderName = primaryData.email || primaryData.name || resolvedSenderName;
+              resolvedSenderEmail = primaryData.email || resolvedSenderEmail;
             }
           } catch (error) {
             console.error("Error fetching primary sender:", error);
@@ -609,7 +610,7 @@ ${organizationName}`,
             Cancel
           </button>
           <button
-            className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium cursor-pointer hover:bg-red-700"
+            className="px-4 py-2 bg-[#156372] text-white rounded-md text-sm font-medium cursor-pointer hover:bg-[#0f4e5a]"
             onClick={handleSend}
           >
             Send

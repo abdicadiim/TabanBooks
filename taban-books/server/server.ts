@@ -6,6 +6,8 @@
 
 import app from "./app.js";
 import dotenv from "dotenv";
+import dns from "dns";
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
 import { connectDB } from "./config/database.js";
 import { enableDebug, disableDebug, isDebugEnabled } from "./utils/debug.js";
 import fs from 'fs';
@@ -132,7 +134,7 @@ process.on('SIGUSR2', () => {
 });
 
 // Connect to database
-connectDB(process.env.MONGO_URI || "mongodb://127.0.0.1:27017/taban_books")
+connectDB(process.env.MONGO_URI || "mongodb://127.0.0.1:27017/Taban_Book")
   .then(async () => {
     // Fix DB Indexes
     await fixJournalEntryIndex();

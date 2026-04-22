@@ -1246,9 +1246,9 @@ export default function EditLocationPage() {
           <button
             type="submit"
             disabled={isSaving}
-            className="px-6 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-2 bg-[#156372] text-white text-sm font-medium rounded-lg hover:bg-[#0D4A52] transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
-            {isSaving ? 'Updating...' : 'Update'}
+            {isSaving ? 'Saving...' : 'Save'}
           </button>
           <button
             type="button"

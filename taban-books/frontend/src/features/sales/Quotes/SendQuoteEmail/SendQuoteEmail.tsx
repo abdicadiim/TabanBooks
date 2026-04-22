@@ -184,8 +184,8 @@ export default function SendQuoteEmail() {
 
         if (primarySenderResult.status === "fulfilled") {
           const primarySenderRes = primarySenderResult.value;
-          if (primarySenderRes && primarySenderRes.success && primarySenderRes.data?.isVerified) {
-            resolvedSenderName = primarySenderRes.data.name || resolvedSenderName;
+          if (primarySenderRes && primarySenderRes.success && primarySenderRes.data) {
+            resolvedSenderName = primarySenderRes.data.email || primarySenderRes.data.name || resolvedSenderName;
             resolvedSenderEmail = primarySenderRes.data.email || resolvedSenderEmail;
           }
         } else {
@@ -296,7 +296,7 @@ export default function SendQuoteEmail() {
         }
 
         setEmailData({
-          from: resolvedSenderEmail ? `"${resolvedSenderName}" <${resolvedSenderEmail}>` : resolvedSenderName,
+          from: resolvedSenderEmail ? `"${resolvedSenderEmail}" <${resolvedSenderEmail}>` : resolvedSenderName,
           sendTo: resolvedRecipient,
           cc: "",
           bcc: "",
@@ -1070,7 +1070,7 @@ export default function SendQuoteEmail() {
             Cancel
           </button>
           <button
-            className={`px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium cursor-pointer hover:bg-red-700 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`px-4 py-2 bg-[#156372] text-white rounded-md text-sm font-medium cursor-pointer hover:bg-[#0f4e5a] ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
             onClick={handleSend}
             disabled={loading}
           >
@@ -1166,7 +1166,7 @@ export default function SendQuoteEmail() {
               </button>
               <button
                 onClick={handleSaveNewContact}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 cursor-pointer"
+                className="px-4 py-2 text-sm font-medium text-white bg-[#156372] rounded-md hover:bg-[#0f4e5a] cursor-pointer"
               >
                 Save Contact
               </button>

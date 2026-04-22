@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Edit, Trash2, Info, Check, X } from "lucide-react";
+import { Plus, Edit, Trash2, Info, Check, X, AlertTriangle } from "lucide-react";
 import { createPortal } from "react-dom";
 import NewEmailTemplateModal from "./NewEmailTemplateModal";
 import SignatureSettingsModal from "./SignatureSettingsModal";
@@ -66,6 +66,9 @@ export default function EmailNotificationsPage() {
   const [loadingSenders, setLoadingSenders] = useState(true);
   const [loadingRelayServers, setLoadingRelayServers] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [senderToDelete, setSenderToDelete] = useState<Sender | null>(null);
+  const [relayServerToDelete, setRelayServerToDelete] = useState<RelayServer | null>(null);
 
   // Fetch senders from API
   const fetchSenders = async () => {
@@ -286,7 +289,7 @@ export default function EmailNotificationsPage() {
   const primarySender = senders.find((sender) => sender.isPrimary);
   const orgEmail = String(settings?.general?.organizationEmail || "").trim();
   const orgName = String(settings?.general?.companyDisplayName || settings?.general?.schoolDisplayName || "").trim() || "Organization";
-  const sendingFromAddress = primarySender?.isVerified ? primarySender.email : DEFAULT_SYSTEM_SENDER_EMAIL;
+  const sendingFromAddress = primarySender?.email || orgEmail || DEFAULT_SYSTEM_SENDER_EMAIL;
 
   const getSenderId = (sender: Sender) => String(sender._id || sender.id || "").trim();
 
@@ -326,10 +329,18 @@ export default function EmailNotificationsPage() {
     }
   };
 
-  const handleDeleteSender = async (sender: Sender) => {
-    const senderId = getSenderId(sender);
+  const handleDeleteSender = (sender: Sender) => {
+    setSenderToDelete(sender);
+    setRelayServerToDelete(null);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDeleteSender = async () => {
+    if (!senderToDelete) return;
+    const senderId = getSenderId(senderToDelete);
     if (!senderId) return;
-    if (!window.confirm("Delete this sender?")) return;
+
+    setShowDeleteModal(false);
     try {
       setErrorMessage(null);
       const response = await senderEmailsAPI.delete(senderId);
@@ -342,6 +353,8 @@ export default function EmailNotificationsPage() {
     } catch (error: any) {
       console.error("Error deleting sender:", error);
       setErrorMessage(error?.message || "Failed to delete sender.");
+    } finally {
+      setSenderToDelete(null);
     }
   };
 
@@ -360,11 +373,18 @@ export default function EmailNotificationsPage() {
     }
   };
 
-  const deleteRelayServer = async (server: RelayServer) => {
+  const deleteRelayServer = (server: RelayServer) => {
+    setRelayServerToDelete(server);
+    setSenderToDelete(null);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDeleteRelayServer = async () => {
+    if (!relayServerToDelete) return;
+    setShowDeleteModal(false);
     try {
-      if (!window.confirm(`Delete relay server ${server.serverName}?`)) return;
       setErrorMessage(null);
-      const response = await emailRelayAPI.delete(server.id);
+      const response = await emailRelayAPI.delete(relayServerToDelete.id);
       if (!response?.success) {
         setErrorMessage(response?.message || "Failed to delete relay server.");
         return;
@@ -373,6 +393,8 @@ export default function EmailNotificationsPage() {
       showSuccess("Email relay server deleted.");
     } catch (error: any) {
       setErrorMessage(error?.message || "Failed to delete relay server.");
+    } finally {
+      setRelayServerToDelete(null);
     }
   };
 
@@ -673,7 +695,7 @@ export default function EmailNotificationsPage() {
                 <h2 className="text-lg font-semibold text-gray-900">Email Relay</h2>
                 <button
                   onClick={() => navigate("/settings/customization/email-notifications/new-server")}
-                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 flex items-center gap-2"
+                  className="px-4 py-2 text-sm font-medium text-white bg-[#156372] rounded-lg hover:bg-[#0f4e5a] flex items-center gap-2"
                 >
                   <Plus size={16} />
                   New Server
@@ -829,7 +851,7 @@ export default function EmailNotificationsPage() {
                 {selectedEmail !== "Customer Review Notification" && (
                   <button
                     onClick={() => setShowNewTemplateModal(true)}
-                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 flex items-center gap-2"
+                   className="px-4 py-2 text-sm font-medium text-white bg-[#156372] rounded-lg hover:bg-[#0f4e5a] flex items-center gap-2"
                   >
                     <Plus size={16} />
                     New
@@ -1014,6 +1036,49 @@ export default function EmailNotificationsPage() {
           signature={signature}
           onClose={() => setShowMailContentModal(false)}
         />,
+        document.body
+      )}
+
+      {showDeleteModal && createPortal(
+        <div className="fixed inset-0 z-[12000] flex items-start justify-center bg-black/40 pt-20">
+          <div className="w-full max-w-[520px] overflow-hidden rounded-xl bg-white shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
+            <div className="flex items-start justify-between border-b border-gray-100 px-5 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                  <AlertTriangle size={16} />
+                </div>
+                <div className="text-[15px] font-semibold text-slate-800">
+                  {senderToDelete ? "Delete sender?" : "Delete relay server?"}
+                </div>
+              </div>
+              <button
+                className="text-gray-400 hover:text-gray-600"
+                onClick={() => setShowDeleteModal(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="px-5 py-4 text-sm text-slate-600">
+              {senderToDelete
+                ? "You cannot retrieve this sender once it has been deleted."
+                : `You cannot retrieve the relay server ${relayServerToDelete?.serverName} once it has been deleted.`}
+            </div>
+            <div className="flex items-center gap-3 border-t border-gray-100 px-5 py-4">
+              <button
+                className="rounded-md bg-[#156372] px-4 py-2 text-sm font-medium text-white hover:bg-[#0f4e59]"
+                onClick={senderToDelete ? handleConfirmDeleteSender : handleConfirmDeleteRelayServer}
+              >
+                Delete
+              </button>
+              <button
+                className="rounded-md border border-gray-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-gray-50"
+                onClick={() => setShowDeleteModal(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>,
         document.body
       )}
     </div>

@@ -18,7 +18,7 @@ export async function connectDB(mongoUri: string): Promise<void> {
 
   try {
     const options = {
-      dbName: "taban_books",
+      dbName: "Taban_Book",
     };
 
     await mongoose.connect(mongoUri, options);

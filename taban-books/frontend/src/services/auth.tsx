@@ -441,15 +441,21 @@ export const checkUser = async (email: string): Promise<{ hasPassword: boolean; 
 export const sendLoginOTP = async (email: string): Promise<void> => {
   try {
     const response = await fetch(`${API_BASE_URL}/auth/send-login-otp`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
     });
 
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      const text = await response.text();
+      throw new Error(`Server error (${response.status}): ${text.substring(0, 100)}`);
+    }
+
     const data = await response.json();
-    if (!response.ok) throw new Error(data.message || 'Error sending OTP');
-  } catch (error) {
-    console.error('Send login OTP error:', error);
+    if (!response.ok) throw new Error(data.message || "Error sending OTP");
+  } catch (error: any) {
+    console.error("Send login OTP error:", error);
     throw error;
   }
 };
@@ -460,21 +466,27 @@ export const sendLoginOTP = async (email: string): Promise<void> => {
 export const verifyLoginOTP = async (email: string, otp: string): Promise<AuthResponse> => {
   try {
     const response = await fetch(`${API_BASE_URL}/auth/verify-login-otp`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, otp }),
     });
 
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      const text = await response.text();
+      throw new Error(`Server error (${response.status}): ${text.substring(0, 100)}`);
+    }
+
     const data: ApiResponse<AuthResponse> = await response.json();
-    if (!response.ok) throw new Error(data.message || 'Error verifying OTP');
+    if (!response.ok) throw new Error(data.message || "Error verifying OTP");
 
     if (data.success && data.data) {
       return persistSession(data.data);
     }
 
-    throw new Error('Invalid response from server');
+    throw new Error("Invalid response from server");
   } catch (error) {
-    console.error('Verify login OTP error:', error);
+    console.error("Verify login OTP error:", error);
     throw error;
   }
 };

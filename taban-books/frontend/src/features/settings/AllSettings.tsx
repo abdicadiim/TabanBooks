@@ -14,6 +14,8 @@ import {
   ShoppingCart,
   Users,
   X,
+  Percent,
+  FileText,
 } from "lucide-react";
 
 type SettingItem = {
@@ -27,16 +29,48 @@ type SettingCard = {
   color: string;
   title: string;
   items: SettingItem[];
+  subSections?: Omit<SettingCard, "subSections">[];
 };
 
-const cardToneClasses: Record<string, string> = {
-  green: "bg-emerald-50 text-emerald-600",
-  pink: "bg-rose-50 text-rose-500",
-  blue: "bg-blue-50 text-blue-600",
-  orange: "bg-orange-50 text-orange-500",
-  yellow: "bg-amber-50 text-amber-600",
-  red: "bg-red-50 text-red-500",
-  cyan: "bg-cyan-50 text-cyan-600",
+const toneClasses: Record<
+  string,
+  { header: string; iconContainer: string; iconColor: string }
+> = {
+  green: {
+    header: "bg-emerald-50/50",
+    iconContainer: "bg-white shadow-sm border border-emerald-100/50",
+    iconColor: "text-emerald-600",
+  },
+  pink: {
+    header: "bg-rose-50/50",
+    iconContainer: "bg-white shadow-sm border border-rose-100/50",
+    iconColor: "text-rose-500",
+  },
+  blue: {
+    header: "bg-blue-50/50",
+    iconContainer: "bg-white shadow-sm border border-blue-100/50",
+    iconColor: "text-blue-600",
+  },
+  orange: {
+    header: "bg-orange-50/50",
+    iconContainer: "bg-white shadow-sm border border-orange-100/50",
+    iconColor: "text-orange-500",
+  },
+  yellow: {
+    header: "bg-amber-50/50",
+    iconContainer: "bg-white shadow-sm border border-amber-100/50",
+    iconColor: "text-amber-600",
+  },
+  red: {
+    header: "bg-red-50/50",
+    iconContainer: "bg-white shadow-sm border border-red-100/50",
+    iconColor: "text-red-500",
+  },
+  cyan: {
+    header: "bg-cyan-50/50",
+    iconContainer: "bg-white shadow-sm border border-cyan-100/50",
+    iconColor: "text-cyan-600",
+  },
 };
 
 const organizationSettings: SettingCard[] = [
@@ -61,6 +95,14 @@ const organizationSettings: SettingCard[] = [
       { label: "Users", path: "/settings/users" },
       { label: "Roles", path: "/settings/roles" },
       { label: "User Preferences", path: "/settings/user-preferences" },
+    ],
+    subSections: [
+      {
+        icon: FileText,
+        color: "blue",
+        title: "Taxes & Compliance",
+        items: [{ label: "Taxes", path: "/settings/taxes" }],
+      },
     ],
   },
   {
@@ -196,54 +238,77 @@ function SettingCardBlock({
   card: SettingCard;
   navigate: ReturnType<typeof useNavigate>;
 }) {
-  const Icon = card.icon;
-  return (
-    <section className="rounded-[14px] border border-slate-200 bg-white shadow-[0_1px_0_rgba(15,23,42,0.02)]">
-      <div className="flex items-center gap-3 rounded-t-[14px] border-b border-slate-100 px-4 py-3">
-        <div className={`grid h-8 w-8 place-items-center rounded-lg ${cardToneClasses[card.color] || cardToneClasses.green}`}>
-          <Icon size={16} />
+  const renderSection = (
+    icon: React.ElementType,
+    color: string,
+    title: string,
+    items: SettingItem[],
+    isSubSection = false
+  ) => {
+    const Icon = icon;
+    const tone = toneClasses[color] || toneClasses.green;
+
+    return (
+      <div key={title}>
+        <div
+          className={`flex items-center gap-3 border-b border-slate-100 px-4 py-3 ${
+            tone.header
+          } ${isSubSection ? "border-t" : ""}`}
+        >
+          <div className={`grid h-8 w-8 place-items-center rounded-lg ${tone.iconContainer}`}>
+            <Icon size={16} className={tone.iconColor} />
+          </div>
+          <h3 className="text-[15px] font-semibold text-slate-900">{title}</h3>
         </div>
-        <h3 className="text-[15px] font-semibold text-slate-900">{card.title}</h3>
-      </div>
 
-      <div className="px-4 py-3">
-        <div className="space-y-1">
-          {card.items.map((item) => {
-            const row = (
-              <>
-                <span className="truncate">{item.label}</span>
-                {item.badge ? (
-                  <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                    {item.badge}
-                  </span>
-                ) : null}
-              </>
-            );
+        <div className="px-4 py-3">
+          <div className="space-y-1">
+            {items.map((item) => {
+              const row = (
+                <>
+                  <span className="truncate">{item.label}</span>
+                  {item.badge ? (
+                    <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                      {item.badge}
+                    </span>
+                  ) : null}
+                </>
+              );
 
-            if (!item.path) {
+              if (!item.path) {
+                return (
+                  <div
+                    key={item.label}
+                    className="flex items-center justify-between rounded-md px-1 py-2 text-[15px] text-slate-600 opacity-80"
+                  >
+                    {row}
+                  </div>
+                );
+              }
+
               return (
-                <div
+                <button
                   key={item.label}
-                  className="flex items-center justify-between rounded-md px-1 py-2 text-[15px] text-slate-600 opacity-80"
+                  type="button"
+                  onClick={() => navigate(item.path!)}
+                  className="flex w-full items-center justify-between rounded-md px-1 py-2 text-left text-[15px] text-slate-900 transition-colors hover:bg-slate-50 hover:text-[#156372]"
                 >
                   {row}
-                </div>
+                </button>
               );
-            }
-
-            return (
-              <button
-                key={item.label}
-                type="button"
-                onClick={() => navigate(item.path!)}
-                className="flex w-full items-center justify-between rounded-md px-1 py-2 text-left text-[15px] text-slate-900 transition-colors hover:bg-slate-50 hover:text-[#156372]"
-              >
-                {row}
-              </button>
-            );
-          })}
+            })}
+          </div>
         </div>
       </div>
+    );
+  };
+
+  return (
+    <section className="overflow-hidden rounded-[14px] border border-slate-200 bg-white shadow-[0_1px_0_rgba(15,23,42,0.02)]">
+      {renderSection(card.icon, card.color, card.title, card.items)}
+      {card.subSections?.map((sub) =>
+        renderSection(sub.icon, sub.color, sub.title, sub.items, true)
+      )}
     </section>
   );
 }
@@ -298,7 +363,7 @@ export default function AllSettings() {
             </button>
             <div>
               <h1 className="text-[22px] font-semibold text-slate-900">Organization Settings</h1>
-              <p className="text-sm text-slate-500">All settings are grouped into the same 5-column layout from your reference.</p>
+              <p className="text-sm text-slate-500">All settings are grouped into a systematic layout for easy access.</p>
             </div>
           </div>
 

@@ -19,9 +19,19 @@ import {
 } from "lucide-react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
-import { getInvoiceById, getInvoices } from "../../salesModel";
+import { getInvoiceById, getInvoices, Invoice, AttachedFile } from "../../salesModel";
 import { debitNotesAPI, invoicesAPI, senderEmailsAPI } from "../../../../services/api";
 import { applyEmailTemplate } from "../../../settings/emailTemplateUtils";
+
+const escapeHtml = (text: string | number | undefined | null) => {
+  const str = String(text || "");
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
 
 const normalizeInvoiceItems = (sourceInvoice: any) => {
   const coerceItems = (value: any) => {
@@ -96,7 +106,7 @@ export default function SendInvoiceEmail() {
   const navigate = useNavigate();
   const location = useLocation();
   const isDebitNoteRoute = location.pathname.includes("/sales/debit-notes/");
-  const [invoice, setInvoice] = useState(null);
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(false);
   const [sendingStage, setSendingStage] = useState("");
   const [senderName, setSenderName] = useState("Team");
@@ -115,7 +125,7 @@ export default function SendInvoiceEmail() {
   const hasAutoSentRef = useRef(false);
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
-  const [attachments, setAttachments] = useState([]);
+  const [attachments, setAttachments] = useState<AttachedFile[]>([]);
   const [attachInvoicePDF, setAttachInvoicePDF] = useState(true);
   const [attachCustomerStatement, setAttachCustomerStatement] = useState(false);
   const [fontSize, setFontSize] = useState("16");
@@ -123,7 +133,7 @@ export default function SendInvoiceEmail() {
   const [isItalic, setIsItalic] = useState(false);
   const [isUnderline, setIsUnderline] = useState(false);
   const [isStrikethrough, setIsStrikethrough] = useState(false);
-  const fileInputRef = useRef(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const bodyEditorRef = useRef<HTMLDivElement>(null);
   const [isBodyDirty, setIsBodyDirty] = useState(false);
   const containsHtmlMarkup = (value: string) => /<\/?[a-z][\s\S]*>/i.test(value || "");
@@ -234,8 +244,8 @@ export default function SendInvoiceEmail() {
 
             try {
               const primarySenderRes = await senderEmailsAPI.getPrimary();
-              if (primarySenderRes?.success && primarySenderRes.data?.isVerified) {
-                sName = primarySenderRes.data.name || sName;
+              if (primarySenderRes?.success && primarySenderRes.data) {
+                sName = primarySenderRes.data.email || primarySenderRes.data.name || sName;
                 sEmail = primarySenderRes.data.email || sEmail;
               }
             } catch (error) {
@@ -284,7 +294,7 @@ export default function SendInvoiceEmail() {
             }
 
             setEmailData({
-              from: `"${sName}" <${sEmail}>`,
+              from: sEmail ? `"${sEmail}" <${sEmail}>` : sName,
               sendTo: prefilledRecipientFromState || customerEmail,
               cc: "",
               bcc: "",
@@ -322,7 +332,7 @@ export default function SendInvoiceEmail() {
     }, 0);
   }, [autoSendRequested, emailData.sendTo, invoice]);
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: string | undefined) => {
     if (!dateString) return "-";
     const date = new Date(dateString);
     return date.toLocaleDateString("en-GB", {
@@ -332,8 +342,8 @@ export default function SendInvoiceEmail() {
     });
   };
 
-  const formatCurrency = (amount, currency = "AMD") => {
-    return `${currency}${parseFloat(amount || 0).toLocaleString("en-US", {
+  const formatCurrency = (amount: number | string | undefined, currency = "AMD") => {
+    return `${currency}${parseFloat(String(amount || 0)).toLocaleString("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     })}`;
@@ -752,7 +762,7 @@ export default function SendInvoiceEmail() {
       <div style="padding: 15mm; background: white; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1a202c; line-height: 1.6; min-height: 297mm; box-sizing: border-box;">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px;">
           <div>
-            <h1 style="margin: 0; font-size: 28px; font-weight: 800; color: #156372; text-transform: uppercase;">${escapeHtml(organizationName)}</h1>
+            <h1 style="margin: 0; font-size: 28px; font-weight: 800; color: #156372; text-transform: uppercase;">${escapeHtml(getOrganizationName())}</h1>
             <div style="margin-top: 8px; font-size: 13px; color: #4a5568;">Customer Statement</div>
           </div>
           <div style="text-align: right;">
@@ -808,7 +818,7 @@ export default function SendInvoiceEmail() {
     try {
       const outgoingAttachments: Array<any> = [];
       let attachSystemPdfFallback = false;
-      const invoiceNumber = invoice.invoiceNumber || invoice.id || "invoice";
+      const invoiceNumber = invoice!.invoiceNumber || invoice!.id || "invoice";
       const htmlBody = bodyEditorRef.current?.innerHTML || emailData.body || "";
 
       if (attachInvoicePDF) {
@@ -1121,12 +1131,12 @@ export default function SendInvoiceEmail() {
                   onChange={(e) => setAttachInvoicePDF(e.target.checked)}
                   className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                 />
-                <span className="text-sm text-gray-700">Attach {invoice.debitNote ? "Debit Note" : "Invoice"} PDF</span>
+                <span className="text-sm text-gray-700">Attach {invoice!.debitNote ? "Debit Note" : "Invoice"} PDF</span>
               </label>
               {attachInvoicePDF && (
                 <div className="mt-2 flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-white">
                   <FileText size={16} className="text-red-500" />
-                  <span className="flex-1 text-sm text-gray-900">{invoice.invoiceNumber || invoice.id}</span>
+                  <span className="flex-1 text-sm text-gray-900">{invoice!.invoiceNumber || invoice!.id}</span>
                 </div>
               )}
             </div>
@@ -1181,8 +1191,10 @@ export default function SendInvoiceEmail() {
               multiple
               className="hidden"
               onChange={(e) => {
+                if (!e.target.files) return;
                 const files = Array.from(e.target.files);
                 const newAttachments = files.map(file => ({
+                  id: String(Date.now() + Math.random()),
                   name: file.name,
                   type: file.type,
                   file: file,
@@ -1202,7 +1214,7 @@ export default function SendInvoiceEmail() {
             Cancel
           </button>
           <button
-            className={`px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium cursor-pointer hover:bg-blue-700 \${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`px-4 py-2 bg-[#156372] text-white rounded-md text-sm font-medium cursor-pointer hover:bg-[#0f4e5a] \${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
             onClick={handleSend}
             disabled={loading}
           >

@@ -50,7 +50,7 @@ import {
 import { getQuoteById, getQuotes, updateQuote, deleteQuotes, getCustomers, getSalespersons, getProjects, getInvoices, saveInvoice, saveQuote } from "../../salesModel";
 import { currenciesAPI, documentsAPI, senderEmailsAPI, settingsAPI, transactionNumberSeriesAPI } from "../../../../services/api";
 import { toast } from "react-hot-toast";
-import { resolveVerifiedPrimarySender } from "../../../../utils/emailSenderDisplay";
+import { resolvePrimarySender } from "../../../../utils/emailSenderDisplay";
 import QuoteCommentsPanel from "./QuoteCommentsPanel";
 import { buildSubscriptionDraftFromQuote, buildSubscriptionEditDraft } from "../../subscriptions/subscriptionDraftUtils";
 
@@ -288,7 +288,7 @@ const QuoteDetail = () => {
       const primarySenderRes = await senderEmailsAPI.getPrimary();
       const fallbackName = String(organizationProfile?.name || "Taban Enterprise").trim() || "Taban Enterprise";
       const fallbackEmail = String(organizationProfile?.email || "").trim();
-      setOwnerEmail(resolveVerifiedPrimarySender(primarySenderRes, fallbackName, fallbackEmail));
+      setOwnerEmail(resolvePrimarySender(primarySenderRes, fallbackName, fallbackEmail));
     } catch (error) {
       console.error('Error fetching owner email:', error);
     }

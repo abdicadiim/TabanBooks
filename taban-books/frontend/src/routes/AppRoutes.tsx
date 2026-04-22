@@ -87,6 +87,7 @@ const NewRolePageWrapper = lazy(() => import("../features/settings/NewRolePageWr
 const SettingsUserPreferencesWrapper = lazy(() => import("../features/settings/SettingsUserPreferencesWrapper"));
 const NewCustomFieldPageWrapper = lazy(() => import("../features/settings/NewCustomFieldPageWrapper"));
 const SettingsTaxesWrapper = lazy(() => import("../features/settings/SettingsTaxesWrapper"));
+const SettingsVATWrapper = lazy(() => import("../features/settings/SettingsVATWrapper"));
 const SettingsGeneralWrapper = lazy(() =>
   import("../features/settings/organization-settings/setup-configurations/general/SettingsGeneralWrapper"),
 );
@@ -377,6 +378,7 @@ export default function AppRoutes() {
           <Route path="/settings/user-preferences" element={<SettingsUserPreferencesWrapper />} />
           <Route path="/settings/user-preferences/new-field" element={<NewCustomFieldPageWrapper />} />
           <Route path="/settings/taxes/*" element={<SettingsTaxesWrapper />} />
+          <Route path="/settings/vat" element={<SettingsVATWrapper />} />
           <Route path="/settings/general" element={<SettingsGeneralWrapper />} />
           <Route path="/settings/currencies/*" element={<SettingsCurrenciesWrapper />} />
           <Route path="/settings/opening-balances/*" element={<SettingsOpeningBalancesWrapper />} />

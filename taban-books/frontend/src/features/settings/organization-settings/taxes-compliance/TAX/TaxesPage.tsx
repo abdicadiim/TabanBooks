@@ -1,11 +1,12 @@
 import React, { Suspense, lazy, useEffect, useState } from "react";
 import { useNavigate, useLocation, Routes, Route, Navigate } from "react-router-dom";
+import { useAppBootstrap } from "../../../../../context/AppBootstrapContext";
+import { taxesAPI } from "../../../../../services/api";
 import TaxListPage from "./list/TaxListPage";
 import NewTaxPage from "./new/NewTaxPage";
 import NewTaxGroupPage from "./new/NewTaxGroupPage";
 import TaxBulkPage from "./bulk/TaxBulkPage";
 import TaxSettingsPage from "../tax-settings/TaxSettingsPage";
-import { API_BASE_URL, getToken } from "../../../../../services/auth";
 import TDSRatesPage from "./tds/TDSRatesPage";
 
 const TaxImportPage = lazy(() => import("./import/TaxImportPage"));
@@ -21,7 +22,8 @@ function TaxesRouteFallback() {
 export default function TaxesPage() {
     const navigate = useNavigate();
     const location = useLocation();
-    const [isTDSEnabled, setIsTDSEnabled] = useState(false);
+    const { generalSettings } = useAppBootstrap();
+    const isTDSEnabled = !!generalSettings?.settings?.taxComplianceSettings?.enableTDS;
 
     const getActiveTab = () => {
         if (location.pathname.includes("/tds-rates")) return "tds-rates";
@@ -32,30 +34,10 @@ export default function TaxesPage() {
     const activeTab = getActiveTab();
 
     useEffect(() => {
-        const loadTDSState = async () => {
-            try {
-                const token = getToken();
-                if (!token) return;
-
-                const response = await fetch(`${API_BASE_URL}/settings/general`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                if (!response.ok) return;
-
-                const data = await response.json();
-                const enabled = !!data?.data?.settings?.taxComplianceSettings?.enableTDS;
-                setIsTDSEnabled(enabled);
-
-                if (!enabled && location.pathname.includes("/tds-rates")) {
-                    navigate("/settings/taxes", { replace: true });
-                }
-            } catch {
-                // Ignore tab visibility fetch errors.
-            }
-        };
-
-        loadTDSState();
-    }, [location.pathname, navigate]);
+        if (!isTDSEnabled && location.pathname.includes("/tds-rates")) {
+            navigate("/settings/taxes", { replace: true });
+        }
+    }, [isTDSEnabled, location.pathname, navigate]);
 
     return (
         <div className="p-6">

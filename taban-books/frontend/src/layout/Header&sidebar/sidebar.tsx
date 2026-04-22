@@ -151,7 +151,7 @@ export default function Sidebar() {
   });
   const flyoutCloseTimer = useRef<number | null>(null);
 
-  const organizationName = String(organization?.name || currentUser?.organizationName || "Taban Enterprise");
+  const organizationName = String(organization?.name || currentUser?.organizationName || "Taban_Book");
   const roleLabel = String(currentUser?.role || "Owner").replace(/_/g, " ");
   const orgInitial = organizationName.trim().charAt(0).toUpperCase() || "T";
   const isLightAppearance = String(branding?.appearance || "dark") === "light";
@@ -452,7 +452,7 @@ export default function Sidebar() {
           <div className={`font-semibold ${isLightAppearance ? "text-slate-700" : "text-white/85"}`}>Version 1.0.0</div>
           <div className="mt-1 flex items-center gap-1.5">
             <Copyright size={12} />
-            <span>Taban Enterprise</span>
+            <span>Taban_Book</span>
           </div>
         </div>
       </aside>

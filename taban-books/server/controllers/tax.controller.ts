@@ -717,9 +717,11 @@ export const updateTax = async (req: Request, res: Response): Promise<void> => {
 export const deleteTax = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    const organizationId = (req as any).user.organizationId;
+    
     const tax = await Tax.findOne({
       _id: id,
-      organization: (req as any).user.organizationId,
+      organization: organizationId,
     });
 
     if (!tax) {
@@ -730,14 +732,44 @@ export const deleteTax = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Soft delete
-    tax.isActive = false;
-    await tax.save();
-
-    res.json({
-      success: true,
-      message: "Tax deleted successfully",
+    // 1. Check if this tax is part of any tax group
+    const groupsContainingTax = await Tax.countDocuments({
+      organization: organizationId,
+      groupTaxes: id
     });
+
+    if (groupsContainingTax > 0) {
+      res.status(400).json({
+        success: false,
+        message: "Cannot delete this tax because it is a member of one or more tax groups. Remove it from the groups first.",
+      });
+      return;
+    }
+
+    // 2. Check for transaction usage
+    const usageCount = await getTaxUsageCount(organizationId, [id], [tax.rate]);
+    
+    if (usageCount > 0) {
+      // If used, we can only soft-delete (deactivate)
+      tax.isActive = false;
+      tax.isDefault = false;
+      await tax.save();
+
+      res.json({
+        success: true,
+        message: "Tax was deactivated because it has associated records. It will no longer appear in transaction forms.",
+        isSoftDeleted: true
+      });
+    } else {
+      // If never used, we can hard-delete
+      await Tax.deleteOne({ _id: id });
+      
+      res.json({
+        success: true,
+        message: "Tax deleted successfully",
+        isSoftDeleted: false
+      });
+    }
   } catch (error: any) {
     console.error("Error deleting tax:", error);
     res.status(500).json({

@@ -1422,7 +1422,7 @@ export default function AddLocationPage() {
           <button
             type="submit"
             disabled={isSaving}
-            className="px-5 py-1.5 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+            className="px-5 py-1.5 bg-[#156372] text-white text-sm font-medium rounded-lg hover:bg-[#0D4A52] transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
             {isSaving ? 'Saving...' : 'Save'}
           </button>

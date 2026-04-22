@@ -1,7 +1,8 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { GripVertical, X } from "lucide-react";
 import { getToken, API_BASE_URL } from "../../../../../../services/auth";
+import toast from "react-hot-toast";
 
 const TAX_GROUP_MARKER = "__taban_tax_group__";
 
@@ -108,13 +109,13 @@ export default function NewTaxGroupPage() {
       return;
     }
     if (selectedTaxIds.length === 0) {
-      setError("Select at least one tax for this group.");
+      toast.error("Select at least one tax for this group.");
       return;
     }
 
     const token = getToken();
     if (!token) {
-      alert("You are not logged in. Please sign in again.");
+      toast.error("You are not logged in. Please sign in again.");
       return;
     }
 
@@ -145,9 +146,10 @@ export default function NewTaxGroupPage() {
         throw new Error(data.message || (isEditMode ? "Failed to update tax group" : "Failed to create tax group"));
       }
 
+      toast.success(isEditMode ? "Tax group updated successfully" : "Tax group created successfully");
       navigate("/settings/taxes");
     } catch (saveError: any) {
-      alert(saveError.message || (isEditMode ? "Failed to update tax group" : "Failed to create tax group"));
+      toast.error(saveError.message || (isEditMode ? "Failed to update tax group" : "Failed to create tax group"));
     } finally {
       setSaving(false);
     }

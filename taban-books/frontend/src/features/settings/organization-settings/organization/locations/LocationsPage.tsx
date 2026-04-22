@@ -44,7 +44,7 @@ export default function LocationsPage() {
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const tableBodyRef = useRef<HTMLTableSectionElement | null>(null);
   const primaryButtonClass =
-    "px-4 py-2 rounded-lg text-sm font-medium text-white bg-[#1b6f7d] hover:bg-[#155c68] transition shadow-sm focus:outline-none focus:ring-2 focus:ring-[#1b6f7d]/30";
+    "px-4 py-2 rounded-lg text-sm font-medium text-white bg-[#156372] hover:bg-[#0D4A52] transition shadow-sm focus:outline-none focus:ring-2 focus:ring-[#156372]/30";
 
   const loadLocations = async () => {
     setIsLoadingLocations(true);

@@ -1496,14 +1496,16 @@ export default function RecordPayment() {
       console.warn("Could not load primary sender for payment receipt email.", error);
     }
 
-    const sender = resolveVerifiedPrimarySender(primarySenderRes, "System", "billing@example.com");
-    const fromDisplay = formatSenderDisplay(sender.name, sender.email, "System");
+    const primaryData = primarySenderRes?.data;
+    const senderName = primaryData?.email || primaryData?.name || "System";
+    const senderEmail = primaryData?.email || "billing@example.com";
+    const fromDisplay = formatSenderDisplay(senderName, senderEmail, "System");
 
     const payload = {
       from: fromDisplay,
       to,
       subject: `Payment Receipt ${formData.paymentNumber || ""}`.trim(),
-      body: `Dear ${formData.customerName || "Customer"},\n\nThank you for your payment. Please find your payment receipt details attached.\n\nRegards,\n${sender.name}`,
+      body: `Dear ${formData.customerName || "Customer"},\n\nThank you for your payment. Please find your payment receipt details attached.\n\nRegards,\n${senderName}`,
       attachPDF: true,
       paymentId,
     };

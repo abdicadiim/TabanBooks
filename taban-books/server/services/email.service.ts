@@ -261,28 +261,27 @@ async function resolveSmtpCandidates(options: {
     const sender = await SenderEmail.findOne({
       organization: organizationId,
       isPrimary: true,
-      isVerified: true,
     });
 
-    if (
-      sender?.smtpHost &&
-      sender?.smtpUser &&
-      sender?.smtpPassword &&
-      sender?.smtpPort
-    ) {
-      const senderFrom = from || `"${sender.name || "Taban Team"}" <${sender.email || sender.smtpUser}>`;
-      appendCandidate({
-        from: senderFrom,
-        transport: {
-          host: sender.smtpHost,
-          port: Number(sender.smtpPort),
-          secure: fallbackSecure(Number(sender.smtpPort), sender.smtpSecure),
-          auth: {
-            user: sender.smtpUser,
-            pass: sender.smtpPassword,
+    if (sender) {
+      const displayEmail = sender.email || sender.smtpUser;
+      const senderFrom = from || `"${displayEmail}" <${displayEmail}>`;
+      
+      // Only use as SMTP candidate if it has credentials
+      if (sender.smtpHost && sender.smtpUser && sender.smtpPassword && sender.smtpPort) {
+        appendCandidate({
+          from: senderFrom,
+          transport: {
+            host: sender.smtpHost,
+            port: Number(sender.smtpPort),
+            secure: fallbackSecure(Number(sender.smtpPort), sender.smtpSecure),
+            auth: {
+              user: sender.smtpUser,
+              pass: sender.smtpPassword,
+            },
           },
-        },
-      }, "sender");
+        }, "sender");
+      }
     }
   }
 
@@ -292,10 +291,25 @@ async function resolveSmtpCandidates(options: {
   if (smtpUser && smtpPass) {
     const smtpPort = Number(process.env.SMTP_PORT || "587");
     const smtpSecure = toBool(process.env.SMTP_SECURE) || fallbackSecure(smtpPort);
-    const senderFrom =
-      from ||
-      process.env.SMTP_FROM ||
-      `"${process.env.APP_NAME || "Taban Team"}" <${smtpUser}>`;
+    
+    let displayEmail = smtpUser;
+    
+    // If we have an organization, try to use its primary sender email as the display email/from
+    if (organizationId) {
+      try {
+        const primarySender = await SenderEmail.findOne({
+          organization: organizationId,
+          isPrimary: true,
+        }).select('email');
+        if (primarySender?.email) {
+          displayEmail = primarySender.email;
+        }
+      } catch (err) {
+        console.error("Error fetching primary sender for fallback:", err);
+      }
+    }
+
+    const senderFrom = from || `"${displayEmail}" <${displayEmail}>` || process.env.SMTP_FROM;
 
     appendCandidate({
       from: senderFrom,
