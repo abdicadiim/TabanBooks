@@ -29,6 +29,7 @@ import { PaymentTermsDropdown } from "../../../components/PaymentTermsDropdown";
 import { ConfigurePaymentTermsModal } from "../../../components/ConfigurePaymentTermsModal";
 import { ItemSelectDropdown } from "../../../components/ItemSelectDropdown";
 import { AccountSelectDropdown } from "../../../components/AccountSelectDropdown";
+import DatePicker from "../../../components/DatePicker";
 import { LocationSelectDropdown, LocationOption } from "../../../components/LocationSelectDropdown";
 import { defaultPaymentTerms, PaymentTerm } from "../../../hooks/usePaymentTermsDropdown";
 import { API_BASE_URL, getToken } from "../../../services/auth";
@@ -247,6 +248,49 @@ const PURCHASE_ACCOUNT_TYPES = [
 
 const VENDOR_SEARCH_CRITERIA_OPTIONS: VendorSearchCriteria[] = ["Display Name", "Email", "Company Name", "Phone"];
 
+const formatIsoDateForDisplay = (dateString: string) => {
+  if (!dateString) return "";
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateString).trim());
+  if (!match) return "";
+  const [, year, month, day] = match;
+  return `${day}/${month}/${year}`;
+};
+
+const parseDisplayDateToIso = (dateString: string) => {
+  const trimmed = String(dateString || "").trim();
+  if (!trimmed) return "";
+
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(trimmed);
+  if (!match) return "";
+
+  const [, dayString, monthString, yearString] = match;
+  const day = Number(dayString);
+  const month = Number(monthString);
+  const year = Number(yearString);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    return "";
+  }
+
+  return `${yearString}-${monthString}-${dayString}`;
+};
+
+const parseIsoDateToLocalDate = (dateString: string) => {
+  if (!dateString) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateString).trim());
+  if (!match) return null;
+
+  const [, yearString, monthString, dayString] = match;
+  const parsed = new Date(Number(yearString), Number(monthString) - 1, Number(dayString));
+  parsed.setHours(0, 0, 0, 0);
+  return parsed;
+};
+
 
 const PURCHASE_ORDERS_KEY = "purchase_orders_v1";
 // Duplicate import removed
@@ -275,6 +319,8 @@ export default function NewPurchaseOrder() {
     notes: "",
     termsAndConditions: "",
   });
+  const [dateInputValue, setDateInputValue] = useState(() => formatIsoDateForDisplay(new Date().toISOString().split('T')[0]));
+  const [deliveryDateInputValue, setDeliveryDateInputValue] = useState("");
   const [vendors, setVendors] = useState<VendorRecord[]>([]);
   const [vendorDropdownOpen, setVendorDropdownOpen] = useState(false);
   const [vendorDropdownSearch, setVendorDropdownSearch] = useState("");
@@ -354,6 +400,8 @@ export default function NewPurchaseOrder() {
   const reportingTagOptionMenuRef = useRef<HTMLDivElement | null>(null);
   const [reportingTagsMenuStyle, setReportingTagsMenuStyle] = useState<{ left: number; top: number; width: number } | null>(null);
   const [reportingTagOptionMenuStyle, setReportingTagOptionMenuStyle] = useState<{ left: number; top: number; width: number } | null>(null);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
   const discountMode = enabledSettings?.discountSettings?.discountType ?? "transaction";
   const showTransactionDiscount = discountMode === "transaction";
   const taxMode = enabledSettings?.taxSettings?.taxInclusive ?? "both";
@@ -462,6 +510,14 @@ export default function NewPurchaseOrder() {
         notes: editOrder.notes || "",
         termsAndConditions: editOrder.terms || editOrder.termsAndConditions || editOrder.terms_and_conditions || "",
       });
+      setDateInputValue(formatIsoDateForDisplay(editOrder.date ? new Date(editOrder.date).toISOString().split('T')[0] : ""));
+      setDeliveryDateInputValue(
+        formatIsoDateForDisplay(
+          editOrder.expectedDate
+            ? new Date(editOrder.expectedDate).toISOString().split('T')[0]
+            : (editOrder.deliveryDate ? new Date(editOrder.deliveryDate).toISOString().split('T')[0] : "")
+        )
+      );
       setSelectedProjectId(rawProjectId);
       setSelectedProjectName(rawProjectName);
       setReportingTagDrafts(nextReportingTagDrafts);
@@ -515,6 +571,14 @@ export default function NewPurchaseOrder() {
       notes: clonedData.notes || "",
       termsAndConditions: clonedData.terms || clonedData.termsAndConditions || clonedData.terms_and_conditions || "",
     }));
+    setDateInputValue(formatIsoDateForDisplay(new Date().toISOString().split('T')[0]));
+    setDeliveryDateInputValue(
+      formatIsoDateForDisplay(
+        clonedData.expectedDate
+          ? new Date(clonedData.expectedDate).toISOString().split('T')[0]
+          : (clonedData.deliveryDate ? new Date(clonedData.deliveryDate).toISOString().split('T')[0] : "")
+      )
+    );
     setSelectedProjectId(rawProjectId);
     setSelectedProjectName(rawProjectName);
     setReportingTagDrafts(nextReportingTagDrafts);
@@ -1292,6 +1356,8 @@ export default function NewPurchaseOrder() {
     const nextErrors: Partial<Record<PurchaseOrderFieldErrorKey, string>> = {};
     const nextItemErrors: Record<number, PurchaseOrderItemError> = {};
     const { resolvedVendorId, resolvedVendorName } = resolveVendorForSubmit();
+    const parsedOrderDate = parseDisplayDateToIso(dateInputValue);
+    const parsedDeliveryDate = parseDisplayDateToIso(deliveryDateInputValue);
 
     if (!resolvedVendorId && !resolvedVendorName) {
       nextErrors.vendorName = "Please select a valid vendor.";
@@ -1316,20 +1382,30 @@ export default function NewPurchaseOrder() {
       nextErrors.purchaseOrderNumber = "Purchase order number is required.";
     }
 
-    if (!String(formData.date || "").trim()) {
+    if (!String(dateInputValue || "").trim()) {
       nextErrors.date = "Date is required.";
+    } else if (!parsedOrderDate) {
+      nextErrors.date = "Enter the date in dd/MM/yyyy format.";
+    } else {
+      const orderDateValue = parseIsoDateToLocalDate(parsedOrderDate);
+      if (orderDateValue && orderDateValue < today) {
+        nextErrors.date = "Date cannot be earlier than today.";
+      }
     }
 
     if (!String(formData.paymentTerms || "").trim()) {
       nextErrors.paymentTerms = "Payment terms are required.";
     }
 
-    if (formData.deliveryDate && formData.date) {
-      const orderDate = new Date(formData.date);
-      const deliveryDate = new Date(formData.deliveryDate);
-      if (!Number.isNaN(orderDate.getTime()) && !Number.isNaN(deliveryDate.getTime()) && deliveryDate < orderDate) {
-        nextErrors.deliveryDate = "Delivery date cannot be earlier than the purchase order date.";
+    if (String(deliveryDateInputValue || "").trim() && !parsedDeliveryDate) {
+      nextErrors.deliveryDate = "Enter the delivery date in dd/MM/yyyy format.";
+    } else if (parsedDeliveryDate) {
+      const deliveryDateValue = parseIsoDateToLocalDate(parsedDeliveryDate);
+      if (deliveryDateValue && deliveryDateValue < today) {
+        nextErrors.deliveryDate = "Delivery date cannot be earlier than today.";
       }
+    } else if (parsedDeliveryDate && parsedOrderDate && parsedDeliveryDate < parsedOrderDate) {
+      nextErrors.deliveryDate = "Delivery date cannot be earlier than the purchase order date.";
     }
 
     const missingRequiredReportingTags = availableReportingTags.filter((tag) => {
@@ -1395,6 +1471,22 @@ export default function NewPurchaseOrder() {
       ...prev,
       [name]: nextValue,
     } as PurchaseOrderFormData));
+  };
+
+  const handleDateFieldChange = (field: "date" | "deliveryDate", value: string) => {
+    if (field === "date") {
+      setDateInputValue(value);
+      clearFieldError("date");
+    } else {
+      setDeliveryDateInputValue(value);
+      clearFieldError("deliveryDate");
+    }
+
+    const parsedValue = parseDisplayDateToIso(value);
+    setFormData((prev) => ({
+      ...prev,
+      [field]: parsedValue || "",
+    }));
   };
 
   // Handle delivery address type change
@@ -2444,13 +2536,14 @@ export default function NewPurchaseOrder() {
 
               <div className="grid gap-4 md:grid-cols-[170px_minmax(0,1fr)] md:items-center">
                 <label className="block text-sm font-medium text-gray-700">Date</label>
-                <input
-                  type="date"
-                  name="date"
-                  value={formData.date}
-                  onChange={handleChange}
-                  className={getFieldInputClass("date", "w-full max-w-[330px] rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-1 focus:ring-[#156372]")}
-                />
+                <div className="w-full max-w-[330px]">
+                  <DatePicker
+                    value={dateInputValue}
+                    onChange={(value) => handleDateFieldChange("date", value)}
+                    placeholder="dd/MM/yyyy"
+                    minDate={today}
+                  />
+                </div>
                 {validationErrors.date ? (
                   <p className="text-sm text-red-500">{validationErrors.date}</p>
                 ) : null}
@@ -2459,13 +2552,14 @@ export default function NewPurchaseOrder() {
               <div className="grid gap-4 md:grid-cols-[170px_minmax(0,1fr)] md:items-center">
                 <label className="block text-sm font-medium text-gray-700">Delivery Date</label>
                 <div className="grid gap-6 md:grid-cols-[330px_minmax(320px,1fr)] md:items-center">
-                  <input
-                    type="date"
-                    name="deliveryDate"
-                    value={formData.deliveryDate}
-                    onChange={handleChange}
-                    className={getFieldInputClass("deliveryDate", "w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-1 focus:ring-[#156372]")}
-                  />
+                  <div className="w-full">
+                    <DatePicker
+                      value={deliveryDateInputValue}
+                      onChange={(value) => handleDateFieldChange("deliveryDate", value)}
+                      placeholder="dd/MM/yyyy"
+                      minDate={today}
+                    />
+                  </div>
                   {validationErrors.deliveryDate ? (
                     <p className="mt-2 text-sm text-red-500">{validationErrors.deliveryDate}</p>
                   ) : null}

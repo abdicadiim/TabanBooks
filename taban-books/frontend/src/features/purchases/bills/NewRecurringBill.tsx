@@ -19,11 +19,12 @@ import {
   Tag,
   Repeat2,
 } from "lucide-react";
-import { recurringBillsAPI, vendorsAPI, customersAPI, itemsAPI, paymentTermsAPI, accountsAPI, taxesAPI } from "../../../services/api";
+import { recurringBillsAPI, vendorsAPI, customersAPI, itemsAPI, paymentTermsAPI, accountsAPI, taxesAPI, locationsAPI } from "../../../services/api";
 import toast from "react-hot-toast";
 import DatePicker from "../../../components/DatePicker";
 import { usePaymentTermsDropdown } from "../../../hooks/usePaymentTermsDropdown";
 import { PaymentTermsDropdown } from "../../../components/PaymentTermsDropdown";
+import { LocationSelectDropdown } from "../../../components/LocationSelectDropdown";
 import { useCurrency } from "../../../hooks/useCurrency";
 import { filterActiveRecords } from "../shared/activeFilters";
 
@@ -458,7 +459,7 @@ export default function NewRecurringBill() {
     repeatEvery: "Week",
     customRepeatValue: "",
     customRepeatUnit: "days",
-    startOn: "2025-12-31",
+    startOn: new Date().toISOString().split("T")[0],
     endsOn: "",
     neverExpires: true,
     paymentTerms: "Due on Receipt",
@@ -619,6 +620,27 @@ export default function NewRecurringBill() {
   const [taxes, setTaxes] = useState<any[]>(DEFAULT_TAX_OPTIONS);
 
   const [customers, setCustomers] = useState([]);
+  const [locations, setLocations] = useState<{id: string, label: string}[]>([]);
+
+  // Load locations from API
+  useEffect(() => {
+    const loadLocations = async () => {
+      try {
+        const response = await locationsAPI.getAll();
+        if (response && (response.code === 0 || response.success)) {
+          const loadedLocations = filterActiveRecords(response.data || []);
+          const formattedLocations = loadedLocations.map((loc: any) => ({
+            id: loc.name || loc.id || loc._id,
+            label: loc.name || loc.label || "Unnamed Location",
+          }));
+          setLocations(formattedLocations);
+        }
+      } catch (error) {
+        console.error("Error loading locations:", error);
+      }
+    };
+    loadLocations();
+  }, []);
 
   // Load vendors from API
   useEffect(() => {
@@ -1268,8 +1290,8 @@ export default function NewRecurringBill() {
             <div className="flex flex-col gap-5">
               {/* Row 1 */}
               <div className="flex items-center">
-                <label className="w-[200px] text-sm font-medium text-red-600 flex items-center gap-1 shrink-0">
-                  Vendor Name<span className="text-red-500">*</span>
+                <label className="w-[200px] text-sm font-medium text-red-600 flex items-center shrink-0">
+                  Vendor Name<span className="text-red-500 ml-0.5">*</span>
                 </label>
                 <div className="relative flex items-center gap-0 w-[400px]" ref={vendorRef}>
                   <div className="relative flex-1">
@@ -1361,30 +1383,24 @@ export default function NewRecurringBill() {
 
               {/* Row 2 */}
               <div className="flex items-center">
-                <label className="w-[200px] text-sm font-medium text-gray-700 flex items-center gap-1 shrink-0">
+                <label className="w-[200px] text-sm font-medium text-gray-700 flex items-center shrink-0">
                   Location
                 </label>
                 <div className="relative w-[400px]">
-                  <select
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm outline-none bg-white cursor-pointer focus:border-teal-600 hover:border-teal-600 appearance-none h-10"
+                  <LocationSelectDropdown
                     value={warehouseLocation}
-                    onChange={(e) => setWarehouseLocation(e.target.value)}
-                  >
-                    <option value="Head Office">Head Office</option>
-                    <option value="Branch 1">Branch 1</option>
-                    <option value="Store">Store</option>
-                  </select>
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
-                    <ChevronDown size={16} />
-                  </div>
+                    options={locations}
+                    onSelect={(option) => setWarehouseLocation(option.id)}
+                    className="w-full"
+                  />
                 </div>
               </div>
 
               <div className="w-full h-px bg-gray-100 my-2"></div>
 
               <div className="flex items-center">
-                <label className="w-[200px] text-sm font-medium text-red-600 flex items-center gap-1 shrink-0">
-                  Profile Name<span className="text-red-500">*</span>
+                <label className="w-[200px] text-sm font-medium text-red-600 flex items-center shrink-0">
+                  Profile Name<span className="text-red-500 ml-0.5">*</span>
                 </label>
                 <input
                   type="text"
@@ -1395,8 +1411,8 @@ export default function NewRecurringBill() {
               </div>
 
               <div className="flex items-center">
-                <label className="w-[200px] text-sm font-medium text-red-600 flex items-center gap-1 shrink-0">
-                  Repeat Every<span className="text-red-500">*</span>
+                <label className="w-[200px] text-sm font-medium text-red-600 flex items-center shrink-0">
+                  Repeat Every<span className="text-red-500 ml-0.5">*</span>
                 </label>
                 <div className="flex gap-2 items-start w-[400px]">
                   <div className="relative flex-1" ref={repeatEveryRef}>
@@ -1451,7 +1467,7 @@ export default function NewRecurringBill() {
 
               {/* Row 3 */}
               <div className="flex items-center">
-                <label className="w-[200px] text-sm font-medium text-gray-700 flex items-center gap-1 shrink-0">
+                <label className="w-[200px] text-sm font-medium text-gray-700 flex items-center shrink-0">
                   Start On
                 </label>
                 <div className="flex items-center gap-4 flex-1">
@@ -1463,7 +1479,6 @@ export default function NewRecurringBill() {
                         if (parsed) setFormData({ ...formData, startOn: parsed });
                       }}
                       placeholder="dd/MM/yyyy"
-                      minDate={new Date(new Date().setHours(0, 0, 0, 0))} // Start date cannot be in the past
                     />
                   </div>
                   <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Ends On</label>
@@ -1472,9 +1487,8 @@ export default function NewRecurringBill() {
                       value={formData.neverExpires ? "" : formatDateForDisplay(formData.endsOn)}
                       onChange={(dateString) => {
                         const parsed = parseDateFromDisplay(dateString);
-                        setFormData({ ...formData, endsOn: parsed });
+                        setFormData({ ...formData, endsOn: parsed, neverExpires: false });
                       }}
-                      disabled={formData.neverExpires}
                       placeholder="dd/MM/yyyy"
                       minDate={formData.startOn ? new Date(formData.startOn) : undefined} // End date cannot be before start date
                     />
@@ -1484,17 +1498,17 @@ export default function NewRecurringBill() {
                       type="checkbox"
                       className="w-4 h-4 cursor-pointer accent-teal-600"
                       checked={formData.neverExpires}
-                      onChange={(e) => setFormData({ ...formData, neverExpires: e.target.checked, endsOn: "" })}
+                      onChange={(e) => setFormData({ ...formData, neverExpires: e.target.checked, endsOn: e.target.checked ? "" : formData.endsOn })}
                     />
-                    <label className="text-sm text-gray-700 cursor-pointer whitespace-nowrap">Never Expires</label>
+                    <label className="text-sm text-gray-700 cursor-pointer whitespace-nowrap" onClick={() => setFormData({ ...formData, neverExpires: !formData.neverExpires, endsOn: !formData.neverExpires ? "" : formData.endsOn })}>Never Expires</label>
                   </div>
                 </div>
               </div>
 
               {/* Row 4 */}
               <div className="flex items-center">
-                <div className="w-[200px] flex items-center gap-1 shrink-0">
-                  <label className="text-sm font-medium text-gray-700">Accounts Payable</label>
+                <div className="w-[200px] flex items-center shrink-0">
+                  <label className="text-sm font-medium text-gray-700 mr-1">Accounts Payable</label>
                   <div className="relative group">
                     <Info size={14} className="text-gray-400 cursor-help" />
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
@@ -1525,7 +1539,7 @@ export default function NewRecurringBill() {
 
               {/* Row 5 */}
               <div className="flex items-center">
-                <label className="w-[200px] text-sm font-medium text-gray-700 flex items-center gap-1 shrink-0">
+                <label className="w-[200px] text-sm font-medium text-gray-700 flex items-center shrink-0">
                   Payment Terms
                 </label>
                 <div className="w-[400px]">
