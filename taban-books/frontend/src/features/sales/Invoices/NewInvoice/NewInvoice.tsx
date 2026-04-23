@@ -2433,7 +2433,22 @@ const isDuplicateInvoiceNumberError = (error: any) => {
 
 const fetchLatestInvoiceNumber = async () => {
   try {
-    const allSeries: any = await transactionNumberSeriesAPI.getAll({ limit: 1000 });
+    const directResponse: any = await invoicesAPI.getNextNumber(invoicePrefix || "INV-");
+    const directNumber =
+      directResponse?.data?.invoiceNumber ||
+      directResponse?.data?.nextNumber ||
+      directResponse?.data?.number ||
+      directResponse?.invoiceNumber ||
+      directResponse?.nextNumber;
+    if (directResponse?.success && directNumber) {
+      const latestNumber = String(directNumber);
+      setFormData((prev) => ({ ...prev, invoiceNumber: latestNumber }));
+      const trailingDigits = latestNumber.match(/(\d+)$/)?.[1];
+      if (trailingDigits) setInvoiceNextNumber(trailingDigits);
+      return latestNumber;
+    }
+
+    const allSeries: any = await transactionNumberSeriesAPI.getAll({ limit: 1000, _ts: Date.now() });
     const rows = extractTransactionSeriesRows(allSeries);
     const invoiceSeries =
       rows.find((row: any) => {

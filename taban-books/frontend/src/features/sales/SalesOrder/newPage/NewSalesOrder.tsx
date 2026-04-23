@@ -19,7 +19,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { ConfigurePaymentTermsModal } from "../../../../components/ConfigurePaymentTermsModal";
 import { defaultPaymentTerms, PaymentTerm } from "../../../../hooks/usePaymentTermsDropdown";
-import { customersAPI, locationsAPI, salespersonsAPI } from "../../../../services/api";
+import { customersAPI, itemsAPI, locationsAPI, salespersonsAPI } from "../../../../services/api";
 import { salesOrdersAPI } from "../salesOrderApi";
 
 const LABEL_CLASS = "w-36 shrink-0 text-sm font-medium text-gray-700";
@@ -70,12 +70,23 @@ type LocationOption = {
   isDefault?: boolean;
 };
 
+type ItemOption = {
+  id: string;
+  sourceId: string;
+  name: string;
+  sku: string;
+  rate: number;
+  stockOnHand: number;
+  unit: string;
+};
+
 const NewSalesOrder: React.FC<NewSalesOrderProps> = ({ onCancel, onSaved }) => {
   const navigate = useNavigate();
   const customerDropdownRef = useRef<HTMLDivElement | null>(null);
   const locationDropdownRef = useRef<HTMLDivElement | null>(null);
   const salespersonDropdownRef = useRef<HTMLDivElement | null>(null);
   const paymentTermsDropdownRef = useRef<HTMLDivElement | null>(null);
+  const itemDropdownRef = useRef<HTMLTableCellElement | null>(null);
   const [salesOrderNumber] = useState("SO-00003");
   const [salesOrderDate] = useState("23/04/2026");
   const [expectedShipDate] = useState("dd/MM/yyyy");
@@ -83,6 +94,10 @@ const NewSalesOrder: React.FC<NewSalesOrderProps> = ({ onCancel, onSaved }) => {
   const [termsAndConditions, setTermsAndConditions] = useState("");
   const [deliveryMethod, setDeliveryMethod] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isItemDropdownOpen, setIsItemDropdownOpen] = useState(false);
+  const [itemSearch, setItemSearch] = useState("");
+  const [itemOptions, setItemOptions] = useState<ItemOption[]>([]);
+  const [selectedItem, setSelectedItem] = useState<ItemOption | null>(null);
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerOptions, setCustomerOptions] = useState<any[]>([]);
@@ -198,6 +213,33 @@ const NewSalesOrder: React.FC<NewSalesOrderProps> = ({ onCancel, onSaved }) => {
             });
           }
         }
+
+        const itemsResponse = await itemsAPI.getAll();
+        const rawItems = Array.isArray((itemsResponse as any)?.data)
+          ? (itemsResponse as any).data
+          : Array.isArray(itemsResponse)
+            ? itemsResponse
+            : [];
+
+        const activeItems = rawItems
+          .filter((item: any) => {
+            if (item?.isActive === false || item?.active === false || item?.is_active === false) return false;
+            return true;
+          })
+          .map((item: any, index: number) => ({
+            id: String(item?._id || item?.id || item?.itemId || item?.item_id || item?.sku || `item-${index}`),
+            sourceId: String(item?._id || item?.id || item?.itemId || item?.item_id || item?.sku || `item-${index}`),
+            name: String(item?.name || item?.itemName || item?.displayName || item?.title || "Unnamed Item"),
+            sku: String(item?.sku || item?.itemCode || item?.code || "").trim(),
+            rate: Number(item?.sellingPrice || item?.salesPrice || item?.costPrice || item?.rate || item?.price || 0) || 0,
+            stockOnHand: Number(item?.stockOnHand || item?.quantityOnHand || item?.stockQuantity || item?.openingStock || 0) || 0,
+            unit: String(item?.unit || item?.uom || item?.salesUnit || "pcs").trim() || "pcs",
+          }));
+
+        setItemOptions(activeItems);
+        if (!selectedItem && activeItems.length > 0) {
+          setSelectedItem(activeItems[0]);
+        }
       } catch (error) {
         console.error("Failed to load sales order dropdown data:", error);
       }
@@ -206,6 +248,12 @@ const NewSalesOrder: React.FC<NewSalesOrderProps> = ({ onCancel, onSaved }) => {
     void loadDropdownData();
 
     const handleOutsideClick = (event: MouseEvent) => {
+      if (
+        itemDropdownRef.current &&
+        !itemDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsItemDropdownOpen(false);
+      }
       if (
         locationDropdownRef.current &&
         !locationDropdownRef.current.contains(event.target as Node)
@@ -251,6 +299,10 @@ const NewSalesOrder: React.FC<NewSalesOrderProps> = ({ onCancel, onSaved }) => {
     location.label.toLowerCase().includes(locationSearch.toLowerCase())
   );
 
+  const filteredItems = itemOptions.filter((item) =>
+    [item.name, item.sku, String(item.rate)].join(" ").toLowerCase().includes(itemSearch.toLowerCase())
+  );
+
   const filteredSalespersons = salespersonOptions.filter((salesperson) =>
     String(salesperson.name || "").toLowerCase().includes(salespersonSearch.toLowerCase())
   );
@@ -270,7 +322,20 @@ const NewSalesOrder: React.FC<NewSalesOrderProps> = ({ onCancel, onSaved }) => {
     salespersonId: selectedSalesperson?.id,
     salespersonName: selectedSalesperson?.name,
     warehouseLocation: selectedLocation?.label || "Head Office",
-    items: [],
+    items: selectedItem
+      ? [
+          {
+            itemId: selectedItem.sourceId,
+            itemDetails: selectedItem.name,
+            sku: selectedItem.sku,
+            quantity: 1,
+            rate: selectedItem.rate,
+            amount: selectedItem.rate,
+            stockOnHand: selectedItem.stockOnHand,
+            unit: selectedItem.unit,
+          },
+        ]
+      : [],
     subtotal: 0,
     total: 0,
     notes: customerNotes,
@@ -675,6 +740,179 @@ const NewSalesOrder: React.FC<NewSalesOrderProps> = ({ onCancel, onSaved }) => {
                     </thead>
                     <tbody>
                       <tr className="border-b border-[#dfe3f2]">
+                        <td className="relative px-3 py-4" ref={itemDropdownRef}>
+                          {selectedItem ? (
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              className="w-full rounded-md border border-transparent bg-white px-0 py-0 text-left outline-none"
+                              onClick={() => setIsItemDropdownOpen((open) => !open)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  setIsItemDropdownOpen((open) => !open);
+                                }
+                              }}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex min-w-0 items-start gap-3">
+                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-50 text-gray-300">
+                                    <LayoutGrid size={15} />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="truncate text-[13px] font-medium text-gray-900">
+                                      {selectedItem.name}
+                                    </div>
+                                    <div className="mt-0.5 text-[11px] text-gray-500">
+                                      SKU: {selectedItem.sku || "-"} · Rate: KES{Number(selectedItem.rate || 0).toFixed(2)}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 text-gray-400">
+                                  <button type="button" className="rounded-full p-0.5 hover:bg-gray-100" aria-label="More actions">
+                                    <span className="text-lg leading-none">...</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="rounded-full p-0.5 hover:bg-gray-100"
+                                    aria-label="Remove item"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setSelectedItem(null);
+                                      setItemSearch("");
+                                      setIsItemDropdownOpen(true);
+                                    }}
+                                  >
+                                    <X size={13} />
+                                  </button>
+                                  </div>
+                                </div>
+                              <div className="mt-3 rounded-md bg-gray-50 px-3 py-2">
+                                <div className="flex items-center justify-between gap-3 text-[11px] text-gray-500">
+                                  <span className="font-medium">Stock on Hand</span>
+                                  <span className="font-medium text-gray-700">
+                                    {Number(selectedItem.stockOnHand || 0).toFixed(2)} {selectedItem.unit}
+                                  </span>
+                                </div>
+                                <div className="mt-1 flex items-center justify-between gap-3">
+                                  <span className="text-[11px] text-[#156372]">Head Office</span>
+                                  <span className="text-[11px] text-indigo-500">Recent Transactions</span>
+                                  </div>
+                                </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-50 text-gray-300">
+                                <LayoutGrid size={15} />
+                              </div>
+                              <input
+                                className="w-full border-0 bg-transparent px-0 py-1 text-[13px] text-gray-700 outline-none placeholder:text-gray-400"
+                                placeholder="Type or click to select an item."
+                                value={itemSearch}
+                                onChange={(event) => {
+                                  setItemSearch(event.target.value);
+                                  setIsItemDropdownOpen(true);
+                                }}
+                                onFocus={() => setIsItemDropdownOpen(true)}
+                              />
+                            </div>
+                          )}
+                          {isItemDropdownOpen && (
+                            <div className="absolute left-0 top-[calc(100%+6px)] z-40 w-[560px] max-w-[calc(100vw-48px)] overflow-hidden rounded-md border border-gray-200 bg-white shadow-xl">
+                              <div className="border-b border-gray-100 p-2">
+                                <div className="relative">
+                                  <Search size={13} className="pointer-events-none absolute left-2 top-2.5 text-gray-400" />
+                                  <input
+                                    value={itemSearch}
+                                    onChange={(event) => setItemSearch(event.target.value)}
+                                    placeholder="Search"
+                                    className="w-full rounded border border-gray-300 py-1.5 pl-8 pr-3 text-[13px] text-gray-700 outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
+                                  />
+                                </div>
+                              </div>
+                              <div className="max-h-64 overflow-y-auto">
+                                {filteredItems.length > 0 ? (
+                                  filteredItems.map((item, index) => {
+                                    const isSelected = selectedItem?.id === item.id;
+                                    return (
+                                      <button
+                                        key={item.id}
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedItem(item);
+                                          setItemSearch(item.name);
+                                          setIsItemDropdownOpen(false);
+                                        }}
+                                        className={`flex w-full items-start justify-between gap-4 px-4 py-2.5 text-left transition-colors ${
+                                          isSelected ? "bg-blue-500 text-white" : "text-gray-700 hover:bg-gray-50"
+                                        }`}
+                                      >
+                                        <div className="min-w-0 flex-1">
+                                          <div className={`truncate text-[13px] font-medium ${isSelected ? "text-white" : "text-gray-900"}`}>
+                                            {item.name}
+                                          </div>
+                                          <div className={`mt-0.5 text-[11px] ${isSelected ? "text-blue-100" : "text-gray-500"}`}>
+                                            SKU: {item.sku || "-"} Rate: KES{Number(item.rate || 0).toFixed(2)}
+                                          </div>
+                                        </div>
+                                        <div className={`min-w-[120px] text-right text-[11px] ${isSelected ? "text-blue-100" : "text-gray-500"}`}>
+                                          <div className="font-medium">Stock on Hand</div>
+                                          <div className={`mt-0.5 text-[13px] font-semibold ${isSelected ? "text-white" : "text-[#1f7a5a]"}`}>
+                                            {Number(item.stockOnHand || 0).toFixed(2)} {item.unit}
+                                          </div>
+                                        </div>
+                                      </button>
+                                    );
+                                  })
+                                ) : (
+                                  <div className="px-4 py-3 text-center text-[13px] text-gray-400">No items found</div>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                className="flex w-full items-center gap-2 border-t border-gray-100 bg-white px-4 py-2.5 text-left text-[13px] font-medium text-[#156372] hover:bg-gray-50"
+                                onClick={() => {
+                                  setIsItemDropdownOpen(false);
+                                  navigate("/items/new");
+                                }}
+                              >
+                                <PlusCircle size={14} />
+                                Add New Item
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-4 align-top text-right text-[13px] text-gray-700">
+                          <input
+                            type="number"
+                            className="w-full border-0 bg-transparent px-0 py-1 text-right text-[13px] text-gray-700 outline-none"
+                            defaultValue="1.00"
+                          />
+                          {selectedItem ? (
+                            <div className="mt-2 text-center text-[11px] leading-tight text-gray-600">
+                              <div className="font-medium">Stock on Hand:</div>
+                              <div>
+                                {Number(selectedItem.stockOnHand || 0).toFixed(2)} {selectedItem.unit}
+                              </div>
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-4 align-top text-right text-[13px] text-gray-700">
+                          <input
+                            type="number"
+                            className="w-full border-0 bg-transparent px-0 py-1 text-right text-[13px] text-gray-700 outline-none"
+                            value={selectedItem ? Number(selectedItem.rate || 0).toFixed(2) : "0.00"}
+                            readOnly
+                          />
+                          {selectedItem ? (
+                            <div className="mt-2 text-right text-[11px] text-indigo-500">Recent Transactions</div>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-4 align-top text-right text-[13px] font-semibold text-gray-900">
+                          {selectedItem ? `KES${(Number(selectedItem.rate || 0) * 1).toFixed(2)}` : "0.00"}
+                        </td>
+                      </tr>
+                      <tr className="border-b border-[#dfe3f2]">
                         <td className="px-3 py-4">
                           <div className="flex items-center gap-3">
                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-50 text-gray-300">
@@ -1073,5 +1311,6 @@ function SalespersonManagerModal({
 }
 
 export default NewSalesOrder;
+
 
 

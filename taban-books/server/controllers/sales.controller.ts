@@ -4395,8 +4395,16 @@ export const getNextInvoiceNumber = async (req: AuthRequest, res: Response): Pro
     }
 
     const { prefix: queryPrefix } = req.query as { prefix?: string };
+    const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const extractNumber = (invoiceNumber: string) => {
+      const match = String(invoiceNumber || "").match(/(\d+)\s*$/);
+      return match ? parseInt(match[1], 10) : 0;
+    };
+    const formatNumber = (prefix: string, number: number, padding: number) =>
+      `${prefix}${String(number).padStart(padding, '0')}`;
+    const prefix = queryPrefix || 'INV-';
+    const paddedLength = 6;
 
-    // 1. Try to get from TransactionNumberSeries
     const series = await TransactionNumberSeries.findOne({
       organization: req.user.organizationId,
       module: 'Invoice',
@@ -4404,47 +4412,23 @@ export const getNextInvoiceNumber = async (req: AuthRequest, res: Response): Pro
       isActive: true
     });
 
-    if (series) {
-      const nextNumber = (series.currentNumber || 0) + 1;
-      const prefix = queryPrefix || series.prefix || 'INV-';
-      const paddedNumber = String(nextNumber).padStart(series.startingNumber?.length || 6, '0');
-      const nextInvoiceNumber = `${prefix}${paddedNumber}`;
-
-      res.json({
-        success: true,
-        data: {
-          invoiceNumber: nextInvoiceNumber,
-          nextNumber: nextNumber,
-          prefix: prefix,
-          seriesId: series._id
-        }
-      });
-      return;
-    }
-
-    // 2. Fallback to existing logic if no series found
-    const prefix = queryPrefix || 'INV-';
-
-    // Find the highest invoice number with this prefix
     const lastInvoice = await Invoice.findOne({
       organization: req.user.organizationId,
-      invoiceNumber: new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`)
+      invoiceNumber: new RegExp(`^${escapeRegExp(prefix)}`)
     })
       .sort({ invoiceNumber: -1 })
       .lean() as any;
 
-    let nextNumber = 1;
-    if (lastInvoice && lastInvoice.invoiceNumber) {
-      // Extract number from invoice number (e.g., "INV-000001" -> 1)
-      const match = lastInvoice.invoiceNumber.match(/\d+$/);
-      if (match) {
-        nextNumber = parseInt(match[0], 10) + 1;
-      }
-    }
+    const lastInvoiceNumber = lastInvoice?.invoiceNumber ? extractNumber(lastInvoice.invoiceNumber) : 0;
+    const seriesNumber = series ? Number(series.currentNumber || 0) : 0;
+    const nextNumber = Math.max(seriesNumber + 1, lastInvoiceNumber + 1, 1);
+    const paddedNumber = series?.startingNumber?.length || paddedLength;
+    const nextInvoiceNumber = formatNumber(prefix, nextNumber, paddedNumber);
 
-    // Format with zero padding
-    const paddedNumber = String(nextNumber).padStart(6, '0');
-    const nextInvoiceNumber = `${prefix}${paddedNumber}`;
+    if (series && nextNumber > seriesNumber + 1) {
+      series.currentNumber = nextNumber - 1;
+      await series.save();
+    }
 
     res.json({
       success: true,
