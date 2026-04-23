@@ -420,7 +420,7 @@ export default function AllSettings() {
 
         <section className="mb-8">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-[18px] font-semibold text-slate-900">Extension and Developer Data</h2>
+            <h2 className="text-[18px] font-semibold text-slate-900">Extension and Developer Data1</h2>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {filteredSections.extension.map((card) => (
