@@ -146,6 +146,9 @@ export default function GeneralSettingsPage() {
   const [addressFormat, setAddressFormat] = useState(defaultAddressFormat);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const addressFormatTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const debugGeneralSettings = (...args: any[]) => {
+    console.debug("[GeneralSettingsPage]", ...args);
+  };
 
   const printPreferencesOptions = [
     { label: "One Copy", value: "one-copy" },
@@ -365,17 +368,32 @@ export default function GeneralSettingsPage() {
           },
         });
 
+        debugGeneralSettings("load:start", { status: response.status });
+
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.data?.settings) {
+            debugGeneralSettings("load:success", {
+              modules: data.data.settings.modules,
+              enabledModules: Object.keys(data.data.settings.modules || {}).filter((key) => Boolean(data.data.settings.modules?.[key])),
+            });
             syncSettingsState(data.data.settings);
           } else {
             toast.error(data.message || "Failed to load general settings");
+            debugGeneralSettings("load:unexpected-payload", data);
           }
+        } else {
+          const rawText = await response.text().catch(() => "");
+          debugGeneralSettings("load:failed", {
+            status: response.status,
+            statusText: response.statusText,
+            body: rawText,
+          });
         }
       } catch (error) {
         console.error('Error loading general settings:', error);
         toast.error("An error occurred while loading settings");
+        debugGeneralSettings("load:error", error);
       } finally {
         setLoading(false);
       }
@@ -398,6 +416,10 @@ export default function GeneralSettingsPage() {
       }
 
       const payload = buildGeneralSettingsPayload();
+      debugGeneralSettings("save:payload", {
+        modules: payload.settings.modules,
+        enabledModules: Object.keys(payload.settings.modules || {}).filter((key) => Boolean(payload.settings.modules?.[key])),
+      });
 
       const response = await fetch(`${API_BASE_URL}/settings/general`, {
         method: 'PUT',
@@ -411,6 +433,10 @@ export default function GeneralSettingsPage() {
       if (response.ok) {
         const data = await response.json().catch(() => null);
         const savedSettings = data?.data?.settings || payload.settings;
+        debugGeneralSettings("save:success", {
+          modules: savedSettings?.modules,
+          enabledModules: Object.keys(savedSettings?.modules || {}).filter((key) => Boolean(savedSettings?.modules?.[key])),
+        });
         toast.success("Settings saved successfully");
         syncSettingsState(savedSettings);
         syncInitialSnapshot(savedSettings);
@@ -430,10 +456,16 @@ export default function GeneralSettingsPage() {
           responseBody: data || rawText,
           payload,
         });
+        debugGeneralSettings("save:failed", {
+          status: response.status,
+          statusText: response.statusText,
+          responseBody: data || rawText,
+        });
         toast.error(data?.message || rawText || `Failed to save settings (${response.status})`);
       }
     } catch (error) {
       console.error('Error saving settings:', error);
+      debugGeneralSettings("save:error", error);
       toast.error("An error occurred while saving settings");
     } finally {
       setSaving(false);

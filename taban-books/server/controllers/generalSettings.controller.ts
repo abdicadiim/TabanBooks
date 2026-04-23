@@ -40,12 +40,33 @@ const GENERAL_SETTINGS_NESTED_KEYS = [
   "accountantSettings",
 ] as const;
 
+const toSerializableValue = (value: any): any => {
+  if (value === null || value === undefined) return value;
+  if (value instanceof Date) return value;
+  if (typeof value.toObject === "function") {
+    return toSerializableValue(value.toObject());
+  }
+  if (value instanceof Map) {
+    return Object.fromEntries(
+      Array.from(value.entries()).map(([key, nestedValue]) => [key, toSerializableValue(nestedValue)]),
+    );
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => toSerializableValue(item));
+  }
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nestedValue]) => [key, toSerializableValue(nestedValue)]),
+    );
+  }
+  return value;
+};
+
 const toPlainObject = (value: any): Record<string, any> => {
-  if (!value) return {};
-  if (typeof value.toObject === "function") return value.toObject();
-  if (value instanceof Map) return Object.fromEntries(value.entries());
-  if (typeof value === "object") return { ...value };
-  return {};
+  const serializable = toSerializableValue(value);
+  return serializable && typeof serializable === "object" && !Array.isArray(serializable)
+    ? serializable
+    : {};
 };
 
 const mergeGeneralSettings = (current: any, incoming: any): Record<string, any> => {

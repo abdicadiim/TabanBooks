@@ -213,6 +213,7 @@ const retainerInvoiceSchema = new Schema<IRetainerInvoice>(
         reportingTags: {
             type: [mongoose.Schema.Types.Mixed],
             default: [],
+        },
         depositToAccount: {
             type: String,
             default: '',
