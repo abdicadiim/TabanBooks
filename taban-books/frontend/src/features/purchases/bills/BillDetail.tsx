@@ -2833,49 +2833,73 @@ export default function BillDetail() {
               {/* Purchase Orders Tab Content */}
               {activeTab === "Purchase Orders" && purchaseOrders.length > 0 && (
                 <div style={{ padding: "24px", backgroundColor: "#ffffff" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ borderBottom: "2px solid #e5e7eb" }}>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>Date</th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>Purchase Order#</th>
-                        <th style={{ padding: "12px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {purchaseOrders.map((po) => (
-                        <tr key={po.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                          <td style={{ padding: "16px 12px", fontSize: "14px", color: "#111827" }}>
-                            {formatDateShort(po.date)}
-                          </td>
-                          <td style={{ padding: "16px 12px", fontSize: "14px" }}>
-                            <a
-                              href="#"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                navigate(`/purchases/purchase-orders/${po.id}`);
-                              }}
-                              style={{ color: "#156372", textDecoration: "none", fontWeight: "500" }}
-                            >
-                              {po.purchaseOrderNumber}
-                            </a>
-                          </td>
-                          <td style={{ padding: "16px 12px", fontSize: "14px" }}>
-                            <span style={{
-                              padding: "4px 12px",
-                              borderRadius: "12px",
-                              fontSize: "12px",
-                              fontWeight: "600",
-                              backgroundColor: po.status === "closed" ? "#d1fae5" : "#dbeafe",
-                              color: po.status === "closed" ? "#065f46" : "#1e40af",
-                              textTransform: "capitalize"
-                            }}>
-                              {po.status}
-                            </span>
-                          </td>
+                  <div style={{ border: "1px solid #dbe3f0", borderRadius: "8px", overflow: "hidden", backgroundColor: "#ffffff" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "12px 14px",
+                        borderBottom: "1px solid #dbe3f0",
+                        backgroundColor: "#ffffff",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ fontSize: "14px", fontWeight: 600, color: "#111827" }}>Purchase Orders</span>
+                        <span style={{ display: "inline-flex", minWidth: "18px", height: "18px", alignItems: "center", justifyContent: "center", borderRadius: "999px", backgroundColor: "#eff6ff", color: "#2563eb", fontSize: "11px", fontWeight: 700, padding: "0 6px" }}>
+                          {purchaseOrders.length}
+                        </span>
+                      </div>
+                      <ChevronDown size={14} style={{ color: "#6b7280" }} />
+                    </div>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid #e5e7eb" }}>
+                          <th style={{ padding: "10px 14px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>Date</th>
+                          <th style={{ padding: "10px 14px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>Purchase Order#</th>
+                          <th style={{ padding: "10px 14px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase" }}>Status</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {purchaseOrders.map((po) => (
+                          <tr key={po.id} style={{ borderBottom: "1px solid #edf2f7" }}>
+                            <td style={{ padding: "12px 14px", fontSize: "13px", color: "#111827" }}>
+                              {formatDateShort(po.date)}
+                            </td>
+                            <td style={{ padding: "12px 14px", fontSize: "13px" }}>
+                              <a
+                                href="#"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  navigate(`/purchases/purchase-orders/${po.id}`);
+                                }}
+                                style={{ color: "#2f6fed", textDecoration: "none", fontWeight: 500 }}
+                              >
+                                {po.purchaseOrderNumber}
+                              </a>
+                            </td>
+                            <td style={{ padding: "12px 14px", fontSize: "13px" }}>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  padding: "4px 10px",
+                                  borderRadius: "999px",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                  backgroundColor: po.status === "closed" ? "#d1fae5" : "#dbeafe",
+                                  color: po.status === "closed" ? "#059669" : "#2563eb",
+                                  textTransform: "capitalize",
+                                }}
+                              >
+                                {po.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
 

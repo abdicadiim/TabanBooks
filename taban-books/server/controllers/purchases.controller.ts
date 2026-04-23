@@ -2048,6 +2048,30 @@ export const deleteBill = async (req: AuthRequest, res: Response): Promise<void>
       }
     }
 
+    const linkedPurchaseOrderId = String(
+      (bill as any).purchaseOrderId ||
+      (bill as any).purchaseOrder ||
+      ""
+    ).trim();
+
+    if (linkedPurchaseOrderId && mongoose.Types.ObjectId.isValid(linkedPurchaseOrderId)) {
+      const remainingLinkedBills = await Bill.countDocuments({
+        organization: req.user.organizationId,
+        $or: [
+          { purchaseOrderId: linkedPurchaseOrderId },
+          { purchaseOrder: linkedPurchaseOrderId },
+        ],
+        _id: { $ne: bill._id },
+      }).session(session);
+
+      if (remainingLinkedBills === 0) {
+        await PurchaseOrder.findOneAndUpdate(
+          { _id: linkedPurchaseOrderId, organization: req.user.organizationId },
+          { billedStatus: 'YET TO BE BILLED', status: 'ISSUED' }
+        ).session(session);
+      }
+    }
+
     await session.commitTransaction();
     res.json({ success: true, message: 'Bill deleted' });
   } catch (error: any) {

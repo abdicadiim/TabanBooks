@@ -53,17 +53,8 @@ export default function PurchaseOrdersTable({
     today.setHours(0, 0, 0, 0);
     deliveryDate.setHours(0, 0, 0, 0);
 
-    const diffInDays = Math.round((deliveryDate.getTime() - today.getTime()) / 86400000);
-
-    if (diffInDays === 0) {
+    if (deliveryDate.getTime() <= today.getTime()) {
       return { label: "Due Today", color: "#4f46e5" };
-    }
-
-    if (diffInDays < 0) {
-      return {
-        label: `Overdue by ${Math.abs(diffInDays)} day${Math.abs(diffInDays) === 1 ? "" : "s"}`,
-        color: "#dc2626",
-      };
     }
 
     return null;

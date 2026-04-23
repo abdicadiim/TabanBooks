@@ -38,6 +38,7 @@ export default function PurchaseOrderDetail() {
   const [vendor, setVendor] = useState(null);
   const [showPdfView, setShowPdfView] = useState(true);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [pdfPrintMenuOpen, setPdfPrintMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [organization, setOrganization] = useState(null);
@@ -45,7 +46,9 @@ export default function PurchaseOrderDetail() {
   const [isBillsExpanded, setIsBillsExpanded] = useState(false);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const moreMenuRef = useRef(null);
+  const pdfPrintMenuRef = useRef(null);
   const dropdownRef = useRef(null);
+  const printContentRef = useRef<HTMLDivElement | null>(null);
 
   const formatDate = (dateString: any) => {
     if (!dateString) return "";
@@ -133,19 +136,22 @@ export default function PurchaseOrderDetail() {
       if (moreMenuRef.current && !moreMenuRef.current.contains(event.target)) {
         setMoreMenuOpen(false);
       }
+      if (pdfPrintMenuRef.current && !pdfPrintMenuRef.current.contains(event.target)) {
+        setPdfPrintMenuOpen(false);
+      }
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setDropdownOpen(false);
       }
     };
 
-    if (moreMenuOpen || dropdownOpen) {
+    if (moreMenuOpen || pdfPrintMenuOpen || dropdownOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [moreMenuOpen, dropdownOpen]);
+  }, [moreMenuOpen, pdfPrintMenuOpen, dropdownOpen]);
 
   if (!purchaseOrder) {
     return (
@@ -220,6 +226,93 @@ export default function PurchaseOrderDetail() {
     pdf.save(`${poNumber.replace(/[^a-z0-9-]/gi, "_")}.pdf`);
   };
 
+  const handlePrint = () => {
+    const content = printContentRef.current;
+    if (!content) {
+      window.print();
+      return;
+    }
+
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.style.opacity = "0";
+    document.body.appendChild(iframe);
+
+    const clonedContent = content.cloneNode(true) as HTMLElement;
+    clonedContent.querySelectorAll(".no-print").forEach((node) => node.remove());
+
+    const cleanup = () => {
+      window.removeEventListener("afterprint", cleanup);
+      if (iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+      }
+    };
+
+    iframe.onload = () => {
+      const doc = iframe.contentDocument;
+      const win = iframe.contentWindow;
+      if (!doc || !win) {
+        cleanup();
+        window.print();
+        return;
+      }
+
+      doc.open();
+      doc.write(`
+        <html>
+          <head>
+            <title>${String(purchaseOrder.purchaseOrderNumber || "Purchase Order")}</title>
+            <style>
+              @page { size: A4; margin: 12mm; }
+              html, body {
+                margin: 0;
+                padding: 0;
+                background: #ffffff;
+                font-family: Arial, Helvetica, sans-serif;
+                color: #111827;
+              }
+              * { box-sizing: border-box; }
+              .print-shell {
+                width: 100%;
+              }
+              .print-shell .print-content {
+                max-width: 100%;
+                width: 100%;
+                margin: 0;
+                padding: 0;
+                box-shadow: none;
+                border-radius: 0;
+              }
+              .print-shell .print-content * {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="print-shell">
+              ${clonedContent.outerHTML}
+            </div>
+          </body>
+        </html>
+      `);
+      doc.close();
+      win.focus();
+      setTimeout(() => {
+        win.print();
+        cleanup();
+      }, 100);
+    };
+
+    window.addEventListener("afterprint", cleanup);
+    iframe.src = "about:blank";
+  };
+
   const persistPurchaseOrderPatch = async (patch: Record<string, any>) => {
     const poId = getPurchaseOrderId();
     if (!poId) throw new Error("Purchase order ID is missing.");
@@ -251,6 +344,50 @@ export default function PurchaseOrderDetail() {
     } catch (error: any) {
       console.error("Error saving purchase order comment:", error);
       alert(error?.message || "Failed to save comment.");
+    }
+  };
+
+  const handleExpectedDeliveryDate = async () => {
+    const currentValue = formatDate(purchaseOrder.deliveryDate || purchaseOrder.expectedDate);
+    const nextValue = window.prompt("Enter expected delivery date (DD/MM/YYYY)", currentValue);
+    if (!String(nextValue || "").trim()) return;
+
+    try {
+      await persistPurchaseOrderPatch({ deliveryDate: nextValue });
+      alert("Expected delivery date updated.");
+    } catch (error: any) {
+      console.error("Error updating expected delivery date:", error);
+      alert(error?.message || "Failed to update expected delivery date.");
+    }
+  };
+
+  const handleMarkAsCanceled = async () => {
+    try {
+      await persistPurchaseOrderPatch({ status: "CANCELLED" });
+      setMoreMenuOpen(false);
+    } catch (error: any) {
+      console.error("Error marking purchase order as canceled:", error);
+      alert(error?.message || "Failed to mark as canceled.");
+    }
+  };
+
+  const handleMarkAsReceived = async () => {
+    try {
+      await persistPurchaseOrderPatch({ status: "RECEIVED" });
+      setMoreMenuOpen(false);
+    } catch (error: any) {
+      console.error("Error marking purchase order as received:", error);
+      alert(error?.message || "Failed to mark as received.");
+    }
+  };
+
+  const handleCancelItems = async () => {
+    try {
+      await persistPurchaseOrderPatch({ status: "CANCELLED" });
+      setMoreMenuOpen(false);
+    } catch (error: any) {
+      console.error("Error cancelling purchase order items:", error);
+      alert(error?.message || "Failed to cancel items.");
     }
   };
 
@@ -586,14 +723,37 @@ export default function PurchaseOrderDetail() {
 
               <div className="w-px h-5 bg-gray-300 mx-1"></div>
 
-              <div className="relative group">
+              <div className="relative" ref={pdfPrintMenuRef}>
                 <button
-                  onClick={handleDownloadPDF}
+                  onClick={() => setPdfPrintMenuOpen((prev) => !prev)}
                   className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded flex items-center gap-2"
                 >
                   <Download size={15} />
-                  PDF
+                  PDF/Print
+                  <ChevronDown size={12} />
                 </button>
+                {pdfPrintMenuOpen && (
+                  <div className="absolute left-0 mt-2 w-36 bg-white border border-gray-200 rounded-md shadow-lg z-50">
+                    <button
+                      onClick={() => {
+                        setPdfPrintMenuOpen(false);
+                        handleDownloadPDF();
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50"
+                    >
+                      PDF
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPdfPrintMenuOpen(false);
+                        handlePrint();
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50"
+                    >
+                      Print
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="w-px h-5 bg-gray-300 mx-1"></div>
@@ -629,6 +789,44 @@ export default function PurchaseOrderDetail() {
                     <button
                       onClick={() => {
                         setMoreMenuOpen(false);
+                        void handleExpectedDeliveryDate();
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                    >
+                      <FileText size={16} />
+                      Expected Delivery Date
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMoreMenuOpen(false);
+                        void handleCancelItems();
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                    >
+                      <Trash2 size={16} />
+                      Cancel Items
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMoreMenuOpen(false);
+                        void handleMarkAsCanceled();
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                    >
+                      <X size={16} />
+                      Mark as Canceled
+                    </button>
+                    <button
+                      onClick={handleClone}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                    >
+                      <Copy size={16} />
+                      Clone
+                    </button>
+                    <div className="h-px bg-gray-200" />
+                    <button
+                      onClick={() => {
+                        setMoreMenuOpen(false);
                         void handleDeletePurchaseOrder();
                       }}
                       className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
@@ -637,11 +835,14 @@ export default function PurchaseOrderDetail() {
                       Delete
                     </button>
                     <button
-                      onClick={handleClone}
+                      onClick={() => {
+                        setMoreMenuOpen(false);
+                        void handleMarkAsReceived();
+                      }}
                       className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-gray-700"
                     >
-                      <Copy size={16} />
-                      Clone
+                      <Check size={16} />
+                      Mark as Received
                     </button>
                   </div>
                 )}
@@ -768,7 +969,7 @@ export default function PurchaseOrderDetail() {
 
           {/* Document Content */}
           <div className="flex-1 overflow-y-auto bg-gray-50 flex justify-center p-6">
-            <div className={`bg-white rounded-lg shadow-sm max-w-4xl w-full relative print-content ${showPdfView ? 'p-12' : 'p-8'}`}>
+            <div ref={printContentRef} className={`bg-white rounded-lg shadow-sm max-w-4xl w-full relative print-content ${showPdfView ? 'p-12' : 'p-8'}`}>
 
               {!showPdfView ? (
                 /* Standard View Design (Matches User Provided Image) */

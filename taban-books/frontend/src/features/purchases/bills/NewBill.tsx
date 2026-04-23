@@ -989,6 +989,13 @@ export default function NewBill() {
     }
   };
 
+  const getTotalQuantity = (items: any[]) => {
+    return (Array.isArray(items) ? items : []).reduce((sum, item) => {
+      const quantity = Number(item?.quantity ?? 0);
+      return sum + (Number.isFinite(quantity) ? quantity : 0);
+    }, 0);
+  };
+
   useEffect(() => {
     loadPaymentTerms();
   }, []);
@@ -4041,12 +4048,17 @@ export default function NewBill() {
                 {/* Summary - Bottom Right */}
                 <div className="w-full max-w-[420px] flex-shrink-0 xl:ml-auto">
                   <div className="rounded-3xl border border-gray-200 bg-gray-50/80 px-5 py-5 shadow-[0_14px_30px_rgba(15,23,42,0.04)]">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[14px] font-semibold text-gray-900">Sub Total</span>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-0.5">
+                        <div className="text-[14px] font-semibold leading-none text-gray-900">Sub Total</div>
+                        <div className="text-[13px] font-medium leading-none text-gray-900">
+                          Total Quantity : {getTotalQuantity(formData.items)}
+                        </div>
+                      </div>
                       <span className="text-[14px] font-semibold text-gray-900 tabular-nums">{formData.subTotal}</span>
                     </div>
                     {showTransactionDiscount && (
-                      <div className="mt-5 grid grid-cols-[1fr_auto] items-center gap-4">
+                      <div className="mt-6 grid grid-cols-[1fr_auto] items-center gap-4">
                         <label className="text-[14px] font-medium text-gray-700">Discount</label>
                         <div className="flex items-center gap-2">
                           <input
@@ -5136,7 +5148,7 @@ export default function NewBill() {
                     </span>
                   </div>
                   <span style={{ fontSize: "14px", color: "#6b7280" }}>
-                    Total Quantity: {Object.values(bulkItemQuantities).reduce((sum, qty) => sum + (qty || 0), 0)}
+                    Total Quantity: {getTotalQuantity(formData.items)}
                   </span>
                 </div>
                 <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>

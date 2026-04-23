@@ -95,6 +95,7 @@ export default function Bills() {
   const importSubmenuRef = useRef(null);
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
   const [selectedView, setSelectedView] = useState("All");
+  const [showBillsViewDropdown, setShowBillsViewDropdown] = useState(false);
   const [showCustomViewModal, setShowCustomViewModal] = useState(false);
   const [bills, setBills] = useState([]);
   const [selectedItems, setSelectedItems] = useState([]);
@@ -263,6 +264,7 @@ export default function Bills() {
   const uploadMenuRef = useRef(null);
   const fileInputRef = useRef(null);
   const yearMonthPickerRef = useRef(null);
+  const billsViewDropdownRef = useRef(null);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
@@ -366,16 +368,19 @@ export default function Bills() {
       if (yearMonthPickerRef.current && !yearMonthPickerRef.current.contains(event.target)) {
         setShowYearMonthPicker(false);
       }
+      if (billsViewDropdownRef.current && !billsViewDropdownRef.current.contains(event.target)) {
+        setShowBillsViewDropdown(false);
+      }
     };
 
-    if (moreMenuOpen || uploadMenuOpen || showYearMonthPicker || isSearchTypeDropdownOpen || isFilterDropdownOpen) {
+    if (moreMenuOpen || uploadMenuOpen || showYearMonthPicker || isSearchTypeDropdownOpen || isFilterDropdownOpen || showBillsViewDropdown) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [moreMenuOpen, uploadMenuOpen, showYearMonthPicker]);
+  }, [moreMenuOpen, uploadMenuOpen, showYearMonthPicker, showBillsViewDropdown]);
 
   const handleAttachFromDesktop = () => {
     fileInputRef.current?.click();
@@ -1051,6 +1056,47 @@ export default function Bills() {
   };
 
   const sortedBills = sortBills(bills);
+  const getBillSummaryAmount = (predicate: (bill: any) => boolean) => {
+    return sortedBills.reduce((sum: number, bill: any) => {
+      if (!predicate(bill)) return sum;
+      const amount = Number(bill.balance ?? bill.balanceDue ?? bill.total ?? bill.amount ?? 0);
+      return sum + (Number.isFinite(amount) ? amount : 0);
+    }, 0);
+  };
+
+  const billSummary = (() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const dueToday = getBillSummaryAmount((bill: any) => {
+      const dueDate = new Date(bill.dueDate);
+      if (Number.isNaN(dueDate.getTime())) return false;
+      dueDate.setHours(0, 0, 0, 0);
+      return dueDate.getTime() === today.getTime() && Number(bill.balance ?? bill.balanceDue ?? bill.total ?? bill.amount ?? 0) > 0;
+    });
+
+    const dueWithin30Days = getBillSummaryAmount((bill: any) => {
+      const dueDate = new Date(bill.dueDate);
+      if (Number.isNaN(dueDate.getTime())) return false;
+      dueDate.setHours(0, 0, 0, 0);
+      const diffDays = Math.round((dueDate.getTime() - today.getTime()) / 86400000);
+      return diffDays > 0 && diffDays <= 30 && Number(bill.balance ?? bill.balanceDue ?? bill.total ?? bill.amount ?? 0) > 0;
+    });
+
+    const overdueBills = getBillSummaryAmount((bill: any) => {
+      const dueDate = new Date(bill.dueDate);
+      if (Number.isNaN(dueDate.getTime())) return false;
+      dueDate.setHours(0, 0, 0, 0);
+      return dueDate.getTime() < today.getTime() && Number(bill.balance ?? bill.balanceDue ?? bill.total ?? bill.amount ?? 0) > 0;
+    });
+
+    return {
+      totalOutstandingPayables: dueToday + dueWithin30Days + overdueBills,
+      dueToday,
+      dueWithin30Days,
+      overdueBills,
+    };
+  })();
 
   // Calendar helper functions
   const getDaysInMonth = (month, year) => {
@@ -1190,11 +1236,12 @@ export default function Bills() {
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4 flex-1">
               {/* All Bills dropdown with underline */}
-              <div className="relative inline-block">
+              <div className="relative inline-block" ref={billsViewDropdownRef}>
                 <button
-                  className="text-sm font-medium bg-transparent border-none cursor-default flex items-center gap-1 pb-1"
+                  className="text-sm font-medium bg-transparent border-none cursor-pointer flex items-center gap-1 pb-1"
                   aria-label="Bill view filter"
                   type="button"
+                  onClick={() => setShowBillsViewDropdown((prev) => !prev)}
                   style={{
                     padding: 0,
                     paddingBottom: "4px",
@@ -1202,9 +1249,32 @@ export default function Bills() {
                     borderBottom: "2px solid #156372",
                   }}
                 >
-                  <span>All Bills</span>
-                  <ChevronDown size={14} />
+                  <span>{selectedView === "All" ? "All Bills" : selectedView}</span>
+                  <ChevronDown size={14} className={showBillsViewDropdown ? "rotate-180 transition-transform" : "transition-transform"} />
                 </button>
+                {showBillsViewDropdown && (
+                  <div className="absolute left-0 top-full z-50 mt-2 w-[240px] overflow-hidden rounded-md border border-gray-200 bg-white shadow-lg">
+                    {["All", "Draft", "Pending Approval", "Open", "Overdue", "Unpaid", "Partially Paid", "Paid", "Void"].map((view) => {
+                      const isSelected = selectedView === view;
+                      return (
+                        <button
+                          key={view}
+                          type="button"
+                          className={`flex w-full items-center justify-between px-4 py-3 text-left text-sm ${isSelected ? "bg-white text-gray-900" : "text-gray-700 hover:bg-gray-50"}`}
+                          onClick={() => {
+                            setSelectedView(view);
+                            setShowBillsViewDropdown(false);
+                          }}
+                        >
+                          <span className={isSelected ? "rounded-lg border-2 border-[#2f6fed] px-2 py-1 text-[#111827]" : "px-2 py-1"}>
+                            {view}
+                          </span>
+                          <span className="text-gray-400">☆</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2051,6 +2121,41 @@ export default function Bills() {
             </div>
           )}
 
+          <div className="px-4 pb-4">
+            <div className="rounded-[16px] border border-[#edf0f5] bg-[#fbfbfe] px-4 py-4 shadow-[0_1px_0_rgba(15,23,42,0.02)]">
+              <div className="grid gap-4 md:grid-cols-4 md:divide-x md:divide-[#e5e7eb]">
+                <div className="flex items-center gap-3 md:pr-4">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f3c77d] text-[#8a5d12]">
+                    <ArrowUp size={18} />
+                  </span>
+                  <div>
+                    <p className="text-[12px] text-[#5f6b7b]">Total Outstanding Payables</p>
+                    <p className="text-[18px] font-semibold leading-tight text-[#111827]">
+                      {displayCurrencySymbol}{billSummary.totalOutstandingPayables.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </div>
+                <div className="md:pl-4">
+                  <p className="text-[12px] text-[#5f6b7b]">Due Today</p>
+                  <p className="text-[18px] font-semibold leading-tight text-[#ff8a00]">
+                    {displayCurrencySymbol}{billSummary.dueToday.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+                <div className="md:pl-4">
+                  <p className="text-[12px] text-[#5f6b7b]">Due Within 30 Days</p>
+                  <p className="text-[18px] font-semibold leading-tight text-[#111827]">
+                    {displayCurrencySymbol}{billSummary.dueWithin30Days.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+                <div className="md:pl-4">
+                  <p className="text-[12px] text-[#5f6b7b]">OverDue Bills</p>
+                  <p className="text-[18px] font-semibold leading-tight text-[#111827]">
+                    {displayCurrencySymbol}{billSummary.overdueBills.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
           <table className="w-full border-collapse">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
@@ -2268,7 +2373,7 @@ export default function Bills() {
                       <td className="px-4 py-3 text-sm text-gray-900">
                         {formatDate(bill.date)}
                       </td>
-                      <td className="px-4 py-3 text-sm text-teal-700">
+                      <td className="px-4 py-3 text-sm font-medium text-sky-700">
                         {bill.billNumber || ""}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900">
