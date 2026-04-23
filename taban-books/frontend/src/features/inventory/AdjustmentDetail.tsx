@@ -276,7 +276,11 @@ export default function AdjustmentDetail({
 
   const handleDeleteRequest = () => {
     setMoreMenuOpen(false);
+<<<<<<< Updated upstream
     void confirmDelete();
+=======
+    setDeleteModalOpen(true);
+>>>>>>> Stashed changes
   };
 
   const handleClone = async () => {

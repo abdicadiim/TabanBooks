@@ -37,6 +37,8 @@ export interface IOrganization extends Document {
     enableLocations: boolean;
     enableExchangeRateFeeds: boolean;
     enablePANValidation?: boolean;
+    retainerAccount?: string;
+    enableProfitMargin?: boolean;
     modules?: Map<string, boolean>;
     itemsSettings?: {
       decimalPlaces: string;
@@ -333,10 +335,12 @@ const organizationSchema = new Schema<IOrganization>(
       },
       salesSettings: {
         addSalespersonField: { type: Boolean, default: true },
+        enableProfitMargin: { type: Boolean, default: false },
       },
       billingSettings: {
         billableAccount: { type: String, default: "" },
         defaultMarkup: { type: String, default: "3" },
+        retainerAccount: { type: String, default: "Employee Reimbursements" },
       },
       documentSettings: {
         documentCopies: { type: Number, default: 2 },

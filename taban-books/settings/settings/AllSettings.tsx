@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, X, Building2, Users, Receipt, Settings as SettingsIcon, Palette, Zap, Package, CreditCard, ShoppingCart, ShoppingBag, Puzzle, Plug, Code } from "lucide-react";
-import { useUser } from "../../lib/auth/UserContext";
-import { useSettings } from "../../lib/settings/SettingsContext";
-import { usePermissions } from "../../hooks/usePermissions";
+import { useUser } from "../../../frontend/src/lib/auth/UserContext";
+import { useSettings } from "../../../frontend/src/lib/settings/SettingsContext";
+import { usePermissions } from "../../../frontend/src/hooks/usePermissions";
 
 const ORGANIZATION_PROFILE_STORAGE_KEYS = ["org_profile", "organization_profile"];
 
@@ -264,6 +264,7 @@ export default function AllSettings() {
       description: "Configure core master data used across transactions and reports.",
       visible: true,
       items: [
+        "General",
         "Customers and Vendors",
         "Items",
         "Accountant",
@@ -344,7 +345,7 @@ export default function AllSettings() {
     },
   ];
 
-  const getColorClasses = (color) => {
+  const getColorClasses = (color: string) => {
     const colors = {
       green: "bg-green-100 text-green-600",
       pink: "bg-pink-100 text-pink-600",
@@ -353,13 +354,13 @@ export default function AllSettings() {
       yellow: "bg-yellow-100 text-yellow-600",
       red: "bg-red-100 text-red-600",
     };
-    return colors[color] || colors.green;
+    return (colors as any)[color] || colors.green;
   };
 
-  const filterItems = (items, query) => {
+  const filterItems = (items: any[], query: string) => {
     if (!query) return items;
     const lowerQuery = query.toLowerCase();
-    return items.filter((item) => {
+    return items.filter((item: any) => {
       const label = typeof item === "string" ? item : item.label || item.title || "";
       return label.toLowerCase().includes(lowerQuery);
     });
@@ -448,7 +449,7 @@ export default function AllSettings() {
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
                 placeholder="Search settings ( / )"
                 className="w-full h-10 pl-9 pr-4 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
@@ -471,7 +472,7 @@ export default function AllSettings() {
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Organization Settings</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredOrgSettings.map((setting, idx) => {
+            {filteredOrgSettings.map((setting: any, idx: number) => {
               const Icon = setting.icon;
               return (
                 <div
@@ -485,7 +486,7 @@ export default function AllSettings() {
                     <h3 className="font-semibold text-gray-900">{setting.title}</h3>
                   </div>
                   <ul className="space-y-1">
-                    {setting.items.map((item, itemIdx) => {
+                    {setting.items.map((item: any, itemIdx: number) => {
                       const label = typeof item === "string" ? item : item.label;
                       const badge = typeof item === "object" ? item.badge : null;
                       return (
@@ -566,7 +567,7 @@ export default function AllSettings() {
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Module Settings</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredModuleSettings.map((setting, idx) => {
+            {filteredModuleSettings.map((setting: any, idx: number) => {
               const Icon = setting.icon;
               return (
                 <div
@@ -585,11 +586,13 @@ export default function AllSettings() {
                     </div>
                   </div>
                   <ul className="space-y-1">
-                    {setting.items.map((item, itemIdx) => (
+                    {setting.items.map((item: any, itemIdx: number) => (
                       <li
                         key={itemIdx}
                         onClick={() => {
-                          if (item === "Customers and Vendors") {
+                          if (item === "General") {
+                            navigate("/settings/module-settings/general");
+                          } else if (item === "Customers and Vendors") {
                             navigate("/settings/customers-vendors");
                           } else if (item === "Customers") {
                             navigate("/sales/customers");
@@ -654,7 +657,7 @@ export default function AllSettings() {
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Integrations & Developer</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredExtensionSettings.map((setting, idx) => {
+            {filteredExtensionSettings.map((setting: any, idx: number) => {
               const Icon = setting.icon;
               return (
                 <div
@@ -668,7 +671,7 @@ export default function AllSettings() {
                     <h3 className="font-semibold text-gray-900">{setting.title}</h3>
                   </div>
                   <ul className="space-y-1">
-                    {setting.items.map((item, itemIdx) => (
+                    {setting.items.map((item: any, itemIdx: number) => (
                       <li
                         key={itemIdx}
                         onClick={() => {
@@ -733,7 +736,7 @@ export default function AllSettings() {
                         <input
                           type="text"
                           value={organizationNameDraft}
-                          onChange={(e) => {
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                             const next = e.target.value;
                             setOrganizationNameDraft(next);
                             persistProfileDraft({ organizationName: next });
@@ -747,7 +750,7 @@ export default function AllSettings() {
                         </label>
                         <select
                           value={businessTypeDraft}
-                          onChange={(e) => {
+                          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
                             const next = e.target.value;
                             setBusinessTypeDraft(next);
                             persistProfileDraft({ businessType: next });
@@ -769,7 +772,7 @@ export default function AllSettings() {
                         </label>
                         <select
                           value={industryDraft}
-                          onChange={(e) => {
+                          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
                             const next = e.target.value;
                             setIndustryDraft(next);
                             persistProfileDraft({ industry: next });
@@ -791,7 +794,7 @@ export default function AllSettings() {
                         </label>
                         <select
                           value={locationDraft}
-                          onChange={(e) => {
+                          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
                             const next = e.target.value;
                             setLocationDraft(next);
                             persistProfileDraft({ location: next });

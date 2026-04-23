@@ -3526,6 +3526,396 @@ export default function RecordPayment() {
               >
                 Attach ({selectedCloudFiles.length})
               </button>
+                          { id: 'cf5', name: 'Payment_Records.zip', size: 8388608, modified: 'May 12, 2025', type: 'zip' },
+                        ]
+                          .filter(f => f.name.toLowerCase().includes(cloudSearchQuery.toLowerCase()))
+                          .map((file) => (
+                            <div
+                              key={file.id}
+                              onClick={() => {
+                                if (selectedCloudFiles.find(sf => sf.id === file.id)) {
+                                  setSelectedCloudFiles(selectedCloudFiles.filter(sf => sf.id !== file.id));
+                                } else {
+                                  setSelectedCloudFiles([...selectedCloudFiles, file]);
+                                }
+                              }}
+                              className={`flex items-center p-3 rounded-lg border cursor-pointer transition-all ${selectedCloudFiles.find(sf => sf.id === file.id)
+                                ? 'bg-blue-50 border-blue-200'
+                                : 'bg-white border-transparent hover:bg-slate-50'
+                                }`}
+                            >
+                              <div className="w-[60%] flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded flex items-center justify-center ${selectedCloudFiles.find(sf => sf.id === file.id) ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'
+                                  }`}>
+                                  <FileText size={16} />
+                                </div>
+                                <span className="text-[14px] font-medium text-slate-700">{file.name}</span>
+                              </div>
+                              <div className="w-[20%] text-right text-xs text-slate-500">{(file.size / 1024 / 1024).toFixed(1)} MB</div>
+                              <div className="w-[20%] text-right text-xs text-slate-500">{file.modified}</div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : selectedCloudProvider === "evernote" ? (
+                  /* Evernote Authentication Content */
+                  <div className="flex flex-col items-center max-w-lg">
+                    {/* Evernote Logo */}
+                    <div className="mb-8">
+                      <div className="relative w-32 h-32 flex items-center justify-center">
+                        <div className="relative w-32 h-32 bg-[#00A82D] rounded-lg flex items-center justify-center shadow-lg">
+                          <svg viewBox="0 0 100 100" className="w-20 h-20">
+                            <path
+                              d="M 50 15 Q 25 15 15 35 Q 10 45 10 60 Q 10 75 20 85 Q 15 80 15 70 Q 15 60 25 55 Q 20 50 20 40 Q 20 30 30 30 Q 35 25 40 30 Q 45 25 50 30 Q 55 25 60 30 Q 65 25 70 30 Q 75 30 75 40 Q 75 50 70 55 Q 80 60 80 70 Q 80 80 75 85 Q 85 75 85 60 Q 85 45 80 35 Q 70 15 50 15 Z"
+                              fill="#2D2926"
+                            />
+                            <ellipse cx="20" cy="50" rx="8" ry="15" fill="#2D2926" />
+                            <path
+                              d="M 40 40 Q 35 45 35 50 Q 35 55 40 60"
+                              stroke="#2D2926"
+                              strokeWidth="2.5"
+                              fill="none"
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Terms and Conditions Text */}
+                    <div className="text-sm text-gray-700 text-center mb-8 leading-relaxed">
+                      <p>
+                        By clicking on this button you agree to the provider's{" "}
+                        <a
+                          href="#"
+                          className="text-blue-600 underline hover:text-blue-700"
+                          onClick={(e) => e.preventDefault()}
+                        >
+                          terms of use
+                        </a>{" "}
+                        and{" "}
+                        <a
+                          href="#"
+                          className="text-blue-600 underline hover:text-blue-700"
+                          onClick={(e) => e.preventDefault()}
+                        >
+                          privacy policy
+                        </a>{" "}
+                        and understand that the rights to use this product do not come from Zoho.
+                      </p>
+                    </div>
+
+                    {/* Authenticate Evernote Button */}
+                    <button
+                      className="px-8 py-3 bg-[#00A82D] text-white rounded-md text-sm font-semibold hover:bg-[#008A24] transition-colors shadow-sm"
+                      onClick={() => {
+                        window.open(
+                          "https://accounts.evernote.com/login",
+                          "_blank"
+                        );
+                      }}
+                    >
+                      Authenticate Evernote
+                    </button>
+                  </div>
+                ) : (
+                  /* Default Content for Zoho WorkDrive */
+                  <div className="flex flex-col items-center justify-center">
+                    <div className="relative w-full max-w-md h-64 mb-6 flex items-center justify-center">
+                      <div className="relative w-full h-full">
+                        <div className="absolute inset-0 flex items-end justify-center">
+                          <div className="relative">
+                            <div className="w-24 h-32 bg-gray-300 rounded-lg mb-2"></div>
+                            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2">
+                              <div className="w-12 h-12 bg-blue-400 rounded-full flex items-center justify-center">
+                                <Plus size={20} className="text-white" />
+                              </div>
+                            </div>
+                            <div className="absolute top-2 left-1/2 transform -translate-x-1/2">
+                              <div className="w-8 h-6 bg-gray-200 rounded"></div>
+                            </div>
+                          </div>
+                          <div className="relative ml-8">
+                            <div className="w-20 h-28 bg-purple-300 rounded-lg mb-2"></div>
+                            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2">
+                              <div className="w-12 h-12 bg-purple-400 rounded-full flex items-center justify-center">
+                                <Plus size={20} className="text-white" />
+                              </div>
+                            </div>
+                            <div className="absolute top-4 left-1/2 transform -translate-x-1/2">
+                              <div className="text-2xl font-bold text-purple-600">A</div>
+                            </div>
+                          </div>
+                          <div className="relative ml-8">
+                            <div className="w-20 h-28 bg-pink-300 rounded-lg mb-2"></div>
+                            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2">
+                              <div className="w-12 h-12 bg-pink-400 rounded-full flex items-center justify-center">
+                                <Plus size={20} className="text-white" />
+                              </div>
+                            </div>
+                            <div className="absolute top-4 left-1/2 transform -translate-x-1/2">
+                              <div className="space-y-1">
+                                <div className="w-12 h-1 bg-pink-600 rounded"></div>
+                                <div className="w-10 h-1 bg-pink-600 rounded"></div>
+                                <div className="w-8 h-1 bg-pink-600 rounded"></div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="absolute top-4 left-8 w-3 h-3 bg-yellow-400 rounded-full"></div>
+                        <div className="absolute top-12 right-12 w-4 h-4 bg-blue-400 transform rotate-45"></div>
+                        <div className="absolute bottom-8 left-12 w-2 h-2 bg-purple-400 rounded-full"></div>
+                        <div className="absolute bottom-16 right-8 w-3 h-3 bg-pink-400 transform rotate-45"></div>
+                      </div>
+                    </div>
+
+                    <p className="text-sm text-gray-600 text-center mb-6 max-w-md">
+                      Zoho WorkDrive is an online file sync, storage and content collaboration platform.
+                    </p>
+
+                    <button
+                      className="px-6 py-2.5 bg-green-600 text-white rounded-md text-sm font-semibold hover:bg-green-700 transition-colors shadow-sm"
+                      onClick={() => {
+                        window.open(
+                          "https://workdrive.zoho.com",
+                          "_blank"
+                        );
+                      }}
+                    >
+                      Set up your team
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200">
+              <button
+                onClick={() => setIsCloudPickerOpen(false)}
+                className="px-6 py-2 bg-white border border-gray-200 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (selectedCloudFiles.length > 0) {
+                    const newFiles = selectedCloudFiles.map(f => ({
+                      id: Date.now() + Math.random(),
+                      name: f.name,
+                      size: f.size,
+                      isCloud: true,
+                      provider: selectedCloudProvider
+                    }));
+                    setAttachedFiles(prev => [...prev, ...newFiles as File[]]);
+                  }
+                  setIsCloudPickerOpen(false);
+                  setSelectedCloudFiles([]);
+                }}
+                className={`px-6 py-2 text-white rounded-md text-sm font-medium transition-colors ${selectedCloudFiles.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+                onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => { if (!e.target.disabled && selectedCloudFiles.length > 0) e.target.style.opacity = "0.9"; }}
+                onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => { if (!e.target.disabled && selectedCloudFiles.length > 0) e.target.style.opacity = "1"; }}
+                disabled={selectedCloudFiles.length === 0}
+              >
+                Attach ({selectedCloudFiles.length})
+              </button>
+                          { id: 'cf5', name: 'Payment_Records.zip', size: 8388608, modified: 'May 12, 2025', type: 'zip' },
+                        ]
+                          .filter(f => f.name.toLowerCase().includes(cloudSearchQuery.toLowerCase()))
+                          .map((file) => (
+                            <div
+                              key={file.id}
+                              onClick={() => {
+                                if (selectedCloudFiles.find(sf => sf.id === file.id)) {
+                                  setSelectedCloudFiles(selectedCloudFiles.filter(sf => sf.id !== file.id));
+                                } else {
+                                  setSelectedCloudFiles([...selectedCloudFiles, file]);
+                                }
+                              }}
+                              className={`flex items-center p-3 rounded-lg border cursor-pointer transition-all ${selectedCloudFiles.find(sf => sf.id === file.id)
+                                ? 'bg-blue-50 border-blue-200'
+                                : 'bg-white border-transparent hover:bg-slate-50'
+                                }`}
+                            >
+                              <div className="w-[60%] flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded flex items-center justify-center ${selectedCloudFiles.find(sf => sf.id === file.id) ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'
+                                  }`}>
+                                  <FileText size={16} />
+                                </div>
+                                <span className="text-[14px] font-medium text-slate-700">{file.name}</span>
+                              </div>
+                              <div className="w-[20%] text-right text-xs text-slate-500">{(file.size / 1024 / 1024).toFixed(1)} MB</div>
+                              <div className="w-[20%] text-right text-xs text-slate-500">{file.modified}</div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : selectedCloudProvider === "evernote" ? (
+                  /* Evernote Authentication Content */
+                  <div className="flex flex-col items-center max-w-lg">
+                    {/* Evernote Logo */}
+                    <div className="mb-8">
+                      <div className="relative w-32 h-32 flex items-center justify-center">
+                        <div className="relative w-32 h-32 bg-[#00A82D] rounded-lg flex items-center justify-center shadow-lg">
+                          <svg viewBox="0 0 100 100" className="w-20 h-20">
+                            <path
+                              d="M 50 15 Q 25 15 15 35 Q 10 45 10 60 Q 10 75 20 85 Q 15 80 15 70 Q 15 60 25 55 Q 20 50 20 40 Q 20 30 30 30 Q 35 25 40 30 Q 45 25 50 30 Q 55 25 60 30 Q 65 25 70 30 Q 75 30 75 40 Q 75 50 70 55 Q 80 60 80 70 Q 80 80 75 85 Q 85 75 85 60 Q 85 45 80 35 Q 70 15 50 15 Z"
+                              fill="#2D2926"
+                            />
+                            <ellipse cx="20" cy="50" rx="8" ry="15" fill="#2D2926" />
+                            <path
+                              d="M 40 40 Q 35 45 35 50 Q 35 55 40 60"
+                              stroke="#2D2926"
+                              strokeWidth="2.5"
+                              fill="none"
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Terms and Conditions Text */}
+                    <div className="text-sm text-gray-700 text-center mb-8 leading-relaxed">
+                      <p>
+                        By clicking on this button you agree to the provider's{" "}
+                        <a
+                          href="#"
+                          className="text-blue-600 underline hover:text-blue-700"
+                          onClick={(e) => e.preventDefault()}
+                        >
+                          terms of use
+                        </a>{" "}
+                        and{" "}
+                        <a
+                          href="#"
+                          className="text-blue-600 underline hover:text-blue-700"
+                          onClick={(e) => e.preventDefault()}
+                        >
+                          privacy policy
+                        </a>{" "}
+                        and understand that the rights to use this product do not come from Zoho.
+                      </p>
+                    </div>
+
+                    {/* Authenticate Evernote Button */}
+                    <button
+                      className="px-8 py-3 bg-[#00A82D] text-white rounded-md text-sm font-semibold hover:bg-[#008A24] transition-colors shadow-sm"
+                      onClick={() => {
+                        window.open(
+                          "https://accounts.evernote.com/login",
+                          "_blank"
+                        );
+                      }}
+                    >
+                      Authenticate Evernote
+                    </button>
+                  </div>
+                ) : (
+                  /* Default Content for Zoho WorkDrive */
+                  <div className="flex flex-col items-center justify-center">
+                    <div className="relative w-full max-w-md h-64 mb-6 flex items-center justify-center">
+                      <div className="relative w-full h-full">
+                        <div className="absolute inset-0 flex items-end justify-center">
+                          <div className="relative">
+                            <div className="w-24 h-32 bg-gray-300 rounded-lg mb-2"></div>
+                            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2">
+                              <div className="w-12 h-12 bg-blue-400 rounded-full flex items-center justify-center">
+                                <Plus size={20} className="text-white" />
+                              </div>
+                            </div>
+                            <div className="absolute top-2 left-1/2 transform -translate-x-1/2">
+                              <div className="w-8 h-6 bg-gray-200 rounded"></div>
+                            </div>
+                          </div>
+                          <div className="relative ml-8">
+                            <div className="w-20 h-28 bg-purple-300 rounded-lg mb-2"></div>
+                            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2">
+                              <div className="w-12 h-12 bg-purple-400 rounded-full flex items-center justify-center">
+                                <Plus size={20} className="text-white" />
+                              </div>
+                            </div>
+                            <div className="absolute top-4 left-1/2 transform -translate-x-1/2">
+                              <div className="text-2xl font-bold text-purple-600">A</div>
+                            </div>
+                          </div>
+                          <div className="relative ml-8">
+                            <div className="w-20 h-28 bg-pink-300 rounded-lg mb-2"></div>
+                            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2">
+                              <div className="w-12 h-12 bg-pink-400 rounded-full flex items-center justify-center">
+                                <Plus size={20} className="text-white" />
+                              </div>
+                            </div>
+                            <div className="absolute top-4 left-1/2 transform -translate-x-1/2">
+                              <div className="space-y-1">
+                                <div className="w-12 h-1 bg-pink-600 rounded"></div>
+                                <div className="w-10 h-1 bg-pink-600 rounded"></div>
+                                <div className="w-8 h-1 bg-pink-600 rounded"></div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="absolute top-4 left-8 w-3 h-3 bg-yellow-400 rounded-full"></div>
+                        <div className="absolute top-12 right-12 w-4 h-4 bg-blue-400 transform rotate-45"></div>
+                        <div className="absolute bottom-8 left-12 w-2 h-2 bg-purple-400 rounded-full"></div>
+                        <div className="absolute bottom-16 right-8 w-3 h-3 bg-pink-400 transform rotate-45"></div>
+                      </div>
+                    </div>
+
+                    <p className="text-sm text-gray-600 text-center mb-6 max-w-md">
+                      Zoho WorkDrive is an online file sync, storage and content collaboration platform.
+                    </p>
+
+                    <button
+                      className="px-6 py-2.5 bg-green-600 text-white rounded-md text-sm font-semibold hover:bg-green-700 transition-colors shadow-sm"
+                      onClick={() => {
+                        window.open(
+                          "https://workdrive.zoho.com",
+                          "_blank"
+                        );
+                      }}
+                    >
+                      Set up your team
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200">
+              <button
+                onClick={() => setIsCloudPickerOpen(false)}
+                className="px-6 py-2 bg-white border border-gray-200 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (selectedCloudFiles.length > 0) {
+                    const newFiles = selectedCloudFiles.map(f => ({
+                      id: Date.now() + Math.random(),
+                      name: f.name,
+                      size: f.size,
+                      isCloud: true,
+                      provider: selectedCloudProvider
+                    }));
+                    setAttachedFiles(prev => [...prev, ...newFiles as File[]]);
+                  }
+                  setIsCloudPickerOpen(false);
+                  setSelectedCloudFiles([]);
+                }}
+                className={`px-6 py-2 text-white rounded-md text-sm font-medium transition-colors ${selectedCloudFiles.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+                onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => { if (!e.target.disabled && selectedCloudFiles.length > 0) e.target.style.opacity = "0.9"; }}
+                onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => { if (!e.target.disabled && selectedCloudFiles.length > 0) e.target.style.opacity = "1"; }}
+                disabled={selectedCloudFiles.length === 0}
+              >
+                Attach ({selectedCloudFiles.length})
+              </button>
             </div>
           </div>
         </div>
@@ -3548,8 +3938,8 @@ export default function RecordPayment() {
                 onClick={() => setCustomerSearchModalOpen(false)}
                 className="w-8 h-8 text-white rounded flex items-center justify-center"
                 style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => e.target.style.opacity = "0.9"}
-                onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => e.target.style.opacity = "1"}
+                onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => { (e.target as HTMLElement).style.opacity = "0.9" }}
+                onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => { (e.target as HTMLElement).style.opacity = "1" }}
               >
                 <X size={16} />
               </button>
@@ -3578,8 +3968,8 @@ export default function RecordPayment() {
                             setCustomerSearchCriteriaOpen(false);
                           }}
                           className="w-full px-4 py-2 text-sm text-left text-gray-700"
-                          onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => { e.target.style.backgroundColor = "#156372"; e.target.style.color = "white"; }}
-                          onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => { e.target.style.backgroundColor = "transparent"; e.target.style.color = "#374151"; }}
+                          onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => { (e.target as HTMLElement).style.backgroundColor = "#156372"; (e.target as HTMLElement).style.color = "white"; }}
+                          onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => { (e.target as HTMLElement).style.backgroundColor = "transparent"; (e.target as HTMLElement).style.color = "#374151"; }}
                         >
                           {criteria}
                         </button>
@@ -3637,8 +4027,8 @@ export default function RecordPayment() {
                       >
                         <td className="px-4 py-3 text-sm hover:underline"
                           style={{ color: "#156372" }}
-                          onMouseEnter={(e) => e.target.style.color = "#0D4A52"}
-                          onMouseLeave={(e) => e.target.style.color = "#156372"}
+                          onMouseEnter={(e) => (e.target as HTMLElement).style.color = "#0D4A52"}
+                          onMouseLeave={(e) => (e.target as HTMLElement).style.color = "#156372"}
                         >
                           {customer.displayName || customer.name || ""}
                         </td>
@@ -3686,14 +4076,14 @@ export default function RecordPayment() {
       <input
         type="file"
         ref={fileInputRef}
-        onChange={handleFileUpload}
-        multiple
-        className="hidden"
-        accept="*/*"
-      />
+      onChange={handleFileUpload}
+      multiple
+      className="hidden"
+      accept="*/*"
+    />
 
       {/* Add Contact Person Modal */}
-      {isContactPersonModalOpen && typeof document !== 'undefined' && document.body ? createPortal(
+      {isContactPersonModalOpen && typeof document !== 'undefined' && document.body && createPortal(
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000]" onClick={handleCancelContactPerson}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
@@ -3806,8 +4196,8 @@ export default function RecordPayment() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Skype Name/Number</label>
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center">
-                      <span className="text-white text-xs font-bold">S</span>
+                    <div className="w-8 h-8 rounded flex items-center justify-center" style={{ backgroundColor: "rgba(21, 99, 114, 0.1)" }}>
+                      <Zap size={14} style={{ color: "#156372" }} />
                     </div>
                     <input
                       type="text"

@@ -9,17 +9,19 @@ import {
   Copy,
   Grid3x3,
   Loader2,
+  LogOut,
   Plus,
   ShoppingBag,
   ShoppingCart,
   Search,
   Settings,
+  User,
   Users,
   X,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { apiRequest } from "../../services/api";
-import { setOrganization } from "../../services/auth";
+import { logout, setOrganization } from "../../services/auth";
 import { useAppBootstrap } from "../../context/AppBootstrapContext";
 import { preloadCustomersIndexData } from "../../features/sales/Customers/customerRouteLoaders";
 
@@ -27,9 +29,10 @@ export default function Header() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const location = useLocation();
-  const { authenticated, currentUser, organization, branding } = useAppBootstrap();
+  const { authenticated, currentUser, organization, branding, resetBootstrap } = useAppBootstrap();
   const [orgDropdownOpen, setOrgDropdownOpen] = useState(false);
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
   const [searchScope, setSearchScope] = useState("Products");
   const [searchQuery, setSearchQuery] = useState("");
@@ -38,6 +41,7 @@ export default function Header() {
   const [copiedOrgId, setCopiedOrgId] = useState<string | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const orgDropdownRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const orgButtonRef = useRef<HTMLButtonElement>(null);
   const quickCreateRef = useRef<HTMLDivElement>(null);
   const [orgPanelStyle, setOrgPanelStyle] = useState<{ top: number; pointerLeft: number } | null>(null);
@@ -53,6 +57,17 @@ export default function Header() {
   const headerMuted = isLightAppearance ? "text-slate-500" : "text-white/60";
   const controlSurface = isLightAppearance ? "bg-white border-slate-200" : "bg-white/10 border-white/15";
   const controlText = isLightAppearance ? "text-slate-700" : "text-white/90";
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      if (resetBootstrap) resetBootstrap();
+      setUserMenuOpen(false);
+      navigate("/login");
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  };
 
   const quickCreateItems: Record<string, { label: string; path: string }[]> = {
     GENERAL: [
@@ -224,6 +239,9 @@ export default function Header() {
       if (orgDropdownRef.current && !orgDropdownRef.current.contains(event.target as Node)) {
         setOrgDropdownOpen(false);
       }
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -247,7 +265,7 @@ export default function Header() {
 
   return (
     <header
-      className={`fixed top-3 left-3 right-3 z-[80] h-[68px] overflow-hidden rounded-[20px] px-4 backdrop-blur-md md:left-[calc(var(--sidebar-width)+24px)] ${
+      className={`fixed top-3 left-3 right-3 z-[1000] h-[68px] rounded-[20px] px-4 backdrop-blur-md md:left-[calc(var(--sidebar-width)+24px)] ${
         isLightAppearance ? "border border-slate-200 shadow-[0_16px_34px_rgba(15,23,42,0.08)]" : "border border-white/12 shadow-[0_16px_34px_rgba(4,38,46,0.16)]"
       }`}
       style={{
@@ -255,7 +273,7 @@ export default function Header() {
       }}
     >
       {!isLightAppearance ? (
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent_65%)]" />
+        <div className="pointer-events-none absolute inset-0 rounded-[20px] bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent_65%)]" />
       ) : null}
       <div className="relative flex h-full items-center justify-between gap-3">
         <form className="relative flex min-w-0 flex-1 items-center" ref={searchRef} onSubmit={handleSearchSubmit}>
@@ -542,13 +560,77 @@ export default function Header() {
             )}
           </div>
 
-          <button
-            type="button"
-            className={`grid h-11 w-11 place-items-center rounded-[14px] transition-colors ${isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15"}`}
-            aria-label="Users"
-          >
-            <Users size={16} />
-          </button>
+          <div className="relative" ref={userMenuRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setUserMenuOpen(!userMenuOpen);
+                setQuickCreateOpen(false);
+                setOrgDropdownOpen(false);
+              }}
+              className={`grid h-11 w-11 place-items-center rounded-[14px] transition-colors ${
+                isLightAppearance
+                  ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  : "bg-white/10 text-white hover:bg-white/15"
+              } ${userMenuOpen ? (isLightAppearance ? "bg-slate-100" : "bg-white/20") : ""}`}
+              aria-label="User profile"
+            >
+              <Users size={16} />
+            </button>
+
+            {userMenuOpen && (
+              <div
+                className="absolute right-0 top-full z-[120] mt-2 w-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-1 shadow-[0_20px_45px_rgba(15,23,42,0.18)]"
+              >
+                <div className="px-4 py-4 border-b border-slate-100">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-slate-900 text-white flex items-center justify-center text-sm font-semibold">
+                      {(organization?.name || currentUser?.name || "U").charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13px] font-bold text-slate-900">
+                        {currentUser?.name || "System User"}
+                      </div>
+                      <div className="truncate text-[11px] text-slate-500 mt-0.5">
+                        {currentUser?.email || "No email provided"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="py-1">
+                  <button
+                    onClick={() => {
+                      navigate("/settings/profile");
+                      setUserMenuOpen(false);
+                    }}
+                    className="flex w-full items-center gap-3 px-3.5 py-2.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50 rounded-xl transition-colors"
+                  >
+                    <User size={15} className="text-slate-400" />
+                    My Account
+                  </button>
+                  <button
+                    onClick={() => {
+                      navigate("/settings");
+                      setUserMenuOpen(false);
+                    }}
+                    className="flex w-full items-center gap-3 px-3.5 py-2.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50 rounded-xl transition-colors"
+                  >
+                    <Settings size={15} className="text-slate-400" />
+                    Settings
+                  </button>
+                  <div className="my-1 border-t border-slate-100 mx-2" />
+                  <button
+                    onClick={handleLogout}
+                    className="flex w-full items-center gap-3 px-3.5 py-2.5 text-[12px] font-bold text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                  >
+                    <LogOut size={15} />
+                    Sign Out
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           <button
             type="button"

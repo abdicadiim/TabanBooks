@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { NavLink, useLocation } from "react-router-dom";
 import {
@@ -49,7 +49,8 @@ type MenuItem = {
   label: string;
   to?: string;
   icon: React.ElementType;
-  children?: Array<{ label: string; to: string }>;
+  children?: Array<{ label: string; to: string; moduleKey?: string }>;
+  moduleKey?: string;
 };
 
 const items: MenuItem[] = [
@@ -64,6 +65,7 @@ const items: MenuItem[] = [
     label: "Inventory",
     to: "/inventory",
     icon: Boxes,
+    moduleKey: "inventory",
     children: [{ label: "Inventory Adjustments", to: "/inventory" }],
   },
   {
@@ -72,15 +74,15 @@ const items: MenuItem[] = [
     icon: ShoppingCart,
     children: [
       { label: "Customers", to: "/sales/customers" },
-      { label: "Quotes", to: "/sales/quotes" },
-      { label: "Retainer Invoices", to: "/sales/retainer-invoices" },
-      { label: "Sales Orders", to: "/sales/sales-orders" },
+      { label: "Quotes", to: "/sales/quotes", moduleKey: "quotes" },
+      { label: "Retainer Invoices", to: "/sales/retainer-invoices", moduleKey: "retainerInvoices" },
+      { label: "Sales Orders", to: "/sales/sales-orders", moduleKey: "salesOrders" },
       { label: "Invoices", to: "/sales/invoices" },
-      { label: "Sales Receipts", to: "/sales/sales-receipts" },
-      { label: "Recurring Invoices", to: "/sales/recurring-invoices" },
-      { label: "Payment Links", to: "/sales/payment-links" },
+      { label: "Sales Receipts", to: "/sales/sales-receipts", moduleKey: "salesReceipts" },
+      { label: "Recurring Invoices", to: "/sales/recurring-invoices", moduleKey: "recurringInvoice" },
+      { label: "Payment Links", to: "/sales/payment-links", moduleKey: "paymentLinks" },
       { label: "Payments Received", to: "/sales/payments-received" },
-      { label: "Credit Notes", to: "/sales/credit-notes" },
+      { label: "Credit Notes", to: "/sales/credit-notes", moduleKey: "creditNote" },
     ],
   },
   {
@@ -90,10 +92,10 @@ const items: MenuItem[] = [
     children: [
       { label: "Vendors", to: "/purchases/vendors" },
       { label: "Expenses", to: "/purchases/expenses" },
-      { label: "Recurring Expenses", to: "/purchases/recurring-expenses" },
-      { label: "Purchase Orders", to: "/purchases/purchase-orders" },
+      { label: "Recurring Expenses", to: "/purchases/recurring-expenses", moduleKey: "recurringExpense" },
+      { label: "Purchase Orders", to: "/purchases/purchase-orders", moduleKey: "purchaseOrders" },
       { label: "Bills", to: "/purchases/bills" },
-      { label: "Recurring Bills", to: "/purchases/recurring-bills" },
+      { label: "Recurring Bills", to: "/purchases/recurring-bills", moduleKey: "recurringBills" },
       { label: "Payments Made", to: "/purchases/payments-made" },
       { label: "Vendor Credits", to: "/purchases/vendor-credits" },
     ],
@@ -102,6 +104,7 @@ const items: MenuItem[] = [
     label: "Time Tracking",
     to: "/time-tracking",
     icon: Clock3,
+    moduleKey: "timeTracking",
     children: [
       { label: "Projects", to: "/time-tracking/projects" },
       { label: "Timesheet", to: "/time-tracking/timesheet" },
@@ -116,7 +119,7 @@ const items: MenuItem[] = [
     icon: Calculator,
     children: [
       { label: "Journal Entries", to: "/accountant/manual-journals" },
-      { label: "Recurring Journals", to: "/accountant/recurring-journals" },
+      { label: "Recurring Journals", to: "/accountant/recurring-journals", moduleKey: "recurringJournals" },
       { label: "Bulk Update", to: "/accountant/bulk-update" },
       { label: "Currency Adjustments", to: "/accountant/currency-adjustments" },
       { label: "Chart of Accounts", to: "/accountant/chart-of-accounts" },
@@ -140,7 +143,7 @@ const SIDEBAR_COLLAPSED_STORAGE_KEY = "taban-books-sidebar-collapsed";
 export default function Sidebar() {
   const location = useLocation();
   const queryClient = useQueryClient();
-  const { currentUser, organization, branding } = useAppBootstrap();
+  const { currentUser, organization, branding, enabledModules } = useAppBootstrap();
   const [openSection, setOpenSection] = useState<string | null>(null);
   const [flyoutSection, setFlyoutSection] = useState<{
     label: string;
@@ -202,13 +205,6 @@ export default function Sidebar() {
     };
   }, []);
 
-  useEffect(() => {
-    const activeParent = items.find(
-      (item) => item.children?.some((child) => isRouteMatch(location.pathname, child.to)) || isRouteMatch(location.pathname, item.to)
-    );
-    if (activeParent) setOpenSection(activeParent.label);
-  }, [location.pathname]);
-
   const closeFlyoutSoon = () => {
     if (!isCollapsed) return;
     if (flyoutCloseTimer.current !== null) {
@@ -230,6 +226,41 @@ export default function Sidebar() {
   const handleCustomersPrefetch = () => {
     void preloadCustomersIndexData(queryClient);
   };
+
+  const isModuleEnabled = (moduleKey?: string) => {
+    if (!moduleKey) return true;
+    return enabledModules?.[moduleKey] !== false;
+  };
+
+  const filteredItems = useMemo(() => {
+    return items
+      .filter((item) => isModuleEnabled(item.moduleKey))
+      .map((item) => {
+        if (!item.children?.length) return item;
+
+        const children = item.children.filter((child) => isModuleEnabled(child.moduleKey));
+        if (!children.length) return null;
+
+        return {
+          ...item,
+          children,
+        };
+      })
+      .filter(Boolean) as MenuItem[];
+  }, [enabledModules]);
+
+  useEffect(() => {
+    if (openSection && !filteredItems.some((item) => item.label === openSection)) {
+      setOpenSection(null);
+    }
+  }, [filteredItems, openSection]);
+
+  useEffect(() => {
+    const activeParent = filteredItems.find(
+      (item) => item.children?.some((child) => isRouteMatch(location.pathname, child.to)) || isRouteMatch(location.pathname, item.to)
+    );
+    if (activeParent) setOpenSection(activeParent.label);
+  }, [location.pathname, filteredItems]);
 
   const renderItem = (item: MenuItem) => {
     const Icon = item.icon;
@@ -349,7 +380,7 @@ export default function Sidebar() {
   const renderFlyout = () => {
     if (!isCollapsed || !flyoutSection) return null;
 
-    const item = items.find((entry) => entry.label === flyoutSection.label);
+    const item = filteredItems.find((entry) => entry.label === flyoutSection.label);
     if (!item?.children?.length) return null;
 
     return (
@@ -457,7 +488,7 @@ export default function Sidebar() {
 
         <nav className="sidebar-no-scrollbar flex-1 overflow-y-auto overflow-x-visible px-3 py-3.5">
           <div className="space-y-1.5">
-            {items.map(renderItem)}
+            {filteredItems.map(renderItem)}
           </div>
         </nav>
 

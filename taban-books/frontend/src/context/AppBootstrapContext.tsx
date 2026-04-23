@@ -62,6 +62,47 @@ const DEFAULT_BRANDING: BootstrapBranding = {
   logo: "",
 };
 
+const DEFAULT_MODULES: Record<string, boolean> = {
+  quotes: true,
+  salesOrders: false,
+  salesReceipts: true,
+  purchaseOrders: false,
+  timeTracking: true,
+  retainerInvoices: false,
+  recurringInvoice: true,
+  recurringExpense: true,
+  recurringBills: true,
+  recurringJournals: false,
+  creditNote: true,
+  paymentLinks: false,
+  tasks: false,
+  fixedAsset: false,
+};
+
+const asBoolean = (value: any): boolean =>
+  value === true || value === "true" || value === 1 || value === "1";
+
+const toModuleEntries = (modules: any): Array<[string, boolean]> => {
+  if (modules instanceof Map) {
+    return Array.from(modules.entries()).map(([key, moduleValue]) => [String(key), asBoolean(moduleValue)]);
+  }
+
+  if (Array.isArray(modules)) {
+    return modules.map(([key, moduleValue]) => [String(key), asBoolean(moduleValue)] as [string, boolean]);
+  }
+
+  if (modules && typeof modules === "object") {
+    return Object.entries(modules).map(([key, moduleValue]) => [key, asBoolean(moduleValue)] as [string, boolean]);
+  }
+
+  return [];
+};
+
+const normalizeModules = (modules: any): Record<string, boolean> => ({
+  ...DEFAULT_MODULES,
+  ...Object.fromEntries(toModuleEntries(modules)),
+});
+
 const readStoredBaseCurrency = (): BootstrapBaseCurrency | null => {
   const code = String(localStorage.getItem("base_currency_code") || "").trim();
   const symbol = String(localStorage.getItem("base_currency_symbol") || "").trim();
@@ -298,11 +339,16 @@ export function AppBootstrapProvider({ children }: { children: React.ReactNode }
       const detail = (event as CustomEvent<any>).detail || null;
       if (!detail) return;
 
+      const nextSettings = {
+        ...detail,
+        modules: normalizeModules(detail.modules),
+      };
+
       setGeneralSettings((current) => {
         const cachedSnapshot = normalizeBootstrapCache(readSessionBootstrapCache());
         const nextGeneralSettings = {
           ...(current || {}),
-          settings: detail,
+          settings: nextSettings,
         };
         updateBootstrapCache(
           cachedSnapshot?.branding || branding,
@@ -327,7 +373,7 @@ export function AppBootstrapProvider({ children }: { children: React.ReactNode }
   }, []);
 
   const enabledModules = {
-    ...(generalSettings?.settings?.modules || {}),
+    ...normalizeModules(generalSettings?.settings?.modules),
     inventory: generalSettings?.settings?.enableInventory !== false,
   };
 

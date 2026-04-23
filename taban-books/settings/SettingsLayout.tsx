@@ -85,8 +85,9 @@ const moduleSettings = [
     icon: SettingsIcon,
     color: "green",
     title: "General",
-    path: "/settings/customers-vendors",
+    path: "/settings/module-settings/general",
     items: [
+      { label: "General", path: "/settings/module-settings/general" },
       { label: "Customers", path: "/settings/customers-vendors" },
       { label: "Products", path: "/settings/items" },
       { label: "Tasks", path: "/settings/tasks" },
@@ -414,7 +415,7 @@ export default function SettingsLayout({
         }
       `}</style>
       <div
-        className="settings-shell fixed inset-0 bg-gray-50 flex flex-col"
+        className="settings-shell fixed inset-0 bg-transparent flex flex-col"
         style={{ marginLeft: 0, paddingLeft: 0, zIndex: 9999, ...settingsStyle }}
       >
       <div className="flex flex-1 overflow-hidden">
@@ -461,7 +462,7 @@ export default function SettingsLayout({
         {/* Main Content */}
         <div className="flex-1 flex flex-col">
           {/* Top Bar */}
-          <div className="bg-white border-b border-gray-200 sticky top-0 z-50">
+          <div className="bg-transparent border-b border-gray-200 sticky top-0 z-50">
             <div className="px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <button
@@ -489,7 +490,7 @@ export default function SettingsLayout({
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search settings ( / )"
-                    className="w-full h-10 pl-9 pr-4 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:border-transparent"
+                    className="w-full h-10 pl-9 pr-4 rounded-lg border border-gray-200 bg-transparent text-sm focus:outline-none focus:ring-2 focus:border-transparent"
                     style={
                       {
                         caretColor: accentColor,
@@ -511,7 +512,7 @@ export default function SettingsLayout({
           </div>
 
           {/* Page Content */}
-          <div className="flex-1 overflow-y-auto bg-gray-50">
+          <div className="flex-1 overflow-y-auto bg-transparent">
             {children || <Outlet />}
           </div>
         </div>

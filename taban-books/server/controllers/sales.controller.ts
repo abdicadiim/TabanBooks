@@ -7444,6 +7444,9 @@ export const createRetainerInvoice = async (req: AuthRequest, res: Response): Pr
       return;
     }
 
+    const organization = await Organization.findById(req.user.organizationId);
+    const defaultRetainerAccount = (organization as any)?.billingSettings?.retainerAccount || '';
+
     const retainerInvoice = new RetainerInvoice({
       organization: organizationId,
       retainerInvoiceNumber: normalizedRetainerInvoiceNumber,
@@ -7476,7 +7479,8 @@ export const createRetainerInvoice = async (req: AuthRequest, res: Response): Pr
       paymentsReceived: [],
       notes,
       terms,
-      reportingTags
+      reportingTags,
+      depositToAccount: req.body.depositToAccount || defaultRetainerAccount
     });
 
     await retainerInvoice.save();

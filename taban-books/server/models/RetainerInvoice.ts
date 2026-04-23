@@ -56,6 +56,7 @@ export interface IRetainerInvoice extends Document {
     // Additional fields
     notes?: string;
     terms?: string;
+    depositToAccount?: string;
 
     createdAt?: Date;
     updatedAt?: Date;
@@ -212,6 +213,9 @@ const retainerInvoiceSchema = new Schema<IRetainerInvoice>(
         reportingTags: {
             type: [mongoose.Schema.Types.Mixed],
             default: [],
+        depositToAccount: {
+            type: String,
+            default: '',
         },
     },
     {

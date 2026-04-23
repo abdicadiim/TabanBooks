@@ -382,12 +382,12 @@ export default function SettingsLayout({
       <style>{`
         .settings-shell input[type="checkbox"],
         .settings-shell input[type="radio"] {
-          accent-color: #94a3b8;
+          accent-color: #005766;
         }
 
         .settings-shell input[type="checkbox"]:focus,
         .settings-shell input[type="radio"]:focus {
-          outline-color: #94a3b8;
+          outline-color: #005766;
         }
       `}</style>
       <div

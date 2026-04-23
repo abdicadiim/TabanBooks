@@ -47,6 +47,8 @@ import SettingsCustomModulesWrapper from "./SettingsCustomModulesWrapper";
 import SettingsUserPreferencesWrapper from "./SettingsUserPreferencesWrapper";
 import SettingsVATWrapper from "./SettingsVATWrapper";
 
+import SettingsModuleGeneralWrapper from "./module-settings/general/SettingsModuleGeneralWrapper";
+
 export default function SettingsRoutes() {
   return (
     <Routes>
@@ -102,6 +104,7 @@ export default function SettingsRoutes() {
       <Route path="online-payments/*" element={<SettingsOnlinePaymentsWrapper />} />
       <Route path="custom-modules/*" element={<SettingsCustomModulesWrapper />} />
       <Route path="user-preferences/*" element={<SettingsUserPreferencesWrapper />} />
+      <Route path="module-settings/general/*" element={<SettingsModuleGeneralWrapper />} />
       <Route path="vat/*" element={<SettingsVATWrapper />} />
 
       <Route path="*" element={<AllSettings />} />

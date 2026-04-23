@@ -14,6 +14,8 @@ import {
   BarChart3,
   FileText,
 } from "lucide-react";
+import { useAppBootstrap } from "../context/AppBootstrapContext";
+import { getCurrentUser } from "../services/auth";
 
 const nav = [
   { label: "Dashboard", to: "/", icon: LayoutDashboard },
@@ -31,11 +33,18 @@ const nav = [
   { label: "Documents", to: "/documents", icon: FileText },
 ];
 
-import { getCurrentUser } from "../services/auth";
-
 export default function Sidebar() {
   const user = getCurrentUser();
   const permissions = user?.permissions;
+  const { enabledModules } = useAppBootstrap();
+
+  const hasAnyEnabledModule = (moduleKeys: string[]) =>
+    moduleKeys.some((moduleKey) => enabledModules?.[moduleKey] !== false);
+
+  const isEnabled = (moduleKey?: string) => {
+    if (!moduleKey) return true;
+    return enabledModules?.[moduleKey] !== false;
+  };
 
   const hasAccess = (moduleLabel: string) => {
     // If no user, hide everything
@@ -61,33 +70,54 @@ export default function Sidebar() {
         return permissions.items?.item?.view;
 
       case "Inventory":
-        return permissions.items?.inventoryAdjustments?.view;
+        return permissions.items?.inventoryAdjustments?.view && isEnabled("inventory");
 
       case "Sales": {
+        const salesModulesEnabled = hasAnyEnabledModule([
+          "quotes",
+          "retainerInvoices",
+          "salesOrders",
+          "salesReceipts",
+          "recurringInvoice",
+          "paymentLinks",
+          "creditNote",
+        ]);
         const p = permissions.sales;
         if (!p) return false;
-        return p.invoices?.view || p.estimates?.view || p.salesOrders?.view || p.retainerInvoices?.view || p.salesReceipts?.view || p.paymentsReceived?.view || p.recurringInvoices?.view || p.creditNotes?.view;
+        return (
+          salesModulesEnabled &&
+          (p.invoices?.view || p.estimates?.view || p.salesOrders?.view || p.retainerInvoices?.view || p.salesReceipts?.view || p.paymentsReceived?.view || p.recurringInvoices?.view || p.creditNotes?.view)
+        );
       }
 
       case "Purchases": {
+        const purchaseModulesEnabled = hasAnyEnabledModule([
+          "recurringExpense",
+          "purchaseOrders",
+          "recurringBills",
+        ]);
         const p = permissions.purchases;
         if (!p) return false;
-        return p.expenses?.view || p.recurringExpenses?.view || p.bills?.view || p.vendorCredits?.view || p.purchaseOrders?.view || p.paymentsMade?.view || p.recurringBills?.view;
+        return (
+          purchaseModulesEnabled &&
+          (p.expenses?.view || p.recurringExpenses?.view || p.bills?.view || p.vendorCredits?.view || p.purchaseOrders?.view || p.paymentsMade?.view || p.recurringBills?.view)
+        );
       }
 
       case "Time Tracking": {
         const p = permissions.timesheets;
         if (!p) return false;
-        return p.projects?.view || p.timesheet?.view;
+        return (p.projects?.view || p.timesheet?.view) && isEnabled("timeTracking");
       }
 
       case "Banking":
         return permissions.banking?.banking?.view;
 
       case "Accountant": {
+        const accountantModulesEnabled = hasAnyEnabledModule(["recurringJournals"]);
         const p = permissions.accountant;
         if (!p) return false;
-        return p.manualJournals?.view || p.chartOfAccounts?.view;
+        return accountantModulesEnabled && (p.manualJournals?.view || p.chartOfAccounts?.view);
       }
 
       case "Reports":

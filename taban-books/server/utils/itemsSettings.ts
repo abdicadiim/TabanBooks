@@ -3,7 +3,7 @@
  * Helper functions to get and apply items settings
  */
 
-import Organization from "../models/Organization";
+import Organization from "../models/Organization.js";
 
 export interface ItemsSettings {
   decimalPlaces: string;

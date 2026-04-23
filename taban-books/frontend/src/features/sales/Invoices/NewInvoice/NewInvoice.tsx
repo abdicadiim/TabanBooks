@@ -52,6 +52,8 @@ import { ConfigurePaymentTermsModal } from "../../../../components/ConfigurePaym
 import NewTaxQuickModal from "../../../../components/tax/NewTaxQuickModal";
 import { toast } from "react-hot-toast";
 import { useItemsListQuery } from "../../Product-Calalog/items/itemQueries";
+import { usePlansListQuery } from "../../Product-Calalog/plans/planQueries";
+import { useAppBootstrap } from "../../../../context/AppBootstrapContext";
 
 interface Item {
   id: string | number;
@@ -206,6 +208,9 @@ const extractTransactionSeriesRows = (response: any) => {
   return [];
 };
 const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+const { generalSettings } = useAppBootstrap();
+const showSalespersonField = generalSettings?.settings?.salesSettings?.addSalespersonField !== false;
+const showProfitMargin = generalSettings?.settings?.salesSettings?.enableProfitMargin === true;
 const [customers, setCustomers] = useState<any[]>([]);
 const [availableProjects, setAvailableProjects] = useState<any[]>([]);
   const [availableItems, setAvailableItems] = useState<any[]>([]);
@@ -346,6 +351,7 @@ const [openItemDropdowns, setOpenItemDropdowns] = useState<Record<string, boolea
       code: String(entry?.code || entry?.sku || entry?.itemCode || "").trim(),
       rate: Number(entry?.rate || entry?.price || entry?.sellingPrice || 0) || 0,
       stockOnHand: Number(entry?.stockOnHand ?? entry?.stockQuantity ?? entry?.openingStock ?? 0) || 0,
+      costPrice: Number(entry?.costPrice || 0) || 0,
       unit: String(entry?.unit || entry?.unitName || entry?.usageUnit || "pcs").trim(),
       description: String(entry?.description || entry?.salesDescription || "").trim(),
     }));
@@ -3248,63 +3254,65 @@ return (
               </div>
             )}
 
-            <div className="flex items-center gap-6">
-              <label className="text-[13px] font-medium text-gray-600 w-[140px] flex-shrink-0">
-                Salesperson
-              </label>
-              <div className="flex-1 max-w-xs relative" ref={salespersonDropdownRef}>
-                <div
-                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm text-gray-700 flex justify-between items-center bg-white cursor-pointer"
-                  onClick={() => setIsSalespersonDropdownOpen(!isSalespersonDropdownOpen)}
-                >
-                  <span className={formData.salesperson ? "text-gray-900" : "text-gray-400"}>
-                    {formData.salesperson || "Select or Add Salesperson"}
-                  </span>
-                  <ChevronDown size={14} className="text-gray-400" />
-                </div>
-                {isSalespersonDropdownOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg z-50 flex flex-col">
-                    <div className="flex items-center gap-2 p-2 border-b border-gray-200 sticky top-0 bg-white">
-                      <Search size={14} className="text-gray-400" />
-                      <input
-                        type="text"
-                        placeholder="Search"
-                        value={salespersonSearch}
-                        onChange={(e) => setSalespersonSearch(e.target.value)}
-                        className="flex-1 text-sm focus:outline-none"
-                        autoFocus
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </div>
-                    <div className="max-h-60 overflow-y-auto">
-                      {filteredSalespersons.length > 0 ? (
-                        filteredSalespersons.map((salesperson) => (
-                          <div
-                            key={salesperson.id || salesperson._id}
-                            className="px-4 py-2 text-sm text-gray-700 hover:bg-[#156372] hover:text-white cursor-pointer truncate"
-                            onClick={() => handleSalespersonSelect(salesperson)}
-                          >
-                            {salesperson.name}
-                          </div>
-                        ))
-                      ) : (
-                        <div className="px-4 py-2 text-sm text-gray-500 italic">No salespersons found</div>
-                      )}
-                    </div>
-                    <div
-                      className="p-3 border-t border-gray-100 flex items-center gap-2 text-[#156372] hover:bg-gray-50 cursor-pointer text-sm font-medium"
-                      onClick={() => {
-                        setIsManageSalespersonsOpen(true);
-                        setIsSalespersonDropdownOpen(false);
-                      }}
-                    >
-                      <Plus size={16} />
-                      <span>Manage Salespersons</span>
-                    </div>
+            {showSalespersonField && (
+              <div className="flex items-center gap-6">
+                <label className="text-[13px] font-medium text-gray-600 w-[140px] flex-shrink-0">
+                  Salesperson
+                </label>
+                <div className="flex-1 max-w-xs relative" ref={salespersonDropdownRef}>
+                  <div
+                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm text-gray-700 flex justify-between items-center bg-white cursor-pointer"
+                    onClick={() => setIsSalespersonDropdownOpen(!isSalespersonDropdownOpen)}
+                  >
+                    <span className={formData.salesperson ? "text-gray-900" : "text-gray-400"}>
+                      {formData.salesperson || "Select or Add Salesperson"}
+                    </span>
+                    <ChevronDown size={14} className="text-gray-400" />
                   </div>
-                )}
+                  {isSalespersonDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg z-50 flex flex-col">
+                      <div className="flex items-center gap-2 p-2 border-b border-gray-200 sticky top-0 bg-white">
+                        <Search size={14} className="text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search"
+                          value={salespersonSearch}
+                          onChange={(e) => setSalespersonSearch(e.target.value)}
+                          className="flex-1 text-sm focus:outline-none"
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
+                      <div className="max-h-60 overflow-y-auto">
+                        {filteredSalespersons.length > 0 ? (
+                          filteredSalespersons.map((salesperson) => (
+                            <div
+                              key={salesperson.id || salesperson._id}
+                              className="px-4 py-2 text-sm text-gray-700 hover:bg-[#156372] hover:text-white cursor-pointer truncate"
+                              onClick={() => handleSalespersonSelect(salesperson)}
+                            >
+                              {salesperson.name}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="px-4 py-2 text-sm text-gray-500 italic">No salespersons found</div>
+                        )}
+                      </div>
+                      <div
+                        className="p-3 border-t border-gray-100 flex items-center gap-2 text-[#156372] hover:bg-gray-50 cursor-pointer text-sm font-medium"
+                        onClick={() => {
+                          setIsManageSalespersonsOpen(true);
+                          setIsSalespersonDropdownOpen(false);
+                        }}
+                      >
+                        <Plus size={16} />
+                        <span>Manage Salespersons</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
 
             <div className="flex items-start gap-6">
@@ -3512,6 +3520,9 @@ return (
                       <th className="w-24 px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-600">DISCOUNT</th>
                     )}
                     <th className="w-28 px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-600">TAX</th>
+                    {showProfitMargin && (
+                      <th className="w-28 px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-600">PROFIT MARGIN</th>
+                    )}
                     <th className="w-28 px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-600">AMOUNT</th>
                     <th className="w-10"></th>
                   </tr>
@@ -3685,6 +3696,20 @@ return (
                             {Number(item.amount || 0).toFixed(2)}
                           </span>
                         </td>
+                        {showProfitMargin && (
+                          <td className="px-3 pt-6 text-right align-top">
+                            {(() => {
+                              const catalogItem = catalogEntries.find(c => c.id === item.itemId);
+                              if (!catalogItem || !catalogItem.costPrice || !item.rate) return <span className="text-gray-300">-</span>;
+                              const margin = ((item.rate - catalogItem.costPrice) / item.rate) * 100;
+                              return (
+                                <span className={`text-xs font-medium ${margin >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                  {margin.toFixed(2)}%
+                                </span>
+                              );
+                            })()}
+                          </td>
+                        )}
                         <td className="pt-6 text-center align-top opacity-0 transition-opacity group-hover:opacity-100">
                           <button
                             onClick={() => handleRemoveItem(item.id)}
