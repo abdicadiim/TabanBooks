@@ -139,11 +139,215 @@ export default function GeneralSettingsPage() {
   const [paymentRetention, setPaymentRetention] = useState(false);
   const [retainerAccount, setRetainerAccount] = useState("Employee Reimbursements");
   const [enableProfitMargin, setEnableProfitMargin] = useState(false);
+  const initialSettingsSnapshotRef = useRef<string>("");
+  const initialModulesSignatureRef = useRef<string>("");
 
   // Organization Address Format
   const [addressFormat, setAddressFormat] = useState(defaultAddressFormat);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const addressFormatTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const printPreferencesOptions = [
+    { label: "One Copy", value: "one-copy" },
+    { label: "Two Copies", value: "two-copies" },
+    { label: "Three Copies", value: "three-copies" },
+    { label: "Four Copies", value: "four-copies" },
+    { label: "Five Copies", value: "five-copies" },
+    { label: "I will choose while printing", value: "choose-while-printing" },
+  ];
+
+  const normalizePrintPreference = (value: any): string => {
+    const normalized = String(value ?? "").trim().toLowerCase().replace(/\s+/g, "-");
+
+    if (!normalized || normalized === "i-will-choose-while-printing") {
+      return "choose-while-printing";
+    }
+
+    return printPreferencesOptions.some((option) => option.value === normalized)
+      ? normalized
+      : "choose-while-printing";
+  };
+
+  const getPrintPreferenceLabel = (value: any): string => {
+    const normalizedValue = normalizePrintPreference(value);
+    return printPreferencesOptions.find((option) => option.value === normalizedValue)?.label || "I will choose while printing";
+  };
+
+  const syncInitialSnapshot = (settings: any) => {
+    const normalizedModules = normalizeModules(settings?.modules);
+    initialModulesSignatureRef.current = Object.entries(normalizedModules)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => `${key}:${value ? 1 : 0}`)
+      .join("|");
+
+    initialSettingsSnapshotRef.current = JSON.stringify({
+      modules: normalizedModules,
+      workWeek: settings?.workWeek ?? "Sunday",
+      enableInventory: settings?.enableInventory ?? false,
+      enablePANValidation: settings?.enablePANValidation ?? false,
+      pdfSettings: {
+        attachPDFInvoice: settings?.pdfSettings?.attachPDFInvoice ?? true,
+        attachPaymentReceipt: settings?.pdfSettings?.attachPaymentReceipt ?? false,
+        encryptPDF: settings?.pdfSettings?.encryptPDF ?? false,
+      },
+      discountSettings: {
+        discountType: settings?.discountSettings?.discountType ?? "transaction",
+        discountBeforeTax: settings?.discountSettings?.discountBeforeTax ?? "Discount Before Tax",
+      },
+      chargeSettings: {
+        adjustments: settings?.chargeSettings?.adjustments ?? true,
+        shippingCharges: settings?.chargeSettings?.shippingCharges ?? true,
+        enableTaxAutomation: settings?.chargeSettings?.enableTaxAutomation ?? false,
+        defaultTaxRate: settings?.chargeSettings?.defaultTaxRate ?? "Apply Default Tax Rate",
+      },
+      taxSettings: {
+        taxInclusive: settings?.taxSettings?.taxInclusive ?? "inclusive",
+        roundOffTax: settings?.taxSettings?.roundOffTax ?? "line-item",
+      },
+      roundingSettings: {
+        roundingOff: settings?.roundingSettings?.roundingOff ?? "incremental",
+        roundingIncrement: settings?.roundingSettings?.roundingIncrement ?? "0.05",
+      },
+      salesSettings: {
+        addSalespersonField: settings?.salesSettings?.addSalespersonField ?? true,
+        enableProfitMargin: settings?.salesSettings?.enableProfitMargin ?? false,
+      },
+      billingSettings: {
+        billableAccount: settings?.billingSettings?.billableAccount ?? "",
+        defaultMarkup: settings?.billingSettings?.defaultMarkup ?? "3",
+        retainerAccount: settings?.billingSettings?.retainerAccount ?? "Employee Reimbursements",
+      },
+      documentSettings: {
+        documentCopies: settings?.documentSettings?.documentCopies ?? 2,
+        copyLabels: {
+          original: "ORIGINAL",
+          duplicate: "DUPLICATE",
+          triplicate: "TRIPLICATE",
+          quadruplicate: "QUADRUPLICATE",
+          quintuplicate: "QUINTUPLICATE",
+          ...(settings?.documentSettings?.copyLabels || {}),
+        },
+      },
+      printSettings: {
+        printPreferences: normalizePrintPreference(settings?.printSettings?.printPreferences),
+      },
+      reportSettings: {
+        sendWeeklySummary: settings?.reportSettings?.sendWeeklySummary ?? false,
+      },
+      retentionSettings: {
+        paymentRetention: settings?.retentionSettings?.paymentRetention ?? false,
+      },
+      pdfFormatSettings: {
+        addressFormat: settings?.pdfFormatSettings?.addressFormat || defaultAddressFormat,
+      },
+    });
+  };
+
+  const syncSettingsState = (settings: any) => {
+    const s = settings || {};
+
+    setOrganizationSettings(s);
+    setModules(normalizeModules(s.modules));
+    setEnableInventory(s.enableInventory ?? false);
+    setEnablePANValidation(s.enablePANValidation ?? false);
+    setWorkWeek(s.workWeek ?? "Sunday");
+
+    const pdfSettings = s.pdfSettings || {};
+    setAttachPDFInvoice(pdfSettings.attachPDFInvoice ?? true);
+    setAttachPaymentReceipt(pdfSettings.attachPaymentReceipt ?? false);
+    setEncryptPDF(pdfSettings.encryptPDF ?? false);
+
+    const discountSettings = s.discountSettings || {};
+    setDiscountType(discountSettings.discountType ?? "transaction");
+    setDiscountBeforeTax(discountSettings.discountBeforeTax ?? "Discount Before Tax");
+
+    const chargeSettings = s.chargeSettings || {};
+    setAdjustments(chargeSettings.adjustments ?? true);
+    setShippingCharges(chargeSettings.shippingCharges ?? true);
+    setEnableTaxAutomation(chargeSettings.enableTaxAutomation ?? false);
+    setDefaultTaxRate(chargeSettings.defaultTaxRate ?? "Apply Default Tax Rate");
+
+    const taxSettings = s.taxSettings || {};
+    setTaxInclusive(taxSettings.taxInclusive ?? "inclusive");
+    setRoundOffTax(taxSettings.roundOffTax ?? "line-item");
+
+    const roundingSettings = s.roundingSettings || {};
+    setRoundingOff(roundingSettings.roundingOff ?? "incremental");
+    setRoundingIncrement(roundingSettings.roundingIncrement ?? "0.05");
+
+    const salesSettings = s.salesSettings || {};
+    setAddSalespersonField(salesSettings.addSalespersonField ?? true);
+    setEnableProfitMargin(salesSettings.enableProfitMargin ?? false);
+
+    const billingSettings = s.billingSettings || {};
+    setBillableAccount(billingSettings.billableAccount ?? "");
+    setDefaultMarkup(billingSettings.defaultMarkup ?? "3");
+    setRetainerAccount(billingSettings.retainerAccount ?? "Employee Reimbursements");
+
+    const documentSettings = s.documentSettings || {};
+    setDocumentCopies(documentSettings.documentCopies ?? 2);
+    setCopyLabels({
+      original: "ORIGINAL",
+      duplicate: "DUPLICATE",
+      triplicate: "TRIPLICATE",
+      quadruplicate: "QUADRUPLICATE",
+      quintuplicate: "QUINTUPLICATE",
+      ...(documentSettings.copyLabels || {}),
+    });
+
+    const printSettings = s.printSettings || {};
+    setPrintPreferences(normalizePrintPreference(printSettings.printPreferences));
+
+    const reportSettings = s.reportSettings || {};
+    setSendWeeklySummary(reportSettings.sendWeeklySummary ?? false);
+
+    const retentionSettings = s.retentionSettings || {};
+    setPaymentRetention(retentionSettings.paymentRetention ?? false);
+
+    const pdfFormatSettings = s.pdfFormatSettings || {};
+    setAddressFormat(pdfFormatSettings.addressFormat || defaultAddressFormat);
+
+    syncInitialSnapshot(s);
+  };
+
+  const buildGeneralSettingsPayload = () => ({
+    settings: {
+      modules,
+      workWeek,
+      enableInventory,
+      enablePANValidation,
+      pdfSettings: { attachPDFInvoice, attachPaymentReceipt, encryptPDF },
+      discountSettings: { discountType, discountBeforeTax },
+      chargeSettings: { adjustments, shippingCharges, enableTaxAutomation, defaultTaxRate },
+      taxSettings: { taxInclusive, roundOffTax },
+      roundingSettings: { roundingOff, roundingIncrement },
+      salesSettings: {
+        addSalespersonField,
+        enableProfitMargin,
+      },
+      billingSettings: {
+        billableAccount,
+        defaultMarkup,
+        retainerAccount,
+      },
+      documentSettings: { documentCopies, copyLabels },
+      printSettings: { printPreferences: normalizePrintPreference(printPreferences) },
+      reportSettings: { sendWeeklySummary },
+      retentionSettings: { paymentRetention },
+      pdfFormatSettings: { addressFormat },
+    },
+  });
+
+  const currentModulesSignature = Object.entries(modules)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}:${value ? 1 : 0}`)
+    .join("|");
+
+  const currentSettingsSnapshot = JSON.stringify(buildGeneralSettingsPayload().settings);
+  const hasUnsavedChanges =
+    !initialSettingsSnapshotRef.current ||
+    currentSettingsSnapshot !== initialSettingsSnapshotRef.current ||
+    currentModulesSignature !== initialModulesSignatureRef.current;
 
   // Load settings from API
   useEffect(() => {
@@ -164,61 +368,7 @@ export default function GeneralSettingsPage() {
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.data?.settings) {
-            const s = data.data.settings || {};
-            setOrganizationSettings({ ...s, modules: normalizeModules(s.modules) });
-            setModules(normalizeModules(s.modules));
-            if (s.workWeek) setWorkWeek(s.workWeek);
-            if (s.enableInventory !== undefined) setEnableInventory(s.enableInventory);
-            if (s.enablePANValidation !== undefined) setEnablePANValidation(s.enablePANValidation);
-
-            if (s.pdfSettings) {
-              setAttachPDFInvoice(s.pdfSettings.attachPDFInvoice ?? true);
-              setAttachPaymentReceipt(s.pdfSettings.attachPaymentReceipt ?? false);
-              setEncryptPDF(s.pdfSettings.encryptPDF ?? false);
-            }
-            if (s.discountSettings) {
-              setDiscountType(s.discountSettings.discountType ?? "transaction");
-              setDiscountBeforeTax(s.discountSettings.discountBeforeTax ?? "Discount Before Tax");
-            }
-            if (s.chargeSettings) {
-              setAdjustments(s.chargeSettings.adjustments ?? true);
-              setShippingCharges(s.chargeSettings.shippingCharges ?? true);
-              setEnableTaxAutomation(s.chargeSettings.enableTaxAutomation ?? false);
-              setDefaultTaxRate(s.chargeSettings.defaultTaxRate ?? "Apply Default Tax Rate");
-            }
-            if (s.taxSettings) {
-              setTaxInclusive(s.taxSettings.taxInclusive ?? "inclusive");
-              setRoundOffTax(s.taxSettings.roundOffTax ?? "line-item");
-            }
-            if (s.roundingSettings) {
-              setRoundingOff(s.roundingSettings.roundingOff ?? "incremental");
-              setRoundingIncrement(s.roundingSettings.roundingIncrement ?? "0.05");
-            }
-            if (s.salesSettings) {
-              setAddSalespersonField(s.salesSettings.addSalespersonField ?? true);
-              setEnableProfitMargin(s.salesSettings.enableProfitMargin ?? false);
-            }
-            if (s.billingSettings) {
-              setBillableAccount(s.billingSettings.billableAccount ?? "");
-              setDefaultMarkup(s.billingSettings.defaultMarkup ?? "3");
-              setRetainerAccount(s.billingSettings.retainerAccount ?? "Employee Reimbursements");
-            }
-            if (s.documentSettings) {
-              setDocumentCopies(s.documentSettings.documentCopies ?? 2);
-              if (s.documentSettings.copyLabels) setCopyLabels(s.documentSettings.copyLabels);
-            }
-            if (s.printSettings) {
-              setPrintPreferences(s.printSettings.printPreferences ?? "choose-while-printing");
-            }
-            if (s.reportSettings) {
-              setSendWeeklySummary(s.reportSettings.sendWeeklySummary ?? false);
-            }
-            if (s.retentionSettings) {
-              setPaymentRetention(s.retentionSettings.paymentRetention ?? false);
-            }
-            if (s.pdfFormatSettings) {
-              setAddressFormat(s.pdfFormatSettings.addressFormat || defaultAddressFormat);
-            }
+            syncSettingsState(data.data.settings);
           } else {
             toast.error(data.message || "Failed to load general settings");
           }
@@ -242,34 +392,12 @@ export default function GeneralSettingsPage() {
         return;
       }
 
-      const payload = {
-        settings: {
-          ...organizationSettings,
-          modules,
-          workWeek,
-          enableInventory,
-          enablePANValidation,
-          pdfSettings: { attachPDFInvoice, attachPaymentReceipt, encryptPDF },
-          discountSettings: { discountType, discountBeforeTax },
-          chargeSettings: { adjustments, shippingCharges, enableTaxAutomation, defaultTaxRate },
-          taxSettings: { taxInclusive, roundOffTax },
-          roundingSettings: { roundingOff, roundingIncrement },
-          salesSettings: {
-            addSalespersonField,
-            enableProfitMargin
-          },
-          billingSettings: {
-            billableAccount,
-            defaultMarkup,
-            retainerAccount
-          },
-          documentSettings: { documentCopies, copyLabels },
-          printSettings: { printPreferences },
-          reportSettings: { sendWeeklySummary },
-          retentionSettings: { paymentRetention },
-          pdfFormatSettings: { addressFormat },
-        }
-      };
+      if (!hasUnsavedChanges) {
+        toast("No changes to save");
+        return;
+      }
+
+      const payload = buildGeneralSettingsPayload();
 
       const response = await fetch(`${API_BASE_URL}/settings/general`, {
         method: 'PUT',
@@ -283,22 +411,11 @@ export default function GeneralSettingsPage() {
       if (response.ok) {
         const data = await response.json().catch(() => null);
         const savedSettings = data?.data?.settings || payload.settings;
-        const normalizedModules = normalizeModules(savedSettings.modules);
         toast.success("Settings saved successfully");
-        setOrganizationSettings({ ...savedSettings, modules: normalizedModules });
-        setModules(normalizedModules);
-        if (savedSettings.pdfSettings) {
-          setAttachPDFInvoice(savedSettings.pdfSettings.attachPDFInvoice ?? true);
-          setAttachPaymentReceipt(savedSettings.pdfSettings.attachPaymentReceipt ?? false);
-          setEncryptPDF(savedSettings.pdfSettings.encryptPDF ?? false);
-        }
-        if (savedSettings.billingSettings) {
-          setBillableAccount(savedSettings.billingSettings.billableAccount ?? "");
-          setDefaultMarkup(savedSettings.billingSettings.defaultMarkup ?? "3");
-          setRetainerAccount(savedSettings.billingSettings.retainerAccount ?? "Employee Reimbursements");
-        }
-        // Dispatch event for sidebar to update
-        window.dispatchEvent(new CustomEvent('generalSettingsUpdated', { detail: { ...savedSettings, modules: normalizedModules } }));
+        syncSettingsState(savedSettings);
+        syncInitialSnapshot(savedSettings);
+        // Dispatch event for sidebar and bootstrap cache updates.
+        window.dispatchEvent(new CustomEvent("generalSettingsUpdated", { detail: savedSettings }));
       } else {
         const rawText = await response.text().catch(() => "");
         let data: any = null;
@@ -367,19 +484,11 @@ export default function GeneralSettingsPage() {
     return s ? accountOptions.filter((o) => o.toLowerCase().includes(s)) : accountOptions;
   }, [billableAccountSearch]);
 
-  // Print preferences options
-  const printPreferencesOptions = [
-    "One Copy",
-    "Two Copies",
-    "Three Copies",
-    "Four Copies",
-    "Five Copies",
-    "I will choose while printing"
-  ];
-
   const filteredPrintPreferencesOptions = useMemo(() => {
     const s = printPreferencesSearch.trim().toLowerCase();
-    return s ? printPreferencesOptions.filter((o) => o.toLowerCase().includes(s)) : printPreferencesOptions;
+    return s
+      ? printPreferencesOptions.filter((o) => o.label.toLowerCase().includes(s))
+      : printPreferencesOptions;
   }, [printPreferencesSearch]);
 
   // Click away handlers
@@ -853,18 +962,18 @@ export default function GeneralSettingsPage() {
             {/* Two Copies Row */}
             <div className="grid grid-cols-6 gap-2 items-center">
               <div className="text-sm text-gray-700 underline decoration-dotted">Two Copies</div>
-              <button
-                type="button"
-                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium"
-              >
-                ORIGINAL
-              </button>
-              <button
-                type="button"
-                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium"
-              >
-                DUPLICATE
-              </button>
+              <input
+                type="text"
+                value={copyLabels.original}
+                onChange={(e) => setCopyLabels((prev) => ({ ...prev, original: e.target.value.toUpperCase() }))}
+                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 font-medium uppercase"
+              />
+              <input
+                type="text"
+                value={copyLabels.duplicate}
+                onChange={(e) => setCopyLabels((prev) => ({ ...prev, duplicate: e.target.value.toUpperCase() }))}
+                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 font-medium uppercase"
+              />
               <div></div>
               <div></div>
               <div></div>
@@ -873,24 +982,24 @@ export default function GeneralSettingsPage() {
             {/* Three Copies Row */}
             <div className="grid grid-cols-6 gap-2 items-center">
               <div className="text-sm text-gray-700 underline decoration-dotted">Three Copies</div>
-              <button
-                type="button"
-                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium"
-              >
-                ORIGINAL
-              </button>
-              <button
-                type="button"
-                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium"
-              >
-                DUPLICATE
-              </button>
-              <button
-                type="button"
-                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium"
-              >
-                TRIPLICATE
-              </button>
+              <input
+                type="text"
+                value={copyLabels.original}
+                onChange={(e) => setCopyLabels((prev) => ({ ...prev, original: e.target.value.toUpperCase() }))}
+                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 font-medium uppercase"
+              />
+              <input
+                type="text"
+                value={copyLabels.duplicate}
+                onChange={(e) => setCopyLabels((prev) => ({ ...prev, duplicate: e.target.value.toUpperCase() }))}
+                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 font-medium uppercase"
+              />
+              <input
+                type="text"
+                value={copyLabels.triplicate}
+                onChange={(e) => setCopyLabels((prev) => ({ ...prev, triplicate: e.target.value.toUpperCase() }))}
+                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 font-medium uppercase"
+              />
               <div></div>
               <div></div>
             </div>
@@ -898,36 +1007,36 @@ export default function GeneralSettingsPage() {
             {/* Four/Five Copies Row */}
             <div className="grid grid-cols-6 gap-2 items-center">
               <div className="text-sm text-gray-700 underline decoration-dotted">Four/Five Copies</div>
-              <button
-                type="button"
-                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium"
-              >
-                ORIGINAL
-              </button>
-              <button
-                type="button"
-                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium"
-              >
-                DUPLICATE
-              </button>
-              <button
-                type="button"
-                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium"
-              >
-                TRIPLICATE
-              </button>
-              <button
-                type="button"
-                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium"
-              >
-                QUADRUPLICATE
-              </button>
-              <button
-                type="button"
-                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium"
-              >
-                QUINTUPLICATE
-              </button>
+              <input
+                type="text"
+                value={copyLabels.original}
+                onChange={(e) => setCopyLabels((prev) => ({ ...prev, original: e.target.value.toUpperCase() }))}
+                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 font-medium uppercase"
+              />
+              <input
+                type="text"
+                value={copyLabels.duplicate}
+                onChange={(e) => setCopyLabels((prev) => ({ ...prev, duplicate: e.target.value.toUpperCase() }))}
+                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 font-medium uppercase"
+              />
+              <input
+                type="text"
+                value={copyLabels.triplicate}
+                onChange={(e) => setCopyLabels((prev) => ({ ...prev, triplicate: e.target.value.toUpperCase() }))}
+                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 font-medium uppercase"
+              />
+              <input
+                type="text"
+                value={copyLabels.quadruplicate}
+                onChange={(e) => setCopyLabels((prev) => ({ ...prev, quadruplicate: e.target.value.toUpperCase() }))}
+                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 font-medium uppercase"
+              />
+              <input
+                type="text"
+                value={copyLabels.quintuplicate}
+                onChange={(e) => setCopyLabels((prev) => ({ ...prev, quintuplicate: e.target.value.toUpperCase() }))}
+                className="h-9 px-3 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 font-medium uppercase"
+              />
             </div>
           </div>
         </div>
@@ -944,7 +1053,7 @@ export default function GeneralSettingsPage() {
               className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-white text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-[#005766]"
             >
               <span className="text-gray-900">
-                {printPreferencesOptions.find(opt => opt.toLowerCase().replace(/\s+/g, '-') === printPreferences) || "I will choose while printing"}
+                {getPrintPreferenceLabel(printPreferences)}
               </span>
               {printPreferencesDropdownOpen ? (
                 <ChevronUp size={16} className="text-gray-400" />
@@ -979,11 +1088,11 @@ export default function GeneralSettingsPage() {
                 </div>
                 <div className="overflow-auto flex-1" style={{ maxHeight: '280px' }}>
                   {filteredPrintPreferencesOptions.map((opt) => {
-                    const optValue = opt.toLowerCase().replace(/\s+/g, '-');
+                    const optValue = opt.value;
                     const isSelected = optValue === printPreferences;
                     return (
                       <button
-                        key={opt}
+                        key={opt.value}
                         type="button"
                         className={`w-full px-4 py-2.5 text-left text-sm font-medium transition flex items-center justify-between
                           ${isSelected ? "bg-gray-100 text-gray-900" : "text-gray-900 hover:bg-gray-50"}
@@ -994,7 +1103,7 @@ export default function GeneralSettingsPage() {
                           setPrintPreferencesSearch("");
                         }}
                       >
-                        <span>{opt}</span>
+                        <span>{opt.label}</span>
                         {isSelected && (
                           <svg className="w-4 h-4 text-[#005766]" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -1139,7 +1248,7 @@ export default function GeneralSettingsPage() {
         <div className="max-w-4xl w-full flex justify-start">
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || !hasUnsavedChanges}
             className="flex items-center gap-2 px-8 py-2.5 text-sm font-semibold text-white bg-[#005766] rounded-xl hover:bg-[#004652] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-[#005766]/20"
           >
             {saving ? (
