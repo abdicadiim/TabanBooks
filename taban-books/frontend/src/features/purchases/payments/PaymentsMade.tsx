@@ -70,21 +70,41 @@ export default function PaymentsMade() {
   const [customViewName, setCustomViewName] = useState("");
   const [markAsFavorite, setMarkAsFavorite] = useState(false);
   const [criteria, setCriteria] = useState([]);
-  const [availableColumns, setAvailableColumns] = useState([
+  const [selectedColumns, setSelectedColumns] = useState([
+    "Date",
     "Payment #",
     "Reference#",
+    "Vendor Name",
     "Bill#",
+    "Mode",
     "Status",
-    "Unused Amount",
-    "Paid Through Account"
+    "Amount",
+    "Unused Amount"
   ]);
-  const [selectedColumns, setSelectedColumns] = useState([
-    "Date *",
-    "Vendor Name *",
-    "Mode *",
-    "Amount *"
-  ]);
+  const mandatoryColumns = ["Date", "Vendor Name", "Mode", "Amount"];
+  const allAvailableColumns = [
+    "Date", "Vendor Name", "Mode", "Amount", "Payment #", "Reference#", "Bill#", "Status", "Unused Amount", "Bank Reference Number", "Location Code", "Paid Through Account"
+  ];
   const [columnSearch, setColumnSearch] = useState("");
+
+  const columnDefinitions: Record<string, { key: string; label: string; align?: "left" | "right" | "center"; sortable?: boolean }> = {
+    "Date": { key: "date", label: "DATE", sortable: true },
+    "Vendor Name": { key: "vendorName", label: "VENDOR NAME" },
+    "Mode": { key: "mode", label: "MODE" },
+    "Amount": { key: "amount", label: "AMOUNT", align: "right" },
+    "Payment #": { key: "paymentNumber", label: "PAYMENT #" },
+    "Reference#": { key: "reference", label: "REFERENCE#" },
+    "Bill#": { key: "billNumber", label: "BILL#" },
+    "Status": { key: "status", label: "STATUS" },
+    "Unused Amount": { key: "unusedAmount", label: "UNUSED AMOUNT", align: "right" },
+    "Bank Reference Number": { key: "bankReference", label: "BANK REF #" },
+    "Location Code": { key: "locationCode", label: "LOCATION CODE" },
+    "Paid Through Account": { key: "paidThrough", label: "PAID THROUGH" },
+  };
+
+  const getActiveColumns = () => {
+    return allAvailableColumns.filter(col => mandatoryColumns.includes(col) || selectedColumns.includes(col));
+  };
   const [visibilityPreference, setVisibilityPreference] = useState("Only Selected Users & Roles");
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [userInput, setUserInput] = useState("");
@@ -1214,42 +1234,49 @@ export default function PaymentsMade() {
                     />
                   </div>
                 </th>
-                <th style={styles.tableHeaderCell}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    DATE
-                    <ArrowUpDown size={14} style={{ color: "#9ca3af" }} />
-                  </div>
-                </th>
-                <th style={styles.tableHeaderCell}>PAYMENT #</th>
-                <th style={styles.tableHeaderCell}>REFERENCE#</th>
-                <th style={styles.tableHeaderCell}>VENDOR NAME</th>
-                <th style={styles.tableHeaderCell}>BILL#</th>
-                <th style={styles.tableHeaderCell}>MODE</th>
-                <th style={styles.tableHeaderCell}>STATUS</th>
-                <th style={{ ...styles.tableHeaderCell, textAlign: "right" }}>
-                  <div style={styles.tableHeaderAmount}>
-                    AMOUNT
-                    <button
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        padding: "4px",
-                        display: "flex",
-                        alignItems: "center",
-                        color: "#6b7280",
-                      }}
-                      onClick={() => {
-                        setSearchModule("Payments Made");
-                        setSearchFilter(selectedView || "All Payments");
-                        setShowSearchModal(true);
+                {getActiveColumns().map((colName) => {
+                  const def = columnDefinitions[colName];
+                  if (!def) return null;
+                  return (
+                    <th 
+                      key={colName} 
+                      style={{ 
+                        ...styles.tableHeaderCell, 
+                        textAlign: def.align || "left" 
                       }}
                     >
-                      <Search size={14} />
-                    </button>
-                  </div>
-                </th>
-                <th style={{ ...styles.tableHeaderCell, textAlign: "right" }}>UNUSED AMOUNT</th>
+                      <div style={{ 
+                        display: "flex", 
+                        alignItems: "center", 
+                        justifyContent: def.align === "right" ? "flex-end" : "flex-start",
+                        gap: "6px" 
+                      }}>
+                        {def.label}
+                        {def.sortable && <ArrowUpDown size={14} style={{ color: "#9ca3af" }} />}
+                        {colName === "Amount" && (
+                          <button
+                            style={{
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              padding: "4px",
+                              display: "flex",
+                              alignItems: "center",
+                              color: "#6b7280",
+                            }}
+                            onClick={() => {
+                              setSearchModule("Payments Made");
+                              setSearchFilter(selectedView || "All Payments");
+                              setShowSearchModal(true);
+                            }}
+                          >
+                            <Search size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -1262,33 +1289,11 @@ export default function PaymentsMade() {
                         <div style={skeletonStyles.skeletonCheckbox}></div>
                       </div>
                     </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "90px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "70px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "120px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "70px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "60px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "80px" }}></div>
-                    </td>
+                    {getActiveColumns().map((colName) => (
+                      <td key={`skeleton-${index}-${colName}`} style={styles.tableCell}>
+                        <div style={{ ...skeletonStyles.skeletonCell, width: "80%" }}></div>
+                      </td>
+                    ))}
                   </tr>
                 ))
               ) : (
@@ -1319,44 +1324,56 @@ export default function PaymentsMade() {
                         />
                       </div>
                     </td>
-                    <td style={styles.tableCell}>{formatDate(payment.date)}</td>
-                    <td style={styles.tableCell}>
-                      <span
-                        style={styles.paymentNumberLink}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/purchases/payments-made/${payment.id}`);
-                        }}
-                      >
-                        {payment.paymentNumber}
-                      </span>
-                    </td>
-                    <td style={styles.tableCell}>{payment.reference || ""}</td>
-                    <td style={styles.tableCell}>{payment.vendorName || ""}</td>
-                    <td style={styles.tableCell}>{payment.billNumber || ""}</td>
-                    <td style={styles.tableCell}>{payment.mode}</td>
-                    <td style={styles.tableCell}>
-                      <span
-                        style={{
-                          ...styles.statusBadge,
-                          ...(payment.status === "PAID"
-                            ? {}
-                            : payment.status === "VOID"
-                              ? styles.statusBadgeVoid
-                              : styles.statusBadgeDraft),
-                        }}
-                      >
-                        {payment.status}
-                      </span>
-                    </td>
-                  <td style={{ ...styles.tableCell, ...styles.tableAmount }}>
-                      {displayCurrencySymbol}
-                      {parseFloat(payment.amount.toString() || "0").toFixed(2)}
-                    </td>
-                    <td style={{ ...styles.tableCell, ...styles.tableAmount }}>
-                      {displayCurrencySymbol}
-                      {parseFloat(payment.unusedAmount?.toString() || "0").toFixed(2)}
-                    </td>
+                    {getActiveColumns().map((colName) => {
+                      const def = columnDefinitions[colName];
+                      if (!def) return null;
+                      
+                      const value = (payment as any)[def.key];
+                      
+                      return (
+                        <td 
+                          key={`${payment.id}-${colName}`} 
+                          style={{ 
+                            ...styles.tableCell, 
+                            textAlign: def.align || "left",
+                            ...(def.align === "right" ? styles.tableAmount : {})
+                          }}
+                        >
+                          {colName === "Date" ? formatDate(value) :
+                           colName === "Payment #" ? (
+                             <span
+                               style={styles.paymentNumberLink}
+                               onClick={(e) => {
+                                 e.stopPropagation();
+                                 navigate(`/purchases/payments-made/${payment.id}`);
+                               }}
+                             >
+                               {value}
+                             </span>
+                           ) :
+                           colName === "Status" ? (
+                             <span
+                               style={{
+                                 ...styles.statusBadge,
+                                 ...(value === "PAID"
+                                   ? {}
+                                   : value === "VOID"
+                                     ? styles.statusBadgeVoid
+                                     : styles.statusBadgeDraft),
+                               }}
+                             >
+                               {value}
+                             </span>
+                           ) :
+                           (def.align === "right" ? (
+                             <>
+                               {displayCurrencySymbol}
+                               {parseFloat(value?.toString() || "0").toFixed(2)}
+                             </>
+                           ) : value || "")}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))
               )}
@@ -1382,7 +1399,7 @@ export default function PaymentsMade() {
         entityName="payments"
       />
 
-      {/* Preferences Modal */}
+      {/* Preferences Modal (Customize Columns) */}
       {showPreferencesModal && (
         <div style={{
           position: 'fixed',
@@ -1394,109 +1411,154 @@ export default function PaymentsMade() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 2000
+          zIndex: 10000
         }}
           onClick={() => setShowPreferencesModal(false)}
         >
           <div style={{
             backgroundColor: 'white',
             borderRadius: '8px',
-            padding: '24px',
-            maxWidth: '500px',
             width: '90%',
-            maxHeight: '80vh',
-            overflowY: 'auto',
-            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)'
+            maxWidth: '500px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
           }}
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Modal Header */}
             <div style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid #e5e7eb',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '20px'
+              justifyContent: 'space-between'
             }}>
-              <h2 style={{
-                fontSize: '20px',
-                fontWeight: '600',
-                color: '#111827',
-                margin: 0
-              }}>
-                Payment Preferences
-              </h2>
-              <button
-                onClick={() => setShowPreferencesModal(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: '4px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <X size={20} style={{ color: '#6b7280' }} />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <SlidersHorizontal size={18} style={{ color: '#156372' }} />
+                <h2 style={{ fontSize: '18px', fontWeight: '500', color: '#111827', margin: 0 }}>
+                  Customize Columns
+                </h2>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '13px', color: '#6b7280' }}>
+                  {selectedColumns.length + 4} of 13 Selected
+                </span>
+                <button
+                  onClick={() => setShowPreferencesModal(false)}
+                  style={{
+                    background: 'none',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '4px',
+                    padding: '2px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#ffffff'
+                  }}
+                >
+                  <X size={18} style={{ color: '#ef4444' }} />
+                </button>
+              </div>
             </div>
 
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{
-                fontSize: '14px',
-                fontWeight: '500',
-                color: '#374151',
-                display: 'block',
-                marginBottom: '8px'
-              }}>
-                Default Currency
-              </label>
-              <select
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '6px',
-                  fontSize: '14px'
-                }}
-                value={displayCurrencyCode}
-                disabled
-              >
-                <option value={displayCurrencyCode}>
-                  {displayCurrencyCode} ({displayCurrencySymbol})
-                </option>
-              </select>
+            {/* Search Bar */}
+            <div style={{ padding: '16px 20px' }}>
+              <div style={{ position: 'relative' }}>
+                <Search size={16} style={{
+                  position: 'absolute',
+                  left: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: '#9ca3af'
+                }} />
+                <input
+                  type="text"
+                  placeholder="Search"
+                  value={columnSearch}
+                  onChange={(e) => setColumnSearch(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px 8px 36px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
             </div>
 
+            {/* Columns List */}
             <div style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: '0 20px 20px'
+            }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {allAvailableColumns.filter(col => col.toLowerCase().includes(columnSearch.toLowerCase()))
+                  .map((columnName) => {
+                    const isMandatory = mandatoryColumns.includes(columnName);
+                    const isSelected = selectedColumns.includes(columnName) || isMandatory;
+                    return (
+                      <div
+                        key={columnName}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                          padding: '10px 12px',
+                          backgroundColor: '#f9fafb',
+                          borderRadius: '6px',
+                          border: '1px solid transparent',
+                          cursor: 'pointer'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.borderColor = '#e5e7eb'}
+                        onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
+                      >
+                        <GripVertical size={16} style={{ color: '#9ca3af', cursor: 'grab' }} />
+                        {isMandatory ? (
+                          <Lock size={16} style={{ color: '#6b7280' }} />
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {
+                              if (selectedColumns.includes(columnName)) {
+                                setSelectedColumns(selectedColumns.filter(c => c !== columnName));
+                              } else {
+                                setSelectedColumns([...selectedColumns, columnName]);
+                              }
+                            }}
+                            style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                          />
+                        )}
+                        <span style={{ fontSize: '14px', color: '#374151', flex: 1 }}>
+                          {columnName}
+                        </span>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              padding: '16px 20px',
+              borderTop: '1px solid #e5e7eb',
               display: 'flex',
-              justifyContent: 'flex-end',
               gap: '12px',
-              marginTop: '24px',
-              paddingTop: '20px',
-              borderTop: '1px solid #e5e7eb'
+              backgroundColor: '#ffffff',
+              borderRadius: '0 0 8px 8px'
             }}>
               <button
                 onClick={() => setShowPreferencesModal(false)}
                 style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#f3f4f6',
-                  color: '#374151',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  cursor: 'pointer'
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  setShowPreferencesModal(false);
-                }}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#156372',
+                  padding: '8px 24px',
+                  backgroundColor: '#10b981',
                   color: 'white',
                   border: 'none',
                   borderRadius: '6px',
@@ -1506,6 +1568,21 @@ export default function PaymentsMade() {
                 }}
               >
                 Save
+              </button>
+              <button
+                onClick={() => setShowPreferencesModal(false)}
+                style={{
+                  padding: '8px 24px',
+                  backgroundColor: '#ffffff',
+                  color: '#374151',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
               </button>
             </div>
           </div>
