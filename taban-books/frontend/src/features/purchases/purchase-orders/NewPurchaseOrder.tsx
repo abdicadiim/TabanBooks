@@ -23,6 +23,7 @@ import {
   Tag,
   Mail,
   Building2,
+  Package,
 } from "lucide-react";
 
 import { PaymentTermsDropdown } from "../../../components/PaymentTermsDropdown";
@@ -116,6 +117,8 @@ type BulkItemOption = {
   purchaseAccount?: string;
   inventoryAccount?: string;
   trackInventory: boolean;
+  stockOnHand?: number;
+  unit?: string;
 };
 
 type SelectableItem = {
@@ -127,11 +130,15 @@ type SelectableItem = {
   purchaseAccount?: string;
   inventoryAccount?: string;
   trackInventory?: boolean;
+  stockOnHand?: number;
+  unit?: string;
 };
 
 type PurchaseOrderItem = {
   id: number;
   itemId?: RecordId;
+  rowType?: "item" | "header";
+  headerTitle?: string;
   itemDetails: string;
   description?: string;
   account: string;
@@ -139,6 +146,10 @@ type PurchaseOrderItem = {
   rate: string;
   tax: string;
   amount: string;
+  trackInventory?: boolean;
+  stockOnHand?: number;
+  unit?: string;
+  showAdditionalInfo?: boolean;
 };
 
 type PurchaseOrderFormData = {
@@ -228,6 +239,8 @@ type PurchaseOrderItemError = Partial<Record<"itemDetails" | "account" | "quanti
 
 const createEmptyItem = (id: number): PurchaseOrderItem => ({
   id,
+  rowType: "item",
+  headerTitle: "",
   itemDetails: "",
   description: "",
   account: "",
@@ -235,6 +248,27 @@ const createEmptyItem = (id: number): PurchaseOrderItem => ({
   rate: "0.00",
   tax: "",
   amount: "0.00",
+  trackInventory: false,
+  stockOnHand: 0,
+  unit: "",
+  showAdditionalInfo: false,
+});
+
+const createHeaderRow = (id: number): PurchaseOrderItem => ({
+  id,
+  rowType: "header",
+  headerTitle: "",
+  itemDetails: "",
+  description: "",
+  account: "",
+  quantity: "0.00",
+  rate: "0.00",
+  tax: "",
+  amount: "0.00",
+  trackInventory: false,
+  stockOnHand: 0,
+  unit: "",
+  showAdditionalInfo: false,
 });
 
 const PURCHASE_ACCOUNT_TYPES = [
@@ -348,6 +382,10 @@ export default function NewPurchaseOrder() {
   const itemMenuTriggerRefs = useRef<Record<number, HTMLButtonElement | null>>({});
   const itemMenuPortalRef = useRef<HTMLDivElement | null>(null);
   const [itemMenuStyle, setItemMenuStyle] = useState<{ left: number; top: number } | null>(null);
+  const [itemDetailActionOpen, setItemDetailActionOpen] = useState<number | null>(null);
+  const itemDetailActionTriggerRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+  const itemDetailActionPortalRef = useRef<HTMLDivElement | null>(null);
+  const [itemDetailActionStyle, setItemDetailActionStyle] = useState<{ left: number; top: number } | null>(null);
   const [billingAddress, setBillingAddress] = useState<AddressRecord | null>(null);
   const [shippingAddress, setShippingAddress] = useState<AddressRecord | null>(null);
   const [deliveryAddress, setDeliveryAddress] = useState<AddressRecord | null>(null);
@@ -366,6 +404,9 @@ export default function NewPurchaseOrder() {
   const [bulkItems, setBulkItems] = useState<BulkItemOption[]>([]);
   const [bulkItemsSearch, setBulkItemsSearch] = useState("");
   const [bulkSelectedItemIds, setBulkSelectedItemIds] = useState<Record<string, boolean>>({});
+  const [bulkSelectedItems, setBulkSelectedItems] = useState<BulkItemOption[]>([]);
+  const [bulkItemQuantities, setBulkItemQuantities] = useState<Record<string, number>>({});
+  const [bulkInsertAfterRowId, setBulkInsertAfterRowId] = useState<number | null>(null);
   const [validationErrors, setValidationErrors] = useState<Partial<Record<PurchaseOrderFieldErrorKey, string>>>({});
   const [itemValidationErrors, setItemValidationErrors] = useState<Record<number, PurchaseOrderItemError>>({});
   const [saveLoadingState, setSaveLoadingState] = useState<null | "draft" | "issued">(null);
@@ -493,6 +534,8 @@ export default function NewPurchaseOrder() {
         transactionLevel: "At Transaction Level",
         items: (editOrder.items || []).map((item: any, index: number) => ({
           id: index + 1,
+          rowType: "item",
+          headerTitle: "",
           itemId: item.item || item.itemId || item._id || item.id,
           itemDetails: item.name || item.description || item.itemDetails || "",
           description: item.description || "",
@@ -501,6 +544,10 @@ export default function NewPurchaseOrder() {
           rate: (item.unitPrice !== undefined ? item.unitPrice : item.rate)?.toString() || "0.00",
           tax: item.tax_id || item.tax || "",
           amount: (item.total !== undefined ? item.total : item.amount)?.toString() || "0.00",
+          trackInventory: Boolean(item.trackInventory),
+          stockOnHand: Number(item.stockQuantity ?? item.stockOnHand ?? item.quantityOnHand ?? 0),
+          unit: item.unit || "",
+          showAdditionalInfo: Boolean(item.description),
         })),
         subTotal: editOrder.subTotal?.toString() || editOrder.sub_total?.toString() || "0.00",
         discountPercent: "0", // Need backend support for this if not just amount
@@ -554,6 +601,8 @@ export default function NewPurchaseOrder() {
       transactionLevel: "At Transaction Level",
       items: (clonedData.items || []).map((item: any, index: number) => ({
         id: Date.now() + index,
+        rowType: "item",
+        headerTitle: "",
         itemId: item.item || item.itemId || item._id || item.id,
         itemDetails: item.name || item.description || item.itemDetails || "",
         description: item.description || "",
@@ -562,6 +611,10 @@ export default function NewPurchaseOrder() {
         rate: (item.unitPrice !== undefined ? item.unitPrice : item.rate)?.toString() || "0.00",
         tax: item.tax_id || item.tax || "",
         amount: (item.total !== undefined ? item.total : item.amount)?.toString() || "0.00",
+        trackInventory: Boolean(item.trackInventory),
+        stockOnHand: Number(item.stockQuantity ?? item.stockOnHand ?? item.quantityOnHand ?? 0),
+        unit: item.unit || "",
+        showAdditionalInfo: Boolean(item.description),
       })),
       subTotal: clonedData.subTotal?.toString() || clonedData.sub_total?.toString() || "0.00",
       discountPercent: "0",
@@ -712,12 +765,16 @@ export default function NewPurchaseOrder() {
   const recalcForm = (next: PurchaseOrderFormData): PurchaseOrderFormData => {
     const taxExclusive = !!next.taxExclusive;
     const itemsWithAmounts = (next.items || []).map((item) => {
+      if (item.rowType === "header") {
+        return { ...item, amount: "0.00" };
+      }
       const line = computeLine(item, taxExclusive);
       return { ...item, amount: line.gross.toFixed(2) };
     });
 
-    const baseSubTotal = itemsWithAmounts.reduce((sum: number, item) => sum + computeLine(item, taxExclusive).net, 0);
-    const baseTaxTotal = itemsWithAmounts.reduce((sum: number, item) => sum + computeLine(item, taxExclusive).tax, 0);
+    const lineItems = itemsWithAmounts.filter((item) => item.rowType !== "header");
+    const baseSubTotal = lineItems.reduce((sum: number, item) => sum + computeLine(item, taxExclusive).net, 0);
+    const baseTaxTotal = lineItems.reduce((sum: number, item) => sum + computeLine(item, taxExclusive).tax, 0);
     const discountPercent = showTransactionDiscount ? (parseFloat(next.discountPercent) || 0) : 0;
     const discountFactor = Math.max(0, 1 - discountPercent / 100);
     const discountedSubTotal = baseSubTotal * discountFactor;
@@ -1105,8 +1162,13 @@ export default function NewPurchaseOrder() {
       // Close item menu if clicking outside
       const clickedInsideItemTrigger = Object.values(itemMenuTriggerRefs.current).some((ref) => ref?.contains(target));
       const clickedInsideItemMenu = Boolean(itemMenuPortalRef.current?.contains(target));
+      const clickedInsideItemDetailTrigger = Object.values(itemDetailActionTriggerRefs.current).some((ref) => ref?.contains(target));
+      const clickedInsideItemDetailMenu = Boolean(itemDetailActionPortalRef.current?.contains(target));
       if (!clickedInsideItemTrigger && !clickedInsideItemMenu) {
         setItemMenuOpen(null);
+      }
+      if (!clickedInsideItemDetailTrigger && !clickedInsideItemDetailMenu) {
+        setItemDetailActionOpen(null);
       }
       // Close customer dropdown if clicking outside
       if (vendorDropdownRef.current && !vendorDropdownRef.current.contains(target)) {
@@ -1251,6 +1313,32 @@ export default function NewPurchaseOrder() {
   }, [itemMenuOpen]);
 
   useEffect(() => {
+    if (itemDetailActionOpen === null) {
+      setItemDetailActionStyle(null);
+      return;
+    }
+
+    const syncItemDetailActionPosition = () => {
+      const trigger = itemDetailActionTriggerRefs.current[itemDetailActionOpen];
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      setItemDetailActionStyle({
+        left: rect.left - 4,
+        top: rect.bottom + 8,
+      });
+    };
+
+    syncItemDetailActionPosition();
+    window.addEventListener("resize", syncItemDetailActionPosition);
+    window.addEventListener("scroll", syncItemDetailActionPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", syncItemDetailActionPosition);
+      window.removeEventListener("scroll", syncItemDetailActionPosition, true);
+    };
+  }, [itemDetailActionOpen]);
+
+  useEffect(() => {
     if (!reportingTagOptionOpenKey) {
       setReportingTagOptionMenuStyle(null);
       return;
@@ -1281,6 +1369,19 @@ export default function NewPurchaseOrder() {
   const filteredProjects = projects.filter((project) =>
     project.name.toLowerCase().includes(projectSearch.trim().toLowerCase())
   );
+  const activeItemMenuRow = itemMenuOpen !== null
+    ? formData.items.find((item) => item.id === itemMenuOpen) || null
+    : null;
+  const filteredBulkItems = bulkItems.filter((item) =>
+    `${item.name} ${item.sku}`.toLowerCase().includes(bulkItemsSearch.toLowerCase())
+  );
+  const totalBulkQuantity = bulkSelectedItems.reduce(
+    (sum, item) => sum + Math.max(1, Math.floor(Number(bulkItemQuantities[item.id] || 1))),
+    0
+  );
+  const totalQuantity = formData.items
+    .filter((item) => item.rowType !== "header")
+    .reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0);
 
   const selectedReportingTagsCount = availableReportingTags.reduce((count, tag) => {
     const tagId = String(tag?._id || tag?.id || "").trim();
@@ -1417,10 +1518,11 @@ export default function NewPurchaseOrder() {
     }
 
     const normalizedItems = Array.isArray(formData.items) ? formData.items : [];
-    if (!normalizedItems.length) {
+    const lineItems = normalizedItems.filter((item) => item.rowType !== "header");
+    if (!lineItems.length) {
       nextErrors.items = "At least one item row is required.";
     } else {
-      normalizedItems.forEach((item) => {
+      lineItems.forEach((item) => {
         const rowErrors: PurchaseOrderItemError = {};
         const quantity = Number(item.quantity);
         const rate = Number(item.rate);
@@ -1530,6 +1632,9 @@ export default function NewPurchaseOrder() {
             itemDetails: selectedItem.name,
             description: selectedItem.description || item.description || "",
             rate: rate.toFixed(2),
+            trackInventory: Boolean(selectedItem.trackInventory),
+            stockOnHand: Number(selectedItem.stockOnHand || 0),
+            unit: selectedItem.unit || "",
           };
 
           // Set account based on inventory tracking status
@@ -1566,6 +1671,73 @@ export default function NewPurchaseOrder() {
     });
   };
 
+  const clearItemSelection = (id: number) => {
+    clearItemFieldError(id, "itemDetails");
+    clearItemFieldError(id, "account");
+    setFormData((prev) => {
+      const updatedItems = prev.items.map((item) =>
+        item.id === id
+          ? {
+              ...createEmptyItem(id),
+              description: item.description,
+              showAdditionalInfo: item.showAdditionalInfo,
+            }
+          : item
+      );
+
+      return recalcForm({
+        ...prev,
+        items: updatedItems,
+      });
+    });
+  };
+
+  const handleViewItemDetails = (id: number) => {
+    const row = formData.items.find((item) => item.id === id);
+    const itemId = String(row?.itemId || "").trim();
+    if (!itemId) return;
+    setItemDetailActionOpen(null);
+    navigate("/items", {
+      state: {
+        selectedItemId: itemId,
+        initialView: "detail",
+        returnTo: location.pathname,
+      },
+    });
+  };
+
+  const handleEditItemDetails = (id: number) => {
+    const row = formData.items.find((item) => item.id === id);
+    const itemId = String(row?.itemId || "").trim();
+    if (!itemId) return;
+    setItemDetailActionOpen(null);
+    navigate("/items", {
+      state: {
+        selectedItemId: itemId,
+        initialView: "edit",
+        returnTo: location.pathname,
+      },
+    });
+  };
+
+  const toggleAdditionalInfo = (id: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      items: prev.items.map((item) =>
+        item.id === id ? { ...item, showAdditionalInfo: !item.showAdditionalInfo } : item
+      ),
+    }));
+  };
+
+  const handleHeaderTitleChange = (id: number, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      items: prev.items.map((item) =>
+        item.id === id ? { ...item, headerTitle: value } : item
+      ),
+    }));
+  };
+
   const addNewRow = () => {
     setFormData((prev) => ({
       ...prev,
@@ -1580,6 +1752,20 @@ export default function NewPurchaseOrder() {
 
       const nextItems = [...prev.items];
       nextItems.splice(index + 1, 0, createEmptyItem(Date.now()));
+      return {
+        ...prev,
+        items: nextItems,
+      };
+    });
+  };
+
+  const insertHeaderAfter = (id: number) => {
+    setFormData((prev) => {
+      const index = prev.items.findIndex((item) => item.id === id);
+      if (index === -1) return prev;
+
+      const nextItems = [...prev.items];
+      nextItems.splice(index + 1, 0, createHeaderRow(Date.now()));
       return {
         ...prev,
         items: nextItems,
@@ -1608,7 +1794,11 @@ export default function NewPurchaseOrder() {
   };
 
   const removeRow = (id: number) => {
-    if (formData.items.length > 1) {
+    const lineItemsCount = formData.items.filter((item) => item.rowType !== "header").length;
+    const targetRow = formData.items.find((item) => item.id === id);
+    const canRemove = targetRow?.rowType === "header" || lineItemsCount > 1;
+
+    if (canRemove) {
       setFormData((prev) =>
         recalcForm({
           ...prev,
@@ -1631,6 +1821,8 @@ export default function NewPurchaseOrder() {
         purchaseAccount: item.purchaseAccount || item.purchase_account || "",
         inventoryAccount: item.inventoryAccount || item.inventory_account || "",
         trackInventory: !!item.trackInventory,
+        stockOnHand: Number(item.stockQuantity ?? item.stockOnHand ?? item.quantityOnHand ?? 0),
+        unit: item.unit || "",
       })).filter((item) => item.id);
       setBulkItems(normalizedItems);
     } catch (error) {
@@ -1641,46 +1833,101 @@ export default function NewPurchaseOrder() {
     }
   };
 
-  const openBulkItemsModal = async () => {
+  const closeBulkItemsModal = () => {
+    setBulkItemsModalOpen(false);
+    setBulkItemsSearch("");
+    setBulkSelectedItemIds({});
+    setBulkSelectedItems([]);
+    setBulkItemQuantities({});
+    setBulkInsertAfterRowId(null);
+  };
+
+  const openBulkItemsModal = async (afterRowId?: number) => {
     setBulkItemsModalOpen(true);
+    setBulkInsertAfterRowId(typeof afterRowId === "number" ? afterRowId : null);
     if (bulkItems.length === 0) {
       await loadBulkItems();
     }
   };
 
+  const handleBulkItemSelect = (selectedItem: BulkItemOption) => {
+    const isSelected = bulkSelectedItems.some((item) => item.id === selectedItem.id);
+    if (isSelected) {
+      setBulkSelectedItems((prev) => prev.filter((item) => item.id !== selectedItem.id));
+      setBulkSelectedItemIds((prev) => {
+        const next = { ...prev };
+        delete next[selectedItem.id];
+        return next;
+      });
+      setBulkItemQuantities((prev) => {
+        const next = { ...prev };
+        delete next[selectedItem.id];
+        return next;
+      });
+      return;
+    }
+
+    setBulkSelectedItems((prev) => [...prev, selectedItem]);
+    setBulkSelectedItemIds((prev) => ({ ...prev, [selectedItem.id]: true }));
+    setBulkItemQuantities((prev) => ({ ...prev, [selectedItem.id]: prev[selectedItem.id] || 1 }));
+  };
+
+  const handleBulkQuantityChange = (itemId: string, quantity: number) => {
+    setBulkItemQuantities((prev) => ({
+      ...prev,
+      [itemId]: Math.max(1, Math.floor(Number(quantity) || 1)),
+    }));
+  };
+
   const handleAddSelectedBulkItems = () => {
-    const selectedItems = bulkItems.filter((item) => bulkSelectedItemIds[item.id]);
-    if (!selectedItems.length) return;
+    if (!bulkSelectedItems.length) return;
 
     setFormData((prev) => {
-      const newRows: PurchaseOrderItem[] = selectedItems.map((selectedItem) => {
+      const newRows: PurchaseOrderItem[] = bulkSelectedItems.map((selectedItem) => {
         const rate = Number(selectedItem.purchaseRate || 0);
         const account = selectedItem.trackInventory && selectedItem.inventoryAccount
           ? selectedItem.inventoryAccount
           : (selectedItem.purchaseAccount || "");
+        const quantity = Math.max(1, Math.floor(Number(bulkItemQuantities[selectedItem.id] || 1)));
 
         return {
           id: Date.now() + Math.random(),
+          rowType: "item",
+          headerTitle: "",
           itemId: selectedItem.id,
           itemDetails: selectedItem.name,
           description: "",
           account,
-          quantity: "1.00",
+          quantity: quantity.toString(),
           rate: rate.toFixed(2),
           tax: "",
-          amount: rate.toFixed(2),
+          amount: (quantity * rate).toFixed(2),
+          trackInventory: selectedItem.trackInventory,
+          stockOnHand: Number(selectedItem.stockOnHand || 0),
+          unit: selectedItem.unit || "",
+          showAdditionalInfo: false,
         };
       });
 
+      const nextItems = [...prev.items];
+      if (bulkInsertAfterRowId !== null) {
+        const insertIndex = nextItems.findIndex((item) => item.id === bulkInsertAfterRowId);
+        if (insertIndex !== -1) {
+          nextItems.splice(insertIndex + 1, 0, ...newRows);
+        } else {
+          nextItems.push(...newRows);
+        }
+      } else {
+        nextItems.push(...newRows);
+      }
+
       return recalcForm({
         ...prev,
-        items: [...prev.items, ...newRows],
+        items: nextItems,
       });
     });
 
-    setBulkItemsModalOpen(false);
-    setBulkItemsSearch("");
-    setBulkSelectedItemIds({});
+    closeBulkItemsModal();
   };
 
   const normalizeText = (value: unknown) => String(value ?? "").trim();
@@ -1825,7 +2072,9 @@ export default function NewPurchaseOrder() {
         transaction_level: formData.transactionLevel,
         total: parseFloat(formData.total),
         sub_total: parseFloat(formData.subTotal),
-        items: (formData.items || []).map(item => ({
+        items: (formData.items || [])
+          .filter((item) => item.rowType !== "header")
+          .map(item => ({
           item: item.itemId, // Send the item ID reference
           name: item.itemDetails, // Explicitly send name/details
           description: item.description || "",
@@ -2041,7 +2290,7 @@ export default function NewPurchaseOrder() {
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-white" style={{ backgroundColor: "#ffffff" }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 bg-white flex-shrink-0">
+      <div className="sticky top-0 z-30 flex flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white px-6 py-3 shadow-[0_1px_0_rgba(229,231,235,0.9)]">
         <h1 className="text-lg font-semibold text-gray-900">{isEdit ? "Edit Purchase Order" : "New Purchase Order"}</h1>
         <button
           type="button"
@@ -2722,96 +2971,214 @@ export default function NewPurchaseOrder() {
                     <col style={{ width: "20%" }} />
                     <col style={{ width: "2%" }} />
                   </colgroup>
-                  <thead className="border-b border-gray-200 bg-gray-50/80">
+                  <thead className="border-b border-gray-200 bg-white">
                     <tr>
-                      <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">ITEM DETAILS</th>
-                      <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">ACCOUNT</th>
-                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">QUANTITY</th>
-                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">RATE</th>
+                      <th className="border-r border-gray-200 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">ITEM DETAILS</th>
+                      <th className="border-r border-gray-200 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">ACCOUNT</th>
+                      <th className="border-r border-gray-200 px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">QUANTITY</th>
+                      <th className="border-r border-gray-200 px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">RATE</th>
                       <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">AMOUNT</th>
                       <th className="px-2 py-3"></th>
                     </tr>
                   </thead>
                   <tbody className="bg-white">
-                      {formData.items.map((item, index) => (
-                        <tr key={item.id || index} className="group border-b border-gray-200 align-top min-h-[118px]">
-                        <td className="px-3 py-2.5 text-sm">
-                          <div className="relative flex items-center gap-2">
-                            <div className="flex flex-col gap-1 cursor-move px-0.5 py-1.5">
-                              <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
-                              <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
-                              <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
+                    {formData.items.map((item, index) => {
+                      const rowTrackInventory = Boolean(item.trackInventory);
+                      const rowStockOnHand = Number(item.stockOnHand || 0);
+                      const rowUnit = item.unit || "";
+                      const isHeaderRow = item.rowType === "header";
+
+                      if (isHeaderRow) {
+                        return (
+                          <tr key={item.id || index} className="group border-b border-gray-200 bg-slate-50/60 align-middle">
+                            <td colSpan={5} className="px-3 py-3">
+                              <div className="flex items-center gap-3">
+                                <div className="flex flex-col gap-1 cursor-move px-0.5 py-1.5">
+                                  <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
+                                  <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
+                                  <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
+                                </div>
+                                <input
+                                  type="text"
+                                  value={item.headerTitle || ""}
+                                  onChange={(e) => handleHeaderTitleChange(item.id, e.target.value)}
+                                  placeholder="Enter header name"
+                                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-teal-600"
+                                />
+                              </div>
+                            </td>
+                            <td className="relative w-0 px-0 py-2.5 text-sm overflow-visible">
+                              <div className="pointer-events-none absolute -right-16 top-1/2 z-10 flex -translate-y-1/2 items-center gap-2 opacity-0 transition-all duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+                                <button
+                                  type="button"
+                                  ref={(element) => {
+                                    itemMenuTriggerRefs.current[item.id] = element;
+                                  }}
+                                  onClick={() => {
+                                    setItemMenuOpen((prev) => prev === item.id ? null : item.id);
+                                  }}
+                                  className="flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-400 shadow-sm hover:bg-gray-50 hover:text-gray-600"
+                                >
+                                  <MoreVertical size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeRow(item.id)}
+                                  className="flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white text-rose-400 shadow-sm hover:bg-rose-50 hover:text-rose-500"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      return (
+                        <React.Fragment key={item.id || index}>
+                        <tr className="group border-b border-gray-200 align-top min-h-[118px]">
+                          <td className="border-r border-gray-200 px-3 py-2.5 text-sm">
+                            <div className="relative flex items-start gap-2">
+                              <div className="flex flex-col gap-1 cursor-move px-0.5 py-1.5">
+                                <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
+                                <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
+                                <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
+                              </div>
+                              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50">
+                                <ImageIcon size={18} className="text-gray-300" />
+                              </div>
+                              <div className="relative flex-1">
+                                <ItemSelectDropdown
+                                  value={item.itemDetails}
+                                  onSelect={(selectedItem) => handleItemSelect(item.id, selectedItem)}
+                                  className="flex-1"
+                                />
+                                {!!item.itemId && (
+                                  <div className="absolute right-0 top-0 flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      ref={(element) => {
+                                        itemDetailActionTriggerRefs.current[item.id] = element;
+                                      }}
+                                      onClick={() => {
+                                        setItemDetailActionOpen((prev) => (prev === item.id ? null : item.id));
+                                      }}
+                                      className="flex h-5 w-5 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+                                      aria-label="Open item actions"
+                                    >
+                                      <MoreVertical size={11} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => clearItemSelection(item.id)}
+                                      className="flex h-5 w-5 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-400 hover:bg-rose-50 hover:text-rose-500"
+                                      aria-label="Clear selected item"
+                                    >
+                                      <X size={11} />
+                                    </button>
+                                  </div>
+                                )}
+                                {(item.showAdditionalInfo || item.description) && (
+                                  <textarea
+                                    value={item.description || ""}
+                                    onChange={(e) => setFormData((prev) => ({
+                                      ...prev,
+                                      items: prev.items.map((row) =>
+                                        row.id === item.id ? { ...row, description: e.target.value } : row
+                                      ),
+                                    }))}
+                                    placeholder="Add a description to your item"
+                                    className="mt-3 min-h-[64px] w-full rounded-lg border border-gray-100 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-teal-600"
+                                  />
+                                )}
+                                {!!item.sku && (
+                                  <div className="mt-1 text-xs text-slate-500">
+                                    SKU: {item.sku}
+                                  </div>
+                                )}
+                                {itemValidationErrors[item.id]?.itemDetails ? (
+                                  <p className="mt-1 text-xs text-red-500">{itemValidationErrors[item.id]?.itemDetails}</p>
+                                ) : null}
+                              </div>
                             </div>
-                            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50">
-                              <ImageIcon size={18} className="text-gray-300" />
-                            </div>
-                            <div className="relative flex-1">
-                              <ItemSelectDropdown
-                                value={item.itemDetails}
-                                onSelect={(selectedItem) => handleItemSelect(item.id, selectedItem)}
-                                className="flex-1"
+                          </td>
+                          <td className="border-r border-gray-200 px-3 py-2.5 text-sm">
+                            <div>
+                              <AccountSelectDropdown
+                                value={item.account}
+                                onSelect={(acc) => handleItemChange(item.id, "account", acc.name)}
+                                className="w-full"
+                                allowedTypes={PURCHASE_ACCOUNT_TYPES}
                               />
-                              {itemValidationErrors[item.id]?.itemDetails ? (
-                                <p className="mt-1 text-xs text-red-500">{itemValidationErrors[item.id]?.itemDetails}</p>
+                              {itemValidationErrors[item.id]?.account ? (
+                                <p className="mt-1 text-xs text-red-500">{itemValidationErrors[item.id]?.account}</p>
                               ) : null}
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-3 py-2.5 text-sm">
-                          <div>
-                            <AccountSelectDropdown
-                              value={item.account}
-                              onSelect={(acc) => handleItemChange(item.id, "account", acc.name)}
-                              className="w-full"
-                              allowedTypes={PURCHASE_ACCOUNT_TYPES}
-                            />
-                            {itemValidationErrors[item.id]?.account ? (
-                              <p className="mt-1 text-xs text-red-500">{itemValidationErrors[item.id]?.account}</p>
+                          </td>
+                          <td className="border-r border-gray-200 px-3 py-2.5 text-sm align-top">
+                            <div className="flex min-h-[118px] flex-col items-stretch justify-start">
+                              <input
+                                type="text"
+                                value={item.quantity}
+                                onChange={(e) => handleItemChange(item.id, "quantity", e.target.value)}
+                                className={`h-11 w-full rounded-lg border bg-gray-50 px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none focus:border-teal-600 ${
+                                  itemValidationErrors[item.id]?.quantity ? "border-red-400 ring-1 ring-red-100" : "border-gray-200"
+                                }`}
+                              />
+                              {rowTrackInventory ? (
+                                <div className="mt-2 space-y-1 text-center text-[11px] leading-4">
+                                  <div className="text-gray-700">
+                                    <span className="font-medium">Stock on Hand:</span>{" "}
+                                    <span className="text-gray-900">
+                                      {rowStockOnHand.toFixed(0)} {rowUnit}
+                                    </span>
+                                  </div>
+                                  {warehouseLocation ? (
+                                    <div className="flex items-center justify-center gap-1 text-blue-500">
+                                      <Building2 size={12} />
+                                      <span>{warehouseLocation}</span>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                            {itemValidationErrors[item.id]?.quantity ? (
+                              <p className="mt-1 text-xs text-red-500">{itemValidationErrors[item.id]?.quantity}</p>
                             ) : null}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2.5 text-sm">
-                          <div className="flex items-center justify-end">
-                            <input
-                              type="text"
-                              value={item.quantity}
-                              onChange={(e) => handleItemChange(item.id, "quantity", e.target.value)}
-                              className={`h-11 w-full rounded-lg border bg-gray-50 px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none focus:border-teal-600 ${
-                                itemValidationErrors[item.id]?.quantity ? "border-red-400 ring-1 ring-red-100" : "border-gray-200"
-                              }`}
-                            />
-                          </div>
-                          {itemValidationErrors[item.id]?.quantity ? (
-                            <p className="mt-1 text-xs text-red-500">{itemValidationErrors[item.id]?.quantity}</p>
-                          ) : null}
-                        </td>
-                        <td className="px-3 py-2.5 text-sm">
-                          <div className="flex items-center justify-end">
-                            <input
-                              type="text"
-                              value={item.rate}
-                              onChange={(e) => handleItemChange(item.id, "rate", e.target.value)}
-                              className={`h-11 w-full rounded-lg border bg-white px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none focus:border-teal-600 ${
-                                itemValidationErrors[item.id]?.rate ? "border-red-400 ring-1 ring-red-100" : "border-gray-200"
-                              }`}
-                            />
-                          </div>
-                          {itemValidationErrors[item.id]?.rate ? (
-                            <p className="mt-1 text-xs text-red-500">{itemValidationErrors[item.id]?.rate}</p>
-                          ) : null}
-                        </td>
-                        <td className="px-3 py-2.5 text-sm">
-                          <div className="flex items-center justify-end">
-                            <input
-                              type="text"
-                              value={item.amount}
-                              readOnly
-                              className="h-11 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none"
-                            />
-                          </div>
-                        </td>
+                          </td>
+                          <td className="border-r border-gray-200 px-3 py-2.5 text-sm">
+                            <div className="flex flex-col items-end">
+                              <input
+                                type="text"
+                                value={item.rate}
+                                onChange={(e) => handleItemChange(item.id, "rate", e.target.value)}
+                                className={`h-11 w-full rounded-lg border bg-white px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none focus:border-teal-600 ${
+                                  itemValidationErrors[item.id]?.rate ? "border-red-400 ring-1 ring-red-100" : "border-gray-200"
+                                }`}
+                              />
+                              <button
+                                type="button"
+                                className="mt-4 text-[12px] font-medium text-[#3b82f6] hover:text-[#2563eb]"
+                              >
+                                Recent Transactions
+                              </button>
+                            </div>
+                            {itemValidationErrors[item.id]?.rate ? (
+                              <p className="mt-1 text-xs text-red-500">{itemValidationErrors[item.id]?.rate}</p>
+                            ) : null}
+                          </td>
+                          <td className="px-3 py-2.5 text-sm">
+                            <div className="flex items-center justify-end">
+                              <input
+                                type="text"
+                                value={item.amount}
+                                readOnly
+                                className="h-11 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none"
+                              />
+                            </div>
+                          </td>
                           <td className="relative w-0 px-0 py-2.5 text-sm overflow-visible">
-                            <div className="pointer-events-none absolute -right-16 top-1/2 z-10 flex -translate-y-1/2 items-center gap-2 opacity-0 transition-all duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+                            <div className="absolute -right-16 top-1/2 z-10 flex -translate-y-1/2 items-center gap-2 opacity-0 transition-all duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
                               <button
                                 type="button"
                                 ref={(element) => {
@@ -2833,55 +3200,59 @@ export default function NewPurchaseOrder() {
                               </button>
                             </div>
                           </td>
-                      </tr>
-                    ))}
+                        </tr>
+                        <tr className="border-b border-gray-200 bg-slate-50/60">
+                          <td colSpan={5} className="px-3 py-2.5">
+                            <div className="flex flex-wrap items-center gap-6 text-sm">
+                              <button
+                                type="button"
+                                ref={projectDropdownRef}
+                                onClick={() => {
+                                  setProjectDropdownOpen((prev) => !prev);
+                                  setReportingTagsOpen(false);
+                                  setReportingTagOptionOpenKey(null);
+                                }}
+                                className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+                              >
+                                <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-gray-400/20 text-gray-500">
+                                  <Building2 size={12} />
+                                </span>
+                                <span className={selectedProjectName ? "text-gray-800" : "text-gray-500"}>
+                                  {selectedProjectName || "Select a project"}
+                                </span>
+                                <ChevronDown size={12} className="text-gray-400" />
+                              </button>
+                              <button
+                                type="button"
+                                ref={reportingTagsRef}
+                                onClick={() => {
+                                  setReportingTagsOpen((prev) => !prev);
+                                  setProjectDropdownOpen(false);
+                                }}
+                                className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+                              >
+                                <Tag size={12} className={hasRequiredReportingTags ? "text-green-500" : "text-gray-400"} />
+                                <span className={hasRequiredReportingTags ? "text-red-500" : "text-gray-600"}>
+                                  {hasRequiredReportingTags ? "Reporting Tags*" : "Reporting Tags"}
+                                </span>
+                                <span className="text-gray-500">{reportingTagsSummary}</span>
+                                <ChevronDown size={12} className="text-gray-400" />
+                              </button>
+                            </div>
+                            {validationErrors.reportingTags ? (
+                              <p className="mt-2 text-sm text-red-500">{validationErrors.reportingTags}</p>
+                            ) : null}
+                            {validationErrors.items ? (
+                              <p className="mt-2 text-sm text-red-500">{validationErrors.items}</p>
+                            ) : null}
+                          </td>
+                          <td className="px-0 py-0"></td>
+                        </tr>
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
-
-                <div className="border-t border-gray-200 bg-gray-50/60 px-3 py-2.5">
-                  <div className="flex flex-wrap items-center gap-6 text-sm">
-                    <button
-                      type="button"
-                      ref={projectDropdownRef}
-                      onClick={() => {
-                        setProjectDropdownOpen((prev) => !prev);
-                        setReportingTagsOpen(false);
-                        setReportingTagOptionOpenKey(null);
-                      }}
-                      className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
-                    >
-                      <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-gray-400/20 text-gray-500">
-                        <Building2 size={12} />
-                      </span>
-                      <span className={selectedProjectName ? "text-gray-800" : "text-gray-500"}>
-                        {selectedProjectName || "Select a project"}
-                      </span>
-                      <ChevronDown size={12} className="text-gray-400" />
-                    </button>
-                    <button
-                      type="button"
-                      ref={reportingTagsRef}
-                      onClick={() => {
-                        setReportingTagsOpen((prev) => !prev);
-                        setProjectDropdownOpen(false);
-                      }}
-                      className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
-                    >
-                      <Tag size={12} className={hasRequiredReportingTags ? "text-green-500" : "text-gray-400"} />
-                      <span className={hasRequiredReportingTags ? "text-red-500" : "text-gray-600"}>
-                        {hasRequiredReportingTags ? "Reporting Tags*" : "Reporting Tags"}
-                      </span>
-                      <span className="text-gray-500">{reportingTagsSummary}</span>
-                      <ChevronDown size={12} className="text-gray-400" />
-                    </button>
-                  </div>
-                  {validationErrors.reportingTags ? (
-                    <p className="mt-2 text-sm text-red-500">{validationErrors.reportingTags}</p>
-                  ) : null}
-                  {validationErrors.items ? (
-                    <p className="mt-2 text-sm text-red-500">{validationErrors.items}</p>
-                  ) : null}
-                </div>
               </div>
 
               <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-start">
@@ -2920,8 +3291,13 @@ export default function NewPurchaseOrder() {
 
                 <div className="w-full max-w-[420px] flex-shrink-0 xl:ml-auto">
                   <div className="rounded-3xl border border-gray-200 bg-gray-50/80 px-5 py-5 shadow-[0_14px_30px_rgba(15,23,42,0.04)]">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[14px] font-semibold text-gray-900">Sub Total</span>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="text-[14px] font-semibold text-gray-900">Sub Total</div>
+                        <div className="mt-1 text-[14px] font-medium text-gray-900">
+                          Total Quantity : {totalQuantity}
+                        </div>
+                      </div>
                       <span className="text-[14px] font-semibold text-gray-900 tabular-nums">{formData.subTotal}</span>
                     </div>
                     {showTransactionDiscount && (
@@ -3013,10 +3389,23 @@ export default function NewPurchaseOrder() {
         >
           <button
             type="button"
-            onClick={() => setItemMenuOpen(null)}
-            className="m-1 flex w-[calc(100%-8px)] items-center rounded-lg border-2 border-blue-500 bg-[#4b8bf4] px-3 py-2 text-left text-sm font-medium text-white shadow-sm"
+            onClick={() => {
+              if (activeItemMenuRow?.rowType !== "header" && itemMenuOpen !== null) {
+                toggleAdditionalInfo(itemMenuOpen);
+              }
+              setItemMenuOpen(null);
+            }}
+            className={`m-1 flex w-[calc(100%-8px)] items-center rounded-lg px-3 py-2 text-left text-sm font-medium shadow-sm ${
+              activeItemMenuRow?.rowType === "header"
+                ? "cursor-default border border-slate-200 bg-slate-100 text-slate-500"
+                : "border-2 border-blue-500 bg-[#4b8bf4] text-white"
+            }`}
           >
-            Hide Additional Information
+            {activeItemMenuRow?.rowType === "header"
+              ? "Header Row"
+              : activeItemMenuRow?.showAdditionalInfo
+                ? "Hide Additional Information"
+                : "Show Additional Information"}
           </button>
           <button
             type="button"
@@ -3041,7 +3430,7 @@ export default function NewPurchaseOrder() {
           <button
             type="button"
             onClick={() => {
-              openBulkItemsModal();
+              openBulkItemsModal(itemMenuOpen);
               setItemMenuOpen(null);
             }}
             className="flex w-full items-center border-t border-slate-100 px-3 py-3 text-left text-sm text-slate-700 hover:bg-slate-50"
@@ -3051,12 +3440,41 @@ export default function NewPurchaseOrder() {
           <button
             type="button"
             onClick={() => {
-              insertRowAfter(itemMenuOpen);
+              insertHeaderAfter(itemMenuOpen);
               setItemMenuOpen(null);
             }}
             className="flex w-full items-center border-t border-slate-100 px-3 py-3 text-left text-sm text-slate-700 hover:bg-slate-50"
           >
             Insert New Header
+          </button>
+        </div>,
+        document.body
+      )}
+
+      {itemDetailActionOpen !== null && itemDetailActionStyle && typeof document !== "undefined" && document.body && createPortal(
+        <div
+          ref={itemDetailActionPortalRef}
+          className="fixed z-[1260] min-w-[198px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_16px_32px_rgba(15,23,42,0.18)]"
+          style={{
+            left: itemDetailActionStyle.left,
+            top: itemDetailActionStyle.top,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => handleEditItemDetails(itemDetailActionOpen)}
+            className="m-1 flex w-[calc(100%-8px)] items-center gap-2 rounded-lg border-2 border-blue-500 bg-[#4b8bf4] px-3 py-2 text-left text-sm font-medium text-white shadow-sm"
+          >
+            <Pencil size={14} />
+            Edit Item
+          </button>
+          <button
+            type="button"
+            onClick={() => handleViewItemDetails(itemDetailActionOpen)}
+            className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-3 text-left text-sm text-slate-700 hover:bg-slate-50"
+          >
+            <Package size={14} />
+            View Item Details
           </button>
         </div>,
         document.body
@@ -3578,75 +3996,144 @@ export default function NewPurchaseOrder() {
       </div>
 
       {bulkItemsModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setBulkItemsModalOpen(false)}>
-          <div className="bg-white rounded-lg w-[92vw] max-w-[900px] max-h-[85vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Add Items in Bulk</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeBulkItemsModal}>
+          <div className="flex h-[72vh] min-h-[620px] w-[92vw] max-w-[1030px] flex-col overflow-hidden rounded-lg bg-white" onClick={(e) => e.stopPropagation()}>
+            <div className="relative border-b border-gray-200 px-5 py-4">
+              <h3 className="text-[18px] font-medium text-gray-900">Add Items in Bulk</h3>
               <button
                 type="button"
-                onClick={() => setBulkItemsModalOpen(false)}
-                className="w-8 h-8 bg-[#156372] text-white rounded flex items-center justify-center hover:bg-[#0D4A52]"
+                onClick={closeBulkItemsModal}
+                className="absolute right-5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                aria-label="Close bulk items modal"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="p-4 border-b border-gray-200">
-              <div className="relative">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  value={bulkItemsSearch}
-                  onChange={(e) => setBulkItemsSearch(e.target.value)}
-                  placeholder="Search by item name or SKU"
-                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#156372]"
-                />
-              </div>
-            </div>
+            <div className="flex min-h-0 flex-1">
+              <div className="flex w-[46%] min-w-0 flex-col border-r border-gray-200">
+                <div className="border-b border-gray-200 p-4">
+                  <div className="relative">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={bulkItemsSearch}
+                      onChange={(e) => setBulkItemsSearch(e.target.value)}
+                      placeholder="Type to search or scan the barcode of the item"
+                      className="w-full rounded-md border border-gray-300 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#156372]"
+                    />
+                  </div>
+                </div>
 
-            <div className="flex-1 overflow-auto">
-              {bulkItemsLoading ? (
-                <div className="p-6 text-sm text-gray-500">Loading items...</div>
-              ) : (
-                <table className="w-full">
-                  <thead className="bg-gray-50 sticky top-0">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Select</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Item</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">SKU</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Purchase Rate</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bulkItems
-                      .filter((item: any) =>
-                        `${item.name} ${item.sku}`.toLowerCase().includes(bulkItemsSearch.toLowerCase())
-                      )
-                      .map((item: any, index: number) => (
-                        <tr key={item.id || `${item.name || item.sku || "bulk-item"}-${index}`} className="border-b border-gray-100 hover:bg-gray-50">
-                          <td className="px-4 py-3">
-                            <input
-                              type="checkbox"
-                              checked={!!bulkSelectedItemIds[item.id]}
-                              onChange={(e) =>
-                                setBulkSelectedItemIds((prev) => ({ ...prev, [item.id]: e.target.checked }))
-                              }
-                            />
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-900">{item.name}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{item.sku || "-"}</td>
-                          <td className="px-4 py-3 text-sm text-right text-gray-900">{Number(item.purchaseRate || 0).toFixed(2)}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              )}
+                <div className="min-h-0 flex-1 overflow-auto p-2">
+                  {bulkItemsLoading ? (
+                    <div className="p-6 text-sm text-gray-500">Loading items...</div>
+                  ) : filteredBulkItems.length === 0 ? (
+                    <div className="p-6 text-sm text-gray-500">No items found.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {filteredBulkItems.map((item: any, index: number) => {
+                        const isSelected = bulkSelectedItems.some((selected) => selected.id === item.id);
+                        return (
+                          <button
+                            key={item.id || `${item.name || item.sku || "bulk-item"}-${index}`}
+                            type="button"
+                            onClick={() => handleBulkItemSelect(item)}
+                            className={`flex w-full items-start justify-between rounded-md border px-4 py-3 text-left ${
+                              isSelected ? "border-[#156372] bg-blue-50" : "border-gray-200 bg-white hover:bg-gray-50"
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-medium text-gray-900">{item.name}</div>
+                              <div className="mt-1 text-xs text-gray-500">
+                                {item.sku ? `SKU: ${item.sku} ` : ""}
+                                Purchase Rate: {Number(item.purchaseRate || 0).toFixed(2)}
+                              </div>
+                            </div>
+                            <div className="ml-4 flex-shrink-0 text-right">
+                              <div className="text-xs text-blue-500">Stock on Hand</div>
+                              <div className={`text-sm ${Number(item.stockOnHand || 0) > 0 ? "text-emerald-600" : "text-rose-500"}`}>
+                                {Number(item.stockOnHand || 0).toFixed(2)} {item.unit || ""}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex min-w-0 flex-1 flex-col">
+                <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg font-medium text-gray-800">Selected Items</span>
+                    <span className="rounded-full border border-gray-300 px-3 py-0.5 text-sm text-gray-700">
+                      {bulkSelectedItems.length}
+                    </span>
+                  </div>
+                  <span className="text-sm text-gray-500">Total Quantity: {totalBulkQuantity}</span>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
+                  {bulkSelectedItems.length === 0 ? (
+                    <div className="flex h-full min-h-[360px] items-center justify-center text-center text-sm text-gray-500">
+                      Click the item names from the left pane to select them
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {bulkSelectedItems.map((item) => {
+                        const quantity = Math.max(1, Math.floor(Number(bulkItemQuantities[item.id] || 1)));
+                        return (
+                          <div key={item.id} className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-4 py-3">
+                            <div className="min-w-0 pr-4 text-sm text-gray-900">
+                              <div className="truncate">{item.sku ? `[${item.sku}] ` : ""}{item.name}</div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-2 rounded-full border-2 border-blue-500 px-2 py-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleBulkQuantityChange(item.id, quantity - 1)}
+                                  className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-sm text-white"
+                                >
+                                  -
+                                </button>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={quantity}
+                                  onChange={(e) => handleBulkQuantityChange(item.id, Number(e.target.value))}
+                                  className="w-12 border-0 bg-transparent text-center text-sm font-medium text-gray-900 outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleBulkQuantityChange(item.id, quantity + 1)}
+                                  className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-sm text-white"
+                                >
+                                  +
+                                </button>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleBulkItemSelect(item)}
+                                className="text-rose-500 hover:text-rose-600"
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="px-5 py-4 border-t border-gray-200 flex items-center justify-end gap-3">
               <button
                 type="button"
-                onClick={() => setBulkItemsModalOpen(false)}
+                onClick={closeBulkItemsModal}
                 className="px-4 py-2 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
               >
                 Cancel
@@ -3654,9 +4141,10 @@ export default function NewPurchaseOrder() {
               <button
                 type="button"
                 onClick={handleAddSelectedBulkItems}
-                className="px-4 py-2 text-sm bg-[#156372] text-white rounded-md hover:bg-[#0D4A52]"
+                disabled={bulkSelectedItems.length === 0}
+                className="px-4 py-2 text-sm bg-[#156372] text-white rounded-md hover:bg-[#0D4A52] disabled:cursor-not-allowed disabled:bg-gray-400"
               >
-                Add Selected Items
+                Add Items
               </button>
             </div>
           </div>

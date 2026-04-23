@@ -18,9 +18,14 @@ import {
   Image as ImageIcon,
   Tag,
   Repeat2,
+  Minus,
+  Bell,
+  HelpCircle,
+  MoreHorizontal,
+  Edit2,
 } from "lucide-react";
 import { recurringBillsAPI, vendorsAPI, customersAPI, itemsAPI, paymentTermsAPI, accountsAPI, taxesAPI, locationsAPI } from "../../../services/api";
-import toast from "react-hot-toast";
+import { toast } from "react-toastify";
 import DatePicker from "../../../components/DatePicker";
 import { usePaymentTermsDropdown } from "../../../hooks/usePaymentTermsDropdown";
 import { PaymentTermsDropdown } from "../../../components/PaymentTermsDropdown";
@@ -133,6 +138,7 @@ interface Vendor {
 
 interface Item {
   id: string | number;
+  itemId?: string;
   itemDetails: string;
   account: string;
   quantity: string;
@@ -141,6 +147,9 @@ interface Item {
   customerDetails: string;
   amount: string;
   description?: string;
+  sku?: string;
+  unit?: string;
+  stock_on_hand?: number;
 }
 
 interface ConfigurePaymentTermsModalProps {
@@ -519,6 +528,9 @@ export default function NewRecurringBill() {
   // Accounts Payable state
   const [accountsPayableList, setAccountsPayableList] = useState<any[]>([]);
   const [expenseAccountsStructure, setExpenseAccountsStructure] = useState<Record<string, string[]>>(EXPENSE_ACCOUNTS_STRUCTURE);
+  const [accountsPayableDropdownOpen, setAccountsPayableDropdownOpen] = useState(false);
+  const [accountsPayableSearch, setAccountsPayableSearch] = useState("");
+  const accountsPayableRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setFormData((prev: any) => ({
@@ -597,6 +609,7 @@ export default function NewRecurringBill() {
 
   // Item dropdown states
   const [itemDropdownOpen, setItemDropdownOpen] = useState<{ [key: string]: boolean }>({});
+  const [editItemMenuOpen, setEditItemMenuOpen] = useState<{ [key: string]: boolean }>({});
   const [itemSearch, setItemSearch] = useState<{ [key: string]: string }>({});
   const itemRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
   const [allItems, setAllItems] = useState<any[]>([]);
@@ -608,6 +621,11 @@ export default function NewRecurringBill() {
   // Reporting Tags for each item row
   const [itemReportingTagsOpen, setItemReportingTagsOpen] = useState<{ [key: string]: boolean }>({});
   const itemReportingTagsRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [selectedBulkItems, setSelectedBulkItems] = useState<{item: any, quantity: number}[]>([]);
+  const [bulkSearchTerm, setBulkSearchTerm] = useState("");
+  const [bulkInsertId, setBulkInsertId] = useState<string | number | null>(null);
 
   const vendorRef = useRef<HTMLDivElement>(null);
   const repeatEveryRef = useRef<HTMLDivElement>(null);
@@ -883,6 +901,7 @@ export default function NewRecurringBill() {
     if (clonedData.items && clonedData.items.length > 0) {
       setItems(clonedData.items.map((item: any, index: number) => ({
         id: Date.now() + index,
+        itemId: item.item || item.itemId || item.id || "",
         itemDetails: item.itemDetails || item.name || "",
         account: item.account || "",
         quantity: String(item.quantity || "1.00"),
@@ -984,6 +1003,10 @@ export default function NewRecurringBill() {
       if (bulkActionsRef.current && !bulkActionsRef.current.contains(target)) {
         setBulkActionsDropdownOpen(false);
       }
+      if (accountsPayableRef.current && !accountsPayableRef.current.contains(target)) {
+        setAccountsPayableDropdownOpen(false);
+        setAccountsPayableSearch("");
+      }
 
       // Close account dropdowns
       Object.keys(accountDropdowns).forEach((itemId) => {
@@ -1051,6 +1074,11 @@ export default function NewRecurringBill() {
 
   const handleItemSelect = (itemId: string | number, selectedItem: any) => {
     handleItemChange(itemId, "itemDetails", selectedItem.name);
+    handleItemChange(itemId, "itemId", selectedItem._id || selectedItem.id);
+    handleItemChange(itemId, "sku", selectedItem.sku || "");
+    handleItemChange(itemId, "unit", selectedItem.unit || "pcs");
+    handleItemChange(itemId, "stock_on_hand", parseFloat(selectedItem.stock_on_hand || selectedItem.stockQuantity || selectedItem.quantityOnHand || "0"));
+    
     if (selectedItem.trackInventory && selectedItem.inventoryAccount) {
       handleItemChange(itemId, "account", selectedItem.inventoryAccount);
     } else if (selectedItem.purchaseAccount) {
@@ -1146,10 +1174,48 @@ export default function NewRecurringBill() {
     setItems(newItems);
   };
 
-  const insertItemsInBulk = (itemId: string | number) => {
-    // TODO: Implement bulk items modal
-    setRowMenuOpen((prev) => ({ ...prev, [itemId]: false }));
-    toast("Bulk item insert will be enabled in this form soon.", { icon: "i" });
+  const insertItemsInBulk = (itemId: string | number | null = null) => {
+    setBulkInsertId(itemId);
+    setBulkModalOpen(true);
+    setBulkSearchTerm("");
+    setSelectedBulkItems([]);
+    if (itemId) {
+      setRowMenuOpen((prev) => ({ ...prev, [itemId]: false }));
+    }
+  };
+
+  const handleAddBulkItems = () => {
+    const newItemsFromBulk = selectedBulkItems.map((bulk, idx) => ({
+      id: Date.now() + idx + Math.random(),
+      itemId: bulk.item._id || bulk.item.id,
+      itemDetails: bulk.item.name,
+      account: bulk.item.purchaseAccount || "",
+      quantity: bulk.quantity.toFixed(2),
+      rate: parseFloat(bulk.item.costPrice || "0").toFixed(2),
+      tax: "",
+      customerDetails: "",
+      amount: (bulk.quantity * parseFloat(bulk.item.costPrice || "0")).toFixed(2),
+      sku: bulk.item.sku || "",
+      unit: bulk.item.unit || "pcs",
+      stock_on_hand: parseFloat(bulk.item.stock_on_hand || bulk.item.stockQuantity || bulk.item.quantityOnHand || "0")
+    }));
+    
+    if (bulkInsertId) {
+      const index = items.findIndex(item => item.id === bulkInsertId);
+      if (index !== -1) {
+        const newItems = [...items];
+        newItems.splice(index + 1, 0, ...newItemsFromBulk);
+        setItems(newItems);
+      } else {
+        setItems([...items, ...newItemsFromBulk]);
+      }
+    } else {
+      setItems([...items, ...newItemsFromBulk]);
+    }
+    
+    setBulkModalOpen(false);
+    setSelectedBulkItems([]);
+    setBulkInsertId(null);
   };
 
   const normalizeTaxRateToDecimal = (rawRate: number) => {
@@ -1188,6 +1254,10 @@ export default function NewRecurringBill() {
 
   const calculateSubTotal = () => {
     return items.reduce((sum, item) => sum + getLineAmount(item), 0);
+  };
+
+  const calculateTotalQuantity = () => {
+    return items.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0);
   };
 
   const calculateDiscount = () => {
@@ -1277,105 +1347,176 @@ export default function NewRecurringBill() {
       {/* Header */}
       <div className="px-6 py-4 border-b border-gray-200 bg-white flex items-center justify-between flex-shrink-0">
         <h1 className="text-2xl font-semibold text-gray-900 m-0">{isEdit ? "Edit Recurring Bill" : "New Recurring Bill"}</h1>
-        <button
-          className="p-2 text-gray-500 bg-transparent border-none cursor-pointer rounded flex items-center justify-center hover:bg-gray-100 transition-colors"
-          onClick={() => navigate("/purchases/recurring-bills")}
-        >
-          <X size={20} />
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 mr-4">
+             <button type="button" className="p-2 text-gray-400 hover:text-gray-600 bg-transparent border-none cursor-pointer rounded flex items-center justify-center hover:bg-gray-50 transition-colors">
+                <Search size={20} />
+             </button>
+             <button type="button" className="p-2 text-gray-400 hover:text-gray-600 bg-transparent border-none cursor-pointer rounded flex items-center justify-center hover:bg-gray-50 transition-colors">
+                <Settings size={20} />
+             </button>
+             <button type="button" className="p-2 text-gray-400 hover:text-gray-600 bg-transparent border-none cursor-pointer rounded flex items-center justify-center hover:bg-gray-50 transition-colors">
+                <HelpCircle size={20} />
+             </button>
+             <div className="relative">
+                <button type="button" className="p-2 text-gray-400 hover:text-gray-600 bg-transparent border-none cursor-pointer rounded flex items-center justify-center hover:bg-gray-50 transition-colors">
+                   <Bell size={20} />
+                </button>
+                <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></div>
+             </div>
+             <div className="w-8 h-8 rounded-full bg-[#156372] text-white flex items-center justify-center text-sm font-bold cursor-pointer hover:bg-[#0D4A52] transition-colors ml-1">
+                T
+             </div>
+          </div>
+          <div className="w-px h-6 bg-gray-200 mx-2"></div>
+          <button
+            type="button"
+            className="p-2 text-gray-500 bg-transparent border-none cursor-pointer rounded flex items-center justify-center hover:bg-gray-100 transition-colors"
+            onClick={() => navigate("/purchases/recurring-bills")}
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 bg-white">
         <div className="px-6 py-6 w-full max-w-5xl">
             <div className="flex flex-col gap-5">
               {/* Row 1 */}
-              <div className="flex items-center">
-                <label className="w-[200px] text-sm font-medium text-red-600 flex items-center shrink-0">
+              <div className="flex items-start">
+                <label className="w-[200px] text-sm font-medium text-red-600 flex items-center shrink-0 mt-2.5">
                   Vendor Name<span className="text-red-500 ml-0.5">*</span>
                 </label>
-                <div className="relative flex items-center gap-0 w-[400px]" ref={vendorRef}>
-                  <div className="relative flex-1">
-                    <input
-                      type="text"
-                      className="px-3 py-2 text-sm border border-gray-300 rounded-l-md rounded-r-none w-full box-border h-10 bg-white"
-                      placeholder="Select a Vendor"
-                      value={typeof formData.vendorName === 'string' ? formData.vendorName : (formData.vendorName as any)?.displayName || (formData.vendorName as any)?.name || ""}
-                      readOnly
-                      onClick={() => setVendorDropdownOpen(!vendorDropdownOpen)}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="p-2.5 bg-[#156372] text-white border-none rounded-r-md rounded-l-none cursor-pointer flex items-center justify-center h-10 w-10 shrink-0 hover:bg-[#0D4A52] transition-colors"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setVendorSearchModalOpen(true);
-                    }}
-                  >
-                    <Search size={16} />
-                  </button>
-                  {vendorDropdownOpen && (
-                    <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-md shadow-md z-[100] min-w-[400px] w-full">
-                      <div className="p-2 border-b border-gray-200 flex items-center gap-2">
-                        <Search size={14} className="text-gray-400" />
-                        <input
-                          type="text"
-                          placeholder="Search vendor"
-                          value={vendorSearch}
-                          onChange={(e) => setVendorSearch(e.target.value)}
-                          className="flex-1 border-none outline-none text-sm"
-                          onClick={(e) => e.stopPropagation()}
-                          autoFocus
-                        />
-                      </div>
-                      <div className="max-h-[250px] overflow-y-auto py-1">
-                        {filteredVendors.length > 0 ? (
-                          filteredVendors.map((vendor) => (
-                            <button
-                              key={vendor.id}
-                              type="button"
-                              className="px-4 py-2 text-sm text-gray-900 cursor-pointer border-none bg-transparent w-full text-left hover:bg-gray-50 flex items-center gap-3"
-                              onClick={() => {
-                                setFormData((prev) => ({ ...prev, vendorName: vendor }));
-                                setVendorDropdownOpen(false);
-                                setVendorSearch("");
+                <div className="flex flex-col">
+                  <div className="relative flex items-center gap-0 w-[400px]" ref={vendorRef}>
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        className="px-3 py-2 pr-[60px] text-sm border border-gray-300 rounded-l-md rounded-r-none w-full box-border h-10 bg-white cursor-pointer"
+                        placeholder="Select a Vendor"
+                        value={typeof formData.vendorName === 'string' ? formData.vendorName : (formData.vendorName as any)?.displayName || (formData.vendorName as any)?.name || ""}
+                        readOnly
+                        onClick={() => setVendorDropdownOpen(!vendorDropdownOpen)}
+                      />
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2 text-gray-400">
+                        {formData.vendorName && (
+                          <>
+                            <X
+                              size={14}
+                              className="cursor-pointer text-red-500 hover:text-red-600"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setFormData({ ...formData, vendorName: "" });
                               }}
-                            >
-                              <div className="w-8 h-8 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">
-                                {vendor.avatar || (vendor.name || vendor.displayName || "?").charAt(0).toUpperCase()}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium text-gray-900 truncate">
-                                  {vendor.name || vendor.displayName || "Unnamed Vendor"}
-                                </div>
-                                {vendor.email && (
-                                  <div className="text-xs text-gray-500 truncate">{vendor.email}</div>
-                                )}
-                                {vendor.company && (
-                                  <div className="text-xs text-gray-500 truncate">{vendor.company}</div>
-                                )}
-                              </div>
-                            </button>
-                          ))
-                        ) : (
-                          <div className="p-4 text-center text-gray-500 text-sm">
-                            NO RESULTS FOUND
-                          </div>
+                            />
+                            <div className="w-px h-4 bg-gray-300"></div>
+                          </>
                         )}
+                        <div className="cursor-pointer" onClick={(e) => { e.stopPropagation(); setVendorDropdownOpen(!vendorDropdownOpen); }}>
+                          {vendorDropdownOpen ? <ChevronUp size={16} className="text-blue-500" /> : <ChevronDown size={16} />}
+                        </div>
                       </div>
-                      <div className="border-t border-gray-200 p-2">
-                        <button
-                          type="button"
-                          className="w-full px-4 py-2 text-sm text-teal-700 cursor-pointer border-none bg-transparent flex items-center gap-2 hover:bg-teal-50 rounded-md"
-                          onClick={() => {
-                            setVendorDropdownOpen(false);
-                            navigate("/purchases/vendors/new");
-                          }}
-                        >
-                          <Plus size={16} />
-                          + New Vendor
-                        </button>
+                    </div>
+                    <button
+                      type="button"
+                      className="p-2.5 bg-[#156372] text-white border-none rounded-r-md rounded-l-none cursor-pointer flex items-center justify-center h-10 w-10 shrink-0 hover:bg-[#0D4A52] transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setVendorSearchModalOpen(true);
+                      }}
+                    >
+                      <Search size={16} />
+                    </button>
+                    {vendorDropdownOpen && (
+                      <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-md shadow-md z-[100] min-w-[400px] w-full">
+                        <div className="p-2 border-b border-gray-200 flex items-center gap-2">
+                          <Search size={14} className="text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Search vendor"
+                            value={vendorSearch}
+                            onChange={(e) => setVendorSearch(e.target.value)}
+                            className="flex-1 border-none outline-none text-sm"
+                            onClick={(e) => e.stopPropagation()}
+                            autoFocus
+                          />
+                        </div>
+                        <div className="max-h-[250px] overflow-y-auto py-1">
+                          {filteredVendors.length > 0 ? (
+                            filteredVendors.map((vendor) => (
+                              <button
+                                key={vendor.id}
+                                type="button"
+                                className="px-4 py-2 text-sm text-gray-900 cursor-pointer border-none bg-transparent w-full text-left hover:bg-gray-50 flex items-center gap-3"
+                                onClick={() => {
+                                  setFormData((prev) => ({ ...prev, vendorName: vendor }));
+                                  setVendorDropdownOpen(false);
+                                  setVendorSearch("");
+                                }}
+                              >
+                                <div className="w-8 h-8 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                                  {vendor.avatar || (vendor.name || vendor.displayName || "?").charAt(0).toUpperCase()}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-gray-900 truncate">
+                                    {vendor.name || vendor.displayName || "Unnamed Vendor"}
+                                  </div>
+                                  {vendor.email && (
+                                    <div className="text-xs text-gray-500 truncate">{vendor.email}</div>
+                                  )}
+                                  {vendor.company && (
+                                    <div className="text-xs text-gray-500 truncate">{vendor.company}</div>
+                                  )}
+                                </div>
+                              </button>
+                            ))
+                          ) : (
+                            <div className="p-4 text-center text-gray-500 text-sm">
+                              NO RESULTS FOUND
+                            </div>
+                          )}
+                        </div>
+                        <div className="border-t border-gray-200 p-2">
+                          <button
+                            type="button"
+                            className="w-full px-4 py-2 text-sm text-teal-700 cursor-pointer border-none bg-transparent flex items-center gap-2 hover:bg-teal-50 rounded-md"
+                            onClick={() => {
+                              setVendorDropdownOpen(false);
+                              navigate("/purchases/vendors/new");
+                            }}
+                          >
+                            <Plus size={16} />
+                            + New Vendor
+                          </button>
+                        </div>
                       </div>
+                    )}
+                  </div>
+                  {formData.vendorName && typeof formData.vendorName === 'object' && (
+                    <div className="text-[13px] text-gray-700 mt-4 ml-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <span className="font-medium text-gray-500 uppercase text-[11px] tracking-wide">BILLING ADDRESS</span>
+                        <button type="button" className="text-blue-500 hover:text-blue-700 text-[13px] bg-transparent border-none cursor-pointer p-0">New Address</button>
+                      </div>
+                      {formData.vendorName.billingAddress ? (
+                        <div className="flex flex-col gap-0.5 leading-snug">
+                          <div className="font-semibold text-gray-900">{formData.vendorName.billingAddress.attention || formData.vendorName.name || formData.vendorName.displayName}</div>
+                          {formData.vendorName.billingAddress.address1 && <div>{formData.vendorName.billingAddress.address1}</div>}
+                          {formData.vendorName.billingAddress.address2 && <div>{formData.vendorName.billingAddress.address2}</div>}
+                          {formData.vendorName.billingAddress.city && <div>{formData.vendorName.billingAddress.city}</div>}
+                          {formData.vendorName.billingAddress.state && <div>{formData.vendorName.billingAddress.state}</div>}
+                          {formData.vendorName.billingAddress.zipCode && <div>{formData.vendorName.billingAddress.zipCode}</div>}
+                          {formData.vendorName.billingAddress.country && <div>{formData.vendorName.billingAddress.country}</div>}
+                          {(formData.vendorName.billingAddress.phone || formData.vendorName.workPhone || formData.vendorName.mobile) && (
+                            <div className="mt-1">Phone: {formData.vendorName.billingAddress.phone || formData.vendorName.workPhone || formData.vendorName.mobile}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-0.5 leading-snug">
+                          <div className="font-semibold text-gray-900">{formData.vendorName.name || formData.vendorName.displayName}</div>
+                          <div className="text-gray-500 italic">No billing address found.</div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1487,7 +1628,11 @@ export default function NewRecurringBill() {
                       value={formData.neverExpires ? "" : formatDateForDisplay(formData.endsOn)}
                       onChange={(dateString) => {
                         const parsed = parseDateFromDisplay(dateString);
-                        setFormData({ ...formData, endsOn: parsed, neverExpires: false });
+                        if (!parsed) {
+                          setFormData({ ...formData, endsOn: "", neverExpires: true });
+                        } else {
+                          setFormData({ ...formData, endsOn: parsed, neverExpires: false });
+                        }
                       }}
                       placeholder="dd/MM/yyyy"
                       minDate={formData.startOn ? new Date(formData.startOn) : undefined} // End date cannot be before start date
@@ -1498,9 +1643,9 @@ export default function NewRecurringBill() {
                       type="checkbox"
                       className="w-4 h-4 cursor-pointer accent-teal-600"
                       checked={formData.neverExpires}
-                      onChange={(e) => setFormData({ ...formData, neverExpires: e.target.checked, endsOn: e.target.checked ? "" : formData.endsOn })}
+                      onChange={(e) => setFormData({ ...formData, neverExpires: e.target.checked })}
                     />
-                    <label className="text-sm text-gray-700 cursor-pointer whitespace-nowrap" onClick={() => setFormData({ ...formData, neverExpires: !formData.neverExpires, endsOn: !formData.neverExpires ? "" : formData.endsOn })}>Never Expires</label>
+                    <label className="text-sm text-gray-700 cursor-pointer whitespace-nowrap" onClick={() => setFormData({ ...formData, neverExpires: !formData.neverExpires })}>Never Expires</label>
                   </div>
                 </div>
               </div>
@@ -1516,24 +1661,68 @@ export default function NewRecurringBill() {
                     </div>
                   </div>
                 </div>
-                <div className="relative w-[400px]">
-                  <select
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm outline-none bg-white cursor-pointer focus:border-teal-600 hover:border-teal-600 appearance-none h-10"
-                    value={formData.accountsPayable}
-                    onChange={(e) => setFormData({ ...formData, accountsPayable: e.target.value })}
+                <div className="relative w-[400px]" ref={accountsPayableRef}>
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm outline-none bg-white cursor-pointer flex items-center justify-between h-10 focus:border-[#3b82f6] focus:ring-1 focus:ring-[#3b82f6]"
+                    style={{ borderColor: accountsPayableDropdownOpen ? '#3b82f6' : '#d1d5db' }}
+                    onClick={() => setAccountsPayableDropdownOpen(!accountsPayableDropdownOpen)}
                   >
-                    {accountsPayableList.length === 0 && (
-                      <option value="">Loading accounts...</option>
-                    )}
-                    {accountsPayableList.map((account) => (
-                      <option key={account.id || account._id} value={account.name}>
-                        {account.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
-                    <ChevronDown size={16} />
-                  </div>
+                    <span className={formData.accountsPayable ? "text-gray-900" : "text-gray-500"}>
+                      {formData.accountsPayable || "Select Account"}
+                    </span>
+                    {accountsPayableDropdownOpen ? <ChevronUp size={16} className="text-[#3b82f6]" /> : <ChevronDown size={16} className="text-gray-500" />}
+                  </button>
+                  {accountsPayableDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md shadow-lg z-[100] max-h-[300px] flex flex-col overflow-hidden">
+                      <div className="p-2 border-b border-gray-200">
+                        <div className="flex items-center gap-2 px-2 py-1.5 border border-gray-300 rounded-md focus-within:border-[#3b82f6] focus-within:ring-1 focus-within:ring-[#3b82f6]">
+                          <Search size={14} className="text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Search"
+                            value={accountsPayableSearch}
+                            onChange={(e) => setAccountsPayableSearch(e.target.value)}
+                            className="flex-1 border-none outline-none text-sm bg-transparent"
+                            onClick={(e) => e.stopPropagation()}
+                            autoFocus
+                          />
+                        </div>
+                      </div>
+                      <div className="overflow-y-auto py-1 max-h-[240px]">
+                        <div className="px-3 py-2 text-[13px] font-semibold text-[#4b5563]">
+                          Accounts Payable
+                        </div>
+                        {accountsPayableList
+                          .filter(acc => (acc.name || acc.accountName || "").toLowerCase().includes(accountsPayableSearch.toLowerCase()))
+                          .map((account) => {
+                            const accountName = account.name || account.accountName;
+                            const isSelected = formData.accountsPayable === accountName;
+                            return (
+                              <button
+                                key={account.id || account._id}
+                                type="button"
+                                className={`w-full px-3 py-2 text-sm text-left flex items-center justify-between mx-1 rounded ${
+                                  isSelected ? "bg-[#3b82f6] text-white" : "hover:bg-gray-100 text-gray-900"
+                                }`}
+                                style={{ width: "calc(100% - 8px)" }}
+                                onClick={() => {
+                                  setFormData({ ...formData, accountsPayable: accountName });
+                                  setAccountsPayableDropdownOpen(false);
+                                  setAccountsPayableSearch("");
+                                }}
+                              >
+                                <span>{accountName}</span>
+                                {isSelected && <Check size={16} className="text-white" />}
+                              </button>
+                            );
+                          })}
+                        {accountsPayableList.filter(acc => (acc.name || acc.accountName || "").toLowerCase().includes(accountsPayableSearch.toLowerCase())).length === 0 && (
+                          <div className="px-3 py-4 text-center text-sm text-gray-500">No accounts found</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1560,7 +1749,7 @@ export default function NewRecurringBill() {
             </div>
           </div>
           {/* Item Table */}
-          <div className="mb-8">
+          <div className="mb-8 max-w-[70%]">
             <div className="flex items-center justify-between px-4 py-3 bg-white border border-gray-200 border-b-0 rounded-t-md">
               <h3 className="text-[28px] font-semibold text-gray-900 leading-none">Item Table</h3>
               <div className="relative" ref={bulkActionsRef}>
@@ -1766,792 +1955,452 @@ export default function NewRecurringBill() {
               </div>
             )}
 
-            <table className="w-full border-collapse border border-gray-200 border-t-0">
-              <thead className="bg-white">
-                <tr className="border-b border-gray-200">
-                  <th className="p-2 text-xs font-semibold tracking-wide text-gray-600 text-left uppercase" style={{ width: "30%" }}>
-                    ITEM DETAILS
-                  </th>
-                  <th className="p-2 text-xs font-semibold tracking-wide text-gray-600 text-left uppercase" style={{ width: "20%" }}>ACCOUNT</th>
-                  <th className="p-2 text-xs font-semibold tracking-wide text-gray-600 text-right uppercase" style={{ width: "10%" }}>QUANTITY</th>
-                  <th className="p-2 text-xs font-semibold tracking-wide text-gray-600 text-right uppercase" style={{ width: "12%" }}>RATE</th>
-                  <th className="p-2 text-xs font-semibold tracking-wide text-gray-600 text-left uppercase" style={{ width: "12%" }}>TAX</th>
-                  <th className="p-2 text-xs font-semibold tracking-wide text-gray-600 text-left uppercase" style={{ width: "13%" }}>CUSTOMER DETAILS</th>
-                  <th className="p-2 text-xs font-semibold tracking-wide text-gray-600 text-right uppercase" style={{ width: "10%" }}>AMOUNT</th>
-                  <th className="p-2" style={{ width: "3%" }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => {
-                  if (!accountRefs.current[item.id]) accountRefs.current[item.id] = { current: null };
-                  if (!customerRefs.current[item.id]) customerRefs.current[item.id] = { current: null };
+             <table className="w-full border-collapse border border-gray-100">
+               <thead>
+                 <tr className="bg-white">
+                   <th className="p-3 text-[10px] font-bold tracking-wider text-gray-400 text-left uppercase border-r border-gray-100" style={{ width: "35%" }}>
+                     ITEM DETAILS
+                   </th>
+                   <th className="p-3 text-[10px] font-bold tracking-wider text-gray-400 text-left uppercase border-r border-gray-100" style={{ width: "22%" }}>ACCOUNT</th>
+                   <th className="p-3 text-[10px] font-bold tracking-wider text-gray-400 text-center uppercase border-r border-gray-100" style={{ width: "10%" }}>QUANTITY</th>
+                   <th className="p-3 text-[10px] font-bold tracking-wider text-gray-400 text-right uppercase border-r border-gray-100" style={{ width: "12%" }}>
+                     <div className="flex items-center justify-end gap-1.5">
+                       RATE <Calculator size={13} className="text-gray-400" />
+                     </div>
+                   </th>
+                   <th className="p-3 text-[10px] font-bold tracking-wider text-gray-400 text-left uppercase border-r border-gray-100" style={{ width: "15%", paddingLeft: "15px" }}>CUSTOMER DETAILS</th>
+                   <th className="p-3 text-[10px] font-bold tracking-wider text-gray-400 text-right uppercase" style={{ width: "6%" }}>AMOUNT</th>
+                 </tr>
+               </thead>
+               <tbody>
+                 {items.map((item) => {
+                   if (!accountRefs.current[item.id]) accountRefs.current[item.id] = { current: null };
+                   if (!customerRefs.current[item.id]) customerRefs.current[item.id] = { current: null };
 
-                  return (
-                    <React.Fragment key={item.id}>
-                      <tr className="border-b border-gray-200">
-                        <td className="p-2 text-sm">
-                          <div className="relative flex items-center gap-2" ref={(el) => {
-                            if (!itemRefs.current[item.id]) itemRefs.current[item.id] = { current: null };
-                            itemRefs.current[item.id].current = el;
-                          }}>
-                            <div className="flex flex-col gap-1 cursor-move" style={{ padding: "4px 2px" }}>
-                              <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
-                              <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
-                              <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
-                            </div>
-                            <ImageIcon size={16} className="text-gray-400" />
-                            <input
-                              type="text"
-                              value={item.itemDetails}
-                              onChange={(e) => {
-                                handleItemChange(item.id, "itemDetails", e.target.value);
-                                setItemSearch((prev) => ({ ...prev, [item.id]: e.target.value }));
-                                setItemDropdownOpen((prev) => ({ ...prev, [item.id]: true }));
-                              }}
-                              onFocus={() => setItemDropdownOpen((prev) => ({ ...prev, [item.id]: true }))}
-                              onClick={() => setItemDropdownOpen((prev) => ({ ...prev, [item.id]: true }))}
-                              className="flex-1 px-2 py-1.5 border rounded text-sm outline-none box-border"
-                              style={{
-                                borderColor: itemDropdownOpen[item.id] ? "#156372" : "#d1d5db"
-                              }}
-                              placeholder="Type or click to select an item."
-                            />
-                            {itemDropdownOpen[item.id] && (
-                              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 z-[100] max-h-[300px] overflow-y-auto" style={{ marginLeft: "40px" }}>
-                                {filteredItems(item.id).length > 0 ? (
-                                  filteredItems(item.id).map((itemOption, idx) => (
-                                    <div
-                                      key={itemOption.id || `item-${idx}`}
-                                      className="px-4 py-3 cursor-pointer border-b border-gray-100 hover:bg-gray-50 group"
-                                      onClick={() => handleItemSelect(item.id, itemOption)}
-                                    >
-                                      <div className="flex justify-between items-start">
-                                        <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-gray-900 group-hover:text-teal-700 mb-0.5 truncate text-sm">
-                                            {itemOption.name}
-                                          </div>
-                                          <div className="text-[11px] text-gray-500 group-hover:text-gray-600 flex items-center gap-2">
-                                            <span>SKU: {itemOption.sku || 'N/A'}</span>
-                                            <span className="w-1 h-1 rounded-full bg-gray-300"></span>
-                                            <span>Purchase Rate: {resolvedBaseCurrencySymbol} {(itemOption.costPrice || 0).toFixed(2)}</span>
+                   return (
+                     <React.Fragment key={item.id}>
+                       <tr className="group border-t border-gray-100">
+                         <td className="p-3 text-sm align-top relative border-r border-gray-100">
+                           {/* Outside Drag Handle */}
+                           <div className="absolute left-[-20px] top-6 flex flex-col gap-0.5 cursor-move opacity-0 group-hover:opacity-100 transition-opacity" style={{ width: "12px" }}>
+                             <div className="grid grid-cols-2 gap-0.5">
+                               {[...Array(6)].map((_, i) => (
+                                 <div key={i} className="w-1 h-1 rounded-full bg-gray-300"></div>
+                               ))}
+                             </div>
+                           </div>
+                           
+                           <div className="relative flex items-start gap-3" ref={(el) => {
+                             if (!itemRefs.current[item.id]) itemRefs.current[item.id] = { current: null };
+                             itemRefs.current[item.id].current = el;
+                           }}>
+                             <div className="w-10 h-10 rounded bg-gray-50 flex items-center justify-center shrink-0 border border-gray-100 mt-1">
+                                <ImageIcon size={20} className="text-gray-300" />
+                             </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between mb-1">
+                                   <input
+                                     type="text"
+                                     value={item.itemDetails}
+                                     onChange={(e) => {
+                                       handleItemChange(item.id, "itemDetails", e.target.value);
+                                       setItemSearch((prev) => ({ ...prev, [item.id]: e.target.value }));
+                                       setItemDropdownOpen((prev) => ({ ...prev, [item.id]: true }));
+                                     }}
+                                     onFocus={() => setItemDropdownOpen((prev) => ({ ...prev, [item.id]: true }))}
+                                     className="flex-1 text-sm font-semibold text-gray-900 outline-none border-none bg-transparent placeholder:text-gray-300"
+                                     placeholder="Type or click to select an item."
+                                   />
+                                   
+                                   {item.itemDetails && (
+                                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <div className="relative">
+                                           <button 
+                                             type="button"
+                                             onClick={(e) => {
+                                               e.stopPropagation();
+                                               setEditItemMenuOpen(prev => ({ ...prev, [item.id]: !prev[item.id] }));
+                                             }}
+                                             className="w-6 h-6 rounded-full border border-gray-200 flex items-center justify-center text-gray-400 hover:text-teal-600 hover:border-teal-200 transition-all bg-white cursor-pointer"
+                                           >
+                                              <MoreHorizontal size={14} />
+                                           </button>
+                                           
+                                           {editItemMenuOpen[item.id] && (
+                                             <div className="absolute top-full right-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-100 z-[110] min-w-[120px] p-1">
+                                                <button
+                                                  type="button"
+                                                  className="w-full text-left px-3 py-2 text-sm text-[#156372] hover:bg-[#156372] hover:text-white rounded-md transition-colors flex items-center gap-2 border-none bg-transparent cursor-pointer font-medium"
+                                                  onClick={() => {
+                                                    setEditItemMenuOpen(prev => ({ ...prev, [item.id]: false }));
+                                                    const matchedItem = allItems.find(it => it.name === item.itemDetails || it.displayName === item.itemDetails);
+                                                    if (matchedItem) {
+                                                      navigate(`/items/edit/${matchedItem._id || matchedItem.id}`);
+                                                    } else {
+                                                      toast.info("Item details not found in database");
+                                                    }
+                                                  }}
+                                                >
+                                                   <Edit2 size={14} />
+                                                   Edit Item
+                                                </button>
+                                             </div>
+                                           )}
+                                        </div>
+                                        
+                                        <button 
+                                          type="button"
+                                          onClick={() => {
+                                            handleItemChange(item.id, "itemDetails", "");
+                                            handleItemChange(item.id, "rate", 0);
+                                            handleItemChange(item.id, "sku", "");
+                                          }}
+                                          className="w-6 h-6 rounded-full border border-gray-200 flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-200 transition-all bg-white cursor-pointer"
+                                        >
+                                           <X size={14} />
+                                        </button>
+                                     </div>
+                                   )}
+                                </div>
+
+                                {item.sku && (
+                                  <div className="text-[11px] text-gray-400 mb-2">SKU: {item.sku}</div>
+                                )}
+
+                                <div className="border border-blue-400 rounded-lg p-2 bg-white mt-1 shadow-sm">
+                                   <textarea
+                                     className="w-full text-sm text-gray-600 border-none outline-none resize-none bg-transparent font-normal"
+                                     placeholder="Add a description to your item"
+                                     rows={2}
+                                     value={item.description || ""}
+                                     onChange={(e) => handleItemChange(item.id, "description", e.target.value)}
+                                   />
+                                </div>
+
+                                {itemDropdownOpen[item.id] && (
+                                  <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 z-[100] max-h-[300px] overflow-y-auto" style={{ marginLeft: "52px" }}>
+                                    {filteredItems(item.id).length > 0 ? (
+                                      filteredItems(item.id).map((itemOption, idx) => (
+                                        <div
+                                          key={itemOption.id || `item-${idx}`}
+                                          className="px-4 py-3 cursor-pointer border-b border-gray-50 hover:bg-gray-50 group/opt"
+                                          onClick={() => handleItemSelect(item.id, itemOption)}
+                                        >
+                                          <div className="flex justify-between items-start">
+                                            <div className="flex-1 min-w-0">
+                                              <div className="font-medium text-gray-900 group-hover/opt:text-teal-700 mb-0.5 truncate text-sm">
+                                                {itemOption.name}
+                                              </div>
+                                              <div className="text-[11px] text-gray-500 group-hover/opt:text-gray-600 flex items-center gap-2">
+                                                <span>SKU: {itemOption.sku || 'N/A'}</span>
+                                                <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+                                                <span>Purchase Rate: {resolvedBaseCurrencySymbol} {(itemOption.costPrice || 0).toFixed(2)}</span>
+                                              </div>
+                                            </div>
                                           </div>
                                         </div>
-                                        {itemOption.trackInventory && (
-                                          <div className="text-right ml-4 flex-shrink-0">
-                                            <div className="text-[9px] uppercase font-bold text-gray-400 mb-0.5 tracking-wider">
-                                              Stock on Hand
-                                            </div>
-                                            <div className={`text-xs font-semibold ${itemOption.stockQuantity > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                              {(itemOption.stockQuantity || 0).toFixed(2)} {itemOption.unit || ''}
-                                            </div>
-                                          </div>
-                                        )}
+                                      ))
+                                    ) : (
+                                      <div className="p-6 text-center text-gray-500 text-sm">
+                                        No results found.
                                       </div>
+                                    )}
+                                    <div
+                                      className="px-4 py-2 border-t border-gray-100 bg-gray-50 cursor-pointer text-sm font-medium text-teal-700 hover:bg-teal-50"
+                                      onClick={() => {
+                                        setItemDropdownOpen((prev) => ({ ...prev, [item.id]: false }));
+                                        navigate("/items/all");
+                                      }}
+                                    >
+                                      View All Items
                                     </div>
-                                  ))
-                                ) : (
-                                  <div className="p-6 text-center text-gray-500 text-sm">
-                                    No results found. Try a different keyword.
                                   </div>
                                 )}
-                                <div
-                                  className="px-3 py-2 border-t border-gray-200 bg-gray-50 cursor-pointer text-sm flex items-center gap-2 hover:bg-teal-50"
-                                  style={{ color: "#156372" }}
-                                  onClick={() => {
-                                    setItemDropdownOpen((prev) => ({ ...prev, [item.id]: false }));
-                                    navigate("/items/all");
-                                  }}
-                                >
-                                  View All Items
-                                </div>
-                                <div
-                                  className="px-3 py-2 border-t border-gray-200 bg-gray-50 cursor-pointer text-sm flex items-center gap-2 hover:bg-teal-50"
-                                  style={{ color: "#156372" }}
-                                  onClick={() => {
-                                    setItemDropdownOpen((prev) => ({ ...prev, [item.id]: false }));
-                                    // TODO: Open new item modal
-                                  }}
-                                >
-                                  <Plus size={16} />
-                                  Add New Item
-                                </div>
                               </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="p-2 text-sm">
-                          <div className="relative" ref={accountRefs.current[item.id]}>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                const button = e.currentTarget;
-                                const buttonRect = button.getBoundingClientRect();
-                                setAccountDropdownPosition((prev) => ({
-                                  ...prev,
-                                  [item.id]: {
-                                    top: buttonRect.bottom + 4,
-                                    left: buttonRect.left,
-                                    width: buttonRect.width
-                                  }
-                                }));
-                                setAccountDropdowns(prev => ({
-                                  ...prev,
-                                  [item.id]: !prev[item.id]
-                                }));
-                              }}
-                              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm outline-none bg-white cursor-pointer flex items-center justify-between"
-                            >
-                              <span className={item.account ? "" : "text-gray-400"}>
-                                {item.account || "Select an account"}
-                              </span>
-                              {accountDropdowns[item.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                            </button>
-                            {accountDropdowns[item.id] && accountDropdownPosition[item.id] && createPortal(
-                              <div
-                                onClick={(e) => e.stopPropagation()}
-                                className="bg-white rounded-lg shadow-lg border border-gray-200 max-h-[300px] overflow-hidden flex flex-col"
-                                style={{
-                                  position: "fixed",
-                                  top: `${accountDropdownPosition[item.id].top}px`,
-                                  left: `${accountDropdownPosition[item.id].left}px`,
-                                  width: `${accountDropdownPosition[item.id].width}px`,
-                                  zIndex: 10000,
-                                }}
-                              >
-                                <div className="px-3 py-2 border-b border-gray-200">
-                                  <div className="flex items-center gap-2">
-                                    <Search size={14} className="text-gray-400" />
-                                    <input
-                                      type="text"
-                                      placeholder="Search"
-                                      value={accountSearches[item.id] || ""}
-                                      onChange={(e) => {
-                                        setAccountSearches(prev => ({
-                                          ...prev,
-                                          [item.id]: e.target.value
-                                        }));
-                                      }}
-                                      className="flex-1 border-none outline-none text-sm"
-                                      onClick={(e) => e.stopPropagation()}
-                                      autoFocus
-                                    />
-                                  </div>
-                                </div>
-                                <div className="max-h-[250px] overflow-y-auto py-1">
-                                  {Object.keys(filteredAccounts()).length === 0 ? (
-                                    <div className="p-4 text-center text-gray-500 text-sm">
-                                      No accounts found
-                                    </div>
-                                  ) : (
-                                    Object.entries(filteredAccounts()).map(([category, accounts]) => (
-                                      <div key={category}>
-                                        <div className="px-4 py-2 text-xs font-bold text-gray-900 uppercase" style={{ fontWeight: "600" }}>
-                                          {category}
-                                        </div>
-                                        {accounts.map((account) => (
-                                          <button
-                                            key={account}
-                                            type="button"
-                                            onClick={() => {
-                                              handleItemChange(item.id, "account", account);
-                                              setAccountDropdowns(prev => ({ ...prev, [item.id]: false }));
-                                              setAccountSearches(prev => ({ ...prev, [item.id]: "" }));
-                                              setAccountDropdownPosition((prev) => {
-                                                const newPos = { ...prev };
-                                                delete newPos[item.id];
-                                                return newPos;
-                                              });
-                                            }}
-                                            className="w-full px-4 py-2 text-sm text-left hover:bg-teal-50"
-                                            style={{
-                                              paddingLeft: "32px",
-                                              color: "#111827"
-                                            }}
-                                            onMouseEnter={(e) => {
-                                              e.currentTarget.style.backgroundColor = "#f0fdfa";
-                                            }}
-                                            onMouseLeave={(e) => {
-                                              e.currentTarget.style.backgroundColor = "transparent";
-                                            }}
-                                          >
-                                            {account}
-                                          </button>
-                                        ))}
-                                      </div>
-                                    ))
-                                  )}
-                                </div>
-                                <div className="border-t border-gray-200">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setAccountDropdowns(prev => ({ ...prev, [item.id]: false }));
-                                      setAccountDropdownPosition((prev) => {
-                                        const newPos = { ...prev };
-                                        delete newPos[item.id];
-                                        return newPos;
-                                      });
-                                      // TODO: Open new account modal
-                                    }}
-                                    className="w-full px-4 py-2 text-sm text-left flex items-center gap-2 text-teal-700 hover:bg-teal-50"
-                                  >
-                                    <Plus size={16} className="text-teal-700" />
-                                    New Account
-                                  </button>
-                                </div>
-                              </div>,
-                              document.body
-                            )}
-                          </div>
-                        </td>
-                        <td className="p-2 text-sm">
-                          <input
-                            type="text"
-                            value={item.quantity}
-                            onChange={(e) => handleItemChange(item.id, "quantity", e.target.value)}
-                            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm outline-none box-border text-right"
-                          />
-                        </td>
-                        <td className="p-2 text-sm">
-                          <div className="flex items-center gap-2">
+                           </div>
+                         </td>
+                         <td className="p-3 text-sm align-top border-r border-gray-100">
+                           <div className="relative" ref={accountRefs.current[item.id]}>
+                             <button
+                               type="button"
+                               onClick={(e) => {
+                                 const button = e.currentTarget;
+                                 const buttonRect = button.getBoundingClientRect();
+                                 setAccountDropdownPosition((prev) => ({
+                                   ...prev,
+                                   [item.id]: { top: buttonRect.bottom + 4, left: buttonRect.left, width: buttonRect.width }
+                                 }));
+                                 setAccountDropdowns(prev => ({ ...prev, [item.id]: !prev[item.id] }));
+                               }}
+                               className="w-full text-left py-2 text-sm text-gray-400 hover:text-gray-600 flex items-center justify-between border-none bg-transparent"
+                             >
+                               <span className={item.account ? "text-gray-900" : "text-gray-400"}>
+                                 {item.account || "Select an account"}
+                               </span>
+                               <ChevronDown size={14} className="text-gray-400" />
+                             </button>
+                             {accountDropdowns[item.id] && accountDropdownPosition[item.id] && createPortal(
+                               <div
+                                 onClick={(e) => e.stopPropagation()}
+                                 className="bg-white rounded-lg shadow-xl border border-gray-200 max-h-[300px] overflow-hidden flex flex-col"
+                                 style={{
+                                   position: "fixed",
+                                   top: `${accountDropdownPosition[item.id].top}px`,
+                                   left: `${accountDropdownPosition[item.id].left}px`,
+                                   width: `${accountDropdownPosition[item.id].width}px`,
+                                   zIndex: 10000,
+                                 }}
+                               >
+                                 <div className="px-3 py-2 border-b border-gray-100">
+                                   <div className="flex items-center gap-2">
+                                     <Search size={14} className="text-gray-400" />
+                                     <input
+                                       type="text"
+                                       placeholder="Search"
+                                       value={accountSearches[item.id] || ""}
+                                       onChange={(e) => setAccountSearches(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                       className="flex-1 border-none outline-none text-sm"
+                                       autoFocus
+                                     />
+                                   </div>
+                                 </div>
+                                 <div className="overflow-y-auto py-1">
+                                   {Object.entries(filteredAccounts()).map(([category, accounts]) => (
+                                     <div key={category}>
+                                       <div className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">{category}</div>
+                                       {accounts.map((account) => (
+                                         <button
+                                           key={account}
+                                           type="button"
+                                           onClick={() => {
+                                             handleItemChange(item.id, "account", account);
+                                             setAccountDropdowns(prev => ({ ...prev, [item.id]: false }));
+                                           }}
+                                           className="w-full px-4 py-1.5 text-sm text-left hover:bg-teal-50 text-gray-700"
+                                         >
+                                           {account}
+                                         </button>
+                                       ))}
+                                     </div>
+                                   ))}
+                                 </div>
+                               </div>,
+                               document.body
+                             )}
+                           </div>
+                         </td>
+                          <td className="p-3 text-sm align-top border-r border-gray-100">
                             <input
                               type="text"
-                              value={item.rate}
-                              onChange={(e) => handleItemChange(item.id, "rate", e.target.value)}
-                              className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm outline-none box-border text-right"
+                              value={item.quantity}
+                              onChange={(e) => handleItemChange(item.id, "quantity", e.target.value)}
+                              className="w-full text-center border-none bg-transparent text-sm focus:outline-none font-medium mb-1"
                             />
-                            <Calculator size={16} className="text-gray-400" />
-                          </div>
-                        </td>
-                        <td className="p-2 text-sm">
-                          <select
-                            value={item.tax || ""}
-                            onChange={(e) => handleItemChange(item.id, "tax", e.target.value)}
-                            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm outline-none bg-white cursor-pointer focus:border-teal-600 hover:border-teal-600 appearance-none"
-                          >
-                            <option value="">Select Tax</option>
-                            {taxes.map((tax: any) => (
-                              <option key={tax.id || tax._id || tax.name} value={tax.name || ""}>
-                                {`${tax.name || ""}${tax?.rate !== undefined && tax?.rate !== null ? ` [${Number(tax.rate)}%]` : ""}`}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="p-2 text-sm">
-                          <div className="relative" ref={customerRefs.current[item.id]}>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                const button = e.currentTarget;
-                                const buttonRect = button.getBoundingClientRect();
-                                setCustomerDropdownPosition((prev) => ({
-                                  ...prev,
-                                  [item.id]: {
-                                    top: buttonRect.bottom + 4,
-                                    left: buttonRect.left,
-                                    width: buttonRect.width
-                                  }
-                                }));
-                                setCustomerDropdowns(prev => ({
-                                  ...prev,
-                                  [item.id]: !prev[item.id]
-                                }));
-                              }}
-                              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm outline-none bg-white cursor-pointer flex items-center justify-between"
-                            >
-                              <span className={item.customerDetails ? "" : "text-gray-400"}>
-                                {item.customerDetails || "Select Customer"}
-                              </span>
-                              {customerDropdowns[item.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                            </button>
-                            {customerDropdowns[item.id] && customerDropdownPosition[item.id] && createPortal(
-                              <div
-                                onClick={(e) => e.stopPropagation()}
-                                className="bg-white rounded-lg shadow-lg border border-gray-200 max-h-[300px] overflow-hidden flex flex-col"
-                                style={{
-                                  position: "fixed",
-                                  top: `${customerDropdownPosition[item.id].top}px`,
-                                  left: `${customerDropdownPosition[item.id].left}px`,
-                                  width: `${customerDropdownPosition[item.id].width}px`,
-                                  zIndex: 10000,
-                                }}
-                              >
-                                <div className="px-3 py-2 border-b border-gray-200">
-                                  <div className="flex items-center gap-2">
-                                    <Search size={14} className="text-gray-400" />
-                                    <input
-                                      type="text"
-                                      placeholder="Search"
-                                      value={customerSearches[item.id] || ""}
-                                      onChange={(e) => {
-                                        setCustomerSearches(prev => ({
-                                          ...prev,
-                                          [item.id]: e.target.value
-                                        }));
-                                      }}
-                                      className="flex-1 border-none outline-none text-sm"
-                                      onClick={(e) => e.stopPropagation()}
-                                      autoFocus
-                                    />
-                                  </div>
-                                </div>
-                                <div className="max-h-[250px] overflow-y-auto py-1">
-                                  {filteredCustomers(item.id).length === 0 ? (
-                                    <div className="p-4 text-center text-gray-500 text-sm">
-                                      No customers found
-                                    </div>
-                                  ) : (
-                                    filteredCustomers(item.id).map((customer) => {
-                                      const isSelected = item.customerDetails === customer;
-                                      return (
-                                        <div
-                                          key={customer}
-                                          onClick={() => {
-                                            handleItemChange(item.id, "customerDetails", customer);
-                                            setCustomerDropdowns(prev => ({ ...prev, [item.id]: false }));
-                                            setCustomerSearches(prev => ({ ...prev, [item.id]: "" }));
-                                            setCustomerDropdownPosition((prev) => {
-                                              const newPos = { ...prev };
-                                              delete newPos[item.id];
-                                              return newPos;
-                                            });
-                                          }}
-                                          className={`px-4 py-2 text-sm cursor-pointer flex items-center gap-2 hover:bg-teal-50 ${isSelected ? "bg-teal-50" : ""
-                                            }`}
-                                        >
-                                          <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-semibold">
-                                            {customer.charAt(0).toUpperCase()}
-                                          </div>
-                                          <span className="flex-1">{customer}</span>
-                                          {isSelected && <Check size={14} className="text-teal-700" />}
-                                        </div>
-                                      );
-                                    })
-                                  )}
-                                </div>
-                                <div
-                                  className="px-4 py-2 border-t border-gray-200 text-teal-700 cursor-pointer hover:bg-teal-50 flex items-center gap-2"
-                                  onClick={() => {
-                                    setCustomerDropdowns(prev => ({ ...prev, [item.id]: false }));
-                                    setCustomerDropdownPosition((prev) => {
-                                      const newPos = { ...prev };
-                                      delete newPos[item.id];
-                                      return newPos;
-                                    });
-                                    // TODO: Open new customer modal
-                                  }}
-                                >
-                                  <Plus size={14} />
-                                  New Customer
-                                </div>
-                              </div>,
-                              document.body
-                            )}
-                          </div>
-                        </td>
-                        <td className="p-2 text-sm" style={{ position: "relative", overflow: "visible" }}>
-                          <div className="flex items-center gap-2" style={{ justifyContent: "flex-end" }}>
-                            <input
-                              type="text"
-                              value={getLineAmount(item).toFixed(2)}
-                              readOnly
-                              className="px-2 py-1.5 border border-gray-300 rounded text-sm outline-none box-border bg-white text-right"
-                              style={{ width: "80px", minWidth: "80px" }}
-                            />
-                            <div style={{ position: "relative", zIndex: rowMenuOpen[item.id] ? 2000 : "auto" }} ref={(el) => (rowMenuRefs.current[item.id] = el)}>
-                              <MoreVertical
-                                size={16}
-                                style={{ color: "#9ca3af", cursor: "pointer" }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setRowMenuOpen((prev) => ({ ...prev, [item.id]: !prev[item.id] }));
-                                }}
-                              />
-                              {rowMenuOpen[item.id] && (
-                                <div
-                                  onClick={(e) => e.stopPropagation()}
-                                  style={{
-                                    position: "absolute",
-                                    top: "100%",
-                                    right: 0,
-                                    marginTop: "4px",
-                                    backgroundColor: "#ffffff",
-                                    border: "1px solid #d1d5db",
-                                    borderRadius: "6px",
-                                    boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
-                                    zIndex: 9999,
-                                    minWidth: "220px",
-                                    overflow: "hidden",
-                                  }}>
-                                  <div
-                                    style={{
-                                      padding: "8px 12px",
-                                      cursor: "pointer",
-                                      fontSize: "14px",
-                                      color: showAdditionalFields ? "#111827" : "#ffffff",
-                                      backgroundColor: showAdditionalFields ? "transparent" : "#156372",
-                                    }}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (showAdditionalFields) {
-                                        setShowAdditionalFields(false);
-                                        setShowBanner(true);
-                                      } else {
-                                        setShowAdditionalFields(true);
-                                        setShowBanner(false);
-                                      }
-                                      setRowMenuOpen((prev) => ({ ...prev, [item.id]: false }));
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      const target = e.currentTarget as HTMLElement;
-                                      if (!showAdditionalFields) {
-                                        target.style.backgroundColor = "#0D4A52";
-                                      } else {
-                                        target.style.backgroundColor = "#156372";
-                                        target.style.color = "#ffffff";
-                                      }
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      const target = e.currentTarget as HTMLElement;
-                                      if (!showAdditionalFields) {
-                                        target.style.backgroundColor = "#156372";
-                                        target.style.color = "#ffffff";
-                                      } else {
-                                        target.style.backgroundColor = "transparent";
-                                        target.style.color = "#111827";
-                                      }
-                                    }}
-                                  >
-                                    {showAdditionalFields ? "Hide Additional Information" : "Show Additional Information"}
-                                  </div>
-                                  <div
-                                    style={{
-                                      padding: "8px 12px",
-                                      cursor: "pointer",
-                                      fontSize: "14px",
-                                      color: "#111827",
-                                      backgroundColor: "transparent",
-                                    }}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      cloneRow(item.id);
-                                      setRowMenuOpen((prev) => ({ ...prev, [item.id]: false }));
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.target.style.backgroundColor = "#f9fafb";
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.target.style.backgroundColor = "transparent";
-                                    }}
-                                  >
-                                    Clone
-                                  </div>
-                                  <div
-                                    style={{
-                                      padding: "8px 12px",
-                                      cursor: "pointer",
-                                      fontSize: "14px",
-                                      color: "#111827",
-                                      backgroundColor: "transparent",
-                                    }}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      insertNewRow(item.id);
-                                      setRowMenuOpen((prev) => ({ ...prev, [item.id]: false }));
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.target.style.backgroundColor = "#f9fafb";
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.target.style.backgroundColor = "transparent";
-                                    }}
-                                  >
-                                    Insert New Row
-                                  </div>
-                                  <div
-                                    style={{
-                                      padding: "8px 12px",
-                                      cursor: "pointer",
-                                      fontSize: "14px",
-                                      color: "#111827",
-                                      backgroundColor: "transparent",
-                                    }}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      insertItemsInBulk(item.id);
-                                      setRowMenuOpen((prev) => ({ ...prev, [item.id]: false }));
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.target.style.backgroundColor = "#f9fafb";
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.target.style.backgroundColor = "transparent";
-                                    }}
-                                  >
-                                    Insert Items in Bulk
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeRow(item.id)}
-                              style={{
-                                padding: "4px",
-                                backgroundColor: "transparent",
-                                border: "none",
-                                cursor: "pointer",
-                                color: "#156372",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                borderRadius: "4px",
-                                transition: "background-color 0.2s"
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor = "#fef2f2";
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor = "transparent";
-                              }}
-                            >
-                              <X size={16} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                      {/* Additional Fields Row for each item */}
-                      {showAdditionalFields && (
-                        <tr>
-                          <td colSpan={6} className="p-2" style={{ borderTop: "none", paddingTop: "0" }}>
-                            <div style={{
-                              display: "flex",
-                              flexDirection: "row",
-                              gap: "16px",
-                              alignItems: "center",
-                              paddingLeft: "44px",
-                            }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                <Tag size={16} style={{ color: "#9ca3af" }} />
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "8px",
-                                    padding: "6px 12px",
-                                    border: "1px solid #d1d5db",
-                                    borderRadius: "6px",
-                                    backgroundColor: "#ffffff",
-                                    cursor: "pointer",
-                                    position: "relative",
-                                  }}
-                                  ref={(el) => {
-                                    itemReportingTagsRefs.current[item.id] = el;
-                                  }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setItemReportingTagsOpen((prev) => ({
-                                      ...prev,
-                                      [item.id]: !prev[item.id]
-                                    }));
-                                  }}
-                                >
-                                  <span style={{ fontSize: "14px", color: "#6b7280" }}>Reporting Tags</span>
-                                  <ChevronDown size={14} style={{ color: "#6b7280" }} />
-                                  {itemReportingTagsOpen[item.id] && itemReportingTagsRefs.current[item.id] && typeof document !== 'undefined' && document.body && createPortal(
-                                    <div
-                                      onClick={(e) => e.stopPropagation()}
-                                      style={{
-                                        position: "fixed",
-                                        top: `${itemReportingTagsRefs.current[item.id].getBoundingClientRect().bottom + 4}px`,
-                                        left: `${itemReportingTagsRefs.current[item.id].getBoundingClientRect().left}px`,
-                                        backgroundColor: "#ffffff",
-                                        border: "1px solid #d1d5db",
-                                        borderRadius: "6px",
-                                        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-                                        zIndex: 10000,
-                                        minWidth: "300px",
-                                        padding: "16px",
-                                      }}
-                                    >
-                                      <div style={{
-                                        fontSize: "16px",
-                                        fontWeight: "600",
-                                        color: "#111827",
-                                        marginBottom: "12px",
-                                      }}>
-                                        Reporting Tags
-                                      </div>
-                                      <div style={{
-                                        fontSize: "14px",
-                                        color: "#6b7280",
-                                        marginBottom: "16px",
-                                        lineHeight: "1.5",
-                                      }}>
-                                        There are no active reporting tags or you haven't created a reporting tag yet. You can create/edit reporting tags under settings.
-                                      </div>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setItemReportingTagsOpen((prev) => ({
-                                            ...prev,
-                                            [item.id]: false
-                                          }));
-                                        }}
-                                        style={{
-                                          padding: "6px 16px",
-                                          fontSize: "14px",
-                                          color: "#111827",
-                                          backgroundColor: "#f3f4f6",
-                                          border: "1px solid #d1d5db",
-                                          borderRadius: "4px",
-                                          cursor: "pointer",
-                                          width: "100%",
-                                        }}
-                                        onMouseEnter={(e) => {
-                                          e.target.style.backgroundColor = "#e5e7eb";
-                                        }}
-                                        onMouseLeave={(e) => {
-                                          e.target.style.backgroundColor = "#f3f4f6";
-                                        }}
-                                      >
-                                        OK
-                                      </button>
-                                    </div>,
-                                    document.body
-                                  )}
-                                </div>
+                            {item.itemDetails && (
+                              <div className="flex flex-col items-center text-center">
+                                 <div className="text-[10px] text-gray-400 mt-1">Stock on Hand:</div>
+                                 <div className={`text-[10px] font-bold ${parseFloat(item.stockQuantity || item.stock_on_hand || item.stockOnHand || item.quantityOnHand || item.availableStock || item.stock || item.openingStock || "0") > 0 ? 'text-[#156372]' : 'text-red-500'}`}>
+                                   {item.stockQuantity || item.stock_on_hand || item.stockOnHand || item.quantityOnHand || item.availableStock || item.stock || item.openingStock || "0"} {item.unit || 'pcs'}
+                                 </div>
+                                 <div className="flex items-center gap-1 text-[10px] text-[#156372] mt-0.5 cursor-pointer hover:opacity-80">
+                                    <Settings size={10} />
+                                    <span>Head Office</span>
+                                 </div>
                               </div>
-                            </div>
+                            )}
                           </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-            <div className="flex justify-between items-start mt-3 gap-8">
-              {/* Left Side - Buttons stacked vertically */}
-              <div className="flex flex-col gap-3">
-                {/* Add New Row Button */}
-                <div className="relative" ref={addRowMenuRef}>
+                         <td className="p-3 text-sm align-top border-r border-gray-100 text-right">
+                            <input
+                                type="text"
+                                value={item.rate}
+                                onChange={(e) => handleItemChange(item.id, "rate", e.target.value)}
+                                className="w-full text-right border-none bg-transparent text-sm focus:outline-none font-medium"
+                              />
+                         </td>
+                         <td className="p-3 text-sm align-top border-r border-gray-100">
+                           <div className="relative" ref={customerRefs.current[item.id]}>
+                             <button
+                               type="button"
+                               onClick={(e) => {
+                                 const button = e.currentTarget;
+                                 const buttonRect = button.getBoundingClientRect();
+                                 setCustomerDropdownPosition((prev) => ({
+                                   ...prev,
+                                   [item.id]: { top: buttonRect.bottom + 4, left: buttonRect.left, width: buttonRect.width }
+                                 }));
+                                 setCustomerDropdowns(prev => ({ ...prev, [item.id]: !prev[item.id] }));
+                               }}
+                               className="w-full text-left py-2 text-sm text-gray-400 hover:text-gray-600 flex items-center justify-between border-none bg-transparent"
+                             >
+                               <span className={item.customerDetails ? "text-gray-900" : "text-gray-400"}>
+                                 {item.customerDetails || "Select Customer"}
+                               </span>
+                               <ChevronDown size={14} className="text-gray-400" />
+                             </button>
+                             {customerDropdowns[item.id] && customerDropdownPosition[item.id] && createPortal(
+                               <div
+                                 onClick={(e) => e.stopPropagation()}
+                                 className="bg-white rounded-lg shadow-xl border border-gray-200 max-h-[300px] overflow-hidden flex flex-col"
+                                 style={{
+                                   position: "fixed",
+                                   top: `${customerDropdownPosition[item.id].top}px`,
+                                   left: `${customerDropdownPosition[item.id].left}px`,
+                                   width: `${customerDropdownPosition[item.id].width}px`,
+                                   zIndex: 10000,
+                                 }}
+                               >
+                                 <div className="px-3 py-2 border-b border-gray-100">
+                                   <div className="flex items-center gap-2">
+                                     <Search size={14} className="text-gray-400" />
+                                     <input
+                                       type="text"
+                                       placeholder="Search"
+                                       value={customerSearches[item.id] || ""}
+                                       onChange={(e) => setCustomerSearches(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                       className="flex-1 border-none outline-none text-sm"
+                                       autoFocus
+                                     />
+                                   </div>
+                                 </div>
+                                 <div className="overflow-y-auto py-1">
+                                   {customers
+                                     .filter(c => (c || "").toLowerCase().includes((customerSearches[item.id] || "").toLowerCase()))
+                                     .map((customer) => (
+                                       <button
+                                         key={customer}
+                                         type="button"
+                                         onClick={() => {
+                                           handleItemChange(item.id, "customerDetails", customer);
+                                           setCustomerDropdowns(prev => ({ ...prev, [item.id]: false }));
+                                         }}
+                                         className="w-full px-4 py-1.5 text-sm text-left hover:bg-teal-50 text-gray-700"
+                                       >
+                                         {customer}
+                                       </button>
+                                     ))}
+                                 </div>
+                               </div>,
+                               document.body
+                             )}
+                           </div>
+                         </td>
+                         <td className="p-3 text-sm align-top text-right font-semibold relative group/row">
+                           <div className="flex items-center justify-end h-full">
+                              {getLineAmount(item).toFixed(2)}
+                              <div className="absolute left-full top-0 h-full flex items-center gap-1.5 pl-3 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                                 <button 
+                                   type="button" 
+                                   className="w-6 h-6 rounded-full border border-gray-200 flex items-center justify-center text-gray-400 hover:text-[#156372] hover:border-[#156372] transition-all bg-white cursor-pointer shadow-sm"
+                                   onClick={(e) => {
+                                      e.stopPropagation();
+                                      setRowMenuOpen((prev) => ({ ...prev, [item.id]: !prev[item.id] }));
+                                   }}
+                                 >
+                                    <MoreHorizontal size={14} />
+                                 </button>
+                                 <button 
+                                   type="button" 
+                                   className="w-6 h-6 rounded-full border border-gray-200 flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-500 transition-all bg-white cursor-pointer shadow-sm"
+                                   onClick={() => removeItem(item.id)}
+                                 >
+                                    <X size={14} />
+                                 </button>
+                              </div>
+                           </div>
+                         </td>
+                       </tr>
+                       {/* Reporting Tags Row */}
+                       <tr className="bg-gray-50/20 border-t border-gray-100">
+                         <td colSpan={6} className="px-3 py-2 border-b border-gray-100">
+                            <div className="flex items-center gap-2 text-[11px] text-red-500 cursor-pointer hover:text-red-600 transition-colors w-fit">
+                               <Tag size={12} className="text-green-600" />
+                               <span className="font-medium">Reporting Tags*: 1 out of 1 selected.</span>
+                               <ChevronDown size={12} />
+                            </div>
+                         </td>
+                       </tr>
+                     </React.Fragment>
+                   );
+                 })}
+               </tbody>
+             </table>
+
+             <div className="flex justify-between items-start mt-6 px-3">
+              <div className="relative" ref={addRowMenuRef}>
+                <div className="flex items-center">
                   <button
                     type="button"
-                    onClick={() => setAddRowMenuOpen(!addRowMenuOpen)}
-                    className="px-4 py-2 text-sm bg-white text-[#156372] rounded-md border border-gray-200 cursor-pointer flex items-center gap-2 hover:bg-gray-50 transition-colors font-medium"
+                    onClick={() => addNewRow()}
+                    className="px-4 py-2 text-sm text-blue-500 hover:text-blue-600 transition-colors font-semibold flex items-center gap-2 border-none bg-transparent group"
                   >
-                    <Plus size={16} className="text-[#156372]" />
+                    <div className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center group-hover:bg-blue-600">
+                      <Plus size={14} strokeWidth={3} />
+                    </div>
                     Add New Row
+                  </button>
+                  <button 
+                    className="p-1.5 text-gray-400 hover:text-gray-600 border-none bg-transparent cursor-pointer flex items-center justify-center"
+                    onClick={() => setAddRowMenuOpen(!addRowMenuOpen)}
+                  >
                     <ChevronDown size={14} />
                   </button>
-                  {addRowMenuOpen && (
-                    <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 z-[10000] min-w-[200px] py-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          addNewRow();
-                          setAddRowMenuOpen(false);
-                        }}
-                        className="w-full px-4 py-2 text-sm text-left flex items-center gap-2 rounded-md mx-1 my-1"
-                        style={{
-                          backgroundColor: "#156372",
-                          color: "#ffffff",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = "#0D4A52";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = "#156372";
-                        }}
-                      >
-                        <Plus size={16} />
-                        Add New Row
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAddRowMenuOpen(false);
-                          // TODO: Open bulk items modal
-                        }}
-                        className="w-full px-4 py-2 text-sm text-left"
-                        style={{
-                          backgroundColor: "transparent",
-                          color: "#111827",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = "#f9fafb";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                        }}
-                      >
-                        Add Items in Bulk
-                      </button>
-                    </div>
-                  )}
                 </div>
+                {addRowMenuOpen && (
+                  <div className="absolute bottom-full left-0 mb-2 bg-white rounded-xl shadow-2xl border border-gray-100 z-[1000] min-w-[200px] p-2 flex flex-col gap-1 overflow-hidden">
+                     <button 
+                       className="w-full text-left px-3 py-2 text-sm text-gray-600 hover:bg-blue-500 hover:text-white rounded-lg transition-colors font-normal border-none bg-transparent cursor-pointer"
+                       onClick={() => {
+                         addNewRow();
+                         setAddRowMenuOpen(false);
+                       }}
+                     >
+                       Add New Row
+                     </button>
+                     <button 
+                       className="w-full text-left px-3 py-2 text-sm text-gray-600 hover:bg-blue-500 hover:text-white rounded-lg transition-colors font-normal border-none bg-transparent cursor-pointer"
+                       onClick={() => {
+                         insertItemsInBulk(null);
+                         setAddRowMenuOpen(false);
+                       }}
+                     >
+                       Add Items in Bulk
+                     </button>
+                  </div>
+                )}
               </div>
 
               {/* Summary - Bottom Right */}
-              <div className="w-[450px] flex-shrink-0 ml-auto">
-                <div className="flex flex-col gap-3">
-                  {/* Sub Total */}
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600 font-medium">Sub Total</span>
-                    <span className="text-gray-900 font-semibold">{calculateSubTotal().toFixed(2)}</span>
+              <div className="w-[420px] bg-gray-50/30 rounded-lg p-6 border border-gray-50">
+                <div className="flex flex-col gap-5">
+                  <div className="flex justify-between items-center">
+                     <div className="flex flex-col gap-0.5">
+                       <span className="text-sm font-bold text-gray-900">Sub Total</span>
+                       <span className="text-[12px] text-gray-500">Total Quantity : {calculateTotalQuantity()}</span>
+                     </div>
+                     <span className="text-sm font-bold text-gray-900">{calculateSubTotal().toFixed(2)}</span>
                   </div>
 
-                  {/* Discount */}
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600 font-medium">Discount</span>
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-bold text-gray-900">Discount</span>
+                    <div className="flex items-center gap-6">
+                      <div className="flex items-center w-24 h-8 bg-white border border-gray-200 rounded overflow-hidden focus-within:border-blue-400 transition-colors">
                         <input
                           type="number"
                           value={formData.discount}
                           onChange={(e) => setFormData({ ...formData, discount: parseFloat(e.target.value) || 0 })}
-                          className="w-16 px-2 py-1 border border-gray-300 rounded-l text-sm outline-none text-right bg-white focus:border-teal-600"
+                          className="flex-1 px-2 py-0.5 text-sm outline-none text-right border-none"
                           min="0"
                           max="100"
                         />
-                        <span className="px-2 py-1 border border-l-0 border-gray-300 rounded-r bg-white text-gray-500 text-xs">%</span>
+                        <div className="px-2 py-1 bg-gray-50 border-l border-gray-200 text-gray-400 text-[10px] font-bold">%</div>
                       </div>
-                      <span className="text-gray-900 font-medium w-24 text-right">{calculateDiscount().toFixed(2)}</span>
+                      <span className="text-sm font-medium text-gray-900 w-16 text-right">{calculateDiscount().toFixed(2)}</span>
                     </div>
                   </div>
 
-                  {/* Tax */}
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600 font-medium">
-                      Tax {String(taxMode || "").toLowerCase().includes("inclusive") ? "(Included)" : ""}
-                    </span>
-                    <span className="text-gray-900 font-medium">{calculateTaxTotal().toFixed(2)}</span>
-                  </div>
-
-                  {/* Adjustment */}
-                  <div className="flex justify-between items-center text-sm">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-gray-600 font-medium">Adjustment</span>
-                      <Info size={14} className="text-gray-400 cursor-help" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.adjustment}
-                        onChange={(e) => setFormData({ ...formData, adjustment: parseFloat(e.target.value) || 0 })}
-                        className="w-24 px-2 py-1 border border-gray-300 rounded text-sm outline-none text-right bg-white focus:border-teal-600"
-                      />
-                      <span className="text-gray-900 font-medium w-24 text-right">{formData.adjustment.toFixed(2)}</span>
-                    </div>
-                  </div>
-
-                  {/* Total */}
-                  <div className="flex justify-between items-center pt-3 border-t border-gray-200 mt-1">
-                    <span className="text-base font-bold text-gray-900">Total</span>
-                    <span className="text-base font-bold text-gray-900">{calculateTotal().toFixed(2)}</span>
+                  <div className="pt-5 mt-2 border-t border-gray-100 flex justify-between items-center">
+                    <span className="text-lg font-bold text-gray-900">Total ( {formData.currency} )</span>
+                    <span className="text-lg font-bold text-gray-900">{calculateTotal().toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -2672,6 +2521,7 @@ export default function NewRecurringBill() {
                       vendor: typeof formData.vendorName === 'object' ? (formData.vendorName as any)._id || (formData.vendorName as any).id : null,
                       vendor_name: typeof formData.vendorName === 'string' ? formData.vendorName : (formData.vendorName as any)?.displayName || (formData.vendorName as any)?.name,
                       items: items.map(item => ({
+                        item: item.itemId,
                         name: item.itemDetails,
                         description: item.description,
                         quantity: parseFloat(item.quantity) || 0,
@@ -2689,32 +2539,41 @@ export default function NewRecurringBill() {
                       currency: formData.currency,
                       paymentTerms: formData.paymentTerms,
                       notes: formData.notes,
-                      status: "active"
-                    };
+                      status: (!formData.neverExpires && formData.endsOn && new Date(formData.endsOn) < new Date(new Date().setHours(0,0,0,0))) ? "expired" : "active"
+                     };
 
                     // Validate required fields
                     if (!recurringBill.profile_name) {
-                      toast.error("Please enter a profile name");
+                      toast.error("Please enter a profile name", { position: "top-center" });
                       setIsLoading(false);
                       return;
                     }
                     if (!recurringBill.repeat_every) {
-                      toast.error("Please select repeat frequency");
+                      toast.error("Please select repeat frequency", { position: "top-center" });
                       setIsLoading(false);
                       return;
                     }
                     if (!recurringBill.start_date) {
-                      toast.error("Please select a start date");
+                      toast.error("Please select a start date", { position: "top-center" });
                       setIsLoading(false);
                       return;
                     }
                     if (!recurringBill.vendor) {
-                      toast.error("Please select a vendor from the dropdown");
+                      toast.error("Please select a vendor from the dropdown", { position: "top-center" });
                       setIsLoading(false);
                       return;
                     }
+
+                    // Item validation
+                    const validItems = items.filter(it => it.itemDetails && parseFloat(it.quantity) > 0);
+                    if (validItems.length === 0) {
+                      toast.error("Please add at least one item with quantity greater than zero", { position: "top-center" });
+                      setIsLoading(false);
+                      return;
+                    }
+
                     if (!recurringBill.total || recurringBill.total <= 0) {
-                      toast.error("Total amount must be greater than zero");
+                      toast.error("Total amount must be greater than zero", { position: "top-center" });
                       setIsLoading(false);
                       return;
                     }
@@ -2726,9 +2585,26 @@ export default function NewRecurringBill() {
                       : recurringBillsAPI.create(recurringBill);
 
                     savePromise
-                      .then(async (response) => {
+                       .then(async (response) => {
                         if (response && (response.code === 0 || response.success)) {
                           const recurringBillId = response.recurring_bill?._id || response.data?._id;
+
+                          // Update Item Stock on Hand
+                          try {
+                            const stockUpdatePromises = items.map(item => {
+                              if (item.itemId) {
+                                const currentStock = item.stock_on_hand || 0;
+                                const addedQty = parseFloat(item.quantity) || 0;
+                                const newStock = currentStock + addedQty;
+                                return itemsAPI.update(item.itemId, { stockQuantity: newStock });
+                              }
+                              return Promise.resolve();
+                            });
+                            await Promise.all(stockUpdatePromises);
+                          } catch (stockError) {
+                            console.error("Error updating stock on hand:", stockError);
+                            // We don't block the main flow if stock update fails, but log it
+                          }
 
                           // Automatically generate the first bill
                           if (!isEdit && recurringBillId) {
@@ -2739,7 +2615,7 @@ export default function NewRecurringBill() {
                             }
                           }
 
-                          toast.success(`Recurring bill ${isEdit ? "updated" : "created"} successfully ${!isEdit ? "and initial bill generated" : ""}`);
+                          toast.success(isEdit ? "The recurring bill has been updated." : "The recurring bill has been created.", { position: "top-center" });
                           setIsLoading(false);
                           navigate("/purchases/recurring-bills");
                         } else {
@@ -2748,7 +2624,7 @@ export default function NewRecurringBill() {
                       })
                       .catch((error) => {
                         console.error("Error saving recurring bill:", error);
-                        toast.error(error.message || "Failed to save recurring bill");
+                        toast.error(error.message || "Failed to save recurring bill", { position: "top-center" });
                         setIsLoading(false);
                       });
                   }}
@@ -2928,6 +2804,169 @@ export default function NewRecurringBill() {
             setShowConfigurePaymentTermsModal(false);
           }}
         />,
+        document.body
+      )}
+
+      {/* Add Items in Bulk Modal */}
+      {bulkModalOpen && typeof document !== 'undefined' && document.body && createPortal(
+        <div className="fixed inset-0 bg-black/40 z-[10001] flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl h-[600px] flex flex-col overflow-hidden">
+             {/* Header */}
+             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-gray-800">Add Items in Bulk</h2>
+                <button 
+                  onClick={() => setBulkModalOpen(false)}
+                  className="w-8 h-8 rounded-lg bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all border-none cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+             </div>
+
+             <div className="flex flex-1 overflow-hidden">
+                {/* Left Side: Search & List */}
+                <div className="w-1/2 border-r border-gray-100 flex flex-col p-4">
+                   <div className="relative mb-4">
+                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input 
+                        type="text"
+                        className="w-full pl-10 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#156372] outline-none transition-all"
+                        placeholder="Type to search or scan the barcode of the item"
+                        value={bulkSearchTerm}
+                        onChange={(e) => setBulkSearchTerm(e.target.value)}
+                      />
+                   </div>
+
+                   <div className="flex-1 overflow-y-auto pr-2 space-y-2">
+                      {allItems
+                        .filter(item => (item.name || "").toLowerCase().includes(bulkSearchTerm.toLowerCase()))
+                        .map(item => {
+                          const itemId = item.id || item._id || item.name;
+                          const isSelected = selectedBulkItems.some(si => (si.item.id || si.item._id || si.item.name) === itemId);
+                          return (
+                            <div 
+                              key={itemId}
+                              className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between group ${isSelected ? 'bg-[#156372]/5 border-[#156372]/20 shadow-sm' : 'border-gray-100 hover:bg-gray-50'}`}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setSelectedBulkItems(prev => prev.filter(si => (si.item.id || si.item._id || si.item.name) !== itemId));
+                                } else {
+                                  setSelectedBulkItems(prev => [...prev, { item, quantity: 1 }]);
+                                }
+                              }}
+                            >
+                               <div className="flex-1">
+                                  <div className={`font-semibold text-sm ${isSelected ? 'text-[#156372]' : 'text-gray-800'}`}>{item.name}</div>
+                                  <div className="text-[11px] text-gray-400 mt-0.5 space-x-2">
+                                     <span>SKU: {item.sku || 'N/A'}</span>
+                                     <span>Purchase Rate: {resolvedBaseCurrencySymbol} {parseFloat(item.costPrice || "0").toFixed(2)}</span>
+                                  </div>
+                               </div>
+                               <div className="text-right flex items-center gap-3">
+                                  <div>
+                                     <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Stock on Hand</div>
+                                     <div className={`text-xs font-bold ${parseFloat(item.stockQuantity || item.stock_on_hand || item.stockOnHand || item.quantityOnHand || item.availableStock || item.stock || item.openingStock || "0") > 0 ? 'text-[#156372]' : 'text-red-500'}`}>
+                                       {item.stockQuantity || item.stock_on_hand || item.stockOnHand || item.quantityOnHand || item.availableStock || item.stock || item.openingStock || "0.00"} {item.unit || item.usageUnit || 'pcs'}
+                                     </div>
+                                  </div>
+                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${isSelected ? 'bg-[#156372] text-white' : 'bg-gray-100 text-gray-300'}`}>
+                                     <Check size={14} strokeWidth={3} />
+                                  </div>
+                               </div>
+                            </div>
+                          );
+                        })}
+                   </div>
+                </div>
+
+                {/* Right Side: Selected Items */}
+                <div className="w-1/2 flex flex-col p-4 bg-gray-50/30">
+                   <div className="flex items-center justify-between mb-4 px-2">
+                      <div className="flex items-center gap-2">
+                         <span className="text-lg font-bold text-gray-700">Selected Items</span>
+                         <span className="bg-[#156372] text-white text-xs font-bold px-2.5 py-0.5 rounded-full">{selectedBulkItems.length}</span>
+                      </div>
+                      <div className="text-sm text-gray-500">
+                         Total Quantity: <span className="font-bold text-gray-700">{selectedBulkItems.reduce((sum, si) => sum + si.quantity, 0)}</span>
+                      </div>
+                   </div>
+
+                   <div className="flex-1 overflow-y-auto space-y-3">
+                      {selectedBulkItems.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center text-gray-400 text-center px-10">
+                           <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                              <Search size={32} />
+                           </div>
+                           <p className="text-sm">Click the item names from the left pane to select them</p>
+                        </div>
+                      ) : (
+                        selectedBulkItems.map(si => {
+                          const siId = si.item.id || si.item._id || si.item.name;
+                          return (
+                          <div key={siId} className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+                             <div className="flex-1 truncate pr-4">
+                                <span className="text-xs text-gray-400 mr-2">[{si.item.sku || 'N/A'}]</span>
+                                <span className="text-sm font-semibold text-gray-700">{si.item.name}</span>
+                             </div>
+                             <div className="flex items-center gap-3">
+                                <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden h-8">
+                                   <button 
+                                     className="w-8 h-full flex items-center justify-center hover:bg-gray-50 text-gray-500 border-none bg-transparent cursor-pointer"
+                                     onClick={() => {
+                                       setSelectedBulkItems(prev => prev.map(p => (p.item.id || p.item._id || p.item.name) === siId ? { ...p, quantity: Math.max(1, p.quantity - 1) } : p));
+                                     }}
+                                   >
+                                      <Minus size={14} />
+                                   </button>
+                                   <input 
+                                     type="number"
+                                     className="w-10 text-center text-sm font-bold border-x border-gray-200 h-full outline-none"
+                                     value={si.quantity}
+                                     onChange={(e) => {
+                                       const val = parseInt(e.target.value) || 1;
+                                       setSelectedBulkItems(prev => prev.map(p => (p.item.id || p.item._id || p.item.name) === siId ? { ...p, quantity: val } : p));
+                                     }}
+                                   />
+                                   <button 
+                                     className="w-8 h-full flex items-center justify-center hover:bg-gray-50 text-gray-500 border-none bg-transparent cursor-pointer"
+                                     onClick={() => {
+                                       setSelectedBulkItems(prev => prev.map(p => (p.item.id || p.item._id || p.item.name) === siId ? { ...p, quantity: p.quantity + 1 } : p));
+                                     }}
+                                   >
+                                      <Plus size={14} />
+                                   </button>
+                                </div>
+                                <button 
+                                  className="w-8 h-8 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all border-none bg-transparent cursor-pointer flex items-center justify-center"
+                                  onClick={() => setSelectedBulkItems(prev => prev.filter(p => (p.item.id || p.item._id || p.item.name) !== siId))}
+                                >
+                                   <X size={16} />
+                                </button>
+                             </div>
+                          </div>
+                        )})
+                      )}
+                   </div>
+                </div>
+             </div>
+
+             {/* Footer */}
+             <div className="px-6 py-4 border-t border-gray-100 flex items-center gap-3 bg-white">
+                <button 
+                  className="px-6 py-2.5 bg-[#156372] text-white rounded-lg font-bold text-sm hover:bg-[#125461] transition-all border-none cursor-pointer disabled:opacity-50"
+                  disabled={selectedBulkItems.length === 0}
+                  onClick={handleAddBulkItems}
+                >
+                  Add Items
+                </button>
+                <button 
+                  className="px-6 py-2.5 bg-gray-100 text-gray-600 rounded-lg font-bold text-sm hover:bg-gray-200 transition-all border-none cursor-pointer"
+                  onClick={() => setBulkModalOpen(false)}
+                >
+                  Cancel
+                </button>
+             </div>
+          </div>
+        </div>,
         document.body
       )}
     </>

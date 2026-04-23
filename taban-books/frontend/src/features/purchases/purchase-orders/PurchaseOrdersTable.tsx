@@ -33,6 +33,42 @@ export default function PurchaseOrdersTable({
     return styles.statusIssued;
   };
 
+  const getDeliveryDateMeta = (order: any) => {
+    const billedStatus = String(order.billedStatus ?? "").trim().toUpperCase();
+    if (billedStatus === "BILLED") {
+      return null;
+    }
+
+    const rawDate = order.deliveryDate || order.expectedDate;
+    if (!rawDate) {
+      return null;
+    }
+
+    const deliveryDate = new Date(rawDate);
+    if (Number.isNaN(deliveryDate.getTime())) {
+      return null;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    deliveryDate.setHours(0, 0, 0, 0);
+
+    const diffInDays = Math.round((deliveryDate.getTime() - today.getTime()) / 86400000);
+
+    if (diffInDays === 0) {
+      return { label: "Due Today", color: "#4f46e5" };
+    }
+
+    if (diffInDays < 0) {
+      return {
+        label: `Overdue by ${Math.abs(diffInDays)} day${Math.abs(diffInDays) === 1 ? "" : "s"}`,
+        color: "#dc2626",
+      };
+    }
+
+    return null;
+  };
+
   return (
     <div style={styles.content}>
       <div style={styles.tableWrapper}>
@@ -137,7 +173,10 @@ export default function PurchaseOrdersTable({
                     <td style={styles.tableCell} />
                   </tr>
                 ))
-              : orders.map((order) => (
+              : orders.map((order) => {
+                  const deliveryDateMeta = getDeliveryDateMeta(order);
+
+                  return (
                   <tr
                     key={order.id}
                     style={{
@@ -230,16 +269,21 @@ export default function PurchaseOrdersTable({
                     <td style={styles.tableCell}>
                       <div>
                         {formatPurchaseOrderDate(order.deliveryDate || order.expectedDate)}
-                        {order.overdue && (
-                          <div style={styles.overdueText}>
-                            Overdue by {order.overdueDays} days
+                        {deliveryDateMeta && (
+                          <div
+                            style={{
+                              ...styles.overdueText,
+                              color: deliveryDateMeta.color,
+                            }}
+                          >
+                            {deliveryDateMeta.label}
                           </div>
                         )}
                       </div>
                     </td>
                     <td style={styles.tableCell} />
                   </tr>
-                ))}
+                )})}
           </tbody>
         </table>
       </div>

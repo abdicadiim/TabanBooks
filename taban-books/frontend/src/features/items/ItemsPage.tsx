@@ -67,12 +67,31 @@ function ItemsPageContent() {
   }, [permissionsLoading, canViewItems]);
 
   useEffect(() => {
+    const itemFromState = (location.state as any)?.selectedItemId;
+    const requestedView = (location.state as any)?.initialView;
+    const pathParts = location.pathname.split("/").filter(Boolean);
+    const itemIdFromPath = pathParts[0] === "items" && pathParts[1] ? pathParts[1] : null;
+
+    if (itemFromState) {
+      setSelectedId(String(itemFromState));
+      setView(requestedView === "edit" ? "edit" : "detail");
+      window.scrollTo(0, 0);
+      return;
+    }
+
+    if (itemIdFromPath) {
+      setSelectedId(String(itemIdFromPath));
+      setView("detail");
+      window.scrollTo(0, 0);
+      return;
+    }
+
     if (location.pathname === "/items") {
       setView("list");
       setSelectedId(null);
       setClonedItem(null);
     }
-  }, [location.pathname]);
+  }, [location.pathname, location.state]);
 
   const selectedItem = useMemo(
     () => items.find((x: Item) => x.id === selectedId || x._id === selectedId) || null,
