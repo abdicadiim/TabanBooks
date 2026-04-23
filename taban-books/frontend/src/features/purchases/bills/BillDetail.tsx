@@ -157,10 +157,14 @@ export default function BillDetail() {
   // Payment Recording State
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
   const [paidThroughAccounts, setPaidThroughAccounts] = useState<any[]>([]);
+  const [activePaymentField, setActivePaymentField] = useState<string>("");
+  const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
   const [paymentFormData, setPaymentFormData] = useState({
+    location: "Head Office",
     paymentAmount: "",
     bankCharges: "",
     paymentDate: new Date().toISOString().split('T')[0],
+    paymentMadeOn: new Date().toISOString().split('T')[0],
     paymentMode: "Cash",
     paidThrough: "",
     paidThroughId: "",
@@ -172,6 +176,17 @@ export default function BillDetail() {
   const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const billAttachmentInputRef = useRef<HTMLInputElement>(null);
+  const todayIsoDate = new Date().toISOString().slice(0, 10);
+  const endOfMonthIsoDate = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10);
+
+  const getPaymentFieldStyle = (fieldName: string, baseStyle: React.CSSProperties = {}) => ({
+    ...baseStyle,
+    borderColor: activePaymentField === fieldName ? "#3b82f6" : "#cbd5e1",
+    boxShadow: activePaymentField === fieldName
+      ? "0 0 0 3px rgba(59, 130, 246, 0.12), inset 0 1px 2px rgba(15, 23, 42, 0.04)"
+      : "inset 0 1px 2px rgba(15, 23, 42, 0.04)",
+    transform: activePaymentField === fieldName ? "translateY(-1px)" : "translateY(0)",
+  });
 
   const normalizePaymentRecord = (paymentData: any): Payment => ({
     id: paymentData?._id || paymentData?.id || paymentData?.paymentNumber || "",
@@ -381,6 +396,22 @@ export default function BillDetail() {
     };
     loadAccounts();
   }, []);
+
+  useEffect(() => {
+    if (paidThroughAccounts.length === 0) return;
+    setPaymentFormData(prev => {
+      if (prev.paidThrough || prev.paidThroughId) return prev;
+      const defaultAccount =
+        paidThroughAccounts.find((acc: any) => String(acc.name || "").toLowerCase() === "petty cash") ||
+        paidThroughAccounts.find((acc: any) => String(acc.accountType || "").toLowerCase() === "cash") ||
+        paidThroughAccounts[0];
+      return {
+        ...prev,
+        paidThrough: defaultAccount?.name || "",
+        paidThroughId: defaultAccount?._id || defaultAccount?.id || "",
+      };
+    });
+  }, [paidThroughAccounts]);
 
   useEffect(() => {
     if (bill && bill.id) {
@@ -1188,6 +1219,10 @@ export default function BillDetail() {
       toast.error("Please enter a payment amount.");
       return;
     }
+    if (!paymentFormData.paymentMadeOn) {
+      toast.error("Please select Payment Made on.");
+      return;
+    }
 
     const vendorId = toEntityId((bill as any).vendorId || (bill as any).vendor || (bill as any).vendor_id);
     const billId = toEntityId((bill as any)._id || bill.id || id);
@@ -1211,6 +1246,7 @@ export default function BillDetail() {
         date: paymentFormData.paymentDate,
         amount: parseFloat(paymentFormData.paymentAmount) || 0,
         currency: resolvedBaseCurrency,
+        location: paymentFormData.location,
         bankCharges: parseFloat(paymentFormData.bankCharges) || 0,
         mode: paymentFormData.paymentMode,
         paidThrough: paymentFormData.paidThroughId || paymentFormData.paidThrough,
@@ -1294,6 +1330,12 @@ export default function BillDetail() {
       size: file.size
     }));
     setUploadedFiles(prev => [...prev, ...newFiles]);
+    setAttachmentMenuOpen(false);
+  };
+
+  const triggerAttachmentUpload = () => {
+    fileInputRef.current?.click();
+    setAttachmentMenuOpen(false);
   };
 
   const styles: { [key: string]: React.CSSProperties } = {
@@ -1908,8 +1950,67 @@ export default function BillDetail() {
       width: '100%',
       minWidth: '0',
     },
+    paymentAmountWrap: {
+      width: '100%',
+      maxWidth: '260px',
+    },
+    locationSelectWrap: {
+      position: 'relative' as const,
+      width: '100%',
+      maxWidth: '260px',
+    },
+    paymentModeWrap: {
+      width: '100%',
+      maxWidth: '260px',
+    },
+    paymentFieldWrap: {
+      width: '100%',
+      maxWidth: '260px',
+      alignSelf: 'start',
+    },
+    bankChargesInput: {
+      minHeight: '44px',
+      padding: '12px 12px',
+    },
     paymentControlShell: {
       width: '100%',
+      minHeight: '40px',
+    },
+    paymentTwoColRow: {
+      display: 'grid',
+      gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+      columnGap: '18px',
+      rowGap: '18px',
+      alignItems: 'flex-start',
+    },
+    paymentTwoColItem: {
+      width: '100%',
+      minWidth: '0',
+    },
+    paymentThreeColRow: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(3, minmax(0, 260px))',
+      columnGap: '10px',
+      rowGap: '12px',
+      alignItems: 'flex-start',
+      justifyContent: 'start',
+    },
+    paymentThreeColItem: {
+      width: '100%',
+      minWidth: '0',
+    },
+    paymentSplitRow: {
+      display: 'grid',
+      gridTemplateColumns: 'minmax(260px, 260px) minmax(260px, 260px)',
+      columnGap: '10px',
+      rowGap: '0px',
+      alignItems: 'start',
+      justifyContent: 'start',
+    },
+    paymentStack: {
+      display: 'flex',
+      flexDirection: 'column' as const,
+      gap: '14px',
     },
     paymentSectionLabel: {
       fontSize: '12px',
@@ -1927,30 +2028,43 @@ export default function BillDetail() {
       fontSize: '13px',
       fontWeight: '600',
       color: '#334155',
-      marginBottom: '8px',
+      marginBottom: '6px',
+    },
+    labelInline: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px',
+      minHeight: '20px',
     },
     input: {
       width: '100%',
-      padding: '8px 12px',
+      minHeight: '40px',
+      padding: '10px 12px',
       fontSize: '13px',
       lineHeight: '1.2',
       border: '1px solid #cbd5e1',
-      borderRadius: '0px',
+      borderRadius: '8px',
       outline: 'none',
       backgroundColor: '#ffffff',
       color: '#0f172a',
       boxSizing: 'border-box' as const,
       boxShadow: 'inset 0 1px 2px rgba(15, 23, 42, 0.04)',
+      transition: 'border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease',
     },
     select: {
       width: '100%',
-      padding: '8px 12px',
+      minHeight: '40px',
+      padding: '10px 36px 10px 12px',
       fontSize: '13px',
       lineHeight: '1.2',
       border: '1px solid #cbd5e1',
-      borderRadius: '0px',
+      borderRadius: '8px',
       outline: 'none',
       backgroundColor: '#ffffff',
+      appearance: 'none' as const,
+      WebkitAppearance: 'none',
+      MozAppearance: 'none',
+      transition: 'border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease',
     },
     paymentCheckboxRow: {
       display: 'flex',
@@ -2591,18 +2705,6 @@ export default function BillDetail() {
                 <div style={styles.paymentFormTitleWrap}>
                   <span style={styles.paymentFormEyebrow}>Record Payment</span>
                   <h2 style={styles.paymentFormTitle}>Payment for {bill.billNumber}</h2>
-                  <div style={styles.paymentFormHint}>
-                    Review the outstanding bill, enter the payment information, and save it using the polished layout shown in your reference.
-                  </div>
-                </div>
-                <div style={styles.paymentSummaryBadge}>
-                  <div style={styles.paymentSummaryLabel}>Balance Due</div>
-                  <div style={styles.paymentSummaryValue}>
-                    {resolvedBaseCurrencySymbol}{parseFloat(String(bill.balanceDue || 0)).toFixed(2)}
-                  </div>
-                  <div style={styles.paymentSummarySubtext}>
-                    Due date {formatDateShort(bill.dueDate)}
-                  </div>
                 </div>
               </div>
 
@@ -2610,112 +2712,169 @@ export default function BillDetail() {
                 <div style={styles.paymentSectionLabel}>Payment Details</div>
                 <div style={styles.paymentCompactColumn}>
                   <div style={styles.formGroup}>
-                    <label style={styles.label}>Payment Made *({resolvedBaseCurrency})</label>
-                    <input
-                      type="text"
-                      name="paymentAmount"
-                      value={paymentFormData.paymentAmount}
-                      onChange={handlePaymentChange}
-                      style={styles.input}
-                      placeholder="0.00"
-                    />
-                  </div>
-
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Payment Mode</label>
-                    <div style={styles.paymentControlShell}>
-                      <PaymentModeDropdown
-                        value={paymentFormData.paymentMode}
-                        onChange={(value) => setPaymentFormData(prev => ({ ...prev, paymentMode: value }))}
-                      />
+                    <label style={styles.label}>Location</label>
+                    <div style={styles.locationSelectWrap}>
+                      <select
+                        name="location"
+                        value={paymentFormData.location}
+                        onChange={handlePaymentChange}
+                        onFocus={() => setActivePaymentField("location")}
+                        onBlur={() => setActivePaymentField("")}
+                        style={getPaymentFieldStyle("location", styles.select)}
+                      >
+                        <option value="Head Office">Head Office</option>
+                        <option value="Branch Office">Branch Office</option>
+                      </select>
+                      <ChevronDown size={14} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b', pointerEvents: 'none' }} />
                     </div>
                   </div>
 
                   <div style={styles.formGroup}>
-                    <label style={styles.label}>Payment #*</label>
-                    <div style={{ position: 'relative' }}>
+                    <label style={styles.label}>Payment Made *({resolvedBaseCurrency})</label>
+                    <div style={styles.paymentAmountWrap}>
                       <input
                         type="text"
-                        name="paymentNumber"
-                        value={paymentFormData.paymentNumber}
+                        name="paymentAmount"
+                        value={paymentFormData.paymentAmount}
                         onChange={handlePaymentChange}
-                        style={styles.input}
-                      />
-                      <Settings size={14} style={{ position: 'absolute', right: '12px', top: '12px', color: '#6b7280' }} />
-                    </div>
-                  </div>
-
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Paid Through*</label>
-                    <div style={styles.paymentControlShell}>
-                      <TabanSelect
-                        value={paymentFormData.paidThrough}
-                        options={paidThroughAccounts}
-                        groupBy="accountType"
-                        placeholder="Select Paid Through Account"
-                        onChange={(val) => {
-                          const account = paidThroughAccounts.find(a => a.name === val);
-                          setPaymentFormData(prev => ({
-                            ...prev,
-                            paidThrough: val,
-                            paidThroughId: account?._id || account?.id || ""
-                          }));
-                        }}
+                        onFocus={() => setActivePaymentField("paymentAmount")}
+                        onBlur={() => setActivePaymentField("")}
+                        style={getPaymentFieldStyle("paymentAmount", styles.input)}
+                        placeholder="0.00"
                       />
                     </div>
                   </div>
 
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Reference#</label>
-                    <input
-                      type="text"
-                      name="reference"
-                      value={paymentFormData.reference}
-                      onChange={handlePaymentChange}
-                      style={styles.input}
-                    />
+                  <div style={styles.paymentSplitRow}>
+                    <div style={styles.paymentStack}>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>Paid Through*</label>
+                        <div style={styles.paymentFieldWrap}>
+                          <div style={styles.paymentControlShell}>
+                            <TabanSelect
+                              value={paymentFormData.paidThrough}
+                              options={paidThroughAccounts}
+                              groupBy="accountType"
+                              placeholder="Select Paid Through Account"
+                              onChange={(val) => {
+                                const account = paidThroughAccounts.find(a => a.name === val);
+                                setPaymentFormData(prev => ({
+                                  ...prev,
+                                  paidThrough: val,
+                                  paidThroughId: account?._id || account?.id || ""
+                                }));
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={styles.formGroup}>
+                        <label style={{ ...styles.label, ...styles.labelInline }}>
+                          <span>Bank Charges (if any)</span>
+                          <Info size={14} style={{ color: '#6b7280', flexShrink: 0 }} />
+                        </label>
+                        <div style={styles.paymentFieldWrap}>
+                        <input
+                          type="text"
+                          name="bankCharges"
+                          value={paymentFormData.bankCharges}
+                          onChange={handlePaymentChange}
+                          onFocus={() => setActivePaymentField("bankCharges")}
+                          onBlur={() => setActivePaymentField("")}
+                          style={getPaymentFieldStyle("bankCharges", { ...styles.input, ...styles.bankChargesInput })}
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+
+                    </div>
+
+                    <div style={styles.paymentStack}>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>Reference#</label>
+                        <div style={styles.paymentFieldWrap}>
+                          <input
+                            type="text"
+                            name="reference"
+                            value={paymentFormData.reference}
+                            onChange={handlePaymentChange}
+                            onFocus={() => setActivePaymentField("reference")}
+                            onBlur={() => setActivePaymentField("")}
+                            style={getPaymentFieldStyle("reference", styles.input)}
+                          />
+                        </div>
+                      </div>
+
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>Payment Mode</label>
+                        <div style={styles.paymentModeWrap}>
+                          <div style={styles.paymentControlShell}>
+                            <PaymentModeDropdown
+                              value={paymentFormData.paymentMode}
+                              onChange={(value) => setPaymentFormData(prev => ({ ...prev, paymentMode: value }))}
+                              onFocus={() => setActivePaymentField("paymentMode")}
+                              onBlur={() => setActivePaymentField("")}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
                   </div>
 
-                  <div style={styles.paymentCheckboxRow}>
-                    <input
-                      type="checkbox"
-                      name="deductTDS"
-                      checked={paymentFormData.deductTDS}
-                      onChange={handlePaymentChange}
-                    />
-                    <span>Deduct TDS Tax</span>
-                  </div>
+                  <div style={styles.paymentThreeColRow}>
+                    <div style={{ ...styles.formGroup, ...styles.paymentThreeColItem }}>
+                      <label style={styles.label}>Payment Date*</label>
+                      <div style={styles.paymentFieldWrap}>
+                        <input
+                          type="date"
+                          name="paymentDate"
+                          value={paymentFormData.paymentDate}
+                          onChange={handlePaymentChange}
+                          onFocus={() => setActivePaymentField("paymentDate")}
+                          onBlur={() => setActivePaymentField("")}
+                          style={getPaymentFieldStyle("paymentDate", styles.input)}
+                        />
+                      </div>
+                    </div>
 
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Bank Charges (if any) <Info size={14} style={{ marginLeft: '4px' }} /></label>
-                    <input
-                      type="text"
-                      name="bankCharges"
-                      value={paymentFormData.bankCharges}
-                      onChange={handlePaymentChange}
-                      style={styles.input}
-                      placeholder="0.00"
-                    />
-                  </div>
+                    <div style={{ ...styles.formGroup, ...styles.paymentThreeColItem }}>
+                      <label style={styles.label}>Payment #*</label>
+                      <div style={styles.paymentFieldWrap}>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type="text"
+                            name="paymentNumber"
+                            value={paymentFormData.paymentNumber}
+                            onChange={handlePaymentChange}
+                            onFocus={() => setActivePaymentField("paymentNumber")}
+                            onBlur={() => setActivePaymentField("")}
+                            style={getPaymentFieldStyle("paymentNumber", styles.input)}
+                          />
+                          <Settings size={14} style={{ position: 'absolute', right: '12px', top: '12px', color: '#6b7280' }} />
+                        </div>
+                      </div>
+                    </div>
 
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Payment Date*</label>
-                    <input
-                      type="date"
-                      name="paymentDate"
-                      value={paymentFormData.paymentDate}
-                      onChange={handlePaymentChange}
-                      style={styles.input}
-                    />
-                  </div>
-
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Payment Made on</label>
-                    <input
-                      type="date"
-                      style={styles.input}
-                      placeholder="dd MMM yyyy"
-                    />
+                    <div style={{ ...styles.formGroup, ...styles.paymentThreeColItem }}>
+                      <label style={styles.label}>Payment Made on</label>
+                      <div style={styles.paymentFieldWrap}>
+                        <input
+                          type="date"
+                          name="paymentMadeOn"
+                          value={paymentFormData.paymentMadeOn}
+                          onChange={handlePaymentChange}
+                          onFocus={() => setActivePaymentField("paymentMadeOn")}
+                          onBlur={() => setActivePaymentField("")}
+                          required
+                          min={todayIsoDate}
+                          max={endOfMonthIsoDate}
+                          style={getPaymentFieldStyle("paymentMadeOn", styles.input)}
+                          placeholder="dd/MM/yyyy"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2734,11 +2893,49 @@ export default function BillDetail() {
 
               <div style={{ marginBottom: '24px' }}>
                 <label style={styles.label}>Attachments</label>
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  style={styles.attachmentButton}
-                >
-                  <Upload size={14} /> Upload File <ChevronDown size={14} />
+                <div style={{ position: 'relative', display: 'inline-block' }}>
+                  <div
+                    onClick={() => setAttachmentMenuOpen(prev => !prev)}
+                    style={styles.attachmentButton}
+                  >
+                    <Upload size={14} /> Upload File <ChevronDown size={14} />
+                  </div>
+                  {attachmentMenuOpen && (
+                    <div style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 4px)',
+                      left: 0,
+                      width: '220px',
+                      backgroundColor: '#ffffff',
+                      border: '1px solid #dbe3ee',
+                      borderRadius: '10px',
+                      boxShadow: '0 18px 40px rgba(15, 23, 42, 0.12)',
+                      zIndex: 40,
+                      overflow: 'hidden'
+                    }}>
+                      {[
+                        'Attach From Desktop',
+                        'Attach From Documents',
+                        'Attach From Cloud',
+                      ].map((label) => (
+                        <div
+                          key={label}
+                          onClick={triggerAttachmentUpload}
+                          style={{
+                            padding: '12px 14px',
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            color: '#111827',
+                            backgroundColor: '#ffffff',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#eff6ff')}
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
+                        >
+                          {label}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} multiple />
                 <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px' }}>You can upload a maximum of 5 files, 10MB each</p>

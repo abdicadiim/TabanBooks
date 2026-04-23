@@ -15,6 +15,7 @@ export default function BulkUpdateModal({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const dropdownRef = useRef(null);
+  const dropdownMenuRef = useRef(null);
   const dropdownTriggerRef = useRef(null);
   const [dropdownPosition, setDropdownPosition] = useState({
     top: 0,
@@ -26,8 +27,18 @@ export default function BulkUpdateModal({
   );
 
   useEffect(() => {
+    if (!isOpen) return;
+    setSelectedField("");
+    setNewValue("");
+    setSearchTerm("");
+    setIsDropdownOpen(true);
+  }, [isOpen]);
+
+  useEffect(() => {
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+      const clickedInsideTrigger = dropdownRef.current && dropdownRef.current.contains(event.target);
+      const clickedInsideMenu = dropdownMenuRef.current && dropdownMenuRef.current.contains(event.target);
+      if (!clickedInsideTrigger && !clickedInsideMenu) {
         setIsDropdownOpen(false);
       }
     };
@@ -360,6 +371,7 @@ export default function BulkUpdateModal({
               {isDropdownOpen &&
                 createPortal(
                   <div
+                    ref={dropdownMenuRef}
                     style={{
                       position: "fixed",
                       top: dropdownPosition.top,
@@ -411,7 +423,8 @@ export default function BulkUpdateModal({
                         filteredOptions.map((option) => (
                           <div
                             key={option.value}
-                            onClick={() => {
+                            onMouseDown={(e) => {
+                              e.preventDefault();
                               setSelectedField(option.value);
                               setNewValue("");
                               setIsDropdownOpen(false);

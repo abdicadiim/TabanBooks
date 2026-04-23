@@ -2099,7 +2099,7 @@ export default function RecordPayment() {
               <label className="text-sm font-medium text-red-500 pt-2">
                 Amount Received ({baseCurrencyCode})*
               </label>
-              <div className="max-w-[400px]">
+              <div className="max-w-[160px]">
                 <div className={`flex border border-gray-300 rounded overflow-hidden focus-within:border-[#156372] focus-within:ring-2 focus-within:ring-[rgba(21,99,114,0.1)] ${!isCustomerSelected ? 'opacity-50 pointer-events-none bg-gray-100' : ''}`}>
                   <div className="bg-gray-50 border-r border-gray-300 px-3 py-1.5 text-sm text-gray-600 flex items-center">
                     {baseCurrencyCode}
@@ -2158,7 +2158,7 @@ export default function RecordPayment() {
               <label className="text-sm font-medium text-gray-700">
                 Bank Charges (if any)
               </label>
-              <div className="max-w-[400px]">
+              <div className="max-w-[160px]">
                 <input
                   type="number"
                   className={`w-full border border-gray-300 rounded px-3 py-1.5 text-sm outline-none focus:border-[#156372] focus:ring-2 focus:ring-[rgba(21,99,114,0.1)] ${!isCustomerSelected ? 'opacity-50 pointer-events-none bg-gray-100' : ''}`}
@@ -2174,7 +2174,7 @@ export default function RecordPayment() {
               <label className="text-sm font-medium text-red-500">
                 Payment Date*
               </label>
-              <div className="max-w-[400px]">
+              <div className="max-w-[160px]">
                 <input
                   type="date"
                   className={`w-full border border-gray-300 rounded px-3 py-1.5 text-sm outline-none focus:border-[#156372] focus:ring-2 focus:ring-[rgba(21,99,114,0.1)] ${!isCustomerSelected ? 'opacity-50 pointer-events-none bg-gray-100' : ''}`}
@@ -2211,7 +2211,7 @@ export default function RecordPayment() {
               <label className="text-sm font-medium text-gray-700">
                 Payment Mode
               </label>
-              <div className="max-w-[400px]">
+              <div className="max-w-[160px]">
                 <PaymentModeDropdown
                   value={formData.paymentMode}
                   onChange={(val) => setFormData(p => ({ ...p, paymentMode: val }))}
@@ -2225,7 +2225,7 @@ export default function RecordPayment() {
               <label className="text-sm font-medium text-red-500">
                 Deposit To*
               </label>
-              <div className="max-w-[400px]">
+              <div className="max-w-[160px]">
                 <ZohoSelect
                   value={formData.depositToAccountId || ""}
                   options={depositToAccounts}
@@ -2254,7 +2254,7 @@ export default function RecordPayment() {
               <label className="text-sm font-medium text-gray-700">
                 Reference#
               </label>
-              <div className="max-w-[400px]">
+              <div className="max-w-[160px]">
                 <input
                   type="text"
                   className={`w-full border border-gray-300 rounded px-3 py-1.5 text-sm outline-none focus:border-[#156372] focus:ring-2 focus:ring-[rgba(21,99,114,0.1)] ${!isCustomerSelected ? 'opacity-50 pointer-events-none bg-gray-100' : ''}`}

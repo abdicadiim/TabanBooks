@@ -8,6 +8,10 @@ import { useLocation } from "react-router-dom";
 export default function AppShell() {
   const location = useLocation();
   const isEmbedded = new URLSearchParams(location.search).get("embed") === "1";
+  const isPurchaseOrdersListPage =
+    location.pathname === "/purchases" ||
+    location.pathname === "/purchases/" ||
+    location.pathname === "/purchases/purchase-orders";
 
   if (isEmbedded) {
     return (
@@ -22,7 +26,13 @@ export default function AppShell() {
       <Header />
       <Sidebar />
 
-      <main className="h-full min-h-0 box-border overflow-y-auto overflow-x-hidden pt-[72px] pb-4 pl-0 pr-4 md:pl-[calc(var(--sidebar-width)+28px)]">
+      <main
+        className={`h-full min-h-0 box-border overflow-y-auto overflow-x-hidden pt-[72px] pb-4 pl-0 ${
+          isPurchaseOrdersListPage
+            ? "pr-0 md:pl-[calc(var(--sidebar-width)+12px)]"
+            : "pr-4 md:pl-[calc(var(--sidebar-width)+28px)]"
+        }`}
+      >
         <Outlet />
       </main>
     </div>

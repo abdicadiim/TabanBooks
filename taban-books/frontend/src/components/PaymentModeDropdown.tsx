@@ -16,6 +16,8 @@ interface PaymentModeDropdownProps {
     placeholder?: string;
     className?: string;
     disabled?: boolean;
+    onFocus?: () => void;
+    onBlur?: () => void;
 }
 
 export default function PaymentModeDropdown({
@@ -23,7 +25,9 @@ export default function PaymentModeDropdown({
     onChange,
     placeholder = "Select Payment Mode",
     className = "",
-    disabled = false
+    disabled = false,
+    onFocus,
+    onBlur
 }: PaymentModeDropdownProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
@@ -35,6 +39,7 @@ export default function PaymentModeDropdown({
     // Configuration modal state
     const [draftModes, setDraftModes] = useState<PaymentMode[]>([]);
     const [isSaving, setIsSaving] = useState(false);
+    const [panelVisible, setPanelVisible] = useState(false);
 
     useEffect(() => {
         if (isConfigureModalOpen) {
@@ -55,6 +60,15 @@ export default function PaymentModeDropdown({
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
+
+    useEffect(() => {
+        if (isOpen) {
+            setPanelVisible(true);
+            return;
+        }
+        const timer = window.setTimeout(() => setPanelVisible(false), 160);
+        return () => window.clearTimeout(timer);
+    }, [isOpen]);
 
     const loadPaymentModes = async () => {
         setIsLoading(true);
@@ -143,8 +157,15 @@ export default function PaymentModeDropdown({
         <>
             <div className={`relative w-full ${className}`} ref={dropdownRef}>
                 <div
-                    className={`flex items-center justify-between px-3 py-1 border border-gray-300 rounded text-sm bg-white cursor-pointer hover:border-gray-400 transition-colors min-h-[30px] ${disabled ? "bg-gray-100 cursor-not-allowed opacity-60" : ""}`}
+                    className={`flex items-center justify-between px-3 py-2 border border-gray-300 rounded text-sm bg-white cursor-pointer hover:border-blue-400 transition-all duration-200 min-h-[40px] ${disabled ? "bg-gray-100 cursor-not-allowed opacity-60" : ""}`}
+                    style={{
+                        boxShadow: isOpen ? "0 0 0 4px rgba(59, 130, 246, 0.10)" : "0 1px 2px rgba(15, 23, 42, 0.04)",
+                        borderColor: isOpen ? "#3b82f6" : undefined,
+                    }}
                     onClick={() => !disabled && setIsOpen(!isOpen)}
+                    onFocus={onFocus}
+                    onBlur={onBlur}
+                    tabIndex={disabled ? -1 : 0}
                 >
                     <span className={value ? "text-gray-900" : "text-gray-400"}>
                         {selectedValue || placeholder}
@@ -156,14 +177,23 @@ export default function PaymentModeDropdown({
                     />
                 </div>
 
-                {isOpen && (
-                    <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded shadow-xl z-[1000] overflow-hidden">
+                {panelVisible && (
+                    <div
+                        className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded shadow-xl z-[1000] overflow-hidden"
+                        style={{
+                            transform: isOpen ? "translateY(0) scale(1)" : "translateY(6px) scale(0.98)",
+                            opacity: isOpen ? 1 : 0,
+                            transition: "transform 160ms ease, opacity 160ms ease",
+                            transformOrigin: "bottom center",
+                            pointerEvents: isOpen ? "auto" : "none",
+                        }}
+                    >
                         <div className="p-2 border-b border-gray-100">
-                            <div className="flex items-center gap-2 border border-gray-200 rounded px-2 py-1">
+                            <div className="flex items-center gap-2 border border-gray-200 rounded px-2 py-1 transition-all duration-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100">
                                 <Search size={14} className="text-gray-400" />
                                 <input
                                     autoFocus
-                                className="w-full outline-none text-sm"
+                                    className="w-full outline-none text-sm"
                                     placeholder="Search"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -179,7 +209,7 @@ export default function PaymentModeDropdown({
                                 filteredModes.map((mode) => (
                                     <div
                                         key={mode._id}
-                                        className="px-4 py-1.5 text-sm cursor-pointer flex items-center justify-between transition-colors"
+                                        className="px-4 py-2 text-sm cursor-pointer flex items-center justify-between transition-all duration-150"
                                         style={{
                                             backgroundColor:
                                                 selectedValue === mode.name ? "#2563eb" : "transparent",
@@ -205,7 +235,7 @@ export default function PaymentModeDropdown({
                         </div>
 
                         <div
-                            className="px-4 py-2.5 border-t border-gray-100 flex items-center gap-2 text-sm font-medium text-blue-600 cursor-pointer hover:bg-gray-50 transition-colors"
+                            className="px-4 py-2.5 border-t border-gray-100 flex items-center gap-2 text-sm font-medium text-blue-600 cursor-pointer hover:bg-gray-50 transition-all duration-150"
                             onClick={() => {
                                 setIsConfigureModalOpen(true);
                                 setIsOpen(false);

@@ -57,6 +57,10 @@ export default function Header() {
   const headerMuted = isLightAppearance ? "text-slate-500" : "text-white/60";
   const controlSurface = isLightAppearance ? "bg-white border-slate-200" : "bg-white/10 border-white/15";
   const controlText = isLightAppearance ? "text-slate-700" : "text-white/90";
+  const isPurchaseOrdersListPage =
+    location.pathname === "/purchases" ||
+    location.pathname === "/purchases/" ||
+    location.pathname === "/purchases/purchase-orders";
 
   const handleLogout = async () => {
     try {
@@ -265,8 +269,14 @@ export default function Header() {
 
   return (
     <header
-      className={`fixed top-3 left-3 right-3 z-[1000] h-[68px] rounded-[20px] px-4 backdrop-blur-md md:left-[calc(var(--sidebar-width)+24px)] ${
-        isLightAppearance ? "border border-slate-200 shadow-[0_16px_34px_rgba(15,23,42,0.08)]" : "border border-white/12 shadow-[0_16px_34px_rgba(4,38,46,0.16)]"
+      className={`fixed top-3 left-3 right-3 z-[1000] h-[68px] overflow-hidden rounded-[20px] px-4 backdrop-blur-md ${
+        isPurchaseOrdersListPage
+          ? "md:left-[calc(var(--sidebar-width)+12px)]"
+          : "md:left-[calc(var(--sidebar-width)+24px)]"
+      } ${
+        isLightAppearance
+          ? "border border-slate-200 shadow-[0_16px_34px_rgba(15,23,42,0.08)]"
+          : "border border-white/12 shadow-[0_16px_34px_rgba(4,38,46,0.16)]"
       }`}
       style={{
         background: headerBackground,
@@ -277,7 +287,7 @@ export default function Header() {
       ) : null}
       <div className="relative flex h-full items-center justify-between gap-3">
         <form className="relative flex min-w-0 flex-1 items-center" ref={searchRef} onSubmit={handleSearchSubmit}>
-          <div className={`flex h-11 w-full max-w-[420px] items-stretch overflow-hidden rounded-[14px] border shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] focus-within:ring-2 ${controlSurface} ${isLightAppearance ? "text-slate-700 focus-within:ring-slate-200" : "text-white/90 focus-within:ring-white/25"}`}>
+          <div className={`flex h-11 w-full max-w-[420px]items - stretch overflow - hidden rounded - [14px] border shadow - [inset_0_1px_0_rgba(255, 255, 255, 0.08)] focus - within: ring - 2 ${ controlSurface } ${ isLightAppearance ? "text-slate-700 focus-within:ring-slate-200" : "text-white/90 focus-within:ring-white/25" } `}>
             <button
               type="button"
               onClick={() => {
@@ -285,7 +295,7 @@ export default function Header() {
                 setQuickCreateOpen(false);
                 setOrgDropdownOpen(false);
               }}
-              className={`flex w-11 shrink-0 items-center justify-center transition-colors ${isLightAppearance ? "text-slate-500 hover:bg-slate-100 hover:text-slate-700" : "text-white/85 hover:bg-white/10 hover:text-white"}`}
+              className={`flex w - 11 shrink - 0 items - center justify - center transition - colors ${ isLightAppearance ? "text-slate-500 hover:bg-slate-100 hover:text-slate-700" : "text-white/85 hover:bg-white/10 hover:text-white" } `}
               aria-label="Search"
               title="Search"
             >
@@ -299,7 +309,7 @@ export default function Header() {
                 setQuickCreateOpen(false);
                 setOrgDropdownOpen(false);
               }}
-              className={`flex w-8 shrink-0 items-center justify-center border-r transition-colors ${isLightAppearance ? "border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600" : "border-white/10 text-white/70 hover:bg-white/10 hover:text-white"}`}
+              className={`flex w - 8 shrink - 0 items - center justify - center border - r transition - colors ${ isLightAppearance ? "border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600" : "border-white/10 text-white/70 hover:bg-white/10 hover:text-white" } `}
               aria-label="Open search models"
               title="Open search models"
             >
@@ -309,8 +319,8 @@ export default function Header() {
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={`Search in ${searchScope} ( / )`}
-              className={`min-w-0 flex-1 bg-transparent px-3.5 py-2.5 text-[13px] outline-none ${isLightAppearance ? "text-slate-700 placeholder:text-slate-400" : "text-white/85 placeholder:text-white/60"}`}
+              placeholder={`Search in ${ searchScope } ( /)`}
+              className={`min - w - 0 flex - 1 bg - transparent px - 3.5 py - 2.5 text - [13px] outline - none ${ isLightAppearance ? "text-slate-700 placeholder:text-slate-400" : "text-white/85 placeholder:text-white/60" } `}
             />
           </div>
 
@@ -324,9 +334,9 @@ export default function Header() {
                         onMouseEnter={option.label === "Customers" ? handleCustomersPrefetch : undefined}
                         onFocus={option.label === "Customers" ? handleCustomersPrefetch : undefined}
                         onClick={() => handleSearchScopeChange(option)}
-                        className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-slate-100 ${
-                          searchScope === option.label ? "bg-slate-100" : ""
-                        }`}
+                        className={`flex w - full items - center justify - between px - 4 py - 2 text - left text - sm hover: bg - slate - 100 ${
+    searchScope === option.label ? "bg-slate-100" : ""
+  } `}
                       >
                     <span className={searchScope === option.label ? "font-medium text-slate-900" : "text-slate-700"}>
                       {option.label}
@@ -354,7 +364,7 @@ export default function Header() {
                   return next;
                 });
               }}
-              className={`flex h-11 items-center gap-1.5 rounded-[14px] px-3.5 text-[13px] font-semibold transition-colors ${isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15"}`}
+              className={`flex h - 11 items - center gap - 1.5 rounded - [14px] px - 3.5 text - [13px] font - semibold transition - colors ${ isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15" } `}
               aria-label="Organizations"
             >
               <span className="max-w-[120px] truncate">{orgLabel}</span>
@@ -377,7 +387,7 @@ export default function Header() {
                 <div className="absolute right-0 w-[386px] overflow-visible">
                   <div
                     className="absolute -top-2 h-4 w-4 rotate-45 border-l border-t border-slate-200 bg-white shadow-[-1px_-1px_2px_rgba(15,23,42,0.02)]"
-                    style={{ left: `${orgPanelStyle?.pointerLeft ?? 32}px` }}
+                    style={{ left: `${ orgPanelStyle?.pointerLeft ?? 32 } px` }}
                   />
                   <div className="h-[calc(100vh-70px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_45px_rgba(15,23,42,0.18)]">
                     <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3.5">
@@ -438,9 +448,9 @@ export default function Header() {
                                 key={orgId}
                                 type="button"
                                 onClick={() => handleSwitchOrganization(org)}
-                                className={`w-full rounded-[18px] border px-3 py-3 text-left transition-colors ${
-                                  isActive ? "border-slate-300 bg-slate-50" : "border-transparent hover:bg-slate-50"
-                                }`}
+                                className={`w - full rounded - [18px] border px - 3 py - 3 text - left transition - colors ${
+    isActive ? "border-slate-300 bg-slate-50" : "border-transparent hover:bg-slate-50"
+  } `}
                               >
                                 <div className="flex items-start gap-3">
                                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] border border-slate-200 bg-white text-slate-500">
@@ -514,11 +524,11 @@ export default function Header() {
                 setQuickCreateOpen((current) => !current);
                 setOrgDropdownOpen(false);
               }}
-              className={`grid h-11 w-11 place-items-center rounded-[14px] transition-colors ${
-                isLightAppearance
-                  ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                  : "text-white hover:bg-white/15"
-              }`}
+              className={`grid h - 11 w - 11 place - items - center rounded - [14px] transition - colors ${
+    isLightAppearance
+      ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+      : "text-white hover:bg-white/15"
+  } `}
               style={!isLightAppearance ? { background: "linear-gradient(90deg, #0f5f6c 0%, #156372 100%)" } : undefined}
               aria-label="Quick Create"
               title="Quick Create"
@@ -568,11 +578,11 @@ export default function Header() {
                 setQuickCreateOpen(false);
                 setOrgDropdownOpen(false);
               }}
-              className={`grid h-11 w-11 place-items-center rounded-[14px] transition-colors ${
-                isLightAppearance
-                  ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                  : "bg-white/10 text-white hover:bg-white/15"
-              } ${userMenuOpen ? (isLightAppearance ? "bg-slate-100" : "bg-white/20") : ""}`}
+              className={`grid h - 11 w - 11 place - items - center rounded - [14px] transition - colors ${
+    isLightAppearance
+      ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+      : "bg-white/10 text-white hover:bg-white/15"
+  } ${ userMenuOpen ? (isLightAppearance ? "bg-slate-100" : "bg-white/20") : "" } `}
               aria-label="User profile"
             >
               <Users size={16} />
@@ -634,7 +644,7 @@ export default function Header() {
 
           <button
             type="button"
-            className={`grid h-11 w-11 place-items-center rounded-[14px] transition-colors ${isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15"}`}
+            className={`grid h - 11 w - 11 place - items - center rounded - [14px] transition - colors ${ isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15" } `}
             aria-label="Notifications"
           >
             <Bell size={16} />
@@ -643,7 +653,7 @@ export default function Header() {
           <button
             type="button"
             onClick={() => navigate("/settings")}
-            className={`grid h-11 w-11 place-items-center rounded-[14px] transition-colors ${isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15"}`}
+            className={`grid h - 11 w - 11 place - items - center rounded - [14px] transition - colors ${ isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15" } `}
             aria-label="Settings"
             title="Settings"
           >
@@ -652,7 +662,7 @@ export default function Header() {
 
           <button
             type="button"
-            className={`grid h-11 w-11 place-items-center rounded-[14px] shadow-sm md:hidden ${isLightAppearance ? "bg-white text-slate-700 border border-slate-200" : "text-white"}`}
+            className={`grid h - 11 w - 11 place - items - center rounded - [14px] shadow - sm md:hidden ${ isLightAppearance ? "bg-white text-slate-700 border border-slate-200" : "text-white" } `}
             style={!isLightAppearance ? { background: "linear-gradient(90deg, #0f5f6c 0%, #156372 100%)" } : undefined}
             aria-label={orgName}
           >
@@ -669,7 +679,7 @@ export default function Header() {
 
           <button
             type="button"
-            className={`grid h-11 w-11 place-items-center rounded-[14px] transition-colors ${isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15"}`}
+            className={`grid h - 11 w - 11 place - items - center rounded - [14px] transition - colors ${ isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15" } `}
             aria-label="App launcher"
           >
             <Grid3x3 size={16} />

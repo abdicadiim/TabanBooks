@@ -20,6 +20,8 @@ import {
   SlidersHorizontal,
   Search,
   FileText,
+  Printer,
+  Link2,
   Trash2,
   Download,
   Upload,
@@ -105,6 +107,21 @@ export default function Bills() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportType, setExportType] = useState("bills");
+  const defaultBillColumns = ["Date", "Location", "Bill#", "Reference Number", "Vendor Name", "Status", "Due Date", "Amount", "Balance Due"];
+  const [visibleBillColumns, setVisibleBillColumns] = useState(defaultBillColumns);
+  const mapCustomColumnToTableColumn = (column) => {
+    if (column === "Bill Date") return "Date";
+    if (column === "Bill#") return "Bill#";
+    if (column === "Vendor Name") return "Vendor Name";
+    if (column === "Bill Status") return "Status";
+    if (column === "Bill Amount") return "Amount";
+    if (column === "Bill Due Date") return "Due Date";
+    if (column === "Balance") return "Balance Due";
+    if (column === "Customer Name") return "Customer Name";
+    if (column === "Reference Number") return "Reference Number";
+    if (column === "Location") return "Location";
+    return column;
+  };
   // const [showExportSubmenu, setShowExportSubmenu] = useState(false);
   const exportSubmenuRef = useRef(null);
   const exportSubmenuTimeoutRef = useRef(null);
@@ -2085,7 +2102,21 @@ export default function Bills() {
                   >
                     <FileText size={16} strokeWidth={2} />
                   </button>
+                  <button
+                    className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md cursor-pointer flex items-center justify-center"
+                    onClick={() => window.print()}
+                    title="Print"
+                  >
+                    <Printer size={16} strokeWidth={2} />
+                  </button>
                 </div>
+                <button
+                  className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md cursor-pointer flex items-center gap-1"
+                  onClick={handleLinkToExistingPurchaseOrder}
+                >
+                  <Link2 size={16} strokeWidth={2} />
+                  Link to existing Purchase Order
+                </button>
                 <button
                   onClick={() => {
                     if (selectedItems.length === 0) {
@@ -2173,6 +2204,7 @@ export default function Bills() {
                       type="button"
                       aria-label="Filter bills"
                       className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-sm text-[#156372] hover:bg-teal-50"
+                      onClick={() => setShowCustomViewModal(true)}
                     >
                       <SlidersHorizontal size={14} />
                     </button>
@@ -2184,110 +2216,15 @@ export default function Bills() {
                     />
                   </div>
                 </th>
-                <th
-                  style={{
-                    padding: "12px 16px",
-                    textAlign: "left",
-                    fontSize: "12px",
-                    fontWeight: "600",
-                    color: "#6b7280",
-                    textTransform: "uppercase",
-                    borderBottom: "1px solid #e5e7eb",
-                  }}
-                >
-                  DATE
-                </th>
-                <th
-                  style={{
-                    padding: "12px 16px",
-                    textAlign: "left",
-                    fontSize: "12px",
-                    fontWeight: "600",
-                    color: "#6b7280",
-                    textTransform: "uppercase",
-                    borderBottom: "1px solid #e5e7eb",
-                  }}
-                >
-                  BILL#
-                </th>
-                <th
-                  style={{
-                    padding: "12px 16px",
-                    textAlign: "left",
-                    fontSize: "12px",
-                    fontWeight: "600",
-                    color: "#6b7280",
-                    textTransform: "uppercase",
-                    borderBottom: "1px solid #e5e7eb",
-                  }}
-                >
-                  REFERENCE NUMBER
-                </th>
-                <th
-                  style={{
-                    padding: "12px 16px",
-                    textAlign: "left",
-                    fontSize: "12px",
-                    fontWeight: "600",
-                    color: "#6b7280",
-                    textTransform: "uppercase",
-                    borderBottom: "1px solid #e5e7eb",
-                  }}
-                >
-                  VENDOR NAME
-                </th>
-                <th
-                  style={{
-                    padding: "12px 16px",
-                    textAlign: "left",
-                    fontSize: "12px",
-                    fontWeight: "600",
-                    color: "#6b7280",
-                    textTransform: "uppercase",
-                    borderBottom: "1px solid #e5e7eb",
-                  }}
-                >
-                  STATUS
-                </th>
-                <th
-                  style={{
-                    padding: "12px 16px",
-                    textAlign: "left",
-                    fontSize: "12px",
-                    fontWeight: "600",
-                    color: "#6b7280",
-                    textTransform: "uppercase",
-                    borderBottom: "1px solid #e5e7eb",
-                  }}
-                >
-                  DUE DATE
-                </th>
-                <th
-                  style={{
-                    padding: "12px 16px",
-                    textAlign: "left",
-                    fontSize: "12px",
-                    fontWeight: "600",
-                    color: "#6b7280",
-                    textTransform: "uppercase",
-                    borderBottom: "1px solid #e5e7eb",
-                  }}
-                >
-                  AMOUNT
-                </th>
-                <th
-                  style={{
-                    padding: "12px 16px",
-                    textAlign: "left",
-                    fontSize: "12px",
-                    fontWeight: "600",
-                    color: "#6b7280",
-                    textTransform: "uppercase",
-                    borderBottom: "1px solid #e5e7eb",
-                  }}
-                >
-                  BALANCE DUE
-                </th>
+                {visibleBillColumns.includes("Date") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>DATE</th>}
+                {visibleBillColumns.includes("Bill#") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>BILL#</th>}
+                {visibleBillColumns.includes("Reference Number") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>REFERENCE NUMBER</th>}
+                {visibleBillColumns.includes("Vendor Name") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>VENDOR NAME</th>}
+                {visibleBillColumns.includes("Customer Name") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>CUSTOMER NAME</th>}
+                {visibleBillColumns.includes("Status") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>STATUS</th>}
+                {visibleBillColumns.includes("Due Date") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>DUE DATE</th>}
+                {visibleBillColumns.includes("Amount") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>AMOUNT</th>}
+                {visibleBillColumns.includes("Balance Due") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>BALANCE DUE</th>}
                 <th
                   style={{
                     padding: "12px 16px",
@@ -2324,30 +2261,15 @@ export default function Bills() {
                     <td className="px-4 py-3 text-sm text-gray-900">
                       <div className="skeleton-checkbox"></div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      <div className="skeleton-cell" style={{ width: "80px" }}></div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      <div className="skeleton-cell" style={{ width: "90px" }}></div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      <div className="skeleton-cell" style={{ width: "80px" }}></div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      <div className="skeleton-cell" style={{ width: "120px" }}></div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      <div className="skeleton-cell" style={{ width: "70px" }}></div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      <div className="skeleton-cell" style={{ width: "80px" }}></div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      <div className="skeleton-cell" style={{ width: "70px" }}></div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      <div className="skeleton-cell" style={{ width: "70px" }}></div>
-                    </td>
+                    {visibleBillColumns.includes("Date") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "80px" }}></div></td>}
+                    {visibleBillColumns.includes("Bill#") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "90px" }}></div></td>}
+                    {visibleBillColumns.includes("Reference Number") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "80px" }}></div></td>}
+                    {visibleBillColumns.includes("Vendor Name") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "120px" }}></div></td>}
+                    {visibleBillColumns.includes("Customer Name") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "120px" }}></div></td>}
+                    {visibleBillColumns.includes("Status") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "70px" }}></div></td>}
+                    {visibleBillColumns.includes("Due Date") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "80px" }}></div></td>}
+                    {visibleBillColumns.includes("Amount") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "70px" }}></div></td>}
+                    {visibleBillColumns.includes("Balance Due") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "70px" }}></div></td>}
                     <td className="px-4 py-3 text-sm text-gray-900">
                       {/* Empty cell to match Search icon header column */}
                     </td>
@@ -2370,32 +2292,15 @@ export default function Bills() {
                           className="w-4 h-4 cursor-pointer accent-blue-600"
                         />
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
-                        {formatDate(bill.date)}
-                      </td>
-                      <td className="px-4 py-3 text-sm font-medium text-sky-700">
-                        {bill.billNumber || ""}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
-                        {bill.referenceNumber || ""}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
-                        {bill.vendorName || (bill.vendor && (bill.vendor.name || bill.vendor.displayName)) || ""}
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusDisplay.color}`}>
-                          {statusDisplay.text}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
-                        {formatDate(bill.dueDate)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
-                        {displayCurrencySymbol} {parseFloat(bill.total || 0).toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
-                        {displayCurrencySymbol} {parseFloat(bill.balance || 0).toFixed(2)}
-                      </td>
+                      {visibleBillColumns.includes("Date") && <td className="px-4 py-3 text-sm text-gray-900">{formatDate(bill.date)}</td>}
+                      {visibleBillColumns.includes("Bill#") && <td className="px-4 py-3 text-sm font-medium text-sky-700">{bill.billNumber || ""}</td>}
+                      {visibleBillColumns.includes("Reference Number") && <td className="px-4 py-3 text-sm text-gray-900">{bill.referenceNumber || ""}</td>}
+                      {visibleBillColumns.includes("Vendor Name") && <td className="px-4 py-3 text-sm text-gray-900">{bill.vendorName || (bill.vendor && (bill.vendor.name || bill.vendor.displayName)) || ""}</td>}
+                      {visibleBillColumns.includes("Customer Name") && <td className="px-4 py-3 text-sm text-gray-900">{bill.customerName || bill.customer?.name || ""}</td>}
+                      {visibleBillColumns.includes("Status") && <td className="px-4 py-3 text-sm"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusDisplay.color}`}>{statusDisplay.text}</span></td>}
+                      {visibleBillColumns.includes("Due Date") && <td className="px-4 py-3 text-sm text-gray-900">{formatDate(bill.dueDate)}</td>}
+                      {visibleBillColumns.includes("Amount") && <td className="px-4 py-3 text-sm text-gray-900">{displayCurrencySymbol} {parseFloat(bill.total || 0).toFixed(2)}</td>}
+                      {visibleBillColumns.includes("Balance Due") && <td className="px-4 py-3 text-sm text-gray-900">{displayCurrencySymbol} {parseFloat(bill.balance || 0).toFixed(2)}</td>}
                       <td className="px-4 py-3 text-sm text-gray-900">
                         {/* Empty cell to match Search icon header column */}
                       </td>
@@ -2405,7 +2310,7 @@ export default function Bills() {
               )}
               {sortedBills.length === 0 && (
                 <tr>
-                  <td colSpan="10" style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>
+                  <td colSpan={1 + visibleBillColumns.filter(Boolean).length} style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>
                     No bills found
                   </td>
                 </tr>
@@ -2458,6 +2363,11 @@ export default function Bills() {
           onClose={() => setShowCustomViewModal(false)}
           onSave={(customView) => {
             console.log("Custom view saved:", customView);
+            const baseColumns = ["Date", "Location", "Bill#", "Reference Number"];
+            const selectedColumns = Array.isArray(customView.selectedColumns) ? customView.selectedColumns : [];
+            const nextColumns = [...baseColumns, ...selectedColumns.map(mapCustomColumnToTableColumn)];
+            const uniqueColumns = [...new Set(nextColumns)];
+            setVisibleBillColumns(uniqueColumns);
             setShowCustomViewModal(false);
           }}
         />
@@ -3361,9 +3271,9 @@ function NewCustomViewModal({ onClose, onSave }) {
   };
 
   const moveColumnToSelected = (column) => {
+    if (formData.selectedColumns.includes(column)) return;
     setFormData((prev) => ({
       ...prev,
-      availableColumns: prev.availableColumns.filter((c) => c !== column),
       selectedColumns: [...prev.selectedColumns, column],
     }));
   };
@@ -3377,8 +3287,16 @@ function NewCustomViewModal({ onClose, onSave }) {
     setFormData((prev) => ({
       ...prev,
       selectedColumns: prev.selectedColumns.filter((c) => c !== column),
-      availableColumns: [...prev.availableColumns, column],
     }));
+  };
+
+  const toggleColumn = (column) => {
+    const isSelected = formData.selectedColumns.includes(column);
+    if (isSelected) {
+      moveColumnToAvailable(column);
+    } else {
+      moveColumnToSelected(column);
+    }
   };
 
   const handleSubmit = (e) => {
@@ -3422,7 +3340,8 @@ function NewCustomViewModal({ onClose, onSave }) {
     "is not empty",
   ];
 
-  const filteredAvailableColumns = formData.availableColumns.filter((col) =>
+  const allColumns = [...new Set([...fieldOptions, ...formData.availableColumns, ...formData.selectedColumns])];
+  const filteredAvailableColumns = allColumns.filter((col) =>
     col.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -3435,47 +3354,48 @@ function NewCustomViewModal({ onClose, onSave }) {
       bottom: 0,
       backgroundColor: "rgba(0, 0, 0, 0.5)",
       display: "flex",
-      alignItems: "center",
+      alignItems: "flex-start",
       justifyContent: "center",
       zIndex: 1000,
+      paddingTop: "24px",
     },
     modal: {
       backgroundColor: "#ffffff",
       borderRadius: "8px",
-      width: "90%",
-      maxWidth: "800px",
-      maxHeight: "90vh",
-      overflow: "auto",
+      width: "420px",
+      maxWidth: "84vw",
+      maxHeight: "82vh",
+      overflow: "hidden",
       boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
     },
     header: {
-      padding: "20px 24px",
+      padding: "14px 18px",
       borderBottom: "1px solid #e5e7eb",
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
     },
     title: {
-      fontSize: "18px",
-      fontWeight: "600",
-      color: "#111827",
+      fontSize: "17px",
+      fontWeight: "500",
+      color: "#374151",
       margin: 0,
     },
     close: {
       background: "none",
       border: "none",
       cursor: "pointer",
-      padding: "4px",
+      padding: "2px 4px",
       color: "#6b7280",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
     },
     body: {
-      padding: "24px",
+      padding: "12px 16px 14px",
     },
     section: {
-      marginBottom: "24px",
+      marginBottom: "16px",
     },
     nameRow: {
       display: "flex",
@@ -3577,9 +3497,10 @@ function NewCustomViewModal({ onClose, onSave }) {
     columnList: {
       display: "flex",
       flexDirection: "column",
-      gap: "4px",
-      maxHeight: "200px",
+      gap: "2px",
+      maxHeight: "calc(82vh - 170px)",
       overflowY: "auto",
+      paddingRight: "4px",
     },
     columnItem: {
       padding: "6px 8px",
@@ -3590,6 +3511,23 @@ function NewCustomViewModal({ onClose, onSave }) {
       border: "none",
       background: "none",
       textAlign: "left",
+    },
+    columnRow: {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      width: "100%",
+      padding: "8px 10px",
+      borderRadius: "6px",
+      border: "1px solid transparent",
+      transition: "background-color 0.15s ease, border-color 0.15s ease",
+    },
+    columnCheckbox: {
+      width: "14px",
+      height: "14px",
+      accentColor: "#156372",
+      cursor: "pointer",
+      flexShrink: 0,
     },
     footer: {
       padding: "20px 24px",
@@ -3620,389 +3558,62 @@ function NewCustomViewModal({ onClose, onSave }) {
     <div style={modalStyles.overlay} onClick={onClose}>
       <div style={modalStyles.modal} onClick={(e) => e.stopPropagation()}>
         <div style={modalStyles.header}>
-          <h2 style={modalStyles.title}>New Custom View</h2>
+          <h2 style={modalStyles.title}>Customize Columns</h2>
           <button onClick={onClose} style={modalStyles.close}>
             <X size={24} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} style={modalStyles.body}>
-          {/* Name Section */}
-          <div style={modalStyles.section}>
-            <div style={modalStyles.nameRow}>
-              <div style={{ ...modalStyles.formGroup, ...modalStyles.nameInput }}>
-                <label style={modalStyles.label}>
-                  Name <span style={{ color: "#156372" }}>*</span>
-                </label>
-                <input
-                  required
-                  name="name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  style={{ ...modalStyles.input, borderColor: "#156372", borderWidth: "2px" }}
-                />
-              </div>
-              <div style={{ ...modalStyles.favoriteCheckbox, marginTop: "24px" }}>
-                <Star size={16} style={{ color: formData.markAsFavorite ? "#fbbf24" : "#9ca3af", flexShrink: 0 }} />
-                <label htmlFor="favorite" style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "14px", color: "#374151" }}>
+          <div style={{ position: "relative", marginBottom: "12px" }}>
+            <Search size={16} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
+            <input
+              type="text"
+              placeholder="Search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ ...modalStyles.searchInput, paddingLeft: "36px", marginBottom: 0 }}
+            />
+          </div>
+
+          <div style={modalStyles.columnList}>
+            {filteredAvailableColumns.map((column) => {
+              const isSelected = formData.selectedColumns.includes(column);
+              const isRequired = ["Bill Date", "Bill#", "Vendor Name", "Bill Status", "Bill Amount"].includes(column);
+              return (
+                <button
+                  key={column}
+                  type="button"
+                  onClick={() => toggleColumn(column)}
+                  style={{
+                    ...modalStyles.columnRow,
+                    ...modalStyles.columnItem,
+                    justifyContent: "flex-start",
+                    backgroundColor: isSelected ? "#f8fafc" : "#ffffff",
+                    borderColor: isSelected ? "#e5e7eb" : "transparent",
+                  }}
+                >
+                  <GripVertical size={14} style={{ color: "#9ca3af", flexShrink: 0 }} />
                   <input
                     type="checkbox"
-                    name="markAsFavorite"
-                    checked={formData.markAsFavorite}
-                    onChange={handleChange}
-                    id="favorite"
-                    style={{ cursor: "pointer" }}
+                    checked={isSelected}
+                    onChange={() => toggleColumn(column)}
+                    disabled={isRequired}
+                    onClick={(e) => e.stopPropagation()}
+                    style={modalStyles.columnCheckbox}
                   />
-                  Mark as Favorite
-                </label>
-              </div>
-            </div>
-          </div>
-
-          {/* Define the criteria Section */}
-          <div style={modalStyles.section}>
-            <h3 style={modalStyles.sectionTitle}>Define the criteria (if any)</h3>
-            <div style={modalStyles.criteriaContainer}>
-              {formData.criteria.map((criterion, index) => (
-                <div key={criterion.id} style={{ ...modalStyles.criterionRow, alignItems: "center" }}>
-                  <span style={{ fontSize: "14px", color: "#374151", minWidth: "20px" }}>{index + 1}</span>
-                  <select
-                    value={criterion.field}
-                    onChange={(e) => handleCriterionChange(criterion.id, "field", e.target.value)}
-                    style={modalStyles.criterionSelect}
-                  >
-                    <option value="">Select a field</option>
-                    {fieldOptions.map((field) => (
-                      <option key={field} value={field}>
-                        {field}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={criterion.comparator}
-                    onChange={(e) => handleCriterionChange(criterion.id, "comparator", e.target.value)}
-                    style={modalStyles.criterionSelect}
-                    disabled={!criterion.field}
-                  >
-                    <option value="">Select a comparator</option>
-                    {comparatorOptions.map((comp) => (
-                      <option key={comp} value={comp}>
-                        {comp}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    value={criterion.value}
-                    onChange={(e) => handleCriterionChange(criterion.id, "value", e.target.value)}
-                    style={modalStyles.criterionSelect}
-                    placeholder="Value"
-                    disabled={!criterion.comparator || ["is empty", "is not empty"].includes(criterion.comparator)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeCriterion(criterion.id)}
-                    style={modalStyles.removeButton}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              ))}
-              <button type="button" onClick={addCriterion} style={modalStyles.addButton}>
-                <Plus size={16} />
-                Add Criterion
-              </button>
-            </div>
-          </div>
-
-          {/* Columns Preference Section */}
-          <div style={modalStyles.section}>
-            <h3 style={modalStyles.sectionTitle}>Columns Preference:</h3>
-            <div style={modalStyles.columnsContainer}>
-              <div style={modalStyles.columnSection}>
-                <div style={{ ...modalStyles.label, marginBottom: "8px" }}>AVAILABLE COLUMNS</div>
-                <div style={{ position: "relative", marginBottom: "8px" }}>
-                  <Search size={16} style={{ position: "absolute", left: "8px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
-                  <input
-                    type="text"
-                    placeholder="Search"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    style={{ ...modalStyles.searchInput, paddingLeft: "32px" }}
-                  />
-                </div>
-                <div style={modalStyles.columnList}>
-                  {filteredAvailableColumns.map((column) => (
-                    <button
-                      key={column}
-                      type="button"
-                      onClick={() => moveColumnToSelected(column)}
-                      style={{ ...modalStyles.columnItem, display: "flex", alignItems: "center", gap: "8px" }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = "#f9fafb";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = "transparent";
-                      }}
-                    >
-                      <GripVertical size={16} style={{ color: "#9ca3af", flexShrink: 0 }} />
-                      <span>{column}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div style={modalStyles.columnSection}>
-                <div style={{ ...modalStyles.label, marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <CheckCircle size={16} style={{ color: "#10b981" }} />
-                  SELECTED COLUMNS
-                </div>
-                <div style={modalStyles.columnList}>
-                  {formData.selectedColumns.map((column) => {
-                    const isRequired = ["Bill Date", "Bill#", "Vendor Name", "Bill Status", "Bill Amount"].includes(column);
-                    return (
-                      <button
-                        key={column}
-                        type="button"
-                        onClick={() => {
-                          if (!isRequired) {
-                            moveColumnToAvailable(column);
-                          }
-                        }}
-                        style={{
-                          ...modalStyles.columnItem,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          cursor: isRequired ? "default" : "pointer"
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isRequired) {
-                            e.currentTarget.style.backgroundColor = "#f9fafb";
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                        }}
-                      >
-                        <GripVertical size={16} style={{ color: "#9ca3af", flexShrink: 0 }} />
-                        <span>{column}{isRequired ? "*" : ""}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Visibility Preference Section */}
-          <div style={modalStyles.section}>
-            <div style={modalStyles.formGroup}>
-              <label style={{ ...modalStyles.label, marginBottom: "4px" }}>Visibility Preference</label>
-              <label style={{ fontSize: "12px", color: "#6b7280", marginBottom: "8px", display: "block" }}>Share With</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", padding: "8px", borderRadius: "6px", border: formData.visibility === "Only Me" ? "1px solid #156372" : "1px solid #e5e7eb" }}>
-                  <input
-                    type="radio"
-                    name="visibility"
-                    value="Only Me"
-                    checked={formData.visibility === "Only Me"}
-                    onChange={handleChange}
-                    style={{ cursor: "pointer" }}
-                  />
-                  <Lock size={16} style={{ color: "#6b7280" }} />
-                  <span style={{ fontSize: "14px", color: "#374151" }}>Only Me</span>
-                </label>
-                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", padding: "8px", borderRadius: "6px", border: formData.visibility === "Only Selected Users & Roles" ? "1px solid #156372" : "1px solid #e5e7eb" }}>
-                  <input
-                    type="radio"
-                    name="visibility"
-                    value="Only Selected Users & Roles"
-                    checked={formData.visibility === "Only Selected Users & Roles"}
-                    onChange={handleChange}
-                    style={{ cursor: "pointer" }}
-                  />
-                  <User size={16} style={{ color: "#6b7280" }} />
-                  <span style={{ fontSize: "14px", color: "#374151" }}>Only Selected Users & Roles</span>
-                </label>
-                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", padding: "8px", borderRadius: "6px", border: formData.visibility === "Everyone" ? "1px solid #156372" : "1px solid #e5e7eb" }}>
-                  <input
-                    type="radio"
-                    name="visibility"
-                    value="Everyone"
-                    checked={formData.visibility === "Everyone"}
-                    onChange={handleChange}
-                    style={{ cursor: "pointer" }}
-                  />
-                  <Folder size={16} style={{ color: "#6b7280" }} />
-                  <span style={{ fontSize: "14px", color: "#374151" }}>Everyone</span>
-                </label>
-              </div>
-
-              {/* User Selection Interface - Shows when "Only Selected Users & Roles" is selected */}
-              {formData.visibility === "Only Selected Users & Roles" && (
-                <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <div style={{ position: "relative", flex: 1 }}>
-                      <select
-                        name="userType"
-                        value={formData.userType}
-                        onChange={handleChange}
-                        style={{
-                          width: "100%",
-                          padding: "8px 32px 8px 12px",
-                          fontSize: "14px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "6px",
-                          outline: "none",
-                          backgroundColor: "#ffffff",
-                          cursor: "pointer",
-                          appearance: "none",
-                        }}
-                      >
-                        <option value="Users">Users</option>
-                        <option value="Roles">Roles</option>
-                      </select>
-                      <ChevronDown
-                        size={16}
-                        style={{
-                          position: "absolute",
-                          right: "12px",
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          pointerEvents: "none",
-                          color: "#6b7280"
-                        }}
-                      />
-                    </div>
-                    <input
-                      type="text"
-                      name="selectUsers"
-                      value={formData.selectUsers}
-                      onChange={handleChange}
-                      placeholder="Select Users"
-                      style={{
-                        flex: 1,
-                        padding: "8px 12px",
-                        fontSize: "14px",
-                        border: "1px solid #d1d5db",
-                        borderRadius: "6px",
-                        outline: "none",
-                      }}
-                    />
-                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                      <button
-                        type="button"
-                        style={{
-                          padding: "4px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "4px",
-                          backgroundColor: "#ffffff",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                        title="Move up"
-                      >
-                        <ArrowUp size={14} style={{ color: "#6b7280" }} />
-                      </button>
-                      <button
-                        type="button"
-                        style={{
-                          padding: "4px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "4px",
-                          backgroundColor: "#ffffff",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                        title="Move down"
-                      >
-                        <ArrowDown size={14} style={{ color: "#6b7280" }} />
-                      </button>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                      <button
-                        type="button"
-                        style={{
-                          padding: "4px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "4px",
-                          backgroundColor: "#ffffff",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                        title="Move left"
-                      >
-                        <ArrowLeft size={14} style={{ color: "#6b7280" }} />
-                      </button>
-                      <button
-                        type="button"
-                        style={{
-                          padding: "4px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "4px",
-                          backgroundColor: "#ffffff",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                        title="Move right"
-                      >
-                        <ArrowRight size={14} style={{ color: "#6b7280" }} />
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (formData.selectUsers.trim()) {
-                          setFormData((prev) => ({
-                            ...prev,
-                            selectedUsers: [...prev.selectedUsers, prev.selectUsers],
-                            selectUsers: "",
-                          }));
-                        }
-                      }}
-                      style={{
-                        padding: "8px 12px",
-                        fontSize: "14px",
-                        color: "#156372",
-                        backgroundColor: "#ffffff",
-                        border: "1px solid #156372",
-                        borderRadius: "6px",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "4px",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      <Plus size={16} />
-                      Add Users
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+                  <span style={{ fontSize: "13px", color: "#4b5563" }}>{column}</span>
+                  {isRequired && <Lock size={12} style={{ color: "#9ca3af", marginLeft: "auto" }} />}
+                </button>
+              );
+            })}
           </div>
 
           <div style={modalStyles.footer}>
-            <button
-              type="button"
-              onClick={onClose}
-              style={{ ...modalStyles.footerButton, ...modalStyles.cancelButton }}
-            >
+            <button type="button" onClick={onClose} style={{ ...modalStyles.footerButton, ...modalStyles.cancelButton }}>
               Cancel
             </button>
-            <button
-              type="submit"
-              style={{ ...modalStyles.footerButton, ...modalStyles.saveButton }}
-            >
+            <button type="submit" style={{ ...modalStyles.footerButton, ...modalStyles.saveButton }}>
               Save
             </button>
           </div>
@@ -4011,5 +3622,6 @@ function NewCustomViewModal({ onClose, onSave }) {
     </div>
   );
 }
+
 
 

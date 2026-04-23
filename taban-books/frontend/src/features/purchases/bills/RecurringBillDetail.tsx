@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
   ChevronDown,
   ChevronUp,
@@ -20,11 +20,21 @@ import { useCurrency } from "../../../hooks/useCurrency";
 export default function RecurringBillDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { code: baseCurrencyCode, symbol: baseCurrencySymbol } = useCurrency();
   const resolvedBaseCurrency = baseCurrencyCode || "USD";
   const resolvedBaseCurrencySymbol = baseCurrencySymbol || resolvedBaseCurrency;
-  const [recurringBill, setRecurringBill] = useState(null);
+  
+  // Use location state if available for instant loading
+  const [recurringBill, setRecurringBill] = useState(() => {
+    if (location.state?.bill && (location.state.bill.id === id || location.state.bill._id === id)) {
+      return location.state.bill;
+    }
+    return null;
+  });
+
   const [recurringBills, setRecurringBills] = useState([]);
+  const [isLoading, setIsLoading] = useState(!recurringBill);
   const [activeTab, setActiveTab] = useState("Overview");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -34,45 +44,61 @@ export default function RecurringBillDetail() {
   const moreMenuRef = useRef(null);
 
   useEffect(() => {
-    const loadData = async () => {
+    const loadSidebarData = async () => {
       try {
-        // Load list for sidebar
         const listResponse = await recurringBillsAPI.getAll();
         if (listResponse && (listResponse.code === 0 || listResponse.success)) {
-          setRecurringBills(listResponse.recurring_bills || listResponse.data || []);
-        }
-
-        // Load specific bill
-        if (id) {
-          const detailResponse = await recurringBillsAPI.getById(id);
-          if (detailResponse && (detailResponse.code === 0 || detailResponse.success)) {
-            let bill = detailResponse.recurring_bill || detailResponse.data;
-            // Map fields if necessary (backend uses camelCase usually but check model)
-            // Model: vendor_name, profile_name, repeat_every, etc.
-            // Frontend uses: vendorName, profileName, etc.
-            // We need to map if names differ.
-            // Let's assume we map backend properties to frontend state if needed.
-            // Or keep backend props and update UI.
-            // Let's map to frontend props to minimize UI changes.
-            bill = {
-              ...bill,
-              vendorName: bill.vendor_name || bill.vendorName,
-              profileName: bill.profile_name || bill.profileName,
-              repeatEvery: bill.repeat_every || bill.repeatEvery,
-              startOn: bill.start_date || bill.startOn,
-              endsOn: bill.end_date || bill.endsOn,
-              amount: bill.total || bill.amount,
-              status: bill.status ? bill.status.toUpperCase() : "ACTIVE",
-              nextBillDate: bill.next_bill_date ? new Date(bill.next_bill_date).toLocaleDateString() : (bill.nextBillDate || '-'),
-            };
-            setRecurringBill(bill);
-          }
+          const loadedBills = listResponse.recurring_bills || listResponse.data || [];
+          setRecurringBills(loadedBills.map(b => ({
+            ...b,
+            id: b.id || b._id,
+            vendorName: b.vendor_name || b.vendorName,
+            profileName: b.profile_name || b.profileName,
+            amount: b.total || b.amount,
+            frequency: b.repeat_every || b.repeatEvery,
+            nextBillDate: b.next_bill_date ? new Date(b.next_bill_date).toLocaleDateString() : (b.nextBillDate || '-')
+          })));
         }
       } catch (error) {
-        console.error("Error loading data:", error);
+        console.error("Error loading sidebar data:", error);
       }
     };
-    loadData();
+    loadSidebarData();
+
+    const handleUpdate = () => loadSidebarData();
+    window.addEventListener("recurringBillsUpdated", handleUpdate);
+    return () => window.removeEventListener("recurringBillsUpdated", handleUpdate);
+  }, []);
+
+  useEffect(() => {
+    const loadDetailData = async () => {
+      if (!id) return;
+      // Only show spinner if we don't already have some data
+      if (!recurringBill) setIsLoading(true);
+      try {
+        const detailResponse = await recurringBillsAPI.getById(id);
+        if (detailResponse && (detailResponse.code === 0 || detailResponse.success)) {
+          let bill = detailResponse.recurring_bill || detailResponse.data;
+          bill = {
+            ...bill,
+            vendorName: bill.vendor_name || bill.vendorName,
+            profileName: bill.profile_name || bill.profileName,
+            repeatEvery: bill.repeat_every || bill.repeatEvery,
+            startOn: bill.start_date || bill.startOn,
+            endsOn: bill.end_date || bill.endsOn,
+            amount: bill.total || bill.amount,
+            status: bill.status ? bill.status.toUpperCase() : "ACTIVE",
+            nextBillDate: bill.next_bill_date ? new Date(bill.next_bill_date).toLocaleDateString() : (bill.nextBillDate || '-'),
+          };
+          setRecurringBill(bill);
+        }
+      } catch (error) {
+        console.error("Error loading detail data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadDetailData();
   }, [id]);
 
   useEffect(() => {
@@ -260,6 +286,37 @@ export default function RecurringBillDetail() {
       toast.error(error?.message || "Failed to clone recurring bill");
     }
   };
+
+  if (isLoading) {
+    return (
+      <div style={{ 
+        padding: "24px", 
+        minHeight: "100vh", 
+        backgroundColor: "#ffffff", 
+        display: "flex", 
+        flexDirection: "column", 
+        alignItems: "center", 
+        justifyContent: "center" 
+      }}>
+        <div style={{
+          width: "40px",
+          height: "40px",
+          border: "3px solid #f3f4f6",
+          borderTop: "3px solid #156372",
+          borderRadius: "50%",
+          animation: "spin 1s linear infinite",
+          marginBottom: "16px"
+        }} />
+        <p style={{ fontSize: "14px", color: "#6b7280" }}>Loading recurring bill details...</p>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   if (!recurringBill) {
     return (
@@ -463,7 +520,7 @@ export default function RecurringBillDetail() {
       justifyContent: "center",
     },
     content: {
-      padding: "24px",
+      padding: "0",
       flex: 1,
       overflowY: "auto",
       overflowX: "hidden",
@@ -472,12 +529,13 @@ export default function RecurringBillDetail() {
     },
     tabs: {
       display: "flex",
-      gap: "8px",
+      gap: "24px",
       borderBottom: "1px solid #e5e7eb",
-      marginBottom: "24px",
+      padding: "0 24px",
+      paddingTop: "16px",
     },
     tab: {
-      padding: "12px 16px",
+      padding: "12px 0",
       fontSize: "14px",
       fontWeight: "500",
       color: "#6b7280",
@@ -487,8 +545,8 @@ export default function RecurringBillDetail() {
       cursor: "pointer",
     },
     tabActive: {
-      color: "#156372",
-      borderBottom: "2px solid #156372",
+      color: "#111827",
+      borderBottom: "2px solid #2563eb",
     },
     section: {
       marginBottom: "32px",
@@ -725,73 +783,7 @@ export default function RecurringBillDetail() {
             </button>
           </div>
         </div>
-        {/* Selected Bill Details in Sidebar */}
-        <div style={{ padding: "24px", borderBottom: "1px solid #e5e7eb" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px" }}>
-            <div style={{
-              width: "40px",
-              height: "40px",
-              borderRadius: "50%",
-              backgroundColor: "#eff6ff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#156372",
-            }}>
-              <User size={20} />
-            </div>
-            <div style={{ fontSize: "16px", fontWeight: "600", color: "#156372" }}>
-              {recurringBill.vendorName}
-            </div>
-          </div>
-
-          <div style={{ marginBottom: "16px" }}>
-            <h3 style={{
-              fontSize: "12px",
-              fontWeight: "600",
-              color: "#6b7280",
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-              marginBottom: "16px",
-            }}>
-              DETAILS
-            </h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <div>
-                <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
-                  Profile Status:
-                </div>
-                <div>
-                  <span style={styles.statusTag}>{recurringBill.status}</span>
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
-                  Start Date:
-                </div>
-                <div style={{ fontSize: "14px", color: "#111827" }}>
-                  {recurringBill.lastBillDate || recurringBill.startOn || "-"}
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
-                  End Date:
-                </div>
-                <div style={{ fontSize: "14px", color: "#111827" }}>
-                  {recurringBill.neverExpires ? "Never Expires" : recurringBill.endsOn || "-"}
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
-                  Payment Terms:
-                </div>
-                <div style={{ fontSize: "14px", color: "#111827" }}>
-                  {recurringBill.paymentTerms || "-"}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* Selected Bill Details in Sidebar removed as per new UI */}
 
         <div style={styles.sidebarList}>
           {recurringBills.map((bill) => (
@@ -976,222 +968,127 @@ export default function RecurringBillDetail() {
           </div>
 
           {activeTab === "Overview" && (
-            <>
-              {/* Two Column Layout */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginTop: "24px" }}>
-                {/* Left Column - Details */}
-                <div style={styles.section}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
-                    <div style={{
-                      width: "24px",
-                      height: "24px",
-                      borderRadius: "50%",
-                      backgroundColor: "#e5e7eb",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "12px",
-                      fontWeight: "600",
-                      color: "#6b7280",
-                      flexShrink: 0,
-                    }}>
-                      {recurringBill.vendorName ? recurringBill.vendorName.charAt(0).toUpperCase() : "?"}
-                    </div>
-                    <h3 style={{
-                      fontSize: "12px",
-                      fontWeight: "600",
-                      color: "#6b7280",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.5px",
-                      margin: 0,
-                    }}>
-                      DETAILS
-                    </h3>
+            <div style={{ display: "grid", gridTemplateColumns: "350px 1fr", minHeight: "calc(100% - 60px)" }}>
+              {/* Left Column - Details */}
+              <div style={{ padding: "32px", borderRight: "1px solid #e5e7eb", backgroundColor: "#ffffff" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "40px" }}>
+                  <div style={{ 
+                    width: "48px", height: "48px", borderRadius: "50%", border: "1px solid #e5e7eb", 
+                    display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af" 
+                  }}>
+                    <User size={24} />
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                    <div>
-                      <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
-                        Profile Status:
-                      </div>
-                      <div>
-                        <span style={styles.statusTag}>{recurringBill.status}</span>
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
-                        Start Date:
-                      </div>
-                      <div style={{ fontSize: "14px", color: "#111827" }}>
-                        {recurringBill.lastBillDate || recurringBill.startOn || "-"}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
-                        End Date:
-                      </div>
-                      <div style={{ fontSize: "14px", color: "#111827" }}>
-                        {recurringBill.neverExpires ? "Never Expires" : recurringBill.endsOn || "-"}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
-                        Payment Terms:
-                      </div>
-                      <div style={{ fontSize: "14px", color: "#111827" }}>
-                        {recurringBill.paymentTerms || "-"}
-                      </div>
-                    </div>
+                  <div style={{ fontSize: "15px", fontWeight: "500", color: "#2563eb" }}>
+                    {recurringBill.vendorName}
                   </div>
                 </div>
 
-                {/* Right Column - Financials */}
-                <div style={styles.section}>
-                  <div style={{ marginBottom: "16px" }}>
-                    <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
-                      Bill Amount
-                    </div>
-                    <div style={{ fontSize: "16px", fontWeight: "600", color: "#111827" }}>
-                      {resolvedBaseCurrencySymbol} {parseFloat(recurringBill.amount || 0).toFixed(2)}
-                    </div>
-                  </div>
-                  <div style={{ marginBottom: "16px" }}>
-                    <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
-                      Next Bill Date
-                    </div>
-                    <div style={{ fontSize: "16px", fontWeight: "600", color: "#156372" }}>
-                      {recurringBill.nextBillDate || "--"}
-                    </div>
-                  </div>
-                  <div style={{ marginBottom: "24px" }}>
-                    <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
-                      Recurring Period
-                    </div>
-                    <div style={{ fontSize: "16px", fontWeight: "600", color: "#111827" }}>
-                      {recurringBill.frequency}
-                    </div>
-                  </div>
+                <h3 style={{ fontSize: "12px", fontWeight: "600", color: "#6b7280", letterSpacing: "0.5px", marginBottom: "24px" }}>
+                  DETAILS
+                </h3>
 
-                  {/* All Child Bills Section */}
-                  <div>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        marginBottom: "16px",
-                        cursor: "pointer",
-                      }}
-                      onClick={() => setChildBillsExpanded(!childBillsExpanded)}
-                    >
-                      <h3 style={{
-                        fontSize: "12px",
-                        fontWeight: "600",
-                        color: "#6b7280",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.5px",
-                        margin: 0,
-                      }}>
-                        All Child Bills
-                      </h3>
-                      {childBillsExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", alignItems: "center" }}>
+                    <span style={{ fontSize: "13px", color: "#6b7280" }}>Profile Status:</span>
+                    <span style={{
+                      display: "inline-block", padding: "4px 10px", fontSize: "11px", fontWeight: "600",
+                      color: "#ffffff",
+                      backgroundColor: recurringBill.status.toLowerCase() === "active" ? "#10b981" : "#f59e0b",
+                      borderRadius: "4px", width: "fit-content", textTransform: "uppercase"
+                    }}>
+                      {recurringBill.status}
+                    </span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", alignItems: "center" }}>
+                    <span style={{ fontSize: "13px", color: "#6b7280" }}>Location:</span>
+                    <span style={{ fontSize: "13px", color: "#111827" }}>Head Office</span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", alignItems: "center" }}>
+                    <span style={{ fontSize: "13px", color: "#6b7280" }}>Start Date:</span>
+                    <span style={{ fontSize: "13px", color: "#111827" }}>{recurringBill.lastBillDate || recurringBill.startOn || "-"}</span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", alignItems: "center" }}>
+                    <span style={{ fontSize: "13px", color: "#6b7280" }}>End Date:</span>
+                    <span style={{ fontSize: "13px", color: "#111827" }}>{recurringBill.neverExpires ? "Never Expires" : recurringBill.endsOn || "-"}</span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", alignItems: "center" }}>
+                    <span style={{ fontSize: "13px", color: "#6b7280" }}>Payment Terms:</span>
+                    <span style={{ fontSize: "13px", color: "#111827" }}>{recurringBill.paymentTerms || "Due on Receipt"}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Child Bills Cards - Below the two columns */}
-              {childBillsExpanded && childBills.length > 0 && (
-                <div style={{ marginTop: "24px" }}>
-                  {childBills.map((bill) => {
-                    // Calculate if bill is overdue
-                    // Parse "DD Mon YYYY" format (e.g., "13 Dec 2025")
-                    let billDate;
-                    if (bill.date && bill.date.includes(' ')) {
-                      // Format: "13 Dec 2025"
-                      billDate = new Date(bill.date);
-                    } else if (bill.date && bill.date.includes('/')) {
-                      // Format: "DD/MM/YYYY"
-                      const [day, month, year] = bill.date.split('/');
-                      billDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-                    } else {
-                      billDate = new Date(bill.date);
-                    }
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    billDate.setHours(0, 0, 0, 0);
-                    const daysDiff = Math.floor((today - billDate) / (1000 * 60 * 60 * 24));
-                    const isOverdue = daysDiff > 0 && (bill.status === "OVERDUE" || bill.status !== "PAID");
+              {/* Right Column - Financials & Child Bills */}
+              <div style={{ display: "flex", flexDirection: "column", backgroundColor: "#ffffff" }}>
+                {/* Stats Row */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", padding: "24px 0", borderBottom: "1px solid #e5e7eb", margin: "0 24px" }}>
+                  <div style={{ textAlign: "center", borderRight: "1px solid #e5e7eb" }}>
+                    <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "12px" }}>Bill Amount</div>
+                    <div style={{ fontSize: "15px", fontWeight: "500", color: "#b91c1c" }}>{resolvedBaseCurrencySymbol}{parseFloat(recurringBill.amount || 0).toFixed(2)}</div>
+                  </div>
+                  <div style={{ textAlign: "center", borderRight: "1px solid #e5e7eb" }}>
+                    <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "12px" }}>Next Bill Date</div>
+                    <div style={{ fontSize: "15px", fontWeight: "500", color: "#2563eb" }}>{recurringBill.nextBillDate || "--"}</div>
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "12px" }}>Recurring Period</div>
+                    <div style={{ fontSize: "15px", fontWeight: "500", color: "#111827" }}>{recurringBill.repeatEvery || "Weekly"}</div>
+                  </div>
+                </div>
 
-                    return (
-                      <div key={bill.id} style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        padding: "16px",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "6px",
-                        backgroundColor: "#ffffff",
-                        marginBottom: "16px",
-                      }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: "16px", fontWeight: "600", color: "#111827", marginBottom: "4px" }}>
-                            {bill.vendorName}
-                          </div>
-                          <div style={{ fontSize: "14px", color: "#111827" }}>
-                            {bill.profileName}{bill.date ? `(${bill.date})` : ''}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
-                          <div style={{ fontSize: "16px", fontWeight: "600", color: "#111827" }}>
-                            {bill.amount}
-                          </div>
-                          {isOverdue ? (
-                            <>
-                              <div style={{ fontSize: "14px", color: "#156372", fontWeight: "600" }}>
-                                OVERDUE BY {daysDiff} {daysDiff === 1 ? "DAY" : "DAYS"}
-                              </div>
-                              <button
-                                style={{
-                                  padding: "6px 12px",
-                                  fontSize: "12px",
-                                  fontWeight: "500",
-                                  color: "#ffffff",
-                                  backgroundColor: "#156372",
-                                  border: "none",
-                                  borderRadius: "4px",
-                                  cursor: "pointer",
-                                  marginTop: "4px",
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.target.style.backgroundColor = "#0D4A52";
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.target.style.backgroundColor = "#156372";
-                                }}
-                              >
-                                Record Payment
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <div style={{ fontSize: "14px", color: "#111827" }}>
-                                {recurringBill.frequency}
-                              </div>
-                              <div style={{ marginTop: "4px", marginBottom: "4px" }}>
-                                <span style={styles.statusTag}>{recurringBill.status}</span>
-                              </div>
-                              <div style={{ fontSize: "14px", color: "#6b7280" }}>
-                                Next Bill on {recurringBill.nextBillDate || "--"}
-                              </div>
-                            </>
-                          )}
+                {/* Child Bills List */}
+                <div style={{ padding: "32px 24px" }}>
+                  <div 
+                    style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", marginBottom: "32px" }}
+                    onClick={() => setChildBillsExpanded(!childBillsExpanded)}
+                  >
+                    <span style={{ fontSize: "15px", color: "#374151" }}>All Child Bills</span>
+                    {childBillsExpanded ? <ChevronDown size={16} color="#2563eb" /> : <ChevronUp size={16} color="#2563eb" />}
+                  </div>
+
+                  {childBillsExpanded && childBills.map((bill, index) => (
+                    <div key={index} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "20px", borderBottom: "1px solid #f3f4f6", marginBottom: "20px" }}>
+                      <div>
+                        <div style={{ fontSize: "14px", color: "#111827", marginBottom: "8px" }}>{bill.vendorName}</div>
+                        <div style={{ fontSize: "13px", color: "#2563eb" }}>
+                          {bill.profileName} | {bill.date}
                         </div>
                       </div>
-                    );
-                  })}
+                      <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
+                        <div style={{ fontSize: "14px", fontWeight: "500", color: "#111827" }}>{bill.amount}</div>
+                        <div style={{ fontSize: "11px", color: "#3b82f6", textTransform: "uppercase", letterSpacing: "1px" }}>{bill.status === "OVERDUE" ? "OPEN" : bill.status}</div>
+                        <button 
+                          onClick={() => {
+                            navigate("/purchases/payments-made/new", {
+                              state: {
+                                billId: bill.id,
+                                billNumber: bill.profileName, // Or bill.billNumber if available
+                                vendorName: bill.vendorName,
+                                amount: bill.amount,
+                                fromBill: true
+                              }
+                            });
+                          }}
+                          style={{ 
+                            padding: "6px 16px", 
+                            backgroundColor: "#10b981", 
+                            color: "#ffffff", 
+                            fontSize: "12px", 
+                            fontWeight: "500", 
+                            border: "none", 
+                            borderRadius: "4px", 
+                            cursor: "pointer",
+                            marginTop: "4px"
+                          }}
+                        >
+                          Record Payment
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              )}
-            </>
+              </div>
+            </div>
           )}
 
           {activeTab === "Next Bill" && (

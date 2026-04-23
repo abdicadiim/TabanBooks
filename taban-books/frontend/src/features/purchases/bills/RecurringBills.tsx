@@ -10,11 +10,24 @@ import { useCurrency } from "../../../hooks/useCurrency";
 
 const RECURRING_BILLS_KEY = "recurring_bills_v1";
 
+let cachedRecurringBills = [];
+
 const getLS = (k) => {
   if (typeof window !== "undefined" && window.localStorage) {
-    return window.localStorage.getItem(k);
+    const data = window.localStorage.getItem(k);
+    try {
+      return data ? JSON.parse(data) : null;
+    } catch (e) {
+      return null;
+    }
   }
   return null;
+};
+
+const setLS = (k, v) => {
+  if (typeof window !== "undefined" && window.localStorage) {
+    window.localStorage.setItem(k, JSON.stringify(v));
+  }
 };
 
 export default function RecurringBills() {
@@ -26,12 +39,20 @@ export default function RecurringBills() {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [selectedView, setSelectedView] = useState("All");
   const [showCustomViewModal, setShowCustomViewModal] = useState(false);
-  const [recurringBills, setRecurringBills] = useState([]);
+  const [recurringBills, setRecurringBills] = useState(() => {
+    if (cachedRecurringBills.length > 0) return cachedRecurringBills;
+    const localData = getLS(RECURRING_BILLS_KEY);
+    if (Array.isArray(localData) && localData.length > 0) {
+      cachedRecurringBills = localData;
+      return localData;
+    }
+    return [];
+  });
   const [selectedBills, setSelectedBills] = useState([]);
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [notification, setNotification] = useState(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(recurringBills.length === 0);
   const [showExportSubmenu, setShowExportSubmenu] = useState(false);
   const [showExportRecurringBillsModal, setShowExportRecurringBillsModal] = useState(false);
   const [showExportCurrentViewModal, setShowExportCurrentViewModal] = useState(false);
@@ -102,7 +123,7 @@ export default function RecurringBills() {
       const response = await recurringBillsAPI.getAll();
       if (response && (response.code === 0 || response.success)) {
         const loadedBills = response.recurring_bills || response.data || [];
-        setRecurringBills(loadedBills.map(b => ({
+        const mappedBills = loadedBills.map(b => ({
           id: b.id || b._id,
           profileName: b.profile_name,
           vendorName: b.vendor_name,
@@ -113,7 +134,10 @@ export default function RecurringBills() {
           amount: b.total,
           currency: b.currency || displayCurrencyCode,
           status: b.status ? b.status.toUpperCase() : "ACTIVE"
-        })));
+        }));
+        setRecurringBills(mappedBills);
+        cachedRecurringBills = mappedBills;
+        setLS(RECURRING_BILLS_KEY, mappedBills);
       }
     } catch (error) {
       console.error("Error loading recurring bills:", error);
@@ -1612,7 +1636,7 @@ export default function RecurringBills() {
               </tr>
             </thead>
             <tbody>
-              {isRefreshing ? (
+              {isRefreshing && recurringBills.length === 0 ? (
                 // Skeleton loading rows
                 Array.from({ length: 5 }).map((_, index) => (
                   <tr key={`skeleton-${index}`} style={styles.tableRow}>
@@ -1653,7 +1677,7 @@ export default function RecurringBills() {
                     onClick={(e) => {
                       // Don't navigate if clicking on checkbox
                       if (e.target.type !== "checkbox" && !e.target.closest('input[type="checkbox"]')) {
-                        navigate(`/purchases/recurring-bills/${bill.id}`);
+                        navigate(`/purchases/recurring-bills/${bill.id}`, { state: { bill } });
                       }
                     }}
                     onMouseEnter={(e) => {
@@ -1687,7 +1711,7 @@ export default function RecurringBills() {
                         style={{ color: "#156372", cursor: "pointer" }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate(`/purchases/recurring-bills/${bill.id}`);
+                          navigate(`/purchases/recurring-bills/${bill.id}`, { state: { bill } });
                         }}
                         onMouseEnter={(e) => {
                           e.target.style.textDecoration = "none";
@@ -1759,7 +1783,8 @@ export default function RecurringBills() {
           const count = selectedBills.length;
           const updatedBills = recurringBills.filter((bill) => !selectedBills.includes(bill.id));
           setRecurringBills(updatedBills);
-          localStorage.setItem(RECURRING_BILLS_KEY, JSON.stringify(updatedBills));
+          cachedRecurringBills = updatedBills;
+          setLS(RECURRING_BILLS_KEY, updatedBills);
 
           // Show success notification
           setNotification(`The selected recurring bill${count > 1 ? "s have" : " has"} been deleted.`);
