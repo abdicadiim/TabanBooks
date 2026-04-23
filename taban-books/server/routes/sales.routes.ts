@@ -5,6 +5,7 @@
 
 import express, { Router } from "express";
 import * as salesController from "../controllers/sales.controller.js";
+import * as salesOrdersController from "../controllers/salesOrders.controller.js";
 import { protect } from "../middleware/auth.middleware.js";
 import {
   normalizeContactPersonRequest,
@@ -168,8 +169,14 @@ router.patch("/sales-invoices/:id/reminders", salesController.setInvoiceReminder
 // Legacy/Alternative Invoices routes
 router.get("/invoices", salesController.getAllInvoices);
 
-// Sales Orders stub routes
-router.get("/sales-orders", (_req, res) => res.json({ success: true, data: [] }));
+// Sales Orders routes
+router.get("/sales-orders/next-number", salesOrdersController.getNextSalesOrderNumber);
+router.get("/sales-orders", salesOrdersController.getAllSalesOrders);
+router.get("/sales-orders/:id", salesOrdersController.getSalesOrderById);
+router.post("/sales-orders", salesOrdersController.createSalesOrder);
+router.put("/sales-orders/:id", salesOrdersController.updateSalesOrder);
+router.patch("/sales-orders/:id", salesOrdersController.updateSalesOrder);
+router.delete("/sales-orders/:id", salesOrdersController.deleteSalesOrder);
 
 // Credit Note routes
 router.get("/credit-notes/next-number", salesController.getNextCreditNoteNumber);

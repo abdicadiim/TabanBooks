@@ -9,7 +9,7 @@ const CreditNotesRoutes = lazy(() => import("./CreditNotes/CreditNotesRoutes"));
 const SalesReceiptsRoutes = lazy(() => import("./SalesReceipts/SalesReceiptsRoutes"));
 const RetainerInvoiceRoutes = lazy(() => import("./RetainerInvoice/RetainerInvoiceRoutes"));
 const RecurringInvoicesRoutes = lazy(() => import("./RecurringInvoices/RecurringInvoicesRoutes"));
-const SubscriptionsRoutes = lazy(() => import("./subscriptions/SubscriptionsRoutes"));
+const SalesOrderList = lazy(() => import("./SalesOrder/SalesOrderList"));
 const NewDebitNote = lazy(() => import("./DebitNotes/NewDebitNote/NewDebitNote"));
 const PaymentsReceivedRoutes = lazy(() => import("./PaymentsReceived/PaymentsReceivedRoutes"));
 
@@ -38,9 +38,9 @@ export default function SalesRoutes() {
         <Route path="sales-receipts/*" element={<SalesReceiptsRoutes />} />
         <Route path="retainer-invoices/*" element={<RetainerInvoiceRoutes />} />
         <Route path="recurring-invoices/*" element={<RecurringInvoicesRoutes />} />
+        <Route path="sales-orders" element={<SalesOrderList />} />
         <Route path="payment-links" element={<PaymentLinksPage />} />
         <Route path="payments-received/*" element={<PaymentsReceivedRoutes />} />
-        <Route path="subscriptions/*" element={<SubscriptionsRoutes />} />
         <Route path="debit-notes/new" element={<NewDebitNote />} />
         <Route path="debit-notes/:id/edit" element={<NewDebitNote />} />
         <Route path="debit-notes/:id/email" element={<NewDebitNote />} />
