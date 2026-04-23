@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useRef, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
   X,
   Pencil,
@@ -28,10 +28,13 @@ import { useCurrency } from "../../../hooks/useCurrency";
 export default function PurchaseOrderDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { code: baseCurrencyCode, symbol: baseCurrencySymbol } = useCurrency();
   const resolvedBaseCurrency = baseCurrencyCode || "USD";
   const resolvedBaseCurrencySymbol = baseCurrencySymbol || resolvedBaseCurrency;
-  const [purchaseOrder, setPurchaseOrder] = useState(null);
+  const initialPurchaseOrder = location.state?.purchaseOrder || null;
+  const [purchaseOrder, setPurchaseOrder] = useState(initialPurchaseOrder);
+  const [isLoading, setIsLoading] = useState(!initialPurchaseOrder);
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [activeTab, setActiveTab] = useState("all");
   const [sendEmailOpen, setSendEmailOpen] = useState(false);
@@ -65,50 +68,74 @@ export default function PurchaseOrderDetail() {
   };
 
   const loadData = async () => {
+    if (!purchaseOrder) {
+      setIsLoading(true);
+    }
     try {
-      // Load organization info
-      const orgResponse = await profileAPI.get();
-      if (orgResponse && (orgResponse.success || orgResponse.data)) {
-        setOrganization(orgResponse.data || orgResponse.organization);
+      if (!id) {
+        navigate("/purchases/purchase-orders", { replace: true });
+        return;
       }
 
-      const response = await purchaseOrdersAPI.getAll();
-      if (response && (response.code === 0 || response.success)) {
-        const orders = response.data || [];
-        setPurchaseOrders(orders);
+      // 1) Load selected purchase order first for faster route transition.
+      const detailResponse = await purchaseOrdersAPI.getById(id);
+      const foundOrder = detailResponse?.data || detailResponse?.purchaseOrder || null;
 
-        const foundOrder = orders.find((o) => String(o._id || o.id) === String(id));
+      if (!foundOrder) {
+        navigate("/purchases/purchase-orders", { replace: true });
+        return;
+      }
 
-        if (foundOrder) {
-          setPurchaseOrder(foundOrder);
+      setPurchaseOrder(foundOrder);
+      setIsLoading(false);
 
-          // Load full vendor details if vendor_id exists
-          const vId = foundOrder.vendor_id || (foundOrder.vendor?._id || foundOrder.vendor);
-          if (vId && typeof vId === 'string') {
-            try {
-              const vResponse = await vendorsAPI.getById(vId);
-              const vendorData = vResponse.data || vResponse.vendor;
-              if (vendorData) {
-                setVendor(vendorData);
-              }
-            } catch (err) {
-              console.error("Error fetching vendor:", err);
-            }
-          }
-
-          // Fetch associated bills
-          try {
-            const billsResponse = await billsAPI.getAll({ purchaseOrderId: id });
-            if (billsResponse && billsResponse.success) {
-              setBills(billsResponse.data || []);
-            }
-          } catch (err) {
-            console.error('Error fetching associated bills:', err);
+      // 2) Load secondary data in background (non-blocking).
+      Promise.allSettled([
+        profileAPI.get(),
+        purchaseOrdersAPI.getAll(),
+      ]).then(([orgResult, listResult]) => {
+        if (orgResult.status === "fulfilled") {
+          const orgResponse = orgResult.value;
+          if (orgResponse && (orgResponse.success || orgResponse.data)) {
+            setOrganization(orgResponse.data || orgResponse.organization);
           }
         }
+
+        if (listResult.status === "fulfilled") {
+          const response = listResult.value;
+          if (response && (response.code === 0 || response.success)) {
+            setPurchaseOrders(response.data || []);
+          }
+        }
+      });
+
+      const vId = foundOrder.vendor_id || (foundOrder.vendor?._id || foundOrder.vendor);
+      if (vId && typeof vId === "string") {
+        vendorsAPI.getById(vId)
+          .then((vResponse) => {
+            const vendorData = vResponse.data || vResponse.vendor;
+            if (vendorData) setVendor(vendorData);
+          })
+          .catch((err) => {
+            console.error("Error fetching vendor:", err);
+          });
       }
+
+      billsAPI.getAll({ purchaseOrderId: id })
+        .then((billsResponse) => {
+          if (billsResponse && billsResponse.success) {
+            setBills(billsResponse.data || []);
+          }
+        })
+        .catch((err) => {
+          console.error("Error fetching associated bills:", err);
+        });
     } catch (error) {
       console.error("Error loading purchase order data:", error);
+      navigate("/purchases/purchase-orders", { replace: true });
+      return;
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -153,17 +180,13 @@ export default function PurchaseOrderDetail() {
     };
   }, [moreMenuOpen, pdfPrintMenuOpen, dropdownOpen]);
 
+  if (isLoading) {
+    return null;
+  }
+
   if (!purchaseOrder) {
     return (
-      <div className="p-12 text-center">
-        <p>Purchase Order not found</p>
-        <button
-          onClick={() => navigate("/purchases/purchase-orders")}
-          className="mt-4 px-4 py-2 bg-[#156372] text-white rounded-md hover:bg-[#0D4A52]"
-        >
-          Back to Purchase Orders
-        </button>
-      </div>
+      null
     );
   }
 
@@ -433,7 +456,7 @@ export default function PurchaseOrderDetail() {
     try {
       await purchaseOrdersAPI.delete(poId);
       window.dispatchEvent(new Event("purchaseOrdersUpdated"));
-      navigate("/purchases/purchase-orders");
+      navigateToPurchaseOrdersList();
     } catch (error: any) {
       console.error("Error deleting purchase order:", error);
       alert(error?.message || "Failed to delete purchase order.");
@@ -457,6 +480,12 @@ export default function PurchaseOrderDetail() {
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return new Date().toISOString().split("T")[0];
     return parsed.toISOString().split("T")[0];
+  };
+
+  const navigateToPurchaseOrdersList = () => {
+    navigate("/purchases/purchase-orders", {
+      state: { purchaseOrders },
+    });
   };
 
   const handleClone = async () => {
@@ -692,7 +721,7 @@ export default function PurchaseOrderDetail() {
                 />
                 <div className="w-px h-8 bg-gray-200 mx-1"></div>
                 <button
-                  onClick={() => navigate("/purchases/purchase-orders")}
+                  onClick={navigateToPurchaseOrdersList}
                   className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
                 >
                   <X size={20} />

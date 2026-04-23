@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { chartOfAccountsAPI, bankAccountsAPI, vendorsAPI, billsAPI, paymentsMadeAPI } from "../../../services/api";
 import {
@@ -20,6 +20,41 @@ import { getAccountOptionLabel, getBankAccountsFromResponse, getChartAccountsFro
 export default function RecordPayment() {
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Add global styles for focus states and animations
+  useEffect(() => {
+    const styleId = "record-payment-styles";
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.innerHTML = `
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .form-animate {
+          animation: fadeIn 0.4s ease-out forwards;
+        }
+        .input-advanced {
+          transition: all 0.2s ease-in-out !important;
+        }
+        .input-advanced:focus {
+          border-color: #3b82f6 !important;
+          box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1) !important;
+          background-color: #ffffff !important;
+        }
+        .button-advanced:hover {
+          background-color: #f9fafb !important;
+          border-color: #2563eb !important;
+        }
+        .vendor-item-advanced:hover {
+          background-color: #eff6ff !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
+
   const { code: baseCurrencyCode } = useCurrency();
   const resolvedBaseCurrency = baseCurrencyCode || "USD";
   const isEditMode = location.state?.isEdit || false;
@@ -36,7 +71,7 @@ export default function RecordPayment() {
     bankCharges: "",
     paymentDate: new Date().toISOString().split('T')[0],
     paymentMode: "Cash",
-    paidThrough: "",
+    paidThrough: "Petty Cash",
     paidThroughId: "",
     reference: "",
     deductTDS: false,
@@ -63,6 +98,20 @@ export default function RecordPayment() {
   const [excessAmount, setExcessAmount] = useState(0);
   const [paidThroughAccounts, setPaidThroughAccounts] = useState<any[]>([]);
   const [saveLoadingState, setSaveLoadingState] = useState<null | "draft" | "paid">(null);
+
+  // Payment Mode Custom Dropdown State
+  const [paymentModeOpen, setPaymentModeOpen] = useState(false);
+  const [paymentModeSearch, setPaymentModeSearch] = useState("");
+  const paymentModeRef = useRef<HTMLDivElement>(null);
+  const paymentModes = [
+    "Bank Remittance",
+    "Bank Transfer",
+    "Cash",
+    "Check",
+    "Credit Card",
+    "Mobile Money"
+  ];
+
 
   const findPaidThroughAccount = (value: string) => {
     const normalizedValue = String(value || "").trim();
@@ -117,7 +166,7 @@ export default function RecordPayment() {
   // Update excess amount when payment amount changes
   useEffect(() => {
     const paymentAmount = parseFloat(formData.paymentAmount) || 0;
-    setExcessAmount(Math.max(0, paymentAmount - totalUsed));
+    setExcessAmount(paymentAmount - totalUsed);
   }, [formData.paymentAmount, totalUsed]);
 
   // Handle Pay Full Amount Checkbox
@@ -298,16 +347,20 @@ export default function RecordPayment() {
       if (uploadMenuRef.current && !uploadMenuRef.current.contains(event.target as Node)) {
         setUploadMenuOpen(false);
       }
+      if (paymentModeRef.current && !paymentModeRef.current.contains(event.target as Node)) {
+        setPaymentModeOpen(false);
+        setPaymentModeSearch("");
+      }
     };
 
-    if (vendorOpen || uploadMenuOpen) {
+    if (vendorOpen || uploadMenuOpen || paymentModeOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [vendorOpen, uploadMenuOpen]);
+  }, [vendorOpen, uploadMenuOpen, paymentModeOpen]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     // @ts-ignore
@@ -516,84 +569,78 @@ export default function RecordPayment() {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
   };
 
-  const styles: { [key: string]: React.CSSProperties } = {
+  const styles: Record<string, React.CSSProperties> = {
     container: {
-      width: "100%",
       display: "flex",
       flexDirection: "column",
-      backgroundColor: "#f9fafb", // bg-gray-50
-      minHeight: "100vh",
+      height: "100%",
+      backgroundColor: "#ffffff",
+      fontFamily: "'Inter', system-ui, sans-serif",
+      color: "#111827",
     },
     header: {
       display: "flex",
-      alignItems: "center",
       justifyContent: "space-between",
-      padding: "20px 24px",
-      borderBottom: "1px solid #e5e7eb",
-      flexShrink: 0,
-      backgroundColor: "#ffffff",
-      width: "100%",
-    },
-    headerLeft: {
-      display: "flex",
       alignItems: "center",
-      gap: "12px",
+      padding: "12px 24px",
+      borderBottom: "1px solid #e5e7eb",
+      backgroundColor: "#ffffff",
     },
     headerTitle: {
       fontSize: "20px",
-      fontWeight: "500",
+      fontWeight: "600",
       color: "#111827",
-      margin: 0,
       display: "flex",
       alignItems: "center",
-      gap: "10px",
+      gap: "12px",
+      margin: 0,
     },
     form: {
-      display: "block",
-    },
-    leftColumn: {
       flex: 1,
-      display: "flex",
-      flexDirection: "column",
-      gap: "24px",
-      minWidth: 0,
-    },
-    rightColumn: {
-      width: "360px",
-      display: "flex",
-      flexDirection: "column",
-      gap: "24px",
-      flexShrink: 0,
-      alignSelf: "flex-start",
+      overflowY: "auto",
+      padding: "24px",
     },
     section: {
-      display: "flex",
-      flexDirection: "column",
-      gap: "16px",
+      marginBottom: "24px",
     },
     sectionTitle: {
       fontSize: "14px",
       fontWeight: "600",
-      color: "#111827",
-      marginBottom: "8px",
+      color: "#374151",
+      marginBottom: "16px",
     },
     formRow: {
       display: "grid",
-      gridTemplateColumns: "460px 1fr",
-      gap: "20px",
+      gridTemplateColumns: "repeat(2, 1fr)",
+      gap: "24px",
+      marginBottom: "20px",
     },
     formGroup: {
       display: "flex",
       flexDirection: "column",
-      gap: "8px",
+      gap: "6px",
+    },
+    horizontalField: {
+      display: "flex",
+      alignItems: "center",
+      gap: "24px",
+      marginBottom: "16px",
+    },
+    horizontalLabel: {
+      fontSize: "13px",
+      fontWeight: "500",
+      color: "#374151",
+      width: "120px",
+      flexShrink: 0,
     },
     label: {
-      fontSize: "14px",
+      fontSize: "13px",
       fontWeight: "500",
-      color: "#111827",
+      color: "#374151",
     },
     required: {
-      color: "#156372",
+      color: "#ef4444",
+      marginLeft: "2px",
     },
     input: {
       padding: "8px 12px",
@@ -601,6 +648,8 @@ export default function RecordPayment() {
       borderRadius: "6px",
       fontSize: "14px",
       outline: "none",
+      transition: "border-color 0.2s, box-shadow 0.2s",
+      width: "420px",
       boxSizing: "border-box",
     },
     select: {
@@ -611,890 +660,609 @@ export default function RecordPayment() {
       outline: "none",
       backgroundColor: "#ffffff",
       cursor: "pointer",
+      width: "420px",
     },
-    dropdownWrapper: {
+    vendorDropdownWrapper: {
       position: "relative",
-      width: "100%",
+      width: "420px",
     },
-    dropdownButton: {
-      width: "100%",
+    vendorDropdownButton: {
+      width: "420px",
       padding: "8px 12px",
-      border: "1px solid #d1d5db",
+      border: "1px solid #3b82f6",
       borderRadius: "6px",
       fontSize: "14px",
-      outline: "none",
       backgroundColor: "#ffffff",
       cursor: "pointer",
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
-      boxSizing: "border-box",
+      textAlign: "left",
+      outline: "none",
     },
-    dropdownMenu: {
+    vendorDropdownMenu: {
       position: "absolute",
       top: "100%",
       left: 0,
-      right: 0,
+      width: "420px",
       marginTop: "4px",
       backgroundColor: "#ffffff",
       borderRadius: "8px",
-      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
       border: "1px solid #e5e7eb",
-      zIndex: 100,
-      maxHeight: "300px",
+      zIndex: 1000,
       overflow: "hidden",
-      display: "flex",
-      flexDirection: "column",
     },
-    dropdownSearch: {
+    vendorSearchBox: {
       padding: "8px 12px",
-      border: "none",
-      borderBottom: "1px solid #e5e7eb",
-      fontSize: "14px",
-      outline: "none",
+      borderBottom: "1px solid #f3f4f6",
       display: "flex",
       alignItems: "center",
       gap: "8px",
     },
-    dropdownSearchInput: {
-      flex: 1,
+    vendorSearchInput: {
       border: "none",
       outline: "none",
       fontSize: "14px",
+      flex: 1,
     },
-    dropdownList: {
-      maxHeight: "250px",
+    vendorList: {
+      maxHeight: "300px",
       overflowY: "auto",
-      padding: "4px 0",
     },
-    dropdownItem: {
-      padding: "8px 16px",
-      fontSize: "14px",
-      color: "#111827",
+    vendorItem: {
+      padding: "10px 16px",
+      display: "flex",
+      alignItems: "center",
+      gap: "12px",
       cursor: "pointer",
+      transition: "background-color 0.2s",
       border: "none",
       background: "none",
       width: "100%",
       textAlign: "left",
     },
-    noResults: {
-      padding: "16px",
-      textAlign: "center",
-      color: "#6b7280",
-      fontSize: "14px",
-    },
-    paymentMadeRow: {
+    vendorAvatar: {
+      width: "32px",
+      height: "32px",
+      borderRadius: "50%",
+      backgroundColor: "#e5e7eb",
       display: "flex",
-      gap: "8px",
-      alignItems: "flex-start",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: "12px",
+      fontWeight: "600",
+      color: "#4b5563",
     },
-    currencySelect: {
-      width: "100px",
+    vendorInfo: {
+      display: "flex",
+      flexDirection: "column",
+    },
+    vendorName: {
+      fontSize: "14px",
+      fontWeight: "500",
+      color: "#111827",
+    },
+    vendorSubInfo: {
+      fontSize: "12px",
+      color: "#6b7280",
+    },
+    divider: {
+      height: "1px",
+      backgroundColor: "#e5e7eb",
+      margin: "24px 0",
+      width: "100%",
+    },
+    paymentMadeWrapper: {
+      display: "flex",
+      flexDirection: "column",
+      gap: "8px",
+    },
+    paymentMadeInputRow: {
+      display: "flex",
+      gap: "12px",
+      width: "420px",
+    },
+    currencyBox: {
+      width: "80px",
+      padding: "8px",
+      backgroundColor: "#f9fafb",
+      border: "1px solid #d1d5db",
+      borderRadius: "6px",
+      fontSize: "14px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      color: "#4b5563",
     },
     amountInput: {
       flex: 1,
     },
-    bankChargesRow: {
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-    },
-    bankChargesInput: {
-      flex: 1,
-    },
-    checkboxGroup: {
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-    },
-    checkbox: {
-      width: "16px",
-      height: "16px",
-      cursor: "pointer",
-    },
-    exchangeRate: {
-      fontSize: "12px",
-      color: "#6b7280",
-      display: "flex",
-      alignItems: "center",
-      gap: "4px",
-      marginTop: "4px",
-    },
-    clearLink: {
-      color: "#156372",
-      fontSize: "14px",
-      textDecoration: "none",
-      cursor: "pointer",
-      marginBottom: "8px",
-    },
     table: {
       width: "100%",
       borderCollapse: "collapse",
-      borderTop: "1px solid #e5e7eb",
-      borderBottom: "1px solid #e5e7eb",
-    },
-    tableHeader: {
-      backgroundColor: "#f9fafb",
-      borderBottom: "1px solid #e5e7eb",
+      marginTop: "16px",
     },
     tableHeaderCell: {
-      padding: "12px",
+      padding: "12px 8px",
       textAlign: "left",
       fontSize: "12px",
       fontWeight: "600",
       color: "#6b7280",
+      borderBottom: "1px solid #e5e7eb",
       textTransform: "uppercase",
     },
-    tableBody: {
-      backgroundColor: "#ffffff",
-    },
-    tableRow: {
-      borderBottom: "1px solid #e5e7eb",
-    },
     tableCell: {
-      padding: "12px",
-      fontSize: "14px",
-      color: "#111827",
+      padding: "12px 8px",
+      fontSize: "13px",
+      color: "#374151",
+      borderBottom: "1px solid #f3f4f6",
+      verticalAlign: "top",
     },
-    emptyState: {
-      padding: "48px",
-      textAlign: "center",
-      color: "#6b7280",
-      fontSize: "14px",
+    payInFull: {
+      fontSize: "11px",
+      color: "#3b82f6",
+      cursor: "pointer",
+      marginTop: "4px",
+      display: "block",
     },
-    tableTotal: {
-      padding: "12px",
-      fontSize: "14px",
-      fontWeight: "600",
-      color: "#111827",
-      borderTop: "1px solid #e5e7eb",
-      backgroundColor: "#f9fafb",
+    summaryContainer: {
+      display: "flex",
+      justifyContent: "flex-end",
+      marginTop: "32px",
     },
-    summaryItem: {
+    summaryBox: {
+      width: "360px",
+      backgroundColor: "#fff7ed",
+      borderRadius: "12px",
+      padding: "24px",
+      display: "flex",
+      flexDirection: "column",
+      gap: "12px",
+    },
+    summaryRow: {
       display: "flex",
       justifyContent: "space-between",
       alignItems: "center",
       fontSize: "14px",
     },
     summaryLabel: {
-      color: "#111827",
-      fontWeight: "500",
+      color: "#4b5563",
     },
     summaryValue: {
-      color: "#111827",
       fontWeight: "600",
-    },
-    summaryWarning: {
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-      color: "#92400e",
-    },
-    textarea: {
-      padding: "12px",
-      border: "1px solid #d1d5db",
-      borderRadius: "6px",
-      fontSize: "14px",
-      outline: "none",
-      resize: "vertical",
-      minHeight: "120px",
-      fontFamily: "inherit",
-      position: "relative",
-    },
-    textareaIcon: {
-      position: "absolute",
-      bottom: "12px",
-      right: "12px",
-      color: "#9ca3af",
-    },
-    uploadWrapper: {
-      position: "relative",
-    },
-    uploadButton: {
-      padding: "8px 16px",
-      fontSize: "14px",
-      border: "2px dashed #d1d5db",
-      borderRadius: "6px",
-      backgroundColor: "#ffffff",
-      color: "#374151",
-      cursor: "pointer",
-      display: "flex",
-      alignItems: "center",
-      gap: "4px",
-    },
-    uploadMenu: {
-      position: "absolute",
-      top: "100%",
-      left: 0,
-      marginTop: "8px",
-      backgroundColor: "#ffffff",
-      borderRadius: "8px",
-      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-      border: "1px solid #e5e7eb",
-      minWidth: "200px",
-      zIndex: 100,
-      padding: "4px 0",
-    },
-    uploadMenuItem: {
-      padding: "8px 16px",
-      fontSize: "14px",
       color: "#111827",
-      cursor: "pointer",
-      border: "none",
-      background: "none",
-      width: "100%",
-      textAlign: "left",
     },
-    uploadInfo: {
-      fontSize: "12px",
-      color: "#6b7280",
-      marginTop: "8px",
-    },
-    additionalFieldsInfo: {
-      fontSize: "14px",
-      color: "#6b7280",
-      marginTop: "16px",
-      fontStyle: "italic",
-    },
-    actions: {
+    footer: {
       display: "flex",
       gap: "12px",
-      paddingTop: "24px",
+      padding: "20px 24px",
       borderTop: "1px solid #e5e7eb",
-      marginTop: "0",
-    },
-    cancelButton: {
-      padding: "8px 16px",
-      fontSize: "14px",
-      border: "1px solid #d1d5db",
-      borderRadius: "6px",
       backgroundColor: "#ffffff",
-      color: "#374151",
-      cursor: "pointer",
     },
-    saveDraftButton: {
-      padding: "8px 16px",
-      fontSize: "14px",
-      border: "1px solid #d1d5db",
-      borderRadius: "6px",
-      backgroundColor: "#ffffff",
-      color: "#374151",
-      cursor: "pointer",
-    },
-    savePaidButton: {
-      padding: "8px 16px",
-      fontSize: "14px",
-      backgroundColor: "#156372",
+    primaryButton: {
+      padding: "8px 20px",
+      backgroundColor: "#3b82f6",
       color: "#ffffff",
       borderRadius: "6px",
+      fontSize: "14px",
+      fontWeight: "500",
       border: "none",
       cursor: "pointer",
+      transition: "background-color 0.2s",
     },
+    secondaryButton: {
+      padding: "8px 20px",
+      backgroundColor: "#ffffff",
+      color: "#374151",
+      borderRadius: "6px",
+      fontSize: "14px",
+      fontWeight: "500",
+      border: "1px solid #d1d5db",
+      cursor: "pointer",
+      transition: "background-color 0.2s",
+    },
+    clearLink: {
+      fontSize: "13px",
+      color: "#3b82f6",
+      cursor: "pointer",
+      float: "right" as any,
+    }
   };
 
   return (
     <div style={styles.container}>
       {/* Header */}
       <div style={styles.header}>
-        <div style={styles.headerLeft}>
-          <h1 style={styles.headerTitle}>
-            <Upload size={28} style={{ color: "#111827" }} />
-            {isEditMode
-              ? "Edit Payment"
-              : location.state?.fromBill && location.state?.bill?.billNumber
-                ? `Payment for ${location.state.bill.billNumber}`
-                : "Record Payment"}
-          </h1>
-        </div>
-        <button
-          type="button"
-          onClick={handleCancel}
-          style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer" }}
-        >
-          <X size={34} />
-        </button>
+        <h1 style={styles.headerTitle}>
+          <Upload size={24} />
+          {isEditMode ? "Edit Payment" : "Record Payment"}
+        </h1>
+        <X 
+          size={24} 
+          style={{ cursor: "pointer", color: "#6b7280" }} 
+          onClick={handleCancel} 
+        />
       </div>
 
-      {/* Form */}
-      <form onSubmit={(e) => handleSubmit(e, "paid")} style={{ flex: 1, display: "flex", flexDirection: "column", backgroundColor: "#f9fafb" }}>
-        <div style={{ ...styles.form, flex: 1, padding: "24px", width: "100%", backgroundColor: "#f9fafb" }}>
-          {/* Left Column */}
-          <div style={styles.leftColumn}>
-            {/* Vendor and Payment Details */}
-            <div style={styles.section}>
-              <div style={styles.formRow}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>
-                    Vendor Name<span style={styles.required}>*</span>
-                  </label>
-                  <div style={{ ...styles.dropdownWrapper, flex: 1 }} ref={vendorRef}>
-                    <button
-                      type="button"
-                      style={styles.dropdownButton}
-                      onClick={() => setVendorOpen(!vendorOpen)}
-                      onFocus={(e: any) => (e.target.style.borderColor = "#156372")}
-                      onBlur={(e: any) => (e.target.style.borderColor = "#d1d5db")}
-                    >
-                      <span style={formData.vendorName ? {} : { color: "#9ca3af" }}>
-                        {formData.vendorName || "Select vendor"}
-                      </span>
-                      {vendorOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    </button>
-                    {vendorOpen && (
-                      <div style={styles.dropdownMenu}>
-                        <div style={styles.dropdownSearch}>
-                          <Search size={16} style={{ color: "#9ca3af" }} />
-                          <input
-                            type="text"
-                            placeholder="Search vendor"
-                            value={vendorSearch}
-                            onChange={(e) => setVendorSearch(e.target.value)}
-                            style={styles.dropdownSearchInput}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        </div>
-                        <div style={styles.dropdownList}>
-                          {filteredVendors.length > 0 ? (
-                            filteredVendors.map((vendor: any) => (
-                              <button
-                                key={vendor.id || vendor._id}
-                                type="button"
-                                style={styles.dropdownItem}
-                                onClick={() => handleVendorSelect(vendor)}
-                                onMouseEnter={(e: any) => (e.target.style.backgroundColor = "#f9fafb")}
-                                onMouseLeave={(e: any) => (e.target.style.backgroundColor = "transparent")}
-                              >
-                                {vendor.displayName || vendor.name}
-                              </button>
-                            ))
-                          ) : (
-                            <div style={styles.noResults}>NO RESULTS FOUND</div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+      <div className="form-animate" style={styles.form}>
+        {/* Top Information Block */}
+        <div style={styles.section}>
+          {/* Vendor Name */}
+          <div style={styles.horizontalField}>
+            <label style={{ ...styles.horizontalLabel, color: "#ef4444" }}>Vendor Name*</label>
+            <div style={styles.vendorDropdownWrapper} ref={vendorRef}>
+              <button
+                type="button"
+                className="input-advanced"
+                style={styles.vendorDropdownButton}
+                onClick={() => setVendorOpen(!vendorOpen)}
+              >
+                <span style={formData.vendorName ? { color: "#111827" } : { color: "#9ca3af" }}>
+                  {formData.vendorName || "Select Vendor"}
+                </span>
+                <ChevronDown size={18} style={{ color: "#3b82f6" }} />
+              </button>
 
-                <div style={styles.formGroup}>
-                  {formData.vendorName && (
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/purchases/vendors/${formData.vendorId}`)}
-                      style={{
-                        backgroundColor: "#4b5563",
-                        color: "white",
-                        padding: "10px 18px",
-                        borderRadius: "8px",
-                        fontSize: "18px",
-                        fontWeight: "600",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: "8px",
-                        border: "none",
-                        marginTop: "30px",
-                        width: "300px",
-                      }}
-                    >
-                      {formData.vendorName}'s Details
-                      <ChevronRight size={20} />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div style={styles.formRow}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Location</label>
-                  <select
-                    name="location"
-                    value={formData.location}
-                    onChange={handleChange}
-                    disabled={!isFormEnabled}
-                    style={{
-                      ...styles.select,
-                      ...(isFormEnabled ? {} : { backgroundColor: "#f3f4f6", cursor: "not-allowed" }),
-                    }}
-                  >
-                    <option value="Head Office">Head Office</option>
-                    <option value="Branch Office">Branch Office</option>
-                  </select>
-                </div>
-                <div />
-              </div>
-
-              <div style={styles.formRow}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>
-                    Payment #<span style={styles.required}>*</span>
-                  </label>
-                  <input
-                    type="text"
-                    name="paymentNumber"
-                    value={formData.paymentNumber}
-                    onChange={handleChange}
-                    required
-                    disabled={!isFormEnabled}
-                    style={{
-                      ...styles.input,
-                      ...(isFormEnabled ? {} : { backgroundColor: "#f3f4f6", cursor: "not-allowed" }),
-                    }}
-                  />
-                </div>
-                <div />
-              </div>
-
-              <div style={styles.formRow}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>
-                    Payment Made<span style={styles.required}>*</span>
-                  </label>
-                  <div style={styles.paymentMadeRow}>
-                    <select
-                      name="paymentCurrency"
-                      value={formData.paymentCurrency}
-                      onChange={handleChange}
-                      disabled={!isFormEnabled}
-                      style={{
-                        ...styles.select,
-                        ...styles.currencySelect,
-                        ...(isFormEnabled ? {} : { backgroundColor: "#f3f4f6", cursor: "not-allowed" }),
-                      }}
-                    >
-                      <option value={resolvedBaseCurrency}>{resolvedBaseCurrency}</option>
-                    </select>
+              {vendorOpen && (
+                <div style={styles.vendorDropdownMenu}>
+                  <div style={styles.vendorSearchBox}>
+                    <Search size={16} style={{ color: "#9ca3af" }} />
                     <input
-                      type="number"
-                      name="paymentAmount"
-                      value={formData.paymentAmount}
-                      onChange={handleChange}
-                      required
-                      placeholder="0.00"
-                      disabled={!isFormEnabled || formData.payFullAmount}
-                      style={{
-                        ...styles.input,
-                        ...styles.amountInput,
-                        ...(isFormEnabled ? {} : { backgroundColor: "#f3f4f6", cursor: "not-allowed" }),
-                      }}
+                      type="text"
+                      placeholder="Search"
+                      style={styles.vendorSearchInput}
+                      value={vendorSearch}
+                      onChange={(e) => setVendorSearch(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      autoFocus
                     />
                   </div>
-                  <div style={styles.checkboxGroup}>
-                    <input
-                      type="checkbox"
-                      name="payFullAmount"
-                      checked={formData.payFullAmount}
-                      onChange={handleChange}
-                      disabled={!isFormEnabled}
-                      style={styles.checkbox}
-                    />
-                    <label style={{ ...styles.label, fontSize: '13px', fontWeight: 400 }}>
-                      Pay full amount ({formData.paymentCurrency}{bills.reduce((sum, b) => sum + getBillDueAmount(b), 0).toFixed(2)})
-                    </label>
-                  </div>
-                  <div style={styles.exchangeRate}>
-                    Exchange Rate: 1.00 {resolvedBaseCurrency} = 1.00 {resolvedBaseCurrency}
-                  </div>
-                </div>
-
-                <div style={styles.formGroup}>
-                  <div style={styles.bankChargesRow}>
-                    <label style={styles.label}>Bank Charges (if any)</label>
-                    <Info size={14} style={{ color: "#6b7280" }} />
-                  </div>
-                  <input
-                    type="number"
-                    name="bankCharges"
-                    value={formData.bankCharges}
-                    onChange={handleChange}
-                    placeholder="0.00"
-                    disabled={!isFormEnabled}
-                    style={{
-                      ...styles.input,
-                      ...styles.bankChargesInput,
-                      ...(isFormEnabled ? {} : { backgroundColor: "#f3f4f6", cursor: "not-allowed" }),
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div style={styles.formRow}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>
-                    Payment Date<span style={styles.required}>*</span>
-                  </label>
-                  <input
-                    type="date"
-                    name="paymentDate"
-                    value={formData.paymentDate}
-                    onChange={handleChange}
-                    required
-                    disabled={!isFormEnabled}
-                    style={{
-                      ...styles.input,
-                      ...(isFormEnabled ? {} : { backgroundColor: "#f3f4f6", cursor: "not-allowed" }),
-                    }}
-                  />
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>
-                    Payment Mode
-                  </label>
-                  <select
-                    name="paymentMode"
-                    value={formData.paymentMode}
-                    onChange={handleChange}
-                    disabled={!isFormEnabled}
-                    style={{
-                      ...styles.select,
-                      ...(isFormEnabled ? {} : { backgroundColor: "#f3f4f6", cursor: "not-allowed" }),
-                    }}
-                  >
-                    <option value="Cash">Cash</option>
-                    <option value="Check">Check</option>
-                    <option value="Credit Card">Credit Card</option>
-                    <option value="Bank Transfer">Bank Transfer</option>
-                    <option value="Others">Others</option>
-                  </select>
-                </div>
-              </div>
-
-              <div style={styles.formRow}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>
-                    Paid Through<span style={styles.required}>*</span>
-                  </label>
-                  <TabanSelect
-                    options={paidThroughAccounts}
-                    value={formData.paidThrough}
-                    onChange={(selectedName) => {
-                      const account = findPaidThroughAccount(selectedName);
-                      setFormData(prev => ({
-                        ...prev,
-                        paidThroughId: String(account?.value || account?.id || account?._id || ""),
-                        paidThrough: selectedName
-                      }));
-                    }}
-                    placeholder="Select Account"
-                    disabled={!isFormEnabled}
-                  />
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>
-                    Reference#
-                  </label>
-                  <input
-                    type="text"
-                    name="reference"
-                    value={formData.reference}
-                    onChange={handleChange}
-                    disabled={!isFormEnabled}
-                    style={{
-                      ...styles.input,
-                      ...(isFormEnabled ? {} : { backgroundColor: "#f3f4f6", cursor: "not-allowed" }),
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div style={styles.formGroup}>
-                <div style={styles.checkboxGroup}>
-                  <input
-                    type="checkbox"
-                    name="deductTDS"
-                    checked={formData.deductTDS}
-                    onChange={handleChange}
-                    style={styles.checkbox}
-                  />
-                  <label style={styles.label}>
-                    Deduct TDS Tax
-                  </label>
-                </div>
-              </div>
-
-              <div style={styles.formRow}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>
-                    xcv <span style={styles.required}>*</span>
-                  </label>
-                  <select
-                    name="xcv"
-                    value={formData.xcv}
-                    onChange={handleChange}
-                    disabled={!isFormEnabled}
-                    style={{
-                      ...styles.select,
-                      ...(isFormEnabled ? {} : { backgroundColor: "#f3f4f6", cursor: "not-allowed" }),
-                    }}
-                  >
-                    <option value="None">None</option>
-                  </select>
-                </div>
-                <div />
-              </div>
-            </div>
-
-            {/* Unpaid Bills Table */}
-            {bills.length > 0 && (
-              <div style={styles.section}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <h3 style={styles.sectionTitle}>Unpaid Bills</h3>
-                  <div style={styles.clearLink} onClick={() => setAllocations({})}>
-                    Clear Applied Amount
-                  </div>
-                </div>
-
-                <table style={styles.table}>
-                  <thead style={styles.tableHeader}>
-                    <tr>
-                      <th style={styles.tableHeaderCell}>Date</th>
-                      <th style={styles.tableHeaderCell}>Bill#</th>
-                      <th style={styles.tableHeaderCell}>PO#</th>
-                      <th style={styles.tableHeaderCell}>Location</th>
-                      <th style={styles.tableHeaderCell}>Bill Amount</th>
-                      <th style={styles.tableHeaderCell}>Amount Due</th>
-                      <th style={styles.tableHeaderCell}>Payment Made on <Info size={12} style={{ display: 'inline' }} /></th>
-                      <th style={styles.tableHeaderCell}>Payment</th>
-                    </tr>
-                  </thead>
-                  <tbody style={styles.tableBody}>
-                    {bills.length === 0 ? (
-                      <tr>
-                        <td colSpan={8} style={styles.emptyState}>
-                          No Unpaid Bills
-                        </td>
-                      </tr>
-                    ) : (
-                      bills.map((bill) => {
-                        const billId = bill.id || bill._id;
-                        const allocation = allocations[billId] || 0;
-                        const dueAmount = getBillDueAmount(bill);
-
-                        return (
-                          <tr key={billId} style={styles.tableRow}>
-                            <td style={styles.tableCell}>
-                              {bill.billDate || bill.date || "--"}
-                              {bill.dueDate && (
-                                <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
-                                  Due Date: {bill.dueDate}
-                                </div>
-                              )}
-                            </td>
-                            <td style={styles.tableCell}>{bill.billNumber || "--"}</td>
-                            <td style={styles.tableCell}>{bill.poNumber || "PO-00009"}</td>
-                            <td style={styles.tableCell}>{bill.location || formData.location || "Head Office"}</td>
-                            <td style={styles.tableCell}>{bill.total || "0.00"}</td>
-                            <td style={styles.tableCell}>{Number(dueAmount || 0).toFixed(2)}</td>
-                            <td style={styles.tableCell}>
-                              <input
-                                type="date"
-                                defaultValue={formData.paymentDate}
-                                style={{ ...styles.input, width: "130px", padding: '4px 8px' }}
-                              />
-                            </td>
-                            <td style={styles.tableCell}>
-                              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
-                                <input
-                                  type="number"
-                                  value={allocation || ""}
-                                  onChange={(e) => handleAllocationChange(billId, e.target.value)}
-                                  placeholder="0"
-                                  style={{ ...styles.input, width: "100px", textAlign: "right" }}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => handleAllocationChange(billId, dueAmount.toString())}
-                                  style={{ fontSize: "11px", color: "#156372", border: "none", background: "none", cursor: "pointer", padding: 0 }}
-                                >
-                                  Pay in Full
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td colSpan={7} style={{ ...styles.tableTotal, textAlign: "right" }}>
-                        Total
-                      </td>
-                      <td style={{ ...styles.tableTotal, textAlign: "right" }}>
-                        {totalUsed.toFixed(2)}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
-              <div style={{ marginTop: "24px", display: "flex", justifyContent: "center" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "430px" }}>
-                  <div style={styles.summaryItem}>
-                    <span style={styles.summaryLabel}>Amount Paid:</span>
-                    <span style={styles.summaryValue}>{parseFloat(formData.paymentAmount || "0").toFixed(2)}</span>
-                  </div>
-                  <div style={styles.summaryItem}>
-                    <span style={styles.summaryLabel}>Amount used for Payments:</span>
-                    <span style={styles.summaryValue}>{totalUsed.toFixed(2)}</span>
-                  </div>
-                  <div style={styles.summaryItem}>
-                    <span style={styles.summaryLabel}>Amount Refunded:</span>
-                    <span style={styles.summaryValue}>0.00</span>
-                  </div>
-                  <div style={styles.summaryItem}>
-                    <span style={styles.summaryLabel}><AlertTriangle size={14} style={{ color: "#d97706", display: "inline", marginRight: "6px" }} />Amount in Excess:</span>
-                    <span style={styles.summaryValue}>{formData.paymentCurrency} {excessAmount.toFixed(2)}</span>
-                  </div>
-                  <div style={styles.summaryItem}>
-                    <span style={styles.summaryLabel}>Bank Charges :</span>
-                    <span style={styles.summaryValue}>{formData.paymentCurrency} {(parseFloat(formData.bankCharges) || 0).toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ ...styles.section, marginTop: "24px" }}>
-                <h3 style={styles.sectionTitle}>Notes (Internal use. Not visible to vendor)</h3>
-                <div style={{ position: "relative" }}>
-                  <textarea
-                    name="notes"
-                    value={formData.notes}
-                    onChange={handleChange}
-                    style={{ ...styles.textarea, width: "100%", minHeight: "90px" }}
-                    maxLength={500}
-                  />
-                </div>
-              </div>
-
-              <div style={{ ...styles.section, marginTop: "8px" }}>
-                <h3 style={styles.sectionTitle}>Attachments</h3>
-                <div style={styles.uploadWrapper} ref={uploadMenuRef}>
-                  <button
-                    type="button"
-                    style={{ ...styles.uploadButton }}
-                    onClick={() => setUploadMenuOpen(!uploadMenuOpen)}
-                  >
-                    <Upload size={16} />
-                    Upload File
-                    <ChevronDown size={14} style={{ marginLeft: "8px" }} />
-                  </button>
-                  {uploadMenuOpen && (
-                    <div style={styles.uploadMenu}>
+                  <div style={styles.vendorList}>
+                    {filteredVendors.map((vendor: any) => (
                       <button
-                        type="button"
-                        style={styles.uploadMenuItem}
-                        onClick={handleAttachFromDesktop}
+                        key={vendor.id || vendor._id}
+                        style={styles.vendorItem}
+                        onClick={() => handleVendorSelect(vendor)}
+                        onMouseEnter={(e: any) => (e.currentTarget.style.backgroundColor = "#eff6ff")}
+                        onMouseLeave={(e: any) => (e.currentTarget.style.backgroundColor = "transparent")}
                       >
-                        Attach from Desktop
+                        <div style={styles.vendorAvatar}>
+                          {(vendor.displayName || vendor.name || "V").charAt(0).toUpperCase()}
+                        </div>
+                        <div style={styles.vendorInfo}>
+                          <span style={styles.vendorName}>{vendor.displayName || vendor.name}</span>
+                          <span style={styles.vendorSubInfo}>
+                            {vendor.email} | {vendor.companyName || "Organization"}
+                          </span>
+                        </div>
                       </button>
-                      <button type="button" style={styles.uploadMenuItem}>
-                        Attach from Cloud
-                      </button>
-                    </div>
-                  )}
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                    style={{ display: "none" }}
-                    multiple
-                  />
-                </div>
-                <div style={styles.uploadInfo}>You can upload a maximum of 5 files, 10MB each</div>
-                {uploadedFiles.length > 0 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "12px", width: "420px" }}>
-                    {uploadedFiles.map((file) => (
-                      <div
-                        key={file.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          padding: "8px",
-                          backgroundColor: "#f3f4f6",
-                          borderRadius: "4px",
-                          fontSize: "13px",
-                        }}
-                      >
-                        <span style={{ maxWidth: "320px" }}>
-                          {file.name} ({formatFileSize(file.size)})
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteFile(file.id)}
-                          style={{ color: "#156372", border: "none", background: "none", cursor: "pointer" }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
                     ))}
+                    {filteredVendors.length === 0 && (
+                      <div style={{ padding: "16px", textAlign: "center", color: "#6b7280" }}>No results found</div>
+                    )}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
+            </div>
+          </div>
 
-              <div style={styles.additionalFieldsInfo}>
-                <strong>Additional Fields:</strong> Start adding custom fields for your payments made by going to Settings ? Purchases ? Payments Made.
-              </div>
+          {/* Location */}
+          <div style={styles.horizontalField}>
+            <label style={styles.horizontalLabel}>Location</label>
+            <select 
+              className="input-advanced"
+              style={styles.select} 
+              name="location" 
+              value={formData.location} 
+              onChange={handleChange}
+            >
+              <option value="Head Office">Head Office</option>
+              <option value="Branch Office">Branch Office</option>
+            </select>
+          </div>
+
+          {/* Payment # */}
+          <div style={styles.horizontalField}>
+            <label style={{ ...styles.horizontalLabel, color: "#ef4444" }}>Payment #*</label>
+            <div style={{ position: "relative", width: "420px" }}>
+                <input 
+                  className="input-advanced"
+                  style={styles.input} 
+                  name="paymentNumber" 
+                  value={formData.paymentNumber} 
+                  onChange={handleChange} 
+                />
+              <Info size={14} style={{ position: "absolute", right: "12px", top: "10px", color: "#3b82f6" }} />
+            </div>
           </div>
         </div>
 
-        {/* Footer Actions */}
-        <div style={{ ...styles.actions, padding: "14px 24px", width: "100%", backgroundColor: "#f9fafb" }}>
-          <button
-            type="button"
-            disabled={!isFormEnabled || !!saveLoadingState}
-            style={{
-              ...styles.saveDraftButton,
-              ...(isFormEnabled && !saveLoadingState ? {} : { opacity: 0.5, cursor: "not-allowed" }),
-            }}
-            onClick={(e) => handleSubmit(e as any, "draft")}
-            onMouseEnter={(e: any) => {
-              if (isFormEnabled) {
-                e.target.style.backgroundColor = "#f9fafb";
-              }
-            }}
-            onMouseLeave={(e: any) => {
-              if (isFormEnabled) {
-                e.target.style.backgroundColor = "#ffffff";
-              }
-            }}
-          >
-            {saveLoadingState === "draft" ? "Saving..." : "Save as Draft"}
-          </button>
-          <button
-            type="submit"
-            disabled={!isFormEnabled || !!saveLoadingState}
-            style={{
-              ...styles.savePaidButton,
-              ...(isFormEnabled && !saveLoadingState ? {} : { opacity: 0.5, cursor: "not-allowed" }),
-            }}
-            onMouseEnter={(e: any) => {
-              if (isFormEnabled) {
-                e.target.style.backgroundColor = "#0D4A52";
-              }
-            }}
-            onMouseLeave={(e: any) => {
-              if (isFormEnabled) {
-                e.target.style.backgroundColor = "#156372";
-              }
-            }}
-          >
-            {saveLoadingState === "paid" ? "Saving..." : "Save as Paid"}
-          </button>
-          <button
-            type="button"
-            onClick={handleCancel}
-            disabled={!!saveLoadingState}
-            style={styles.cancelButton}
-            onMouseEnter={(e: any) => (e.target.style.backgroundColor = "#f9fafb")}
-            onMouseLeave={(e: any) => (e.target.style.backgroundColor = "#ffffff")}
-          >
-            Cancel
-          </button>
+        <div style={styles.divider} />
+
+        {/* Form Fields Section - Grayed out if no vendor selected */}
+        <div style={{ opacity: isFormEnabled ? 1 : 0.4, pointerEvents: isFormEnabled ? "auto" : "none" }}>
+
+          <div style={{ ...styles.horizontalField, alignItems: "flex-start" }}>
+            <label style={{ ...styles.horizontalLabel, color: "#ef4444", marginTop: "8px" }}>Payment Made*</label>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
+                <div style={{ ...styles.paymentMadeInputRow, width: "300px" }}>
+                  <div style={styles.currencyBox}>{formData.paymentCurrency}</div>
+                  <input
+                    className="input-advanced"
+                    style={{ ...styles.input, flex: 1, width: "auto" }}
+                    placeholder="0.00"
+                    name="paymentAmount"
+                    value={formData.paymentAmount}
+                    onChange={handleChange}
+                  />
+                </div>
+                
+                <label style={{ ...styles.label, fontWeight: "normal", color: "#374151" }}>Bank Charges (if any)</label>
+                <div style={{ position: "relative" }}>
+                  <input 
+                    className="input-advanced"
+                    style={{ ...styles.input, width: "150px" }} 
+                    placeholder="0.00" 
+                    name="bankCharges" 
+                    value={formData.bankCharges} 
+                    onChange={handleChange} 
+                  />
+                  <Info size={14} style={{ position: "absolute", right: "-24px", top: "10px", color: "#6b7280" }} />
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <input 
+                  type="checkbox" 
+                  name="payFullAmount"
+                  checked={formData.payFullAmount}
+                  onChange={handleChange}
+                />
+                <span style={{ fontSize: "12px", color: "#6b7280" }}>
+                  Pay full amount ({formData.paymentCurrency}{bills.reduce((sum, b) => sum + getBillDueAmount(b), 0).toLocaleString()})
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div style={styles.horizontalField}>
+            <label style={styles.horizontalLabel}>Payment Date*</label>
+            <input 
+              className="input-advanced"
+              type="date" 
+              style={styles.input} 
+              name="paymentDate" 
+              value={formData.paymentDate} 
+              onChange={handleChange} 
+            />
+          </div>
+
+          <div style={styles.horizontalField}>
+            <label style={styles.horizontalLabel}>Payment Mode</label>
+            <div style={styles.vendorDropdownWrapper} ref={paymentModeRef}>
+              <button
+                type="button"
+                className="input-advanced"
+                style={{ ...styles.vendorDropdownButton, border: "1px solid #d1d5db" }}
+                onClick={() => setPaymentModeOpen(!paymentModeOpen)}
+              >
+                <span style={{ color: "#111827" }}>
+                  {formData.paymentMode || "Select Mode"}
+                </span>
+                {paymentModeOpen ? <ChevronUp size={18} style={{ color: "#3b82f6" }} /> : <ChevronDown size={18} style={{ color: "#3b82f6" }} />}
+              </button>
+
+              {paymentModeOpen && (
+                <div style={styles.vendorDropdownMenu}>
+                  <div style={styles.vendorSearchBox}>
+                    <Search size={16} style={{ color: "#9ca3af" }} />
+                    <input
+                      type="text"
+                      placeholder="Search"
+                      style={styles.vendorSearchInput}
+                      value={paymentModeSearch}
+                      onChange={(e) => setPaymentModeSearch(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      autoFocus
+                    />
+                  </div>
+                  <div style={styles.vendorList}>
+                    {paymentModes
+                      .filter(m => m.toLowerCase().includes(paymentModeSearch.toLowerCase()))
+                      .map((mode) => (
+                        <button
+                          key={mode}
+                          style={{
+                            ...styles.vendorItem,
+                            backgroundColor: formData.paymentMode === mode ? "#3b82f6" : "transparent",
+                            color: formData.paymentMode === mode ? "#ffffff" : "#111827",
+                            padding: "8px 16px",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center"
+                          }}
+                          onClick={() => {
+                            setFormData(prev => ({ ...prev, paymentMode: mode }));
+                            setPaymentModeOpen(false);
+                            setPaymentModeSearch("");
+                          }}
+                        >
+                          <span style={{ fontSize: "14px" }}>{mode}</span>
+                          {formData.paymentMode === mode && <span style={{ fontSize: "14px" }}>✓</span>}
+                        </button>
+                      ))}
+                  </div>
+                  <div style={{ 
+                    padding: "10px 16px", 
+                    borderTop: "1px solid #f3f4f6", 
+                    color: "#3b82f6", 
+                    fontSize: "13px", 
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px"
+                  }}>
+                    <span style={{ fontSize: "16px", fontWeight: "bold" }}>+</span>
+                    Configure Payment Mode
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={styles.horizontalField}>
+            <label style={styles.horizontalLabel}>Paid Through*</label>
+            <div style={{ width: "420px" }}>
+              <TabanSelect
+                options={paidThroughAccounts}
+                value={formData.paidThrough}
+                onChange={(val) => {
+                  const acc = findPaidThroughAccount(val);
+                  setFormData(prev => ({ ...prev, paidThrough: val, paidThroughId: acc?.id || acc?._id || "" }));
+                }}
+                placeholder="Select Account"
+              />
+            </div>
+          </div>
+
+          <div style={styles.horizontalField}>
+            <label style={styles.horizontalLabel}>Reference#</label>
+            <input 
+              className="input-advanced"
+              style={styles.input} 
+              name="reference" 
+              value={formData.reference} 
+              onChange={handleChange} 
+            />
+          </div>
+
+          {/* Bills Table */}
+          <div style={{ marginTop: "40px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <span style={styles.clearLink} onClick={() => setAllocations({})}>Clear Applied Amount</span>
+            </div>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.tableHeaderCell}>Date</th>
+                  <th style={styles.tableHeaderCell}>Bill#</th>
+                  <th style={styles.tableHeaderCell}>PO#</th>
+                  <th style={styles.tableHeaderCell}>Location</th>
+                  <th style={styles.tableHeaderCell}>Bill Amount</th>
+                  <th style={styles.tableHeaderCell}>Amount Due</th>
+                  <th style={styles.tableHeaderCell}>Payment Made on <Info size={12} style={{ display: "inline" }} /></th>
+                  <th style={styles.tableHeaderCell}>Payment</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bills.map((bill) => {
+                  const billId = bill.id || bill._id;
+                  const due = getBillDueAmount(bill);
+                  return (
+                    <tr key={billId}>
+                      <td style={styles.tableCell}>{new Date(bill.date || bill.billDate).toLocaleDateString("en-GB")}</td>
+                      <td style={styles.tableCell}>{bill.billNumber}</td>
+                      <td style={styles.tableCell}>{bill.poNumber || "-"}</td>
+                      <td style={styles.tableCell}>{bill.location || "Head Office"}</td>
+                      <td style={styles.tableCell}>{bill.total}</td>
+                      <td style={styles.tableCell}>{due.toLocaleString()}</td>
+                      <td style={styles.tableCell}>
+                        <input type="date" defaultValue={formData.paymentDate} style={{ ...styles.input, width: "130px" }} />
+                      </td>
+                      <td style={styles.tableCell}>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                          <input
+                            style={{ ...styles.input, width: "100px", textAlign: "right" }}
+                            value={allocations[billId] || 0}
+                            onChange={(e) => handleAllocationChange(billId, e.target.value)}
+                          />
+                          <span 
+                            style={styles.payInFull} 
+                            onClick={() => handleAllocationChange(billId, due.toString())}
+                          >
+                            Pay in Full
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {bills.length === 0 && (
+                  <tr>
+                    <td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>
+                      There are no bills for this vendor.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            <div style={{ display: "flex", justifyContent: "flex-end", padding: "12px 8px", borderBottom: "1px solid #e5e7eb" }}>
+              <span style={{ fontSize: "14px", color: "#6b7280", marginRight: "40px" }}>Total:</span>
+              <span style={{ fontSize: "14px", fontWeight: "600" }}>{totalUsed.toFixed(2)}</span>
+            </div>
+          </div>
+
+          {/* Summary Box */}
+          <div style={styles.summaryContainer}>
+            <div style={styles.summaryBox}>
+              <div style={styles.summaryRow}>
+                <span style={styles.summaryLabel}>Amount Paid:</span>
+                <span style={styles.summaryValue}>{parseFloat(formData.paymentAmount || "0").toFixed(2)}</span>
+              </div>
+              <div style={styles.summaryRow}>
+                <span style={styles.summaryLabel}>Amount used for Payments:</span>
+                <span style={styles.summaryValue}>{totalUsed.toFixed(2)}</span>
+              </div>
+              <div style={styles.summaryRow}>
+                <span style={styles.summaryLabel}>Amount Refunded:</span>
+                <span style={styles.summaryValue}>0.00</span>
+              </div>
+              <div style={styles.summaryRow}>
+                <span style={styles.summaryLabel}>
+                  {excessAmount < 0 && <AlertTriangle size={14} style={{ color: "#d97706", marginRight: "4px" }} />}
+                  Amount in Excess:
+                </span>
+                <span style={styles.summaryValue}>{formData.paymentCurrency} {excessAmount.toFixed(2)}</span>
+              </div>
+              <div style={styles.summaryRow}>
+                <span style={styles.summaryLabel}>Bank Charges :</span>
+                <span style={styles.summaryValue}>{formData.paymentCurrency} {(parseFloat(formData.bankCharges) || 0).toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Notes and Attachments */}
+          <div style={{ marginTop: "40px" }}>
+            <label style={styles.label}>Notes (Internal use. Not visible to vendor)</label>
+            <textarea 
+              className="input-advanced"
+              style={{ ...styles.input, minHeight: "80px", marginTop: "8px", width: "420px" }} 
+              name="notes" 
+              value={formData.notes} 
+              onChange={handleChange}
+            />
+          </div>
         </div>
-      </form>
+      </div>
+
+      {/* Footer */}
+      <div style={styles.footer}>
+        <button 
+          style={styles.secondaryButton} 
+          onClick={(e) => handleSubmit(e as any, "draft")}
+        >
+          Save as Draft
+        </button>
+        <button 
+          style={styles.primaryButton} 
+          onClick={(e) => handleSubmit(e as any, "paid")}
+        >
+          Save as Paid
+        </button>
+        <button style={styles.secondaryButton} onClick={handleCancel}>Cancel</button>
+      </div>
     </div>
   );
 }

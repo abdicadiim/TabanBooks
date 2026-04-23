@@ -1,10 +1,11 @@
 // @ts-nocheck
 import React, { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import DeleteConfirmationModal from "../shared/DeleteConfirmationModal";
 import SearchPurchaseOrdersModal from "./SearchPurchaseOrdersModal";
 import ExportPurchaseOrders from "./ExportPurchaseOrders";
 import PurchaseOrdersCustomViewModal from "./PurchaseOrdersCustomViewModal";
+import PurchaseOrdersCustomizeColumnsModal from "./PurchaseOrdersCustomizeColumnsModal";
 import PurchaseOrdersHeader from "./PurchaseOrdersHeader";
 import PurchaseOrdersModals from "./PurchaseOrdersModals";
 import PurchaseOrdersNotification from "./PurchaseOrdersNotification";
@@ -18,16 +19,56 @@ import {
   sortPurchaseOrders,
 } from "./PurchaseOrders.utils";
 
+const PURCHASE_ORDER_COLUMNS_STORAGE_KEY = "purchase-orders-visible-columns";
+const PURCHASE_ORDER_COLUMN_OPTIONS = [
+  { key: "date", label: "Date", locked: true },
+  { key: "location", label: "Location" },
+  { key: "purchaseOrderNumber", label: "Purchase Order#" },
+  { key: "referenceNumber", label: "Reference#" },
+  { key: "vendorName", label: "Vendor Name" },
+  { key: "status", label: "Status" },
+  { key: "billedStatus", label: "Billed Status" },
+  { key: "amount", label: "Amount" },
+  { key: "deliveryDate", label: "Delivery Date" },
+  { key: "companyName", label: "Company Name" },
+  { key: "expectedDeliveryDate", label: "Expected Delivery Date" },
+  { key: "locationCode", label: "Location Code" },
+  { key: "received", label: "Received" },
+];
+
+const DEFAULT_VISIBLE_COLUMNS = [
+  "date",
+  "purchaseOrderNumber",
+  "referenceNumber",
+  "vendorName",
+  "status",
+  "billedStatus",
+  "amount",
+  "deliveryDate",
+];
+
 export default function PurchaseOrders() {
   const navigate = useNavigate();
+  const location = useLocation();
   const notificationTimeoutRef = useRef(null);
   const { code: baseCurrencyCode, symbol: baseCurrencySymbol } = useCurrency();
   const displayCurrencyCode = baseCurrencyCode || "USD";
   const displayCurrencySymbol = baseCurrencySymbol || displayCurrencyCode;
   const [selectedView, setSelectedView] = useState("All");
-  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>(() => {
+    const stateOrders = location.state?.purchaseOrders;
+    if (!Array.isArray(stateOrders)) {
+      return [];
+    }
+
+    return stateOrders.map((purchaseOrder: any) => ({
+      ...purchaseOrder,
+      id: purchaseOrder._id || purchaseOrder.id,
+    }));
+  });
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [showCustomViewModal, setShowCustomViewModal] = useState(false);
+  const [showCustomizeColumnsModal, setShowCustomizeColumnsModal] = useState(false);
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
@@ -43,6 +84,30 @@ export default function PurchaseOrders() {
   const [sortDirection, setSortDirection] = useState("asc");
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportType, setExportType] = useState("purchase-orders");
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
+    if (typeof window === "undefined") {
+      return DEFAULT_VISIBLE_COLUMNS;
+    }
+
+    try {
+      const rawValue = window.localStorage.getItem(PURCHASE_ORDER_COLUMNS_STORAGE_KEY);
+      if (!rawValue) {
+        return DEFAULT_VISIBLE_COLUMNS;
+      }
+
+      const parsed = JSON.parse(rawValue);
+      if (!Array.isArray(parsed)) {
+        return DEFAULT_VISIBLE_COLUMNS;
+      }
+
+      const allowedKeys = PURCHASE_ORDER_COLUMN_OPTIONS.map((column) => column.key);
+      const filtered = parsed.filter((key) => allowedKeys.includes(key));
+      return filtered.length > 0 ? Array.from(new Set(filtered)) : DEFAULT_VISIBLE_COLUMNS;
+    } catch (error) {
+      console.error("Failed to parse purchase order visible columns:", error);
+      return DEFAULT_VISIBLE_COLUMNS;
+    }
+  });
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -98,6 +163,17 @@ export default function PurchaseOrders() {
   useEffect(() => {
     loadPurchaseOrders();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      PURCHASE_ORDER_COLUMNS_STORAGE_KEY,
+      JSON.stringify(visibleColumns)
+    );
+  }, [visibleColumns]);
 
   const updateSelectedOrdersInDatabase = async (updates: Record<string, any>) => {
     if (!selectedOrders.length) {
@@ -344,6 +420,9 @@ export default function PurchaseOrders() {
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
+      position: "sticky",
+      top: 0,
+      zIndex: 20,
     },
     headerContent: {
       display: "flex",
@@ -719,12 +798,25 @@ export default function PurchaseOrders() {
         <PurchaseOrdersTable
           displayCurrencySymbol={displayCurrencySymbol}
           isRefreshing={isRefreshing}
+          onOpenCustomizeColumns={() => setShowCustomizeColumnsModal(true)}
           onOpenSearch={() => setShowSearchModal(true)}
           orders={sortedPurchaseOrders}
           selectedOrders={selectedOrders}
           setSelectedOrders={setSelectedOrders}
           styles={styles}
           visibleOrderIds={filteredPurchaseOrders.map((purchaseOrder) => purchaseOrder.id)}
+          visibleColumns={visibleColumns}
+        />
+
+        <PurchaseOrdersCustomizeColumnsModal
+          open={showCustomizeColumnsModal}
+          columns={PURCHASE_ORDER_COLUMN_OPTIONS}
+          value={visibleColumns}
+          onClose={() => setShowCustomizeColumnsModal(false)}
+          onSave={(nextVisibleColumns) => {
+            setVisibleColumns(nextVisibleColumns);
+            setShowCustomizeColumnsModal(false);
+          }}
         />
 
         {showCustomViewModal && (

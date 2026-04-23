@@ -853,16 +853,7 @@ export default function PaymentDetail() {
               </button>
             </div>
           </div>
-          <div style={styles.searchBar}>
-            <Search size={16} style={{ color: "#9ca3af" }} />
-            <input
-              type="text"
-              placeholder="Search in Payments Made (/)"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={styles.searchInput}
-            />
-          </div>
+
         </div>
 
         <div style={styles.sidebarList}>
@@ -902,7 +893,7 @@ export default function PaymentDetail() {
             {payment.paymentNumber || id}
           </div>
           <div style={styles.headerRight}>
-            <button style={styles.headerIconButton}><Search size={18} /></button>
+
             <button style={styles.headerIconButton} onClick={() => navigate("/purchases/payments-made")}><X size={20} /></button>
           </div>
         </div>

@@ -8,10 +8,9 @@ import { useLocation } from "react-router-dom";
 export default function AppShell() {
   const location = useLocation();
   const isEmbedded = new URLSearchParams(location.search).get("embed") === "1";
-  const isPurchaseOrdersListPage =
-    location.pathname === "/purchases" ||
-    location.pathname === "/purchases/" ||
-    location.pathname === "/purchases/purchase-orders";
+  const isPurchaseOrdersListPage = /^\/purchases(?:\/purchase-orders)?\/?$/.test(
+    location.pathname
+  );
 
   if (isEmbedded) {
     return (

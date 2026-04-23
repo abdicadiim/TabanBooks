@@ -57,10 +57,9 @@ export default function Header() {
   const headerMuted = isLightAppearance ? "text-slate-500" : "text-white/60";
   const controlSurface = isLightAppearance ? "bg-white border-slate-200" : "bg-white/10 border-white/15";
   const controlText = isLightAppearance ? "text-slate-700" : "text-white/90";
-  const isPurchaseOrdersListPage =
-    location.pathname === "/purchases" ||
-    location.pathname === "/purchases/" ||
-    location.pathname === "/purchases/purchase-orders";
+  const isPurchaseOrdersListPage = /^\/purchases(?:\/purchase-orders)?\/?$/.test(
+    location.pathname
+  );
 
   const handleLogout = async () => {
     try {

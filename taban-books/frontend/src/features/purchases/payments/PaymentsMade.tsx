@@ -1,7 +1,7 @@
-﻿import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { createPortal } from "react-dom";
-import { ChevronDown, ChevronUp, Plus, MoreVertical, Star, X, Search, ArrowUpDown, Download, Upload, Settings, Columns, RefreshCw, ChevronRight, GripVertical, Trash2, Check, Lock, ChevronUp as ChevronUpIcon, ChevronDown as ChevronDownIcon, AlertTriangle, Eye, EyeOff, Info } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, MoreVertical, Star, X, Search, ArrowUpDown, Download, Upload, Settings, SlidersHorizontal, Columns, RefreshCw, ChevronRight, GripVertical, Trash2, Check, Lock, ChevronUp as ChevronUpIcon, ChevronDown as ChevronDownIcon, AlertTriangle, Eye, EyeOff, Info } from "lucide-react";
 import BulkUpdateModal from "../shared/BulkUpdateModal";
 import ExportPayments from "./ExportPayments";
 import { paymentsMadeAPI } from "../../../services/api";
@@ -45,6 +45,8 @@ export default function PaymentsMade() {
   const [showImportExcessModal, setShowImportExcessModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportType, setExportType] = useState("payments");
+  const [preferencesDropdownOpen, setPreferencesDropdownOpen] = useState(false);
+  const [preferencesDropdownPosition, setPreferencesDropdownPosition] = useState({ top: 0, left: 0 });
 
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearchModal, setShowSearchModal] = useState(false);
@@ -93,6 +95,7 @@ export default function PaymentsMade() {
   const exportSubmenuRef = useRef<HTMLDivElement>(null);
   const importSubmenuRef = useRef<HTMLDivElement>(null);
   const sortBySubmenuRef = useRef<HTMLDivElement>(null);
+  const preferencesDropdownRef = useRef<HTMLDivElement>(null);
 
   // Load payments from API
   const loadPayments = async () => {
@@ -416,6 +419,9 @@ export default function PaymentsMade() {
           setMoreMenuOpen(false);
         }
       }
+      if (preferencesDropdownRef.current && !preferencesDropdownRef.current.contains(event.target as Node)) {
+        setPreferencesDropdownOpen(false);
+      }
     };
 
     if (dropdownOpen || moreMenuOpen) {
@@ -644,12 +650,10 @@ export default function PaymentsMade() {
       textDecoration: "none",
     },
     tableContainer: {
-      padding: "24px",
+      padding: "0",
     },
     tableWrapper: {
       overflowX: "auto",
-      border: "1px solid #e5e7eb",
-      borderRadius: "6px",
     },
     table: {
       width: "100%",
@@ -661,41 +665,44 @@ export default function PaymentsMade() {
       borderBottom: "1px solid #e5e7eb",
     },
     tableHeaderCell: {
-      padding: "12px",
+      padding: "12px 16px",
       textAlign: "left",
       fontSize: "12px",
       fontWeight: "600",
-      color: "#6b7280",
+      color: "#4b5563",
       textTransform: "uppercase",
       whiteSpace: "nowrap",
+      borderBottom: "2px solid #f3f4f6",
     },
     tableHeaderCellWithCheckbox: {
-      padding: "12px",
+      padding: "12px 16px",
       textAlign: "left",
       fontSize: "12px",
       fontWeight: "600",
-      color: "#6b7280",
+      color: "#4b5563",
       textTransform: "uppercase",
-      position: "relative",
+      borderBottom: "2px solid #f3f4f6",
+      width: "72px",
     },
     tableHeaderCheckboxWrapper: {
       display: "flex",
       alignItems: "center",
-      gap: "8px",
     },
     tableHeaderAmount: {
       display: "flex",
       alignItems: "center",
+      justifyContent: "flex-end",
       gap: "8px",
     },
     tableRow: {
-      borderBottom: "1px solid #e5e7eb",
+      borderBottom: "1px solid #f3f4f6",
       cursor: "pointer",
+      transition: "background-color 0.15s ease",
     },
     tableCell: {
-      padding: "12px",
+      padding: "14px 16px",
       fontSize: "14px",
-      color: "#111827",
+      color: "#374151",
       whiteSpace: "nowrap",
     },
     tableCheckbox: {
@@ -703,27 +710,37 @@ export default function PaymentsMade() {
       height: "16px",
       cursor: "pointer",
       accentColor: "#156372",
+      borderRadius: "4px",
     },
     paymentNumberLink: {
       color: "#156372",
       textDecoration: "none",
       cursor: "pointer",
+      fontWeight: "500",
     },
     statusBadge: {
-      padding: "4px 8px",
-      fontSize: "12px",
-      fontWeight: "500",
-      backgroundColor: "#d1fae5",
-      color: "#065f46",
-      borderRadius: "4px",
-      display: "inline-block",
+      padding: "4px 10px",
+      fontSize: "11px",
+      fontWeight: "600",
+      backgroundColor: "#def7ec",
+      color: "#03543f",
+      borderRadius: "9999px",
+      display: "inline-flex",
+      alignItems: "center",
+      textTransform: "uppercase",
+      letterSpacing: "0.025em",
     },
     statusBadgeDraft: {
       backgroundColor: "#f3f4f6",
       color: "#374151",
     },
+    statusBadgeVoid: {
+      backgroundColor: "#fde2e2",
+      color: "#9b1c1c",
+    },
     tableAmount: {
-      fontWeight: "500",
+      fontWeight: "600",
+      textAlign: "right",
     },
   };
 
@@ -908,483 +925,201 @@ export default function PaymentsMade() {
       )}
       {/* Header */}
       {selectedPayments.length === 0 && (
-        <div style={styles.header}>
-          <div style={styles.headerLeft}>
-            <button
-              style={styles.refreshButton}
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "#f3f4f6";
-                e.currentTarget.style.color = "#111827";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "transparent";
-                e.currentTarget.style.color = "#6b7280";
-              }}
-              title="Refresh"
-            >
-              <RefreshCw
-                size={18}
-                style={{ animation: isRefreshing ? "spin 1s linear infinite" : "none" }}
-              />
-            </button>
-            <div style={styles.searchBar}>
-              <Search size={16} style={styles.searchIcon} />
-              <input
-                type="text"
-                placeholder="Search in Payments Made (/)"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={styles.searchInput}
-                onKeyDown={(e) => {
-                  if (e.key === "/" && e.target !== document.activeElement) {
-                    e.preventDefault();
-                    (e.target as HTMLInputElement).focus();
-                  }
-                }}
-              />
-            </div>
-            <div style={styles.dropdownWrapper} ref={dropdownRef}>
-              <button
-                style={styles.dropdownButton}
-                onClick={() => setDropdownOpen(!dropdownOpen)}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = "#156372";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = "#111827";
-                }}
-              >
-                {selectedView}
-                {dropdownOpen ? (
-                  <ChevronUp size={16} style={{ color: "#156372" }} />
-                ) : (
-                  <ChevronDown size={16} style={{ color: "#156372" }} />
+        <div style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 100,
+          backgroundColor: "#fff",
+          padding: "0",
+          borderBottom: "1px solid #e5e7eb"
+        }}>
+          {/* Top Primary Header */}
+          <div style={{ ...styles.header, borderBottom: "none", padding: "12px 24px" }}>
+            <div style={styles.headerLeft}>
+              <div style={styles.dropdownWrapper} ref={dropdownRef}>
+                <button
+                  style={{ ...styles.dropdownButton, fontSize: "18px", fontWeight: "600", color: "#111827" }}
+                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                >
+                  {selectedView}
+                  {dropdownOpen ? (
+                    <ChevronUp size={20} style={{ color: "#156372" }} />
+                  ) : (
+                    <ChevronDown size={20} style={{ color: "#156372" }} />
+                  )}
+                </button>
+                {dropdownOpen && (
+                  <div style={styles.dropdown}>
+                    {["All Payments", "Draft", "Paid", "Void"].map((option) => (
+                      <button
+                        key={option}
+                        style={{
+                          ...styles.dropdownItem,
+                          ...(selectedView === option ? styles.dropdownItemSelected : {}),
+                        }}
+                        onClick={() => {
+                          setSelectedView(option);
+                          setDropdownOpen(false);
+                        }}
+                      >
+                        <span style={{ flex: 1, textAlign: "left" }}>{option}</span>
+                      </button>
+                    ))}
+                  </div>
                 )}
+              </div>
+            </div>
+
+            <div style={styles.headerRight}>
+              <button
+                style={{ ...styles.newButton, backgroundColor: "#156372" }}
+                onClick={() => navigate("/purchases/payments-made/new")}
+              >
+                <Plus size={16} />
+                New
               </button>
-              {dropdownOpen && (
-                <div style={styles.dropdown}>
-                  {["All Payments", "Draft", "Paid", "Void"].map((option) => (
+              <div style={styles.moreWrapper} ref={moreMenuRef}>
+                <button
+                  style={styles.moreButton}
+                  onClick={() => setMoreMenuOpen(!moreMenuOpen)}
+                >
+                  <MoreVertical size={18} />
+                </button>
+                {moreMenuOpen && (
+                  <div style={styles.moreMenu}>
+                    {/* Sort by */}
+                    <div style={{ position: "relative" }} ref={sortBySubmenuRef}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSortBySubmenuOpen(!sortBySubmenuOpen);
+                        }}
+                        style={{
+                          ...styles.moreMenuItem,
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                          <ArrowUpDown size={16} style={{ color: "#6b7280" }} />
+                          <span>Sort by</span>
+                        </div>
+                        <ChevronRight size={12} style={{ color: "#6b7280" }} />
+                      </button>
+                      {sortBySubmenuOpen && (
+                        <div style={{
+                          position: "absolute",
+                          top: 0,
+                          right: "100%",
+                          marginRight: "8px",
+                          backgroundColor: "#fff",
+                          borderRadius: "6px",
+                          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                          minWidth: "200px",
+                          border: "1px solid #e5e7eb",
+                          zIndex: 1001,
+                          padding: "4px 0"
+                        }}>
+                          {["Date", "Payment #", "Vendor Name", "Mode", "Amount"].map((field) => (
+                            <button
+                              key={field}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSortBySubmenuOpen(false);
+                                setMoreMenuOpen(false);
+                              }}
+                              style={styles.moreMenuItem}
+                            >
+                              {field}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Import */}
+                    <div style={{ position: "relative" }} ref={importSubmenuRef}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setImportSubmenuOpen(!importSubmenuOpen);
+                        }}
+                        style={{
+                          ...styles.moreMenuItem,
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                          <Download size={16} style={{ color: "#6b7280" }} />
+                          <span>Import</span>
+                        </div>
+                        <ChevronRight size={12} style={{ color: "#6b7280" }} />
+                      </button>
+                      {importSubmenuOpen && (
+                        <div style={{
+                          position: "absolute",
+                          top: 0,
+                          right: "100%",
+                          marginRight: "8px",
+                          backgroundColor: "#fff",
+                          borderRadius: "6px",
+                          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                          minWidth: "200px",
+                          border: "1px solid #e5e7eb",
+                          zIndex: 1001,
+                          padding: "4px 0"
+                        }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate("/purchases/payments-made/import");
+                              setMoreMenuOpen(false);
+                            }}
+                            style={styles.moreMenuItem}
+                          >
+                            Import Payments
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Preferences */}
                     <button
-                      key={option}
-                      style={{
-                        ...styles.dropdownItem,
-                        ...(selectedView === option ? styles.dropdownItemSelected : {}),
-                      }}
-                      onClick={() => {
-                        setSelectedView(option);
-                        setDropdownOpen(false);
-                      }}
-                      onMouseEnter={(e) => {
-                        if (selectedView !== option) {
-                          e.currentTarget.style.backgroundColor = "#f9fafb";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (selectedView === option) {
-                          e.currentTarget.style.backgroundColor = "#eff6ff";
-                        } else {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                        }
+                      style={styles.moreMenuItem}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMoreMenuOpen(false);
+                        navigate("/settings/payments-made");
                       }}
                     >
-                      <span style={{ flex: 1, textAlign: "left" }}>{option}</span>
-                      <Star
-                        size={16}
-                        style={{
-                          color: "#9ca3af",
-                          fill: "none",
-                          stroke: "#9ca3af",
-                          strokeWidth: 1.5
-                        }}
-                      />
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                        <Settings size={16} style={{ color: "#6b7280" }} />
+                        <span>Preferences</span>
+                      </div>
                     </button>
-                  ))}
-                  <div style={{
-                    height: "1px",
-                    backgroundColor: "#e5e7eb",
-                    margin: "4px 0",
-                  }} />
-                  <button
-                    style={{
-                      ...styles.dropdownItem,
-                      color: "#111827",
-                    }}
-                    onClick={() => {
-                      setShowCustomViewModal(true);
-                      setDropdownOpen(false);
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = "#f9fafb";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = "transparent";
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <Plus size={16} style={{ color: "#156372" }} />
-                      <span>New Custom View</span>
-                    </div>
-                  </button>
-                </div>
-              )}
+
+                    {/* Refresh List */}
+                    <button
+                      style={styles.moreMenuItem}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMoreMenuOpen(false);
+                        handleRefresh();
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                        <RefreshCw size={16} style={{ color: "#6b7280" }} />
+                        <span>Refresh List</span>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          <div style={styles.headerRight}>
-            <button
-              style={styles.newButton}
-              onClick={() => navigate("/purchases/payments-made/new")}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#0D4A52")}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#156372")}
-            >
-              <Plus size={16} />
-              New
-            </button>
-            <div style={styles.moreWrapper} ref={moreMenuRef}>
-              <button
-                style={styles.moreButton}
-                onClick={() => setMoreMenuOpen(!moreMenuOpen)}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#e5e7eb";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "#f3f4f6";
-                }}
-              >
-                <MoreVertical size={18} />
-              </button>
-              {moreMenuOpen && (
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  style={styles.moreMenu}>
-
-                  {/* Sort by */}
-                  <div style={{ position: "relative" }} ref={sortBySubmenuRef}>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSortBySubmenuOpen(!sortBySubmenuOpen);
-                      }}
-                      style={{
-                        ...styles.moreMenuItem,
-                        justifyContent: "space-between",
-                        backgroundColor: sortBySubmenuOpen ? "#eff6ff" : "transparent",
-                        color: sortBySubmenuOpen ? "#156372" : "#111827"
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!sortBySubmenuOpen) {
-                          e.currentTarget.style.backgroundColor = "#f9fafb";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!sortBySubmenuOpen) {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                        } else {
-                          e.currentTarget.style.backgroundColor = "#eff6ff";
-                        }
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                        <ArrowUpDown size={16} style={{ color: sortBySubmenuOpen ? "#156372" : "#6b7280" }} />
-                        <span>Sort by</span>
-                      </div>
-                      <ChevronRight size={12} style={{ color: sortBySubmenuOpen ? "#156372" : "#6b7280" }} />
-                    </button>
-                    {sortBySubmenuOpen && (
-                      <div style={{
-                        position: "absolute",
-                        top: 0,
-                        right: "100%",
-                        marginRight: "8px",
-                        backgroundColor: "#fff",
-                        borderRadius: "6px",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                        minWidth: "200px",
-                        border: "1px solid #e5e7eb",
-                        zIndex: 1001,
-                        padding: "4px 0"
-                      }}>
-                        {["Date", "Payment #", "Vendor Name", "Mode", "Amount", "Unused Amount"].map((field) => (
-                          <button
-                            key={field}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // Handle sort logic here
-                              setSortBySubmenuOpen(false);
-                              setMoreMenuOpen(false);
-                            }}
-                            style={{
-                              width: "100%",
-                              padding: "10px 16px",
-                              fontSize: "14px",
-                              color: "#111827",
-                              cursor: "pointer",
-                              border: "none",
-                              background: "none",
-                              textAlign: "left"
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f3f4f6"}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                          >
-                            {field}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Import */}
-                  <div style={{ position: "relative" }} ref={importSubmenuRef}>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setImportSubmenuOpen(!importSubmenuOpen);
-                      }}
-                      style={{
-                        ...styles.moreMenuItem,
-                        justifyContent: "space-between",
-                        backgroundColor: importSubmenuOpen ? "#eff6ff" : "transparent",
-                        borderLeft: importSubmenuOpen ? "3px solid #156372" : "none",
-                        paddingLeft: importSubmenuOpen ? "13px" : "16px",
-                        color: importSubmenuOpen ? "#156372" : "#111827"
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!importSubmenuOpen) {
-                          e.currentTarget.style.backgroundColor = "#f9fafb";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!importSubmenuOpen) {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                        } else {
-                          e.currentTarget.style.backgroundColor = "#eff6ff";
-                        }
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                        <Download size={16} style={{ color: importSubmenuOpen ? "#156372" : "#6b7280" }} />
-                        <span>Import</span>
-                      </div>
-                      <ChevronRight size={12} style={{ color: importSubmenuOpen ? "#156372" : "#6b7280" }} />
-                    </button>
-                    {importSubmenuOpen && (
-                      <div style={{
-                        position: "absolute",
-                        top: 0,
-                        right: "100%",
-                        marginRight: "8px",
-                        backgroundColor: "#fff",
-                        borderRadius: "6px",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                        minWidth: "220px",
-                        border: "1px solid #e5e7eb",
-                        zIndex: 1001,
-                        padding: "4px 0"
-                      }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setImportSubmenuOpen(false);
-                            setMoreMenuOpen(false);
-                            navigate("/purchases/payments-made/import");
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "10px 16px",
-                            fontSize: "14px",
-                            color: "#111827",
-                            cursor: "pointer",
-                            border: "none",
-                            background: "none",
-                            textAlign: "left"
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#eff6ff"}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                        >
-                          Import Payments
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Logic for sample download can be added here if needed,
-                            // but usually it's inside the Import page.
-                            // For consistency with Expenses, let's just keep the navigate.
-                            setImportSubmenuOpen(false);
-                            setMoreMenuOpen(false);
-                            navigate("/purchases/payments-made/import");
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "10px 16px",
-                            fontSize: "14px",
-                            color: "#111827",
-                            cursor: "pointer",
-                            border: "none",
-                            background: "none",
-                            textAlign: "left"
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#eff6ff"}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                        >
-                          Download Sample File
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Export */}
-                  <div style={{ position: "relative" }} ref={exportSubmenuRef}>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setExportSubmenuOpen(!exportSubmenuOpen);
-                      }}
-                      style={{
-                        ...styles.moreMenuItem,
-                        justifyContent: "space-between",
-                        backgroundColor: exportSubmenuOpen ? "#f9fafb" : "transparent",
-                        border: exportSubmenuOpen ? "2px solid #000000" : "2px solid transparent",
-                        borderRadius: exportSubmenuOpen ? "4px" : "0",
-                        margin: exportSubmenuOpen ? "4px 2px" : "0",
-                        padding: exportSubmenuOpen ? "8px 14px" : "10px 16px"
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!exportSubmenuOpen) {
-                          e.currentTarget.style.backgroundColor = "#f9fafb";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!exportSubmenuOpen) {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                        } else {
-                          e.currentTarget.style.backgroundColor = "#f9fafb";
-                        }
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                        <Upload size={16} style={{ color: "#6b7280" }} />
-                        <span>Export</span>
-                      </div>
-                      <ChevronRight size={12} style={{ color: "#6b7280" }} />
-                    </button>
-                    {exportSubmenuOpen && (
-                      <div style={{
-                        position: "absolute",
-                        top: 0,
-                        right: "100%",
-                        marginRight: "8px",
-                        backgroundColor: "#fff",
-                        borderRadius: "6px",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                        minWidth: "200px",
-                        border: "1px solid #e5e7eb",
-                        zIndex: 1001,
-                        padding: "4px 0"
-                      }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setExportType("payments");
-                            setShowExportModal(true);
-                            setExportSubmenuOpen(false);
-                            setMoreMenuOpen(false);
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "10px 16px",
-                            fontSize: "14px",
-                            color: "#111827",
-                            cursor: "pointer",
-                            border: "none",
-                            background: "none",
-                            textAlign: "left"
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f3f4f6"}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                        >
-                          Export Payments
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setExportType("current-view");
-                            setShowExportModal(true);
-                            setExportSubmenuOpen(false);
-                            setMoreMenuOpen(false);
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "10px 16px",
-                            fontSize: "14px",
-                            color: "#111827",
-                            cursor: "pointer",
-                            border: "none",
-                            background: "none",
-                            textAlign: "left"
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f3f4f6"}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                        >
-                          Export Current View
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Preferences */}
-                  <button
-                    style={styles.moreMenuItem}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMoreMenuOpen(false);
-                      navigate("/settings/payments-made");
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = "#f9fafb";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = "transparent";
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                      <Settings size={16} style={{ color: "#6b7280" }} />
-                      <span>Preferences</span>
-                    </div>
-                  </button>
-
-                  {/* Refresh List */}
-                  <button
-                    style={styles.moreMenuItem}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMoreMenuOpen(false);
-                      handleRefresh();
-                    }}
-                    disabled={isRefreshing}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = "#f9fafb";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = "transparent";
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                      <RefreshCw
-                        size={16}
-                        style={{
-                          color: "#6b7280",
-                          animation: isRefreshing ? "spin 1s linear infinite" : "none"
-                        }}
-                      />
-                      <span>Refresh List</span>
-                    </div>
-                  </button>
-                </div>
-              )}
-            </div>
+          {/* Secondary Filter Bar */}
+          <div style={{ padding: "4px 0" }}>
+            {/* Filter bar content removed as requested */}
           </div>
         </div>
       )}
@@ -1396,22 +1131,91 @@ export default function PaymentsMade() {
             <thead style={styles.tableHeader}>
               <tr>
                 <th style={styles.tableHeaderCellWithCheckbox}>
-                  <div style={styles.tableHeaderCheckboxWrapper}>
-                    <ArrowUpDown size={14} style={{ color: "#9ca3af" }} />
-                  </div>
-                </th>
-                <th style={styles.tableHeaderCell}>
-                  <div style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px"
-                  }}>
+                  <div style={{ ...styles.tableHeaderCheckboxWrapper, position: "relative" }}>
+                    <button 
+                      onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setPreferencesDropdownPosition({ top: rect.bottom + window.scrollY, left: rect.left + window.scrollX });
+                        setPreferencesDropdownOpen(!preferencesDropdownOpen);
+                      }}
+                      style={{ 
+                        background: "none", 
+                        border: "none", 
+                        padding: 0, 
+                        display: "flex", 
+                        alignItems: "center", 
+                        cursor: "pointer",
+                        marginRight: "8px"
+                      }}
+                    >
+                      <SlidersHorizontal size={16} style={{ color: "#156372" }} />
+                    </button>
+
+                    {preferencesDropdownOpen && createPortal(
+                      <div 
+                        ref={preferencesDropdownRef}
+                        style={{
+                          position: "absolute",
+                          top: preferencesDropdownPosition.top + 8,
+                          left: preferencesDropdownPosition.left,
+                          backgroundColor: "#ffffff",
+                          borderRadius: "8px",
+                          boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+                          border: "1px solid #e5e7eb",
+                          minWidth: "180px",
+                          zIndex: 2000,
+                          padding: "6px",
+                        }}
+                      >
+                        <button
+                          style={{
+                            ...styles.dropdownItem,
+                            backgroundColor: "#156372",
+                            color: "#ffffff",
+                            borderRadius: "6px",
+                            marginBottom: "4px",
+                            width: "100%",
+                            whiteSpace: "nowrap",
+                          }}
+                          onClick={() => {
+                            setShowPreferencesModal(true);
+                            setPreferencesDropdownOpen(false);
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            <Columns size={16} style={{ color: "#ffffff" }} />
+                            <span style={{ fontWeight: "500" }}>Customize Columns</span>
+                          </div>
+                        </button>
+                        <button
+                          style={{
+                            ...styles.dropdownItem,
+                            width: "100%",
+                            whiteSpace: "nowrap",
+                          }}
+                          onClick={() => {
+                            setPreferencesDropdownOpen(false);
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            <RefreshCw size={16} style={{ color: "#156372" }} />
+                            <span>Clip Text</span>
+                          </div>
+                        </button>
+                      </div>,
+                      document.body
+                    )}
+
                     <input
                       type="checkbox"
                       checked={selectedPayments.length === filteredPayments.length && filteredPayments.length > 0}
                       onChange={handleSelectAll}
                       style={styles.tableCheckbox}
                     />
+                  </div>
+                </th>
+                <th style={styles.tableHeaderCell}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                     DATE
                     <ArrowUpDown size={14} style={{ color: "#9ca3af" }} />
                   </div>
@@ -1422,7 +1226,7 @@ export default function PaymentsMade() {
                 <th style={styles.tableHeaderCell}>BILL#</th>
                 <th style={styles.tableHeaderCell}>MODE</th>
                 <th style={styles.tableHeaderCell}>STATUS</th>
-                <th style={styles.tableHeaderCell}>
+                <th style={{ ...styles.tableHeaderCell, textAlign: "right" }}>
                   <div style={styles.tableHeaderAmount}>
                     AMOUNT
                     <button
@@ -1445,7 +1249,7 @@ export default function PaymentsMade() {
                     </button>
                   </div>
                 </th>
-                <th style={styles.tableHeaderCell}>UNUSED AMOUNT</th>
+                <th style={{ ...styles.tableHeaderCell, textAlign: "right" }}>UNUSED AMOUNT</th>
               </tr>
             </thead>
             <tbody>
@@ -1454,7 +1258,9 @@ export default function PaymentsMade() {
                 Array.from({ length: 5 }).map((_, index) => (
                   <tr key={`skeleton-${index}`} style={styles.tableRow}>
                     <td style={styles.tableCell}>
-                      <div style={skeletonStyles.skeletonCheckbox}></div>
+                      <div style={{ display: "flex", alignItems: "center", paddingLeft: "24px" }}>
+                        <div style={skeletonStyles.skeletonCheckbox}></div>
+                      </div>
                     </td>
                     <td style={styles.tableCell}>
                       <div style={{ ...skeletonStyles.skeletonCell, width: "80px" }}></div>
@@ -1504,12 +1310,14 @@ export default function PaymentsMade() {
                     }}
                   >
                     <td style={styles.tableCell} onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedPayments.includes(payment.id)}
-                        onChange={() => handleSelectPayment(payment.id)}
-                        style={styles.tableCheckbox}
-                      />
+                      <div style={{ display: "flex", alignItems: "center", paddingLeft: "24px" }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedPayments.includes(payment.id)}
+                          onChange={() => handleSelectPayment(payment.id)}
+                          style={styles.tableCheckbox}
+                        />
+                      </div>
                     </td>
                     <td style={styles.tableCell}>{formatDate(payment.date)}</td>
                     <td style={styles.tableCell}>
@@ -1533,7 +1341,9 @@ export default function PaymentsMade() {
                           ...styles.statusBadge,
                           ...(payment.status === "PAID"
                             ? {}
-                            : styles.statusBadgeDraft),
+                            : payment.status === "VOID"
+                              ? styles.statusBadgeVoid
+                              : styles.statusBadgeDraft),
                         }}
                       >
                         {payment.status}

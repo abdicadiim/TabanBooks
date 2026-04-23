@@ -13,7 +13,7 @@ import {
   Copy,
 } from "lucide-react";
 
-import { recurringBillsAPI } from "../../../services/api";
+import { recurringBillsAPI, billsAPI } from "../../../services/api";
 import toast from "react-hot-toast";
 import { useCurrency } from "../../../hooks/useCurrency";
 
@@ -39,6 +39,8 @@ export default function RecurringBillDetail() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [childBillsExpanded, setChildBillsExpanded] = useState(true);
+  const [realChildBills, setRealChildBills] = useState([]);
+  const [isFetchingBills, setIsFetchingBills] = useState(false);
   const buttonClickedRef = useRef(false);
   const dropdownRef = useRef(null);
   const moreMenuRef = useRef(null);
@@ -100,6 +102,40 @@ export default function RecurringBillDetail() {
     };
     loadDetailData();
   }, [id]);
+
+  useEffect(() => {
+    const fetchRealBills = async () => {
+      if (!recurringBill) return;
+      setIsFetchingBills(true);
+      try {
+        // Fetch all bills and filter by vendor and a pattern in bill number
+        // In a real app, there would be a specific field like recurringBillId
+        const response = await billsAPI.getAll({ limit: 1000 });
+        if (response && response.success && response.data) {
+          const filtered = response.data.filter((b: any) => {
+            // Check if it belongs to this vendor and follows the profile name pattern
+            const isSameVendor = b.vendorName === recurringBill.vendorName || (b.vendor && b.vendor.displayName === recurringBill.vendorName);
+            const matchesProfile = b.billNumber && b.billNumber.startsWith(recurringBill.profileName);
+            return isSameVendor && matchesProfile;
+          });
+          setRealChildBills(filtered.map((b: any) => ({
+            ...b,
+            id: b._id || b.id,
+            vendorName: b.vendorName || (b.vendor && b.vendor.displayName) || "",
+            profileName: b.billNumber,
+            date: b.date ? new Date(b.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : "",
+            amount: `${resolvedBaseCurrencySymbol}${parseFloat(b.total || 0).toFixed(2)}`,
+            status: (b.status || "OPEN").toUpperCase()
+          })));
+        }
+      } catch (error) {
+        console.error("Error fetching real bills:", error);
+      } finally {
+        setIsFetchingBills(false);
+      }
+    };
+    fetchRealBills();
+  }, [recurringBill, id]);
 
   useEffect(() => {
     if (!moreMenuOpen) return;
@@ -753,7 +789,7 @@ export default function RecurringBillDetail() {
     }];
   };
 
-  const childBills = generateChildBills();
+  const childBills = realChildBills.length > 0 ? realChildBills : generateChildBills();
 
   return (
     <div style={styles.container}>
@@ -1057,15 +1093,17 @@ export default function RecurringBillDetail() {
                       <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
                         <div style={{ fontSize: "14px", fontWeight: "500", color: "#111827" }}>{bill.amount}</div>
                         <div style={{ fontSize: "11px", color: "#3b82f6", textTransform: "uppercase", letterSpacing: "1px" }}>{bill.status === "OVERDUE" ? "OPEN" : bill.status}</div>
-                        <button 
+                         <button 
                           onClick={() => {
+                            // Navigate to the standalone Record Payment page (Image 1)
                             navigate("/purchases/payments-made/new", {
                               state: {
+                                fromBill: true,
+                                bill: bill, // Passing the full bill object for RecordPayment.tsx
                                 billId: bill.id,
-                                billNumber: bill.profileName, // Or bill.billNumber if available
+                                billNumber: bill.profileName,
                                 vendorName: bill.vendorName,
-                                amount: bill.amount,
-                                fromBill: true
+                                amount: bill.amount.replace(/[^0-9.]/g, '')
                               }
                             });
                           }}

@@ -1,5 +1,5 @@
-﻿import React, { useState, useRef, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useState, useRef, useEffect } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
   ChevronDown,
   ChevronUp,
@@ -113,6 +113,7 @@ interface Payment {
 export default function BillDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { code: baseCurrencyCode, symbol: baseCurrencySymbol } = useCurrency();
   const resolvedBaseCurrency = baseCurrencyCode || "USD";
   const resolvedBaseCurrencySymbol = baseCurrencySymbol || resolvedBaseCurrency;
