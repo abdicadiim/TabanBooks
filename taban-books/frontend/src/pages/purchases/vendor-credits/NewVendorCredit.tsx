@@ -1151,6 +1151,16 @@ export default function NewVendorCredit() {
 
   return (
     <>
+      <style>{`
+        .animated-field {
+          transition: all 0.2s ease-in-out !important;
+        }
+        .animated-field:focus, .animated-field:focus-within {
+          border-color: #3b82f6 !important;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
+          outline: none !important;
+        }
+      `}</style>
       <div style={styles.container}>
         {/* Header */}
         <div style={styles.header}>
@@ -1172,7 +1182,7 @@ export default function NewVendorCredit() {
             {/* Vendor Name */}
             <div style={styles.fieldRow}>
               <label style={{ ...styles.label, ...styles.required }}>Vendor Name*</label>
-              <div style={{ display: "flex", position: "relative", width: "400px" }}>
+              <div style={{ display: "flex", position: "relative", width: "550px", gap: "12px", alignItems: "center" }}>
                 <div style={{ display: "flex", position: "relative", flex: 1 }}>
                   <div
                     style={{
@@ -1182,8 +1192,9 @@ export default function NewVendorCredit() {
                       justifyContent: "space-between",
                       cursor: "pointer",
                       backgroundColor: "#fff",
+                      transition: "all 0.2s ease-in-out",
                       borderColor: vendorDropdownOpen ? "#3b82f6" : "#d1d5db",
-                      boxShadow: vendorDropdownOpen ? "0 0 0 1px #3b82f6" : "none",
+                      boxShadow: vendorDropdownOpen ? "0 0 0 3px rgba(59, 130, 246, 0.2)" : "none",
                       borderTopRightRadius: 0,
                       borderBottomRightRadius: 0,
                       borderRight: "none"
@@ -1197,7 +1208,17 @@ export default function NewVendorCredit() {
                       {formData.vendorName || "Select a Vendor"}
                     </span>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <ChevronDown size={16} style={{ color: "#6b7280", transform: vendorDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+                      {formData.vendorName && (
+                        <X
+                          size={14}
+                          style={{ color: "#ef4444", cursor: "pointer" }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFormData({ ...formData, vendorId: "", vendorName: "" });
+                          }}
+                        />
+                      )}
+                      <ChevronDown size={16} style={{ color: "#3b82f6", transform: vendorDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
                     </div>
                   </div>
 
@@ -1222,6 +1243,7 @@ export default function NewVendorCredit() {
                         <div style={{ position: "relative" }}>
                           <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
                           <input
+                            className="animated-field"
                             style={{
                               width: "100%",
                               padding: "8px 8px 8px 32px",
@@ -1255,39 +1277,40 @@ export default function NewVendorCredit() {
                                 display: "flex",
                                 alignItems: "center",
                                 gap: "12px",
-                                backgroundColor: formData.vendorName === (vendor.displayName || vendor.name) ? "#eff6ff" : "white",
+                                backgroundColor: formData.vendorName === (vendor.displayName || vendor.name) ? "#3b82f6" : "white",
+                                color: formData.vendorName === (vendor.displayName || vendor.name) ? "white" : "inherit",
                                 borderBottom: "1px solid #f9fafb"
                               }}
                               onClick={() => handleVendorSelect(vendor)}
-                              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = formData.vendorName === (vendor.displayName || vendor.name) ? "#eff6ff" : "#f9fafb")}
-                              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = formData.vendorName === (vendor.displayName || vendor.name) ? "#eff6ff" : "white")}
+                              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = formData.vendorName === (vendor.displayName || vendor.name) ? "#3b82f6" : "#f9fafb")}
+                              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = formData.vendorName === (vendor.displayName || vendor.name) ? "#3b82f6" : "white")}
                             >
                               <div style={{
                                 width: "32px",
                                 height: "32px",
                                 borderRadius: "50%",
-                                backgroundColor: "#f3f4f6",
+                                backgroundColor: formData.vendorName === (vendor.displayName || vendor.name) ? "rgba(255, 255, 255, 0.2)" : "#f3f4f6",
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "center",
                                 fontSize: "12px",
                                 fontWeight: "600",
-                                color: "#6b7280"
+                                color: formData.vendorName === (vendor.displayName || vendor.name) ? "white" : "#6b7280"
                               }}>
                                 {(vendor.displayName || vendor.name || "V")[0].toUpperCase()}
                               </div>
                               <div style={{ display: "flex", flexDirection: "column" }}>
-                                <span style={{ fontSize: "13px", fontWeight: "500", color: "#1f2937" }}>
+                                <span style={{ fontSize: "13px", fontWeight: "500", color: formData.vendorName === (vendor.displayName || vendor.name) ? "white" : "#1f2937" }}>
                                   {vendor.displayName || vendor.name}
                                 </span>
                                 {vendor.email && (
-                                  <span style={{ fontSize: "11px", color: "#6b7280", display: "flex", alignItems: "center", gap: "4px" }}>
+                                  <span style={{ fontSize: "11px", color: formData.vendorName === (vendor.displayName || vendor.name) ? "rgba(255,255,255,0.8)" : "#6b7280", display: "flex", alignItems: "center", gap: "4px" }}>
                                     <FileText size={10} /> {vendor.email} | <Copy size={10} /> {vendor.displayName || vendor.name}
                                   </span>
                                 )}
                               </div>
                               {formData.vendorName === (vendor.displayName || vendor.name) && (
-                                <Check size={14} style={{ marginLeft: "auto", color: "#156372" }} />
+                                <Check size={16} style={{ marginLeft: "auto", color: "white" }} />
                               )}
                             </div>
                           ))}
@@ -1297,7 +1320,7 @@ export default function NewVendorCredit() {
                         style={{
                           padding: "12px",
                           borderTop: "1px solid #f3f4f6",
-                          color: "#156372",
+                          color: "#3b82f6",
                           fontSize: "13px",
                           fontWeight: "500",
                           display: "flex",
@@ -1331,11 +1354,30 @@ export default function NewVendorCredit() {
                     alignItems: "center",
                     justifyContent: "center",
                     cursor: "pointer",
-                    width: "36px"
+                    width: "36px",
+                    height: "100%"
                   }}
                 >
                   <Search size={16} color="#fff" />
                 </button>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "6px 12px",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "4px",
+                  backgroundColor: "#fff",
+                  fontSize: "13px",
+                  fontWeight: "500",
+                  color: "#374151",
+                  height: "100%"
+                }}>
+                  <div style={{ width: "12px", height: "12px", borderRadius: "50%", border: "2px solid #10b981", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div style={{ width: "4px", height: "4px", borderRadius: "50%", backgroundColor: "#10b981" }}></div>
+                  </div>
+                  KES
+                </div>
               </div>
             </div>
 
@@ -1343,7 +1385,7 @@ export default function NewVendorCredit() {
             <div style={styles.fieldRow}>
               <label style={styles.label}>Location</label>
               <div style={{ width: "400px" }}>
-                <div style={styles.select}>
+                <div className="animated-field" tabIndex={0} style={styles.select}>
                   <span style={{ fontSize: "13px", color: "#374151" }}>Head Office</span>
                   <ChevronDown size={16} style={{ color: "#6b7280" }} />
                 </div>
@@ -1356,6 +1398,7 @@ export default function NewVendorCredit() {
               <div style={{ display: "flex", alignItems: "center", position: "relative", width: "400px" }}>
                 <input
                   type="text"
+                  className="animated-field"
                   style={styles.input}
                   value={formData.creditNote}
                   onChange={(e) => setFormData({ ...formData, creditNote: e.target.value })}
@@ -1370,6 +1413,7 @@ export default function NewVendorCredit() {
               <div style={{ width: "400px" }}>
                 <input
                   type="text"
+                  className="animated-field"
                   style={styles.input}
                   value={formData.orderNumber}
                   onChange={(e) => setFormData({ ...formData, orderNumber: e.target.value })}
@@ -1383,6 +1427,7 @@ export default function NewVendorCredit() {
               <div style={{ width: "400px" }}>
                 <input
                   type="date"
+                  className="animated-field"
                   style={styles.input}
                   value={formData.vendorCreditDate}
                   onChange={(e) => setFormData({ ...formData, vendorCreditDate: e.target.value })}
@@ -1397,6 +1442,7 @@ export default function NewVendorCredit() {
               </label>
               <div style={{ width: "400px" }}>
                 <textarea
+                  className="animated-field"
                   style={{ ...styles.textarea, minHeight: "36px" }}
                   value={formData.subject}
                   onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
@@ -1412,13 +1458,17 @@ export default function NewVendorCredit() {
               </label>
               <div style={{ width: "400px", position: "relative" }}>
                 <div
+                  className="animated-field"
+                  tabIndex={0}
                   style={{
                     ...styles.input,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
                     cursor: "pointer",
-                    backgroundColor: "#fff"
+                    backgroundColor: "#fff",
+                    borderColor: accountsPayableOpen ? "#3b82f6" : "#d1d5db",
+                    boxShadow: accountsPayableOpen ? "0 0 0 3px rgba(59, 130, 246, 0.2)" : "none"
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
