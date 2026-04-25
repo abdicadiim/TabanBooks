@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useMemo } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import { getBills, getPaymentsMade, getVendorCredits, getExpenses, getPurchaseOrders, getRecurringBills, getRecurringExpenses, getJournals, getProjects, getPurchaseReceipts } from "../shared/purchasesModel";
@@ -57,6 +58,34 @@ const currencies = [
   { code: "NOK", name: "Norwegian Krone" },
   { code: "DKK", name: "Danish Krone" }
 ];
+
+const expenseDateRangeOptions = [
+  { value: "this-fiscal-year", label: "This Fiscal Year" },
+  { value: "previous-fiscal-year", label: "Previous Fiscal Year" },
+  { value: "last-12-months", label: "Last 12 Months" },
+  { value: "last-6-months", label: "Last 6 Months" },
+];
+
+const expenseBasisOptions = [
+  { value: "accrual", label: "Accrual" },
+  { value: "cash", label: "Cash" },
+];
+
+const parseDateValue = (value: any) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const formatDateTimeParts = (value: any) => {
+  const date = parseDateValue(value);
+  if (!date) return null;
+
+  return {
+    date: date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+    time: date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })
+  };
+};
 
 // Type definitions
 interface Vendor {
@@ -287,12 +316,40 @@ export default function VendorDetail() {
       shippingCountry: source?.shippingAddress?.country || source?.shippingCountry || ''
     };
   };
+
+  const getCachedVendorById = (vendorId?: string) => {
+    if (typeof window === "undefined" || !vendorId) return null;
+
+    try {
+      const storedVendors = localStorage.getItem("vendors");
+      if (!storedVendors) return null;
+
+      const parsedVendors = JSON.parse(storedVendors);
+      if (!Array.isArray(parsedVendors)) return null;
+
+      const matchedVendor = parsedVendors.find((entry: any) => {
+        const entryId = String(entry?._id || entry?.id || "").trim();
+        return entryId === String(vendorId).trim();
+      });
+
+      return matchedVendor ? mapVendorFromSource(matchedVendor, String(vendorId)) : null;
+    } catch (error) {
+      return null;
+    }
+  };
   const [isStartDatePickerOpen, setIsStartDatePickerOpen] = useState(false);
   const [isEndDatePickerOpen, setIsEndDatePickerOpen] = useState(false);
   const [startDateCalendarMonth, setStartDateCalendarMonth] = useState(new Date());
   const [endDateCalendarMonth, setEndDateCalendarMonth] = useState(new Date());
   const startDatePickerRef = useRef<HTMLDivElement>(null);
   const endDatePickerRef = useRef<HTMLDivElement>(null);
+
+  const [expensesDateRange, setExpensesDateRange] = useState("last-6-months");
+  const [expensesBasis, setExpensesBasis] = useState("accrual");
+  const [isExpensesDateRangeDropdownOpen, setIsExpensesDateRangeDropdownOpen] = useState(false);
+  const [isExpensesBasisDropdownOpen, setIsExpensesBasisDropdownOpen] = useState(false);
+  const expensesDateRangeDropdownRef = useRef<HTMLDivElement>(null);
+  const expensesBasisDropdownRef = useRef<HTMLDivElement>(null);
 
   // Merge Vendors Modal state
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
@@ -337,6 +394,56 @@ export default function VendorDetail() {
   // const statementFilterDropdownRef = useRef(null);
   const [statementTransactions, setStatementTransactions] = useState<Transaction[]>([]);
   // Other transaction states already declared above
+
+  const selectedExpensesDateRangeLabel = expenseDateRangeOptions.find((option) => option.value === expensesDateRange)?.label || "Last 6 Months";
+  const selectedExpensesBasisLabel = expenseBasisOptions.find((option) => option.value === expensesBasis)?.label || "Accrual";
+  const filteredExpensesForOverview = useMemo(() => {
+    const now = new Date();
+    const startDate = new Date(now);
+
+    switch (expensesDateRange) {
+      case "this-fiscal-year":
+        startDate.setMonth(0, 1);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+      case "previous-fiscal-year": {
+        const currentYear = now.getFullYear();
+        startDate.setFullYear(currentYear - 1, 0, 1);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+      }
+      case "last-12-months":
+        startDate.setMonth(startDate.getMonth() - 12);
+        break;
+      case "last-6-months":
+      default:
+        startDate.setMonth(startDate.getMonth() - 6);
+        break;
+    }
+
+    return expenses.filter((expense) => {
+      const expenseDate = parseDateValue(expense?.date || expense?.createdAt || expense?.updatedAt);
+      if (!expenseDate) {
+        return false;
+      }
+
+      if (expenseDate < startDate || expenseDate > now) {
+        return false;
+      }
+
+      if (expensesBasis === "cash") {
+        const status = String(expense?.status || expense?.paymentStatus || expense?.billStatus || "").toLowerCase();
+        const isCashRecognized = expense?.isPaid === true || status.includes("paid") || status.includes("settled") || status.includes("received");
+        return isCashRecognized;
+      }
+
+      return true;
+    });
+  }, [expenses, expensesDateRange, expensesBasis]);
+  const filteredExpensesTotal = filteredExpensesForOverview.reduce(
+    (sum, expense) => sum + Number(expense?.amount || expense?.total || expense?.expenseAmount || 0),
+    0
+  );
 
   // New Transaction dropdown state
   const [isNewTransactionDropdownOpen, setIsNewTransactionDropdownOpen] = useState(false);
@@ -1021,6 +1128,8 @@ export default function VendorDetail() {
     const savedVendor = location.state?.vendor;
     const savedVendorId = savedVendor?._id || savedVendor?.id;
     const canHydrateFromState = Boolean(savedVendor && id && String(savedVendorId) === String(id));
+    const cachedVendor = getCachedVendorById(String(id || ""));
+    const canHydrateFromCache = Boolean(cachedVendor);
 
     const loadVendor = async () => {
       if (!id) {
@@ -1117,6 +1226,28 @@ export default function VendorDetail() {
       setVendor(mappedVendor);
       setComments(normalizeCommentList(savedVendor.comments || savedVendor.customFields?.vendorComments || []));
       setAttachments(normalizeAttachmentList(savedVendor.documents || savedVendor.customFields?.vendorDocuments || []));
+      setMails([]);
+      setBills([]);
+      setPaymentsMade([]);
+      setVendorCredits([]);
+      setExpenses([]);
+      setPurchaseOrders([]);
+      setRecurringBills([]);
+      setRecurringExpenses([]);
+      setJournals([]);
+      setProjects([]);
+      setPurchaseReceipts([]);
+      setStatementTransactions([]);
+      setSelectedTransactionType(null);
+      setBillCurrentPage(1);
+      setBillSearchTerm("");
+      setBillStatusFilter("all");
+      setIsTransactionNavDropdownOpen(false);
+      setIsLoading(false);
+    } else if (canHydrateFromCache && cachedVendor) {
+      setVendor(cachedVendor);
+      setComments(normalizeCommentList(cachedVendor.comments || cachedVendor.customFields?.vendorComments || []));
+      setAttachments(normalizeAttachmentList(cachedVendor.documents || cachedVendor.customFields?.vendorDocuments || []));
       setMails([]);
       setBills([]);
       setPaymentsMade([]);
@@ -1482,16 +1613,22 @@ export default function VendorDetail() {
       if (isCustomizeDropdownOpen && customizeDropdownRef?.current && !customizeDropdownRef.current.contains(target)) {
         setIsCustomizeDropdownOpen(false);
       }
+      if (expensesDateRangeDropdownRef.current && !expensesDateRangeDropdownRef.current.contains(target)) {
+        setIsExpensesDateRangeDropdownOpen(false);
+      }
+      if (expensesBasisDropdownRef.current && !expensesBasisDropdownRef.current.contains(target)) {
+        setIsExpensesBasisDropdownOpen(false);
+      }
     };
 
-    if (isInvoiceViewDropdownOpen || isStatusDropdownOpen || isLinkEmailDropdownOpen || isStatementPeriodDropdownOpen || isStatementFilterDropdownOpen || isBulkActionsDropdownOpen || isStartDatePickerOpen || isEndDatePickerOpen || isMergeVendorDropdownOpen || isNewTransactionDropdownOpen || isTransactionNavDropdownOpen || isMailsTypeDropdownOpen || isAttachmentsDropdownOpen || isUploadDropdownOpen || isMoreDropdownOpen || isCustomizeDropdownOpen) {
+    if (isInvoiceViewDropdownOpen || isStatusDropdownOpen || isLinkEmailDropdownOpen || isStatementPeriodDropdownOpen || isStatementFilterDropdownOpen || isBulkActionsDropdownOpen || isStartDatePickerOpen || isEndDatePickerOpen || isMergeVendorDropdownOpen || isNewTransactionDropdownOpen || isTransactionNavDropdownOpen || isMailsTypeDropdownOpen || isAttachmentsDropdownOpen || isUploadDropdownOpen || isMoreDropdownOpen || isCustomizeDropdownOpen || isExpensesDateRangeDropdownOpen || isExpensesBasisDropdownOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isInvoiceViewDropdownOpen, isStatusDropdownOpen, isLinkEmailDropdownOpen, isStatementPeriodDropdownOpen, isStatementFilterDropdownOpen, isBulkActionsDropdownOpen, isStartDatePickerOpen, isEndDatePickerOpen, isMergeVendorDropdownOpen, isNewTransactionDropdownOpen, isTransactionNavDropdownOpen, isMailsTypeDropdownOpen, isAttachmentsDropdownOpen, isUploadDropdownOpen, isMoreDropdownOpen, openContactDropdown, isCustomizeDropdownOpen, isCustomerDropdownOpen]);
+  }, [isInvoiceViewDropdownOpen, isStatusDropdownOpen, isLinkEmailDropdownOpen, isStatementPeriodDropdownOpen, isStatementFilterDropdownOpen, isBulkActionsDropdownOpen, isStartDatePickerOpen, isEndDatePickerOpen, isMergeVendorDropdownOpen, isNewTransactionDropdownOpen, isTransactionNavDropdownOpen, isMailsTypeDropdownOpen, isAttachmentsDropdownOpen, isUploadDropdownOpen, isMoreDropdownOpen, openContactDropdown, isCustomizeDropdownOpen, isCustomerDropdownOpen, isExpensesDateRangeDropdownOpen, isExpensesBasisDropdownOpen]);
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
@@ -1815,7 +1952,8 @@ export default function VendorDetail() {
         designation: newContactPerson.designation,
         department: newContactPerson.department,
         hasPortalAccess: newContactPerson.enablePortalAccess,
-        enablePortal: newContactPerson.enablePortalAccess
+        enablePortal: newContactPerson.enablePortalAccess,
+        createdAt: new Date().toISOString()
       };
 
       const updatedContactPersons = [...(vendor.contactPersons || []), contactPerson];
@@ -4030,15 +4168,61 @@ export default function VendorDetail() {
                   <div className="flex items-center justify-between p-4 border-b border-gray-200">
                     <div className="flex items-center gap-4">
                       <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Expenses</span>
-                      <div className="flex gap-2">
-                        <button className="flex items-center gap-1 px-3 py-1 text-xs border border-gray-300 rounded-md bg-white text-gray-700 cursor-pointer hover:bg-gray-50">
-                          Last 6 Months
-                          <ChevronDown size={14} />
-                        </button>
-                        <button className="flex items-center gap-1 px-3 py-1 text-xs border border-gray-300 rounded-md bg-white text-gray-700 cursor-pointer hover:bg-gray-50">
-                          Accrual
-                          <ChevronDown size={14} />
-                        </button>
+                      <div className="flex items-center gap-2">
+                        <div className="relative" ref={expensesDateRangeDropdownRef}>
+                          <button
+                            type="button"
+                            onClick={() => setIsExpensesDateRangeDropdownOpen((prev) => !prev)}
+                            className="flex items-center gap-1 px-3 py-1 text-xs border border-gray-300 rounded-md bg-white text-gray-700 cursor-pointer hover:bg-gray-50"
+                          >
+                            {selectedExpensesDateRangeLabel}
+                            <ChevronDown size={14} />
+                          </button>
+                          {isExpensesDateRangeDropdownOpen && (
+                            <div className="absolute right-0 mt-2 w-44 rounded-md border border-gray-200 bg-white shadow-lg z-30 overflow-hidden">
+                              {expenseDateRangeOptions.map((option) => (
+                                <button
+                                  key={option.value}
+                                  type="button"
+                                  onClick={() => {
+                                    setExpensesDateRange(option.value);
+                                    setIsExpensesDateRangeDropdownOpen(false);
+                                  }}
+                                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 ${expensesDateRange === option.value ? "bg-blue-500 text-white hover:bg-blue-500" : "text-gray-700"}`}
+                                >
+                                  {option.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="relative" ref={expensesBasisDropdownRef}>
+                          <button
+                            type="button"
+                            onClick={() => setIsExpensesBasisDropdownOpen((prev) => !prev)}
+                            className="flex items-center gap-1 px-3 py-1 text-xs border border-gray-300 rounded-md bg-white text-gray-700 cursor-pointer hover:bg-gray-50"
+                          >
+                            {selectedExpensesBasisLabel}
+                            <ChevronDown size={14} />
+                          </button>
+                          {isExpensesBasisDropdownOpen && (
+                            <div className="absolute right-0 mt-2 w-36 rounded-md border border-gray-200 bg-white shadow-lg z-30 overflow-hidden">
+                              {expenseBasisOptions.map((option) => (
+                                <button
+                                  key={option.value}
+                                  type="button"
+                                  onClick={() => {
+                                    setExpensesBasis(option.value);
+                                    setIsExpensesBasisDropdownOpen(false);
+                                  }}
+                                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 ${expensesBasis === option.value ? "bg-blue-500 text-white hover:bg-blue-500" : "text-gray-700"}`}
+                                >
+                                  {option.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -4048,10 +4232,14 @@ export default function VendorDetail() {
                     </p>
                     <div className="h-48 bg-gray-50 rounded-md flex flex-col items-center justify-center mb-4">
                       <TrendingUp size={48} className="text-gray-400 mb-2" />
-                      <p className="text-sm text-gray-500">No Expenses data available</p>
+                      <p className="text-sm text-gray-500">
+                        {filteredExpensesForOverview.length > 0
+                          ? `${filteredExpensesForOverview.length} expense${filteredExpensesForOverview.length === 1 ? "" : "s"} loaded`
+                          : "No Expenses data available"}
+                      </p>
                     </div>
                     <div className="text-sm font-medium text-gray-900 pt-4 border-t border-gray-200">
-                      Total Expenses (Last 6 Months) - {formatCurrency(0, vendor.currency || baseCurrencyCode)}
+                      Total Expenses ({selectedExpensesDateRangeLabel}, {selectedExpensesBasisLabel}) - {formatCurrency(filteredExpensesTotal, vendor.currency || baseCurrencyCode)}
                     </div>
                   </div>
                 </div>
@@ -4070,15 +4258,16 @@ export default function VendorDetail() {
                       <div className="space-y-6">
                         {/* Sample activity entries - you can replace with actual data */}
                         {expenses.length > 0 && expenses.slice(0, 3).map((expense, index) => {
-                          const expenseDate = new Date(expense.date || expense.createdAt || new Date());
-                          const formattedDate = expenseDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                          const formattedTime = expenseDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                          const expenseDateParts = formatDateTimeParts(expense.date || expense.createdAt || expense.updatedAt);
+                          if (!expenseDateParts) {
+                            return null;
+                          }
                           return (
                             <div key={index} className="relative">
                               {/* Timeline circle */}
                               <div className="absolute left-[-18px] top-1 w-3 h-3 bg-[#156372] rounded-full border-2 border-white"></div>
                               <div className="text-xs font-semibold text-gray-900 mb-1">
-                                {formattedDate}, {formattedTime}
+                                {expenseDateParts.date}, {expenseDateParts.time}
                               </div>
                               <div className="text-xs text-gray-600 mb-1">Expense added</div>
                               <div className="text-xs text-gray-500">
@@ -4088,14 +4277,15 @@ export default function VendorDetail() {
                           );
                         })}
                         {vendor.contactPersons && vendor.contactPersons.length > 0 && vendor.contactPersons.slice(0, 2).map((contact, index) => {
-                          const contactDate = new Date(contact.createdAt || new Date());
-                          const formattedDate = contactDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                          const formattedTime = contactDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                          const contactDateParts = formatDateTimeParts(contact.createdAt || contact.date || contact.updatedAt);
+                          if (!contactDateParts) {
+                            return null;
+                          }
                           return (
                             <div key={`contact-${index}`} className="relative">
                               <div className="absolute left-[-18px] top-1 w-3 h-3 bg-[#156372] rounded-full border-2 border-white"></div>
                               <div className="text-xs font-semibold text-gray-900 mb-1">
-                                {formattedDate}, {formattedTime}
+                                {contactDateParts.date}, {contactDateParts.time}
                               </div>
                               <div className="text-xs text-gray-600 mb-1">Contact person added</div>
                               <div className="text-xs text-gray-500">
@@ -4178,7 +4368,7 @@ export default function VendorDetail() {
                         <div className="flex items-center gap-3">
                           <span className="text-sm font-medium text-gray-900">{comment.author}</span>
                           <span className="text-xs text-gray-500">
-                            {new Date(comment.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            {formatDateTimeParts(comment.date || comment.createdAt || comment.updatedAt)?.date || "N/A"}
                           </span>
                         </div>
                         <button
@@ -4556,7 +4746,7 @@ export default function VendorDetail() {
                               className="border-b border-gray-200 transition-colors cursor-pointer hover:bg-gray-50"
                             >
                               <td className="py-3 px-4 text-gray-900">
-                                {expense.date ? new Date(expense.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : "N/A"}
+                                {formatDateTimeParts(expense.date || expense.createdAt || expense.updatedAt)?.date || "N/A"}
                               </td>
                               <td className="py-3 px-4 text-teal-700 font-medium">{expense.expenseNumber || expense.id}</td>
                               <td className="py-3 px-4 text-gray-900">{expense.accountName || expense.expenseAccount || "-"}</td>

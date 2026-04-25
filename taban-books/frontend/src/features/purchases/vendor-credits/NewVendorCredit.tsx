@@ -30,7 +30,7 @@ import {
   Lock,
   User,
   Copy,
-  // PlusCircle,
+  Globe
 } from "lucide-react";
 import { vendorsAPI, itemsAPI, taxesAPI, accountantAPI, vendorCreditsAPI } from "../../../services/api";
 import { useCurrency } from "../../../hooks/useCurrency";
@@ -65,7 +65,7 @@ export default function NewVendorCredit() {
     warehouseLocation: "Head Office",
   });
   const { code: baseCurrencyCode } = useCurrency();
-  const [discountDropdownOpen, setDiscountDropdownOpen] = useState(false);
+
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [billingAddressEditMode, setBillingAddressEditMode] = useState(false);
 
@@ -106,6 +106,22 @@ export default function NewVendorCredit() {
   const [showAdditionalFields, setShowAdditionalFields] = useState(true);
   const [showBanner, setShowBanner] = useState(true);
   const [showNewVendorModal, setShowNewVendorModal] = useState(false);
+  const [showNumberingModal, setShowNumberingModal] = useState(false);
+  const [warehouseDropdownOpen, setWarehouseDropdownOpen] = useState(false);
+  const [warehouseSearch, setWarehouseSearch] = useState("");
+  const warehouseRef = useRef<HTMLDivElement>(null);
+  const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
+  const [locationSearch, setLocationSearch] = useState("");
+  const locationRef = useRef<HTMLDivElement>(null);
+  const [discountDropdownOpen, setDiscountDropdownOpen] = useState(false);
+  const [discountSearch, setDiscountSearch] = useState("");
+  const discountRef = useRef<HTMLDivElement>(null);
+  const [numberingPrefs, setNumberingPrefs] = useState({
+    mode: "manual", // "auto" | "manual"
+    prefix: "DN-",
+    nextNumber: "00001",
+    restartYearly: false
+  });
   const [taxExclusiveSearch, setTaxExclusiveSearch] = useState("");
   const [taxLevelSearch, setTaxLevelSearch] = useState("");
   const [errors, setErrors] = useState<Record<string, boolean>>({});
@@ -434,16 +450,25 @@ export default function NewVendorCredit() {
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (vendorRef.current && !vendorRef.current.contains(event.target)) {
+      if (vendorRef.current && !vendorRef.current.contains(event.target as Node)) {
         setVendorDropdownOpen(false);
       }
-      if (accountsPayableRef.current && !accountsPayableRef.current.contains(event.target)) {
+      if (accountsPayableRef.current && !accountsPayableRef.current.contains(event.target as Node)) {
         setAccountsPayableOpen(false);
       }
-      if (taxExclusiveRef.current && !taxExclusiveRef.current.contains(event.target)) {
+      if (warehouseRef.current && !warehouseRef.current.contains(event.target as Node)) {
+        setWarehouseDropdownOpen(false);
+      }
+      if (locationRef.current && !locationRef.current.contains(event.target as Node)) {
+        setLocationDropdownOpen(false);
+      }
+      if (discountRef.current && !discountRef.current.contains(event.target as Node)) {
+        setDiscountDropdownOpen(false);
+      }
+      if (taxExclusiveRef.current && !taxExclusiveRef.current.contains(event.target as Node)) {
         setTaxExclusiveOpen(false);
       }
-      if (taxLevelRef.current && !taxLevelRef.current.contains(event.target)) {
+      if (taxLevelRef.current && !taxLevelRef.current.contains(event.target as Node)) {
         setTaxLevelOpen(false);
       }
       if (uploadMenuRef.current && !uploadMenuRef.current.contains(event.target)) {
@@ -1214,7 +1239,23 @@ export default function NewVendorCredit() {
                     <span style={{ fontSize: "14px", color: formData.vendorName ? "#374151" : "#9ca3af" }}>
                       {formData.vendorName || "Select a Vendor"}
                     </span>
-                    <ChevronDown size={16} style={{ color: "#6b7280", marginLeft: "auto" }} />
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
+                      {formData.vendorName && (
+                        <>
+                          <X 
+                            size={14} 
+                            style={{ color: "#ef4444", cursor: "pointer" }} 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFormData({ ...formData, vendorName: "" });
+                              setSelectedVendor(null);
+                            }} 
+                          />
+                          <div style={{ width: "1px", height: "16px", backgroundColor: "#e5e7eb" }} />
+                        </>
+                      )}
+                      <ChevronDown size={16} style={{ color: "#6b7280" }} />
+                    </div>
                   </div>
 
                   {vendorDropdownOpen && (
@@ -1234,15 +1275,16 @@ export default function NewVendorCredit() {
                       flexDirection: "column",
                       overflow: "hidden"
                     }}>
-                      <div style={{ padding: "12px", borderBottom: "1px solid #f3f4f6" }}>
+                      <div style={{ padding: "10px 12px", borderBottom: "1px solid #f3f4f6" }}>
                         <div style={{ position: "relative" }}>
                           <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
                           <input
+                            className="zoho-input"
                             style={{
                               width: "100%",
                               padding: "8px 8px 8px 32px",
                               border: "1px solid #e5e7eb",
-                              borderRadius: "6px",
+                              borderRadius: "4px",
                               fontSize: "13px",
                               outline: "none"
                             }}
@@ -1255,65 +1297,78 @@ export default function NewVendorCredit() {
                         </div>
                       </div>
 
-                      <div style={{ overflowY: "auto", flex: 1 }}>
+                      <div style={{ overflowY: "auto", flex: 1, padding: "4px 0" }}>
                         {vendors
                           .filter(v =>
                             (v.name?.toLowerCase().includes(vendorSearch.toLowerCase())) ||
                             (v.email?.toLowerCase().includes(vendorSearch.toLowerCase())) ||
                             (v.displayName?.toLowerCase().includes(vendorSearch.toLowerCase()))
                           )
-                          .map(vendor => (
-                            <div
-                              key={vendor.id}
-                              style={{
-                                padding: "10px 12px",
-                                cursor: "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "12px",
-                                backgroundColor: formData.vendorName === (vendor.displayName || vendor.name) ? "#eff6ff" : "white",
-                                borderBottom: "1px solid #f9fafb"
-                              }}
-                              onClick={() => handleVendorSelect(vendor)}
-                              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = formData.vendorName === (vendor.displayName || vendor.name) ? "#eff6ff" : "#f9fafb")}
-                              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = formData.vendorName === (vendor.displayName || vendor.name) ? "#eff6ff" : "white")}
-                            >
-                              <div style={{
-                                width: "32px",
-                                height: "32px",
-                                borderRadius: "50%",
-                                backgroundColor: "#f3f4f6",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                fontSize: "12px",
-                                fontWeight: "600",
-                                color: "#6b7280"
-                              }}>
-                                {(vendor.displayName || vendor.name || "V")[0].toUpperCase()}
-                              </div>
-                              <div style={{ display: "flex", flexDirection: "column" }}>
-                                <span style={{ fontSize: "13px", fontWeight: "500", color: "#1f2937" }}>
-                                  {vendor.displayName || vendor.name}
-                                </span>
-                                {vendor.email && (
-                                  <span style={{ fontSize: "11px", color: "#6b7280", display: "flex", alignItems: "center", gap: "4px" }}>
-                                    <FileText size={10} /> {vendor.email} | <Copy size={10} /> {vendor.displayName || vendor.name}
+                          .map(vendor => {
+                            const isSelected = formData.vendorName === (vendor.displayName || vendor.name);
+                            return (
+                              <div
+                                key={vendor.id}
+                                style={{
+                                  padding: "8px 12px",
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "12px",
+                                  backgroundColor: isSelected ? "#f3f4f6" : "white",
+                                  color: "#374151",
+                                  transition: "all 0.1s",
+                                  borderBottom: "1px solid #f9fafb"
+                                }}
+                                onClick={() => handleVendorSelect(vendor)}
+                                onMouseEnter={(e) => {
+                                  if (!isSelected) {
+                                    e.currentTarget.style.backgroundColor = "#f9fafb";
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!isSelected) {
+                                    e.currentTarget.style.backgroundColor = "white";
+                                  }
+                                }}
+                              >
+                                <div style={{
+                                  width: "32px",
+                                  height: "32px",
+                                  borderRadius: "50%",
+                                  backgroundColor: "#f3f4f6",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  fontSize: "12px",
+                                  fontWeight: "600",
+                                  color: "#6b7280"
+                                }}>
+                                  {(vendor.displayName || vendor.name || "V")[0].toUpperCase()}
+                                </div>
+                                <div style={{ display: "flex", flexDirection: "column" }}>
+                                  <span style={{ fontSize: "13px", fontWeight: "500" }}>
+                                    {vendor.displayName || vendor.name}
                                   </span>
+                                  {vendor.email && (
+                                    <span style={{ fontSize: "11px", color: "#6b7280", display: "flex", alignItems: "center", gap: "4px" }}>
+                                      <FileText size={10} /> {vendor.email} | <Copy size={10} /> {vendor.displayName || vendor.name}
+                                    </span>
+                                  )}
+                                </div>
+                                {isSelected && (
+                                  <Check size={14} style={{ marginLeft: "auto", color: "#156372" }} />
                                 )}
                               </div>
-                              {formData.vendorName === (vendor.displayName || vendor.name) && (
-                                <Check size={14} style={{ marginLeft: "auto", color: "#156372" }} />
-                              )}
-                            </div>
-                          ))}
+                            );
+                          })}
                       </div>
 
                       <div
                         style={{
                           padding: "12px",
                           borderTop: "1px solid #f3f4f6",
-                          color: "#156372",
+                          color: "#3b82f6",
                           fontSize: "13px",
                           fontWeight: "500",
                           display: "flex",
@@ -1328,7 +1383,7 @@ export default function NewVendorCredit() {
                           setVendorDropdownOpen(false);
                         }}
                       >
-                        <PlusCircle size={16} /> New Vendor
+                        <PlusCircle size={16} color="#3b82f6" /> New Vendor
                       </div>
                     </div>
                   )}
@@ -1351,21 +1406,140 @@ export default function NewVendorCredit() {
                 >
                   <Search size={16} color="#fff" />
                 </button>
+                <div style={{
+                  marginLeft: "12px",
+                  padding: "6px 12px",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "4px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "13px",
+                  color: "#374151",
+                  backgroundColor: "#fff"
+                }}>
+                  <Globe size={14} style={{ color: "#10b981" }} />
+                  <span style={{ fontWeight: "600" }}>KES</span>
+                </div>
               </div>
             </div>
+
+            {/* Billing Address (Conditional) */}
+            {selectedVendor && (
+              <div style={{ ...styles.fieldRow, alignItems: "flex-start", marginTop: "-8px" }}>
+                <div style={styles.label}></div>
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#6b7280", fontSize: "12px", fontWeight: "600", textTransform: "uppercase" }}>
+                    Billing Address <Info size={14} style={{ cursor: "pointer" }} />
+                  </div>
+                  <div style={{ color: "#374151", fontSize: "13px", lineHeight: "1.5" }}>
+                    <div style={{ fontWeight: "600" }}>{selectedVendor.displayName || selectedVendor.name}</div>
+                    {selectedVendor.billingAddress?.address && <div>{selectedVendor.billingAddress.address}</div>}
+                    {selectedVendor.billingAddress?.city && <div>{selectedVendor.billingAddress.city}</div>}
+                    {selectedVendor.billingAddress?.state && <div>{selectedVendor.billingAddress.state}</div>}
+                    {selectedVendor.billingAddress?.zipCode && <div>{selectedVendor.billingAddress.zipCode}</div>}
+                    {selectedVendor.billingAddress?.country && <div>{selectedVendor.billingAddress.country}</div>}
+                    {selectedVendor.phone && <div style={{ marginTop: "4px" }}>Phone: {selectedVendor.phone}</div>}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Location */}
             <div style={styles.fieldRow}>
               <label style={styles.label}>Location</label>
-              <div style={{ flex: 1, maxWidth: "450px" }}>
-                <select 
+              <div style={{ flex: 1, maxWidth: "450px", position: "relative" }} ref={locationRef}>
+                <div
                   className="zoho-input"
-                  style={styles.input}
-                  value={formData.location}
-                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  style={{
+                    ...styles.input,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    cursor: "pointer",
+                    backgroundColor: "#fff"
+                  }}
+                  onClick={() => setLocationDropdownOpen(!locationDropdownOpen)}
                 >
-                  <option value="Head Office">Head Office</option>
-                </select>
+                  <span style={{ fontSize: "14px", color: "#374151" }}>
+                    {formData.location || "Select Location"}
+                  </span>
+                  <ChevronDown size={14} style={{ color: "#6b7280", transform: locationDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+                </div>
+
+                {locationDropdownOpen && (
+                  <div style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    right: 0,
+                    zIndex: 1000,
+                    backgroundColor: "white",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
+                    marginTop: "4px",
+                    boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                    overflow: "hidden"
+                  }}>
+                    <div style={{ padding: "8px" }}>
+                      <div style={{ position: "relative" }}>
+                        <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
+                        <input 
+                          className="zoho-input"
+                          style={{
+                            width: "100%",
+                            padding: "6px 8px 6px 30px",
+                            fontSize: "12px",
+                            borderRadius: "4px"
+                          }}
+                          placeholder="Search"
+                          value={locationSearch}
+                          onChange={(e) => setLocationSearch(e.target.value)}
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+                      {["Head Office"]
+                        .filter(loc => loc.toLowerCase().includes(locationSearch.toLowerCase()))
+                        .map(loc => {
+                          const isSelected = formData.location === loc;
+                          return (
+                            <div
+                              key={loc}
+                              style={{
+                                padding: "8px 16px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                cursor: "pointer",
+                                backgroundColor: isSelected ? "#3b82f6" : "white",
+                                color: isSelected ? "#fff" : "#374151",
+                                fontSize: "13px"
+                              }}
+                              onClick={() => {
+                                setFormData({ ...formData, location: loc });
+                                setLocationDropdownOpen(false);
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isSelected) e.currentTarget.style.backgroundColor = "#f3f4f6";
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isSelected) e.currentTarget.style.backgroundColor = "white";
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                {!isSelected && <div style={{ width: "4px", height: "4px", borderRadius: "50%", backgroundColor: "#9ca3af" }} />}
+                                {loc}
+                              </div>
+                              {isSelected && <Check size={14} color="#fff" />}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1373,19 +1547,44 @@ export default function NewVendorCredit() {
             <div style={styles.fieldRow}>
               <label style={{ ...styles.label, color: "#ef4444" }}>Credit Note#*</label>
               <div style={{ flex: 1, maxWidth: "450px", display: "flex", alignItems: "center", position: "relative" }}>
-                <input
-                  type="text"
-                  className={`zoho-input ${errors.creditNote ? "zoho-input-error" : ""}`}
-                  style={{ ...styles.input, borderColor: errors.creditNote ? "#ef4444" : "#d1d5db" }}
-                  value={formData.creditNote}
-                  onChange={(e) => {
-                    setFormData({ ...formData, creditNote: e.target.value });
-                    if (errors.creditNote) setErrors({ ...errors, creditNote: false });
-                  }}
-                />
-                <Settings size={14} style={{ position: "absolute", right: "12px", color: "#156372", cursor: "pointer" }} />
+                  <input
+                    type="text"
+                    className={`zoho-input ${errors.creditNote ? "zoho-input-error" : ""}`}
+                    style={{ 
+                      ...styles.input, 
+                      borderColor: errors.creditNote ? "#ef4444" : "#d1d5db",
+                      backgroundColor: numberingPrefs.mode === "auto" ? "#f9fafb" : "white",
+                      color: numberingPrefs.mode === "auto" ? "#6b7280" : "#374151",
+                    }}
+                    value={formData.creditNote}
+                    onChange={(e) => {
+                      if (numberingPrefs.mode === "manual") {
+                        setFormData({ ...formData, creditNote: e.target.value });
+                        if (errors.creditNote) setErrors({ ...errors, creditNote: false });
+                      }
+                    }}
+                    placeholder={numberingPrefs.mode === "auto" ? `${numberingPrefs.prefix}${numberingPrefs.nextNumber}` : ""}
+                    readOnly={numberingPrefs.mode === "auto"}
+                  />
+                  <div 
+                    style={{ 
+                      position: "absolute", 
+                      right: "8px", 
+                      height: "70%",
+                      width: "32px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderLeft: "1px solid #e5e7eb",
+                      cursor: "pointer",
+                      color: "#3b82f6"
+                    }}
+                    onClick={() => setShowNumberingModal(true)}
+                  >
+                    <Settings size={16} />
+                  </div>
+                </div>
               </div>
-            </div>
 
             {/* Order Number */}
             <div style={styles.fieldRow}>
@@ -1504,9 +1703,12 @@ export default function NewVendorCredit() {
                             style={{
                               padding: "10px 16px",
                               fontSize: "13px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
                               cursor: "pointer",
-                              backgroundColor: formData.accountsPayable === acc.name ? "#eff6ff" : "white",
-                              color: formData.accountsPayable === acc.name ? "#156372" : "#374151",
+                              backgroundColor: formData.accountsPayable === acc.name ? "#3b82f6" : "white",
+                              color: formData.accountsPayable === acc.name ? "#fff" : "#374151",
                               transition: "background-color 0.2s"
                             }}
                             onClick={() => {
@@ -1514,10 +1716,14 @@ export default function NewVendorCredit() {
                               setAccountsPayableOpen(false);
                               setApSearchTerm("");
                             }}
-                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = formData.accountsPayable === acc.name ? "#eff6ff" : "#f3f4f6")}
-                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = formData.accountsPayable === acc.name ? "#eff6ff" : "white")}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = formData.accountsPayable === acc.name ? "#3b82f6" : "#f3f4f6")}
+                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = formData.accountsPayable === acc.name ? "#3b82f6" : "white")}
                           >
-                            {acc.name}
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              {formData.accountsPayable !== acc.name && <div style={{ width: "4px", height: "4px", borderRadius: "50%", backgroundColor: "#9ca3af" }} />}
+                              {acc.name}
+                            </div>
+                            {formData.accountsPayable === acc.name && <Check size={14} color="#fff" />}
                           </div>
                         ))}
                       {accounts.filter(acc => (acc.type === "Accounts Payable" || acc.name === "Accounts Payable") && acc.name.toLowerCase().includes(apSearchTerm.toLowerCase())).length === 0 && (
@@ -1534,164 +1740,105 @@ export default function NewVendorCredit() {
 
           {/* Item Table Selection */}
           <div style={{ display: "flex", gap: "32px", marginBottom: "24px", alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px" }}>
+            <div 
+              style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "13px", position: "relative" }}
+              ref={warehouseRef}
+            >
               <span style={{ color: "#6b7280" }}>Warehouse Location</span>
-              <select 
-                style={{ ...styles.input, width: "auto", border: "none", color: "#156372", fontWeight: "600", padding: "0 4px" }}
-                value={formData.warehouseLocation}
-                onChange={(e) => setFormData({ ...formData, warehouseLocation: e.target.value })}
-              >
-                <option value="Head Office">Head Office</option>
-              </select>
-            </div>
-
-            <div style={{ position: "relative" }}>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#374151", cursor: "pointer" }}
-                onClick={(e) => {
-                  if (lockTaxPreference) return;
-                  e.stopPropagation();
-                  setTaxExclusiveOpen(!taxExclusiveOpen);
+              <div 
+                style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: "8px", 
+                  cursor: "pointer",
+                  padding: "4px 12px",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "6px",
+                  minWidth: "160px",
+                  justifyContent: "space-between",
+                  backgroundColor: "#fff"
                 }}
+                onClick={() => setWarehouseDropdownOpen(!warehouseDropdownOpen)}
               >
-                <ShoppingBag size={14} />
-                {formData.taxExclusive}
-                <ChevronDown size={14} style={{ transform: taxExclusiveOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+                <span style={{ color: "#374151", fontWeight: "500" }}>{formData.warehouseLocation || "Select Location"}</span>
+                <ChevronDown size={14} style={{ color: "#6b7280", transform: warehouseDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
               </div>
-              {taxExclusiveOpen && (
+
+              {warehouseDropdownOpen && (
                 <div style={{
                   position: "absolute",
                   top: "100%",
-                  left: 0,
-                  zIndex: 1000,
-                  background: "white",
+                  left: "135px",
+                  width: "220px",
+                  backgroundColor: "white",
                   border: "1px solid #e5e7eb",
                   borderRadius: "8px",
-                  marginTop: "8px",
+                  marginTop: "4px",
                   boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
-                  width: "220px",
+                  zIndex: 1000,
                   overflow: "hidden"
                 }}>
-                  <div style={{ padding: "12px", borderBottom: "1px solid #f3f4f6" }}>
+                  <div style={{ padding: "8px" }}>
                     <div style={{ position: "relative" }}>
                       <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
-                      <input
+                      <input 
+                        className="zoho-input"
                         style={{
                           width: "100%",
                           padding: "6px 8px 6px 30px",
-                          border: "1px solid #e5e7eb",
-                          borderRadius: "6px",
                           fontSize: "12px",
-                          outline: "none"
+                          borderRadius: "4px"
                         }}
                         placeholder="Search"
-                        value={taxExclusiveSearch}
-                        onChange={(e) => setTaxExclusiveSearch(e.target.value)}
-                        onClick={(e) => e.stopPropagation()}
+                        value={warehouseSearch}
+                        onChange={(e) => setWarehouseSearch(e.target.value)}
                         autoFocus
                       />
                     </div>
                   </div>
-                  <div style={{ padding: "8px 12px", fontSize: "11px", fontWeight: "600", color: "#6b7280", background: "#f9fafb" }}>Item Tax Preference</div>
-                  {taxPreferenceOptions
-                    .filter(opt => opt.toLowerCase().includes(taxExclusiveSearch.toLowerCase()))
-                    .map(opt => (
-                      <div
-                        key={opt}
-                        style={{
-                          padding: "10px 12px",
-                          fontSize: "13px",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          backgroundColor: formData.taxExclusive === opt ? "#eff6ff" : "white",
-                          color: formData.taxExclusive === opt ? "#156372" : "#374151"
-                        }}
-                        onClick={() => {
-                          if (lockTaxPreference) return;
-                          setFormData({ ...formData, taxExclusive: opt });
-                          setTaxExclusiveOpen(false);
-                        }}
-                      >
-                        {opt}
-                        {formData.taxExclusive === opt && <Check size={14} />}
-                      </div>
-                    ))}
+
+                  <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+                    {["Head Office", "HAYAT"]
+                      .filter(loc => loc.toLowerCase().includes(warehouseSearch.toLowerCase()))
+                      .map(loc => {
+                        const isSelected = formData.warehouseLocation === loc;
+                        return (
+                          <div
+                            key={loc}
+                            style={{
+                              padding: "8px 12px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              cursor: "pointer",
+                              backgroundColor: isSelected ? "#3b82f6" : "white",
+                              color: isSelected ? "#fff" : "#374151",
+                              fontSize: "13px"
+                            }}
+                            onClick={() => {
+                              setFormData({ ...formData, warehouseLocation: loc });
+                              setWarehouseDropdownOpen(false);
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isSelected) e.currentTarget.style.backgroundColor = "#f3f4f6";
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSelected) e.currentTarget.style.backgroundColor = "white";
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              {!isSelected && <div style={{ width: "4px", height: "4px", borderRadius: "50%", backgroundColor: "#9ca3af" }} />}
+                              {loc}
+                            </div>
+                            {isSelected && <Check size={14} color="#fff" />}
+                          </div>
+                        );
+                      })}
+                  </div>
                 </div>
               )}
             </div>
 
-            <div style={{ position: "relative" }}>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#374151", cursor: "pointer" }}
-                onClick={(e) => { e.stopPropagation(); setTaxLevelOpen(!taxLevelOpen); }}
-              >
-                <RotateCw size={14} />
-                {formData.taxLevel}
-                <ChevronDown size={14} style={{ transform: taxLevelOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
-              </div>
-              {taxLevelOpen && (
-                <div style={{
-                  position: "absolute",
-                  top: "100%",
-                  left: 0,
-                  zIndex: 1000,
-                  background: "white",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "8px",
-                  marginTop: "8px",
-                  boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
-                  width: "220px",
-                  overflow: "hidden"
-                }}>
-                  <div style={{ padding: "12px", borderBottom: "1px solid #f3f4f6" }}>
-                    <div style={{ position: "relative" }}>
-                      <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
-                      <input
-                        style={{
-                          width: "100%",
-                          padding: "6px 8px 6px 30px",
-                          border: "1px solid #e5e7eb",
-                          borderRadius: "6px",
-                          fontSize: "12px",
-                          outline: "none"
-                        }}
-                        placeholder="Search"
-                        value={taxLevelSearch}
-                        onChange={(e) => setTaxLevelSearch(e.target.value)}
-                        onClick={(e) => e.stopPropagation()}
-                        autoFocus
-                      />
-                    </div>
-                  </div>
-                  <div style={{ padding: "8px 12px", fontSize: "11px", fontWeight: "600", color: "#6b7280", background: "#f9fafb" }}>Discount Type</div>
-                  {["At Transaction Level", "At Line Item Level"]
-                    .filter(opt => opt.toLowerCase().includes(taxLevelSearch.toLowerCase()))
-                    .map(opt => (
-                      <div
-                        key={opt}
-                        style={{
-                          padding: "10px 12px",
-                          fontSize: "13px",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          backgroundColor: formData.taxLevel === opt ? "#eff6ff" : "white",
-                          color: formData.taxLevel === opt ? "#156372" : "#374151"
-                        }}
-                        onClick={() => {
-                          setFormData({ ...formData, taxLevel: opt });
-                          setTaxLevelOpen(false);
-                        }}
-                      >
-                        {opt}
-                        {formData.taxLevel === opt && <Check size={14} />}
-                      </div>
-                    ))}
-                </div>
-              )}
             </div>
           </div>
 
@@ -2321,6 +2468,167 @@ export default function NewVendorCredit() {
           onClose={() => setShowNewVendorModal(false)}
           onCreated={handleVendorCreated}
         />
+      )}
+
+      {/* Numbering Preferences Modal */}
+      {showNumberingModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0,0,0,0.4)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 4000
+        }}>
+          <div style={{
+            backgroundColor: "white",
+            width: "550px",
+            borderRadius: "8px",
+            boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)",
+            overflow: "hidden"
+          }}>
+            <div style={{
+              padding: "16px 20px",
+              borderBottom: "1px solid #f3f4f6",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between"
+            }}>
+              <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "600", color: "#1f2937" }}>
+                Configure Vendor Credit Number Preferences
+              </h3>
+              <X 
+                size={20} 
+                style={{ cursor: "pointer", color: "#ef4444" }} 
+                onClick={() => setShowNumberingModal(false)}
+              />
+            </div>
+
+            <div style={{ padding: "24px" }}>
+              <div style={{ marginBottom: "20px" }}>
+                <div style={{ fontSize: "12px", fontWeight: "600", color: "#6b7280", marginBottom: "4px" }}>Location</div>
+                <div style={{ fontSize: "14px", color: "#111827" }}>Head Office</div>
+                <div style={{ height: "1px", backgroundColor: "#f3f4f6", marginTop: "12px" }}></div>
+              </div>
+
+              <div style={{ marginBottom: "24px" }}>
+                <p style={{ fontSize: "13px", color: "#4b5563", marginBottom: "20px" }}>
+                  {numberingPrefs.mode === "auto" 
+                    ? "Your Vendor Credits numbers are set on auto-generate mode to save your time. Are you sure about changing this setting?"
+                    : "You have selected manual Vendor Credits numbering. Do you want us to auto-generate it for you?"
+                  }
+                </p>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer" }}>
+                    <input 
+                      type="radio" 
+                      name="numberingMode" 
+                      checked={numberingPrefs.mode === "auto"}
+                      onChange={() => setNumberingPrefs({ ...numberingPrefs, mode: "auto" })}
+                      style={{ marginTop: "3px" }}
+                    />
+                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                      <span style={{ fontSize: "14px", color: "#111827" }}>
+                        Continue auto-generating Vendor Credits numbers <Info size={14} style={{ display: "inline", color: "#9ca3af", marginLeft: "4px" }} />
+                      </span>
+                      
+                      {numberingPrefs.mode === "auto" && (
+                        <div style={{ display: "flex", gap: "16px", marginLeft: "4px" }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>Prefix</div>
+                            <input 
+                              type="text" 
+                              className="zoho-input"
+                              style={{ ...styles.input, height: "36px" }}
+                              value={numberingPrefs.prefix}
+                              onChange={(e) => setNumberingPrefs({ ...numberingPrefs, prefix: e.target.value })}
+                            />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>Next Number</div>
+                            <input 
+                              type="text" 
+                              className="zoho-input"
+                              style={{ ...styles.input, height: "36px" }}
+                              value={numberingPrefs.nextNumber}
+                              onChange={(e) => setNumberingPrefs({ ...numberingPrefs, nextNumber: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {numberingPrefs.mode === "auto" && (
+                        <label style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "4px", cursor: "pointer" }}>
+                          <input 
+                            type="checkbox" 
+                            checked={numberingPrefs.restartYearly}
+                            onChange={(e) => setNumberingPrefs({ ...numberingPrefs, restartYearly: e.target.checked })}
+                          />
+                          <span style={{ fontSize: "13px", color: "#4b5563" }}>Restart numbering for vendor credits at the start of each fiscal year.</span>
+                        </label>
+                      )}
+                    </div>
+                  </label>
+
+                  <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
+                    <input 
+                      type="radio" 
+                      name="numberingMode" 
+                      checked={numberingPrefs.mode === "manual"}
+                      onChange={() => setNumberingPrefs({ ...numberingPrefs, mode: "manual" })}
+                    />
+                    <span style={{ fontSize: "14px", color: "#111827" }}>Enter Vendor Credits numbers manually</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: "16px 24px", borderTop: "1px solid #f3f4f6", display: "flex", gap: "12px", backgroundColor: "#f9fafb" }}>
+              <button 
+                style={{
+                  padding: "8px 24px",
+                  backgroundColor: "#10b981",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  cursor: "pointer"
+                }}
+                onClick={() => {
+                  if (numberingPrefs.mode === "auto") {
+                    setFormData({ ...formData, creditNote: `${numberingPrefs.prefix}${numberingPrefs.nextNumber}` });
+                    if (errors.creditNote) setErrors({ ...errors, creditNote: false });
+                  }
+                  setShowNumberingModal(false);
+                  toast.success("Preferences saved successfully");
+                }}
+              >
+                Save
+              </button>
+              <button 
+                style={{
+                  padding: "8px 24px",
+                  backgroundColor: "white",
+                  color: "#374151",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  cursor: "pointer"
+                }}
+                onClick={() => setShowNumberingModal(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

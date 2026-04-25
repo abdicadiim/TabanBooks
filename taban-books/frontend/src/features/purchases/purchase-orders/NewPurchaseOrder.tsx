@@ -436,6 +436,7 @@ export default function NewPurchaseOrder() {
   const [itemValidationErrors, setItemValidationErrors] = useState<Record<number, PurchaseOrderItemError>>({});
   const [saveLoadingState, setSaveLoadingState] = useState<null | "draft" | "issued">(null);
   const submitLockRef = useRef(false);
+  const isMountedRef = useRef(true);
   const [openTaxDropdowns, setOpenTaxDropdowns] = useState<Record<string, boolean>>({});
   const [taxDropdownMenuStyles, setTaxDropdownMenuStyles] = useState<Record<string, { left: number; top: number; width: number }>>({});
   const [taxSearches, setTaxSearches] = useState<Record<string, string>>({});
@@ -511,6 +512,12 @@ export default function NewPurchaseOrder() {
   } = location.state || {};
   const [editOrder, setEditOrder] = useState<any>(stateEditOrder || null);
   const isEdit = !!(stateIsEdit || routeOrderId);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (stateEditOrder) {
@@ -2114,6 +2121,65 @@ export default function NewPurchaseOrder() {
       console.error("Failed to sync purchase order cache:", error);
       return [];
     }
+  };
+
+  const removePurchaseOrderFromCache = (orderId: string) => {
+    if (typeof window === "undefined" || !orderId) return [];
+
+    try {
+      const cached = window.sessionStorage.getItem(PURCHASE_ORDERS_CACHE_KEY);
+      const parsed = cached ? JSON.parse(cached) : [];
+      const currentCache = Array.isArray(parsed) ? parsed : [];
+      const nextCache = currentCache.filter((order: any) => String(order?._id || order?.id || "").trim() !== orderId);
+      writeCachedArray(PURCHASE_ORDERS_CACHE_KEY, nextCache);
+      return nextCache;
+    } catch (error) {
+      console.error("Failed to remove purchase order from cache:", error);
+      return [];
+    }
+  };
+
+  const buildOptimisticPurchaseOrder = (purchaseOrderData: any, status: PurchaseOrderSaveStatus) => {
+    const optimisticId = isEdit
+      ? String(routeOrderId || editOrder?._id || editOrder?.id || `po-temp-${Date.now()}`)
+      : `po-temp-${Date.now()}`;
+
+    return {
+      _id: optimisticId,
+      id: optimisticId,
+      date: purchaseOrderData.date,
+      purchaseOrderNumber: purchaseOrderData.purchase_order_number,
+      purchase_order_number: purchaseOrderData.purchase_order_number,
+      referenceNumber: purchaseOrderData.reference_number,
+      reference_number: purchaseOrderData.reference_number,
+      vendorName: purchaseOrderData.vendor_name,
+      vendor_name: purchaseOrderData.vendor_name,
+      vendorId: purchaseOrderData.vendor_id,
+      vendor_id: purchaseOrderData.vendor_id,
+      deliveryDate: purchaseOrderData.delivery_date,
+      delivery_date: purchaseOrderData.delivery_date,
+      expectedDate: purchaseOrderData.delivery_date,
+      paymentTerms: purchaseOrderData.payment_terms,
+      payment_terms: purchaseOrderData.payment_terms,
+      shipmentPreference: purchaseOrderData.shipment_preference,
+      shipment_preference: purchaseOrderData.shipment_preference,
+      status,
+      billedStatus: "Unbilled",
+      billed_status: "unbilled",
+      total: Number(purchaseOrderData.total || 0),
+      subTotal: Number(purchaseOrderData.sub_total || 0),
+      sub_total: Number(purchaseOrderData.sub_total || 0),
+      notes: purchaseOrderData.notes || "",
+      terms: purchaseOrderData.terms || "",
+      items: purchaseOrderData.items || [],
+      reportingTags: purchaseOrderData.reporting_tags || [],
+      reporting_tags: purchaseOrderData.reporting_tags || [],
+      projectId: purchaseOrderData.project_id,
+      project_id: purchaseOrderData.project_id,
+      projectName: purchaseOrderData.project_name,
+      project_name: purchaseOrderData.project_name,
+      isOptimistic: true,
+    };
   };
 
   const handleSubmit = async (e: React.SyntheticEvent | undefined, status: PurchaseOrderSaveStatus) => {

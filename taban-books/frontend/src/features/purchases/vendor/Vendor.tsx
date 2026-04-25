@@ -61,7 +61,26 @@ const purchasesTheme = {
 export default function Vendor() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [vendors, setVendors] = useState([]);
+  const getCachedVendors = () => {
+    if (typeof window === "undefined") return [];
+
+    try {
+      const storedVendors = localStorage.getItem("vendors");
+      if (!storedVendors) return [];
+      const parsedVendors = JSON.parse(storedVendors);
+      return Array.isArray(parsedVendors)
+        ? parsedVendors.map((vendor) => ({
+            ...vendor,
+            id: String(vendor?.id || vendor?._id || "").trim(),
+            _id: vendor?._id || vendor?.id || "",
+          }))
+        : [];
+    } catch (error) {
+      return [];
+    }
+  };
+
+  const [vendors, setVendors] = useState(() => getCachedVendors());
   const [selectedVendors, setSelectedVendors] = useState([]);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [notification, setNotification] = useState(null);
@@ -245,9 +264,11 @@ export default function Vendor() {
       _id: vendor?._id || vendor?.id || "",
     }));
 
-  const loadVendors = async () => {
+  const loadVendors = async ({ showLoader = false } = {}) => {
     try {
-      setIsRefreshing(true);
+      if (showLoader) {
+        setIsRefreshing(true);
+      }
       const response = await vendorsAPI.getAll();
 
       const vendorsList = Array.isArray(response)
@@ -265,7 +286,9 @@ export default function Vendor() {
       }
     } catch (error) {
     } finally {
-      setIsRefreshing(false);
+      if (showLoader) {
+        setIsRefreshing(false);
+      }
     }
   };
   const openSearchModalForCurrentContext = () => {
@@ -298,7 +321,7 @@ export default function Vendor() {
 
   // Load vendors from API on component mount and when location changes
   useEffect(() => {
-    loadVendors();
+    loadVendors({ showLoader: vendors.length === 0 });
   }, [location.pathname]);
 
   // Fail-safe for isRefreshing
@@ -448,7 +471,7 @@ export default function Vendor() {
 
   useEffect(() => {
     const handleVendorRefresh = () => {
-      loadVendors();
+      loadVendors({ showLoader: false });
     };
 
     window.addEventListener("vendorSaved", handleVendorRefresh);
@@ -725,11 +748,39 @@ export default function Vendor() {
       padding: "12px 12px",
       textAlign: "left",
     },
+    selectionCell: {
+      width: "72px",
+      minWidth: "72px",
+      paddingLeft: "24px",
+      paddingRight: "12px",
+    },
     thContent: {
       display: "flex",
       alignItems: "center",
       gap: "8px",
       minHeight: "24px",
+    },
+    selectionHeaderContent: {
+      position: "relative",
+      minHeight: "24px",
+      justifyContent: "flex-start",
+    },
+    selectionHeaderIconButton: {
+      position: "absolute",
+      left: "-18px",
+      top: "50%",
+      transform: "translateY(-50%)",
+      border: "none",
+      background: "transparent",
+      padding: 0,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      color: "#3b82f6",
+      cursor: "pointer",
+    },
+    selectionHeaderCheckbox: {
+      marginLeft: "0",
     },
     thText: {
       fontSize: "12px",
@@ -754,6 +805,11 @@ export default function Vendor() {
     td: {
       padding: "12px 12px",
       fontSize: "14px",
+    },
+    selectionCellContent: {
+      display: "flex",
+      alignItems: "center",
+      minHeight: "24px",
     },
     tdEmpty: {
       padding: "40px 16px",
@@ -1966,21 +2022,21 @@ export default function Vendor() {
         <table style={styles.table} className="vendor-table">
           <thead style={styles.thead}>
             <tr>
-              <th style={styles.th}>
-                <div style={styles.thContent}>
+              <th
+                style={{
+                  ...styles.th,
+                  ...styles.selectionCell,
+                }}
+              >
+                <div
+                  style={{
+                    ...styles.thContent,
+                    ...styles.selectionHeaderContent,
+                  }}
+                >
                   <button
                     type="button"
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      padding: 0,
-                      marginRight: "4px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#3b82f6",
-                      cursor: "pointer",
-                    }}
+                    style={styles.selectionHeaderIconButton}
                     title="Filter vendors"
                   >
                     <SlidersHorizontal size={14} />
@@ -1995,7 +2051,7 @@ export default function Vendor() {
                     onChange={handleSelectAll}
                     style={{
                       ...styles.checkbox,
-                      marginLeft: "2px",
+                      ...styles.selectionHeaderCheckbox,
                     }}
                   />
                 </div>
@@ -2092,7 +2148,9 @@ export default function Vendor() {
                     onClick={(e) => {
                       // Don't navigate if clicking on checkbox or its container
                       if (!e.target.closest('input[type="checkbox"]') && !e.target.closest('td:first-child')) {
-                        navigate(`/purchases/vendors/${vendorId}`);
+                        navigate(`/purchases/vendors/${vendorId}`, {
+                          state: { vendor },
+                        });
                       }
                     }}
                     onMouseEnter={(e) => {
@@ -2108,20 +2166,19 @@ export default function Vendor() {
                     <td
                       style={{
                         ...styles.td,
-                        paddingLeft: "24px",
+                        ...styles.selectionCell,
                       }}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <input
-                        type="checkbox"
-                        checked={selectedVendors.includes(vendorId)}
-                        onChange={() => handleCheckboxChange(vendorId)}
-                        style={{
-                          ...styles.checkbox,
-                          marginLeft: "0",
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      />
+                      <div style={styles.selectionCellContent}>
+                        <input
+                          type="checkbox"
+                          checked={selectedVendors.includes(vendorId)}
+                          onChange={() => handleCheckboxChange(vendorId)}
+                          style={styles.checkbox}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
                     </td>
 
                     <td style={styles.td}>
@@ -2129,7 +2186,9 @@ export default function Vendor() {
                         style={styles.vendorLink}
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate(`/purchases/vendors/${vendorId}`);
+                          navigate(`/purchases/vendors/${vendorId}`, {
+                            state: { vendor },
+                          });
                         }}
                       >
                         {vendor.name || vendor.displayName}
