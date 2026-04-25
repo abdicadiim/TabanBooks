@@ -191,24 +191,33 @@ export const getAllVendors = async (req: AuthRequest, res: Response): Promise<vo
 
     const total = await Vendor.countDocuments(query);
 
-    res.json({
+    const responsePayload = {
       success: true,
       data: vendors,
       pagination: {
         page: parseInt(page),
         limit: limitValue,
-        total,
-        pages: Math.ceil(total / limitValue)
-      }
-    });
-  } catch (error: any) {
+        total: total,
+        pages: Math.ceil(total / limitValue),
+      },
+    };
+
+    res.json(responsePayload);
+  } catch (error) {
     console.error("Error in getAllVendors:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    res.status(500).json({
+    let errorMessage = "Unknown error";
+
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    }
+
+    const errorPayload = {
       success: false,
       message: "Error fetching vendors",
-      error: errorMessage
-    });
+      error: errorMessage,
+    };
+
+    res.status(500).json(errorPayload);
   }
 };
 

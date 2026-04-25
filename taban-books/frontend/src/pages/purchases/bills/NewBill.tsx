@@ -1644,7 +1644,7 @@ export default function NewBill() {
           }))
           .filter((tag: any) => {
             const appliesTo = normalizeReportingTagAppliesTo(tag);
-            return appliesTo.some((entry) => {
+            return appliesTo.some((entry: string | null | undefined) => {
               const normalized = String(entry || "").toLowerCase();
               return normalized.includes("purchase") || normalized.includes("bill") || normalized.includes("expense");
             });
