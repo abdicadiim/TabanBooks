@@ -32,7 +32,7 @@ import {
   Copy,
   // PlusCircle,
 } from "lucide-react";
-import { vendorsAPI, itemsAPI, taxesAPI, accountantAPI, vendorCreditsAPI } from "../../../services/api";
+import { vendorsAPI, itemsAPI, taxesAPI, accountantAPI, vendorCreditsAPI, locationsAPI } from "../../../services/api";
 import { useCurrency } from "../../../hooks/useCurrency";
 import toast from "react-hot-toast";
 import NewVendorModal from "../../../components/modals/NewVendorModal";
@@ -56,6 +56,8 @@ export default function NewVendorCredit() {
     accountsPayable: "Accounts Payable",
     taxExclusive: "Tax Inclusive",
     taxLevel: "At Transaction Level",
+    locationId: "",
+    locationName: "",
     discount: 0,
     discountType: "%", // "%" or "Currency"
     adjustment: 0,
@@ -113,6 +115,11 @@ export default function NewVendorCredit() {
   const [accountDropdownOpen, setAccountDropdownOpen] = useState<{ [key: string]: boolean }>({});
   const [taxDropdownOpen, setTaxDropdownOpen] = useState<{ [key: string]: boolean }>({});
   const [accountSearch, setAccountSearch] = useState<{ [key: string]: string }>({});
+  
+  const [locations, setLocations] = useState<any[]>([]);
+  const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
+  const [locationSearch, setLocationSearch] = useState("");
+  const locationRef = useRef(null);
   const [taxSearch, setTaxSearch] = useState<{ [key: string]: string }>({});
   const [itemSearch, setItemSearch] = useState<{ [key: string]: string }>({});
   const [showNewItemModal, setShowNewItemModal] = useState(false);
@@ -122,6 +129,13 @@ export default function NewVendorCredit() {
   const [selectedBulkItems, setSelectedBulkItems] = useState<any[]>([]);
   const [bulkItemQuantities, setBulkItemQuantities] = useState<{ [key: string]: number }>({});
   const [saveLoadingState, setSaveLoadingState] = useState<null | "Draft" | "Open">(null);
+
+  // Number Preferences Modal States
+  const [showNumberPreferencesModal, setShowNumberPreferencesModal] = useState(false);
+  const [numberingPreference, setNumberingPreference] = useState<"auto" | "manual">("auto");
+  const [numberPrefix, setNumberPrefix] = useState("DN-");
+  const [nextNumber, setNextNumber] = useState("00001");
+  const [restartYearly, setRestartYearly] = useState(false);
   const [newItemData, setNewItemData] = useState({
     type: "Goods",
     name: "",
@@ -212,6 +226,22 @@ export default function NewVendorCredit() {
     loadVendors();
   }, []);
 
+  // Load locations from API
+  useEffect(() => {
+    const loadLocations = async () => {
+      try {
+        const response = await locationsAPI.getAll();
+        if (response && (response.code === 0 || response.success)) {
+          const loadedLocations = filterActiveRecords(response.data || response.locations || []);
+          setLocations(loadedLocations);
+        }
+      } catch (error) {
+        console.error("Error loading locations:", error);
+      }
+    };
+    loadLocations();
+  }, []);
+
   useEffect(() => {
     if (stateEditCredit) {
       setEditCredit(stateEditCredit);
@@ -260,6 +290,8 @@ export default function NewVendorCredit() {
       accountsPayable: editCredit.accountsPayable || prev.accountsPayable,
       taxExclusive: editCredit.taxPreference || prev.taxExclusive,
       taxLevel: editCredit.taxLevel || prev.taxLevel,
+      locationId: editCredit.location || prev.locationId,
+      locationName: editCredit.locationName || prev.locationName,
       discount: Number(editCredit.discount || 0),
       discountType: editCredit.discountType || prev.discountType,
       adjustment: Number(editCredit.adjustment || 0),
@@ -812,7 +844,9 @@ export default function NewVendorCredit() {
         subject: formData.subject,
         accountsPayable: formData.accountsPayable,
         taxPreference: formData.taxExclusive,
-        taxLevel: formData.taxLevel
+        taxLevel: formData.taxLevel,
+        location: formData.locationId,
+        locationName: formData.locationName
       };
 
       const creditId = routeCreditId || editCredit?._id || editCredit?.id;
@@ -1182,12 +1216,17 @@ export default function NewVendorCredit() {
             {/* Vendor Name */}
             <div style={styles.fieldRow}>
               <label style={{ ...styles.label, ...styles.required }}>Vendor Name*</label>
-              <div style={{ display: "flex", position: "relative", width: "550px", gap: "12px", alignItems: "center" }}>
-                <div style={{ display: "flex", position: "relative", flex: 1 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div style={{ display: "flex", position: "relative", width: "550px", gap: "12px", alignItems: "center", height: "36px" }}>
+                <div style={{ display: "flex", position: "relative", flex: 1, height: "36px" }}>
                   <div
+                    className="animated-field"
                     style={{
                       ...styles.input,
                       display: "flex",
+                      flex: 1,
+                      height: "36px",
+                      boxSizing: "border-box",
                       alignItems: "center",
                       justifyContent: "space-between",
                       cursor: "pointer",
@@ -1339,27 +1378,28 @@ export default function NewVendorCredit() {
                       </div>
                     </div>
                   )}
+                  <button
+                    type="button"
+                    style={{
+                      padding: "8px",
+                      boxSizing: "border-box",
+                      borderTopRightRadius: "4px",
+                      borderBottomRightRadius: "4px",
+                      borderTopLeftRadius: "0",
+                      borderBottomLeftRadius: "0",
+                      backgroundColor: "#10b981",
+                      border: "none",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      width: "36px",
+                      height: "36px"
+                    }}
+                  >
+                    <Search size={16} color="#fff" />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  style={{
-                    padding: "8px",
-                    borderTopRightRadius: "4px",
-                    borderBottomRightRadius: "4px",
-                    borderTopLeftRadius: "0",
-                    borderBottomLeftRadius: "0",
-                    backgroundColor: "#10b981",
-                    border: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                    width: "36px",
-                    height: "100%"
-                  }}
-                >
-                  <Search size={16} color="#fff" />
-                </button>
                 <div style={{
                   display: "flex",
                   alignItems: "center",
@@ -1371,7 +1411,8 @@ export default function NewVendorCredit() {
                   fontSize: "13px",
                   fontWeight: "500",
                   color: "#374151",
-                  height: "100%"
+                  height: "100%",
+                  boxSizing: "border-box"
                 }}>
                   <div style={{ width: "12px", height: "12px", borderRadius: "50%", border: "2px solid #10b981", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <div style={{ width: "4px", height: "4px", borderRadius: "50%", backgroundColor: "#10b981" }}></div>
@@ -1379,16 +1420,101 @@ export default function NewVendorCredit() {
                   KES
                 </div>
               </div>
+              
+              {/* Billing Address Display */}
+              {billingAddress && (
+                <div style={{ fontSize: "13px", color: "#374151", lineHeight: "1.5" }}>
+                  <div style={{ color: "#6b7280", fontSize: "11px", fontWeight: "600", textTransform: "uppercase", marginBottom: "4px", display: "flex", alignItems: "center", gap: "4px", letterSpacing: "0.5px" }}>
+                    BILLING ADDRESS <Pencil size={12} style={{ color: "#9ca3af", cursor: "pointer" }} />
+                  </div>
+                  {billingAddress.companyName && <div style={{ fontWeight: "600", marginBottom: "2px", color: "#111827" }}>{billingAddress.companyName}</div>}
+                  {billingAddress.street1 && <div>{billingAddress.street1}</div>}
+                  {billingAddress.street2 && <div>{billingAddress.street2}</div>}
+                  {billingAddress.city && <div>{billingAddress.city}</div>}
+                  {billingAddress.state && <div>{billingAddress.state}</div>}
+                  {billingAddress.zipCode && <div>{billingAddress.zipCode}</div>}
+                  {billingAddress.country && <div>{billingAddress.country}</div>}
+                  {billingAddress.phone && <div style={{ marginTop: "4px", color: "#6b7280" }}>Phone: {billingAddress.phone}</div>}
+                </div>
+              )}
+              </div>
             </div>
 
             {/* Location */}
             <div style={styles.fieldRow}>
               <label style={styles.label}>Location</label>
-              <div style={{ width: "400px" }}>
-                <div className="animated-field" tabIndex={0} style={styles.select}>
-                  <span style={{ fontSize: "13px", color: "#374151" }}>Head Office</span>
-                  <ChevronDown size={16} style={{ color: "#6b7280" }} />
+              <div style={{ position: "relative", width: "400px" }} ref={locationRef}>
+                <div
+                  className="animated-field"
+                  tabIndex={0}
+                  style={styles.select}
+                  onClick={() => setLocationDropdownOpen(!locationDropdownOpen)}
+                >
+                  <span style={{ fontSize: "13px", color: formData.locationName ? "#111827" : "#9ca3af" }}>
+                    {formData.locationName || "Select Location"}
+                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    {formData.locationName && (
+                      <X
+                        size={14}
+                        style={{ color: "#ef4444", cursor: "pointer" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFormData({ ...formData, locationId: "", locationName: "" });
+                        }}
+                      />
+                    )}
+                    <ChevronDown size={16} style={{ color: "#6b7280", transform: locationDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+                  </div>
                 </div>
+                
+                {locationDropdownOpen && (
+                  <div style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    right: 0,
+                    zIndex: 1000,
+                    background: "white",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
+                    marginTop: "4px",
+                    boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                    maxHeight: "300px",
+                    overflowY: "auto"
+                  }}>
+                    {locations.map(location => (
+                      <div
+                        key={location._id}
+                        style={{
+                          padding: "10px 12px",
+                          cursor: "pointer",
+                          fontSize: "13px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          backgroundColor: formData.locationId === location._id ? "#3b82f6" : "white",
+                          color: formData.locationId === location._id ? "white" : "#374151",
+                          borderBottom: "1px solid #f9fafb"
+                        }}
+                        onClick={() => {
+                          setFormData({ ...formData, locationId: location._id, locationName: location.name });
+                          setLocationDropdownOpen(false);
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = formData.locationId === location._id ? "#3b82f6" : "#f9fafb")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = formData.locationId === location._id ? "#3b82f6" : "white")}
+                      >
+                        {location.name}
+                        {formData.locationId === location._id && <Check size={14} style={{ color: "white" }} />}
+                      </div>
+                    ))}
+                    {locations.length === 0 && (
+                      <div style={{ padding: "10px 12px", fontSize: "13px", color: "#6b7280", textAlign: "center" }}>
+                        No locations found
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1399,11 +1525,16 @@ export default function NewVendorCredit() {
                 <input
                   type="text"
                   className="animated-field"
-                  style={styles.input}
+                  style={{...styles.input, backgroundColor: numberingPreference === "auto" ? "#f9fafb" : "white", color: numberingPreference === "auto" ? "#6b7280" : "#111827"}}
                   value={formData.creditNote}
+                  readOnly={numberingPreference === "auto"}
                   onChange={(e) => setFormData({ ...formData, creditNote: e.target.value })}
                 />
-                <Settings size={14} style={{ position: "absolute", right: "12px", color: "#156372", cursor: "pointer" }} />
+                <Settings 
+                  size={14} 
+                  style={{ position: "absolute", right: "12px", color: "#156372", cursor: "pointer" }} 
+                  onClick={() => setShowNumberPreferencesModal(true)}
+                />
               </div>
             </div>
 
@@ -2333,6 +2464,197 @@ export default function NewVendorCredit() {
           onClose={() => setShowNewVendorModal(false)}
           onCreated={handleVendorCreated}
         />
+      )}
+
+      {/* Number Preferences Modal */}
+      {showNumberPreferencesModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.4)",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "flex-start",
+          paddingTop: "60px",
+          zIndex: 9999
+        }}>
+          <div style={{
+            backgroundColor: "white",
+            borderRadius: "8px",
+            width: "600px",
+            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden"
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "16px 24px",
+              borderBottom: "1px solid #e5e7eb"
+            }}>
+              <h2 style={{ fontSize: "16px", fontWeight: "500", color: "#156372", margin: 0 }}>Configure Vendor Credit Number Preferences</h2>
+              <X 
+                size={20} 
+                style={{ color: "#ef4444", cursor: "pointer" }} 
+                onClick={() => setShowNumberPreferencesModal(false)}
+              />
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: "24px" }}>
+              {/* Context Info */}
+              <div style={{ display: "flex", gap: "40px", marginBottom: "24px", paddingBottom: "24px", borderBottom: "1px solid #e5e7eb" }}>
+                <div>
+                  <div style={{ fontSize: "12px", color: "#111827", fontWeight: "600", marginBottom: "4px" }}>Location</div>
+                  <div style={{ fontSize: "13px", color: "#6b7280" }}>{formData.locationName || "Head Office"}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "12px", color: "#111827", fontWeight: "600", marginBottom: "4px" }}>Associated Series</div>
+                  <div style={{ fontSize: "13px", color: "#6b7280" }}>Default Transaction Series</div>
+                </div>
+              </div>
+
+              {/* Dynamic Text based on selection */}
+              <p style={{ fontSize: "13px", color: "#374151", marginBottom: "20px", lineHeight: "1.5" }}>
+                {numberingPreference === "auto" 
+                  ? "Your Vendor Credits numbers are set on auto-generate mode to save your time. Are you sure about changing this setting?"
+                  : "You have selected manual Vendor Credits numbering. Do you want us to auto-generate it for you?"}
+              </p>
+
+              {/* Radio 1: Auto */}
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", marginBottom: numberingPreference === "auto" ? "12px" : "0" }}>
+                  <input 
+                    type="radio" 
+                    checked={numberingPreference === "auto"}
+                    onChange={() => setNumberingPreference("auto")}
+                    style={{ cursor: "pointer", width: "16px", height: "16px", accentColor: "#3b82f6" }}
+                  />
+                  <span style={{ fontSize: "14px", color: "#111827" }}>Continue auto-generating Vendor Credits numbers</span>
+                  <Info size={14} style={{ color: "#9ca3af" }} />
+                </label>
+
+                {numberingPreference === "auto" && (
+                  <div style={{ marginLeft: "24px" }}>
+                    <div style={{ display: "flex", gap: "16px", marginBottom: "12px" }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: "block", fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>Prefix</label>
+                        <div style={{ position: "relative" }}>
+                          <input 
+                            type="text" 
+                            value={numberPrefix}
+                            onChange={(e) => setNumberPrefix(e.target.value)}
+                            style={{ 
+                              width: "100%", 
+                              padding: "8px 12px", 
+                              border: "1px solid #d1d5db", 
+                              borderRadius: "4px", 
+                              fontSize: "13px", 
+                              color: "#111827",
+                              boxSizing: "border-box"
+                            }} 
+                          />
+                          <Settings size={14} style={{ position: "absolute", right: "12px", top: "10px", color: "#3b82f6" }} />
+                        </div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: "block", fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>Next Number</label>
+                        <input 
+                          type="text" 
+                          value={nextNumber}
+                          onChange={(e) => setNextNumber(e.target.value)}
+                          style={{ 
+                            width: "100%", 
+                            padding: "8px 12px", 
+                            border: "1px solid #d1d5db", 
+                            borderRadius: "4px", 
+                            fontSize: "13px", 
+                            color: "#111827",
+                            boxSizing: "border-box"
+                          }} 
+                        />
+                      </div>
+                    </div>
+                    
+                    <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                      <input 
+                        type="checkbox"
+                        checked={restartYearly}
+                        onChange={(e) => setRestartYearly(e.target.checked)}
+                        style={{ cursor: "pointer", width: "14px", height: "14px", borderRadius: "3px" }}
+                      />
+                      <span style={{ fontSize: "13px", color: "#6b7280" }}>Restart numbering for vendor credits at the start of each fiscal year.</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {/* Radio 2: Manual */}
+              <div>
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                  <input 
+                    type="radio" 
+                    checked={numberingPreference === "manual"}
+                    onChange={() => setNumberingPreference("manual")}
+                    style={{ cursor: "pointer", width: "16px", height: "16px", accentColor: "#3b82f6" }}
+                  />
+                  <span style={{ fontSize: "14px", color: "#111827" }}>Enter Vendor Credits numbers manually</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ 
+              padding: "16px 24px", 
+              backgroundColor: "#f9fafb", 
+              borderTop: "1px solid #e5e7eb",
+              display: "flex",
+              gap: "12px"
+            }}>
+              <button 
+                onClick={() => {
+                  if (numberingPreference === "auto") {
+                    setFormData({ ...formData, creditNote: `${numberPrefix}${nextNumber}` });
+                  }
+                  setShowNumberPreferencesModal(false);
+                }}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#10b981",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  cursor: "pointer"
+                }}
+              >
+                Save
+              </button>
+              <button 
+                onClick={() => setShowNumberPreferencesModal(false)}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "white",
+                  color: "#374151",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  cursor: "pointer"
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
