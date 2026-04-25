@@ -7,7 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
   // Load environment variables
-  const rawApiBaseUrl = process.env.VITE_API_BASE_URL || "http://127.0.0.1:5001";
+  const rawApiBaseUrl = process.env.VITE_API_BASE_URL || "http://127.0.0.1:5000";
   // Normalize localhost to IPv4 loopback to avoid intermittent Node DNS localhost resolution issues in proxy.
   const apiBaseUrl = rawApiBaseUrl.replace("http://localhost:", "http://127.0.0.1:");
   const frontendUrl = process.env.VITE_FRONTEND_URL || "http://localhost:5175";

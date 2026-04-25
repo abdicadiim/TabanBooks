@@ -1,12 +1,9 @@
-<<<<<<< Updated upstream:taban-books/frontend/src/pages/items/ItemsPage.tsx
 // src/pages/items/ItemsPage.tsx
 import React, { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useLocation } from "react-router-dom";
-=======
 // src/features/items/ItemsPage.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
->>>>>>> Stashed changes:taban-books/frontend/src/features/items/ItemsPage.tsx
 import toast from "react-hot-toast";
 import { itemsAPI, tagAssignmentsAPI } from "../../services/api";
 import { readCachedListResponse, writeCachedListResponse } from "../../services/swrListCache";

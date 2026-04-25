@@ -388,7 +388,7 @@ export const login = async (
       const text = await response.text();
       // Check if backend server is not running
       if (response.status === 404 && text.includes('<!DOCTYPE')) {
-        throw new Error('Backend server is not running. Please start the server on port 5001.');
+        throw new Error('Backend server is not running. Please start the server on port 5000.');
       }
       throw new Error(`Server returned non-JSON response (${response.status}): ${text.substring(0, 100)}`);
     }
@@ -407,7 +407,7 @@ export const login = async (
   } catch (error: any) {
     // Improve error message for network errors
     if (error.message && error.message.includes('Failed to fetch') || error.message && error.message.includes('NetworkError')) {
-      console.error('Login error: Cannot connect to backend server. Make sure the server is running on port 5001.');
+      console.error('Login error: Cannot connect to backend server. Make sure the server is running on port 5000.');
       throw new Error('Cannot connect to backend server. Please ensure the server is running.');
     }
     console.error('Login error:', error);
@@ -430,7 +430,7 @@ export const checkUser = async (email: string): Promise<{ hasPassword: boolean; 
     if (!contentType || !contentType.includes('application/json')) {
       const text = await response.text();
       if (response.status === 404 && text.includes('<!DOCTYPE')) {
-        throw new Error('Backend server is not running. Please start the server on port 5001.');
+        throw new Error('Backend server is not running. Please start the server on port 5000.');
       }
       throw new Error(
         text
@@ -446,7 +446,7 @@ export const checkUser = async (email: string): Promise<{ hasPassword: boolean; 
     return data.data;
   } catch (error: any) {
     if ((error.message && error.message.includes('Failed to fetch')) || (error.message && error.message.includes('NetworkError'))) {
-      console.error('Check user error: Cannot connect to backend server. Make sure the server is running on port 5001.');
+      console.error('Check user error: Cannot connect to backend server. Make sure the server is running on port 5000.');
       throw new Error('Cannot connect to backend server. Please ensure the server is running.');
     }
     console.error('Check user error:', error);
