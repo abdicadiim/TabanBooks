@@ -1172,8 +1172,8 @@ export default function NewVendorCredit() {
             {/* Vendor Name */}
             <div style={styles.fieldRow}>
               <label style={{ ...styles.label, ...styles.required }}>Vendor Name*</label>
-              <div style={{ display: "flex", gap: "8px", position: "relative", width: "400px" }}>
-                <div style={{ display: "flex", gap: "8px", position: "relative", flex: 1 }}>
+              <div style={{ display: "flex", position: "relative", width: "400px" }}>
+                <div style={{ display: "flex", position: "relative", flex: 1 }}>
                   <div
                     style={{
                       ...styles.input,
@@ -1182,8 +1182,11 @@ export default function NewVendorCredit() {
                       justifyContent: "space-between",
                       cursor: "pointer",
                       backgroundColor: "#fff",
-                      borderColor: vendorDropdownOpen ? "#156372" : "#d1d5db",
-                      boxShadow: vendorDropdownOpen ? "0 0 0 2px rgba(37, 99, 235, 0.1)" : "none"
+                      borderColor: vendorDropdownOpen ? "#3b82f6" : "#d1d5db",
+                      boxShadow: vendorDropdownOpen ? "0 0 0 1px #3b82f6" : "none",
+                      borderTopRightRadius: 0,
+                      borderBottomRightRadius: 0,
+                      borderRight: "none"
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1195,16 +1198,6 @@ export default function NewVendorCredit() {
                     </span>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <ChevronDown size={16} style={{ color: "#6b7280", transform: vendorDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
-                      <div style={{
-                        backgroundColor: "#156372",
-                        padding: "6px",
-                        borderRadius: "4px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center"
-                      }}>
-                        <Search size={14} style={{ color: "#fff" }} />
-                      </div>
                     </div>
                   </div>
 
@@ -1328,7 +1321,10 @@ export default function NewVendorCredit() {
                   type="button"
                   style={{
                     padding: "8px",
-                    borderRadius: "4px",
+                    borderTopRightRadius: "4px",
+                    borderBottomRightRadius: "4px",
+                    borderTopLeftRadius: "0",
+                    borderBottomLeftRadius: "0",
                     backgroundColor: "#10b981",
                     border: "none",
                     display: "flex",
