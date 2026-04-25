@@ -32,7 +32,7 @@ import {
   Copy,
   Globe
 } from "lucide-react";
-import { vendorsAPI, itemsAPI, taxesAPI, accountantAPI, vendorCreditsAPI } from "../../../services/api";
+import { vendorsAPI, itemsAPI, taxesAPI, accountantAPI, vendorCreditsAPI, locationsAPI } from "../../../services/api";
 import { useCurrency } from "../../../hooks/useCurrency";
 import toast from "react-hot-toast";
 import NewVendorModal from "../../../components/modals/NewVendorModal";
@@ -175,6 +175,7 @@ export default function NewVendorCredit() {
   // Load vendors from localStorage
   const [taxes, setTaxes] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
 
   const [apSearchTerm, setApSearchTerm] = useState("");
   const discountMode = enabledSettings?.discountSettings?.discountType ?? "transaction";
@@ -229,6 +230,28 @@ export default function NewVendorCredit() {
       }
     };
     loadVendors();
+  }, []);
+
+  // Load locations from API
+  useEffect(() => {
+    const loadLocations = async () => {
+      try {
+        const response = await locationsAPI.getAll();
+        if (response && (response.code === 0 || response.success)) {
+          const loadedLocations = filterActiveRecords(response.data || []);
+          setLocations(loadedLocations);
+          
+          // Set default location if not already set
+          if (!formData.location && loadedLocations.length > 0) {
+            const defaultLoc = loadedLocations.find((l: any) => l.isDefault)?.name || loadedLocations[0].name;
+            setFormData(prev => ({ ...prev, location: defaultLoc, warehouseLocation: defaultLoc }));
+          }
+        }
+      } catch (error) {
+        console.error("Error loading locations:", error);
+      }
+    };
+    loadLocations();
   }, []);
 
   useEffect(() => {
@@ -1501,7 +1524,8 @@ export default function NewVendorCredit() {
                     </div>
 
                     <div style={{ maxHeight: "200px", overflowY: "auto" }}>
-                      {["Head Office"]
+                      {locations
+                        .map(l => l.name)
                         .filter(loc => loc.toLowerCase().includes(locationSearch.toLowerCase()))
                         .map(loc => {
                           const isSelected = formData.location === loc;
@@ -1798,7 +1822,8 @@ export default function NewVendorCredit() {
                   </div>
 
                   <div style={{ maxHeight: "200px", overflowY: "auto" }}>
-                    {["Head Office", "HAYAT"]
+                    {locations
+                      .map(l => l.name)
                       .filter(loc => loc.toLowerCase().includes(warehouseSearch.toLowerCase()))
                       .map(loc => {
                         const isSelected = formData.warehouseLocation === loc;
@@ -1837,8 +1862,6 @@ export default function NewVendorCredit() {
                   </div>
                 </div>
               )}
-            </div>
-
             </div>
           </div>
 

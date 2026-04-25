@@ -2187,6 +2187,7 @@ export default function NewPurchaseOrder() {
     if (saveLoadingState || submitLockRef.current) return;
     submitLockRef.current = true;
     setSaveLoadingState(status === "issued" ? "issued" : "draft");
+    let optimisticOrderId = "";
 
     try {
       const { isValid, resolvedVendorId, resolvedVendorName } = validatePurchaseOrderForm();
@@ -2243,6 +2244,17 @@ export default function NewPurchaseOrder() {
         terms: formData.termsAndConditions // Update key to match backend 'terms'
       };
 
+      const shouldNavigateOptimistically = status === "draft";
+      if (shouldNavigateOptimistically) {
+        const optimisticOrder = buildOptimisticPurchaseOrder(purchaseOrderData, status);
+        optimisticOrderId = String(optimisticOrder._id || optimisticOrder.id || "").trim();
+        const cachedOrders = syncPurchaseOrderCache(optimisticOrder);
+        window.dispatchEvent(new Event("purchaseOrdersUpdated"));
+        navigate("/purchases/purchase-orders", {
+          state: { purchaseOrders: cachedOrders.length > 0 ? cachedOrders : undefined },
+        });
+      }
+
       let response;
       if (isEdit && (routeOrderId || editOrder?._id || editOrder?.id)) {
         // Update existing order
@@ -2255,6 +2267,9 @@ export default function NewPurchaseOrder() {
 
       if (response && (response.code === 0 || response.success)) {
         const savedOrder = response.data || response.purchaseOrder || response.purchase_order || null;
+        if (optimisticOrderId) {
+          removePurchaseOrderFromCache(optimisticOrderId);
+        }
         const cachedOrders = savedOrder ? syncPurchaseOrderCache(savedOrder) : [];
 
         // Trigger custom event for same-tab updates
@@ -2265,24 +2280,34 @@ export default function NewPurchaseOrder() {
           navigate(`/purchases/purchase-orders/${savedOrder._id}/email`, {
             state: { purchaseOrder: savedOrder },
           });
-        } else {
+        } else if (!shouldNavigateOptimistically) {
           // Otherwise go back to the list
           navigate("/purchases/purchase-orders", {
             state: { purchaseOrders: cachedOrders.length > 0 ? cachedOrders : undefined },
           });
         }
       } else {
+        if (optimisticOrderId) {
+          removePurchaseOrderFromCache(optimisticOrderId);
+          window.dispatchEvent(new Event("purchaseOrdersUpdated"));
+        }
         alert(response?.message || "Failed to create purchase order");
       }
     } catch (error: any) {
       console.error("Error creating purchase order:", error);
+      if (optimisticOrderId) {
+        removePurchaseOrderFromCache(optimisticOrderId);
+        window.dispatchEvent(new Event("purchaseOrdersUpdated"));
+      }
       if (isDuplicatePurchaseOrderNumberError(error)) {
         alert("Purchase order number already exists. Please use a different number.");
       } else {
         alert(error?.message || "An error occurred while creating the purchase order.");
       }
     } finally {
-      setSaveLoadingState(null);
+      if (isMountedRef.current) {
+        setSaveLoadingState(null);
+      }
       submitLockRef.current = false;
     }
   };
