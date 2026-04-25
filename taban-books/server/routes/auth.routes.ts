@@ -16,6 +16,7 @@ router.post("/send-login-otp", asyncHandler(authController.sendLoginOTP));
 router.post("/verify-login-otp", asyncHandler(authController.verifyLoginOTP));
 router.get("/bootstrap", protect, asyncHandler(authController.getBootstrap));
 router.get("/me", protect, asyncHandler(authController.getMe));
+router.patch("/me", protect, asyncHandler(authController.updateMe));
 router.post("/logout", protect, asyncHandler(authController.logout));
 router.post("/verify-account", protect, asyncHandler(authController.verifyAccount));
 router.post("/resend-otp", protect, asyncHandler(authController.resendOTP));

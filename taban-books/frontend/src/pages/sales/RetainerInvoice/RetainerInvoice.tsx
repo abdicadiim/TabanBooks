@@ -1,0 +1,2409 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
+import {
+  ArrowUpDown,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Columns3,
+  Download,
+  FileDown,
+  FileText,
+  GripVertical,
+  Mail,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Settings,
+  SlidersHorizontal,
+  Star,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
+import { deleteRetainerInvoice, getCustomers, readTaxesLocal } from "../salesModel";
+import type { RetainerInvoice as RetainerInvoiceRecord } from "../salesModel";
+import { useRetainerListQuery } from "./retainerInvoiceQueries";
+import { useOrganizationBranding } from "../../../hooks/useOrganizationBranding";
+import { useThemeColors } from "../../../hooks/useThemeColors";
+import PaginationFooter from "../../../components/table/PaginationFooter";
+const preloadCustomerDetailRoute = async () => undefined;
+
+type RetainerRow = {
+  id: string;
+  location: string;
+  invoiceNumber: string;
+  reference: string;
+  customerName: string;
+  customerId: string;
+  customer: any | null;
+  date: string;
+  dateTs: number;
+  issuedDate: string;
+  issuedDateTs: number;
+  status: string;
+  drawStatus: string;
+  projectEstimate: string;
+  project: string;
+  quote: string;
+  wsq: string;
+  isEmailed: boolean;
+  amount: number;
+  balance: number;
+  createdAtTs: number;
+  updatedAtTs: number;
+  statusKey: string;
+  drawStatusKey: string;
+  sourceInvoice: RetainerInvoiceRecord;
+};
+
+type RetainerColumnKey =
+  | "date"
+  | "location"
+  | "retainer"
+  | "reference"
+  | "customer"
+  | "status"
+  | "drawStatus"
+  | "amount"
+  | "balance"
+  | "issuedDate"
+  | "projectEstimate"
+  | "project"
+  | "quote"
+  | "wsq";
+type RetainerColumnConfig = {
+  key: RetainerColumnKey;
+  label: string;
+  defaultSelected: boolean;
+};
+
+type AdvancedSearchState = {
+  scope: string;
+  filterView: string;
+  invoiceNumber: string;
+  reference: string;
+  dateFrom: string;
+  dateTo: string;
+  description: string;
+  totalFrom: string;
+  totalTo: string;
+  projectName: string;
+  billingAddressField: string;
+  billingAddressValue: string;
+  status: string;
+  drawStatus: string;
+  customerName: string;
+  taxName: string;
+};
+
+const FAVORITE_VIEWS_STORAGE_KEY = "taban_retainer_favorite_views_v1";
+const RETAINER_COLUMNS_STORAGE_KEY = "taban_retainer_columns_v1";
+const RETAINER_SELECTED_VIEW_STORAGE_KEY = "taban_retainer_selected_view_v1";
+const RETAINER_SORT_STORAGE_KEY = "taban_retainer_sort_v1";
+const VIEW_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "draft", label: "Draft" },
+  { key: "pending_approval", label: "Pending Approval" },
+  { key: "approved", label: "Approved" },
+  { key: "sent", label: "Sent" },
+  { key: "paid", label: "Paid" },
+  { key: "partially_drawn", label: "Partially Drawn" },
+  { key: "drawn", label: "Drawn" },
+  { key: "void", label: "Void" },
+  { key: "customer_viewed", label: "Customer Viewed" },
+  { key: "payment_initiated", label: "Payment Initiated" },
+  { key: "partially_paid", label: "Partially Paid" },
+  { key: "awaiting_payment", label: "Awaiting Payment" },
+  { key: "ready_to_draw", label: "Ready To Draw" },
+];
+
+const STATUS_ALIAS: Record<string, string[]> = {
+  all: [],
+  draft: ["draft"],
+  pending_approval: ["pending_approval", "pending approval"],
+  approved: ["approved"],
+  sent: ["sent"],
+  paid: ["paid"],
+  partially_drawn: ["partially_drawn", "partially drawn"],
+  drawn: ["drawn"],
+  void: ["void"],
+  customer_viewed: ["customer_viewed", "customer viewed"],
+  payment_initiated: ["payment_initiated", "payment initiated"],
+  partially_paid: ["partially_paid", "partially paid"],
+  awaiting_payment: ["awaiting_payment", "awaiting payment", "unpaid"],
+  ready_to_draw: ["ready_to_draw", "ready to draw"],
+};
+
+const ADVANCED_STATUS_OPTIONS = [
+  { value: "draft", label: "Draft" },
+  { value: "sent", label: "Sent" },
+  { value: "paid", label: "Paid" },
+  { value: "partially_paid", label: "Partially Paid" },
+  { value: "void", label: "Void" },
+];
+
+const ADVANCED_DRAW_STATUS_OPTIONS = [
+  { value: "awaiting_payment", label: "Awaiting Payment" },
+  { value: "ready_to_draw", label: "Ready To Draw" },
+  { value: "partially_drawn", label: "Partially Drawn" },
+  { value: "drawn", label: "Drawn" },
+];
+
+const BILLING_ADDRESS_FIELD_OPTIONS = [
+  { value: "attention", label: "Attention" },
+  { value: "street1", label: "Street 1" },
+  { value: "street2", label: "Street 2" },
+  { value: "city", label: "City" },
+  { value: "state", label: "State" },
+  { value: "zipCode", label: "ZIP Code" },
+  { value: "country", label: "Country" },
+  { value: "fax", label: "Fax Number" },
+  { value: "phone", label: "Phone" },
+];
+
+type SortFieldOption = { key: string; label: string };
+const SORT_FIELDS: SortFieldOption[] = [
+  { key: "created", label: "Created Time" },
+  { key: "modified", label: "Last Modified Time" },
+  { key: "date", label: "Date" },
+  { key: "retainer", label: "Retainer Invoice Number" },
+  { key: "customer", label: "Customer Name" },
+  { key: "amount", label: "Amount" },
+  { key: "balance", label: "Balance" },
+  { key: "issuedDate", label: "Issued Date" },
+];
+
+const parseSortKey = (value: string | null | undefined) => {
+  const raw = String(value || "");
+  const match = raw.match(/^(.*)_(asc|desc)$/);
+  if (!match) return { field: "created", direction: "desc" as const };
+  return { field: match[1] || "created", direction: (match[2] as "asc" | "desc") || "desc" };
+};
+
+const getRetainerStatusClass = (status: string | undefined | null) => {
+  const normalized = String(status || "").toLowerCase().replace(/\s+/g, "_");
+  const statusClasses: Record<string, string> = {
+    draft: "bg-transparent text-slate-600",
+    pending_approval: "bg-transparent text-amber-700",
+    approved: "bg-transparent text-emerald-600",
+    sent: "bg-transparent text-blue-600",
+    customer_viewed: "bg-transparent text-[#156372]",
+    payment_initiated: "bg-transparent text-[#156372]",
+    partially_paid: "bg-transparent text-blue-600",
+    partially_drawn: "bg-transparent text-blue-600",
+    paid: "bg-transparent text-emerald-600",
+    drawn: "bg-transparent text-emerald-600",
+    void: "bg-transparent text-red-600",
+  };
+  return statusClasses[normalized] || "bg-transparent text-slate-600";
+};
+
+const DEFAULT_COLUMN_WIDTHS = {
+  select: 68,
+  date: 140,
+  location: 150,
+  retainer: 190,
+  reference: 140,
+  customer: 220,
+  status: 130,
+  drawStatus: 190,
+  amount: 140,
+  balance: 140,
+  issuedDate: 140,
+  projectEstimate: 150,
+  project: 150,
+  quote: 120,
+  wsq: 120,
+};
+
+const RETAINER_COLUMNS: RetainerColumnConfig[] = [
+  { key: "date", label: "Date", defaultSelected: true },
+  { key: "location", label: "Location", defaultSelected: true },
+  { key: "retainer", label: "Retainer Invoice Number", defaultSelected: true },
+  { key: "reference", label: "Reference#", defaultSelected: true },
+  { key: "customer", label: "Customer Name", defaultSelected: true },
+  { key: "status", label: "Status", defaultSelected: true },
+  { key: "drawStatus", label: "Retainer Draw Status", defaultSelected: true },
+  { key: "amount", label: "Total", defaultSelected: true },
+  { key: "balance", label: "Balance", defaultSelected: true },
+  { key: "issuedDate", label: "Issued Date", defaultSelected: true },
+  { key: "projectEstimate", label: "Project/Estimate", defaultSelected: false },
+  { key: "project", label: "Project", defaultSelected: false },
+  { key: "quote", label: "Quote", defaultSelected: false },
+  { key: "wsq", label: "wsq", defaultSelected: false },
+];
+
+const TABLE_COLUMNS: RetainerColumnKey[] = [
+  "date",
+  "location",
+  "retainer",
+  "reference",
+  "customer",
+  "status",
+  "drawStatus",
+  "amount",
+  "balance",
+  "issuedDate",
+  "projectEstimate",
+  "project",
+  "quote",
+  "wsq",
+];
+
+const withAlpha = (color: string, alpha: number) => {
+  const value = String(color || "").trim();
+
+  if (value.startsWith("#")) {
+    let hex = value.slice(1);
+    if (hex.length === 3) {
+      hex = hex
+        .split("")
+        .map((char) => char + char)
+        .join("");
+    }
+
+    if (hex.length === 6) {
+      const red = parseInt(hex.slice(0, 2), 16);
+      const green = parseInt(hex.slice(2, 4), 16);
+      const blue = parseInt(hex.slice(4, 6), 16);
+      return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+    }
+  }
+
+  const rgbMatch = value.match(/^rgba?\(([^)]+)\)$/i);
+  if (rgbMatch) {
+    const [red, green, blue] = rgbMatch[1].split(",").map((part) => part.trim());
+    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+  }
+
+  return value;
+};
+
+const createDefaultAdvancedSearchState = (filterView = "all"): AdvancedSearchState => ({
+  scope: "Retainer Invoices",
+  filterView,
+  invoiceNumber: "",
+  reference: "",
+  dateFrom: "",
+  dateTo: "",
+  description: "",
+  totalFrom: "",
+  totalTo: "",
+  projectName: "",
+  billingAddressField: "attention",
+  billingAddressValue: "",
+  status: "",
+  drawStatus: "",
+  customerName: "",
+  taxName: "",
+});
+
+const normalizeValue = (value: any) => String(value || "").trim().toLowerCase();
+
+const invoiceDescriptionText = (invoice: Invoice) => {
+  const itemDescriptions = Array.isArray(invoice.items)
+    ? invoice.items
+        .flatMap((item: any) => [
+          item?.description,
+          item?.name,
+          item?.itemName,
+          item?.details,
+        ])
+        .filter(Boolean)
+    : [];
+
+  return normalizeValue(itemDescriptions.join(" "));
+};
+
+const invoiceTaxText = (invoice: Invoice) => {
+  const itemTaxes = Array.isArray(invoice.items)
+    ? invoice.items
+        .flatMap((item: any) => [
+          item?.taxName,
+          item?.tax,
+          item?.taxLabel,
+          item?.taxId,
+          item?.tax_id,
+        ])
+        .filter(Boolean)
+    : [];
+
+  return normalizeValue([invoice.shippingChargeTax, ...itemTaxes].join(" "));
+};
+
+const invoiceBillingAddressText = (invoice: Invoice, field: string) => {
+  const address = (invoice as any).customerAddress || (invoice as any).billingAddress || {};
+
+  switch (field) {
+    case "attention":
+      return normalizeValue(invoice.customerName || (invoice as any).customer?.displayName || (invoice as any).customer?.name);
+    case "street1":
+      return normalizeValue(address.street1);
+    case "street2":
+      return normalizeValue(address.street2);
+    case "city":
+      return normalizeValue(address.city);
+    case "state":
+      return normalizeValue(address.state || address.stateProvince);
+    case "zipCode":
+      return normalizeValue(address.zipCode || address.zip);
+    case "country":
+      return normalizeValue(address.country);
+    case "fax":
+      return normalizeValue((invoice as any).fax || (invoice as any).customer?.fax);
+    case "phone":
+      return normalizeValue((invoice as any).phone || (invoice as any).customer?.phone);
+    default:
+      return "";
+  }
+};
+
+const isLikelyCustomerId = (value: string) =>
+  /^[a-f0-9]{24}$/i.test(String(value || "").trim()) || /^cus[-_]/i.test(String(value || "").trim());
+
+const getRetainerCustomerId = (invoice: any) =>
+  String(
+    invoice?.customer?._id ||
+      invoice?.customer?.id ||
+      invoice?.customerId ||
+      (typeof invoice?.customer === "string" && isLikelyCustomerId(invoice.customer) ? invoice.customer : "") ||
+      ""
+  ).trim();
+
+const getRetainerCustomerState = (invoice: any, customerId: string, customerName: string) => {
+  const customer = invoice?.customer;
+  if (customer && typeof customer === "object") {
+    return customer;
+  }
+
+  if (!customerId && !customerName) {
+    return null;
+  }
+
+  return {
+    _id: customerId || undefined,
+    id: customerId || undefined,
+    displayName: customerName || "Customer",
+    name: customerName || "Customer",
+    companyName: customerName || "Customer",
+  };
+};
+
+const normalizeCustomerLookupValue = (value: any) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+const findMatchingCustomerRow = (rows: any[], row: RetainerRow) => {
+  const targetName = normalizeCustomerLookupValue(row.customerName);
+  const targetId = normalizeCustomerLookupValue(row.customerId);
+
+  return (Array.isArray(rows) ? rows : []).find((customer: any) => {
+    const customerId = normalizeCustomerLookupValue(customer?._id || customer?.id);
+    const customerName = normalizeCustomerLookupValue(
+      customer?.displayName || customer?.companyName || customer?.name
+    );
+
+    if (targetId && customerId && customerId === targetId) return true;
+    if (targetName && customerName && customerName === targetName) return true;
+    return false;
+  });
+};
+
+const mapInvoiceToRetainer = (invoice: RetainerInvoice): RetainerRow => {
+  const normalizeKey = (value: any) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/-/g, "_")
+      .replace(/\s+/g, "_")
+      .trim();
+
+  const formatDate = (value: any) => {
+    if (!value) return "-";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "-";
+    const day = String(parsed.getDate()).padStart(2, "0");
+    const month = parsed.toLocaleString(undefined, { month: "short" });
+    const year = parsed.getFullYear();
+    return `${day} ${month} ${year}`;
+  };
+
+  const toTs = (value: any) => {
+    if (!value) return 0;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+  };
+
+  const invoiceDateRaw = invoice.invoiceDate || invoice.date || (invoice as any).invoice_date || "";
+  const createdRaw = (invoice as any).createdAt || (invoice as any).created_at || invoice.createdAt || invoiceDateRaw;
+  const updatedRaw =
+    (invoice as any).updatedAt ||
+    (invoice as any).updated_at ||
+    (invoice as any).lastModifiedAt ||
+    (invoice as any).modifiedAt ||
+    (invoice as any).updated ||
+    invoiceDateRaw ||
+    createdRaw;
+  const issuedRaw = (invoice as any).issuedDate || (invoice as any).issueDate || (invoice as any).issued_date || invoiceDateRaw || createdRaw;
+
+  const formattedDate = formatDate(invoiceDateRaw || createdRaw);
+  const issuedDate = formatDate(issuedRaw);
+
+  const amount = Number(invoice.total || invoice.amount || 0) || 0;
+  const amountPaid = Number((invoice as any).amountPaid ?? (invoice as any).paidAmount ?? 0) || 0;
+  const rawBalance = Number(invoice.balance ?? invoice.balanceDue);
+  const balance = Number.isFinite(rawBalance) ? rawBalance : Math.max(0, amount - amountPaid);
+  const rawStatus = normalizeKey(invoice.status || "draft");
+  const rawDrawStatus = normalizeKey((invoice as any).retainerDrawStatus || (invoice as any).drawStatus || "");
+  const customerId = getRetainerCustomerId(invoice);
+  const rawCustomerName = String(invoice.customerName || "").trim();
+  const customerName = String(
+    (rawCustomerName && !isLikelyCustomerId(rawCustomerName) && rawCustomerName) ||
+      invoice.customer?.displayName ||
+      invoice.customer?.companyName ||
+      invoice.customer?.name ||
+      (typeof invoice.customer === "string" && !isLikelyCustomerId(invoice.customer) ? invoice.customer : "") ||
+      "Unknown Customer"
+  ).trim() || "Unknown Customer";
+  const effectiveStatus = (() => {
+    if (rawStatus === "void") return "void";
+    if (["pending_approval", "approved", "drawn", "partially_drawn"].includes(rawStatus)) return rawStatus;
+    if (amountPaid > 0 && balance <= 0) return "paid";
+    if (amountPaid > 0 && balance > 0) return "partially_paid";
+    if (rawStatus === "sent") return "sent";
+    return "draft";
+  })();
+  const effectiveDrawStatus = (() => {
+    if (rawDrawStatus) return rawDrawStatus;
+    if (effectiveStatus === "paid") return "ready_to_draw";
+    if (effectiveStatus === "partially_paid") return "awaiting_payment";
+    return "awaiting_payment";
+  })();
+  const comments = Array.isArray((invoice as any).comments) ? (invoice as any).comments : [];
+  const hasEmailedComment = comments.some((comment: any) =>
+    String(comment?.text || "")
+      .toLowerCase()
+      .includes("emailed to")
+  );
+  const isEmailed = Boolean(
+    (invoice as any).emailSent ||
+    (invoice as any).emailSentAt ||
+    (invoice as any).lastEmailSentAt ||
+    (invoice as any).emailedAt ||
+    hasEmailedComment
+  );
+  const balanceCandidate =
+    invoice.balance !== undefined
+      ? Number(invoice.balance)
+      : invoice.balanceDue !== undefined
+        ? Number(invoice.balanceDue)
+        : amount;
+
+  return {
+    id: String(invoice.id || invoice._id || `ret-${Date.now()}`),
+    location: String((invoice as any).location || (invoice as any).selectedLocation || "Head Office"),
+    invoiceNumber: String(invoice.invoiceNumber || "-"),
+    reference: String((invoice as any).reference || (invoice as any).orderNumber || "-"),
+    customerName,
+    customerId,
+    customer: getRetainerCustomerState(invoice, customerId, customerName),
+    date: formattedDate,
+    dateTs: toTs(invoiceDateRaw || createdRaw),
+    issuedDate,
+    issuedDateTs: toTs(issuedRaw),
+    status: effectiveStatus,
+    drawStatus: effectiveDrawStatus.replace(/_/g, " ").toUpperCase(),
+    projectEstimate: String((invoice as any).projectEstimate || (invoice as any).estimate || "-"),
+    project: String((invoice as any).projectName || (invoice as any).project || "-"),
+    quote: String((invoice as any).quoteNumber || (invoice as any).quote || "-"),
+    wsq: String((invoice as any).wsq || (invoice as any).reportingTagWsq || "-"),
+    isEmailed,
+    amount,
+    balance: Number.isFinite(balanceCandidate) ? balanceCandidate : balance,
+    createdAtTs: toTs(createdRaw),
+    updatedAtTs: toTs(updatedRaw) || toTs(createdRaw),
+    statusKey: effectiveStatus,
+    drawStatusKey: effectiveDrawStatus,
+    sourceInvoice: invoice,
+  };
+};
+
+const TableRowSkeleton = () => (
+  <>
+    {[...Array(7)].map((_, i) => (
+      <tr key={i} className="animate-pulse border-b border-gray-50">
+        <td className="px-4 py-3"><div className="h-4 w-4 bg-gray-100 rounded" /></td>
+        <td className="px-4 py-3"><div className="h-4 w-20 bg-gray-100 rounded" /></td>
+        <td className="px-4 py-3"><div className="h-4 w-24 bg-gray-100 rounded" /></td>
+        <td className="px-4 py-3"><div className="h-4 w-24 bg-gray-100 rounded" /></td>
+        <td className="px-4 py-3"><div className="h-4 w-24 bg-gray-100 rounded" /></td>
+        <td className="px-4 py-3"><div className="h-4 w-40 bg-gray-100 rounded" /></td>
+        <td className="px-4 py-3"><div className="h-4 w-24 bg-gray-100 rounded" /></td>
+        <td className="px-4 py-3"><div className="h-4 w-20 bg-gray-100 rounded" /></td>
+        <td className="px-4 py-3"><div className="h-4 w-32 bg-gray-100 rounded" /></td>
+        <td className="px-4 py-3"><div className="h-4 w-20 bg-gray-100 rounded ml-auto" /></td>
+        <td className="px-4 py-3"><div className="h-4 w-20 bg-gray-100 rounded ml-auto" /></td>
+        <td className="px-4 py-3"><div className="h-4 w-24 bg-gray-100 rounded" /></td>
+        <td className="px-4 py-3 w-12"><div className="h-4 w-4 bg-gray-100 rounded mx-auto" /></td>
+      </tr>
+    ))}
+  </>
+);
+
+export default function RetainerInvoice() {
+  const navigate = useNavigate();
+  const { accentColor } = useOrganizationBranding();
+  const { buttonColor, sidebarColor } = useThemeColors();
+
+  const [rows, setRows] = useState<RetainerRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedView, setSelectedView] = useState(() => localStorage.getItem(RETAINER_SELECTED_VIEW_STORAGE_KEY) || "all");
+  const [viewSearchTerm, setViewSearchTerm] = useState("");
+  const [favoriteViews, setFavoriteViews] = useState<Set<string>>(new Set());
+  const [viewDropdownOpen, setViewDropdownOpen] = useState(false);
+  const [moreDropdownOpen, setMoreDropdownOpen] = useState(false);
+  const [sortSubMenuOpen, setSortSubMenuOpen] = useState(false);
+  const [exportSubMenuOpen, setExportSubMenuOpen] = useState(false);
+  const [activeSortKey, setActiveSortKey] = useState(() => localStorage.getItem(RETAINER_SORT_STORAGE_KEY) || "created_desc");
+  const [columnWidths, setColumnWidths] = useState(DEFAULT_COLUMN_WIDTHS);
+  const [resizingColumn, setResizingColumn] = useState<RetainerColumnKey | null>(null);
+  const [columnToolsOpen, setColumnToolsOpen] = useState(false);
+  const [isCustomizeColumnsOpen, setIsCustomizeColumnsOpen] = useState(false);
+  const [columnSearchTerm, setColumnSearchTerm] = useState("");
+  const [selectedColumns, setSelectedColumns] = useState<Set<RetainerColumnKey>>(
+    new Set(RETAINER_COLUMNS.filter((column) => column.defaultSelected).map((column) => column.key))
+  );
+  const [isAdvancedSearchOpen, setIsAdvancedSearchOpen] = useState(false);
+  const [advancedSearchDraft, setAdvancedSearchDraft] = useState<AdvancedSearchState>(() =>
+    createDefaultAdvancedSearchState(localStorage.getItem(RETAINER_SELECTED_VIEW_STORAGE_KEY) || "all")
+  );
+  const [appliedAdvancedSearch, setAppliedAdvancedSearch] = useState<AdvancedSearchState>(() =>
+    createDefaultAdvancedSearchState(localStorage.getItem(RETAINER_SELECTED_VIEW_STORAGE_KEY) || "all")
+  );
+  const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
+  const [filterDropdownSearch, setFilterDropdownSearch] = useState("");
+  const [taxSearchOptions, setTaxSearchOptions] = useState<string[]>([]);
+  const [draftSelectedColumns, setDraftSelectedColumns] = useState<Set<RetainerColumnKey>>(new Set());
+  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteRetainerIds, setDeleteRetainerIds] = useState<string[]>([]);
+
+  const viewDropdownRef = useRef<HTMLDivElement>(null);
+  const moreDropdownRef = useRef<HTMLDivElement>(null);
+  const columnToolsRef = useRef<HTMLTableCellElement>(null);
+  const selectAllCheckboxRef = useRef<HTMLInputElement>(null);
+
+  const retainerListQuery = useRetainerListQuery();
+
+  useEffect(() => {
+    if (Array.isArray(retainerListQuery.data) && retainerListQuery.data.length > 0) {
+      setRows(retainerListQuery.data.map(mapInvoiceToRetainer));
+    } else if (!retainerListQuery.isFetching) {
+      setRows([]);
+    }
+  }, [retainerListQuery.data, retainerListQuery.isFetching]);
+
+  useEffect(() => {
+    const hasData = Array.isArray(retainerListQuery.data) && retainerListQuery.data.length > 0;
+    setLoading(retainerListQuery.isFetching && !hasData);
+  }, [retainerListQuery.isFetching, retainerListQuery.data]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(RETAINER_COLUMNS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const allowedKeys = new Set(RETAINER_COLUMNS.map((column) => column.key));
+      const next = parsed
+        .map((value) => String(value) as RetainerColumnKey)
+        .filter((value) => allowedKeys.has(value));
+      if (next.length > 0) {
+        setSelectedColumns(new Set(next));
+      }
+    } catch (error) {
+      console.error("Failed to load selected retainer columns:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(RETAINER_COLUMNS_STORAGE_KEY, JSON.stringify(Array.from(selectedColumns)));
+  }, [selectedColumns]);
+
+  useEffect(() => {
+    localStorage.setItem(RETAINER_SELECTED_VIEW_STORAGE_KEY, selectedView);
+  }, [selectedView]);
+
+  useEffect(() => {
+    localStorage.setItem(RETAINER_SORT_STORAGE_KEY, activeSortKey);
+  }, [activeSortKey]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(FAVORITE_VIEWS_STORAGE_KEY);
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        setFavoriteViews(new Set(parsed.map((v) => String(v))));
+      }
+    } catch (error) {
+      console.error("Failed to load retainer favorite views:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const localTaxes = readTaxesLocal();
+      const taxNames = Array.isArray(localTaxes)
+        ? Array.from(
+            new Set(
+              localTaxes
+                .map((tax: any) => String(tax?.name || tax?.taxName || "").trim())
+                .filter(Boolean)
+            )
+          )
+        : [];
+      setTaxSearchOptions(taxNames);
+    } catch {
+      setTaxSearchOptions([]);
+    }
+  }, []);
+
+  const toggleFavoriteView = (viewKey: string) => {
+    setFavoriteViews((prev) => {
+      const next = new Set(prev);
+      if (next.has(viewKey)) next.delete(viewKey);
+      else next.add(viewKey);
+      localStorage.setItem(FAVORITE_VIEWS_STORAGE_KEY, JSON.stringify(Array.from(next)));
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const onDocClick = (event: MouseEvent) => {
+      if (viewDropdownRef.current && !viewDropdownRef.current.contains(event.target as Node)) {
+        setViewDropdownOpen(false);
+      }
+      if (moreDropdownRef.current && !moreDropdownRef.current.contains(event.target as Node)) {
+        setMoreDropdownOpen(false);
+        setSortSubMenuOpen(false);
+        setExportSubMenuOpen(false);
+      }
+      if (columnToolsRef.current && !columnToolsRef.current.contains(event.target as Node)) {
+        setColumnToolsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const filteredRows = useMemo(() => {
+    const normalize = (value: string) => value.toLowerCase().split("-").join("_").trim();
+    const filtered = rows.filter((row) => {
+      const status = normalize(row.statusKey || row.status).split(" ").join("_");
+      const drawStatus = normalize(row.drawStatusKey || row.drawStatus).split(" ").join("_");
+      const aliases = (STATUS_ALIAS[selectedView] || []).map((s) => normalize(s).split(" ").join("_"));
+      const viewMatch = selectedView === "all" ? true : aliases.includes(status) || aliases.includes(drawStatus);
+      if (!viewMatch) return false;
+
+      const invoice = row.sourceInvoice;
+      const invoiceNumberMatch = !appliedAdvancedSearch.invoiceNumber || normalizeValue(row.invoiceNumber).includes(normalizeValue(appliedAdvancedSearch.invoiceNumber));
+      const referenceMatch = !appliedAdvancedSearch.reference || normalizeValue(row.reference).includes(normalizeValue(appliedAdvancedSearch.reference));
+      const descriptionMatch =
+        !appliedAdvancedSearch.description ||
+        invoiceDescriptionText(invoice).includes(normalizeValue(appliedAdvancedSearch.description));
+      const customerMatch =
+        !appliedAdvancedSearch.customerName ||
+        normalizeValue(row.customerName) === normalizeValue(appliedAdvancedSearch.customerName);
+      const projectMatch =
+        !appliedAdvancedSearch.projectName ||
+        normalizeValue(row.project).includes(normalizeValue(appliedAdvancedSearch.projectName));
+      const statusMatch =
+        !appliedAdvancedSearch.status ||
+        normalize(status) === normalize(appliedAdvancedSearch.status);
+      const drawStatusMatch =
+        !appliedAdvancedSearch.drawStatus ||
+        normalize(drawStatus) === normalize(appliedAdvancedSearch.drawStatus);
+      const taxMatch =
+        !appliedAdvancedSearch.taxName ||
+        invoiceTaxText(invoice).includes(normalizeValue(appliedAdvancedSearch.taxName));
+      const billingAddressMatch =
+        !appliedAdvancedSearch.billingAddressValue ||
+        invoiceBillingAddressText(invoice, appliedAdvancedSearch.billingAddressField).includes(
+          normalizeValue(appliedAdvancedSearch.billingAddressValue)
+        );
+
+      const fromTs = appliedAdvancedSearch.dateFrom ? new Date(appliedAdvancedSearch.dateFrom).getTime() : 0;
+      const toTs = appliedAdvancedSearch.dateTo ? new Date(appliedAdvancedSearch.dateTo).getTime() + 86_399_999 : 0;
+      const dateFromMatch = !fromTs || row.dateTs >= fromTs;
+      const dateToMatch = !toTs || row.dateTs <= toTs;
+
+      const totalFrom = appliedAdvancedSearch.totalFrom === "" ? Number.NaN : Number(appliedAdvancedSearch.totalFrom);
+      const totalTo = appliedAdvancedSearch.totalTo === "" ? Number.NaN : Number(appliedAdvancedSearch.totalTo);
+      const totalFromMatch = Number.isNaN(totalFrom) || row.amount >= totalFrom;
+      const totalToMatch = Number.isNaN(totalTo) || row.amount <= totalTo;
+
+      return (
+        invoiceNumberMatch &&
+        referenceMatch &&
+        descriptionMatch &&
+        customerMatch &&
+        projectMatch &&
+        statusMatch &&
+        drawStatusMatch &&
+        taxMatch &&
+        billingAddressMatch &&
+        dateFromMatch &&
+        dateToMatch &&
+        totalFromMatch &&
+        totalToMatch
+      );
+    });
+
+    const sorted = [...filtered];
+    switch (activeSortKey) {
+      case "created_asc":
+        sorted.sort((a, b) => a.createdAtTs - b.createdAtTs);
+        break;
+      case "modified_asc":
+        sorted.sort((a, b) => a.updatedAtTs - b.updatedAtTs);
+        break;
+      case "modified_desc":
+        sorted.sort((a, b) => b.updatedAtTs - a.updatedAtTs);
+        break;
+      case "date_asc":
+        sorted.sort((a, b) => a.dateTs - b.dateTs);
+        break;
+      case "date_desc":
+        sorted.sort((a, b) => b.dateTs - a.dateTs);
+        break;
+      case "issuedDate_asc":
+        sorted.sort((a, b) => a.issuedDateTs - b.issuedDateTs);
+        break;
+      case "issuedDate_desc":
+        sorted.sort((a, b) => b.issuedDateTs - a.issuedDateTs);
+        break;
+      case "retainer_asc":
+        sorted.sort((a, b) => a.invoiceNumber.localeCompare(b.invoiceNumber));
+        break;
+      case "retainer_desc":
+        sorted.sort((a, b) => b.invoiceNumber.localeCompare(a.invoiceNumber));
+        break;
+      case "customer_asc":
+        sorted.sort((a, b) => a.customerName.localeCompare(b.customerName));
+        break;
+      case "customer_desc":
+        sorted.sort((a, b) => b.customerName.localeCompare(a.customerName));
+        break;
+      case "amount_asc":
+        sorted.sort((a, b) => a.amount - b.amount);
+        break;
+      case "amount_desc":
+        sorted.sort((a, b) => b.amount - a.amount);
+        break;
+      case "balance_asc":
+        sorted.sort((a, b) => a.balance - b.balance);
+        break;
+      case "balance_desc":
+        sorted.sort((a, b) => b.balance - a.balance);
+        break;
+      case "created_desc":
+      default:
+        sorted.sort((a, b) => b.createdAtTs - a.createdAtTs);
+        break;
+    }
+    return sorted;
+  }, [rows, selectedView, activeSortKey, appliedAdvancedSearch]);
+
+  const totalRetainerPages = Math.max(1, Math.ceil(filteredRows.length / itemsPerPage));
+  const safeRetainerPage = Math.min(currentPage, totalRetainerPages);
+  const paginatedRows = useMemo(() => {
+    const start = (safeRetainerPage - 1) * itemsPerPage;
+    return filteredRows.slice(start, start + itemsPerPage);
+  }, [filteredRows, itemsPerPage, safeRetainerPage]);
+  const hasRows = filteredRows.length > 0;
+  const clipTextClass = "truncate whitespace-nowrap";
+  const visibleTableColumns = TABLE_COLUMNS.filter((columnKey) => selectedColumns.has(columnKey));
+  const visibleTableColumnSet = new Set<RetainerColumnKey>(visibleTableColumns);
+  const customerSearchOptions = useMemo(
+    () => Array.from(new Set(rows.map((row) => row.customerName).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [rows]
+  );
+  const projectSearchOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          rows
+            .map((row) => row.project)
+            .filter((value) => value && value !== "-")
+        )
+      ).sort((a, b) => a.localeCompare(b)),
+    [rows]
+  );
+  const filteredCustomizeColumns = RETAINER_COLUMNS.filter((column) =>
+    column.label.toLowerCase().includes(columnSearchTerm.toLowerCase())
+  );
+  const filteredViewOptions = useMemo(
+    () =>
+      VIEW_OPTIONS.filter((option) =>
+        option.label.toLowerCase().includes(filterDropdownSearch.trim().toLowerCase())
+      ),
+    [filterDropdownSearch]
+  );
+  const selectedColumnCount = draftSelectedColumns.size;
+  const visibleRowIdSet = useMemo(() => new Set(paginatedRows.map((row) => row.id)), [paginatedRows]);
+  const selectedVisibleRowCount = useMemo(
+    () => Array.from(selectedRowIds).filter((rowId) => visibleRowIdSet.has(rowId)).length,
+    [selectedRowIds, visibleRowIdSet]
+  );
+  const allVisibleSelected = paginatedRows.length > 0 && selectedVisibleRowCount === paginatedRows.length;
+  const hasVisibleSelection = selectedVisibleRowCount > 0;
+  const selectedViewLabel =
+    selectedView === "all"
+      ? "All Retainer Invoices"
+      : VIEW_OPTIONS.find((option) => option.key === selectedView)?.label || "All Retainer Invoices";
+  const { field: activeSortField, direction: activeSortDirection } = parseSortKey(activeSortKey);
+  const hasAppliedAdvancedSearch = useMemo(
+    () =>
+      Object.entries(appliedAdvancedSearch).some(([key, value]) => {
+        if (key === "scope" || key === "filterView") return false;
+        return String(value || "").trim() !== "";
+      }),
+    [appliedAdvancedSearch]
+  );
+
+  const openAdvancedSearch = () => {
+    setAdvancedSearchDraft({
+      ...appliedAdvancedSearch,
+      filterView: selectedView,
+    });
+    setIsAdvancedSearchOpen(true);
+    setMoreDropdownOpen(false);
+    setSortSubMenuOpen(false);
+    setExportSubMenuOpen(false);
+  };
+
+  const closeAdvancedSearch = () => {
+    setFilterDropdownOpen(false);
+    setFilterDropdownSearch("");
+    setIsAdvancedSearchOpen(false);
+  };
+
+  const applyAdvancedSearch = () => {
+    setAppliedAdvancedSearch(advancedSearchDraft);
+    setSelectedView(advancedSearchDraft.filterView || "all");
+    setIsAdvancedSearchOpen(false);
+  };
+
+  const selectedFilterLabel =
+    VIEW_OPTIONS.find((option) => option.key === advancedSearchDraft.filterView)?.label || "All";
+
+  useEffect(() => {
+    if (!selectAllCheckboxRef.current) return;
+    selectAllCheckboxRef.current.indeterminate = hasVisibleSelection && !allVisibleSelected;
+  }, [hasVisibleSelection, allVisibleSelected]);
+
+  useEffect(() => {
+    setCurrentPage((prev) => Math.min(prev, totalRetainerPages));
+  }, [totalRetainerPages]);
+
+  useEffect(() => {
+    if (selectedRowIds.size === 0) return;
+    const existingIds = new Set(rows.map((row) => row.id));
+    setSelectedRowIds((prev) => {
+      const next = new Set(Array.from(prev).filter((id) => existingIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [rows, selectedRowIds.size]);
+
+  useEffect(() => {
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedRowIds(new Set());
+      }
+    };
+    document.addEventListener("keydown", onEscape);
+    return () => document.removeEventListener("keydown", onEscape);
+  }, []);
+
+  const toggleSelectAllVisible = (checked: boolean) => {
+    setSelectedRowIds((prev) => {
+      const next = new Set(prev);
+      paginatedRows.forEach((row) => {
+        if (checked) next.add(row.id);
+        else next.delete(row.id);
+      });
+      return next;
+    });
+  };
+
+  const toggleRowSelection = (rowId: string, checked: boolean) => {
+    setSelectedRowIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(rowId);
+      else next.delete(rowId);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = () => {
+    if (bulkDeleteLoading) return;
+    const ids = Array.from(selectedRowIds);
+    if (ids.length === 0) return;
+    setDeleteRetainerIds(ids);
+    setIsDeleteModalOpen(true);
+  };
+
+  const navigateToCustomerDetail = async (row: RetainerRow) => {
+    void preloadCustomerDetailRoute();
+
+    try {
+      const cachedCustomerId = String(row.customerId || "").trim();
+      const cachedCustomer = row.customer && typeof row.customer === "object" ? row.customer : null;
+
+      if (cachedCustomerId && isLikelyCustomerId(cachedCustomerId)) {
+        navigate(`/sales/customers/${cachedCustomerId}`, {
+          state: {
+            customer: cachedCustomer || {
+              _id: cachedCustomerId,
+              id: cachedCustomerId,
+              displayName: row.customerName,
+              name: row.customerName,
+              companyName: row.customerName,
+            },
+          },
+        });
+        return;
+      }
+
+      const customers = await getCustomers({ limit: 1000 });
+      const matchedCustomer = findMatchingCustomerRow(customers, row);
+      const matchedCustomerId = String(matchedCustomer?._id || matchedCustomer?.id || "").trim();
+
+      if (matchedCustomerId) {
+        navigate(`/sales/customers/${matchedCustomerId}`, {
+          state: {
+            customer: matchedCustomer,
+          },
+        });
+        return;
+      }
+
+      if (cachedCustomerId) {
+        navigate(`/sales/customers/${cachedCustomerId}`, {
+          state: {
+            customer: cachedCustomer || {
+              _id: cachedCustomerId,
+              id: cachedCustomerId,
+              displayName: row.customerName,
+              name: row.customerName,
+              companyName: row.customerName,
+            },
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Failed to open customer detail:", error);
+      if (row.customerId) {
+        navigate(`/sales/customers/${row.customerId}`, {
+          state: {
+            customer: row.customer || {
+              _id: row.customerId,
+              id: row.customerId,
+              displayName: row.customerName,
+              name: row.customerName,
+              companyName: row.customerName,
+            },
+          },
+        });
+      }
+    }
+  };
+
+  const confirmBulkDelete = async () => {
+    if (bulkDeleteLoading) return;
+    if (deleteRetainerIds.length === 0) return;
+    try {
+      setBulkDeleteLoading(true);
+      await Promise.all(deleteRetainerIds.map((retainerId) => deleteRetainerInvoice(retainerId)));
+      setRows((prev) => prev.filter((row) => !deleteRetainerIds.includes(row.id)));
+      await retainerListQuery.refetch();
+      setSelectedRowIds(new Set());
+      setIsDeleteModalOpen(false);
+      setDeleteRetainerIds([]);
+    } catch (error) {
+      console.error("Failed to delete retainer invoices:", error);
+    } finally {
+      setBulkDeleteLoading(false);
+    }
+  };
+
+  const escapeHtml = (value: any) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const toMoney = (value: any) => {
+    const n = Number(value);
+    const safe = Number.isFinite(n) ? n : 0;
+    return safe.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const buildRetainerPrintDocument = (selectedRows: RetainerRow[]) => {
+    const pages = selectedRows.map((row) => {
+      const invoice: any = row.sourceInvoice || {};
+      const currencyPrefix = String(invoice.currency || "AMD");
+      const itemsSource = Array.isArray(invoice.items) ? invoice.items : [];
+      const items = itemsSource.length
+        ? itemsSource.map((item: any, index: number) => {
+          const amountValue =
+            Number(item?.amount ?? item?.total ?? item?.unitPrice ?? item?.rate ?? 0) || 0;
+          return {
+            id: index + 1,
+            description: String(item?.description || item?.name || row.reference || "-"),
+            amount: amountValue,
+          };
+        })
+        : [{ id: 1, description: String(row.reference || row.invoiceNumber || "-"), amount: Number(row.amount || 0) }];
+
+      const itemSubtotal = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+      const subtotal = Number(invoice.subtotal ?? invoice.subTotal ?? itemSubtotal) || itemSubtotal;
+      const total = Number(invoice.total ?? invoice.amount ?? row.amount ?? subtotal) || subtotal;
+      const taxFromPayload = Number(invoice.taxTotal ?? invoice.tax ?? invoice.totalTax);
+      const tax = Number.isFinite(taxFromPayload) ? taxFromPayload : Math.max(total - subtotal, 0);
+      const balanceDue = Number(invoice.balance ?? invoice.balanceDue ?? row.balance ?? total) || total;
+      const invoiceDateText = row.date || "-";
+      const organizationName = String(invoice.organizationName || "asddc");
+      const organizationCountry = String(invoice.organizationCountry || "Algeria");
+      const organizationEmail = String(invoice.organizationEmail || "ladiif520@gmail.com");
+      const customerName = String(row.customerName || "Unknown Customer");
+
+      const itemRowsMarkup = items
+        .map(
+          (item) => `
+            <tr>
+              <td>${escapeHtml(item.id)}</td>
+              <td>${escapeHtml(item.description)}</td>
+              <td class="align-right">${escapeHtml(toMoney(item.amount))}</td>
+            </tr>
+          `
+        )
+        .join("");
+
+      return `
+        <section class="invoice-page">
+          <div class="top-row">
+            <div class="org-meta">
+              <div class="org-name">${escapeHtml(organizationName)}</div>
+              <div>${escapeHtml(organizationCountry)}</div>
+              <div>${escapeHtml(organizationEmail)}</div>
+            </div>
+            <div class="doc-meta">
+              <h1>RETAINER INVOICE</h1>
+              <div class="retainer-number">Retainer# <strong>${escapeHtml(row.invoiceNumber)}</strong></div>
+              <div class="balance-label">Balance Due</div>
+              <div class="balance-amount">${escapeHtml(currencyPrefix)}${escapeHtml(toMoney(balanceDue))}</div>
+            </div>
+          </div>
+
+          <div class="bill-row">
+            <div>
+              <div class="label">Bill To</div>
+              <div class="value">${escapeHtml(customerName)}</div>
+            </div>
+            <div class="invoice-date">Retainer Date : ${escapeHtml(invoiceDateText)}</div>
+          </div>
+
+          <div class="line-table-wrap">
+            <table class="line-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Description</th>
+                  <th class="align-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>${itemRowsMarkup}</tbody>
+            </table>
+          </div>
+
+          <div class="totals">
+            <div class="totals-row"><span>Sub Total</span><span>${escapeHtml(toMoney(subtotal))}</span></div>
+            <div class="totals-row"><span>Tax</span><span>${escapeHtml(toMoney(tax))}</span></div>
+            <div class="totals-row total"><span>Total</span><span>${escapeHtml(currencyPrefix)}${escapeHtml(toMoney(total))}</span></div>
+            <div class="totals-row due"><span>Balance Due</span><span>${escapeHtml(currencyPrefix)}${escapeHtml(toMoney(balanceDue))}</span></div>
+          </div>
+
+          <div class="payment-options">Payment Options <span class="payment-icon">[]</span></div>
+        </section>
+      `;
+    });
+
+    return `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Retainer Invoices</title>
+          <style>
+            @page { size: A4; margin: 12mm; }
+            * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #334155; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .invoice-page {
+              width: 100%;
+              min-height: 273mm;
+              padding: 0;
+              border: 1px solid #d6d9e3;
+              max-width: 910px;
+              margin: 0 auto;
+              padding: 32px 32px 40px;
+            }
+            .invoice-page:not(:last-child) { page-break-after: always; margin-bottom: 10mm; }
+            .top-row { display: flex; justify-content: space-between; align-items: flex-start; margin: 20px 0 32px; }
+            .org-meta { padding-top: 32px; padding-left: 56px; line-height: 1.35; font-size: 13px; color: #475569; }
+            .org-meta .org-name { font-size: 14px; font-weight: 600; color: #334155; }
+            .doc-meta { text-align: right; color: #0f172a; }
+            .doc-meta h1 { margin: 0; font-size: 20px; letter-spacing: 0.03em; font-weight: 500; line-height: 1.1; white-space: nowrap; }
+            .retainer-number { margin-top: 8px; font-size: 14px; }
+            .retainer-number strong { font-weight: 600; }
+            .balance-label { margin-top: 16px; font-size: 14px; }
+            .balance-amount { margin-top: 2px; font-size: 20px; font-weight: 600; line-height: 1.1; }
+            .bill-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; }
+            .bill-row .label { font-size: 13px; color: #475569; margin-bottom: 2px; }
+            .bill-row .value { font-size: 13px; font-weight: 600; color: #2f66b3; line-height: 1.1; }
+            .invoice-date { font-size: 13px; color: #334155; padding-top: 16px; }
+            .line-table-wrap { border: 1px solid #d6d9e3; margin-top: 8px; }
+            .line-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+            .line-table thead tr { background: #2f343a; color: #fff; }
+            .line-table th { text-align: left; padding: 8px 12px; font-size: 13px; font-weight: 500; }
+            .line-table td { padding: 8px 12px; border-top: 1px solid #f3f4f6; color: #334155; vertical-align: top; }
+            .line-table th:first-child, .line-table td:first-child { width: 60px; }
+            .align-right { text-align: right; }
+            .totals { width: 340px; margin-left: auto; margin-top: 24px; font-size: 14px; color: #1e293b; }
+            .totals-row { display: flex; justify-content: space-between; padding: 4px 0; }
+            .totals-row.total { font-weight: 600; }
+            .totals-row.due { background: #f3f4f6; padding: 8px 8px; margin-top: 8px; font-weight: 600; }
+            .payment-options { margin-top: 40px; font-size: 14px; color: #334155; display: inline-flex; align-items: center; gap: 10px; }
+            .payment-icon { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 18px; border: 1px solid #a3a3a3; font-size: 11px; color: #525252; }
+            @media print {
+              body { background: #fff; }
+              .invoice-page { margin: 0 auto; }
+            }
+          </style>
+        </head>
+        <body>
+          ${pages.join("")}
+        </body>
+      </html>
+    `;
+  };
+
+  const downloadRetainerPdf = async () => {
+    const selectedRows = filteredRows.filter((row) => selectedRowIds.has(row.id));
+    if (!selectedRows.length) return;
+
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.left = "-10000px";
+    iframe.style.top = "0";
+    iframe.style.width = "1200px";
+    iframe.style.height = "1600px";
+    iframe.style.border = "0";
+    iframe.style.visibility = "hidden";
+    iframe.setAttribute("aria-hidden", "true");
+    document.body.appendChild(iframe);
+
+    const cleanup = () => {
+      if (iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+      }
+    };
+
+    try {
+      const html = buildRetainerPrintDocument(selectedRows);
+      await new Promise<void>((resolve) => {
+        iframe.onload = () => resolve();
+        iframe.srcdoc = html;
+      });
+      await new Promise((resolve) => window.setTimeout(resolve, 180));
+
+      const frameDoc = iframe.contentDocument;
+      const pages = Array.from(frameDoc?.querySelectorAll(".invoice-page") || []) as HTMLElement[];
+      if (!pages.length) {
+        cleanup();
+        return;
+      }
+
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      for (let i = 0; i < pages.length; i += 1) {
+        const page = pages[i];
+        const canvas = await html2canvas(page, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+        });
+        const imgData = canvas.toDataURL("image/png");
+        const imgRatio = canvas.width / canvas.height;
+        const pageRatio = pageWidth / pageHeight;
+
+        let renderWidth = pageWidth;
+        let renderHeight = pageHeight;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        if (imgRatio > pageRatio) {
+          renderHeight = pageWidth / imgRatio;
+          offsetY = (pageHeight - renderHeight) / 2;
+        } else {
+          renderWidth = pageHeight * imgRatio;
+          offsetX = (pageWidth - renderWidth) / 2;
+        }
+
+        if (i > 0) {
+          pdf.addPage();
+        }
+        pdf.addImage(imgData, "PNG", offsetX, offsetY, renderWidth, renderHeight, undefined, "FAST");
+      }
+
+      const fileName =
+        selectedRows.length === 1
+          ? `${selectedRows[0].invoiceNumber || "retainer-invoice"}.pdf`
+          : "retainer-invoices.pdf";
+      pdf.save(fileName);
+    } finally {
+      cleanup();
+    }
+  };
+
+  const getColumnLabel = (columnKey: RetainerColumnKey) => {
+    const item = RETAINER_COLUMNS.find((column) => column.key === columnKey);
+    return item?.label || columnKey;
+  };
+
+  const getColumnWidth = (columnKey: RetainerColumnKey) => {
+    const widthMap: Record<string, number> = {
+      date: columnWidths.date,
+      location: columnWidths.location,
+      retainer: columnWidths.retainer,
+      reference: columnWidths.reference,
+      customer: columnWidths.customer,
+      status: columnWidths.status,
+      drawStatus: columnWidths.drawStatus,
+      amount: columnWidths.amount,
+      balance: columnWidths.balance,
+      issuedDate: columnWidths.issuedDate,
+      projectEstimate: columnWidths.projectEstimate,
+      project: columnWidths.project,
+      quote: columnWidths.quote,
+      wsq: columnWidths.wsq,
+    };
+    const width = widthMap[columnKey] || 140;
+    return { width, minWidth: width };
+  };
+
+  const startColumnResize = (columnKey: RetainerColumnKey, event: React.MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const startX = event.clientX;
+    const startWidth = getColumnWidth(columnKey).width as number;
+    const MIN_WIDTH = 90;
+    const MAX_WIDTH = 520;
+
+    setResizingColumn(columnKey);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientX - startX;
+      const next = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth + delta));
+      setColumnWidths((prev) => ({ ...prev, [columnKey]: next }));
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      setResizingColumn(null);
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  };
+
+  const downloadCsv = (filename: string, data: RetainerRow[]) => {
+    const exportColumns = visibleTableColumns;
+    const header = exportColumns.map((key) => getColumnLabel(key));
+    const lines = data.map((row) =>
+      exportColumns.map((key) => {
+        switch (key) {
+          case "date":
+            return row.date;
+          case "location":
+            return row.location;
+          case "retainer":
+            return row.invoiceNumber;
+          case "reference":
+            return row.reference;
+          case "customer":
+            return row.customerName;
+          case "status":
+            return row.status.split("_").join(" ");
+          case "drawStatus":
+            return row.drawStatus;
+          case "amount":
+            return row.amount.toFixed(2);
+          case "balance":
+            return row.balance.toFixed(2);
+          case "issuedDate":
+            return row.issuedDate;
+          case "projectEstimate":
+            return row.projectEstimate;
+          case "project":
+            return row.project;
+          case "quote":
+            return row.quote;
+          case "wsq":
+            return row.wsq;
+          default:
+            return "";
+        }
+      })
+    );
+    const csvRows = [header, ...lines].map((line) =>
+      line.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")
+    );
+    const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
+
+  return (
+    <div className="flex flex-col h-full min-h-0 w-full bg-white font-sans text-gray-800 antialiased relative overflow-hidden">
+      <div className="border-b border-gray-100 bg-white shrink-0 z-[100]">
+        {hasVisibleSelection ? (
+          /* Bulk Action Header */
+          <div className="flex items-center justify-between px-6 py-6">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void downloadRetainerPdf()}
+                className="px-4 py-2 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 transition-all shadow-sm flex items-center gap-2"
+                title="Export as PDF"
+              >
+                <FileDown size={16} className="text-gray-500" />
+                <span>Export PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBulkDelete}
+                disabled={bulkDeleteLoading}
+                className="px-4 py-2 border border-gray-200 bg-white text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 transition-all shadow-sm flex items-center gap-2"
+              >
+                <Trash2 size={16} className="text-gray-500" />
+                <span>{bulkDeleteLoading ? "Deleting..." : "Delete"}</span>
+              </button>
+
+              <div className="mx-2 h-5 w-px bg-gray-200" />
+
+              <div className="inline-flex items-center gap-2 text-sm text-slate-500">
+                <span
+                  className="flex h-6 min-w-[24px] items-center justify-center rounded px-2 text-[13px] font-semibold text-white"
+                  style={{ background: 'linear-gradient(90deg, #156372 0%, #0D4A52 100%)' }}
+                >
+                  {selectedVisibleRowCount}
+                </span>
+                <span className="text-sm text-gray-700">Selected</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSelectedRowIds(new Set())}
+              className="inline-flex items-center gap-1 text-sm text-red-500 hover:text-red-700"
+            >
+              <span>Esc</span>
+              <X size={18} />
+            </button>
+          </div>
+        ) : (
+          /* Normal Header */
+          <div className="flex items-center justify-between px-6 py-6">
+            <div className="flex items-center gap-8">
+              <div className="relative" ref={viewDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setViewDropdownOpen((prev) => !prev)}
+                  className="flex items-center gap-1.5 py-4 cursor-pointer group border-b-2 border-slate-900 -mb-[1px] bg-transparent outline-none"
+                >
+                  <span className="text-[15px] font-bold text-slate-900 transition-colors">{selectedViewLabel}</span>
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform duration-200 text-[#156372] ${viewDropdownOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {viewDropdownOpen && (
+                  <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-2xl z-[100] py-2">
+                    <div className="px-3 pb-2 border-b border-gray-100">
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-md border border-gray-200">
+                        <Search size={14} className="text-gray-400" />
+                        <input
+                          placeholder="Search Views"
+                          className="bg-transparent border-none outline-none text-sm w-full"
+                          value={viewSearchTerm}
+                          onChange={(e) => setViewSearchTerm(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto py-1">
+                      {VIEW_OPTIONS.filter((v) => v.label.toLowerCase().includes(viewSearchTerm.toLowerCase())).map((view) => (
+                        <button
+                          key={view.key}
+                          type="button"
+                          onClick={() => {
+                            setSelectedView(view.key);
+                            setViewDropdownOpen(false);
+                          }}
+                          className="w-full flex items-center justify-between px-4 py-2 text-sm hover:bg-teal-50 transition-colors"
+                        >
+                          <span className={selectedView === view.key ? "font-semibold text-teal-700" : "text-slate-700"}>
+                            {view.label}
+                          </span>
+                          <Star
+                            size={14}
+                            className="text-gray-300 hover:text-yellow-400 transition-colors"
+                            fill={favoriteViews.has(view.key) ? "#facc15" : "none"}
+                            color={favoriteViews.has(view.key) ? "#facc15" : undefined}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              toggleFavoriteView(view.key);
+                            }}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 sm:gap-2">
+              <button
+                onClick={() => navigate("/sales/retainer-invoices/new")}
+                className="h-[38px] cursor-pointer transition-all text-white px-4 rounded-lg border-[#0D4A52] border-b-[4px] hover:brightness-110 hover:-translate-y-[1px] hover:border-b-[6px] active:border-b-[2px] active:translate-y-[1px] text-sm font-semibold shadow-sm inline-flex items-center justify-center gap-2"
+                style={{ background: "linear-gradient(180deg, #156372 0%, #0D4A52 100%)" }}
+                type="button"
+                aria-label="New retainer invoice"
+              >
+                <Plus size={16} strokeWidth={3} />
+                <span>New</span>
+              </button>
+
+              <div className="relative" ref={moreDropdownRef}>
+                <button
+                  onClick={() => setMoreDropdownOpen((prev) => !prev)}
+                  className="h-9 w-9 rounded-md border border-gray-200 bg-white text-slate-600 inline-flex items-center justify-center shadow-sm hover:bg-slate-50"
+                  type="button"
+                  aria-label="More options"
+                >
+                  <MoreHorizontal size={16} />
+                </button>
+                {moreDropdownOpen && (
+                  <div className="absolute top-full right-0 mt-1 w-64 bg-white border border-gray-100 rounded-lg shadow-xl py-2 z-[110]">
+                    <div className="relative">
+                      <button
+                        onClick={() => {
+                          setSortSubMenuOpen((prev) => !prev);
+                          setExportSubMenuOpen(false);
+                        }}
+                        onMouseEnter={() => {
+                          setSortSubMenuOpen(true);
+                          setExportSubMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${sortSubMenuOpen ? "text-white rounded-md mx-2 w-[calc(100%-16px)] shadow-sm" : "text-slate-600 hover:bg-[#1b5e6a] hover:text-white"
+                          }`}
+                        style={sortSubMenuOpen ? { backgroundColor: "#1b5e6a" } : {}}
+                        type="button"
+                      >
+                        <div className="flex items-center gap-3">
+                          <ArrowUpDown size={15} className={sortSubMenuOpen ? "text-white" : ""} />
+                          <span className="font-medium">Sort by</span>
+                        </div>
+                        <ChevronRight size={14} className={sortSubMenuOpen ? "text-white" : "text-slate-400"} />
+                      </button>
+                      {sortSubMenuOpen && (
+                        <div className="absolute top-0 right-full mr-2 w-64 bg-white border border-gray-100 rounded-lg shadow-xl py-2 z-[120]">
+                          {SORT_FIELDS.map((option) => {
+                            const isActiveField = activeSortField === option.key;
+                            const nextDirection = isActiveField && activeSortDirection === "desc" ? "asc" : "desc";
+                            const nextKey = `${option.key}_${nextDirection}`;
+
+                            return (
+                            <button
+                              key={option.key}
+                              onClick={() => {
+                                setActiveSortKey(nextKey);
+                                setSortSubMenuOpen(false);
+                                setMoreDropdownOpen(false);
+                              }}
+                              className={`w-full flex items-center justify-between px-4 py-2 text-sm transition-colors ${isActiveField
+                                ? "bg-[#1b5e6a] text-white font-semibold"
+                                : "text-slate-600 hover:bg-teal-50"
+                                }`}
+                              type="button"
+                            >
+                              <span>{option.label}</span>
+                              {isActiveField && (
+                                <ChevronDown size={14} className={`transition-transform ${activeSortDirection === "asc" ? "rotate-180" : ""}`} />
+                              )}
+                            </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        navigate("/sales/retainer-invoices/import");
+                        setMoreDropdownOpen(false);
+                      }}
+                      onMouseEnter={() => {
+                        setSortSubMenuOpen(false);
+                        setExportSubMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-600 hover:bg-[#1b5e6a] hover:text-white transition-colors"
+                      type="button"
+                    >
+                      <Upload size={15} />
+                      <span className="font-medium">Import Retainer Invoices</span>
+                    </button>
+
+                    <div className="relative">
+                      <button
+                        onClick={() => {
+                          setExportSubMenuOpen((prev) => !prev);
+                          setSortSubMenuOpen(false);
+                        }}
+                        onMouseEnter={() => {
+                          setExportSubMenuOpen(true);
+                          setSortSubMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${exportSubMenuOpen ? "text-white rounded-md mx-2 w-[calc(100%-16px)] shadow-sm" : "text-slate-600 hover:bg-[#1b5e6a] hover:text-white"
+                          }`}
+                        style={exportSubMenuOpen ? { backgroundColor: "#1b5e6a" } : {}}
+                        type="button"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Download size={15} className={exportSubMenuOpen ? "text-white" : ""} />
+                          <span className="font-medium">Export</span>
+                        </div>
+                        <ChevronRight size={14} className={exportSubMenuOpen ? "text-white" : "text-slate-400"} />
+                      </button>
+                      {exportSubMenuOpen && (
+                        <div className="absolute top-0 right-full mr-2 w-56 bg-white border border-gray-100 rounded-lg shadow-xl py-2 z-[120]">
+                          <button
+                            className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-[#1b5e6a] hover:text-white transition-colors"
+                            onClick={() => {
+                              downloadCsv("retainer-invoices.csv", rows);
+                              setExportSubMenuOpen(false);
+                              setMoreDropdownOpen(false);
+                            }}
+                            type="button"
+                          >
+                            Export Retainer Invoices
+                          </button>
+                          <button
+                            className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-[#1b5e6a] hover:text-white transition-colors"
+                            onClick={() => {
+                              downloadCsv("retainer-current-view.csv", filteredRows);
+                              setExportSubMenuOpen(false);
+                              setMoreDropdownOpen(false);
+                            }}
+                            type="button"
+                          >
+                            Export Current View
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="h-px bg-gray-100 my-1 mx-2" />
+
+                    <button
+                      onClick={() => {
+                        navigate("/settings");
+                        setMoreDropdownOpen(false);
+                      }}
+                      onMouseEnter={() => {
+                        setSortSubMenuOpen(false);
+                        setExportSubMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-600 hover:bg-[#1b5e6a] hover:text-white transition-colors"
+                      type="button"
+                    >
+                      <Settings size={15} />
+                      <span className="font-medium">Preferences</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        navigate("/settings");
+                        setMoreDropdownOpen(false);
+                      }}
+                      onMouseEnter={() => {
+                        setSortSubMenuOpen(false);
+                        setExportSubMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-600 hover:bg-[#1b5e6a] hover:text-white transition-colors"
+                      type="button"
+                    >
+                      <SlidersHorizontal size={15} />
+                      <span className="font-medium">Manage Custom Fields</span>
+                    </button>
+
+                    <div className="h-px bg-gray-100 my-1 mx-2" />
+
+                    <button
+                      onClick={() => {
+                        retainerListQuery.refetch();
+                        setMoreDropdownOpen(false);
+                      }}
+                      onMouseEnter={() => {
+                        setSortSubMenuOpen(false);
+                        setExportSubMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-600 hover:bg-[#1b5e6a] hover:text-white transition-colors"
+                      type="button"
+                    >
+                      <RefreshCw size={15} />
+                      <span className="font-medium">Refresh List</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setColumnWidths(DEFAULT_COLUMN_WIDTHS);
+                        setMoreDropdownOpen(false);
+                      }}
+                      onMouseEnter={() => {
+                        setSortSubMenuOpen(false);
+                        setExportSubMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-600 hover:bg-[#1b5e6a] hover:text-white transition-colors"
+                      type="button"
+                    >
+                      <RotateCcw size={15} />
+                      <span className="font-medium">Reset Column Width</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+
+      <div className="flex-1 overflow-auto bg-white min-h-0">
+        {(loading || hasRows) && (
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-[#f6f7fb] sticky top-0 z-10 border-b border-[#e6e9f2]">
+              <tr className="text-[10px] font-semibold text-[#7b8494] uppercase tracking-wider">
+                <th
+                  ref={columnToolsRef}
+                  className="w-16 px-4 py-3 text-left bg-[#f6f7fb]"
+                >
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="h-6 w-6 flex items-center justify-center rounded border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
+                      onClick={() => {
+                        setDraftSelectedColumns(new Set(selectedColumns));
+                        setColumnSearchTerm("");
+                        setIsCustomizeColumnsOpen(true);
+                      }}
+                      title="Customize columns"
+                    >
+                      <SlidersHorizontal size={13} className="text-[#156372]" />
+                    </button>
+                    <div className="h-5 w-px bg-gray-200" />
+                    <input
+                      ref={selectAllCheckboxRef}
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={(e) => toggleSelectAllVisible(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-[#156372] focus:ring-0 cursor-pointer"
+                    />
+                  </div>
+                </th>
+                {TABLE_COLUMNS.map((columnKey) => {
+                  if (!visibleTableColumnSet.has(columnKey)) return null;
+                  const label = getColumnLabel(columnKey);
+                  const widthStyle = getColumnWidth(columnKey);
+                  const isAmountColumn = columnKey === "amount" || columnKey === "balance";
+                  return (
+                    <th
+                      key={columnKey}
+                      className={`group/header relative px-4 py-3 text-left text-[11px] font-semibold text-[#7b8494] uppercase tracking-wider select-none bg-[#f6f7fb] ${isAmountColumn ? "text-right" : ""}`}
+                      style={widthStyle}
+                    >
+                      <span className="inline-block pr-3">{label}</span>
+                      <div
+                        onMouseDown={(event) => startColumnResize(columnKey, event)}
+                        className="absolute right-0 top-0 bottom-0 w-[2px] cursor-col-resize hover:bg-teal-400/50 group-hover/header:border-r border-gray-100"
+                      />
+                    </th>
+                  );
+                })}
+                <th className="w-10 px-4 py-3 text-right sticky right-0 z-20 bg-[#f6f7fb] border-l border-transparent">
+                  <div className="flex items-center justify-center">
+                    <button
+                      type="button"
+                      onClick={openAdvancedSearch}
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+                        hasAppliedAdvancedSearch ? "bg-slate-100" : "hover:bg-slate-100"
+                      }`}
+                      title="Advanced search"
+                    >
+                      <Search size={14} className={hasAppliedAdvancedSearch ? "text-[#156372]" : "text-gray-400"} />
+                    </button>
+                  </div>
+                </th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-[#eef1f6]">
+              {loading ? (
+                <TableRowSkeleton />
+              ) : (
+                paginatedRows.map((row) => {
+                  const isSelected = selectedRowIds.has(row.id);
+                  return (
+                    <tr
+                      key={row.id}
+                      className={`group transition-all hover:bg-[#f8fafc] cursor-pointer ${isSelected ? "bg-[#156372]/5" : ""
+                        }`}
+                      onClick={() => navigate(`/sales/retainer-invoices/${row.id}`)}
+                    >
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 shrink-0" />
+                          <div className="h-5 w-px bg-transparent shrink-0" />
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => toggleRowSelection(row.id, e.target.checked)}
+                            className="h-4 w-4 rounded border-gray-300 text-[#156372] focus:ring-0 cursor-pointer"
+                          />
+                        </div>
+                      </td>
+                      {visibleTableColumnSet.has("date") && (
+                        <td className="px-4 py-3">
+                          <span className="text-[13px] text-slate-600">{row.date}</span>
+                        </td>
+                      )}
+                      {visibleTableColumnSet.has("location") && (
+                        <td className="px-4 py-3">
+                          <span className={`text-[13px] text-slate-700 block max-w-[130px] ${clipTextClass}`}>{row.location}</span>
+                        </td>
+                      )}
+                      {visibleTableColumnSet.has("retainer") && (
+                        <td className="px-4 py-3">
+                          <span className={`text-[13px] font-medium text-[#156372] inline-flex items-center gap-1.5 max-w-[190px] ${clipTextClass}`}>
+                            <span className={clipTextClass}>{row.invoiceNumber}</span>
+                            {row.isEmailed && <Mail size={12} className="text-slate-500 shrink-0" />}
+                          </span>
+                        </td>
+                      )}
+                      {visibleTableColumnSet.has("reference") && (
+                        <td className="px-4 py-3">
+                          <span className={`text-[13px] text-slate-600 block max-w-[120px] ${clipTextClass}`}>{row.reference || "-"}</span>
+                        </td>
+                      )}
+                      {visibleTableColumnSet.has("customer") && (
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            className={`text-[13px] text-slate-600 block max-w-[200px] text-left ${clipTextClass} hover:text-[#156372] hover:underline`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void navigateToCustomerDetail(row);
+                            }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            title="Open customer details"
+                          >
+                            {row.customerName}
+                          </button>
+                        </td>
+                      )}
+                      {visibleTableColumnSet.has("status") && (
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${getRetainerStatusClass(row.status)}`}>
+                            {row.status.split("_").join(" ").toUpperCase()}
+                          </span>
+                        </td>
+                      )}
+                      {visibleTableColumnSet.has("drawStatus") && (
+                        <td className="px-4 py-3">
+                          <span className={`text-[13px] uppercase tracking-wide text-slate-700 block max-w-[170px] ${clipTextClass}`}>
+                            {row.drawStatus}
+                          </span>
+                        </td>
+                      )}
+                      {visibleTableColumnSet.has("amount") && (
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-[13px] text-slate-600">
+                            {row.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </td>
+                      )}
+                      {visibleTableColumnSet.has("balance") && (
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-[13px] text-slate-600">
+                            {row.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </td>
+                      )}
+                      {visibleTableColumnSet.has("issuedDate") && (
+                        <td className="px-4 py-3">
+                          <span className="text-[13px] text-slate-600">{row.issuedDate}</span>
+                        </td>
+                      )}
+                      {visibleTableColumnSet.has("projectEstimate") && (
+                        <td className="px-4 py-3">
+                          <span className={`text-[13px] text-slate-600 block max-w-[140px] ${clipTextClass}`}>{row.projectEstimate || "-"}</span>
+                        </td>
+                      )}
+                      {visibleTableColumnSet.has("project") && (
+                        <td className="px-4 py-3">
+                          <span className={`text-[13px] text-slate-600 block max-w-[140px] ${clipTextClass}`}>{row.project || "-"}</span>
+                        </td>
+                      )}
+                      {visibleTableColumnSet.has("quote") && (
+                        <td className="px-4 py-3">
+                          <span className={`text-[13px] text-slate-600 block max-w-[110px] ${clipTextClass}`}>{row.quote || "-"}</span>
+                        </td>
+                      )}
+                      {visibleTableColumnSet.has("wsq") && (
+                        <td className="px-4 py-3">
+                          <span className={`text-[13px] text-slate-600 block max-w-[110px] ${clipTextClass}`}>{row.wsq || "-"}</span>
+                        </td>
+                      )}
+                      <td
+                        className={`px-4 py-3 w-12 sticky right-0 backdrop-blur-sm border-l border-transparent transition-colors ${isSelected ? "bg-[#156372]/5" : "bg-white/95 group-hover:bg-[#f8fafc]/95"
+                          }`}
+                      />
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        )}
+
+        {!loading && !hasRows && (
+          <div className="py-16 px-6 text-center">
+            <h3 className="text-[26px] leading-tight font-medium text-slate-900">Get paid in advance.</h3>
+            <p className="mt-2 text-slate-500 text-sm">
+              Create a retainer to collect advance payments from your customers and apply them to multiple invoices.
+            </p>
+            <div className="mt-6 flex items-center justify-center gap-4">
+              <button
+                onClick={() => navigate("/sales/retainer-invoices/new")}
+                className="cursor-pointer transition-all text-white px-5 py-2 rounded-lg border-[#0D4A52] border-b-[4px] hover:brightness-110 hover:-translate-y-[1px] hover:border-b-[6px] active:border-b-[2px] active:translate-y-[1px] text-sm font-medium"
+                style={{ backgroundColor: accentColor }}
+              >
+                CREATE NEW RETAINER INVOICE
+              </button>
+              <button
+                onClick={() => navigate("/sales/retainer-invoices/import")}
+                className="text-sm text-[#1b5e6a] hover:underline"
+              >
+                Import Retainer Invoices
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {isAdvancedSearchOpen && (
+        <div
+          className="fixed inset-0 z-[260] flex items-start justify-center bg-black/40 px-4 py-10"
+          onClick={closeAdvancedSearch}
+        >
+          <div
+            className="w-full max-w-[1030px] overflow-hidden rounded-xl bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="grid grid-cols-[92px_minmax(0,300px)_72px_minmax(0,290px)_40px] items-center gap-4 border-b border-slate-200 px-10 py-4">
+              <label className="text-[15px] font-medium text-slate-700">Search</label>
+              <select
+                value={advancedSearchDraft.scope}
+                onChange={(event) => setAdvancedSearchDraft((prev) => ({ ...prev, scope: event.target.value }))}
+                className="h-10 rounded-md border border-slate-300 bg-white px-3 text-[14px] text-slate-700 outline-none focus:border-slate-400"
+              >
+                <option>Retainer Invoices</option>
+              </select>
+              <label className="text-[15px] font-medium text-slate-700">Filter</label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setFilterDropdownOpen((prev) => !prev)}
+                  className="flex h-10 w-full items-center justify-between rounded-md border border-slate-300 bg-white px-3 text-[14px] text-slate-700 outline-none transition-colors hover:border-slate-400"
+                >
+                  <span>{selectedFilterLabel === "All" ? "All" : selectedFilterLabel}</span>
+                  {filterDropdownOpen ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
+                </button>
+                {filterDropdownOpen && (
+                  <div className="absolute left-0 top-[calc(100%+8px)] z-[290] w-full min-w-[340px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+                    <div className="border-b border-slate-100 p-3">
+                      <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 focus-within:border-slate-400">
+                        <Search size={15} className="text-slate-400" />
+                        <input
+                          value={filterDropdownSearch}
+                          onChange={(event) => setFilterDropdownSearch(event.target.value)}
+                          placeholder="Search"
+                          className="w-full border-none bg-transparent text-[14px] text-slate-700 outline-none placeholder:text-slate-400"
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-[300px] overflow-y-auto px-2 py-2">
+                      <div className="px-3 pb-2 text-[13px] font-semibold text-slate-700">Default Filters</div>
+                      <div className="space-y-1">
+                        {filteredViewOptions.map((option) => {
+                          const isSelected = advancedSearchDraft.filterView === option.key;
+                          return (
+                            <button
+                              key={option.key}
+                              type="button"
+                              onClick={() => {
+                                setAdvancedSearchDraft((prev) => ({ ...prev, filterView: option.key }));
+                                setFilterDropdownOpen(false);
+                                setFilterDropdownSearch("");
+                              }}
+                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-[14px] transition-colors ${
+                                isSelected ? "text-white" : "text-slate-700 hover:bg-slate-50"
+                              }`}
+                              style={isSelected ? { backgroundColor: buttonColor } : undefined}
+                            >
+                              <span>{option.label === "All" ? "All" : option.label}</span>
+                              {isSelected && <Check size={16} className="shrink-0" />}
+                            </button>
+                          );
+                        })}
+                        {filteredViewOptions.length === 0 && (
+                          <div className="px-3 py-4 text-[14px] text-slate-500">No filters found</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterDropdownOpen(false);
+                  setFilterDropdownSearch("");
+                  closeAdvancedSearch();
+                }}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-600 transition-colors hover:bg-slate-100"
+                aria-label="Close advanced search"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-x-10 gap-y-4 px-10 py-5">
+              <div className="grid grid-cols-[160px_minmax(0,1fr)] items-center gap-4">
+                <label className="text-[14px] text-slate-700">Retainer Invoice#</label>
+                <input
+                  value={advancedSearchDraft.invoiceNumber}
+                  onChange={(event) => setAdvancedSearchDraft((prev) => ({ ...prev, invoiceNumber: event.target.value }))}
+                  className="h-9 rounded-md border border-slate-300 px-3 text-[14px] text-slate-700 outline-none focus:border-slate-400"
+                />
+              </div>
+              <div className="grid grid-cols-[160px_minmax(0,1fr)] items-center gap-4">
+                <label className="text-[14px] text-slate-700">Reference#</label>
+                <input
+                  value={advancedSearchDraft.reference}
+                  onChange={(event) => setAdvancedSearchDraft((prev) => ({ ...prev, reference: event.target.value }))}
+                  className="h-9 rounded-md border border-slate-300 px-3 text-[14px] text-slate-700 outline-none focus:border-slate-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-[160px_minmax(0,1fr)] items-center gap-4">
+                <label className="text-[14px] text-slate-700">Date Range</label>
+                <div className="grid grid-cols-[1fr_20px_1fr] items-center gap-2">
+                  <input
+                    type="date"
+                    value={advancedSearchDraft.dateFrom}
+                    onChange={(event) => setAdvancedSearchDraft((prev) => ({ ...prev, dateFrom: event.target.value }))}
+                    className="h-9 rounded-md border border-slate-300 px-3 text-[14px] text-slate-700 outline-none focus:border-slate-400"
+                  />
+                  <span className="text-center text-slate-400">-</span>
+                  <input
+                    type="date"
+                    value={advancedSearchDraft.dateTo}
+                    onChange={(event) => setAdvancedSearchDraft((prev) => ({ ...prev, dateTo: event.target.value }))}
+                    className="h-9 rounded-md border border-slate-300 px-3 text-[14px] text-slate-700 outline-none focus:border-slate-400"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-[160px_minmax(0,1fr)] items-center gap-4">
+                <label className="text-[14px] text-slate-700">Status</label>
+                <select
+                  value={advancedSearchDraft.status}
+                  onChange={(event) => setAdvancedSearchDraft((prev) => ({ ...prev, status: event.target.value }))}
+                  className="h-9 rounded-md border border-slate-300 bg-white px-3 text-[14px] text-slate-700 outline-none focus:border-slate-400"
+                >
+                  <option value="">All</option>
+                  {ADVANCED_STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-[160px_minmax(0,1fr)] items-center gap-4">
+                <label className="text-[14px] text-slate-700">Description</label>
+                <input
+                  value={advancedSearchDraft.description}
+                  onChange={(event) => setAdvancedSearchDraft((prev) => ({ ...prev, description: event.target.value }))}
+                  className="h-9 rounded-md border border-slate-300 px-3 text-[14px] text-slate-700 outline-none focus:border-slate-400"
+                />
+              </div>
+              <div className="grid grid-cols-[160px_minmax(0,1fr)] items-center gap-4">
+                <label className="text-[14px] text-slate-700">Retainer Draw Status</label>
+                <select
+                  value={advancedSearchDraft.drawStatus}
+                  onChange={(event) => setAdvancedSearchDraft((prev) => ({ ...prev, drawStatus: event.target.value }))}
+                  className="h-9 rounded-md border border-slate-300 bg-white px-3 text-[14px] text-slate-700 outline-none focus:border-slate-400"
+                >
+                  <option value="">All</option>
+                  {ADVANCED_DRAW_STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-[160px_minmax(0,1fr)] items-center gap-4">
+                <label className="text-[14px] text-slate-700">Total Range</label>
+                <div className="grid grid-cols-[1fr_20px_1fr] items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    value={advancedSearchDraft.totalFrom}
+                    onChange={(event) => setAdvancedSearchDraft((prev) => ({ ...prev, totalFrom: event.target.value }))}
+                    className="h-9 rounded-md border border-slate-300 px-3 text-[14px] text-slate-700 outline-none focus:border-slate-400"
+                  />
+                  <span className="text-center text-slate-400">-</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={advancedSearchDraft.totalTo}
+                    onChange={(event) => setAdvancedSearchDraft((prev) => ({ ...prev, totalTo: event.target.value }))}
+                    className="h-9 rounded-md border border-slate-300 px-3 text-[14px] text-slate-700 outline-none focus:border-slate-400"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-[160px_minmax(0,1fr)] items-center gap-4">
+                <label className="text-[14px] text-slate-700">Customer Name</label>
+                <select
+                  value={advancedSearchDraft.customerName}
+                  onChange={(event) => setAdvancedSearchDraft((prev) => ({ ...prev, customerName: event.target.value }))}
+                  className="h-9 rounded-md border border-slate-300 bg-white px-3 text-[14px] text-slate-700 outline-none focus:border-slate-400"
+                >
+                  <option value="">Select customer</option>
+                  {customerSearchOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-[160px_minmax(0,1fr)] items-center gap-4">
+                <label className="text-[14px] text-slate-700">Project Name</label>
+                <select
+                  value={advancedSearchDraft.projectName}
+                  onChange={(event) => setAdvancedSearchDraft((prev) => ({ ...prev, projectName: event.target.value }))}
+                  className="h-9 rounded-md border border-slate-300 bg-white px-3 text-[14px] text-slate-700 outline-none focus:border-slate-400"
+                >
+                  <option value="">Select a project</option>
+                  {projectSearchOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-[160px_minmax(0,1fr)] items-center gap-4">
+                <label className="text-[14px] text-slate-700">Tax</label>
+                <select
+                  value={advancedSearchDraft.taxName}
+                  onChange={(event) => setAdvancedSearchDraft((prev) => ({ ...prev, taxName: event.target.value }))}
+                  className="h-9 rounded-md border border-slate-300 bg-white px-3 text-[14px] text-slate-700 outline-none focus:border-slate-400"
+                >
+                  <option value="">Select a Tax</option>
+                  {taxSearchOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-[160px_minmax(0,1fr)] items-start gap-4">
+                <label className="pt-2 text-[14px] text-slate-700">Billing Address</label>
+                <div className="space-y-2">
+                  <div className="grid grid-cols-[140px_minmax(0,1fr)] gap-0">
+                    <select
+                      value={advancedSearchDraft.billingAddressField}
+                      onChange={(event) =>
+                        setAdvancedSearchDraft((prev) => ({ ...prev, billingAddressField: event.target.value }))
+                      }
+                      className="h-9 rounded-l-md border border-r-0 border-slate-300 bg-white px-3 text-[14px] text-slate-700 outline-none focus:border-slate-400"
+                    >
+                      {BILLING_ADDRESS_FIELD_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={advancedSearchDraft.billingAddressValue}
+                      onChange={(event) =>
+                        setAdvancedSearchDraft((prev) => ({ ...prev, billingAddressValue: event.target.value }))
+                      }
+                      className="h-9 rounded-r-md border border-slate-300 px-3 text-[14px] text-slate-700 outline-none focus:border-slate-400"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center gap-3 border-t border-slate-200 px-10 py-6">
+              <button
+                type="button"
+                onClick={applyAdvancedSearch}
+                className="rounded-md px-5 py-2 text-sm font-medium text-white"
+                style={{ backgroundColor: buttonColor }}
+              >
+                Search
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAdvancedSearchDraft({
+                    ...appliedAdvancedSearch,
+                    filterView: selectedView,
+                  });
+                  closeAdvancedSearch();
+                }}
+                className="rounded-md border border-slate-300 bg-white px-5 py-2 text-sm text-slate-700"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isCustomizeColumnsOpen && (
+        <div className="fixed inset-0 z-[300] bg-black/40 backdrop-blur-[2px] flex items-start justify-center pt-[10vh] overflow-y-auto px-4 py-6" onClick={() => setIsCustomizeColumnsOpen(false)}>
+          <div className="w-full max-w-[500px] bg-white rounded-xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div className="flex items-center gap-3">
+                <SlidersHorizontal size={18} style={{ color: sidebarColor }} />
+                <h2 className="text-[15px] font-semibold text-gray-800">Customize Columns</h2>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="text-[13px] text-slate-600">{selectedColumnCount} of {RETAINER_COLUMNS.length} Selected</span>
+                <button
+                  type="button"
+                  className="w-7 h-7 flex items-center justify-center rounded transition-colors group hover:bg-gray-50"
+                  style={{ backgroundColor: "transparent" }}
+                  onClick={() => {
+                    setIsCustomizeColumnsOpen(false);
+                    setColumnSearchTerm("");
+                  }}
+                >
+                  <X size={16} style={{ color: buttonColor }} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 border-b border-gray-100">
+              <div
+                className="flex items-center gap-2 rounded-md border px-3 py-2"
+                style={{ borderColor: withAlpha(sidebarColor, 0.24), backgroundColor: withAlpha(sidebarColor, 0.03) }}
+              >
+                <Search size={14} className="text-gray-400" />
+                <input
+                  value={columnSearchTerm}
+                  onChange={(e) => setColumnSearchTerm(e.target.value)}
+                  placeholder="Search"
+                  className="w-full border-none outline-none text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="px-4 py-2 max-h-[56vh] overflow-y-auto">
+              <div className="space-y-2">
+                {filteredCustomizeColumns.map((column) => {
+                  const checked = draftSelectedColumns.has(column.key);
+                  return (
+                    <label
+                      key={column.key}
+                      className="flex items-center gap-3 rounded-md px-3 py-2 cursor-pointer border"
+                      style={{
+                        backgroundColor: checked ? withAlpha(sidebarColor, 0.12) : withAlpha(sidebarColor, 0.05),
+                        borderColor: checked ? withAlpha(sidebarColor, 0.18) : "transparent",
+                      }}
+                    >
+                      <GripVertical size={14} className="text-gray-400" />
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const isChecked = e.target.checked;
+                          setDraftSelectedColumns((prev) => {
+                            const next = new Set(prev);
+                            if (isChecked) next.add(column.key);
+                            else next.delete(column.key);
+                            return next;
+                          });
+                        }}
+                        className="h-4 w-4 rounded border-gray-300"
+                        style={{ accentColor: buttonColor }}
+                      />
+                      <span className="text-sm text-slate-700">{column.label}</span>
+                    </label>
+                  );
+                })}
+                {filteredCustomizeColumns.length === 0 && (
+                  <div className="px-3 py-6 text-sm text-slate-500 text-center">No columns found</div>
+                )}
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedColumns(new Set(draftSelectedColumns));
+                  setIsCustomizeColumnsOpen(false);
+                  setColumnSearchTerm("");
+                }}
+                className="text-white px-5 py-2 rounded-md text-sm font-medium hover:brightness-110"
+                style={{ backgroundColor: buttonColor }}
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCustomizeColumnsOpen(false);
+                  setColumnSearchTerm("");
+                }}
+                className="bg-white border border-gray-300 text-slate-700 px-5 py-2 rounded-md text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+        )}
+
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-[2100] flex items-start justify-center bg-black/40 pt-16">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3">
+              <div className="h-7 w-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-[12px] font-bold">
+                !
+              </div>
+              <h3 className="text-[15px] font-semibold text-slate-800 flex-1">
+                Delete {deleteRetainerIds.length} retainer invoice{deleteRetainerIds.length === 1 ? "" : "s"}?
+              </h3>
+              <button
+                type="button"
+                className="h-7 w-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setDeleteRetainerIds([]);
+                }}
+                aria-label="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="px-5 py-3 text-[13px] text-slate-600">
+              You cannot retrieve these retainer invoices once they have been deleted.
+            </div>
+            <div className="flex items-center justify-start gap-2 border-t border-slate-100 px-5 py-3">
+              <button
+                type="button"
+                className={`px-4 py-1.5 rounded-md bg-blue-600 text-white text-[12px] hover:bg-blue-700 ${bulkDeleteLoading ? "opacity-70 cursor-not-allowed" : ""}`}
+                onClick={confirmBulkDelete}
+                disabled={bulkDeleteLoading}
+              >
+                {bulkDeleteLoading ? "Deleting..." : "Delete"}
+              </button>
+              <button
+                type="button"
+                className={`px-4 py-1.5 rounded-md border border-slate-300 text-[12px] text-slate-700 hover:bg-slate-50 ${bulkDeleteLoading ? "opacity-70 cursor-not-allowed" : ""}`}
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setDeleteRetainerIds([]);
+                }}
+                disabled={bulkDeleteLoading}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )} 
+      <PaginationFooter
+        totalItems={filteredRows.length}
+        currentPage={safeRetainerPage}
+        pageSize={itemsPerPage}
+        pageSizeOptions={[10, 25, 50, 100]}
+        itemLabel="retainer invoices"
+        onPageChange={(nextPage) => setCurrentPage(nextPage)}
+        onPageSizeChange={(nextLimit) => {
+          setItemsPerPage(nextLimit);
+          setCurrentPage(1);
+        }}
+      />
+    </div>
+  );
+}

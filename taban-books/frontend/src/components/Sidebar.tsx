@@ -348,7 +348,7 @@ export default function Sidebar() {
     if (hasPreloadedQuotesRef.current) return;
     hasPreloadedQuotesRef.current = true;
 
-    void import("../features/sales/Quotes/quoteQueries").then(({ fetchQuotesList, quoteQueryKeys }) => {
+    void import("../pages/sales/Quotes/quoteQueries").then(({ fetchQuotesList, quoteQueryKeys }) => {
       void queryClient.prefetchQuery({
         queryKey: quoteQueryKeys.list(),
         queryFn: fetchQuotesList,

@@ -161,7 +161,7 @@ function getDb() {
 
         if (!db.objectStoreNames.contains(PENDING_STORE)) {
           const pendingStore = db.createObjectStore(PENDING_STORE, { keyPath: "id" });
-          pendingStore.createIndex(BINARY_RESOURCE_INDEX, "resource", { unique: false });
+          pendingStore.createIndex("by-resource", "resource", { unique: false });
         }
 
         let binaryStore: IDBObjectStore;

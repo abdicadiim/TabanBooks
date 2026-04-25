@@ -1,16 +1,9 @@
 import { apiRequest } from "../services/api";
-import { createAdaptiveStorageAdapter } from "./persistence";
-import { attachVersionStamp } from "./versioning";
+import { writeCachedListResponse } from "../services/swrListCache";
 
 type PrimeSpec = {
-  resource: string;
   endpoint: string;
-  storageKey: string;
-  mapItems: (response: any) => any[];
-  mapMeta?: (response: any) => Record<string, any>;
 };
-
-const safeArray = (value: any) => (Array.isArray(value) ? value : []);
 
 export async function primeSWRCache(signal?: AbortSignal) {
   // Only prime when authenticated (remote mode)
@@ -20,36 +13,31 @@ export async function primeSWRCache(signal?: AbortSignal) {
 
   const specs: PrimeSpec[] = [
     {
-      resource: "customers",
-      endpoint: "/customers?page=1&limit=50&search=",
-      storageKey: "taban:swr:customers:/customers?page=1&limit=50&search=",
-      mapItems: (r) => safeArray(r?.data),
-      mapMeta: (r) => ({ pagination: r?.pagination }),
+      endpoint: "/customers",
     },
     {
-      resource: "taxes",
+      endpoint: "/customers?limit=1000",
+    },
+    {
       endpoint: "/settings/taxes",
-      storageKey: "taban:swr:taxes:/settings/taxes",
-      mapItems: (r) => safeArray(r?.data),
     },
     {
-      resource: "currencies",
       endpoint: "/settings/currencies?limit=2000",
-      storageKey: "taban:swr:currencies:/settings/currencies?limit=2000",
-      mapItems: (r) => safeArray(r?.data),
     },
     {
-      resource: "reporting-tags",
+      endpoint: "/projects",
+    },
+    {
       endpoint: "/settings/reporting-tags?limit=10000",
-      storageKey: "taban:swr:reporting-tags:/settings/reporting-tags?limit=10000",
-      mapItems: (r) => safeArray(r?.data),
     },
     {
-      resource: "accounts",
       endpoint: "/accounts?limit=1000",
-      storageKey: "taban:swr:accounts:/accounts?limit=1000",
-      mapItems: (r) => safeArray(r?.data),
-      mapMeta: (r) => ({ pagination: r?.pagination }),
+    },
+    {
+      endpoint: "/time-entries",
+    },
+    {
+      endpoint: "/settings/units",
     },
   ];
 
@@ -57,8 +45,8 @@ export async function primeSWRCache(signal?: AbortSignal) {
     specs.map(async (spec) => {
       const response = await apiRequest(spec.endpoint, {
         meta: {
-          source: `prime:${spec.resource}`,
-          dedupeKey: `prime:${spec.resource}:${spec.endpoint}`,
+          source: `prime:${spec.endpoint}`,
+          dedupeKey: `prime:${spec.endpoint}`,
           skipCache: true,
           allowNotModified: true,
         },
@@ -68,16 +56,10 @@ export async function primeSWRCache(signal?: AbortSignal) {
       // apiRequest returns {notModified:true} for 304 when allowNotModified is enabled.
       if (response?.notModified === true) return;
 
-      const adapter = createAdaptiveStorageAdapter<any>({ key: spec.storageKey });
-      await adapter.write(
-        attachVersionStamp({
-          resource: spec.resource,
-          items: spec.mapItems(response),
-          ...(spec.mapMeta ? spec.mapMeta(response) : {}),
-          version_id: response?.version_id,
-          last_updated: response?.last_updated,
-        }),
-      );
+      await writeCachedListResponse(spec.endpoint, response, {
+        version_id: response?.version_id,
+        last_updated: response?.last_updated,
+      });
     }),
   );
 }

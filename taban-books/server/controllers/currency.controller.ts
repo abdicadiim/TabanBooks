@@ -35,6 +35,7 @@ export const getCurrencies = async (req: AuthRequest, res: Response): Promise<vo
     const query: any = {
       organization: req.user.organizationId,
     };
+    const databaseOnly = req.query.databaseOnly === 'true';
 
     if (req.query.isActive !== undefined) {
       query.isActive = req.query.isActive === 'true';
@@ -52,6 +53,7 @@ export const getCurrencies = async (req: AuthRequest, res: Response): Promise<vo
         updatedAt: (latestCurrency as any)?.updatedAt,
         count: currencyCount,
         extra: String(req.query.isActive ?? ""),
+        databaseOnly: String(databaseOnly),
       },
     ]);
     applyResourceVersionHeaders(res, versionState);
@@ -63,8 +65,8 @@ export const getCurrencies = async (req: AuthRequest, res: Response): Promise<vo
 
     let currencies = await Currency.find(query).sort({ code: 1 });
 
-    // If no currencies exist, seed default currencies
-    if (currencies.length === 0) {
+    // Seed default currencies only for callers that want starter data.
+    if (!databaseOnly && currencies.length === 0) {
       const organization = await Organization.findById(req.user.organizationId).lean();
       const baseCode = (organization?.currency || "USD").toUpperCase();
 

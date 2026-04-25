@@ -48,6 +48,175 @@ const extractCustomReportId = (reportKey: string): string | null => {
   return key.substring(7);
 };
 
+const CUSTOM_MODULE_SOURCE_REPORT_KEYS: Record<string, string> = {
+  quote: "quote_details",
+  invoice: "invoice_details",
+  "credit note": "credit_note_details",
+  "customer payment": "payments_received",
+  "sales receipt": "payments_received",
+  "purchase order": "purchase_order_details",
+  expense: "payments_made",
+  bill: "ap_aging_details",
+  "vendor credits": "vendor_credit_details",
+  "vendor payment": "payments_made",
+  journal: "account_transactions",
+  projects: "project_summary",
+  timesheet: "timesheet_details",
+};
+
+const CUSTOM_REPORT_COLUMN_ALIASES: Record<string, Record<string, string>> = {
+  quote_details: {
+    "quote#": "quoteNumber",
+    "quote date": "quoteDate",
+    "expiry date": "expiryDate",
+    "customer name": "customerName",
+    "quote amount": "amount",
+    status: "status",
+  },
+  invoice_details: {
+    "invoice#": "invoiceNumber",
+    "invoice date": "invoiceDate",
+    "due date": "dueDate",
+    "customer name": "customerName",
+    "invoice amount": "amount",
+    "balance due": "balanceDue",
+    amount: "amount",
+    status: "status",
+  },
+  credit_note_details: {
+    "credit note#": "creditNoteNumber",
+    "credit note date": "date",
+    "credit note amount": "creditNoteAmount",
+    "customer name": "customerName",
+    "balance amount": "balanceAmount",
+    balance: "balanceAmount",
+    amount: "creditNoteAmount",
+    status: "status",
+  },
+  payments_received: {
+    "payment#": "paymentNumber",
+    "payment date": "date",
+    "customer name": "customerName",
+    "payment amount": "amount",
+    "payment method": "paymentMethod",
+    status: "status",
+  },
+  payments_made: {
+    "payment#": "paymentNumber",
+    "payment date": "date",
+    "vendor name": "vendorName",
+    "payment amount": "amount",
+    "payment method": "paymentMethod",
+    "payment reference": "paymentReference",
+  },
+  purchase_order_details: {
+    "po#": "purchaseOrderNumber",
+    "po date": "date",
+    "expected date": "expectedDate",
+    "vendor name": "vendorName",
+    "po amount": "total",
+    amount: "total",
+    status: "status",
+  },
+  vendor_credit_details: {
+    "credit#": "vendorCreditNumber",
+    "credit date": "date",
+    "vendor name": "vendorName",
+    "credit amount": "total",
+    balance: "balance",
+    status: "status",
+  },
+  ap_aging_details: {
+    "bill#": "transactionNumber",
+    "bill date": "date",
+    "vendor name": "vendorName",
+    amount: "amount",
+    "balance due": "balanceDue",
+    bucket: "bucket",
+    age: "age",
+    status: "status",
+  },
+  project_summary: {
+    "project name": "projectName",
+    "customer name": "customerName",
+    "project budget": "budgetAmount",
+    "logged hours": "loggedHours",
+    "actual revenue": "actualRevenue",
+    performance: "performance",
+    status: "status",
+  },
+  timesheet_details: {
+    date: "date",
+    "project name": "projectName",
+    task: "task",
+    staff: "staff",
+    notes: "notes",
+    "logged hours": "loggedHours",
+    status: "status",
+    "billing amount": "billingAmount",
+    "customer name": "customerName",
+  },
+  account_transactions: {
+    date: "date",
+    "transaction type": "transactionType",
+    "reference#": "referenceNumber",
+    account: "account",
+    debit: "debit",
+    credit: "credit",
+    balance: "balance",
+  },
+};
+
+const normalizeLookupKey = (value: any): string =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+
+const resolveCustomSourceReportKey = (customReport: any): string | null => {
+  const explicitKey = String(
+    customReport?.general?.sourceReportKey ||
+      customReport?.general?.baseReportKey ||
+      customReport?.sourceReportKey ||
+      customReport?.baseReportKey ||
+      "",
+  ).trim();
+  if (explicitKey && getSystemReportByKey(explicitKey)) {
+    return explicitKey;
+  }
+
+  const parentModule = String(customReport?.modules?.[0]?.parent || "").trim().toLowerCase();
+  if (parentModule && CUSTOM_MODULE_SOURCE_REPORT_KEYS[parentModule]) {
+    const mapped = CUSTOM_MODULE_SOURCE_REPORT_KEYS[parentModule];
+    if (getSystemReportByKey(mapped)) {
+      return mapped;
+    }
+  }
+
+  return null;
+};
+
+const resolveCustomColumnKey = (sourceReportKey: string, requestedColumn: string, sampleRow?: Record<string, any>): string => {
+  const normalizedLabel = normalizeLookupKey(requestedColumn);
+  const aliasMap = CUSTOM_REPORT_COLUMN_ALIASES[sourceReportKey] || {};
+  const directAlias = aliasMap[String(requestedColumn || "").trim().toLowerCase()] || aliasMap[normalizedLabel];
+  if (directAlias) return directAlias;
+
+  if (sampleRow && typeof sampleRow === "object") {
+    if (Object.prototype.hasOwnProperty.call(sampleRow, requestedColumn)) {
+      return requestedColumn;
+    }
+
+    const exactCaseInsensitive = Object.keys(sampleRow).find((key) => key.toLowerCase() === String(requestedColumn || "").trim().toLowerCase());
+    if (exactCaseInsensitive) return exactCaseInsensitive;
+
+    const normalizedMatch = Object.keys(sampleRow).find((key) => normalizeLookupKey(key) === normalizedLabel);
+    if (normalizedMatch) return normalizedMatch;
+  }
+
+  return requestedColumn;
+};
+
 const parseVisibility = (shareWith?: string): "only_me" | "selected" | "everyone" => {
   const normalized = String(shareWith || "").trim().toLowerCase();
   if (normalized === "everyone") return "everyone";
@@ -378,13 +547,14 @@ export const runReportByKey = async (req: AuthRequest, res: Response): Promise<v
         return;
       }
 
-      const parentModule = String(customReport.modules?.[0]?.parent || "").toLowerCase();
-      let mappedKey = "invoice_details";
-      if (parentModule.includes("quote")) mappedKey = "quote_details";
-      else if (parentModule.includes("credit")) mappedKey = "credit_note_details";
-      else if (parentModule.includes("bill")) mappedKey = "ap_aging_details";
-      else if (parentModule.includes("expense")) mappedKey = "payments_made";
-      else if (parentModule.includes("project")) mappedKey = "project_summary";
+      const mappedKey = resolveCustomSourceReportKey(customReport.toObject());
+      if (!mappedKey) {
+        res.status(400).json({
+          success: false,
+          message: "Custom report source report is not configured or supported",
+        });
+        return;
+      }
 
       options = {
         organizationId: orgId,
@@ -400,17 +570,30 @@ export const runReportByKey = async (req: AuthRequest, res: Response): Promise<v
       const result = await runSystemReport(options);
 
       const selectedColumns = Array.isArray(customReport.columns) && customReport.columns.length > 0 ? customReport.columns : result.columns;
-      const filteredRows = result.rows.map((row: any) => {
+      const sampleRow = (Array.isArray(result.rows) ? result.rows : []).find((row: any) => row && typeof row === "object") || {};
+      const columnKeyMap: Record<string, string> = {};
+      selectedColumns.forEach((columnName: string) => {
+        columnKeyMap[columnName] = resolveCustomColumnKey(mappedKey, columnName, sampleRow);
+      });
+
+      const filteredRows = (Array.isArray(result.rows) ? result.rows : []).map((row: any) => {
         const picked: Record<string, any> = {};
         selectedColumns.forEach((columnName: string) => {
-          if (row[columnName] !== undefined) {
-            picked[columnName] = row[columnName];
+          const resolvedKey = columnKeyMap[columnName];
+          if (row[resolvedKey] !== undefined) {
+            picked[columnName] = row[resolvedKey];
             return;
           }
-          const normalized = Object.keys(row).find((key) => key.toLowerCase() === columnName.toLowerCase());
-          if (normalized) picked[columnName] = row[normalized];
+
+          const fallbackKey = Object.keys(row).find((key) => normalizeLookupKey(key) === normalizeLookupKey(columnName));
+          if (fallbackKey) {
+            picked[columnName] = row[fallbackKey];
+            return;
+          }
+
+          picked[columnName] = null;
         });
-        return Object.keys(picked).length > 0 ? picked : row;
+        return picked;
       });
 
       customReport.lastRunAt = new Date();
@@ -425,6 +608,7 @@ export const runReportByKey = async (req: AuthRequest, res: Response): Promise<v
           columns: selectedColumns,
           rows: filteredRows,
           isCustomReport: true,
+          sourceReportKey: mappedKey,
         },
       });
       return;
@@ -545,6 +729,7 @@ export const createCustomReport = async (req: AuthRequest, res: Response): Promi
         groupBy: req.body?.groupBy,
         reportBy: req.body?.reportBy,
         filters: Array.isArray(req.body?.filters) ? req.body.filters : [],
+        sourceReportKey: resolveCustomSourceReportKey(req.body || {}),
       },
       columns: Array.isArray(req.body?.columns || req.body?.selectedCols) ? req.body.columns || req.body.selectedCols : [],
       layout: req.body?.layout || {},
@@ -595,7 +780,16 @@ export const updateCustomReport = async (req: AuthRequest, res: Response): Promi
     if (req.body?.exportName !== undefined) customReport.exportName = String(req.body.exportName).trim();
     if (req.body?.description !== undefined) customReport.description = String(req.body.description).trim();
     if (req.body?.modules !== undefined) customReport.modules = Array.isArray(req.body.modules) ? req.body.modules : [];
-    if (req.body?.general !== undefined) customReport.general = req.body.general;
+    if (req.body?.general !== undefined) {
+      const nextGeneral: any = {
+        ...(customReport.general || {}),
+        ...req.body.general,
+      };
+      if (!nextGeneral.sourceReportKey) {
+        nextGeneral.sourceReportKey = resolveCustomSourceReportKey(customReport.toObject());
+      }
+      customReport.general = nextGeneral;
+    }
     if (req.body?.columns !== undefined) customReport.columns = Array.isArray(req.body.columns) ? req.body.columns : [];
     if (req.body?.layout !== undefined) customReport.layout = req.body.layout || {};
     if (req.body?.shareWith !== undefined) customReport.visibility = parseVisibility(req.body.shareWith);

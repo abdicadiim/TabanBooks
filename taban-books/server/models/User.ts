@@ -19,6 +19,8 @@ export interface IUser extends Document {
     phone?: string;
     avatar?: string;
     timezone: string;
+    activeTimer?: unknown;
+    activeTimerUpdatedAt?: Date;
   };
   assignedCustomers: mongoose.Types.ObjectId[];
   accessibleLocations: mongoose.Types.ObjectId[];
@@ -81,6 +83,14 @@ const userSchema = new Schema<IUser>(
       timezone: {
         type: String,
         default: "UTC",
+      },
+      activeTimer: {
+        type: Schema.Types.Mixed,
+        default: null,
+      },
+      activeTimerUpdatedAt: {
+        type: Date,
+        default: null,
       },
     },
     assignedCustomers: [

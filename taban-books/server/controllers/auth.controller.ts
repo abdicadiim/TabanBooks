@@ -461,6 +461,89 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
 };
 
 /**
+ * @route   PATCH /api/auth/me
+ * @desc    Persist lightweight session-scoped user state such as the active timer
+ */
+export const updateMe = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    logRequest(req, { controller: "updateMe", action: "update_current_user" });
+
+    if (!req.user?.userId) {
+      res.status(401).json({
+        success: false,
+        message: "Not authenticated",
+      });
+      return;
+    }
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+      return;
+    }
+
+    const nextTimerState = (req.body as Record<string, unknown>)?.activeTimer;
+    if (nextTimerState !== undefined) {
+      const currentProfile = (user.profile as Record<string, unknown> | undefined) || {};
+      user.profile = {
+        ...(currentProfile as any),
+        activeTimer: nextTimerState,
+        activeTimerUpdatedAt: new Date(),
+      } as any;
+      await user.save();
+    }
+
+    const [organization, profile] = await Promise.all([
+      Organization.findById(req.user.organizationId),
+      Profile.findOne({ organization: req.user.organizationId }),
+    ]);
+
+    if (!organization) {
+      res.status(404).json({
+        success: false,
+        message: "Organization not found",
+      });
+      return;
+    }
+
+    const permissions = await getUserPermissions(user._id);
+
+    const responseData = {
+      success: true,
+      data: {
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          profile: user.profile,
+          permissions,
+        },
+        organization: {
+          id: organization._id,
+          organization_id: organization.organizationId || "",
+          name: organization.name,
+          logo: profile?.logo || "",
+          isVerified: organization.isVerified,
+        },
+      },
+    };
+
+    logResponse(req, res, responseData, { controller: "updateMe", userId: user._id });
+    res.json(responseData);
+  } catch (error: any) {
+    logError(error, { controller: "updateMe", userId: req.user?.userId });
+    res.status(500).json({
+      success: false,
+      message: error.message || "Error updating user state",
+    });
+  }
+};
+
+/**
  * @route   GET /api/auth/bootstrap
  * @desc    Get consolidated app bootstrap payload
  */

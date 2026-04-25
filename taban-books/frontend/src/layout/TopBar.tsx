@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Menu,
@@ -21,7 +21,7 @@ import {
 import { logout } from "../services/auth";
 import { useAppBootstrap } from "../context/AppBootstrapContext";
 import { useQueryClient } from "@tanstack/react-query";
-import { preloadCustomersIndexData } from "../features/sales/Customers/customerRouteLoaders";
+import { preloadCustomersIndexData } from "../pages/sales/Customers/customerRouteLoaders";
 
 export default function TopBar() {
   const navigate = useNavigate();

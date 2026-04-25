@@ -6,32 +6,32 @@ import PermissionRoute from "../components/PermissionRoute";
 import ProtectedRoute from "../components/ProtectedRoute";
 import { usePermissions } from "../hooks/usePermissions";
 
-const Login = lazy(() => import("../pages/Login"));
-const Signup = lazy(() => import("../pages/Signup"));
-const OrganizationProfile = lazy(() => import("../pages/OrganizationProfile"));
-const LoadingPage = lazy(() => import("../pages/LoadingPage"));
-const VerifyIdentity = lazy(() => import("../pages/VerifyIdentity"));
-const AcceptInvitation = lazy(() => import("../pages/AcceptInvitation"));
+const Login = lazy(() => import("../auth/Login"));
+const Signup = lazy(() => import("../auth/Signup"));
+const OrganizationProfile = lazy(() => import("../auth/OrganizationProfile"));
+const LoadingPage = lazy(() => import("../auth/LoadingPage"));
+const VerifyIdentity = lazy(() => import("../auth/VerifyIdentity"));
+const AcceptInvitation = lazy(() => import("../auth/AcceptInvitation"));
 
-const HomeDashboard = lazy(() => import("../features/home/HomeDashboard"));
-const GettingStartedPage = lazy(() => import("../features/home/GettingStartedPage"));
-const RecentUpdatesPage = lazy(() => import("../features/home/RecentUpdatesPage"));
+const HomeDashboard = lazy(() => import("../pages/home/HomeDashboard"));
+const GettingStartedPage = lazy(() => import("../pages/home/GettingStartedPage"));
+const RecentUpdatesPage = lazy(() => import("../pages/home/RecentUpdatesPage"));
 
-const ItemsPage = lazy(() => import("../features/items/ItemsPage"));
-const NewCustomView = lazy(() => import("../features/items/NewCustomView"));
-const ImportItems = lazy(() => import("../features/items/ImportItems"));
+const ItemsPage = lazy(() => import("../pages/items/ItemsPage"));
+const NewCustomView = lazy(() => import("../pages/items/NewCustomView"));
+const ImportItems = lazy(() => import("../pages/items/ImportItems"));
 
-const InventoryPage = lazy(() => import("../features/inventory/InventoryPage"));
-const NewAdjustmentForm = lazy(() => import("../features/inventory/NewAdjustmentForm"));
-const InventoryNewCustomView = lazy(() => import("../features/inventory/NewCustomView"));
-const ImportQuantityAdjustments = lazy(() => import("../features/inventory/ImportQuantityAdjustments"));
-const ImportValueAdjustments = lazy(() => import("../features/inventory/ImportValueAdjustments"));
-const ImportQuantityMapFields = lazy(() => import("../features/inventory/ImportQuantityMapFields"));
-const ImportQuantityPreview = lazy(() => import("../features/inventory/ImportQuantityPreview"));
-const ImportValueMapFields = lazy(() => import("../features/inventory/ImportValueMapFields"));
-const ImportValuePreview = lazy(() => import("../features/inventory/ImportValuePreview"));
+const InventoryPage = lazy(() => import("../pages/inventory/InventoryPage"));
+const NewAdjustmentForm = lazy(() => import("../pages/inventory/NewAdjustmentForm"));
+const InventoryNewCustomView = lazy(() => import("../pages/inventory/NewCustomView"));
+const ImportQuantityAdjustments = lazy(() => import("../pages/inventory/ImportQuantityAdjustments"));
+const ImportValueAdjustments = lazy(() => import("../pages/inventory/ImportValueAdjustments"));
+const ImportQuantityMapFields = lazy(() => import("../pages/inventory/ImportQuantityMapFields"));
+const ImportQuantityPreview = lazy(() => import("../pages/inventory/ImportQuantityPreview"));
+const ImportValueMapFields = lazy(() => import("../pages/inventory/ImportValueMapFields"));
+const ImportValuePreview = lazy(() => import("../pages/inventory/ImportValuePreview"));
 
-const SalesPage = lazy(() => import("../features/sales/SalesRoutes"));
+const SalesPage = lazy(() => import("../pages/sales/SalesRoutes"));
 
 function LegacyPaymentsReceivedRedirect() {
   const location = useLocation();
@@ -58,167 +58,167 @@ function AccountsReceivableLedger() {
   );
 }
 
-const PurchasesPage = lazy(() => import("../features/purchases/PurchasesPage"));
-const TimeTrackingPage = lazy(() => import("../features/timeTracking/TimeTrackingPage"));
-const ProjectsGuidePage = lazy(() => import("../features/timeTracking/ProjectsGuidePage"));
+const PurchasesPage = lazy(() => import("../pages/purchases/PurchasesPage"));
+const TimeTrackingPage = lazy(() => import("../pages/timeTracking/TimeTrackingPage"));
+const ProjectsGuidePage = lazy(() => import("../pages/timeTracking/ProjectsGuidePage"));
 
-const BankingPage = lazy(() => import("../features/banking/BankingPage"));
-const AddBankAccount = lazy(() => import("../features/banking/AddBankAccount"));
-const AccountDetail = lazy(() => import("../features/banking/AccountDetail"));
-const ImportStatement = lazy(() => import("../features/banking/ImportStatement"));
-const AddBankForm = lazy(() => import("../features/banking/AddBankForm"));
-const Reconciliations = lazy(() => import("../features/banking/Reconciliations"));
-const StartReconciliation = lazy(() => import("../features/banking/StartReconciliation"));
+const BankingPage = lazy(() => import("../pages/banking/BankingPage"));
+const AddBankAccount = lazy(() => import("../pages/banking/AddBankAccount"));
+const AccountDetail = lazy(() => import("../pages/banking/AccountDetail"));
+const ImportStatement = lazy(() => import("../pages/banking/ImportStatement"));
+const AddBankForm = lazy(() => import("../pages/banking/AddBankForm"));
+const Reconciliations = lazy(() => import("../pages/banking/Reconciliations"));
+const StartReconciliation = lazy(() => import("../pages/banking/StartReconciliation"));
 
-const AccountantPage = lazy(() => import("../features/accountant/AccountantPage"));
-const ReportsPage = lazy(() => import("../features/reports/ReportsPage"));
-const DocumentsPage = lazy(() => import("../features/documents/DocumentsPage"));
-const OrganizationsManagePage = lazy(() => import("../features/organizations/OrganizationsManagePage"));
+const AccountantPage = lazy(() => import("../pages/accountant/AccountantPage"));
+const ReportsPage = lazy(() => import("../pages/reports/ReportsPage"));
+const DocumentsPage = lazy(() => import("../pages/documents/DocumentsPage"));
+const OrganizationsManagePage = lazy(() => import("../pages/organizations/OrganizationsManagePage"));
 
-const AllSettings = lazy(() => import("../features/settings/AllSettings"));
-const SettingsProfileWrapper = lazy(() => import("../features/settings/SettingsProfileWrapper"));
-const SettingsBrandingWrapper = lazy(() => import("../features/settings/SettingsBrandingWrapper"));
-const SettingsCustomDomainWrapper = lazy(() => import("../features/settings/SettingsCustomDomainWrapper"));
-const SettingsLocationsWrapper = lazy(() => import("../features/settings/SettingsLocationsWrapper"));
-const SettingsSubscriptionWrapper = lazy(() => import("../features/settings/SettingsSubscriptionWrapper"));
-const SettingsUsersWrapper = lazy(() => import("../features/settings/SettingsUsersWrapper"));
-const SettingsRolesWrapper = lazy(() => import("../features/settings/SettingsRolesWrapper"));
-const NewRolePageWrapper = lazy(() => import("../features/settings/NewRolePageWrapper"));
-const SettingsUserPreferencesWrapper = lazy(() => import("../features/settings/SettingsUserPreferencesWrapper"));
-const NewCustomFieldPageWrapper = lazy(() => import("../features/settings/NewCustomFieldPageWrapper"));
-const SettingsTaxesWrapper = lazy(() => import("../features/settings/SettingsTaxesWrapper"));
-const SettingsVATWrapper = lazy(() => import("../features/settings/SettingsVATWrapper"));
+const AllSettings = lazy(() => import("../pages/settings/AllSettings"));
+const SettingsProfileWrapper = lazy(() => import("../pages/settings/SettingsProfileWrapper"));
+const SettingsBrandingWrapper = lazy(() => import("../pages/settings/SettingsBrandingWrapper"));
+const SettingsCustomDomainWrapper = lazy(() => import("../pages/settings/SettingsCustomDomainWrapper"));
+const SettingsLocationsWrapper = lazy(() => import("../pages/settings/SettingsLocationsWrapper"));
+const SettingsSubscriptionWrapper = lazy(() => import("../pages/settings/SettingsSubscriptionWrapper"));
+const SettingsUsersWrapper = lazy(() => import("../pages/settings/SettingsUsersWrapper"));
+const SettingsRolesWrapper = lazy(() => import("../pages/settings/SettingsRolesWrapper"));
+const NewRolePageWrapper = lazy(() => import("../pages/settings/NewRolePageWrapper"));
+const SettingsUserPreferencesWrapper = lazy(() => import("../pages/settings/SettingsUserPreferencesWrapper"));
+const NewCustomFieldPageWrapper = lazy(() => import("../pages/settings/NewCustomFieldPageWrapper"));
+const SettingsTaxesWrapper = lazy(() => import("../pages/settings/SettingsTaxesWrapper"));
+const SettingsVATWrapper = lazy(() => import("../pages/settings/SettingsVATWrapper"));
 const SettingsGeneralWrapper = lazy(() =>
-  import("../features/settings/organization-settings/setup-configurations/general/SettingsGeneralWrapper"),
+  import("../pages/settings/organization-settings/setup-configurations/general/SettingsGeneralWrapper"),
 );
 const SettingsCurrenciesWrapper = lazy(() =>
-  import("../features/settings/organization-settings/setup-configurations/currencies/SettingsCurrenciesWrapper"),
+  import("../pages/settings/organization-settings/setup-configurations/currencies/SettingsCurrenciesWrapper"),
 );
 const SettingsOpeningBalancesWrapper = lazy(() =>
-  import("../features/settings/organization-settings/setup-configurations/opening-balances/SettingsOpeningBalancesWrapper"),
+  import("../pages/settings/organization-settings/setup-configurations/opening-balances/SettingsOpeningBalancesWrapper"),
 );
 const SettingsRemindersWrapper = lazy(() =>
-  import("../features/settings/organization-settings/setup-configurations/reminders/SettingsRemindersWrapper"),
+  import("../pages/settings/organization-settings/setup-configurations/reminders/SettingsRemindersWrapper"),
 );
-const SettingsCustomerPortalWrapper = lazy(() => import("../features/settings/SettingsCustomerPortalWrapper"));
-const SettingsVendorPortalWrapper = lazy(() => import("../features/settings/SettingsVendorPortalWrapper"));
-const SettingsCustomizationWrapper = lazy(() => import("../features/settings/SettingsCustomizationWrapper"));
+const SettingsCustomerPortalWrapper = lazy(() => import("../pages/settings/SettingsCustomerPortalWrapper"));
+const SettingsVendorPortalWrapper = lazy(() => import("../pages/settings/SettingsVendorPortalWrapper"));
+const SettingsCustomizationWrapper = lazy(() => import("../pages/settings/SettingsCustomizationWrapper"));
 const SettingsWorkflowRulesWrapper = lazy(() =>
-  import("../features/settings/organization-settings/automation/workflow-rules/SettingsWorkflowRulesWrapper"),
+  import("../pages/settings/organization-settings/automation/workflow-rules/SettingsWorkflowRulesWrapper"),
 );
 const SettingsWorkflowActionsWrapper = lazy(() =>
-  import("../features/settings/organization-settings/automation/workflow-actions/SettingsWorkflowActionsWrapper"),
+  import("../pages/settings/organization-settings/automation/workflow-actions/SettingsWorkflowActionsWrapper"),
 );
 const SettingsWorkflowLogsWrapper = lazy(() =>
-  import("../features/settings/organization-settings/automation/workflow-logs/SettingsWorkflowLogsWrapper"),
+  import("../pages/settings/organization-settings/automation/workflow-logs/SettingsWorkflowLogsWrapper"),
 );
 const SettingsSchedulesWrapper = lazy(() =>
-  import("../features/settings/organization-settings/automation/schedules/SettingsSchedulesWrapper"),
+  import("../pages/settings/organization-settings/automation/schedules/SettingsSchedulesWrapper"),
 );
 const SettingsCustomersVendorsWrapper = lazy(() =>
-  import("../features/settings/module-settings/customers-vendors/SettingsCustomersVendorsWrapper"),
+  import("../pages/settings/module-settings/customers-vendors/SettingsCustomersVendorsWrapper"),
 );
 const NewCustomersVendorsCustomFieldPageWrapper = lazy(() =>
-  import("../features/settings/NewCustomersVendorsCustomFieldPageWrapper"),
+  import("../pages/settings/NewCustomersVendorsCustomFieldPageWrapper"),
 );
 const SettingsItemsWrapper = lazy(() =>
-  import("../features/settings/module-settings/items/SettingsItemsWrapper"),
+  import("../pages/settings/module-settings/items/SettingsItemsWrapper"),
 );
 const NewItemsCustomFieldPageWrapper = lazy(() =>
-  import("../features/settings/NewItemsCustomFieldPageWrapper"),
+  import("../pages/settings/NewItemsCustomFieldPageWrapper"),
 );
 const SettingsAccountantWrapper = lazy(() =>
-  import("../features/settings/module-settings/accountant/SettingsAccountantWrapper"),
+  import("../pages/settings/module-settings/accountant/SettingsAccountantWrapper"),
 );
 const NewAccountantCustomFieldPageWrapper = lazy(() =>
-  import("../features/settings/NewAccountantCustomFieldPageWrapper"),
+  import("../pages/settings/NewAccountantCustomFieldPageWrapper"),
 );
 const SettingsProjectsWrapper = lazy(() =>
-  import("../features/settings/module-settings/projects/SettingsProjectsWrapper"),
+  import("../pages/settings/module-settings/projects/SettingsProjectsWrapper"),
 );
 const NewProjectsCustomFieldPageWrapper = lazy(() =>
-  import("../features/settings/NewProjectsCustomFieldPageWrapper"),
+  import("../pages/settings/NewProjectsCustomFieldPageWrapper"),
 );
 const NewProjectsRelatedListPageWrapper = lazy(() =>
-  import("../features/settings/NewProjectsRelatedListPageWrapper"),
+  import("../pages/settings/NewProjectsRelatedListPageWrapper"),
 );
 const SettingsTimesheetWrapper = lazy(() =>
-  import("../features/settings/module-settings/timesheet/SettingsTimesheetWrapper"),
+  import("../pages/settings/module-settings/timesheet/SettingsTimesheetWrapper"),
 );
 const NewTimesheetCustomFieldPageWrapper = lazy(() =>
-  import("../features/settings/NewTimesheetCustomFieldPageWrapper"),
+  import("../pages/settings/NewTimesheetCustomFieldPageWrapper"),
 );
 const SettingsInventoryAdjustmentsWrapper = lazy(() =>
-  import("../features/settings/SettingsInventoryAdjustmentsWrapper"),
+  import("../pages/settings/SettingsInventoryAdjustmentsWrapper"),
 );
 const NewInventoryAdjustmentsCustomFieldPageWrapper = lazy(() =>
-  import("../features/settings/NewInventoryAdjustmentsCustomFieldPageWrapper"),
+  import("../pages/settings/NewInventoryAdjustmentsCustomFieldPageWrapper"),
 );
-const SettingsOnlinePaymentsWrapper = lazy(() => import("../features/settings/SettingsOnlinePaymentsWrapper"));
-const SettingsQuotesWrapper = lazy(() => import("../features/settings/SettingsQuotesWrapper"));
+const SettingsOnlinePaymentsWrapper = lazy(() => import("../pages/settings/SettingsOnlinePaymentsWrapper"));
+const SettingsQuotesWrapper = lazy(() => import("../pages/settings/SettingsQuotesWrapper"));
 const NewQuotesCustomFieldPageWrapper = lazy(() =>
-  import("../features/settings/NewQuotesCustomFieldPageWrapper"),
+  import("../pages/settings/NewQuotesCustomFieldPageWrapper"),
 );
 const NewQuotesRelatedListPageWrapper = lazy(() =>
-  import("../features/settings/NewQuotesRelatedListPageWrapper"),
+  import("../pages/settings/NewQuotesRelatedListPageWrapper"),
 );
 const NewCustomApprovalPageWrapper = lazy(() =>
-  import("../features/settings/NewCustomApprovalPageWrapper"),
+  import("../pages/settings/NewCustomApprovalPageWrapper"),
 );
-const SettingsInvoicesWrapper = lazy(() => import("../features/settings/SettingsInvoicesWrapper"));
+const SettingsInvoicesWrapper = lazy(() => import("../pages/settings/SettingsInvoicesWrapper"));
 const SettingsRecurringInvoicesWrapper = lazy(() =>
-  import("../features/settings/SettingsRecurringInvoicesWrapper"),
+  import("../pages/settings/SettingsRecurringInvoicesWrapper"),
 );
 const SettingsSalesReceiptsWrapper = lazy(() =>
-  import("../features/settings/SettingsSalesReceiptsWrapper"),
+  import("../pages/settings/SettingsSalesReceiptsWrapper"),
 );
 const SettingsPaymentsReceivedWrapper = lazy(() =>
-  import("../features/settings/SettingsPaymentsReceivedWrapper"),
+  import("../pages/settings/SettingsPaymentsReceivedWrapper"),
 );
-const SettingsCreditNotesWrapper = lazy(() => import("../features/settings/SettingsCreditNotesWrapper"));
+const SettingsCreditNotesWrapper = lazy(() => import("../pages/settings/SettingsCreditNotesWrapper"));
 const NewCreditNotesRelatedListPageWrapper = lazy(() =>
-  import("../features/settings/NewCreditNotesRelatedListPageWrapper"),
+  import("../pages/settings/NewCreditNotesRelatedListPageWrapper"),
 );
 const SettingsDeliveryNotesWrapper = lazy(() =>
-  import("../features/settings/SettingsDeliveryNotesWrapper"),
+  import("../pages/settings/SettingsDeliveryNotesWrapper"),
 );
 const NewDeliveryNotesRelatedListPageWrapper = lazy(() =>
-  import("../features/settings/NewDeliveryNotesRelatedListPageWrapper"),
+  import("../pages/settings/NewDeliveryNotesRelatedListPageWrapper"),
 );
 const SettingsPackingSlipsWrapper = lazy(() =>
-  import("../features/settings/SettingsPackingSlipsWrapper"),
+  import("../pages/settings/SettingsPackingSlipsWrapper"),
 );
 const NewPackingSlipsRelatedListPageWrapper = lazy(() =>
-  import("../features/settings/NewPackingSlipsRelatedListPageWrapper"),
+  import("../pages/settings/NewPackingSlipsRelatedListPageWrapper"),
 );
-const SettingsExpensesWrapper = lazy(() => import("../features/settings/SettingsExpensesWrapper"));
+const SettingsExpensesWrapper = lazy(() => import("../pages/settings/SettingsExpensesWrapper"));
 const NewExpensesRelatedListPageWrapper = lazy(() =>
-  import("../features/settings/NewExpensesRelatedListPageWrapper"),
+  import("../pages/settings/NewExpensesRelatedListPageWrapper"),
 );
 const SettingsPurchaseOrdersWrapper = lazy(() =>
-  import("../features/settings/SettingsPurchaseOrdersWrapper"),
+  import("../pages/settings/SettingsPurchaseOrdersWrapper"),
 );
 const NewPurchaseOrdersRelatedListPageWrapper = lazy(() =>
-  import("../features/settings/NewPurchaseOrdersRelatedListPageWrapper"),
+  import("../pages/settings/NewPurchaseOrdersRelatedListPageWrapper"),
 );
-const SettingsBillsWrapper = lazy(() => import("../features/settings/SettingsBillsWrapper"));
+const SettingsBillsWrapper = lazy(() => import("../pages/settings/SettingsBillsWrapper"));
 const NewBillsRelatedListPageWrapper = lazy(() =>
-  import("../features/settings/NewBillsRelatedListPageWrapper"),
+  import("../pages/settings/NewBillsRelatedListPageWrapper"),
 );
 const SettingsRecurringBillsWrapper = lazy(() =>
-  import("../features/settings/SettingsRecurringBillsWrapper"),
+  import("../pages/settings/SettingsRecurringBillsWrapper"),
 );
 const SettingsPaymentsMadeWrapper = lazy(() =>
-  import("../features/settings/SettingsPaymentsMadeWrapper"),
+  import("../pages/settings/SettingsPaymentsMadeWrapper"),
 );
 const SettingsVendorCreditsWrapper = lazy(() =>
-  import("../features/settings/SettingsVendorCreditsWrapper"),
+  import("../pages/settings/SettingsVendorCreditsWrapper"),
 );
 const NewVendorCreditsRelatedListPageWrapper = lazy(() =>
-  import("../features/settings/NewVendorCreditsRelatedListPageWrapper"),
+  import("../pages/settings/NewVendorCreditsRelatedListPageWrapper"),
 );
 const SettingsCustomModulesWrapper = lazy(() =>
-  import("../features/settings/SettingsCustomModulesWrapper"),
+  import("../pages/settings/SettingsCustomModulesWrapper"),
 );
 
 function RouteLoadingState() {

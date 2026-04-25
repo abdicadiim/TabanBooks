@@ -259,13 +259,8 @@ export function AppBootstrapProvider({ children }: { children: React.ReactNode }
         last_updated: bootstrap.last_updated,
       });
 
-      // Prime key lists into LocalStorage/IndexedDB so subsequent navigations
-      // show cached data immediately (SWR-style).
-      if (showBlockingLoader) {
-        await primeSWRCache();
-      } else {
-        void primeSWRCache();
-      }
+      // Prime key lists in the background so the initial shell is not blocked.
+      void primeSWRCache();
     } catch (error) {
       console.error("Error refreshing bootstrap data:", error);
     } finally {

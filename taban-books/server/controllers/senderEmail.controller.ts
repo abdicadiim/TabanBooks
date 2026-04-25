@@ -47,7 +47,7 @@ export const getSenderEmails = async (req: Request, res: Response): Promise<void
  * Helper to send verification email to a sender
  */
 const sendSenderVerificationEmailHelper = async (sender: any, organizationId: string) => {
-    const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5174";
+    const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5175";
     const verificationLink = `${FRONTEND_URL}/accept-invitation?email=${encodeURIComponent(sender.email)}&name=${encodeURIComponent(sender.name)}&type=sender&senderId=${sender._id}`;
 
     const message = `

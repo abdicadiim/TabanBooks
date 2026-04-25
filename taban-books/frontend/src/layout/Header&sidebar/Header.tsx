@@ -11,11 +11,10 @@ import {
   Loader2,
   LogOut,
   Plus,
+  Search,
   ShoppingBag,
   ShoppingCart,
-  Search,
   Settings,
-  User,
   Users,
   X,
 } from "lucide-react";
@@ -23,7 +22,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { apiRequest } from "../../services/api";
 import { logout, setOrganization } from "../../services/auth";
 import { useAppBootstrap } from "../../context/AppBootstrapContext";
-import { preloadCustomersIndexData } from "../../features/sales/Customers/customerRouteLoaders";
+import { preloadCustomersIndexData } from "../../pages/sales/Customers/customerRouteLoaders";
 
 export default function Header() {
   const navigate = useNavigate();
@@ -34,7 +33,7 @@ export default function Header() {
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
-  const [searchScope, setSearchScope] = useState("Products");
+  const [searchScope, setSearchScope] = useState("Customers");
   const [searchQuery, setSearchQuery] = useState("");
   const [organizations, setOrganizations] = useState<any[]>([]);
   const [loadingOrganizations, setLoadingOrganizations] = useState(false);
@@ -51,15 +50,13 @@ export default function Header() {
   const userInitial = orgName.trim().charAt(0).toUpperCase() || "T";
   const isLightAppearance = String(branding?.appearance || "dark") === "light";
   const headerBackground = isLightAppearance
-    ? "#ffffff"
+    ? "#f4f5f7"
     : "linear-gradient(90deg, #0f5f6c 0%, #156372 100%)";
-  const headerText = isLightAppearance ? "text-slate-700" : "text-white/90";
-  const headerMuted = isLightAppearance ? "text-slate-500" : "text-white/60";
-  const controlSurface = isLightAppearance ? "bg-white border-slate-200" : "bg-white/10 border-white/15";
-  const controlText = isLightAppearance ? "text-slate-700" : "text-white/90";
   const isPurchaseOrdersListPage = /^\/purchases(?:\/purchase-orders)?\/?$/.test(
     location.pathname
   );
+  const actionButtonClass = () =>
+    `grid h-10 w-10 place-items-center rounded-lg bg-[#0f5f6c] text-white shadow-sm transition-colors hover:bg-[#0f5f6c] hover:text-white`;
 
   const handleLogout = async () => {
     try {
@@ -134,6 +131,8 @@ export default function Header() {
 
   const handleQuickCreateClick = (path: string) => {
     setQuickCreateOpen(false);
+    setUserMenuOpen(false);
+    setOrgDropdownOpen(false);
     navigate(path);
   };
 
@@ -142,10 +141,6 @@ export default function Header() {
     setSearchDropdownOpen(false);
     const query = searchQuery.trim();
     navigate(query ? `${option.path}?search=${encodeURIComponent(query)}` : option.path);
-  };
-
-  const handleCustomersPrefetch = () => {
-    void preloadCustomersIndexData(queryClient);
   };
 
   useEffect(() => {
@@ -174,6 +169,10 @@ export default function Header() {
     params.set("search", query);
 
     navigate(`${target.path}?${params.toString()}`);
+  };
+
+  const handleCustomersPrefetch = () => {
+    void preloadCustomersIndexData(queryClient);
   };
 
   const handleCopyOrgId = async (orgId: string) => {
@@ -266,9 +265,19 @@ export default function Header() {
     return () => window.removeEventListener("resize", handleResize);
   }, [orgDropdownOpen]);
 
+  useEffect(() => {
+    if (!searchDropdownOpen) return;
+
+    const handleResize = () => {
+      // keep the dropdown anchored under the search box
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [searchDropdownOpen]);
+
   return (
     <header
-      className={`fixed top-3 left-3 right-3 z-[1000] h-[68px] overflow-hidden rounded-[20px] px-4 backdrop-blur-md ${
+      className={`fixed top-3 left-3 right-3 z-[1000] h-[68px] overflow-visible rounded-[20px] px-4 backdrop-blur-md ${
         isPurchaseOrdersListPage
           ? "md:left-[calc(var(--sidebar-width)+12px)]"
           : "md:left-[calc(var(--sidebar-width)+24px)]"
@@ -284,60 +293,49 @@ export default function Header() {
       {!isLightAppearance ? (
         <div className="pointer-events-none absolute inset-0 rounded-[20px] bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent_65%)]" />
       ) : null}
-      <div className="relative flex h-full items-center justify-between gap-3">
-        <form className="relative flex min-w-0 flex-1 items-center" ref={searchRef} onSubmit={handleSearchSubmit}>
-          <div className={`flex h-11 w-full max-w-[420px]items - stretch overflow - hidden rounded - [14px] border shadow - [inset_0_1px_0_rgba(255, 255, 255, 0.08)] focus - within: ring - 2 ${ controlSurface } ${ isLightAppearance ? "text-slate-700 focus-within:ring-slate-200" : "text-white/90 focus-within:ring-white/25" } `}>
+      <div className="relative flex h-full items-center gap-3">
+        <form ref={searchRef} onSubmit={handleSearchSubmit} className="relative flex min-w-0 flex-1 items-center">
+          <div className="flex h-10 w-full max-w-[420px] overflow-hidden rounded-[10px] border border-slate-200 bg-[#e4f4f5] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
             <button
               type="button"
-              onClick={() => {
-                setSearchDropdownOpen((current) => !current);
-                setQuickCreateOpen(false);
-                setOrgDropdownOpen(false);
-              }}
-              className={`flex w - 11 shrink - 0 items - center justify - center transition - colors ${ isLightAppearance ? "text-slate-500 hover:bg-slate-100 hover:text-slate-700" : "text-white/85 hover:bg-white/10 hover:text-white" } `}
-              aria-label="Search"
-              title="Search"
+              onClick={() => setSearchDropdownOpen((current) => !current)}
+              className="flex w-9 items-center justify-center border-r border-slate-200 text-slate-500 transition-colors hover:bg-[#0f5f6c] hover:text-white"
+              aria-label="Search scope"
+              title="Search scope"
             >
               <Search size={15} />
             </button>
-
             <button
               type="button"
-              onClick={() => {
-                setSearchDropdownOpen((current) => !current);
-                setQuickCreateOpen(false);
-                setOrgDropdownOpen(false);
-              }}
-              className={`flex w - 8 shrink - 0 items - center justify - center border - r transition - colors ${ isLightAppearance ? "border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600" : "border-white/10 text-white/70 hover:bg-white/10 hover:text-white" } `}
-              aria-label="Open search models"
-              title="Open search models"
+              onClick={() => setSearchDropdownOpen((current) => !current)}
+              className="flex w-7 items-center justify-center border-r border-slate-200 text-slate-400 transition-colors hover:bg-[#0f5f6c] hover:text-white"
+              aria-label="Open search options"
             >
               {searchDropdownOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </button>
-
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={`Search in ${ searchScope } ( /)`}
-              className={`min - w - 0 flex - 1 bg - transparent px - 3.5 py - 2.5 text - [13px] outline - none ${ isLightAppearance ? "text-slate-700 placeholder:text-slate-400" : "text-white/85 placeholder:text-white/60" } `}
+              placeholder={`Search in ${searchScope} ( / )`}
+              className="min-w-0 flex-1 bg-transparent px-3 text-[13px] outline-none placeholder:text-slate-400"
             />
           </div>
 
-                {searchDropdownOpen && (
-                  <div className="absolute left-0 top-full z-[120] mt-2 w-[300px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.16)]">
-                  <div className="max-h-[500px] overflow-y-auto py-2">
-                    {searchOptions.map((option) => (
-                      <button
-                        key={option.label}
-                        type="button"
-                        onMouseEnter={option.label === "Customers" ? handleCustomersPrefetch : undefined}
-                        onFocus={option.label === "Customers" ? handleCustomersPrefetch : undefined}
-                        onClick={() => handleSearchScopeChange(option)}
-                        className={`flex w - full items - center justify - between px - 4 py - 2 text - left text - sm hover: bg - slate - 100 ${
-    searchScope === option.label ? "bg-slate-100" : ""
-  } `}
-                      >
-                    <span className={searchScope === option.label ? "font-medium text-slate-900" : "text-slate-700"}>
+          {searchDropdownOpen && (
+            <div className="absolute left-0 top-full z-[120] mt-2 w-[300px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.16)]">
+              <div className="max-h-[340px] overflow-y-auto py-2">
+                {searchOptions.map((option) => (
+                  <button
+                    key={option.label}
+                    type="button"
+                    onMouseEnter={option.label === "Customers" ? handleCustomersPrefetch : undefined}
+                    onFocus={option.label === "Customers" ? handleCustomersPrefetch : undefined}
+                    onClick={() => handleSearchScopeChange(option)}
+                    className={`group flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors hover:bg-[#0f5f6c] hover:text-white ${
+                      searchScope === option.label ? "bg-[#d4eef0]" : ""
+                    }`}
+                  >
+                    <span className={searchScope === option.label ? "font-medium text-slate-900" : "text-slate-700 group-hover:text-white"}>
                       {option.label}
                     </span>
                     {searchScope === option.label ? <Check size={16} className="text-slate-700" /> : null}
@@ -348,7 +346,7 @@ export default function Header() {
           )}
         </form>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <div className="relative hidden md:block" ref={orgDropdownRef}>
             <button
               ref={orgButtonRef}
@@ -363,20 +361,15 @@ export default function Header() {
                   return next;
                 });
               }}
-              className={`flex h - 11 items - center gap - 1.5 rounded - [14px] px - 3.5 text - [13px] font - semibold transition - colors ${ isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15" } `}
+              className="inline-flex h-9 items-center gap-1 rounded-lg bg-[#0f5f6c] px-2.5 text-[12px] font-medium text-white shadow-sm transition-colors hover:bg-[#0f5f6c] hover:text-white"
               aria-label="Organizations"
             >
-              <span className="max-w-[120px] truncate">{orgLabel}</span>
-              {orgDropdownOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              <span className="max-w-[110px] truncate">{orgLabel}</span>
+              {orgDropdownOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </button>
 
             {orgDropdownOpen && (
-              <div
-                className="fixed inset-0 z-[120]"
-                style={{
-                  top: orgPanelStyle?.top ?? 0,
-                }}
-              >
+              <div className="fixed inset-0 z-[2000]" style={{ top: orgPanelStyle?.top ?? 0 }}>
                 <button
                   type="button"
                   aria-label="Close organizations overlay"
@@ -386,7 +379,7 @@ export default function Header() {
                 <div className="absolute right-0 w-[386px] overflow-visible">
                   <div
                     className="absolute -top-2 h-4 w-4 rotate-45 border-l border-t border-slate-200 bg-white shadow-[-1px_-1px_2px_rgba(15,23,42,0.02)]"
-                    style={{ left: `${ orgPanelStyle?.pointerLeft ?? 32 } px` }}
+                    style={{ left: `${orgPanelStyle?.pointerLeft ?? 32}px` }}
                   />
                   <div className="h-[calc(100vh-70px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_45px_rgba(15,23,42,0.18)]">
                     <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3.5">
@@ -447,12 +440,12 @@ export default function Header() {
                                 key={orgId}
                                 type="button"
                                 onClick={() => handleSwitchOrganization(org)}
-                                className={`w - full rounded - [18px] border px - 3 py - 3 text - left transition - colors ${
-    isActive ? "border-slate-300 bg-slate-50" : "border-transparent hover:bg-slate-50"
-  } `}
+                                className={`group w-full rounded-[18px] border px-3 py-3 text-left transition-colors ${
+                                  isActive ? "border-slate-300 bg-slate-50" : "border-transparent hover:bg-[#0f5f6c] hover:text-white"
+                                }`}
                               >
                                 <div className="flex items-start gap-3">
-                                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] border border-slate-200 bg-white text-slate-500">
+                                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] border border-slate-200 bg-slate-50 text-slate-500 group-hover:bg-white/15 group-hover:text-white">
                                     {org.icon ? (
                                       <span className="text-[17px] leading-none">{org.icon}</span>
                                     ) : org.logo ? (
@@ -468,17 +461,17 @@ export default function Header() {
 
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2">
-                                      <div className="truncate text-[13px] font-semibold text-slate-900">
+                                      <div className={`truncate text-[13px] font-semibold ${isActive ? "text-slate-900" : "text-slate-900 group-hover:text-white"}`}>
                                         {displayName}
                                       </div>
                                       {planName ? (
-                                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-600">
+                                        <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${isActive ? "bg-slate-100 text-slate-700" : "bg-slate-100 text-slate-600 group-hover:bg-white/15 group-hover:text-white"}`}>
                                           {planName}
                                         </span>
                                       ) : null}
                                     </div>
 
-                                    <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
+                                    <div className={`mt-1 flex items-center gap-2 text-[11px] ${isActive ? "text-slate-600" : "text-slate-500 group-hover:text-white/80"}`}>
                                       <span className="truncate">Organization ID: {orgId}</span>
                                       <button
                                         type="button"
@@ -486,17 +479,17 @@ export default function Header() {
                                           e.stopPropagation();
                                           void handleCopyOrgId(orgId);
                                         }}
-                                        className="text-slate-400 hover:text-slate-600"
+                                        className="text-slate-400 hover:text-white"
                                         aria-label="Copy organization ID"
                                       >
-                                        {copiedOrgId === orgId ? <Check size={12} className="text-green-600" /> : <Copy size={12} />}
+                                        {copiedOrgId === orgId ? <Check size={12} className="text-slate-700" /> : <Copy size={12} />}
                                       </button>
                                     </div>
                                   </div>
 
                                   <div className="flex shrink-0 items-center pt-0.5">
                                     {isActive ? (
-                                      <div className="grid h-6 w-6 place-items-center rounded-full bg-slate-700 text-white">
+                                      <div className="grid h-6 w-6 place-items-center rounded-full bg-slate-100 text-slate-700">
                                         <Check size={12} />
                                       </div>
                                     ) : (
@@ -517,47 +510,44 @@ export default function Header() {
           </div>
 
           <div className="relative" ref={quickCreateRef}>
-            <button
-              type="button"
+          <button
+            type="button"
               onClick={() => {
                 setQuickCreateOpen((current) => !current);
                 setOrgDropdownOpen(false);
+                setUserMenuOpen(false);
+                setSearchDropdownOpen(false);
               }}
-              className={`grid h - 11 w - 11 place - items - center rounded - [14px] transition - colors ${
-    isLightAppearance
-      ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-      : "text-white hover:bg-white/15"
-  } `}
-              style={!isLightAppearance ? { background: "linear-gradient(90deg, #0f5f6c 0%, #156372 100%)" } : undefined}
+              className="grid h-10 w-10 place-items-center rounded-lg bg-[#1a9b64] text-white shadow-sm transition-colors hover:bg-[#1a9b64]"
               aria-label="Quick Create"
+              aria-expanded={quickCreateOpen}
               title="Quick Create"
             >
-              <Plus size={17} className={isLightAppearance ? "text-slate-700" : "text-white"} />
+              <Plus size={18} />
             </button>
 
             {quickCreateOpen && (
-              <div className="absolute right-0 top-full z-[120] mt-2 w-[700px] rounded-xl border border-slate-200 bg-white p-4 shadow-[0_18px_40px_rgba(15,23,42,0.16)]">
-                <div className="grid grid-cols-5 gap-4">
+              <div className="absolute right-0 top-full z-[2100] mt-2 w-[700px] rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_20px_45px_rgba(15,23,42,0.18)]">
+                <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-5">
                   {Object.entries(quickCreateItems).map(([category, items]) => (
                     <div key={category} className="flex flex-col">
-                      <div className="mb-3 flex items-center gap-2 text-[12px] font-semibold uppercase text-slate-600">
+                      <div className="mb-3 flex items-center gap-2">
                         {category === "GENERAL" && <Grid3x3 size={16} className="text-slate-500" />}
                         {category === "INVENTORY" && <ShoppingCart size={16} className="text-slate-500" />}
                         {category === "SALES" && <ShoppingBag size={16} className="text-slate-500" />}
                         {category === "PURCHASES" && <ShoppingBag size={16} className="text-slate-500" />}
                         {category === "BANKING" && <Building2 size={16} className="text-slate-500" />}
-                        <span>{category}</span>
+                        <span className="text-xs font-semibold uppercase text-slate-600">{category}</span>
                       </div>
-
                       <div className="space-y-1">
                         {items.map((item) => (
                           <button
                             key={item.label}
                             type="button"
                             onClick={() => handleQuickCreateClick(item.path)}
-                            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                            className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-slate-700 transition-colors hover:bg-[#0f5f6c] hover:text-white"
                           >
-                            <Plus size={12} className="text-slate-400" />
+                            <Plus size={12} className="text-slate-400 group-hover:text-white" />
                             {item.label}
                           </button>
                         ))}
@@ -569,119 +559,86 @@ export default function Header() {
             )}
           </div>
 
+          <button
+            type="button"
+            onClick={() => {
+              setUserMenuOpen((current) => !current);
+              setQuickCreateOpen(false);
+              setOrgDropdownOpen(false);
+              setSearchDropdownOpen(false);
+            }}
+            className={actionButtonClass()}
+            aria-label="Team"
+            title="Team"
+          >
+            <Users size={17} />
+          </button>
+
+          <button
+            type="button"
+            className="relative grid h-10 w-10 place-items-center rounded-lg bg-[#0f5f6c] text-white shadow-sm transition-colors hover:bg-[#0f5f6c] hover:text-white"
+            aria-label="Notifications"
+            title="Notifications"
+          >
+            <Bell size={17} />
+            <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none text-white">
+              1
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate("/settings")}
+            className={actionButtonClass()}
+            aria-label="Settings"
+            title="Settings"
+          >
+            <Settings size={17} />
+          </button>
+
           <div className="relative" ref={userMenuRef}>
             <button
               type="button"
               onClick={() => {
-                setUserMenuOpen(!userMenuOpen);
+                setUserMenuOpen((current) => !current);
                 setQuickCreateOpen(false);
                 setOrgDropdownOpen(false);
+                setSearchDropdownOpen(false);
               }}
-              className={`grid h - 11 w - 11 place - items - center rounded - [14px] transition - colors ${
-    isLightAppearance
-      ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-      : "bg-white/10 text-white hover:bg-white/15"
-  } ${ userMenuOpen ? (isLightAppearance ? "bg-slate-100" : "bg-white/20") : "" } `}
+              className="grid h-10 w-10 place-items-center rounded-full bg-[#d97706] text-sm font-semibold text-white shadow-sm transition-colors"
               aria-label="User profile"
+              aria-expanded={userMenuOpen}
             >
-              <Users size={16} />
+              {(organization?.name || currentUser?.name || "W").charAt(0).toUpperCase()}
             </button>
 
             {userMenuOpen && (
-              <div
-                className="absolute right-0 top-full z-[120] mt-2 w-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-1 shadow-[0_20px_45px_rgba(15,23,42,0.18)]"
-              >
-                <div className="px-4 py-4 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-slate-900 text-white flex items-center justify-center text-sm font-semibold">
-                      {(organization?.name || currentUser?.name || "U").charAt(0).toUpperCase()}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-[13px] font-bold text-slate-900">
-                        {currentUser?.name || "System User"}
-                      </div>
-                      <div className="truncate text-[11px] text-slate-500 mt-0.5">
-                        {currentUser?.email || "No email provided"}
-                      </div>
-                    </div>
-                  </div>
+              <div className="absolute right-0 top-full z-[2100] mt-2 w-[250px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_45px_rgba(15,23,42,0.18)]">
+                <div className="border-b border-slate-200 px-4 py-3">
+                  <div className="text-sm font-semibold text-slate-900">{currentUser?.name || "User"}</div>
+                  <div className="mt-1 text-xs text-slate-500">{currentUser?.email || ""}</div>
                 </div>
 
-                <div className="py-1">
-                  <button
-                    onClick={() => {
-                      navigate("/settings/profile");
-                      setUserMenuOpen(false);
-                    }}
-                    className="flex w-full items-center gap-3 px-3.5 py-2.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50 rounded-xl transition-colors"
-                  >
-                    <User size={15} className="text-slate-400" />
-                    My Account
-                  </button>
-                  <button
-                    onClick={() => {
-                      navigate("/settings");
-                      setUserMenuOpen(false);
-                    }}
-                    className="flex w-full items-center gap-3 px-3.5 py-2.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50 rounded-xl transition-colors"
-                  >
-                    <Settings size={15} className="text-slate-400" />
-                    Settings
-                  </button>
-                  <div className="my-1 border-t border-slate-100 mx-2" />
-                  <button
-                    onClick={handleLogout}
-                    className="flex w-full items-center gap-3 px-3.5 py-2.5 text-[12px] font-bold text-red-600 hover:bg-red-50 rounded-xl transition-colors"
-                  >
-                    <LogOut size={15} />
-                    Sign Out
-                  </button>
-                </div>
+                <div className="my-2 border-t border-slate-200" />
+
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50"
+                >
+                  <LogOut size={16} />
+                  Sign Out
+                </button>
               </div>
             )}
           </div>
 
           <button
             type="button"
-            className={`grid h - 11 w - 11 place - items - center rounded - [14px] transition - colors ${ isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15" } `}
-            aria-label="Notifications"
-          >
-            <Bell size={16} />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate("/settings")}
-            className={`grid h - 11 w - 11 place - items - center rounded - [14px] transition - colors ${ isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15" } `}
-            aria-label="Settings"
-            title="Settings"
-          >
-            <Settings size={16} />
-          </button>
-
-          <button
-            type="button"
-            className={`grid h - 11 w - 11 place - items - center rounded - [14px] shadow - sm md:hidden ${ isLightAppearance ? "bg-white text-slate-700 border border-slate-200" : "text-white" } `}
-            style={!isLightAppearance ? { background: "linear-gradient(90deg, #0f5f6c 0%, #156372 100%)" } : undefined}
-            aria-label={orgName}
-          >
-            {organization?.logo ? (
-              <img
-                src={organization.logo}
-                alt={orgName}
-                className="h-full w-full rounded-full object-cover"
-              />
-            ) : (
-              <span className="text-[11px] font-semibold">{userInitial}</span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            className={`grid h - 11 w - 11 place - items - center rounded - [14px] transition - colors ${ isLightAppearance ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "bg-white/10 text-white hover:bg-white/15" } `}
+            className="grid h-10 w-10 place-items-center rounded-lg bg-[#0f5f6c] text-white shadow-sm transition-colors hover:bg-[#0f5f6c] hover:text-white"
             aria-label="App launcher"
           >
-            <Grid3x3 size={16} />
+            <Grid3x3 size={17} />
           </button>
         </div>
       </div>

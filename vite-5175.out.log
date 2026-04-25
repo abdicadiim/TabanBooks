@@ -1,0 +1,767 @@
+
+> taban-books-frontend@1.0.0 dev
+> vite --host 0.0.0.0 --port 5175
+
+
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m692[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5175[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://10.0.0.76:[1m5175[22m/[39m
+[2m9:58:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m9:58:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m9:58:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m9:58:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m9:58:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m9:58:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m9:58:49 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/AppRoutes.tsx, /src/tailwind.css[22m
+[2m10:16:09 AM[22m [36m[1m[vite][22m[39m changed tsconfig file detected: C:\Users\Taban-pc\Music\TabanBooks\taban-books\frontend\src\pages\sales\SalesReceipts\NewSalesReceipt\tsconfig.json - Clearing cache and forcing full-reload to ensure TypeScript is compiled with updated config values.
+[2m10:16:14 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/components/Sidebar.tsx[22m
+[2m10:16:15 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:15 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:15 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:15 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/reports/reportsModel.ts[22m
+[2m10:16:16 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:16:16 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/sidebar.tsx, /src/tailwind.css[22m
+[2m10:16:16 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/layout/TopBar.tsx[22m
+[2m10:16:29 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/routes/AppRoutes.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/BudgetDetail/BudgetDetail.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/BudgetDetail/BudgetDetail.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/BudgetDetail/BudgetVsActuals.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/chartOfAccounts/ChartOfAccountsAccountModal.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/chartOfAccounts/ChartOfAccountsDetailView.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/chartOfAccounts/ChartOfAccountsExportModals.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/chartOfAccounts/ChartOfAccountsFindAccountantsSidebar.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/chartOfAccounts/ChartOfAccountsListView.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/chartOfAccounts/chartOfAccountsPageConfig.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/chartOfAccounts/chartOfAccountsPageUtils.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/components/AccountantDirectorySidebar.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/components/NewAccountModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/features/accountant/CurrencyAdjustmentDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/features/accountant/CurrencyAdjustmentDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/features/accountant/currencyAdjustmentDetail/components/CurrencyAdjustmentActionBar.tsx, /src/features/accountant/currencyAdjustmentDetail/components/CurrencyAdjustmentSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/currencyAdjustmentDetail/components/CurrencyAdjustmentActionBar.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/currencyAdjustmentDetail/components/CurrencyAdjustmentOverview.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/currencyAdjustmentDetail/components/CurrencyAdjustmentSidebar.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/currencyAdjustmentDetail/components/CurrencyAdjustmentTopBar.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/JournalDetail/JournalDetail.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/features/accountant/manualJournals/ManualJournalFormSection.tsx, /src/features/accountant/ManualJournals.tsx, /src/features/accountant/manualJournals/ManualJournalEntriesTable.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/manualJournals/ManualJournalAttachmentsCard.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/manualJournals/ManualJournalEditorHeader.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/manualJournals/ManualJournalEntriesTable.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/manualJournals/ManualJournalFormSection.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/manualJournals/ManualJournalNewTaxModal.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/manualJournals/ManualJournalTemplateSidebar.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/manualJournals/types.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/features/accountant/ManualJournals.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/manualJournals/utils.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/features/accountant/manualJournalsList/ManualJournalTemplateModal.tsx, /src/features/accountant/manualJournalsList/ManualJournalExportModal.tsx, /src/features/accountant/ManualJournalsList.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/manualJournalsList/ManualJournalAdvancedSearchModal.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/manualJournalsList/ManualJournalExportModal.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/manualJournalsList/ManualJournalsListBulkActions.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/manualJournalsList/ManualJournalsListHeader.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/manualJournalsList/ManualJournalsListTable.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/manualJournalsList/ManualJournalTemplateModal.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/manualJournalsList/types.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/features/accountant/ManualJournalsList.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/AccountantDetail.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/features/accountant/transactionLocking/components/TransactionLockingFindAccountantsSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/accountantModel.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/AccountantPage.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/Budgets.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/features/accountant/NewBudget.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/BulkUpdate.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/ChartOfAccounts.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/chartOfAccountsConfig.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/chartOfAccountsTypes.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/chartOfAccountsUtils.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/features/accountant/CurrencyAdjustmentDetail.tsx, /src/features/accountant/CurrencyAdjustments.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/CurrencyAdjustmentDetail.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/CurrencyAdjustments.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/currencyAdjustmentTypes.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/currencyAdjustmentUtils.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/EditCurrencyAdjustment.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/exportUtils.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/ImportAppliedCustomerCredits.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/ImportAppliedCustomerCreditsMapFields.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/settings/AccountantSettings.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/settings/ChartOfAccountsCustomFields.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/settings/DefaultAccountTracking.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/settings/GeneralSettings.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/settings/JournalApprovals.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/settings/JournalCustomFields.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/settings/JournalValidationRules.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/features/accountant/TransactionLocking.tsx, /src/features/accountant/transactionLocking/components/TransactionLockingDashboard.tsx, /src/features/accountant/transactionLocking/components/TransactionLockModal.tsx, /src/features/accountant/transactionLocking/components/TransactionLockingUnlockSummaryModal.tsx, /src/features/accountant/transactionLocking/components/TransactionLockingSettingsModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/transactionLocking/types.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/features/accountant/TransactionLocking.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/features/accountant/transactionLocking/components/TransactionLockModal.tsx, /src/features/accountant/transactionLocking/components/TransactionLockingUnlockSummaryModal.tsx, /src/features/accountant/transactionLocking/components/TransactionLockingDashboard.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/transactionLocking/components/TransactionLockingDashboard.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/transactionLocking/components/TransactionLockingFindAccountantsSidebar.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/transactionLocking/components/TransactionLockingSettingsModal.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/transactionLocking/components/TransactionLockingUnlockSummaryModal.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/transactionLocking/components/TransactionLockModal.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/ImportAppliedCustomerCreditsPreview.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/ImportAppliedVendorCredits.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/ImportChartOfAccounts.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/ImportJournals.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/JournalTemplates.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/manualJournalConfig.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/manualJournalListUtils.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/ManualJournals.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/ManualJournalsList.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/manualJournalTypes.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/manualJournalUtils.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/NewBudget.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/NewCustomView.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/NewJournalTemplate.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/accountant/TransactionLocking.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/useChartOfAccountsData.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/useManualJournalLookups.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/accountant/useManualJournalsListData.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/moneyInOverlays/CreditNoteRefundSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/moneyInOverlays/CustomerAdvanceSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/moneyInOverlays/CustomerPaymentSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/moneyInOverlays/EmployeeReimbursementSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/moneyInOverlays/MoneyInAttachmentsField.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/moneyInOverlays/MoneyInEntrySidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/moneyInOverlays/MoneyInOverlayShell.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/moneyInOverlays/PaymentRefundSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/moneyInOverlays/TransferFromAnotherAccountSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/AccountDetailDashboardTab.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/AccountDetailMainContent.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/AccountDetailModalOverlays.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/AccountDetailMoneyInOverlays.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/AccountDetailMoneyOutOverlays.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/AccountDetailOverlays.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/AccountDetailTransactionsTab.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/helpers.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/moneyInOverlayDefaults.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/types.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/useAccountDetailController.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/moneyOutOverlays/CardPaymentSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/moneyOutOverlays/DepositToOtherAccountsSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/moneyOutOverlays/ExpenseSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/moneyOutOverlays/OwnerDrawingsSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/moneyOutOverlays/TransferSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/moneyOutOverlays/VendorAdvanceSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/accountDetail/moneyOutOverlays/VendorPaymentSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/bankingModel.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/bankingPage/AccountsTableCard.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/bankingPage/AllAccountsSection.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/bankingPage/BankingPageHeader.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/bankingPage/BankStatementsModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/bankingPage/CashInHandCard.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/bankingPage/CashInHandChartCard.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/bankingPage/constants.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/bankingPage/FindAccountModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/bankingPage/helpers.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/bankingPage/types.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/banking/bankingPage/useBankingPageController.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/documents/documentsModel.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/documents/DocumentsPageContent.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/documents/helpers.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/documents/types.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/documents/components/CloudPickerModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/documents/components/DocumentDetailPanel.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/documents/components/DocumentsSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/documents/components/DocumentsTable.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/documents/components/ExportDocumentsModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/documents/components/NewFolderModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/home/AccountWatchlistCard.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/home/BankCardsCard.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/home/CashFlowCard.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/home/HomeFooter.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/home/HomeHeader.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/home/IncomeExpenseCard.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/home/KpiRow.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/home/NeedAssistance.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/home/ProjectsCard.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/home/TopExpensesCard.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/home/components/AccountWatchlistCard.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/home/components/CashFlowChart.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/home/components/Dropdown.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/home/components/IncomeExpenseCard.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/home/components/TopExpensesCard.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/home/components/TotalPayablesCard.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/home/components/TotalReceivablesCard.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/adjustment-detail/AdjustmentDetailPanels.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/adjustment-detail/AdjustmentDocumentContent.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/adjustment-detail/types.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/adjustment-detail/utils.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/AdjustmentDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/ExportInventoryAdjustments.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/InventoryAdjustments.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/inventoryModel.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/inventory-adjustments/constants.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/inventory-adjustments/InventoryAdjustmentsListView.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/inventory-adjustments/InventoryAdjustmentsSearchModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/inventory-adjustments/InventoryAdjustmentsTableView.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/inventory-adjustments/SearchDatePicker.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/inventory-adjustments/TableRowSkeleton.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/inventory-adjustments/types.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/inventory-adjustments/useInventoryAdjustmentColumns.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/inventory-adjustments/useInventoryAdjustmentSearch.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/inventory-adjustments/utils.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/new-adjustment-form/AdjustmentFormActions.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/new-adjustment-form/AdjustmentFormFields.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/new-adjustment-form/AdjustmentItemsSection.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/new-adjustment-form/AdjustmentModals.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/new-adjustment-form/context.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/new-adjustment-form/types.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/inventory/new-adjustment-form/utils.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m changed tsconfig file detected: C:\Users\Taban-pc\Music\TabanBooks\taban-books\frontend\src\features\sales\SalesReceipts\NewSalesReceipt\tsconfig.json - Clearing cache and forcing full-reload to ensure TypeScript is compiled with updated config values.
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/components/modals/AdjustStock.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/components/modals/BulkUpdateModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/components/modals/ExportCurrentViewModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/components/modals/ExportItemsModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/components/modals/LockItemModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/components/modals/ManageUnitsModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/components/modals/OpeningStockModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/components/modals/ReorderPointModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/components/EditItemForm.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/components/ItemDetails.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/components/ItemSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/components/NewItemForm.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/AllItemsPage.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/ItemsList.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/itemsModel.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/import-items/constants.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/import-items/context.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/import-items/ImportItemsConfigureStep.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/import-items/ImportItemsHeader.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/import-items/ImportItemsMapFieldsStep.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/import-items/ImportItemsModals.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/import-items/ImportItemsPreviewStep.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/import-items/ImportItemsStepper.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/import-items/types.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/items/import-items/utils.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/notifications/NotificationPreferencesModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/bills/BillDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/bills/Bills.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/bills/ExportBills.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/bills/ImportBills.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/bills/ImportRecurringBills.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/bills/NewBill.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/bills/NewRecurringBill.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/bills/NewVendorModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/bills/RecurringBillDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/bills/RecurringBills.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/Vendor.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/expenses/ExpenseDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/expenses/Expenses.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/expenses/ExportExpenses.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/expenses/ExportRecurringExpenses.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/expenses/ImportExpenses.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/expenses/ImportRecurringExpenses.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/expenses/NewExpenseCustomView.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/expenses/NewRecurringExpense.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/expenses/RecordExpense.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/expenses/RecurringExpenseDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/expenses/RecurringExpenses.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/payments/ExportPayments.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/payments/ImportAppliedExcessPayments.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/payments/ImportPayments.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/payments/PaymentDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/payments/PaymentEmailView.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/payments/PaymentsMade.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/payments/RecordPayment.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/documents/UploadedDocuments.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/ExportPurchaseOrders.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/ImportPurchaseOrders.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/NewPurchaseOrder.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/PurchaseOrderDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/PurchaseOrderEmailView.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/PurchaseOrders.constants.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/PurchaseOrders.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/PurchaseOrders.utils.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/PurchaseOrdersCustomizeColumnsModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/PurchaseOrdersCustomViewModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/PurchaseOrdersHeader.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/PurchaseOrdersModals.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/PurchaseOrdersNotification.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/PurchaseOrdersSelectionBar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/PurchaseOrdersTable.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/SearchPurchaseOrdersModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/SendPurchaseOrderEmail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/receipts/ReceiptsInbox.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/shared/accountOptions.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/shared/activeFilters.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/shared/BulkUpdateModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/shared/DeleteConfirmationModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/shared/purchasesModel.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/shared/SearchItemsModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor-credits/ExportVendorCredits.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor-credits/ImportAppliedVendorCredits.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor-credits/ImportRefunds.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor-credits/ImportVendorCredits.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor-credits/NewVendorCredit.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor-credits/PrintPreviewModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor-credits/VendorCreditDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor-credits/vendorCreditPdf.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor-credits/VendorCredits.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor/ConfigurePaymentTermsModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor/ExportVendors.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor/ImportVendors.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor/NewVendor.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor/NewVendorCustomView.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor/PaymentTermsDropdown.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor/Vendor.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor/VendorDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/reports/components/ColumnsStep.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/reports/components/GeneralStep.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/reports/components/LayoutStep.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/reports/components/NewReport.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/reports/components/PreferencesStep.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/reports/components/ReportLayout.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/reports/components/ReportPreferences.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/reports/components/ReportWizardContext.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/reports/components/ReportWizardHeader.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/reports/components/ReportWizardShell.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/reports/components/ShowHideColumns.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/reports/components/WizardNav.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/reports/NewReport.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/reports/reportsModel.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/reports/ReportsPage.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/reports/pages/ReportDetailPage.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/features/reports/pages/ReportsPage.tsx, /src/tailwind.css[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNoteDetail/ApplyToInvoices.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNoteDetail/CreditNoteCommentsPanel.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNoteDetail/CreditNoteDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNoteDetail/CreditNotePreview.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/creditNotePdf.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/creditNoteQueries.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNotes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNotesCustomizeColumnsModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNotesRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNotes/CreditNoteDeleteModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNotes/creditNotePdf.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNotes/CreditNotes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNotes/CreditNotesCustomizeColumnsModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNotes/CreditNotesRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNotes/CreditNoteDetail/ApplyToInvoices.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNotes/CreditNoteDetail/CreditNoteCommentsPanel.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNotes/CreditNoteDetail/CreditNoteDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNotes/CreditNoteDetail/CreditNotePreview.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNotes/ImportCreditNotes/ImportCreditNotes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNotes/NewCreditNote/NewCreditNote.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/CreditNotes/SendCreditNoteEmail/SendCreditNoteEmail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/ImportCreditNotes/ImportCreditNotes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/NewCreditNote/NewCreditNote.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/CreditNotes/SendCreditNoteEmail/SendCreditNoteEmail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/salesModel.js[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/salesModel.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/layout/Header&sidebar/sidebar.tsx, /src/layout/Header&sidebar/Header.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerQueryWarmup.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/customerReportingTags.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/layout/Header&sidebar/sidebar.tsx, /src/layout/Header&sidebar/Header.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/Customers.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomersBulkUpdateModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomersPageContent.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomersRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomersSearchModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomersSecondaryModals.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/useCustomersPageController.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/useCustomersSWR.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerAddressModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerAttachmentsPopover.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerCommentsPanel.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerConsolidatedBillingModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerContactPersonModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDeleteModals.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDetailCalendar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/customerDetailConstants.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDetailHeader.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDetailMailsTab.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDetailModals.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDetailModalStack.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDetailMoreMenu.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDetailOverviewActivity.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDetailOverviewContent.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDetailOverviewSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDetailOverviewTab.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDetailPage.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDetailPurchasesTab.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDetailSidebar.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDetailStatementTab.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDetailTransactionsFooterSections.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerDetailTransactionsTab.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/customerDetailTypes.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerEmailIntegrationModals.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerLinkVendorModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerPortalAccessModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/CustomerReportingTagsModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/useCustomerDetailData.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/useCustomerDetailPageViewModel.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/CustomerDetail/SendEmailStatement/SendEmailStatement.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/ImportCustomers/ImportCustomers.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/NewCustomer/countriesData.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/NewCustomer/NewCustomer.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Customers/RequestReview/RequestReview.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/DebitNotes/NewDebitNote/NewDebitNote.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Invoices/invoiceQueries.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Invoices/Invoices.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Invoices/InvoicesRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Invoices/RecordPaymentModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Invoices/ImportInvoices/ImportInvoices.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Invoices/InvoiceDetail/InvoiceCommentsPanel.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Invoices/InvoiceDetail/InvoiceDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Invoices/NewInvoice/NewInvoice.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Invoices/SendInvoiceEmail/SendInvoiceEmail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/PaymentsReceived/FieldCustomization.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/PaymentsReceived/PaymentsReceived.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/PaymentsReceived/PaymentsReceivedRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/PaymentsReceived/ImportPayments/ImportPayments.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/PaymentsReceived/PaymentDetail/PaymentCommentsPanel.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/PaymentsReceived/PaymentDetail/PaymentDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/PaymentsReceived/RecordPayment/RecordPayment.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/PaymentsReceived/RecordPayment/test.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/PaymentsReceived/SendEmail/SendPaymentReceiptEmail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Product-Calalog/items/itemQueries.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/RecurringInvoices/exportUtils.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/RecurringInvoices/RecurringInvoices.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/RecurringInvoices/RecurringInvoicesRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/RecurringInvoices/ImportRecurringInvoices/ImportRecurringInvoices.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/RecurringInvoices/NewRecurringInvoice/NewRecurringInvoice.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/RecurringInvoices/RecurringInvoiceDetail/RecurringInvoiceDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Quotes/quoteQueries.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Quotes/QuoteQueryWarmup.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Quotes/Quotes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Quotes/QuotesRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Quotes/ImportQuotes/ImportQuotes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Quotes/NewQuote/NewQuote.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Quotes/QuoteDetail/QuoteCommentsPanel.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Quotes/QuoteDetail/QuoteDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Quotes/SendQuoteEmail/SendQuoteEmail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/RetainerInvoice/ApplyRetainersToInvoiceModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/RetainerInvoice/ImportRetainerInvoices.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/RetainerInvoice/Retailinvoicedetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/RetainerInvoice/RetainerInvoice.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/RetainerInvoice/RetainerInvoiceCommentsPanel.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/RetainerInvoice/retainerInvoiceQueries.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/RetainerInvoice/RetainerInvoiceRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/RetainerInvoice/SendEmail/SendRetainerEmail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/RetainerInvoice/NewRetailInvoice/NewRetailInvoice.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/SalesOrder/ActionDropdown.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/SalesOrder/salesOrderApi.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/SalesOrder/SalesOrderList.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/SalesOrder/ViewDropdown.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/SalesOrder/newPage/NewSalesOrder.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/Salespersons/NewSalesperson/NewSalesperson.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/SalesReceipts/SalesReceipts.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/SalesReceipts/SalesReceiptsCustomizeColumnsModal.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/SalesReceipts/salesReceiptsQueries.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/SalesReceipts/SalesReceiptsRoutes.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/SalesReceipts/ImportSalesReceipts/ImportSalesReceipts.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/SalesReceipts/NewSalesReceipt/NewSalesReceipt.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/SalesReceipts/NewSalesReceipt/types.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/SalesReceipts/SendEmail/SendSalesReceiptEmail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/SalesReceipts/SalesReceiptDetail/SalesReceiptCommentsPanel.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/SalesReceipts/SalesReceiptDetail/SalesReceiptDetail.tsx[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/shared/termPaymetn.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/subscriptions/subscriptionDraftUtils.ts[22m
+[2m10:16:40 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/sales/utils/importFileParser.ts[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/module-settings/accountant/detail/AccountantSettingsDetailPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/module-settings/accountant/list/AccountantSettingsListPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/module-settings/accountant/new/NewAccountantSettingsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/module-settings/items/detail/ItemsSettingsDetailPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/module-settings/items/list/ItemsSettingsListPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/module-settings/items/new/NewItemsSettingsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/module-settings/customers-vendors/detail/CustomersVendorsDetailPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/module-settings/customers-vendors/list/CustomersVendorsListPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/module-settings/customers-vendors/new/NewCustomersVendorsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/module-settings/projects/detail/ProjectsSettingsDetailPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/module-settings/projects/list/ProjectsSettingsListPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/module-settings/projects/new/NewProjectsSettingsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/module-settings/timesheet/list/TimesheetSettingsListPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/module-settings/timesheet/detail/TimesheetSettingsDetailPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/module-settings/timesheet/new/NewTimesheetSettingsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/AddAdditionalContactModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/BillsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/ConfigureFailurePreferencesModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/CreditNotesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/CustomerPortalPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/CustomModulesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/DeliveryNotesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/DisableFeedsModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/EmailNotificationsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/emailTemplateUtils.ts[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/ExpensesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/ExportTaxModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/InventoryAdjustmentsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/InvoicesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewAccountantCustomFieldPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewCustomApprovalPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewCustomersVendorsCustomFieldPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewCustomFieldPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewCustomFunctionModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewEmailAlertModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewEmailTemplateModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewFieldUpdateModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewInAppNotificationModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewInventoryAdjustmentsCustomFieldPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewItemsCustomFieldPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewProjectsCustomFieldPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewProjectsRelatedListPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewQuotesCustomFieldPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewQuotesRelatedListPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewScheduleModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewServerPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewTimesheetCustomFieldPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewTransactionNumberSeriesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewUserPageWrapper.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewWebhookModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewWebTabModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/NewWorkflowRuleModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/OnlinePaymentsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/PackingSlipsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/PaymentsMadePage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/PaymentsReceivedPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/PDFTemplatesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/PurchaseOrdersPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/QuotesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/RecurringBillsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/RecurringInvoicesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/SalesReceiptsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/SettingsLayout.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/ShowMailContentModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/SignatureSettingsModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/TemplateEditorPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/TransactionNumberSeriesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/VATPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/VendorCreditsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/VendorPortalPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/WebTabsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/automation/schedules/detail/ScheduleDetailPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/automation/schedules/list/SchedulesListPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/automation/schedules/new/NewSchedulePage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/automation/workflow-actions/detail/WorkflowActionDetailPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/automation/workflow-actions/list/WorkflowActionsListPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/automation/workflow-actions/new/NewWorkflowActionPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/automation/workflow-logs/detail/WorkflowLogDetailPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/automation/workflow-logs/list/WorkflowLogsListPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/automation/workflow-logs/new/NewWorkflowLogPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/automation/workflow-rules/detail/WorkflowExecutionCondition.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/automation/workflow-rules/detail/WorkflowRuleDetailPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/automation/workflow-rules/list/WorkflowRulesListPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/automation/workflow-rules/new/NewWorkflowRulePage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/customization/reporting-tags/CreateTagModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/customization/reporting-tags/NewReportingTagPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/customization/reporting-tags/ReportingTagDetailPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/customization/reporting-tags/ReportingTagsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/customization/reporting-tags/ReportingTagsRouter.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/customization/reporting-tags/SettingsReportingTagsWrapper.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/currencies/AddExchangeRateModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/currencies/CurrenciesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/currencies/CurrenciesRouter.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/currencies/CurrencyExchangeRatesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/currencies/EditCurrencyModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/currencies/ExportExchangeRatesModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/currencies/ExportExchangeRatesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/currencies/ImportExchangeRates.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/currencies/NewCurrencyModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/reminders/AutomatedReminderModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/reminders/EditReminderModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/reminders/PaymentExpectedInfoModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/reminders/RemindersPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/general/GeneralSettingsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/opening-balances/CreateAccountModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/opening-balances/ImportAccountsPayable.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/opening-balances/ImportAccountsReceivable.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/opening-balances/OpeningBalancesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/setup-configurations/opening-balances/OpeningBalancesRouter.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/organization/branding/BrandingPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/organization/locations/LocationsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/organization/locations/storage.ts[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/organization/locations/edit/EditLocationPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/organization/locations/new/AddLocationPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/organization/custom-domain/CustomDomainPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/organization/profile/ProfilePage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/organization/subscription/SubscriptionPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/taxes-compliance/TAX/TaxesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/taxes-compliance/TAX/import/TaxImportPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/taxes-compliance/TAX/bulk/TaxBulkPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/taxes-compliance/TAX/detail/TaxDetailPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/taxes-compliance/TAX/list/TaxListPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/taxes-compliance/TAX/tds/TDSRatesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/taxes-compliance/TAX/new/NewTaxGroupPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/taxes-compliance/TAX/new/NewTaxPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/taxes-compliance/tax-settings/TaxSettingsPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/users-roles/roles/RolesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/users-roles/roles/new/NewRolePage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/users-roles/user-preferences/UserPreferencesPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/users-roles/users/UsersPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/settings/organization-settings/users-roles/users/new/NewUserPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/ImportProjects.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/ImportProjectTasks.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/ImportTimesheets.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/NewCustomerForm.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/NewCustomViewForm.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/NewLogEntryForm.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/NewProjectForm.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/ProjectDetailPage.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/StartTimerModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/TimeEntryCommentsPanel.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/timeTrackingModel.ts[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/routes/AppRoutes.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/TimeTrackingProject.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/WeeklyTimeLog.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/aprovals/Approvals.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/aprovals/aptouvals.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/aprovals/NewApproval/NewApprovalFom.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/components/ProjectsCustomizeColumnsModal.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/CustomerApproval/CustomerApproval.tsx[22m
+[2m10:16:41 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/timeTracking/CustomerApproval/NewCustomerApproval.tsx[22m
+[2m10:18:59 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:19:14 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:19:17 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:22:14 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:22:17 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:22:21 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:23:09 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:28:53 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:29:45 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:40:49 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:40:54 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:44:05 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:44:13 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:45:35 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:45:42 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:47:17 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:47:20 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:47:59 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:48:59 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:50:32 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:51:54 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:54:38 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:57:23 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m10:57:39 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m11:01:14 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m11:02:31 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m11:05:21 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m11:05:35 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m11:07:04 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m11:09:23 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m11:30:07 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/layout/Header&sidebar/Header.tsx, /src/tailwind.css[22m
+[2m11:33:09 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/payments/PaymentDetail.tsx[22m
+[2m11:33:09 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/payments/PaymentsMade.tsx[22m
+[2m11:33:09 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/payments/RecordPayment.tsx[22m
+[2m11:33:09 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/NewPurchaseOrder.tsx[22m
+[2m11:33:09 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/PurchaseOrderDetail.tsx[22m
+[2m11:33:09 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/PurchaseOrders.tsx[22m
+[2m11:33:09 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/PurchaseOrdersSelectionBar.tsx[22m
+[2m11:33:09 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/PurchaseOrdersTable.tsx[22m
+[2m11:33:09 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor-credits/NewVendorCredit.tsx[22m
+[2m11:33:09 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor-credits/VendorCredits.tsx[22m
+[2m11:33:09 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor/NewVendor.tsx[22m
+[2m11:33:10 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor/Vendor.tsx[22m
+[2m11:33:10 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor/VendorDetail.tsx[22m
+[2m11:33:10 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/hooks/useItemSelect.ts[22m
+[2m11:35:55 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/purchase-orders/NewPurchaseOrder.tsx[22m
+[2m11:35:55 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/features/purchases/vendor-credits/NewVendorCredit.tsx[22m
+[2m11:42:09 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/lib/timeTracking/timerSync.ts[22m
+[2m11:42:29 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/context/AppBootstrapContext.tsx[22m
+[2m11:42:56 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/lib/timeTracking/timerSync.ts[22m
+[2m11:43:08 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/lib/timeTracking/timerSync.ts[22m
+[2m11:44:16 AM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/lib/timeTracking/timerSync.ts[22m
+[2m11:47:36 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/App.tsx, /src/lib/settings/SettingsContext.tsx, /src/context/AppBootstrapContext.tsx, /src/routes/AppRoutes.tsx, /src/components/PermissionRoute.tsx, /src/layout/Header&sidebar/Header.tsx, /src/components/ReportsSidebar.tsx[22m
+[2m11:47:44 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/App.tsx, /src/lib/settings/SettingsContext.tsx, /src/context/AppBootstrapContext.tsx, /src/routes/AppRoutes.tsx, /src/components/PermissionRoute.tsx, /src/layout/Header&sidebar/Header.tsx, /src/components/ReportsSidebar.tsx[22m
+[2m11:48:22 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/App.tsx, /src/lib/settings/SettingsContext.tsx, /src/context/AppBootstrapContext.tsx, /src/routes/AppRoutes.tsx, /src/components/PermissionRoute.tsx, /src/layout/Header&sidebar/Header.tsx, /src/components/ReportsSidebar.tsx[22m
+[2m11:48:27 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/App.tsx, /src/lib/settings/SettingsContext.tsx, /src/context/AppBootstrapContext.tsx, /src/routes/AppRoutes.tsx, /src/components/PermissionRoute.tsx, /src/layout/Header&sidebar/Header.tsx, /src/components/ReportsSidebar.tsx[22m
+[2m11:48:37 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/App.tsx, /src/lib/settings/SettingsContext.tsx, /src/context/AppBootstrapContext.tsx, /src/routes/AppRoutes.tsx, /src/components/PermissionRoute.tsx, /src/layout/Header&sidebar/Header.tsx, /src/components/ReportsSidebar.tsx[22m
+[2m11:48:57 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/context/AppBootstrapContext.tsx[22m
+[2m11:49:05 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/context/AppBootstrapContext.tsx, /src/tailwind.css[22m
+[2m11:49:11 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/context/AppBootstrapContext.tsx[22m
+[2m11:49:49 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/context/AppBootstrapContext.tsx[22m
+[2m11:49:58 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/App.tsx, /src/lib/settings/SettingsContext.tsx, /src/context/AppBootstrapContext.tsx, /src/routes/AppRoutes.tsx, /src/components/PermissionRoute.tsx, /src/layout/Header&sidebar/Header.tsx, /src/components/ReportsSidebar.tsx[22m
+[2m11:54:02 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/App.tsx, /src/lib/settings/SettingsContext.tsx, /src/context/AppBootstrapContext.tsx, /src/routes/AppRoutes.tsx, /src/components/PermissionRoute.tsx, /src/layout/Header&sidebar/Header.tsx, /src/components/ReportsSidebar.tsx[22m
+[2m11:59:14 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/tailwind.css, /src/App.tsx, /src/lib/settings/SettingsContext.tsx, /src/context/AppBootstrapContext.tsx, /src/routes/AppRoutes.tsx, /src/components/PermissionRoute.tsx, /src/layout/Header&sidebar/Header.tsx, /src/components/ReportsSidebar.tsx[22m

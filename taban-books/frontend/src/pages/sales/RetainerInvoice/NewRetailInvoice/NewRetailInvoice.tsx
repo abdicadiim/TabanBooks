@@ -1,0 +1,2131 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { Search, X, Plus, ChevronDown, ChevronUp, Settings, Info, PlusCircle, FileText, MoreVertical } from "lucide-react";
+import { toast } from "react-hot-toast";
+import { getCustomers, getRetainerInvoiceById, saveRetainerInvoice, updateRetainerInvoice, buildTaxOptionGroups, taxLabel, isTaxActive, normalizeCreatedTaxPayload } from "../../salesModel";
+import { customersAPI, retainerInvoicesAPI, projectsAPI, reportingTagsAPI, taxesAPI, transactionNumberSeriesAPI } from "../../../../services/api";
+import { useOrganizationBranding } from "../../../../hooks/useOrganizationBranding";
+import NewTaxModal from "../../../../components/modals/NewTaxModal";
+
+type TaxOption = { id: string; name: string; rate: number; [key: string]: any };
+type ProjectOption = { id: string; name: string; customer?: string; status?: string };
+type ReportingTag = {
+  id: string;
+  name: string;
+  status?: string;
+  required?: boolean;
+  mandatory?: boolean;
+  options?: any[];
+  tagOptions?: any[];
+};
+type LineRow = {
+  id: number;
+  description: string;
+  taxId: string;
+  amount: number;
+};
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const LS_LOCATIONS_ENABLED_KEY = "taban_locations_enabled";
+const LS_LOCATIONS_CACHE_KEY = "taban_locations_cache";
+
+export default function NewRetailInvoice() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { id } = useParams();
+  const { accentColor } = useOrganizationBranding();
+  const isEditMode = Boolean(id);
+
+  const [loading, setLoading] = useState(false);
+  const [savingMode, setSavingMode] = useState<"draft" | "sent" | null>(null);
+
+  const [invoiceNumber, setInvoiceNumber] = useState(() =>
+    transactionNumberSeriesAPI.getCachedNextNumber({
+      module: "Retainer Invoice",
+      locationName: "Head Office",
+    })
+  );
+  const [isRetainerNumberModalOpen, setIsRetainerNumberModalOpen] = useState(false);
+  const [retainerNumberMode, setRetainerNumberMode] = useState<"auto" | "manual">("auto");
+  const [retainerPrefix, setRetainerPrefix] = useState("");
+  const [retainerNextNumber, setRetainerNextNumber] = useState("");
+  const RETAINER_SELECTED_VIEW_STORAGE_KEY = "taban_retainer_selected_view_v1";
+  const ensureRetainerListAllView = () => {
+    try {
+      localStorage.setItem(RETAINER_SELECTED_VIEW_STORAGE_KEY, "all");
+    } catch {
+      // ignore local storage errors
+    }
+  };
+  const [customerId, setCustomerId] = useState("");
+  const [selectedLocation, setSelectedLocation] = useState("Head Office");
+  const [reference, setReference] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState(todayISO());
+  const [projectId, setProjectId] = useState("");
+  const [xcv, setXcv] = useState("None");
+  const [customerNotes, setCustomerNotes] = useState("");
+  const [terms, setTerms] = useState("");
+
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [taxes, setTaxes] = useState<TaxOption[]>([]);
+  const [openTaxDropdownId, setOpenTaxDropdownId] = useState<number | null>(null);
+  const [taxSearches, setTaxSearches] = useState<Record<string, string>>({});
+  const [isNewTaxModalOpen, setIsNewTaxModalOpen] = useState(false);
+  const [newTaxTargetRowId, setNewTaxTargetRowId] = useState<number | null>(null);
+  const [availableReportingTags, setAvailableReportingTags] = useState<ReportingTag[]>([]);
+  const [reportingTagOptionsById, setReportingTagOptionsById] = useState<Record<string, string[]>>({});
+  const [loadingReportingTagId, setLoadingReportingTagId] = useState<string | null>(null);
+  const [reportingTagSelections, setReportingTagSelections] = useState<Record<string, string>>({});
+  const [openReportingTagId, setOpenReportingTagId] = useState<string | null>(null);
+  const [reportingTagSearch, setReportingTagSearch] = useState("");
+  const [isLocationFeatureEnabled, setIsLocationFeatureEnabled] = useState(false);
+  const [locationOptions, setLocationOptions] = useState<string[]>(["Head Office"]);
+  const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [isNewCustomerQuickActionOpen, setIsNewCustomerQuickActionOpen] = useState(false);
+  const [isSavingQuickCustomer, setIsSavingQuickCustomer] = useState(false);
+  const [isQuickCustomerMoreDetailsOpen, setIsQuickCustomerMoreDetailsOpen] = useState(false);
+  const [quickCustomerFiles, setQuickCustomerFiles] = useState<File[]>([]);
+  const [quickCustomerTab, setQuickCustomerTab] = useState<"otherDetails" | "address" | "customFields" | "reportingTags" | "remarks">("otherDetails");
+
+  useEffect(() => {
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && !target.closest("[data-retainer-tax-dropdown='true']")) {
+        setOpenTaxDropdownId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+  const [quickCustomerForm, setQuickCustomerForm] = useState({
+    customerType: "business",
+    salutation: "",
+    firstName: "",
+    lastName: "",
+    companyName: "",
+    displayName: "",
+    email: "",
+    customerNumber: "CUS-00001",
+    workCountryCode: "+213",
+    workPhone: "",
+    mobileCountryCode: "+213",
+    mobile: "",
+    language: "English",
+    taxRate: "",
+    companyId: "",
+    currency: "AMD - Armenian Dram",
+    paymentTerms: "Due on Receipt",
+    priceList: "",
+    enablePortal: false,
+    websiteUrl: "",
+    department: "",
+    designation: "",
+    xHandle: "",
+    skype: "",
+    facebook: "",
+    notes: "",
+    billingAttention: "",
+    billingCountry: "",
+    billingStreet1: "",
+    billingStreet2: "",
+    billingCity: "",
+    billingState: "",
+    billingZipCode: "",
+    billingPhone: "",
+    billingFax: "",
+    shippingAttention: "",
+    shippingCountry: "",
+    shippingStreet1: "",
+    shippingStreet2: "",
+    shippingCity: "",
+    shippingState: "",
+    shippingZipCode: "",
+    shippingPhone: "",
+    shippingFax: "",
+    tagSc: "None",
+    tagWsq: "None",
+  });
+
+  const customerDropdownRef = useRef<HTMLDivElement | null>(null);
+  const quickCustomerFileInputRef = useRef<HTMLInputElement | null>(null);
+  const prefillFromProjectRef = useRef(false);
+
+  const [rows, setRows] = useState<LineRow[]>([
+    { id: Date.now(), description: "", taxId: "", amount: 0 },
+  ]);
+
+  const extractRetainerDigits = (value: any) => {
+    const raw = String(value || "").trim();
+    const matches = raw.match(/(\d+)\s*$/);
+    return matches ? matches[1] : "";
+  };
+
+  const deriveRetainerPrefix = (value: any, fallbackPrefix = "") => {
+    const raw = String(value || "").trim();
+    const match = raw.match(/^(.*?)(\d+)\s*$/);
+    if (match && String(match[1] || "").trim()) return String(match[1]);
+    return fallbackPrefix;
+  };
+
+  const buildRetainerNumber = (prefixValue: any, numberValue: any) => {
+    const safePrefix = String(prefixValue || "").trim();
+    const rawDigits = extractRetainerDigits(numberValue);
+    if (!safePrefix || !rawDigits) return "";
+    return `${safePrefix}${rawDigits.padStart(5, "0")}`;
+  };
+
+  const resolveRetainerInvoiceNumber = async () => {
+    const currentInvoiceNumber = String(invoiceNumber || "").trim();
+    if (retainerNumberMode === "manual") {
+      return currentInvoiceNumber;
+    }
+
+    try {
+      const response: any = await transactionNumberSeriesAPI.getNextNumber({
+        module: "Retainer Invoice",
+        locationName: selectedLocation,
+      });
+      const nextNumber = String(
+        response?.data?.nextNumber || response?.data?.number || response?.nextNumber || response?.number || ""
+      ).trim();
+      if (nextNumber) {
+        setInvoiceNumber(nextNumber);
+        setRetainerPrefix(deriveRetainerPrefix(nextNumber));
+        setRetainerNextNumber(extractRetainerDigits(nextNumber) || "");
+        return nextNumber;
+      }
+    } catch (error) {
+      console.error("Error reserving retainer invoice number:", error);
+    }
+
+    return currentInvoiceNumber;
+  };
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const nextNumberPromise = transactionNumberSeriesAPI.getNextNumber({
+          module: "Retainer Invoice",
+          locationName: selectedLocation,
+          reserve: false
+        }).catch(() => null);
+        const customersPromise = getCustomers().catch(() => []);
+        const taxesPromise = taxesAPI.getForTransactions().catch(() => null);
+        const projectsPromise = projectsAPI.getAll({ limit: 1000 }).catch(() => ({ data: [] }));
+        const reportingTagsPromise = reportingTagsAPI.getAll().catch(() => ({ data: [] }));
+        const editInvoicePromise = isEditMode && id ? getRetainerInvoiceById(id).catch(() => null) : Promise.resolve(null);
+
+        nextNumberPromise.then((nextNumResp) => {
+          const nextNumber =
+            nextNumResp?.data?.nextNumber || nextNumResp?.nextNumber || nextNumResp?.data?.invoiceNumber;
+          if (!isEditMode && nextNumber && typeof nextNumber === "string") {
+            setInvoiceNumber(nextNumber);
+            setRetainerPrefix(deriveRetainerPrefix(nextNumber));
+            setRetainerNextNumber(extractRetainerDigits(nextNumber) || "");
+          }
+        });
+
+        const custs = await customersPromise;
+        const normalizedCustomers = Array.isArray(custs) ? custs : [];
+        setCustomers(normalizedCustomers);
+
+        const [taxResp, projectResp, reportingTagsResp, editInvoiceResp] = await Promise.all([
+          taxesPromise,
+          projectsPromise,
+          reportingTagsPromise,
+          editInvoicePromise,
+        ]);
+
+        const fallbackTaxesResp =
+          Array.isArray((taxResp as any)?.data) && (taxResp as any).data.length > 0
+            ? null
+            : await taxesAPI.getAll({ limit: 10000 }).catch(() => ({ data: [] }));
+
+        const taxSource = Array.isArray((taxResp as any)?.data)
+          ? (taxResp as any).data
+          : Array.isArray((taxResp as any)?.taxes)
+          ? (taxResp as any).taxes
+          : Array.isArray((fallbackTaxesResp as any)?.data)
+          ? (fallbackTaxesResp as any).data
+          : Array.isArray((fallbackTaxesResp as any)?.taxes)
+          ? (fallbackTaxesResp as any).taxes
+          : [];
+        const apiTaxes = taxSource
+          .map((t: any) => ({
+            ...t,
+            id: String(t._id || t.id || t.taxId || ""),
+            name: String(t.name || t.taxName || t.displayName || "Tax"),
+            rate: Number(t.rate ?? t.taxRate ?? t.percentage ?? t.taxPercentage ?? 0),
+          }))
+          .filter((t: TaxOption) => t.id);
+
+        const combined = apiTaxes
+          .filter((t: TaxOption) => t.id)
+          .filter((t: TaxOption) => isTaxActive(t))
+          .filter(
+            (t: TaxOption, index: number, list: TaxOption[]) =>
+              list.findIndex((row) => row.id === t.id) === index
+          );
+
+        setTaxes(combined);
+
+        const projectSource = Array.isArray((projectResp as any)?.data)
+          ? (projectResp as any).data
+          : Array.isArray((projectResp as any)?.projects)
+          ? (projectResp as any).projects
+          : [];
+        const projectList = projectSource
+          .map((p: any) => ({
+            id: String(p._id || p.id),
+            name: String(p.projectName || p.name || "Project"),
+            customer: String(
+              p.customer?._id ||
+                p.customer?.id ||
+                p.customerId ||
+                p.customer_id ||
+                p.customer ||
+                ""
+            ),
+            status: String(p.status || "").toLowerCase(),
+          }))
+          .filter((p: ProjectOption) => p.id);
+        setProjects(projectList);
+
+        const reportingSource = Array.isArray((reportingTagsResp as any)?.data)
+          ? (reportingTagsResp as any).data
+          : Array.isArray((reportingTagsResp as any)?.reportingTags)
+          ? (reportingTagsResp as any).reportingTags
+          : [];
+        const tags = reportingSource
+          .map((tag: any) => ({
+            ...tag,
+            id: String(tag._id || tag.id),
+            name: String(
+              tag.label ||
+                tag.displayLabel ||
+                tag.display_name ||
+                tag.tagLabel ||
+                tag.tag_name ||
+                tag.tagName ||
+                tag.name ||
+                tag.displayName ||
+                ""
+            ).trim(),
+            status: String(tag.status || "").toLowerCase(),
+          }))
+          .filter((tag: ReportingTag) => tag.id && tag.name)
+          .filter((tag: ReportingTag) => tag.status !== "inactive");
+        setAvailableReportingTags(tags);
+        setReportingTagSelections((prev) => {
+          const next: Record<string, string> = {};
+          tags.forEach((tag: ReportingTag) => {
+            next[tag.id] = prev[tag.id] || "None";
+          });
+          return next;
+        });
+
+        if (isEditMode && editInvoiceResp) {
+          const existing: any = editInvoiceResp;
+          const taxList = combined;
+          const selectedCustomerId = String(
+            existing?.customer?._id || existing?.customer?.id || existing?.customerId || existing?.customer || ""
+          );
+
+          setInvoiceNumber(String(existing?.invoiceNumber || ""));
+          setRetainerPrefix(deriveRetainerPrefix(existing?.invoiceNumber));
+          setRetainerNextNumber(extractRetainerDigits(existing?.invoiceNumber) || "");
+          setCustomerId(selectedCustomerId);
+          setSelectedLocation(String(existing?.location || existing?.selectedLocation || "Head Office"));
+          setReference(String(existing?.orderNumber || existing?.reference || ""));
+          setInvoiceDate(
+            String(existing?.invoiceDate || existing?.date || "").slice(0, 10) || todayISO()
+          );
+          const existingProjectId = String(
+            existing?.project?._id || existing?.project?.id || existing?.projectId || existing?.project || ""
+          );
+          const existingProjectName = String(
+            existing?.project?.projectName ||
+              existing?.project?.name ||
+              existing?.projectName ||
+              existing?.project ||
+              ""
+          ).trim();
+          const resolvedProjectId =
+            existingProjectId ||
+            (existingProjectName
+              ? String(
+                  projectList.find(
+                    (p) => String(p.name).trim().toLowerCase() === existingProjectName.toLowerCase()
+                  )?.id || ""
+                )
+              : "");
+          setProjectId(resolvedProjectId);
+          setCustomerNotes(String(existing?.notes || existing?.customerNotes || ""));
+          setTerms(String(existing?.terms || existing?.termsAndConditions || ""));
+
+          const itemRows = Array.isArray(existing?.items) ? existing.items : [];
+          const resolveTaxId = (item: any) => {
+            const directId = String(
+              item?.taxId || item?.tax_id || item?.tax?._id || item?.tax?.id || item?.tax || ""
+            ).trim();
+            if (directId) return directId;
+
+            const name = String(item?.taxName || item?.tax_name || item?.tax?.name || item?.tax?.taxName || "").trim();
+            const rate = Number(item?.taxRate ?? item?.rate ?? item?.taxPercentage ?? item?.percentage ?? 0);
+            const byName = name ? taxList.find((t: TaxOption) => String(t.name).trim() === name) : undefined;
+            if (byName) return byName.id;
+            const byRate = Number.isFinite(rate)
+              ? taxList.find((t: TaxOption) => Number(t.rate) === rate)
+              : undefined;
+            return byRate?.id || "";
+          };
+          const mappedRows: LineRow[] = itemRows.length
+            ? itemRows.map((item: any, index: number) => {
+                const amountFromPayload =
+                  Number(item?.unitPrice ?? item?.amount ?? 0) ||
+                  Number(item?.total ?? 0) ||
+                  0;
+                return {
+                  id: Date.now() + index,
+                  description: String(item?.description || item?.name || ""),
+                  taxId: resolveTaxId(item),
+                  amount: amountFromPayload,
+                };
+              })
+            : [{ id: Date.now(), description: "", taxId: "", amount: 0 }];
+          setRows(mappedRows);
+
+          const existingReportingTags = Array.isArray(existing?.reportingTags)
+            ? existing.reportingTags
+            : Array.isArray(existing?.reportingTag)
+            ? existing.reportingTag
+            : Array.isArray(existing?.tags)
+            ? existing.tags
+            : [];
+          if (existingReportingTags.length > 0) {
+            setReportingTagSelections((prev) => {
+              const next = { ...prev };
+              existingReportingTags.forEach((tagEntry: any) => {
+                const tagId = String(tagEntry?.tagId || tagEntry?.id || "");
+                const value = String(tagEntry?.value || tagEntry?.option || "None");
+                if (tagId) next[tagId] = value;
+              });
+              return next;
+            });
+          }
+
+          if (selectedCustomerId) {
+            await loadProjectsForCustomer(selectedCustomerId);
+          }
+          if (existingProjectId && !projectList.some((p) => p.id === existingProjectId)) {
+            const projectName = String(
+              existing?.project?.projectName || existing?.project?.name || existing?.projectName || existing?.project || "Project"
+            );
+            setProjects((prev) => [
+              { id: existingProjectId, name: projectName, customer: selectedCustomerId, status: "active" },
+              ...prev,
+            ]);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading retail invoice page data:", error);
+      }
+    };
+
+    loadData();
+  }, [id, isEditMode]);
+
+  const handleTaxCreatedFromModal = async (payload: any) => {
+    const normalizedInput = normalizeCreatedTaxPayload(payload);
+    const inputName = normalizedInput.name;
+    const inputRate = normalizedInput.rate;
+    const inputIsCompound = normalizedInput.isCompound;
+
+    if (!inputName) {
+      setIsNewTaxModalOpen(false);
+      setNewTaxTargetRowId(null);
+      return;
+    }
+
+    let createdTax = normalizedInput.raw;
+    try {
+      const response: any = await taxesAPI.create({
+        name: inputName,
+        rate: Number.isFinite(inputRate) ? inputRate : 0,
+        isActive: true,
+        type: "both",
+        isCompound: inputIsCompound,
+      });
+      createdTax = response?.data || response || createdTax;
+    } catch (error) {
+      console.error("Error creating tax in database:", error);
+      toast.error("Failed to create tax");
+      return;
+    }
+
+    const option: any = {
+      ...createdTax,
+      id: createdTax?._id || createdTax?.id || inputName,
+      _id: createdTax?._id || createdTax?.id || inputName,
+      name: createdTax?.name || inputName,
+      rate: Number(createdTax?.rate ?? inputRate) || 0,
+      isActive: createdTax?.isActive !== false && createdTax?.is_active !== false,
+      isCompound: createdTax?.isCompound === true || createdTax?.is_compound === true,
+      type: createdTax?.type || "tax",
+    };
+
+    setTaxes((prev) => {
+      const exists = prev.some((tax) => String(tax.id || tax._id) === String(option.id || option._id));
+      return exists ? prev : [option, ...prev];
+    });
+
+    if (newTaxTargetRowId !== null && newTaxTargetRowId !== undefined) {
+      setRow(newTaxTargetRowId, { taxId: String(option.id || option._id || "") });
+    }
+
+    setIsNewTaxModalOpen(false);
+    setNewTaxTargetRowId(null);
+  };
+
+  useEffect(() => {
+    const loadLocationSettings = () => {
+      try {
+        const enabled = localStorage.getItem(LS_LOCATIONS_ENABLED_KEY) === "true";
+        setIsLocationFeatureEnabled(enabled);
+
+        const raw = localStorage.getItem(LS_LOCATIONS_CACHE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        const names = Array.isArray(parsed)
+          ? parsed
+              .map((row: any) =>
+                String(
+                  row?.name ||
+                    row?.locationName ||
+                    row?.displayName ||
+                    row?.location?.name ||
+                    ""
+                ).trim()
+              )
+              .filter((name: string) => name.length > 0)
+          : [];
+        const uniqueNames = Array.from(new Set(names));
+        const nextOptions = uniqueNames.length > 0 ? uniqueNames : ["Head Office"];
+        setLocationOptions(nextOptions);
+        setSelectedLocation((prev) => (nextOptions.includes(prev) ? prev : nextOptions[0]));
+      } catch {
+        setIsLocationFeatureEnabled(false);
+        setLocationOptions(["Head Office"]);
+        setSelectedLocation("Head Office");
+      }
+    };
+
+    loadLocationSettings();
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === LS_LOCATIONS_ENABLED_KEY || event.key === LS_LOCATIONS_CACHE_KEY) {
+        loadLocationSettings();
+      }
+    };
+    const onFocus = () => loadLocationSettings();
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
+
+  const selectedCustomer = useMemo(
+    () => customers.find((c) => String(c._id || c.id) === customerId),
+    [customers, customerId]
+  );
+
+  const isCustomerActive = (customer: any) => {
+    const status = String(customer?.status || "").toLowerCase();
+    if (status) {
+      return !["inactive", "disabled", "archived"].includes(status);
+    }
+    if (typeof customer?.isActive === "boolean") {
+      return customer.isActive;
+    }
+    return true;
+  };
+
+  const filteredCustomers = useMemo(() => {
+    const term = customerSearch.trim().toLowerCase();
+    const activeCustomers = customers.filter((customer: any) => isCustomerActive(customer));
+    if (!term) return activeCustomers;
+    return activeCustomers.filter((customer: any) => {
+      const name = String(customer.displayName || customer.name || customer.companyName || "").toLowerCase();
+      const email = String(customer.email || "").toLowerCase();
+      return name.includes(term) || email.includes(term);
+    });
+  }, [customers, customerSearch]);
+
+  const customerProjects = useMemo(() => {
+    if (!customerId) return [] as ProjectOption[];
+    return projects.filter((p) => {
+      const status = String(p.status || "").toLowerCase();
+      const isActive = !status || !["inactive", "archived", "closed"].includes(status);
+      return isActive && String(p.customer || "") === String(customerId);
+    });
+  }, [projects, customerId]);
+
+  useEffect(() => {
+    const onDocClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (customerDropdownRef.current && !customerDropdownRef.current.contains(target)) {
+        setIsCustomerDropdownOpen(false);
+      }
+      const element = target as HTMLElement;
+      if (element && !element.closest("[data-rt-dropdown='true']")) {
+        setOpenReportingTagId(null);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const taxById = useMemo(() => {
+    const map = new Map<string, TaxOption>();
+    taxes.forEach((t) => map.set(t.id, t));
+    return map;
+  }, [taxes]);
+
+  const subtotal = useMemo(
+    () => rows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0),
+    [rows]
+  );
+
+  const totalTax = useMemo(
+    () =>
+      rows.reduce((sum, r) => {
+        const rate = Number(taxById.get(r.taxId)?.rate || 0);
+        const amount = Number(r.amount) || 0;
+        if (!rate || amount <= 0) return sum;
+        return sum + amount * (rate / 100);
+      }, 0),
+    [rows, taxById]
+  );
+
+  const total = useMemo(() => subtotal + totalTax, [subtotal, totalTax]);
+
+  const taxBreakdown = useMemo(() => {
+    const map = new Map<string, { id: string; label: string; amount: number }>();
+    rows.forEach((r) => {
+      const taxId = String(r.taxId || "");
+      if (!taxId) return;
+      const tax = taxById.get(taxId);
+      if (!tax) return;
+      const amount = Number(r.amount) || 0;
+      if (amount <= 0) return;
+      const rate = Number(tax.rate || 0);
+      if (!rate) return;
+      const taxAmount = amount * (rate / 100);
+      if (!taxAmount) return;
+      const existing = map.get(taxId);
+      const label = taxLabel(tax);
+      map.set(taxId, {
+        id: taxId,
+        label,
+        amount: (existing?.amount || 0) + taxAmount,
+      });
+    });
+    return Array.from(map.values());
+  }, [rows, taxById]);
+  const reportingTagsForForm = useMemo(() => {
+    const tags = Array.isArray(availableReportingTags) ? [...availableReportingTags] : [];
+    return tags.sort((a, b) => {
+      const aRequired = Boolean(a?.required || a?.mandatory);
+      const bRequired = Boolean(b?.required || b?.mandatory);
+      if (aRequired !== bRequired) return aRequired ? -1 : 1;
+      return String(a?.name || "").localeCompare(String(b?.name || ""));
+    });
+  }, [availableReportingTags]);
+
+  const setRow = (id: number, patch: Partial<LineRow>) => {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  };
+
+  const getNextCustomerCode = (list: any[]) => {
+    const maxCode = list.reduce((max, customer) => {
+      const code = String(customer?.customerNumber || customer?.customerCode || customer?.code || "");
+      const digits = Number((code.match(/\d+/g) || []).join(""));
+      return Number.isFinite(digits) ? Math.max(max, digits) : max;
+    }, 0);
+    return `CUS-${String(maxCode + 1).padStart(5, "0")}`;
+  };
+
+  const reloadCustomersForRetainer = async () => {
+    try {
+      const list = await getCustomers();
+      const normalized = (list || []).map((c: any) => ({
+        ...c,
+        id: c.id || c._id,
+        name: c.displayName || c.name || c.companyName || "Unknown",
+      }));
+      setCustomers(normalized);
+      return normalized;
+    } catch (error) {
+      console.error("Error refreshing customers for retainer quick action:", error);
+      return [] as any[];
+    }
+  };
+
+  const addRow = () => {
+    setRows((prev) => [...prev, { id: Date.now(), description: "", taxId: "", amount: 0 }]);
+  };
+
+  const removeRow = (id: number) => {
+    setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.id !== id) : prev));
+  };
+
+  const loadProjectsForCustomer = async (selectedCustomerId: string) => {
+    if (!selectedCustomerId) {
+      setProjects([]);
+      return;
+    }
+    try {
+      const response = await projectsAPI.getByCustomer(selectedCustomerId);
+      const projectSource = Array.isArray((response as any)?.data)
+        ? (response as any).data
+        : Array.isArray((response as any)?.projects)
+        ? (response as any).projects
+        : [];
+      if (projectSource.length > 0) {
+        const next = projectSource
+          .map((p: any) => ({
+            id: String(p._id || p.id),
+            name: String(p.projectName || p.name || "Project"),
+            customer: String(
+              p.customer?._id ||
+                p.customer?.id ||
+                p.customerId ||
+                p.customer_id ||
+                p.customer ||
+                selectedCustomerId
+            ),
+            status: String(p.status || "").toLowerCase(),
+          }))
+          .filter((p: ProjectOption) => p.id);
+        setProjects(next);
+      }
+    } catch (error) {
+      console.error("Error loading projects for selected customer:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (prefillFromProjectRef.current) return;
+    if (isEditMode) return;
+    const state = location.state as any;
+    if (!state || state.source !== "timeTrackingProjects") return;
+
+    const customerIdFromState = String(state.customerId || state.project?.customerId || "").trim();
+    const customerNameFromState = String(state.customerName || state.project?.customerName || "").trim();
+    const projectIdFromState = String(state.projectId || state.project?.id || state.project?.projectId || "").trim();
+    const projectNameFromState = String(state.projectName || state.project?.projectName || state.project?.name || "").trim();
+
+    const applyCustomer = async () => {
+      if (customerIdFromState) {
+        setCustomerId(customerIdFromState);
+        await loadProjectsForCustomer(customerIdFromState);
+        return;
+      }
+      if (customerNameFromState) {
+        const match =
+          customers.find((c: any) => String(c?._id || c?.id || "") === customerIdFromState) ||
+          customers.find(
+            (c: any) =>
+              String(c?.displayName || c?.name || c?.companyName || "").trim().toLowerCase() ===
+              customerNameFromState.toLowerCase()
+          );
+        if (match) {
+          setCustomerId(String(match._id || match.id || ""));
+          await loadProjectsForCustomer(String(match._id || match.id || ""));
+        }
+      }
+    };
+
+    applyCustomer();
+
+    if (projectIdFromState) {
+      setProjectId(projectIdFromState);
+    } else if (projectNameFromState) {
+      const matchProject = projects.find(
+        (p: any) =>
+          String(p?.id || p?._id || "").trim() === projectIdFromState ||
+          String(p?.name || p?.projectName || "").trim().toLowerCase() === projectNameFromState.toLowerCase()
+      );
+      if (matchProject) {
+        setProjectId(String(matchProject.id || matchProject._id || ""));
+      }
+    }
+
+    prefillFromProjectRef.current = true;
+  }, [location.state, customers, projects, isEditMode]);
+
+  useEffect(() => {
+    if (prefillFromProjectRef.current) return;
+    if (isEditMode) return;
+
+    const state = location.state as any;
+    if (!state || state.source) return;
+
+    const customerIdFromState = String(state.customerId || state.customer?._id || state.customer?.id || "").trim();
+    const customerNameFromState = String(
+      state.customerName ||
+        state.customer?.displayName ||
+        state.customer?.companyName ||
+        state.customer?.name ||
+        ""
+    ).trim();
+
+    if (!customerIdFromState && !customerNameFromState) return;
+
+    const match =
+      (customerIdFromState
+        ? customers.find((c: any) => String(c?._id || c?.id || "") === customerIdFromState)
+        : null) ||
+      customers.find(
+        (c: any) =>
+          String(c?.displayName || c?.name || c?.companyName || "")
+            .trim()
+            .toLowerCase() === customerNameFromState.toLowerCase()
+      );
+
+    if (match) {
+      const matchedId = String(match._id || match.id || "");
+      setCustomerId(matchedId);
+      if (matchedId) {
+        void loadProjectsForCustomer(matchedId);
+      }
+    } else {
+      setCustomerId(customerIdFromState);
+    }
+  }, [location.state, customers, isEditMode]);
+
+  const handleCustomerSelect = async (customer: any) => {
+    const selectedId = String(customer._id || customer.id || "");
+    if (!selectedId) return;
+    setCustomerId(selectedId);
+    setProjectId("");
+    setIsCustomerDropdownOpen(false);
+    setCustomerSearch("");
+    await loadProjectsForCustomer(selectedId);
+  };
+
+  const openCustomerQuickAction = () => {
+    setIsCustomerDropdownOpen(false);
+    setQuickCustomerTab("otherDetails");
+    setIsQuickCustomerMoreDetailsOpen(false);
+    setQuickCustomerFiles([]);
+    setQuickCustomerForm((prev) => ({
+      ...prev,
+      customerNumber: getNextCustomerCode(customers),
+    }));
+    setIsNewCustomerQuickActionOpen(true);
+  };
+
+  const closeCustomerQuickAction = () => {
+    setIsNewCustomerQuickActionOpen(false);
+  };
+
+  const handleQuickCustomerFieldChange = (field: string, value: string | boolean) => {
+    setQuickCustomerForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleQuickCustomerFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(event.target.files || []);
+    if (selected.length === 0) return;
+    setQuickCustomerFiles((prev) => [...prev, ...selected].slice(0, 10));
+    event.target.value = "";
+  };
+
+  const handleSaveQuickCustomer = async () => {
+    if (isSavingQuickCustomer) return;
+    const fallbackName = `${quickCustomerForm.firstName} ${quickCustomerForm.lastName}`.trim();
+    const displayName = quickCustomerForm.displayName.trim() || quickCustomerForm.companyName.trim() || fallbackName;
+    if (!displayName) {
+      toast.error("Display Name is required.");
+      return;
+    }
+
+    const payload = {
+      customerType: quickCustomerForm.customerType,
+      salutation: quickCustomerForm.salutation,
+      firstName: quickCustomerForm.firstName,
+      lastName: quickCustomerForm.lastName,
+      companyName: quickCustomerForm.companyName,
+      displayName,
+      name: displayName,
+      email: quickCustomerForm.email,
+      customerNumber: quickCustomerForm.customerNumber,
+      customerCode: quickCustomerForm.customerNumber,
+      workPhone: `${quickCustomerForm.workCountryCode} ${quickCustomerForm.workPhone}`.trim(),
+      mobile: `${quickCustomerForm.mobileCountryCode} ${quickCustomerForm.mobile}`.trim(),
+      language: quickCustomerForm.language,
+      taxName: quickCustomerForm.taxRate,
+      companyId: quickCustomerForm.companyId,
+      currency: quickCustomerForm.currency,
+      paymentTerms: quickCustomerForm.paymentTerms,
+      priceList: quickCustomerForm.priceList,
+      isPortalEnabled: quickCustomerForm.enablePortal,
+      websiteUrl: quickCustomerForm.websiteUrl,
+      department: quickCustomerForm.department,
+      designation: quickCustomerForm.designation,
+      socialLinks: {
+        x: quickCustomerForm.xHandle,
+        skype: quickCustomerForm.skype,
+        facebook: quickCustomerForm.facebook,
+      },
+      documents: quickCustomerFiles.map((file) => ({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+      })),
+      notes: quickCustomerForm.notes,
+      billingAddress: {
+        attention: quickCustomerForm.billingAttention,
+        country: quickCustomerForm.billingCountry,
+        street1: quickCustomerForm.billingStreet1,
+        street2: quickCustomerForm.billingStreet2,
+        city: quickCustomerForm.billingCity,
+        state: quickCustomerForm.billingState,
+        zipCode: quickCustomerForm.billingZipCode,
+        phone: quickCustomerForm.billingPhone,
+        fax: quickCustomerForm.billingFax,
+      },
+      shippingAddress: {
+        attention: quickCustomerForm.shippingAttention,
+        country: quickCustomerForm.shippingCountry,
+        street1: quickCustomerForm.shippingStreet1,
+        street2: quickCustomerForm.shippingStreet2,
+        city: quickCustomerForm.shippingCity,
+        state: quickCustomerForm.shippingState,
+        zipCode: quickCustomerForm.shippingZipCode,
+        phone: quickCustomerForm.shippingPhone,
+        fax: quickCustomerForm.shippingFax,
+      },
+      reportingTags: {
+        sc: quickCustomerForm.tagSc,
+        wsq: quickCustomerForm.tagWsq,
+      },
+      status: "active",
+    };
+
+    setIsSavingQuickCustomer(true);
+    try {
+      const response = await customersAPI.create(payload);
+      const created = (response as any)?.data || payload;
+      const latestCustomers = await reloadCustomersForRetainer();
+      const selected =
+        latestCustomers.find((customer: any) => String(customer.id || customer._id) === String(created.id || created._id)) ||
+        latestCustomers.find((customer: any) => (customer.displayName || customer.name || customer.companyName) === displayName);
+      if (selected) handleCustomerSelect(selected);
+      toast.success("Customer created successfully.");
+      setIsNewCustomerQuickActionOpen(false);
+    } catch (error: any) {
+      console.error("Error creating customer from retainer quick action:", error);
+      toast.error(error?.message || "Failed to create customer.");
+    } finally {
+      setIsSavingQuickCustomer(false);
+    }
+  };
+
+  const handleSave = async (status: "draft" | "sent") => {
+    if (!customerId) {
+      toast.error("Please select a customer.");
+      return;
+    }
+
+    const items = rows
+      .filter((r) => r.description.trim() || Number(r.amount) > 0)
+      .map((r) => {
+        const rate = Number(taxById.get(r.taxId)?.rate || 0);
+        const amount = Number(r.amount) || 0;
+        const taxAmount = amount * (rate / 100);
+        return {
+          name: r.description || "Item",
+          description: r.description,
+          quantity: 1,
+          unitPrice: amount,
+          taxRate: rate,
+          taxAmount,
+          total: amount + taxAmount,
+        };
+      });
+
+    setLoading(true);
+    setSavingMode(status);
+
+    try {
+      const resolvedCustomer =
+        selectedCustomer ||
+        customers.find((c: any) => String(c._id || c.id) === String(customerId));
+      const resolvedCustomerName = String(
+        resolvedCustomer?.displayName ||
+          resolvedCustomer?.name ||
+          resolvedCustomer?.companyName ||
+          ""
+      ).trim();
+
+    const normalizedInvoiceNumber = await resolveRetainerInvoiceNumber();
+    const finalInvoiceNumber =
+      normalizedInvoiceNumber.toUpperCase().startsWith("RET-")
+        ? normalizedInvoiceNumber
+        : buildRetainerNumber(retainerPrefix, normalizedInvoiceNumber);
+    const resolvedProjectName = projects.find((p) => String(p.id) === String(projectId))?.name || "";
+
+    const payload = {
+      retainerInvoiceNumber: finalInvoiceNumber,
+      customer: customerId,
+      customerName: resolvedCustomerName,
+      date: invoiceDate,
+      invoiceDate,
+      dueDate: invoiceDate,
+      status,
+      items,
+      subtotal,
+      tax: totalTax,
+      total,
+      notes: customerNotes,
+      terms,
+      reference,
+      orderNumber: reference,
+      projectId: projectId || undefined,
+      projectName: resolvedProjectName,
+      paymentTerms: "Due on Receipt",
+      currency: "USD",
+      taxExclusive: "Tax Exclusive",
+      location: selectedLocation,
+      locationName: selectedLocation,
+      selectedLocation,
+      reportingTags: Object.entries(reportingTagSelections)
+        .filter(([, value]) => value && value !== "None")
+        .map(([tagId, value]) => ({ tagId, value })),
+      invoiceType: "retainer",
+    } as any;
+
+      let savedInvoice: any = null;
+      if (isEditMode && id) {
+        savedInvoice = await updateRetainerInvoice(id, payload);
+      } else {
+        savedInvoice = await saveRetainerInvoice(payload);
+      }
+
+      const resolvedInvoiceId = String(
+        (savedInvoice as any)?.id || (savedInvoice as any)?._id || id || ""
+      ).trim();
+      try {
+        const key = "taban_books_retainer_invoices";
+        const raw = localStorage.getItem(key);
+        const parsed = raw ? JSON.parse(raw) : [];
+        const list = Array.isArray(parsed) ? parsed : [];
+        const idx = list.findIndex((row: any) => String(row?._id || row?.id) === resolvedInvoiceId);
+        const stored = {
+          ...payload,
+          ...savedInvoice,
+          id: resolvedInvoiceId || (savedInvoice as any)?.id || (savedInvoice as any)?._id,
+          _id: resolvedInvoiceId || (savedInvoice as any)?.id || (savedInvoice as any)?._id,
+          retainerInvoiceNumber: finalInvoiceNumber,
+          updatedAt: new Date().toISOString(),
+        };
+        if (idx >= 0) {
+          list[idx] = { ...list[idx], ...stored };
+        } else {
+          list.unshift(stored);
+        }
+        localStorage.setItem(key, JSON.stringify(list));
+      } catch {
+        // ignore local storage errors
+      }
+
+      toast.success(
+        isEditMode
+          ? status === "draft"
+            ? "Retainer invoice updated as draft."
+            : "Retainer invoice updated and sent successfully."
+          : status === "draft"
+          ? "Retainer invoice saved as draft."
+          : "Retainer invoice saved and sent successfully."
+      );
+      try {
+        localStorage.setItem(RETAINER_SELECTED_VIEW_STORAGE_KEY, "all");
+      } catch {
+        // ignore local storage errors
+      }
+
+      if (status === "sent" && resolvedInvoiceId) {
+        navigate(`/sales/retainer-invoices/${resolvedInvoiceId}/send-email`);
+      } else if (isEditMode && id) {
+        navigate(`/sales/retainer-invoices/${id}`);
+      } else {
+        ensureRetainerListAllView();
+        navigate("/sales/retainer-invoices");
+      }
+    } catch (error: any) {
+      console.error("Error saving retail invoice:", error);
+      toast.error(error?.message || "Failed to save invoice");
+    } finally {
+      setLoading(false);
+      setSavingMode(null);
+    }
+  };
+
+  const inputBaseClass =
+    "h-[34px] w-full rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 shadow-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-[#156372] focus:ring-2 focus:ring-[#156372]/20";
+  const selectBaseClass =
+    "h-[34px] w-full appearance-none rounded-md border border-slate-200 bg-white px-3 pr-8 text-[13px] text-slate-700 shadow-sm outline-none transition-all hover:border-slate-300 focus:border-[#156372] focus:ring-2 focus:ring-[#156372]/20 disabled:bg-slate-50 disabled:text-slate-400";
+  const labelClass = "text-[13px] text-gray-700";
+  const requiredLabelClass = "text-[13px] text-[#ef4444]";
+
+  const openRetainerNumberModal = () => {
+    setRetainerPrefix(deriveRetainerPrefix(invoiceNumber));
+    setRetainerNextNumber(extractRetainerDigits(invoiceNumber) || "");
+    setIsRetainerNumberModalOpen(true);
+  };
+
+  const saveRetainerNumberPreferences = () => {
+    if (retainerNumberMode === "auto") {
+      setInvoiceNumber(buildRetainerNumber(retainerPrefix, retainerNextNumber));
+    }
+    setIsRetainerNumberModalOpen(false);
+  };
+
+  const normalizeTagOptions = (tag: any): string[] => {
+    const rawBuckets: any[] = [];
+    if (Array.isArray(tag?.options)) rawBuckets.push(...tag.options);
+    if (Array.isArray(tag?.tagOptions)) rawBuckets.push(...tag.tagOptions);
+    if (Array.isArray(tag?.values)) rawBuckets.push(...tag.values);
+    if (Array.isArray(tag?.allowedValues)) rawBuckets.push(...tag.allowedValues);
+    if (Array.isArray(tag?.optionValues)) rawBuckets.push(...tag.optionValues);
+    if (typeof tag?.options === "string") rawBuckets.push(...String(tag.options).split(","));
+    if (typeof tag?.tagOptions === "string") rawBuckets.push(...String(tag.tagOptions).split(","));
+
+    const labels = rawBuckets
+      .map((option: any) => {
+        if (typeof option === "string") return option.trim();
+        return String(
+          option?.name ||
+            option?.label ||
+            option?.value ||
+            option?.option ||
+            option?.optionName ||
+            option?.displayName ||
+            ""
+        ).trim();
+      })
+      .filter((value: string) => value.length > 0);
+    return Array.from(new Set(labels));
+  };
+
+  const getReportingTagOptions = (tag: ReportingTag) => {
+    const fromLoaded = reportingTagOptionsById[tag.id];
+    if (Array.isArray(fromLoaded) && fromLoaded.length > 0) return fromLoaded;
+    return normalizeTagOptions(tag);
+  };
+
+  const getFilteredReportingTagOptions = (tag: ReportingTag) => {
+    const options = getReportingTagOptions(tag);
+    const term = reportingTagSearch.trim().toLowerCase();
+    if (!term) return options;
+    return options.filter((option) => option.toLowerCase().includes(term));
+  };
+
+  const ensureReportingTagOptions = async (tag: ReportingTag) => {
+    const current = getReportingTagOptions(tag);
+    if (current.length > 0) return;
+    if (!tag?.id) return;
+    try {
+      setLoadingReportingTagId(tag.id);
+      const response = await reportingTagsAPI.getById(tag.id);
+      const row = (response as any)?.data || response || {};
+      const options = normalizeTagOptions(row);
+      if (options.length > 0) {
+        setReportingTagOptionsById((prev) => ({ ...prev, [tag.id]: options }));
+      }
+    } catch (error) {
+      console.error("Failed to load reporting tag options:", error);
+    } finally {
+      setLoadingReportingTagId((prev) => (prev === tag.id ? null : prev));
+    }
+  };
+
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-gray-50">
+      <div className="sticky top-0 z-30 shrink-0 flex items-center justify-between border-b border-gray-200 bg-white/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-white/90">
+        <div className="flex items-center gap-2">
+          <FileText size={18} className="text-slate-600" />
+          <h1 className="text-[18px] font-semibold text-slate-900">
+            {isEditMode ? "Edit Retainer Invoice" : "New Retainer Invoice"}
+          </h1>
+        </div>
+        <button
+          onClick={() => {
+            ensureRetainerListAllView();
+            navigate("/sales/retainer-invoices");
+          }}
+          className="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+          aria-label="Close"
+        >
+          <X size={22} />
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50">
+        <div className="w-full max-w-[980px] py-6">
+          <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="p-6 bg-gray-50">
+              <div className="grid grid-cols-[220px_1fr] items-center gap-y-4 gap-x-4 max-w-[860px]">
+                <label className={requiredLabelClass}>Customer Name*</label>
+                <div className="relative flex items-center" ref={customerDropdownRef}>
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      readOnly
+                      value={selectedCustomer ? (selectedCustomer.displayName || selectedCustomer.name || selectedCustomer.companyName || "") : ""}
+                      placeholder="Select or add a customer"
+                      onClick={() => setIsCustomerDropdownOpen((prev) => !prev)}
+                      className={`${inputBaseClass} rounded-r-none pr-9 cursor-pointer`}
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400"
+                      onClick={() => setIsCustomerDropdownOpen((prev) => !prev)}
+                    >
+                      {isCustomerDropdownOpen ? <ChevronUp size={14} className="text-[#156372]" /> : <ChevronDown size={14} className="text-gray-400" />}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    className="h-[34px] w-10 rounded-r border border-l-0 border-gray-300 text-white flex items-center justify-center"
+                    onClick={() => setIsCustomerDropdownOpen((prev) => !prev)}
+                    style={{ backgroundColor: accentColor }}
+                  >
+                    <Search size={14} />
+                  </button>
+
+                  {isCustomerDropdownOpen && (
+                    <div className="absolute left-0 top-full mt-1 w-[calc(100%-40px)] rounded-md border border-slate-200 bg-white shadow-xl z-[200] animate-in fade-in zoom-in-95 duration-100">
+                      <div className="p-2 border-b border-gray-100">
+                        <div className="flex items-center gap-2 px-2 py-1.5 border border-gray-200 rounded bg-gray-50">
+                          <Search size={13} className="text-gray-400" />
+                          <input
+                            value={customerSearch}
+                            onChange={(e) => setCustomerSearch(e.target.value)}
+                            placeholder="Search customer"
+                            className="w-full bg-transparent border-none outline-none text-[13px] text-gray-700"
+                          />
+                        </div>
+                      </div>
+                      <div className="max-h-56 overflow-y-auto py-1">
+                        {filteredCustomers.length > 0 ? (
+                          filteredCustomers.map((customer: any) => {
+                            const id = String(customer._id || customer.id);
+                            const name = customer.displayName || customer.name || customer.companyName || "Customer";
+                            const email = customer.email || "";
+                            const isSelected = id === customerId;
+                            return (
+                              <button
+                                key={id}
+                                type="button"
+                                onClick={() => handleCustomerSelect(customer)}
+                                className={`w-full text-left px-3 py-2 transition-colors ${isSelected ? "bg-[#156372] text-white" : "hover:bg-gray-50 text-gray-700"}`}
+                              >
+                                <div className="text-[13px] font-medium">{name}</div>
+                                <div className={`text-[11px] ${isSelected ? "text-white/80" : "text-gray-500"}`}>{email || "-"}</div>
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <div className="px-3 py-3 text-[13px] text-gray-500">No customers found</div>
+                        )}
+                      </div>
+                      <div className="border-t border-gray-100 p-1">
+                        <button
+                          type="button"
+                          onClick={openCustomerQuickAction}
+                          className="w-full text-left px-3 py-2 text-[13px] text-[#156372] hover:bg-gray-50"
+                        >
+                          New Customer
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <label className={labelClass}>Location</label>
+                <div className="max-w-[260px]">
+                  <select
+                    className={selectBaseClass}
+                    value={selectedLocation}
+                    onChange={(e) => setSelectedLocation(e.target.value)}
+                  >
+                    {locationOptions.map((loc) => (
+                      <option key={loc} value={loc}>
+                        {loc}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+          <div className="border-t border-slate-100 p-6">
+              <div className="grid grid-cols-[220px_1fr] items-start gap-y-4 gap-x-4 max-w-[860px]">
+                <label className={requiredLabelClass}>Retainer Invoice Number*</label>
+                <div className="relative max-w-[260px]">
+                  <input
+                    value={invoiceNumber}
+                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                    className={`${inputBaseClass} pr-9`}
+                  />
+                  <button
+                    type="button"
+                    title="Invoice number settings"
+                    aria-label="Invoice number settings"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[#3b82f6] hover:text-[#2563eb]"
+                    onClick={openRetainerNumberModal}
+                  >
+                    <Settings size={14} />
+                  </button>
+                </div>
+
+                <label className={labelClass}>Reference#</label>
+                <input
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                  className={`${inputBaseClass} max-w-[260px]`}
+                />
+
+                <label className={requiredLabelClass}>Retainer Invoice Date*</label>
+                <input
+                  type="date"
+                  value={invoiceDate}
+                  onChange={(e) => setInvoiceDate(e.target.value)}
+                  className={`${inputBaseClass} max-w-[260px]`}
+                />
+
+                <label className={labelClass}>Project Name</label>
+                <div className="max-w-[260px]">
+                  <select
+                    value={projectId}
+                    onChange={(e) => setProjectId(e.target.value)}
+                    className={selectBaseClass}
+                    disabled={!customerId}
+                  >
+                    <option value="">Select a project</option>
+                    {customerProjects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  {!customerId && <p className="text-xs text-gray-500 mt-1">Select a customer to associate a project.</p>}
+                  {customerId && customerProjects.length === 0 && <p className="text-xs text-gray-500 mt-1">No active projects found for this customer.</p>}
+                </div>
+              </div>
+          </div>
+
+          <div className="border-t border-slate-100 p-6">
+              {reportingTagsForForm.length > 0 ? (
+                <div className="grid grid-cols-[220px_1fr] items-center gap-y-4 gap-x-4 max-w-[860px]">
+                  {reportingTagsForForm.map((tag) => {
+                    const isOpen = openReportingTagId === tag.id;
+                    const isRequired = Boolean(tag.required || tag.mandatory);
+                    const selectedValue = reportingTagSelections[tag.id] || "None";
+                    const options = getFilteredReportingTagOptions(tag);
+                    return (
+                      <React.Fragment key={tag.id}>
+                        <label className={isRequired ? requiredLabelClass : labelClass}>
+                          {tag.name}
+                          {isRequired ? " *" : ""}
+                        </label>
+                        <div className="relative max-w-[300px]" data-rt-dropdown="true">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenReportingTagId((prev) => (prev === tag.id ? null : tag.id));
+                              setReportingTagSearch("");
+                              void ensureReportingTagOptions(tag);
+                            }}
+                            className={`${inputBaseClass} text-left relative`}
+                          >
+                            {selectedValue}
+                            {isOpen ? (
+                              <ChevronUp size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#3b82f6]" />
+                            ) : (
+                              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            )}
+                          </button>
+                          {isOpen && (
+                            <div className="absolute left-0 top-full mt-1 w-full rounded-md border border-slate-200 bg-white shadow-xl z-[220] animate-in fade-in zoom-in-95 duration-100">
+                              <div className="p-2 border-b border-gray-100">
+                                <div className="flex items-center gap-2 px-2 py-1.5 border border-[#3b82f6] rounded bg-white">
+                                  <Search size={13} className="text-gray-400" />
+                                  <input
+                                    value={reportingTagSearch}
+                                    onChange={(e) => setReportingTagSearch(e.target.value)}
+                                    placeholder="Search"
+                                    className="w-full bg-transparent border-none outline-none text-[13px] text-gray-700"
+                                    autoFocus
+                                  />
+                                </div>
+                              </div>
+                              <div className="max-h-44 overflow-y-auto py-1">
+                                {options.map((option) => {
+                                  const isSelected = selectedValue === option;
+                                  return (
+                                    <button
+                                      key={`${tag.id}-${option}`}
+                                      type="button"
+                                      onClick={() => {
+                                        setReportingTagSelections((prev) => ({
+                                          ...prev,
+                                          [tag.id]: option,
+                                        }));
+                                        setOpenReportingTagId(null);
+                                        setReportingTagSearch("");
+                                      }}
+                                      className={`w-full px-3 py-2 text-left text-[13px] ${
+                                        isSelected ? "bg-[#3b82f6] text-white" : "text-gray-700 hover:bg-gray-50"
+                                      }`}
+                                    >
+                                      {option}
+                                    </button>
+                                  );
+                                })}
+                                {options.length === 0 && loadingReportingTagId === tag.id && (
+                                  <div className="px-3 py-2 text-[13px] text-gray-500">Loading options...</div>
+                                )}
+                                {options.length === 0 && loadingReportingTagId !== tag.id && (
+                                  <div className="px-3 py-2 text-[13px] text-gray-500">No options found</div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-[13px] text-gray-500">No reporting tags found in Settings.</div>
+              )}
+          </div>
+
+          <div className="border-t border-slate-100 p-6">
+              <div className="border border-slate-200 rounded-lg overflow-visible shadow-sm">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50/40 border-b border-slate-200">
+                    <tr className="text-[12px] text-slate-700">
+                      <th className="text-left px-3 py-2 font-medium border-r border-slate-200">Description</th>
+                      <th className="text-left px-3 py-2 font-medium border-r border-slate-200 w-[180px]">Tax</th>
+                      <th className="text-right px-3 py-2 font-medium w-[180px]">Amount</th>
+                      <th className="w-[72px]" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row) => (
+                      <tr key={row.id} className="border-t border-slate-200">
+                        <td className="px-3 py-2 border-r border-slate-200">
+                          <input
+                            value={row.description}
+                            onChange={(e) => setRow(row.id, { description: e.target.value })}
+                            placeholder="Description"
+                            className="w-full h-[34px] rounded-md border border-transparent px-2 text-[13px] text-slate-700 outline-none transition-all hover:border-slate-200 focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20"
+                          />
+                        </td>
+                        <td className="px-3 py-2 border-r border-slate-200">
+                          <div className="relative" data-retainer-tax-dropdown="true">
+                            {(() => {
+                              const selectedTax = taxes.find((t) => String(t.id) === String(row.taxId));
+                              const displayLabel = selectedTax ? taxLabel(selectedTax) : "Select a Tax";
+                              const searchValue = taxSearches[row.id] || "";
+                              const grouped = buildTaxOptionGroups(taxes);
+                              const filteredGroups = searchValue.trim()
+                                ? grouped
+                                    .map((group) => ({
+                                      ...group,
+                                      options: group.options.filter((tax) =>
+                                        `${tax.name} [${tax.rate}%]`.toLowerCase().includes(searchValue.trim().toLowerCase())
+                                      ),
+                                    }))
+                                    .filter((group) => group.options.length > 0)
+                                : grouped;
+                              const hasTaxes = filteredGroups.some((group) => group.options.length > 0);
+
+                              return (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="flex h-[34px] w-full items-center justify-between rounded-md border border-slate-200 bg-white px-2 text-left text-[13px] text-slate-700 shadow-sm outline-none transition-all hover:border-slate-300 focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20"
+                                    onClick={() =>
+                                      setOpenTaxDropdownId(openTaxDropdownId === row.id ? null : row.id)
+                                    }
+                                  >
+                                    <span className="flex items-center gap-2 min-w-0">
+                                      <span className={displayLabel === "Select a Tax" ? "text-gray-500" : "text-gray-900 truncate"}>
+                                        {displayLabel}
+                                      </span>
+                                      {selectedTax && (
+                                        <button
+                                          type="button"
+                                          className="text-red-500 hover:text-red-600"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setRow(row.id, { taxId: "" });
+                                          }}
+                                        >
+                                          ×
+                                        </button>
+                                      )}
+                                    </span>
+                                    <ChevronDown
+                                      size={14}
+                                      className={`transition-transform ${openTaxDropdownId === row.id ? "rotate-180" : ""}`}
+                                      style={{ color: "#156372" }}
+                                    />
+                                  </button>
+
+                                  {openTaxDropdownId === row.id && (
+                                    <div className="absolute left-0 top-full z-[9999] mt-1 w-72 rounded-xl border border-slate-200 bg-white p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
+                                      <div className="p-2">
+                                        <div
+                                          className="flex items-center gap-2 rounded-lg border bg-slate-50/50 px-3 py-1.5 transition-all focus-within:bg-white"
+                                          style={{ borderColor: "#156372" }}
+                                        >
+                                          <Search size={14} className="text-slate-400" />
+                                          <input
+                                            type="text"
+                                            value={searchValue}
+                                            onChange={(e) =>
+                                              setTaxSearches((prev) => ({ ...prev, [row.id]: e.target.value }))
+                                            }
+                                            placeholder="Search..."
+                                            className="w-full border-none bg-transparent text-[13px] text-slate-700 outline-none placeholder:text-slate-400"
+                                            autoFocus
+                                          />
+                                        </div>
+                                      </div>
+                                      <div className="max-h-64 overflow-y-auto py-1 custom-scrollbar">
+                                        {!hasTaxes ? (
+                                          <div className="px-4 py-3 text-center text-[13px] text-slate-400">No taxes found</div>
+                                        ) : (
+                                          filteredGroups.map((group) => (
+                                            <div key={group.label}>
+                                              <div className="px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-widest text-slate-700">
+                                                {group.label}
+                                              </div>
+                                              {group.options.map((tax) => {
+                                                const taxId = tax.id;
+                                                const label = taxLabel(tax.raw ?? tax);
+                                                const selected = String(row.taxId || "") === taxId;
+                                                return (
+                                                  <button
+                                                    key={taxId}
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setRow(row.id, { taxId });
+                                                      setOpenTaxDropdownId(null);
+                                                      setTaxSearches((prev) => ({ ...prev, [row.id]: "" }));
+                                                    }}
+                                                    className={`w-full px-4 py-2 text-left text-[13px] ${
+                                                      selected
+                                                        ? "text-[#156372] font-medium hover:bg-gray-50 hover:text-gray-900"
+                                                        : "text-slate-700 hover:bg-gray-50 hover:text-gray-900"
+                                                    }`}
+                                                  >
+                                                    {label}
+                                                  </button>
+                                                );
+                                              })}
+                                            </div>
+                                          ))
+                                        )}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="w-full border-t border-gray-200 px-4 py-2 text-left text-[#156372] text-[13px] font-medium flex items-center gap-2 hover:bg-gray-50"
+                                        onClick={() => {
+                                          setOpenTaxDropdownId(null);
+                                          setNewTaxTargetRowId(row.id);
+                                          setIsNewTaxModalOpen(true);
+                                        }}
+                                      >
+                                        <PlusCircle size={14} />
+                                        New Tax
+                                      </button>
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-right font-medium">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={row.amount}
+                            onChange={(e) => setRow(row.id, { amount: Number(e.target.value) || 0 })}
+                            className="w-full h-[34px] text-right rounded-md border border-slate-200 bg-white px-2 text-[13px] text-slate-700 shadow-sm outline-none transition-all hover:border-slate-300 focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20"
+                          />
+                        </td>
+                        <td className="px-2 py-2">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                              aria-label="Row options"
+                            >
+                              <MoreVertical size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeRow(row.id)}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-red-500 transition-colors hover:bg-red-50 hover:text-red-700"
+                              aria-label="Remove row"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-3">
+                <button
+                  onClick={addRow}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-[13px] font-medium text-slate-700 shadow-sm transition-all hover:bg-slate-100 active:scale-95"
+                >
+                  <Plus size={14} style={{ color: accentColor }} /> Add New Row
+                </button>
+              </div>
+
+              <div className="mt-4 grid grid-cols-[1fr_430px] gap-6">
+                <div />
+                <div className="bg-slate-50 rounded-lg border border-slate-200 p-4 text-sm">
+                  <div className="flex items-center justify-between py-2">
+                    <span className="font-medium">Sub Total</span>
+                    <span className="font-medium">{subtotal.toFixed(2)}</span>
+                  </div>
+                  {taxBreakdown.map((line) => (
+                    <div key={line.id} className="flex items-center justify-between py-2 text-[13px] text-slate-700">
+                      <span>
+                        {line.label}
+                      </span>
+                      <span>{line.amount.toFixed(2)}</span>
+                    </div>
+                  ))}
+                  <div className="border-t border-slate-200 my-2" />
+                  <div className="flex items-center justify-between py-2 text-xl font-semibold">
+                    <span>Total</span>
+                    <span>{total.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          <div className="border-t border-slate-100 p-6 space-y-6">
+              <div className="grid grid-cols-[220px_1fr] items-start gap-4">
+                <label className={labelClass}>Customer Notes</label>
+                <textarea
+                  value={customerNotes}
+                  onChange={(e) => setCustomerNotes(e.target.value)}
+                  placeholder="Enter any notes to be displayed in your transaction"
+                  className="w-full max-w-[560px] h-20 rounded-md border border-slate-200 bg-white p-3 text-[13px] text-slate-700 shadow-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-[220px_1fr] items-start gap-4">
+                <label className={labelClass}>Terms & Conditions</label>
+                <textarea
+                  value={terms}
+                  onChange={(e) => setTerms(e.target.value)}
+                  placeholder="Enter the terms and conditions of your business to be displayed in your transaction"
+                  className="w-full max-w-[900px] h-20 rounded-md border border-slate-200 bg-white p-3 text-[13px] text-slate-700 shadow-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 resize-none"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-white/90 px-6 py-4 backdrop-blur">
+        <div className="flex gap-2">
+          <button
+            onClick={() => handleSave("draft")}
+            disabled={loading}
+            className="bg-white border border-slate-300 text-slate-700 px-6 py-1.5 rounded-md text-[13px] font-medium shadow-sm transition-all hover:bg-slate-50 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {savingMode === "draft" ? "Saving..." : isEditMode ? "Update as Draft" : "Save as Draft"}
+          </button>
+          <button
+            onClick={() => handleSave("sent")}
+            disabled={loading}
+            className="text-white px-6 py-1.5 rounded-md text-[13px] font-medium shadow-sm transition-all hover:opacity-90 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+            style={{ backgroundColor: accentColor }}
+          >
+            {savingMode === "sent" ? "Saving..." : isEditMode ? "Update and Send" : "Save and Send"}
+          </button>
+          <button
+            onClick={() => {
+              ensureRetainerListAllView();
+              navigate("/sales/retainer-invoices");
+            }}
+            className="bg-white border border-slate-300 text-slate-700 px-6 py-1.5 rounded-md text-[13px] font-medium shadow-sm transition-all hover:bg-slate-50 active:scale-95"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      {isNewCustomerQuickActionOpen && typeof document !== "undefined" && document.body && createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/45" onClick={closeCustomerQuickAction}>
+          <div className="w-[96vw] max-w-[1220px] h-[92vh] bg-white rounded-md shadow-2xl overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="h-[72px] border-b border-gray-200 px-6 flex items-center justify-between">
+              <h2 className="text-[30px] leading-none font-normal text-gray-800">New Customer</h2>
+              <button type="button" className="text-red-500 hover:text-red-600 text-[30px] leading-none" onClick={closeCustomerQuickAction}>x</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5 bg-white">
+              <div className="max-w-[980px] space-y-4">
+                <div className="grid grid-cols-[170px_1fr] items-center gap-4">
+                  <label className="text-[14px] text-gray-700">Customer Type</label>
+                  <div className="flex items-center gap-6 text-[14px] text-gray-700">
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input type="radio" name="quick-customer-type" checked={quickCustomerForm.customerType === "business"} onChange={() => handleQuickCustomerFieldChange("customerType", "business")} />
+                      <span>Business</span>
+                    </label>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input type="radio" name="quick-customer-type" checked={quickCustomerForm.customerType === "individual"} onChange={() => handleQuickCustomerFieldChange("customerType", "individual")} />
+                      <span>Individual</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[170px_1fr] items-center gap-4">
+                  <label className="text-[14px] text-gray-700">Primary Contact</label>
+                  <div className="grid grid-cols-3 gap-3">
+                    <select className="h-[38px] rounded border border-gray-300 px-3 text-[13px] text-gray-700" value={quickCustomerForm.salutation} onChange={(e) => handleQuickCustomerFieldChange("salutation", e.target.value)}>
+                      <option value="">Salutation</option>
+                      <option value="Mr">Mr.</option>
+                      <option value="Mrs">Mrs.</option>
+                      <option value="Ms">Ms.</option>
+                      <option value="Dr">Dr.</option>
+                    </select>
+                    <input className="h-[38px] rounded border border-gray-300 px-3 text-[13px] text-gray-700" placeholder="First Name" value={quickCustomerForm.firstName} onChange={(e) => handleQuickCustomerFieldChange("firstName", e.target.value)} />
+                    <input className="h-[38px] rounded border border-gray-300 px-3 text-[13px] text-gray-700" placeholder="Last Name" value={quickCustomerForm.lastName} onChange={(e) => handleQuickCustomerFieldChange("lastName", e.target.value)} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[170px_1fr] items-center gap-4">
+                  <label className="text-[14px] text-gray-700">Company Name</label>
+                  <input className="h-[38px] max-w-[520px] rounded border border-gray-300 px-3 text-[13px] text-gray-700" value={quickCustomerForm.companyName} onChange={(e) => handleQuickCustomerFieldChange("companyName", e.target.value)} />
+                </div>
+
+                <div className="grid grid-cols-[170px_1fr] items-center gap-4">
+                  <label className="text-[14px] text-[#ef4444]">Display Name*</label>
+                  <div className="max-w-[520px] relative">
+                    <input className="h-[38px] w-full rounded border border-gray-300 px-3 pr-8 text-[13px] text-gray-700" placeholder="Select or type to add" value={quickCustomerForm.displayName} onChange={(e) => handleQuickCustomerFieldChange("displayName", e.target.value)} />
+                    <ChevronDown size={22} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[170px_1fr] items-center gap-4">
+                  <label className="text-[14px] text-gray-700">Email Address</label>
+                  <input className="h-[38px] max-w-[520px] rounded border border-gray-300 px-3 text-[13px] text-gray-700" value={quickCustomerForm.email} onChange={(e) => handleQuickCustomerFieldChange("email", e.target.value)} />
+                </div>
+
+                <div className="grid grid-cols-[170px_1fr] items-center gap-4">
+                  <label className="text-[14px] text-[#ef4444]">Customer Number*</label>
+                  <input className="h-[38px] max-w-[520px] rounded border border-gray-300 px-3 text-[13px] text-gray-700" value={quickCustomerForm.customerNumber} onChange={(e) => handleQuickCustomerFieldChange("customerNumber", e.target.value)} />
+                </div>
+
+                <div className="grid grid-cols-[170px_1fr] items-center gap-4">
+                  <label className="text-[14px] text-gray-700">Phone</label>
+                  <div className="grid grid-cols-2 gap-4 max-w-[720px]">
+                    <div className="flex">
+                      <input className="h-[38px] w-[78px] rounded-l border border-gray-300 px-2 text-[13px] text-gray-700" value={quickCustomerForm.workCountryCode} onChange={(e) => handleQuickCustomerFieldChange("workCountryCode", e.target.value)} />
+                      <input className="h-[38px] flex-1 rounded-r border border-l-0 border-gray-300 px-3 text-[13px] text-gray-700" placeholder="Work Phone" value={quickCustomerForm.workPhone} onChange={(e) => handleQuickCustomerFieldChange("workPhone", e.target.value)} />
+                    </div>
+                    <div className="flex">
+                      <input className="h-[38px] w-[78px] rounded-l border border-gray-300 px-2 text-[13px] text-gray-700" value={quickCustomerForm.mobileCountryCode} onChange={(e) => handleQuickCustomerFieldChange("mobileCountryCode", e.target.value)} />
+                      <input className="h-[38px] flex-1 rounded-r border border-l-0 border-gray-300 px-3 text-[13px] text-gray-700" placeholder="Mobile" value={quickCustomerForm.mobile} onChange={(e) => handleQuickCustomerFieldChange("mobile", e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[170px_1fr] items-center gap-4">
+                  <label className="text-[14px] text-gray-700">Customer Language</label>
+                  <div className="max-w-[520px] relative">
+                    <input className="h-[38px] w-full rounded border border-gray-300 px-3 pr-8 text-[13px] text-gray-700" value={quickCustomerForm.language} onChange={(e) => handleQuickCustomerFieldChange("language", e.target.value)} />
+                    <ChevronDown size={22} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                  </div>
+                </div>
+
+                <div className="border-b border-gray-200 mt-2">
+                  <div className="flex items-center gap-6 text-[14px] text-gray-700">
+                    {[
+                      { key: "otherDetails", label: "Other Details" },
+                      { key: "address", label: "Address" },
+                      { key: "customFields", label: "Custom Fields" },
+                      { key: "reportingTags", label: "Reporting Tags" },
+                      { key: "remarks", label: "Remarks" },
+                    ].map((tab) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        className={`pb-3 border-b-2 ${quickCustomerTab === tab.key ? "border-[#3b82f6] text-gray-900" : "border-transparent text-gray-600"}`}
+                        onClick={() => setQuickCustomerTab(tab.key as "otherDetails" | "address" | "customFields" | "reportingTags" | "remarks")}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {quickCustomerTab === "otherDetails" && (
+                  <div className="pt-4 grid grid-cols-[170px_1fr] gap-y-4 gap-x-4">
+                    <label className="text-[14px] text-gray-700">Tax Rate</label>
+                    <div className="max-w-[520px] relative">
+                      <input className="h-[38px] w-full rounded border border-gray-300 px-3 pr-8 text-[13px] text-gray-700" placeholder="Select a Tax" value={quickCustomerForm.taxRate} onChange={(e) => handleQuickCustomerFieldChange("taxRate", e.target.value)} />
+                      <ChevronDown size={22} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                    </div>
+
+                    <label className="text-[14px] text-gray-700">Company ID</label>
+                    <input className="h-[38px] max-w-[520px] rounded border border-gray-300 px-3 text-[13px] text-gray-700" value={quickCustomerForm.companyId} onChange={(e) => handleQuickCustomerFieldChange("companyId", e.target.value)} />
+
+                    <label className="text-[14px] text-gray-700">Currency</label>
+                    <div className="max-w-[520px] relative">
+                      <input className="h-[38px] w-full rounded border border-gray-300 px-3 pr-8 text-[13px] text-gray-700" value={quickCustomerForm.currency} onChange={(e) => handleQuickCustomerFieldChange("currency", e.target.value)} />
+                      <ChevronDown size={22} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                    </div>
+
+                    <label className="text-[14px] text-gray-700">Payment Terms</label>
+                    <div className="max-w-[520px] relative">
+                      <input className="h-[38px] w-full rounded border border-gray-300 px-3 pr-8 text-[13px] text-gray-700" value={quickCustomerForm.paymentTerms} onChange={(e) => handleQuickCustomerFieldChange("paymentTerms", e.target.value)} />
+                      <ChevronDown size={22} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                    </div>
+
+                    <label className="text-[14px] text-gray-700">Price List</label>
+                    <div className="max-w-[520px] relative">
+                      <input className="h-[38px] w-full rounded border border-gray-300 px-3 pr-8 text-[13px] text-gray-700" value={quickCustomerForm.priceList} onChange={(e) => handleQuickCustomerFieldChange("priceList", e.target.value)} />
+                      <ChevronDown size={22} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                    </div>
+
+                    <label className="text-[14px] text-gray-700">Enable Portal?</label>
+                    <label className="inline-flex items-center gap-2 text-[14px] text-gray-700">
+                      <input type="checkbox" checked={quickCustomerForm.enablePortal} onChange={(e) => handleQuickCustomerFieldChange("enablePortal", e.target.checked)} />
+                      <span>Allow portal access for this customer</span>
+                    </label>
+
+                    <label className="text-[14px] text-gray-700">Documents</label>
+                    <div>
+                      <input
+                        ref={quickCustomerFileInputRef}
+                        type="file"
+                        className="hidden"
+                        multiple
+                        onChange={handleQuickCustomerFileChange}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => quickCustomerFileInputRef.current?.click()}
+                        className="h-[36px] px-4 rounded border border-dashed border-gray-300 text-[13px] text-gray-700 bg-white hover:bg-gray-50 inline-flex items-center gap-2"
+                      >
+                        <span className="inline-flex items-center justify-center text-gray-500">
+                          <svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" className="block">
+                            <path d="M10 13.5V4.5M10 4.5L6.5 8M10 4.5L13.5 8M3.5 12.5V14.5C3.5 15.6 4.4 16.5 5.5 16.5H14.5C15.6 16.5 16.5 15.6 16.5 14.5V12.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </span>
+                        <span>Upload File</span>
+                        <ChevronDown size={14} className="text-gray-500" />
+                      </button>
+                      <p className="mt-1 text-[12px] text-gray-500">You can upload a maximum of 10 files, 10MB each</p>
+                      {quickCustomerFiles.length > 0 && (
+                        <div className="mt-1 text-[12px] text-gray-600">
+                          {quickCustomerFiles.length} file(s): {quickCustomerFiles.map((f) => f.name).join(", ")}
+                        </div>
+                      )}
+                    </div>
+
+                    <div />
+                    <button
+                      type="button"
+                      onClick={() => setIsQuickCustomerMoreDetailsOpen((prev) => !prev)}
+                      className="w-fit text-[14px] text-[#2563eb] hover:underline"
+                    >
+                      {isQuickCustomerMoreDetailsOpen ? "Hide more details" : "Add more details"}
+                    </button>
+
+                    {isQuickCustomerMoreDetailsOpen && (
+                      <>
+                        <label className="text-[14px] text-gray-700">Website URL</label>
+                        <div className="max-w-[520px] relative">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400">
+                            <svg width="16" height="16" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" className="block fill-current">
+                              <path d="M437 75C389 27 325 0 257 0h-2C187 0 123 27 75 75 27 123 0 188 0 256s27 133 75 181c48 48 112 75 180 75h2c68 0 132-27 180-75 48-48 75-113 75-181s-27-133-75-181zM40 236c5-50 26-96 62-133 23-23 51-41 82-51-5 9-10 19-14 30-17 42-27 96-29 154H40zm62 173c-36-36-57-83-62-133h101c2 58 12 112 29 154 4 11 9 21 14 30-31-10-59-28-82-51zm228 7c-14 35-32 56-48 56s-34-21-48-56c-15-38-24-87-26-140h148c-2 53-11 102-26 140zm0-180H182c2-53 11-102 26-140 14-35 32-56 48-56s34 21 48 56c15 38 24 87 26 140zm13 224c5-9 10-19 14-30 17-42 27-96 29-154h101c-5 50-26 97-62 133-23 23-51 41-82 51zm43-224c-2-58-12-112-29-154-4-11-9-21-14-30 31 10 59 28 82 51 36 37 57 83 62 133H386z"/>
+                            </svg>
+                          </span>
+                          <input
+                            className="h-[38px] w-full rounded border border-gray-300 pl-8 pr-3 text-[13px] text-gray-700"
+                            placeholder="ex: www.zylker.com"
+                            value={quickCustomerForm.websiteUrl}
+                            onChange={(e) => handleQuickCustomerFieldChange("websiteUrl", e.target.value)}
+                          />
+                        </div>
+
+                        <label className="text-[14px] text-gray-700">Department</label>
+                        <input
+                          className="h-[38px] max-w-[520px] rounded border border-gray-300 px-3 text-[13px] text-gray-700"
+                          value={quickCustomerForm.department}
+                          onChange={(e) => handleQuickCustomerFieldChange("department", e.target.value)}
+                        />
+
+                        <label className="text-[14px] text-gray-700">Designation</label>
+                        <input
+                          className="h-[38px] max-w-[520px] rounded border border-gray-300 px-3 text-[13px] text-gray-700"
+                          value={quickCustomerForm.designation}
+                          onChange={(e) => handleQuickCustomerFieldChange("designation", e.target.value)}
+                        />
+
+                        <label className="text-[14px] text-gray-700">X</label>
+                        <div>
+                          <div className="max-w-[520px] w-full flex rounded border border-gray-300 overflow-hidden">
+                            <span className="h-[38px] w-9 border-r border-gray-300 bg-[#f8fafc] flex items-center justify-center text-gray-700">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" className="fill-current">
+                                <path d="M14.23 10.16L22.97 0H20.9l-7.59 8.82L7.24 0H.25l9.17 13.34L.25 24h2.07l8.02-9.32 6.4 9.32h6.99l-9.5-13.84zm-2.84 3.3l-.93-1.33L3.07 1.56h3.18l5.97 8.53.92 1.33 7.76 11.09h-3.18l-6.33-9.05z"></path>
+                              </svg>
+                            </span>
+                            <input
+                              className="h-[38px] w-full px-3 text-[13px] text-gray-700 outline-none"
+                              value={quickCustomerForm.xHandle}
+                              onChange={(e) => handleQuickCustomerFieldChange("xHandle", e.target.value)}
+                            />
+                          </div>
+                          <p className="mt-1 text-[12px] text-gray-500">https://x.com/</p>
+                        </div>
+
+                        <label className="text-[14px] text-gray-700">Skype Name/Number</label>
+                        <div className="max-w-[520px] w-full flex rounded border border-gray-300 overflow-hidden">
+                          <span className="h-[38px] w-9 border-r border-gray-300 bg-[#f8fafc] flex items-center justify-center">
+                            <span className="w-4 h-4 rounded-full bg-[#00aff0] text-white text-[11px] leading-4 text-center font-semibold">S</span>
+                          </span>
+                          <input
+                            className="h-[38px] w-full px-3 text-[13px] text-gray-700 outline-none"
+                            value={quickCustomerForm.skype}
+                            onChange={(e) => handleQuickCustomerFieldChange("skype", e.target.value)}
+                          />
+                        </div>
+
+                        <label className="text-[14px] text-gray-700">Facebook</label>
+                        <div>
+                          <div className="max-w-[520px] w-full flex rounded border border-gray-300 overflow-hidden">
+                            <span className="h-[38px] w-9 border-r border-gray-300 bg-[#f8fafc] flex items-center justify-center">
+                              <svg width="14" height="14" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" className="block">
+                                <path d="M64 32.199C64 14.425 49.664 0 32 0S0 14.425 0 32.199C0 48.282 11.7 61.612 27.024 64V41.484H18.85v-9.285h8.173v-7.096c0-8.058 4.745-12.535 12.061-12.535 3.494 0 7.119.663 7.119.663v7.86h-4.02c-3.988 0-5.24 2.52-5.24 5.04v6.035h8.897l-1.417 9.285h-7.48v22.516C52.3 61.612 64 48.282 64 32.199z" fill="#1877F2"></path>
+                              </svg>
+                            </span>
+                            <input
+                              className="h-[38px] w-full px-3 text-[13px] text-gray-700 outline-none"
+                              value={quickCustomerForm.facebook}
+                              onChange={(e) => handleQuickCustomerFieldChange("facebook", e.target.value)}
+                            />
+                          </div>
+                          <p className="mt-1 text-[12px] text-gray-500">http://www.facebook.com/</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {quickCustomerTab === "address" && (
+                  <div className="grid grid-cols-2 gap-6 pt-4">
+                    <div className="space-y-3">
+                      <h3 className="text-[14px] text-gray-800">Billing Address</h3>
+                      <input className="h-[38px] w-full rounded border border-gray-300 px-3 text-[13px]" placeholder="Attention" value={quickCustomerForm.billingAttention} onChange={(e) => handleQuickCustomerFieldChange("billingAttention", e.target.value)} />
+                      <input className="h-[38px] w-full rounded border border-gray-300 px-3 text-[13px]" placeholder="Country/Region" value={quickCustomerForm.billingCountry} onChange={(e) => handleQuickCustomerFieldChange("billingCountry", e.target.value)} />
+                      <textarea className="min-h-[64px] w-full rounded border border-gray-300 px-3 py-2 text-[13px]" placeholder="Street 1" value={quickCustomerForm.billingStreet1} onChange={(e) => handleQuickCustomerFieldChange("billingStreet1", e.target.value)} />
+                      <textarea className="min-h-[64px] w-full rounded border border-gray-300 px-3 py-2 text-[13px]" placeholder="Street 2" value={quickCustomerForm.billingStreet2} onChange={(e) => handleQuickCustomerFieldChange("billingStreet2", e.target.value)} />
+                      <input className="h-[38px] w-full rounded border border-gray-300 px-3 text-[13px]" placeholder="City" value={quickCustomerForm.billingCity} onChange={(e) => handleQuickCustomerFieldChange("billingCity", e.target.value)} />
+                      <input className="h-[38px] w-full rounded border border-gray-300 px-3 text-[13px]" placeholder="State" value={quickCustomerForm.billingState} onChange={(e) => handleQuickCustomerFieldChange("billingState", e.target.value)} />
+                      <input className="h-[38px] w-full rounded border border-gray-300 px-3 text-[13px]" placeholder="ZIP Code" value={quickCustomerForm.billingZipCode} onChange={(e) => handleQuickCustomerFieldChange("billingZipCode", e.target.value)} />
+                    </div>
+                    <div className="space-y-3">
+                      <h3 className="text-[14px] text-gray-800">Shipping Address</h3>
+                      <input className="h-[38px] w-full rounded border border-gray-300 px-3 text-[13px]" placeholder="Attention" value={quickCustomerForm.shippingAttention} onChange={(e) => handleQuickCustomerFieldChange("shippingAttention", e.target.value)} />
+                      <input className="h-[38px] w-full rounded border border-gray-300 px-3 text-[13px]" placeholder="Country/Region" value={quickCustomerForm.shippingCountry} onChange={(e) => handleQuickCustomerFieldChange("shippingCountry", e.target.value)} />
+                      <textarea className="min-h-[64px] w-full rounded border border-gray-300 px-3 py-2 text-[13px]" placeholder="Street 1" value={quickCustomerForm.shippingStreet1} onChange={(e) => handleQuickCustomerFieldChange("shippingStreet1", e.target.value)} />
+                      <textarea className="min-h-[64px] w-full rounded border border-gray-300 px-3 py-2 text-[13px]" placeholder="Street 2" value={quickCustomerForm.shippingStreet2} onChange={(e) => handleQuickCustomerFieldChange("shippingStreet2", e.target.value)} />
+                      <input className="h-[38px] w-full rounded border border-gray-300 px-3 text-[13px]" placeholder="City" value={quickCustomerForm.shippingCity} onChange={(e) => handleQuickCustomerFieldChange("shippingCity", e.target.value)} />
+                      <input className="h-[38px] w-full rounded border border-gray-300 px-3 text-[13px]" placeholder="State" value={quickCustomerForm.shippingState} onChange={(e) => handleQuickCustomerFieldChange("shippingState", e.target.value)} />
+                      <input className="h-[38px] w-full rounded border border-gray-300 px-3 text-[13px]" placeholder="ZIP Code" value={quickCustomerForm.shippingZipCode} onChange={(e) => handleQuickCustomerFieldChange("shippingZipCode", e.target.value)} />
+                    </div>
+                  </div>
+                )}
+
+                {quickCustomerTab === "customFields" && (
+                  <div className="py-8 text-[13px] text-gray-500">Start adding custom fields from Settings &gt; Preferences &gt; Customers.</div>
+                )}
+
+                {quickCustomerTab === "reportingTags" && (
+                  <div className="pt-4 grid grid-cols-[170px_1fr] gap-4">
+                    <label className="text-[14px] text-gray-700">sc</label>
+                    <div className="max-w-[520px] relative">
+                      <input className="h-[38px] w-full rounded border border-gray-300 px-3 pr-8 text-[13px] text-gray-700" value={quickCustomerForm.tagSc} onChange={(e) => handleQuickCustomerFieldChange("tagSc", e.target.value)} />
+                      <ChevronDown size={22} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                    </div>
+                    <label className="text-[14px] text-gray-700">wsq</label>
+                    <div className="max-w-[520px] relative">
+                      <input className="h-[38px] w-full rounded border border-gray-300 px-3 pr-8 text-[13px] text-gray-700" value={quickCustomerForm.tagWsq} onChange={(e) => handleQuickCustomerFieldChange("tagWsq", e.target.value)} />
+                      <ChevronDown size={22} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                    </div>
+                  </div>
+                )}
+
+                {quickCustomerTab === "remarks" && (
+                  <div className="pt-4 grid grid-cols-[170px_1fr] gap-4">
+                    <label className="text-[14px] text-gray-700">Remarks</label>
+                    <textarea rows={5} className="max-w-[760px] rounded border border-gray-300 px-3 py-2 text-[13px] text-gray-700" value={quickCustomerForm.notes} onChange={(e) => handleQuickCustomerFieldChange("notes", e.target.value)} />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-gray-200 px-6 py-4 flex items-center gap-3 bg-white">
+              <button type="button" onClick={handleSaveQuickCustomer} disabled={isSavingQuickCustomer} className="h-[36px] px-6 rounded bg-[#22b573] text-white text-[14px] font-medium disabled:opacity-60">
+                {isSavingQuickCustomer ? "Saving..." : "Save"}
+              </button>
+              <button type="button" onClick={closeCustomerQuickAction} disabled={isSavingQuickCustomer} className="h-[36px] px-6 rounded border border-gray-300 text-[14px] text-gray-700 bg-white">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {isRetainerNumberModalOpen && typeof document !== "undefined" && document.body && createPortal(
+        <div className="fixed inset-0 z-[10000] bg-black/45 flex items-center justify-center p-4" onClick={() => setIsRetainerNumberModalOpen(false)}>
+          <div className="w-full max-w-[640px] bg-white rounded-lg shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="h-14 border-b border-gray-200 px-5 flex items-center justify-between">
+              <h3 className="text-[16px] font-medium text-gray-800">Configure Retainer Invoice Number Preferences</h3>
+              <button
+                type="button"
+                onClick={() => setIsRetainerNumberModalOpen(false)}
+                className="w-7 h-7 rounded text-[#ef4444] hover:bg-red-50 flex items-center justify-center"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-5">
+              <div className="mb-4 flex items-start gap-10 text-[14px] text-gray-700">
+                <div>
+                  <div className="font-semibold text-[13px]">Location</div>
+                  <div>{selectedLocation || "Head Office"}</div>
+                </div>
+                <div>
+                  <div className="font-semibold text-[13px]">Associated Series</div>
+                  <div>Default Transaction Series</div>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-200 pt-4">
+                <p className="text-[14px] text-gray-700 max-w-[560px] mb-4">
+                  {retainerNumberMode === "manual"
+                    ? "You have selected manual retainer invoice numbering. Do you want us to auto-generate it for you?"
+                    : "Your retainer invoice numbers are set on auto-generate mode to save your time. Are you sure about changing this setting?"}
+                </p>
+
+                <label className="flex items-center gap-2 text-[14px] text-gray-800 mb-2">
+                  <input
+                    type="radio"
+                    name="retainer-number-mode"
+                    checked={retainerNumberMode === "auto"}
+                    onChange={() => setRetainerNumberMode("auto")}
+                  />
+                  <span>Continue auto-generating retainer invoice numbers</span>
+                  <Info size={12} className="text-gray-500" />
+                </label>
+
+                {retainerNumberMode === "auto" && (
+                  <div className="ml-6 mb-3 grid grid-cols-[130px_1fr] gap-3 max-w-[400px]">
+                    <div>
+                      <label className="block text-[12px] text-gray-600 mb-1">Prefix</label>
+                      <input
+                        value={retainerPrefix}
+                        onChange={(e) => setRetainerPrefix(e.target.value)}
+                        className="h-[34px] w-full rounded border border-gray-300 px-2 text-[13px] outline-none focus:border-blue-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[12px] text-gray-600 mb-1">Next Number</label>
+                      <input
+                        value={retainerNextNumber}
+                        onChange={(e) => setRetainerNextNumber(extractRetainerDigits(e.target.value))}
+                        className="h-[34px] w-full rounded border border-gray-300 px-2 text-[13px] outline-none focus:border-blue-400"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <label className="flex items-center gap-2 text-[14px] text-gray-800">
+                  <input
+                    type="radio"
+                    name="retainer-number-mode"
+                    checked={retainerNumberMode === "manual"}
+                    onChange={() => setRetainerNumberMode("manual")}
+                  />
+                  <span>Enter retainer invoice numbers manually</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="border-t border-gray-200 px-5 py-4 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={saveRetainerNumberPreferences}
+                className="h-[34px] px-4 rounded bg-[#22b573] text-white text-[14px] font-medium"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsRetainerNumberModalOpen(false)}
+                className="h-[34px] px-4 rounded border border-gray-300 bg-white text-[14px] text-gray-700"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      <NewTaxModal
+        isOpen={isNewTaxModalOpen}
+        onClose={() => {
+          setIsNewTaxModalOpen(false);
+          setNewTaxTargetRowId(null);
+        }}
+        onCreated={handleTaxCreatedFromModal}
+      />
+    </div>
+  );
+}
+
+
+
+
+
+

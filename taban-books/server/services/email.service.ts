@@ -438,7 +438,7 @@ export const sendInvitationEmail = async (
   }
 
   const inviterName = invitedBy || "Taban Team";
-  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5174";
+  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5175";
   const params = new URLSearchParams({
     name: recipientName,
     email: email || "",

@@ -1,19 +1,28 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
   // Load environment variables
-  const rawApiBaseUrl = process.env.VITE_API_BASE_URL || "http://127.0.0.1:5000";
+  const rawApiBaseUrl = process.env.VITE_API_BASE_URL || "http://127.0.0.1:5001";
   // Normalize localhost to IPv4 loopback to avoid intermittent Node DNS localhost resolution issues in proxy.
   const apiBaseUrl = rawApiBaseUrl.replace("http://localhost:", "http://127.0.0.1:");
-  const frontendUrl = process.env.VITE_FRONTEND_URL || "http://localhost:5174";
-  const port = parseInt(process.env.VITE_PORT || "5174", 10);
+  const frontendUrl = process.env.VITE_FRONTEND_URL || "http://localhost:5175";
+  const port = parseInt(process.env.VITE_PORT || "5175", 10);
   const isProduction = mode === "production";
   const isProxyDebugEnabled = process.env.VITE_PROXY_DEBUG === "true";
   const sanitizeChunkName = (value: string) =>
     value.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "-").toLowerCase();
 
   const config = {
+    resolve: {
+      alias: {
+        "@tanstack/react-query": resolve(__dirname, "src/react-query.tsx"),
+      },
+    },
     plugins: [react()],
     build: {
       rollupOptions: {

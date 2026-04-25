@@ -49,7 +49,8 @@ const setFavicon = (href: string) => {
 
 const applyOrganizationBranding = (organization?: Partial<Organization> | null) => {
   const orgName = String(organization?.name || organization?.legalName || "").trim();
-  document.title = orgName || DEFAULT_TITLE;
+  const looksGenericBrand = /school management system|^taban_book$|^books?$|^portal$/i.test(orgName);
+  document.title = orgName && !looksGenericBrand ? orgName : DEFAULT_TITLE;
 
   const logoUrl = resolveImageUrl(String(organization?.logo || ""));
   setFavicon(logoUrl || DEFAULT_FAVICON);

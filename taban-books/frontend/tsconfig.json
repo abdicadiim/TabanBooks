@@ -2,6 +2,11 @@
     "compilerOptions": {
         "ignoreDeprecations": "5.0",
         "baseUrl": ".",
+        "paths": {
+            "@tanstack/react-query": [
+                "./src/react-query"
+            ]
+        },
         "target": "ESNext",
         "useDefineForClassFields": true,
         "lib": [
