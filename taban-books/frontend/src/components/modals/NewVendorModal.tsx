@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
     X,
@@ -69,6 +69,7 @@ export default function NewVendorModal({ isOpen, onClose, onCreated }: NewVendor
     const [activeTab, setActiveTab] = useState("Other Details");
     const [documents, setDocuments] = useState<any[]>([]);
     const [uploadDropdownOpen, setUploadDropdownOpen] = useState(false);
+    const [displayNameDropdownOpen, setDisplayNameDropdownOpen] = useState(false);
     const [showMoreDetails, setShowMoreDetails] = useState(false);
     const [contactPersons, setContactPersons] = useState([
         { id: Date.now(), salutation: "", firstName: "", lastName: "", email: "", workPhone: "", mobile: "", skypeName: "", designation: "", department: "" }
@@ -78,6 +79,7 @@ export default function NewVendorModal({ isOpen, onClose, onCreated }: NewVendor
     const shippingStates = getStatesByCountry(formData.shippingCountry);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const uploadDropdownRef = useRef<HTMLDivElement>(null);
+    const displayNameDropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!isOpen) {
@@ -129,22 +131,41 @@ export default function NewVendorModal({ isOpen, onClose, onCreated }: NewVendor
             setDocuments([]);
             setContactPersons([{ id: Date.now(), salutation: "", firstName: "", lastName: "", email: "", workPhone: "", mobile: "", skypeName: "", designation: "", department: "" }]);
             setIsLoading(false);
+            setDisplayNameDropdownOpen(false);
         }
     }, [isOpen]);
 
+    const displayNameOptions = useMemo(() => {
+        const options = generateDisplayNameOptions({
+            salutation: formData.salutation,
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            companyName: formData.companyName,
+        });
+        const current = String(formData.displayName || "").trim();
+        if (current && !options.includes(current)) {
+            options.unshift(current);
+        }
+        return Array.from(new Set(options.filter(Boolean)));
+    }, [formData.salutation, formData.firstName, formData.lastName, formData.companyName, formData.displayName]);
+
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            if (uploadDropdownRef.current && !uploadDropdownRef.current.contains(event.target as Node)) {
+            const target = event.target as Node;
+            if (uploadDropdownRef.current && !uploadDropdownRef.current.contains(target)) {
                 setUploadDropdownOpen(false);
             }
+            if (displayNameDropdownRef.current && !displayNameDropdownRef.current.contains(target)) {
+                setDisplayNameDropdownOpen(false);
+            }
         };
-        if (uploadDropdownOpen) {
+        if (uploadDropdownOpen || displayNameDropdownOpen) {
             document.addEventListener("mousedown", handleClickOutside);
         }
         return () => {
             document.removeEventListener("mousedown", handleClickOutside);
         };
-    }, [uploadDropdownOpen]);
+    }, [uploadDropdownOpen, displayNameDropdownOpen]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
@@ -605,17 +626,89 @@ export default function NewVendorModal({ isOpen, onClose, onCreated }: NewVendor
                                 <Info size={16} style={modalStyles.infoIcon} />
                                 <span style={{ color: "#ef4444" }}>*</span>
                             </div>
-                            <div style={{ position: "relative" }}>
+                            <div style={{ position: "relative" }} ref={displayNameDropdownRef}>
                                 <input
                                     type="text"
                                     name="displayName"
                                     value={formData.displayName}
                                     onChange={handleChange}
+                                    onFocus={() => setDisplayNameDropdownOpen(true)}
                                     placeholder="Select or type to add"
-                                    style={modalStyles.input}
+                                    style={{
+                                        ...modalStyles.input,
+                                        paddingRight: "40px",
+                                        borderColor: displayNameDropdownOpen ? "#3b82f6" : modalStyles.input.borderColor,
+                                        boxShadow: displayNameDropdownOpen ? "0 0 0 3px rgba(59,130,246,0.12)" : modalStyles.input.boxShadow,
+                                    }}
                                     required
                                 />
-                                <ChevronDown size={16} style={{ position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "#6b7280" }} />
+                                <button
+                                    type="button"
+                                    onClick={() => setDisplayNameDropdownOpen((prev) => !prev)}
+                                    style={{
+                                        position: "absolute",
+                                        right: "10px",
+                                        top: "50%",
+                                        transform: "translateY(-50%)",
+                                        border: "none",
+                                        background: "transparent",
+                                        padding: "2px",
+                                        cursor: "pointer",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        color: displayNameDropdownOpen ? "#3b82f6" : "#6b7280",
+                                    }}
+                                >
+                                    <ChevronDown size={16} style={{ transform: displayNameDropdownOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease" }} />
+                                </button>
+                                {displayNameDropdownOpen && displayNameOptions.length > 0 && (
+                                    <div
+                                        style={{
+                                            position: "absolute",
+                                            left: 0,
+                                            right: 0,
+                                            top: "calc(100% + 6px)",
+                                            zIndex: 50,
+                                            backgroundColor: "#ffffff",
+                                            border: "1px solid #dbe1ea",
+                                            borderRadius: "8px",
+                                            boxShadow: "0 12px 28px rgba(15, 23, 42, 0.16)",
+                                            overflow: "hidden",
+                                        }}
+                                    >
+                                        <div style={{ maxHeight: "220px", overflowY: "auto", padding: "6px 0" }}>
+                                            {displayNameOptions.map((option) => {
+                                                const isSelected = String(formData.displayName || "").trim() === option;
+                                                return (
+                                                    <button
+                                                        key={option}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setFormData((prev) => ({ ...prev, displayName: option }));
+                                                            setDisplayNameDropdownOpen(false);
+                                                        }}
+                                                        style={{
+                                                            width: "100%",
+                                                            border: "none",
+                                                            background: isSelected ? "#eef2ff" : "transparent",
+                                                            padding: "10px 14px",
+                                                            textAlign: "left",
+                                                            cursor: "pointer",
+                                                            display: "flex",
+                                                            alignItems: "center",
+                                                            justifyContent: "space-between",
+                                                            fontSize: "14px",
+                                                            color: "#1f2937",
+                                                        }}
+                                                    >
+                                                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{option}</span>
+                                                        <span style={{ color: isSelected ? "#3b82f6" : "transparent", fontWeight: 700 }}>✓</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 

@@ -181,7 +181,7 @@ export default function NewVendorCredit() {
 
   const [apSearchTerm, setApSearchTerm] = useState("");
   const discountMode = enabledSettings?.discountSettings?.discountType ?? "transaction";
-  const showTransactionDiscount = discountMode === "transaction";
+  const showTransactionDiscount = formData.taxLevel !== "At Item Level";
   const showAdjustment = enabledSettings?.chargeSettings?.adjustments !== false;
   const taxMode = enabledSettings?.taxSettings?.taxInclusive ?? "both";
   const lockTaxPreference = taxMode === "inclusive" || taxMode === "exclusive";
@@ -1917,6 +1917,7 @@ export default function NewVendorCredit() {
                   <th style={{ ...styles.tableHeaderCell, width: "18%", fontSize: "11px", color: "#6b7280", fontWeight: "600" }}>ACCOUNT</th>
                   <th style={{ ...styles.tableHeaderCell, width: "10%", fontSize: "11px", color: "#6b7280", fontWeight: "600", textAlign: "right" }}>QUANTITY</th>
                   <th style={{ ...styles.tableHeaderCell, width: "15%", fontSize: "11px", color: "#6b7280", fontWeight: "600", textAlign: "right" }}>RATE <Grid3x3 size={12} style={{ display: "inline", marginLeft: "4px" }} /></th>
+                  {!showTransactionDiscount && <th style={{ ...styles.tableHeaderCell, width: "12%", fontSize: "11px", color: "#6b7280", fontWeight: "600", textAlign: "right" }}>DISCOUNT</th>}
                   <th style={{ ...styles.tableHeaderCell, width: "15%", fontSize: "11px", color: "#6b7280", fontWeight: "600", textAlign: "right", borderRight: "none" }}>AMOUNT</th>
                 </tr>
               </thead>
@@ -2093,6 +2094,33 @@ export default function NewVendorCredit() {
                         <span style={{ fontSize: "10px", color: "#156372", cursor: "pointer" }}>Recent Transactions</span>
                       </div>
                     </td>
+                    {!showTransactionDiscount && (
+                      <td style={{ ...styles.tableCell, width: "12%", verticalAlign: "top" }}>
+                        <div style={{ display: "flex", alignItems: "center" }}>
+                          <input
+                            style={{ ...styles.input, width: "100%", height: "36px", textAlign: "right", borderRadius: "4px 0 0 4px", borderRight: "none", fontSize: "13px", boxSizing: "border-box" }}
+                            value={item.discount?.replace(/[^\d.]/g, '') || "0"}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const type = item.discount?.includes("%") ? "%" : formData.currency;
+                              handleItemChange(index, "discount", `${val} ${type}`);
+                            }}
+                          />
+                          <div 
+                            style={{ height: "36px", padding: "0 8px", border: "1px solid #d1d5db", borderRadius: "0 4px 4px 0", backgroundColor: "#f9fafb", fontSize: "13px", cursor: "pointer", display: "flex", alignItems: "center", gap: "2px", boxSizing: "border-box" }}
+                            onClick={() => {
+                              const currentType = item.discount?.includes("%") ? "%" : formData.currency;
+                              const val = item.discount?.replace(/[^\d.]/g, '') || "0";
+                              const nextType = currentType === "%" ? formData.currency : "%";
+                              handleItemChange(index, "discount", `${val} ${nextType}`);
+                            }}
+                          >
+                            {item.discount?.includes("%") ? "%" : formData.currency}
+                            <ChevronDown size={12} />
+                          </div>
+                        </div>
+                      </td>
+                    )}
                     <td style={{ ...styles.tableCell, width: "15%", textAlign: "right", borderRight: "none" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", height: "36px" }}>
                         <span style={{ fontSize: "14px", fontWeight: "600", color: "#111827" }}>{parseFloat(item.amount || 0).toFixed(2)}</span>
@@ -2128,10 +2156,11 @@ export default function NewVendorCredit() {
                 <span style={{ fontSize: "13px", color: "#4b5563", fontWeight: "500" }}>Sub Total</span>
                 <span style={{ fontSize: "13px", color: "#111827", fontWeight: "600" }}>{calculateSubTotal().toFixed(2)}</span>
               </div>
-              <div style={styles.summaryRow}>
-                <span style={{ ...styles.summaryLabel, color: "#6b7280" }}>Discount</span>
-                <div style={{ display: "flex", gap: "0", alignItems: "center" }}>
-                  <input
+              {showTransactionDiscount && (
+                <div style={styles.summaryRow}>
+                  <span style={{ ...styles.summaryLabel, color: "#6b7280" }}>Discount</span>
+                  <div style={{ display: "flex", gap: "0", alignItems: "center" }}>
+                    <input
                     style={{
                       width: "80px",
                       padding: "6px 8px",
@@ -2203,6 +2232,7 @@ export default function NewVendorCredit() {
                 </div>
                 <span style={styles.summaryValue}>{calculateDiscountAmount().toFixed(2)}</span>
               </div>
+              )}
 
               <div style={{ ...styles.totalRow, borderTop: "1px solid #e5e7eb", marginTop: "16px", paddingTop: "16px" }}>
                 <span style={{ fontSize: "15px", fontWeight: "600", color: "#111827" }}>Total ( {formData.currency} )</span>

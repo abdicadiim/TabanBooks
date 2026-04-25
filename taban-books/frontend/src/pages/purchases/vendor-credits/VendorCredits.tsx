@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronUp, Plus, MoreVertical, Play, Star, X, ArrowUpDown, Search, Trash2, Download, Upload, Settings, RefreshCw, ChevronRight, CreditCard, GripVertical, User, Users, Lock, Check, FileText, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Eye, EyeOff, Info } from "lucide-react";
@@ -1463,8 +1463,61 @@ export default function VendorCredits() {
       )}
 
       {/* Main Content */}
-      <div style={styles.tableContainer}>
-        <div style={styles.tableWrapper}>
+      {!isRefreshing && vendorCredits.length === 0 ? (
+        <div style={styles.content}>
+          <div style={styles.videoCard}>
+            <div style={styles.videoThumbnail}>
+              <div style={styles.videoPattern}></div>
+              <div style={styles.videoOverlay}>
+                <div style={styles.videoLeft}>
+                  <button style={styles.playButton}>
+                    <Play fill="currentColor" size={28} style={{ marginLeft: "4px" }} />
+                  </button>
+                </div>
+                <div style={styles.videoRight}>
+                  <div style={styles.videoLogo}>
+                    <div style={styles.logoIcon}>
+                      B
+                      <div style={styles.logoIconLines}></div>
+                    </div>
+                    <div style={styles.logoText}>
+                      <span style={styles.logoTabanBooks}>Zoho</span>
+                      <span style={styles.logoBooks}>Books</span>
+                    </div>
+                  </div>
+                  <div style={styles.videoTitle}>How to create a vendor credit</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <h2 style={styles.mainHeading}>You deserve some credit too.</h2>
+          <p style={styles.description}>
+            Create vendor credits and apply them to multiple bills when buying stuff from your vendor.
+          </p>
+          
+          <div style={styles.actions}>
+            <button 
+              style={styles.createButton}
+              onClick={() => navigate("/purchases/vendor-credits/new")}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#0e4a55"}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#156372"}
+            >
+              CREATE VENDOR CREDITS
+            </button>
+            <button 
+              style={styles.importLink}
+              onClick={() => navigate("/purchases/vendor-credits/import")}
+              onMouseEnter={(e) => e.currentTarget.style.textDecoration = "underline"}
+              onMouseLeave={(e) => e.currentTarget.style.textDecoration = "none"}
+            >
+              Import Vendor Credits
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={styles.tableContainer}>
+          <div style={styles.tableWrapper}>
           <table style={styles.table}>
             <thead style={styles.tableHeader}>
               <tr>
@@ -1628,6 +1681,7 @@ export default function VendorCredits() {
           </table>
         </div>
       </div>
+      )}
 
       {/* New Custom View Modal */}
       {showCustomViewModal && (

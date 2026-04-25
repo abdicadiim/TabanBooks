@@ -246,6 +246,8 @@ export default function NewVendor() {
   const [vendorLanguageSearch, setVendorLanguageSearch] = useState("");
   const vendorLanguageDropdownRef = useRef<HTMLDivElement | null>(null);
   const displayNameDropdownRef = useRef<HTMLDivElement | null>(null);
+  const displayNameInputRef = useRef<HTMLInputElement | null>(null);
+  const [displayNameDropdownStyle, setDisplayNameDropdownStyle] = useState<React.CSSProperties>({});
   const [isTaxRateDropdownOpen, setIsTaxRateDropdownOpen] = useState(false);
   const [taxRateSearch, setTaxRateSearch] = useState("");
   const taxRateDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -768,6 +770,7 @@ export default function NewVendor() {
 
     if (name === "displayName") {
       setHasManualDisplayNameSelection(true);
+      setIsDisplayNameDropdownOpen(true);
     }
 
     setFormData(updatedData);
@@ -994,6 +997,32 @@ export default function NewVendor() {
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!isDisplayNameDropdownOpen) return;
+
+    const updateDropdownPosition = () => {
+      const input = displayNameInputRef.current;
+      if (!input) return;
+      const rect = input.getBoundingClientRect();
+      setDisplayNameDropdownStyle({
+        position: "fixed",
+        top: rect.bottom + 8,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 9999,
+      });
+    };
+
+    updateDropdownPosition();
+    window.addEventListener("resize", updateDropdownPosition);
+    window.addEventListener("scroll", updateDropdownPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateDropdownPosition);
+      window.removeEventListener("scroll", updateDropdownPosition, true);
+    };
+  }, [isDisplayNameDropdownOpen, formData.displayName]);
 
 
   const handleCancel = () => {
@@ -1736,9 +1765,11 @@ export default function NewVendor() {
                   <div className="relative" ref={displayNameDropdownRef}>
                     <input
                       id="displayName"
+                      ref={displayNameInputRef}
                       name="displayName"
                       value={formData.displayName}
                       onChange={handleChange}
+                      onClick={() => setIsDisplayNameDropdownOpen(true)}
                       onFocus={() => setIsDisplayNameDropdownOpen(true)}
                       placeholder="Select or type to add"
                       className={`w-full rounded-md bg-white py-1.5 pl-3 pr-8 text-base text-gray-900 transition-all duration-200 ease-out hover:shadow-sm focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6 ${fieldErrors.displayName ? "border border-red-400 focus:border-red-500" : "border border-gray-300 hover:border-[#156372]/40 focus:border-[#156372]"}`}
@@ -1750,33 +1781,37 @@ export default function NewVendor() {
                     >
                       <ChevronDown size={16} className={`transition-transform ${isDisplayNameDropdownOpen ? "rotate-180" : ""}`} />
                     </button>
-                    {isDisplayNameDropdownOpen && displayNameOptions.length > 0 && (
-                      <div className="absolute left-0 top-full z-50 mt-2 w-full overflow-hidden rounded-md border border-gray-300 bg-white shadow-xl">
-                        <div className="max-h-56 overflow-y-auto py-1">
-                          {displayNameOptions.map((option) => {
-                            const isSelected = String(formData.displayName || "").trim() === option;
-                            return (
-                              <button
-                                key={option}
-                                type="button"
-                                onClick={() => {
-                                  setFormData((prev) => ({ ...prev, displayName: option }));
-                                  setHasManualDisplayNameSelection(true);
-                                  setIsDisplayNameDropdownOpen(false);
-                                }}
-                                className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${
-                                  isSelected ? "bg-gray-100 text-gray-900" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
-                                }`}
-                              >
-                                <span className="truncate">{option}</span>
-                                {isSelected && <ChevronDown size={14} className="rotate-180 text-gray-600" />}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
                   </div>
+                  {isDisplayNameDropdownOpen && displayNameOptions.length > 0 && createPortal(
+                    <div
+                      style={displayNameDropdownStyle}
+                      className="overflow-hidden rounded-md border border-gray-300 bg-white shadow-xl"
+                    >
+                      <div className="max-h-56 overflow-y-auto py-1">
+                        {displayNameOptions.map((option) => {
+                          const isSelected = String(formData.displayName || "").trim() === option;
+                          return (
+                            <button
+                              key={option}
+                              type="button"
+                              onClick={() => {
+                                setFormData((prev) => ({ ...prev, displayName: option }));
+                                setHasManualDisplayNameSelection(true);
+                                setIsDisplayNameDropdownOpen(false);
+                              }}
+                              className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${
+                                isSelected ? "bg-gray-100 text-gray-900" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                              }`}
+                            >
+                              <span className="truncate">{option}</span>
+                              {isSelected && <ChevronDown size={14} className="rotate-180 text-gray-600" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>,
+                    document.body
+                  )}
                   {fieldErrors.displayName && (
                     <div className="mt-2 flex items-center gap-2 text-sm text-red-500">
                       <span className="inline-block h-3 w-3 rounded-full bg-red-500" />

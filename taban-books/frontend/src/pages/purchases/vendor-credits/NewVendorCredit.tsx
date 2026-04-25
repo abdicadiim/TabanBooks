@@ -877,31 +877,34 @@ export default function NewVendorCredit() {
     },
     fieldRow: {
       display: "flex",
-      flexDirection: "column",
-      gap: "8px",
+      alignItems: "flex-start",
       marginBottom: "20px",
-      maxWidth: "500px",
+      maxWidth: "800px",
     },
     label: {
+      width: "225px",
       fontSize: "13px",
       fontWeight: "400",
-      color: "#6b7280",
+      color: "#374151",
       display: "flex",
       alignItems: "center",
       gap: "4px",
+      paddingTop: "10px",
+      flexShrink: 0,
     },
     required: {
-      color: "#156372",
+      color: "#ef4444",
     },
     input: {
       padding: "8px 12px",
-      fontSize: "14px",
+      fontSize: "13px",
       border: "1px solid #d1d5db",
       borderRadius: "4px",
       width: "100%",
       backgroundColor: "#ffffff",
       outline: "none",
       transition: "border-color 0.2s",
+      minHeight: "36px",
     },
     select: {
       padding: "8px 12px",
@@ -1168,8 +1171,8 @@ export default function NewVendorCredit() {
           <div style={styles.formSection}>
             {/* Vendor Name */}
             <div style={styles.fieldRow}>
-              <label style={{ ...styles.label, color: "#156372" }}>Vendor Name*</label>
-              <div style={{ display: "flex", gap: "8px", position: "relative" }}>
+              <label style={{ ...styles.label, ...styles.required }}>Vendor Name*</label>
+              <div style={{ display: "flex", gap: "8px", position: "relative", width: "400px" }}>
                 <div style={{ display: "flex", gap: "8px", position: "relative", flex: 1 }}>
                   <div
                     style={{
@@ -1326,12 +1329,13 @@ export default function NewVendorCredit() {
                   style={{
                     padding: "8px",
                     borderRadius: "4px",
-                    backgroundColor: "#156372",
+                    backgroundColor: "#10b981",
                     border: "none",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    cursor: "pointer"
+                    cursor: "pointer",
+                    width: "36px"
                   }}
                 >
                   <Search size={16} color="#fff" />
@@ -1339,10 +1343,21 @@ export default function NewVendorCredit() {
               </div>
             </div>
 
+            {/* Location */}
+            <div style={styles.fieldRow}>
+              <label style={styles.label}>Location</label>
+              <div style={{ width: "400px" }}>
+                <div style={styles.select}>
+                  <span style={{ fontSize: "13px", color: "#374151" }}>Head Office</span>
+                  <ChevronDown size={16} style={{ color: "#6b7280" }} />
+                </div>
+              </div>
+            </div>
+
             {/* Credit Note# */}
             <div style={styles.fieldRow}>
-              <label style={{ ...styles.label, color: "#156372" }}>Credit Note#*</label>
-              <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
+              <label style={{ ...styles.label, ...styles.required }}>Credit Note#*</label>
+              <div style={{ display: "flex", alignItems: "center", position: "relative", width: "400px" }}>
                 <input
                   type="text"
                   style={styles.input}
@@ -1356,36 +1371,42 @@ export default function NewVendorCredit() {
             {/* Order Number */}
             <div style={styles.fieldRow}>
               <label style={styles.label}>Order Number</label>
-              <input
-                type="text"
-                style={styles.input}
-                value={formData.orderNumber}
-                onChange={(e) => setFormData({ ...formData, orderNumber: e.target.value })}
-              />
+              <div style={{ width: "400px" }}>
+                <input
+                  type="text"
+                  style={styles.input}
+                  value={formData.orderNumber}
+                  onChange={(e) => setFormData({ ...formData, orderNumber: e.target.value })}
+                />
+              </div>
             </div>
 
             {/* Vendor Credit Date */}
             <div style={styles.fieldRow}>
               <label style={styles.label}>Vendor Credit Date</label>
-              <input
-                type="date"
-                style={styles.input}
-                value={formData.vendorCreditDate}
-                onChange={(e) => setFormData({ ...formData, vendorCreditDate: e.target.value })}
-              />
+              <div style={{ width: "400px" }}>
+                <input
+                  type="date"
+                  style={styles.input}
+                  value={formData.vendorCreditDate}
+                  onChange={(e) => setFormData({ ...formData, vendorCreditDate: e.target.value })}
+                />
+              </div>
             </div>
 
-            {/* Subject */}
+            {/* Description */}
             <div style={styles.fieldRow}>
               <label style={styles.label}>
-                Subject <Info size={14} style={{ color: "#9ca3af" }} />
+                Description <Info size={14} style={{ color: "#9ca3af" }} />
               </label>
-              <textarea
-                style={{ ...styles.textarea, minHeight: "36px" }}
-                value={formData.subject}
-                onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                placeholder="Enter a subject within 250 characters"
-              />
+              <div style={{ width: "400px" }}>
+                <textarea
+                  style={{ ...styles.textarea, minHeight: "36px" }}
+                  value={formData.subject}
+                  onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+                  placeholder="Enter a description within 250 characters"
+                />
+              </div>
             </div>
 
             {/* Accounts Payable */}
@@ -1393,7 +1414,7 @@ export default function NewVendorCredit() {
               <label style={styles.label}>
                 Accounts Payable <Info size={14} style={{ color: "#9ca3af" }} />
               </label>
-              <div style={{ flex: 1, position: "relative" }}>
+              <div style={{ width: "400px", position: "relative" }}>
                 <div
                   style={{
                     ...styles.input,
