@@ -48,6 +48,7 @@ export default function NewVendorCredit() {
   const isEdit = !!(stateIsEdit || routeCreditId);
   const [enabledSettings, setEnabledSettings] = useState<any>(null);
   const [formData, setFormData] = useState({
+    vendorId: "",
     vendorName: "",
     creditNote: "",
     orderNumber: "",
@@ -66,10 +67,10 @@ export default function NewVendorCredit() {
   });
   const { code: baseCurrencyCode } = useCurrency();
   const [discountDropdownOpen, setDiscountDropdownOpen] = useState(false);
-  const [selectedVendor, setSelectedVendor] = useState(null);
+  const [selectedVendor, setSelectedVendor] = useState<any>(null);
   const [billingAddressEditMode, setBillingAddressEditMode] = useState(false);
 
-  const [itemRows, setItemRows] = useState([
+  const [itemRows, setItemRows] = useState<any[]>([
     {
       itemDetails: "",
       account: "",
@@ -119,7 +120,7 @@ export default function NewVendorCredit() {
   const [locations, setLocations] = useState<any[]>([]);
   const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
   const [locationSearch, setLocationSearch] = useState("");
-  const locationRef = useRef(null);
+  const locationRef = useRef<HTMLDivElement | null>(null);
   const [taxSearch, setTaxSearch] = useState<{ [key: string]: string }>({});
   const [itemSearch, setItemSearch] = useState<{ [key: string]: string }>({});
   const [showNewItemModal, setShowNewItemModal] = useState(false);
@@ -154,18 +155,18 @@ export default function NewVendorCredit() {
     purchaseTax: "",
     preferredVendor: "",
   });
-  const itemRefs = useRef({});
-  const rowMenuRefs = useRef({});
+  const itemRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const rowMenuRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
-  const vendorRef = useRef(null);
-  const currencyRef = useRef(null);
-  const accountsPayableRef = useRef(null);
-  const taxExclusiveRef = useRef(null);
-  const taxLevelRef = useRef(null);
-  const uploadMenuRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const bulkActionsRef = useRef(null);
-  const addNewRowRef = useRef(null);
+  const vendorRef = useRef<HTMLDivElement | null>(null);
+  const currencyRef = useRef<HTMLDivElement | null>(null);
+  const accountsPayableRef = useRef<HTMLDivElement | null>(null);
+  const taxExclusiveRef = useRef<HTMLDivElement | null>(null);
+  const taxLevelRef = useRef<HTMLDivElement | null>(null);
+  const uploadMenuRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const bulkActionsRef = useRef<HTMLDivElement | null>(null);
+  const addNewRowRef = useRef<HTMLDivElement | null>(null);
 
   // Load vendors from localStorage
   const [taxes, setTaxes] = useState<any[]>([]);
@@ -462,40 +463,41 @@ export default function NewVendorCredit() {
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (vendorRef.current && !vendorRef.current.contains(event.target)) {
+      const target = event.target as Node;
+      if (vendorRef.current && !vendorRef.current.contains(target)) {
         setVendorDropdownOpen(false);
       }
-      if (accountsPayableRef.current && !accountsPayableRef.current.contains(event.target)) {
+      if (accountsPayableRef.current && !accountsPayableRef.current.contains(target)) {
         setAccountsPayableOpen(false);
       }
-      if (taxExclusiveRef.current && !taxExclusiveRef.current.contains(event.target)) {
+      if (taxExclusiveRef.current && !taxExclusiveRef.current.contains(target)) {
         setTaxExclusiveOpen(false);
       }
-      if (taxLevelRef.current && !taxLevelRef.current.contains(event.target)) {
+      if (taxLevelRef.current && !taxLevelRef.current.contains(target)) {
         setTaxLevelOpen(false);
       }
-      if (uploadMenuRef.current && !uploadMenuRef.current.contains(event.target)) {
+      if (uploadMenuRef.current && !uploadMenuRef.current.contains(target)) {
         setUploadMenuOpen(false);
       }
-      if (currencyRef.current && !currencyRef.current.contains(event.target)) {
+      if (currencyRef.current && !currencyRef.current.contains(target)) {
         setCurrencyDropdownOpen(false);
       }
-      if (bulkActionsRef.current && !bulkActionsRef.current.contains(event.target)) {
+      if (bulkActionsRef.current && !bulkActionsRef.current.contains(target)) {
         setBulkActionsOpen(false);
       }
-      if (addNewRowRef.current && !addNewRowRef.current.contains(event.target)) {
+      if (addNewRowRef.current && !addNewRowRef.current.contains(target)) {
         setAddNewRowDropdownOpen(false);
       }
       // Close item dropdowns
       Object.keys(itemDropdownOpen).forEach((index) => {
-        if (itemRefs.current[index] && !itemRefs.current[index].contains(event.target)) {
+        if (itemRefs.current[index] && !itemRefs.current[index]?.contains(target)) {
           setItemDropdownOpen((prev) => ({ ...prev, [index]: false }));
           setItemSearch((prev) => ({ ...prev, [index]: "" }));
         }
       });
       // Close row menus
       Object.keys(rowMenuOpen).forEach((index) => {
-        if (rowMenuOpen[index] && rowMenuRefs.current[index] && !rowMenuRefs.current[index].contains(event.target)) {
+        if (rowMenuOpen[index] && rowMenuRefs.current[index] && !rowMenuRefs.current[index]?.contains(target)) {
           setRowMenuOpen((prev) => ({ ...prev, [index]: false }));
         }
       });
@@ -519,8 +521,8 @@ export default function NewVendorCredit() {
 
     // Calculate amount
     if (field === "quantity" || field === "rate" || field === "discount") {
-      const quantity = parseFloat(newItems[index].quantity || 0);
-      const rate = parseFloat(newItems[index].rate || 0);
+      const quantity = parseFloat(newItems[index].quantity || "0");
+      const rate = parseFloat(newItems[index].rate || "0");
       const discountMatch = (newItems[index].discount || "0 %-").match(/(\d+(?:\.\d+)?)/);
       const discountPercent = discountMatch ? parseFloat(discountMatch[1]) : 0;
       const subtotal = quantity * rate;
@@ -549,8 +551,8 @@ export default function NewVendorCredit() {
     if (item.costPrice) {
       newItems[index].rate = item.costPrice;
       // Recalculate amount
-      const quantity = parseFloat(newItems[index].quantity || 0);
-      const rate = parseFloat(item.costPrice || 0);
+      const quantity = parseFloat(newItems[index].quantity || "0");
+      const rate = parseFloat(item.costPrice || "0");
       const discountMatch = (newItems[index].discount || "0 %-").match(/(\d+(?:\.\d+)?)/);
       const discountPercent = discountMatch ? parseFloat(discountMatch[1]) : 0;
       const subtotal = quantity * rate;
@@ -562,7 +564,7 @@ export default function NewVendorCredit() {
     setItemSearch((prev) => ({ ...prev, [index]: "" }));
   };
 
-  const filteredItems = (index) => {
+  const filteredItems = (index: number) => {
     const searchTerm = (itemSearch[index] || "").toLowerCase();
     if (!searchTerm) return items;
     return items.filter((item) =>
@@ -586,7 +588,7 @@ export default function NewVendorCredit() {
     }]);
   };
 
-  const removeRow = (index) => {
+  const removeRow = (index: number) => {
     if (itemRows.length > 1) {
       setItemRows(itemRows.filter((_, i) => i !== index));
     }
@@ -633,7 +635,7 @@ export default function NewVendorCredit() {
     setRowMenuOpen((prev) => ({ ...prev, [index]: false }));
   };
 
-  const handleBulkItemSelect = (item) => {
+  const handleBulkItemSelect = (item: any) => {
     const isSelected = selectedBulkItems.some(selected => selected.id === item.id);
     if (isSelected) {
       setSelectedBulkItems(selectedBulkItems.filter(selected => selected.id !== item.id));
@@ -646,7 +648,7 @@ export default function NewVendorCredit() {
     }
   };
 
-  const handleBulkQuantityChange = (itemId, quantity) => {
+  const handleBulkQuantityChange = (itemId: string, quantity: string) => {
     setBulkItemQuantities({ ...bulkItemQuantities, [itemId]: parseFloat(quantity) || 1 });
   };
 
@@ -686,18 +688,18 @@ export default function NewVendorCredit() {
       type: newItemData.type,
       unit: newItemData.unit,
       sellable: newItemData.sellable,
-      sellingPrice: parseFloat(newItemData.sellingPrice || 0),
+      sellingPrice: parseFloat(newItemData.sellingPrice || "0"),
       salesAccount: newItemData.salesAccount,
       salesDescription: newItemData.salesDescription,
       salesTax: newItemData.salesTax,
       purchasable: newItemData.purchasable,
-      costPrice: parseFloat(newItemData.costPrice || 0),
+      costPrice: parseFloat(newItemData.costPrice || "0"),
       purchaseAccount: newItemData.purchaseAccount,
       purchaseDescription: newItemData.purchaseDescription,
       purchaseTax: newItemData.purchaseTax,
       preferredVendor: newItemData.preferredVendor,
       sku: newItemData.sku,
-      stockOnHand: parseFloat(newItemData.initialStock || 0),
+      stockOnHand: parseFloat(newItemData.initialStock || "0"),
       transactions: [],
     };
 
@@ -741,7 +743,7 @@ export default function NewVendorCredit() {
         const taxPercent = taxMatch ? parseFloat(taxMatch[1]) : 0;
         if (formData.taxExclusive === "Tax Inclusive") {
           // Tax is already included in amount
-          const subtotal = parseFloat(item.quantity || 0) * parseFloat(item.rate || 0);
+          const subtotal = parseFloat(item.quantity || "0") * parseFloat(item.rate || "0");
           taxTotal += (subtotal * taxPercent) / (100 + taxPercent);
         } else {
           taxTotal += ((item.amount || 0) * taxPercent) / 100;
@@ -769,7 +771,7 @@ export default function NewVendorCredit() {
     return subTotal - discountAmount + taxAmount + adjustment;
   };
 
-  const handleSave = async (status) => {
+  const handleSave = async (status: string) => {
     if (saveLoadingState) return;
     // Validate required fields
     if (!formData.vendorName || !selectedVendor) {
@@ -875,7 +877,7 @@ export default function NewVendorCredit() {
     }
   };
 
-  const styles = {
+  const styles: Record<string, React.CSSProperties> = {
     container: {
       width: "100%",
       backgroundColor: "#ffffff",
@@ -1174,7 +1176,7 @@ export default function NewVendorCredit() {
     }
   };
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: string) => {
     if (!dateString) return "";
     const date = new Date(dateString);
     const day = String(date.getDate()).padStart(2, '0');
