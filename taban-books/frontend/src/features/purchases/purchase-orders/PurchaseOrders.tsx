@@ -988,13 +988,13 @@ export default function PurchaseOrders() {
       whiteSpace: "nowrap",
     },
     tableHeaderCellWithCheckbox: {
-      padding: "12px 16px",
+      padding: "12px 8px",
       textAlign: "left",
       fontSize: "12px",
       fontWeight: "600",
       color: "#6b7280",
       textTransform: "uppercase",
-      width: "40px",
+      width: "44px",
     },
     tableRow: {
       borderBottom: "1px solid #e5e7eb",

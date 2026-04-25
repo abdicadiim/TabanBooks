@@ -72,6 +72,11 @@ const StatusCard = ({ label, value, onEdit, icon }: any) => (
     </div>
 );
 
+const toFiniteNumber = (value: any): number | null => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
 export default function ItemDetails({
     item,
     onBack,
@@ -109,6 +114,23 @@ export default function ItemDetails({
     const [showStatusDropdown, setShowStatusDropdown] = useState(false);
     const [reorderNotificationEnabled, setReorderNotificationEnabled] = useState(false);
     const [isActionLoading, setIsActionLoading] = useState(false);
+
+    const summaryStockOnHand =
+        toFiniteNumber(inventorySummary?.stockOnHand) ??
+        toFiniteNumber(inventorySummary?.stockQuantity) ??
+        toFiniteNumber(inventorySummary?.quantityOnHand) ??
+        toFiniteNumber(inventorySummary?.quantityAvailable) ??
+        toFiniteNumber(inventorySummary?.availableQty);
+
+    const resolvedStockOnHand =
+        summaryStockOnHand ??
+        toFiniteNumber(item.openingStock) ??
+        toFiniteNumber(item.stockOnHand) ??
+        toFiniteNumber(item.stockQuantity) ??
+        0;
+
+    const committedStock = toFiniteNumber(inventorySummary?.committedStock) ?? 0;
+    const availableForSale = resolvedStockOnHand - committedStock;
 
     const transactionTypeOptions = [
         "Quotes",
@@ -758,15 +780,15 @@ export default function ItemDetails({
                                         />
                                         <StatusCard
                                             label="Stock on Hand"
-                                            value={parseFloat(String(item.stockQuantity || 0)).toFixed(2)}
+                                            value={resolvedStockOnHand.toFixed(2)}
                                         />
                                         <StatusCard
                                             label="Committed Stock"
-                                            value={parseFloat(String(inventorySummary?.committedStock ?? 0)).toFixed(2)}
+                                            value={committedStock.toFixed(2)}
                                         />
                                         <StatusCard
                                             label="Available for Sale"
-                                            value={parseFloat(String((item.stockQuantity || 0) - (inventorySummary?.committedStock || 0))).toFixed(2)}
+                                            value={availableForSale.toFixed(2)}
                                         />
 
                                         {/* Mini metrics row */}
@@ -976,9 +998,9 @@ export default function ItemDetails({
                                         {(locations.length ? locations : [{ name: item.locationName || "Head Office" }]).map((loc: any, idx: number) => (
                                             <tr key={loc._id || loc.id || idx} className="border-t border-gray-100">
                                                 <td className="px-4 py-3 text-slate-900">{loc.name || loc.locationName || "Head Office"}</td>
-                                                <td className="px-4 py-3 text-right">{parseFloat(String(item.stockQuantity || 0)).toFixed(2)}</td>
-                                                <td className="px-4 py-3 text-right">{parseFloat(String(inventorySummary?.committedStock ?? 0)).toFixed(2)}</td>
-                                                <td className="px-4 py-3 text-right">{parseFloat(String((item.stockQuantity || 0) - (inventorySummary?.committedStock || 0))).toFixed(2)}</td>
+                                                <td className="px-4 py-3 text-right">{resolvedStockOnHand.toFixed(2)}</td>
+                                                <td className="px-4 py-3 text-right">{committedStock.toFixed(2)}</td>
+                                                <td className="px-4 py-3 text-right">{availableForSale.toFixed(2)}</td>
                                             </tr>
                                         ))}
                                     </tbody>

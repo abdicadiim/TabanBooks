@@ -87,6 +87,14 @@ const formatDateTimeParts = (value: any) => {
   };
 };
 
+const formatCurrencyValue = (amount: any, currency?: string) => {
+  const numAmount = Number(amount || 0);
+  const safeAmount = Number.isFinite(numAmount) ? numAmount : 0;
+  const code = currency || "USD";
+
+  return `${code}${safeAmount.toFixed(2)}`;
+};
+
 // Type definitions
 interface Vendor {
   _id?: string;
@@ -191,6 +199,46 @@ interface CustomView {
   name: string;
   [key: string]: any;
 }
+
+const VENDOR_TRANSACTIONS_SESSION_KEY = "vendor-detail-transactions-cache-v1";
+
+const readVendorTransactionsSessionCache = () => {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const raw = window.sessionStorage.getItem(VENDOR_TRANSACTIONS_SESSION_KEY);
+    if (!raw) return {};
+
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+};
+
+const writeVendorTransactionsSessionCache = (cache: Record<string, any>) => {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem(
+      VENDOR_TRANSACTIONS_SESSION_KEY,
+      JSON.stringify(cache)
+    );
+  } catch (error) {
+  }
+};
+
+const getVendorTransactionsFromCache = (vendorId?: string, inMemoryCache?: Record<string, any>) => {
+  const cacheKey = String(vendorId || "").trim();
+  if (!cacheKey) return null;
+
+  if (inMemoryCache?.[cacheKey]) {
+    return inMemoryCache[cacheKey];
+  }
+
+  const sessionCache = readVendorTransactionsSessionCache();
+  return sessionCache[cacheKey] || null;
+};
 
 export default function VendorDetail() {
   const { id } = useParams();
@@ -445,6 +493,190 @@ export default function VendorDetail() {
     0
   );
 
+  // Attachments dropdown state
+  const [isAttachmentsDropdownOpen, setIsAttachmentsDropdownOpen] = useState(false);
+  const attachmentsDropdownRef = useRef<HTMLDivElement>(null);
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const activityTimeline = useMemo(() => {
+    const vendorDisplayName =
+      vendor?.displayName ||
+      vendor?.name ||
+      `${(vendor as any)?.firstName || ""} ${(vendor as any)?.lastName || ""}`.trim() ||
+      vendor?.companyName ||
+      "Vendor";
+
+    const formatActor = (value: any) =>
+      String(
+        value?.name ||
+        value?.displayName ||
+        value?.fullName ||
+        value ||
+        "System"
+      ).trim() || "System";
+
+    const makeActivity = (entry: {
+      id: string;
+      date: any;
+      title: string;
+      description: string;
+      actor?: string;
+      detailsLink?: string;
+      detailsLabel?: string;
+    }) => {
+      const parsedDate = parseDateValue(entry.date);
+      if (!parsedDate) return null;
+
+      return {
+        ...entry,
+        parsedDate,
+        actor: formatActor(entry.actor),
+        detailsLabel: entry.detailsLabel || "View Details",
+      };
+    };
+
+    const vendorId = String(vendor?._id || vendor?.id || id || "").trim();
+    const currencyCode = vendor?.currency || baseCurrencyCode;
+    const entries = [
+      makeActivity({
+        id: `vendor-created-${vendorId}`,
+        date: vendor?.createdAt,
+        title: "Vendor added",
+        description: `${vendorDisplayName} record created`,
+        actor: (vendor as any)?.createdBy,
+      }),
+      makeActivity({
+        id: `vendor-updated-${vendorId}`,
+        date: vendor?.updatedAt && vendor?.updatedAt !== vendor?.createdAt ? vendor.updatedAt : null,
+        title: "Vendor updated",
+        description: `${vendorDisplayName} record updated`,
+        actor: (vendor as any)?.updatedBy,
+      }),
+      ...bills.map((bill: any, index: number) =>
+        makeActivity({
+          id: `bill-${bill._id || bill.id || index}`,
+          date: bill.date || bill.billDate || bill.createdAt || bill.updatedAt,
+          title: "Bill added",
+          description: `${bill.billNumber || bill.bill || "Bill"}${bill.total || bill.amount ? ` of amount ${formatCurrencyValue(Number(bill.total || bill.amount || 0), bill.currency || currencyCode)}` : ""}`,
+          actor: bill.createdBy || bill.updatedBy,
+          detailsLink: bill._id || bill.id ? `/purchases/bills/${bill._id || bill.id}` : undefined,
+        })
+      ),
+      ...purchaseOrders.map((order: any, index: number) =>
+        makeActivity({
+          id: `purchase-order-${order._id || order.id || index}`,
+          date: order.date || order.createdAt || order.updatedAt,
+          title: order.updatedAt && order.updatedAt !== order.createdAt ? "Purchase Order updated" : "Purchase Order added",
+          description: `${order.purchaseOrderNumber || order.purchase_order_number || "Purchase Order"}${order.amount || order.total ? ` of amount ${formatCurrencyValue(Number(order.amount || order.total || 0), order.currency || currencyCode)}` : ""}`,
+          actor: order.createdBy || order.updatedBy,
+          detailsLink: order._id || order.id ? `/purchases/purchase-orders/${order._id || order.id}` : undefined,
+        })
+      ),
+      ...expenses.map((expense: any, index: number) =>
+        makeActivity({
+          id: `expense-${expense._id || expense.id || index}`,
+          date: expense.date || expense.expenseDate || expense.createdAt || expense.updatedAt,
+          title: "Expense added",
+          description: `${expense.expenseNumber || expense.referenceNumber || expense.reference || "Expense"}${expense.amount || expense.total ? ` of amount ${formatCurrencyValue(Number(expense.amount || expense.total || 0), expense.currency || currencyCode)}` : ""}`,
+          actor: expense.createdBy || expense.updatedBy,
+          detailsLink: expense._id || expense.id ? `/purchases/expenses/${expense._id || expense.id}` : undefined,
+        })
+      ),
+      ...paymentsMade.map((payment: any, index: number) =>
+        makeActivity({
+          id: `payment-made-${payment._id || payment.id || index}`,
+          date: payment.date || payment.paymentDate || payment.createdAt || payment.updatedAt,
+          title: "Payment made",
+          description: `${payment.paymentNumber || payment.referenceNumber || payment.reference || "Payment"}${payment.amount || payment.total ? ` of amount ${formatCurrencyValue(Number(payment.amount || payment.total || 0), payment.currency || currencyCode)}` : ""}`,
+          actor: payment.createdBy || payment.updatedBy,
+        })
+      ),
+      ...vendorCredits.map((credit: any, index: number) =>
+        makeActivity({
+          id: `vendor-credit-${credit._id || credit.id || index}`,
+          date: credit.date || credit.creditDate || credit.createdAt || credit.updatedAt,
+          title: "Vendor Credit added",
+          description: `${credit.vendorCreditNumber || credit.creditNumber || credit.referenceNumber || "Vendor Credit"}${credit.amount || credit.total ? ` of amount ${formatCurrencyValue(Number(credit.amount || credit.total || 0), credit.currency || currencyCode)}` : ""}`,
+          actor: credit.createdBy || credit.updatedBy,
+        })
+      ),
+      ...recurringBills.map((bill: any, index: number) =>
+        makeActivity({
+          id: `recurring-bill-${bill._id || bill.id || index}`,
+          date: bill.date || bill.startDate || bill.createdAt || bill.updatedAt,
+          title: "Recurring Bill added",
+          description: `${bill.profileName || bill.billNumber || "Recurring Bill"} configured`,
+          actor: bill.createdBy || bill.updatedBy,
+        })
+      ),
+      ...recurringExpenses.map((expense: any, index: number) =>
+        makeActivity({
+          id: `recurring-expense-${expense._id || expense.id || index}`,
+          date: expense.date || expense.startDate || expense.createdAt || expense.updatedAt,
+          title: "Recurring Expense added",
+          description: `${expense.profileName || expense.expenseNumber || "Recurring Expense"} configured`,
+          actor: expense.createdBy || expense.updatedBy,
+        })
+      ),
+      ...purchaseReceipts.map((receipt: any, index: number) =>
+        makeActivity({
+          id: `purchase-receipt-${receipt._id || receipt.id || index}`,
+          date: receipt.date || receipt.receiptDate || receipt.createdAt || receipt.updatedAt,
+          title: "Purchase Receipt added",
+          description: `${receipt.receiptNumber || receipt.referenceNumber || "Purchase Receipt"}${receipt.amount || receipt.total ? ` of amount ${formatCurrencyValue(Number(receipt.amount || receipt.total || 0), receipt.currency || currencyCode)}` : ""}`,
+          actor: receipt.createdBy || receipt.updatedBy,
+        })
+      ),
+      ...(vendor?.contactPersons || []).map((contact: any, index: number) =>
+        makeActivity({
+          id: `contact-person-${contact._id || contact.id || index}`,
+          date: contact.createdAt || contact.date || contact.updatedAt,
+          title: "Contact person added",
+          description: `${[contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.name || "Contact person"} has been created`,
+          actor: contact.createdBy || contact.updatedBy,
+        })
+      ),
+      ...comments.map((comment: any, index: number) =>
+        makeActivity({
+          id: `comment-${comment.id || index}`,
+          date: comment.date || comment.createdAt || comment.updatedAt,
+          title: "Comment added",
+          description: String(comment.text || "").trim(),
+          actor: comment.author,
+        })
+      ),
+      ...attachments.map((attachment: any, index: number) =>
+        makeActivity({
+          id: `attachment-${attachment.id || index}`,
+          date: attachment.uploadedAt || attachment.createdAt,
+          title: "Attachment uploaded",
+          description: `${attachment.name || "Attachment"} uploaded`,
+          actor: attachment.uploadedBy || "You",
+        })
+      ),
+    ]
+      .filter(Boolean)
+      .sort((a: any, b: any) => b.parsedDate.getTime() - a.parsedDate.getTime())
+      .slice(0, 20);
+
+    return entries;
+  }, [
+    attachments,
+    baseCurrencyCode,
+    bills,
+    comments,
+    expenses,
+    id,
+    paymentsMade,
+    purchaseOrders,
+    purchaseReceipts,
+    recurringBills,
+    recurringExpenses,
+    vendor,
+    vendorCredits,
+  ]);
+
   // New Transaction dropdown state
   const [isNewTransactionDropdownOpen, setIsNewTransactionDropdownOpen] = useState(false);
   const newTransactionDropdownRef = useRef<HTMLDivElement>(null);
@@ -491,11 +723,6 @@ export default function VendorDetail() {
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   const [isCustomizeDropdownOpen, setIsCustomizeDropdownOpen] = useState(false);
 
-  // Attachments dropdown state
-  const [isAttachmentsDropdownOpen, setIsAttachmentsDropdownOpen] = useState(false);
-  const attachmentsDropdownRef = useRef<HTMLDivElement>(null);
-  const [attachments, setAttachments] = useState<any[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const vendorTransactionsCacheRef = useRef<Record<string, {
     bills: any[];
     paymentsMade: any[];
@@ -518,6 +745,35 @@ export default function VendorDetail() {
   const [selectedInbox, setSelectedInbox] = useState("files");
   const [documentSearch, setDocumentSearch] = useState("");
   const [selectedDocuments, setSelectedDocuments] = useState<any[]>([]);
+
+  const applyCachedVendorTransactions = (vendorId?: string) => {
+    const cachedTransactions = getVendorTransactionsFromCache(
+      vendorId,
+      vendorTransactionsCacheRef.current
+    );
+
+    if (!cachedTransactions) {
+      return false;
+    }
+
+    const cacheKey = String(vendorId || "").trim();
+    if (cacheKey) {
+      vendorTransactionsCacheRef.current[cacheKey] = cachedTransactions;
+    }
+
+    setBills(cachedTransactions.bills || []);
+    setPaymentsMade(cachedTransactions.paymentsMade || []);
+    setVendorCredits(cachedTransactions.vendorCredits || []);
+    setExpenses(cachedTransactions.expenses || []);
+    setPurchaseOrders(cachedTransactions.purchaseOrders || []);
+    setRecurringBills(cachedTransactions.recurringBills || []);
+    setRecurringExpenses(cachedTransactions.recurringExpenses || []);
+    setJournals(cachedTransactions.journals || []);
+    setProjects(cachedTransactions.projects || []);
+    setPurchaseReceipts(cachedTransactions.purchaseReceipts || []);
+    setIsTransactionsLoading(false);
+    return true;
+  };
   const [availableDocuments, setAvailableDocuments] = useState<any[]>([]);
   const [cloudSearchQuery, setCloudSearchQuery] = useState("");
   const [selectedCloudFiles, setSelectedCloudFiles] = useState([]);
@@ -862,14 +1118,26 @@ export default function VendorDetail() {
       return;
     }
 
+    if (
+      activeTab !== "overview" &&
+      activeTab !== "transactions" &&
+      activeTab !== "statement"
+    ) {
+      return;
+    }
+
     const vendorId = vendor?._id || vendor?.id || '';
     const vendorName = vendor?.name || "";
     const displayName = vendor?.displayName || "";
     const companyName = vendor?.companyName || "";
     const cacheKey = String(vendorId);
-    const cachedTransactions = vendorTransactionsCacheRef.current[cacheKey];
+    const cachedTransactions = getVendorTransactionsFromCache(
+      cacheKey,
+      vendorTransactionsCacheRef.current
+    );
 
     if (cachedTransactions) {
+      vendorTransactionsCacheRef.current[cacheKey] = cachedTransactions;
       setIsTransactionsLoading(false);
       setBills(cachedTransactions.bills);
       setPaymentsMade(cachedTransactions.paymentsMade);
@@ -1031,6 +1299,10 @@ export default function VendorDetail() {
         }
 
         vendorTransactionsCacheRef.current[cacheKey] = nextTransactions;
+        writeVendorTransactionsSessionCache({
+          ...readVendorTransactionsSessionCache(),
+          [cacheKey]: nextTransactions,
+        });
       } catch (error) {
       } finally {
         setIsTransactionsLoading(false);
@@ -1038,7 +1310,15 @@ export default function VendorDetail() {
     };
 
     loadVendorTransactions();
-  }, [id, vendor]);
+  }, [
+    activeTab,
+    id,
+    vendor?._id,
+    vendor?.id,
+    vendor?.name,
+    vendor?.displayName,
+    vendor?.companyName,
+  ]);
 
 
   // Build statement transactions from bills, payments made, and vendor credits
@@ -1227,44 +1507,26 @@ export default function VendorDetail() {
       setComments(normalizeCommentList(savedVendor.comments || savedVendor.customFields?.vendorComments || []));
       setAttachments(normalizeAttachmentList(savedVendor.documents || savedVendor.customFields?.vendorDocuments || []));
       setMails([]);
-      setBills([]);
-      setPaymentsMade([]);
-      setVendorCredits([]);
-      setExpenses([]);
-      setPurchaseOrders([]);
-      setRecurringBills([]);
-      setRecurringExpenses([]);
-      setJournals([]);
-      setProjects([]);
-      setPurchaseReceipts([]);
       setStatementTransactions([]);
       setSelectedTransactionType(null);
       setBillCurrentPage(1);
       setBillSearchTerm("");
       setBillStatusFilter("all");
       setIsTransactionNavDropdownOpen(false);
+      applyCachedVendorTransactions(mappedVendor._id || mappedVendor.id || id);
       setIsLoading(false);
     } else if (canHydrateFromCache && cachedVendor) {
       setVendor(cachedVendor);
       setComments(normalizeCommentList(cachedVendor.comments || cachedVendor.customFields?.vendorComments || []));
       setAttachments(normalizeAttachmentList(cachedVendor.documents || cachedVendor.customFields?.vendorDocuments || []));
       setMails([]);
-      setBills([]);
-      setPaymentsMade([]);
-      setVendorCredits([]);
-      setExpenses([]);
-      setPurchaseOrders([]);
-      setRecurringBills([]);
-      setRecurringExpenses([]);
-      setJournals([]);
-      setProjects([]);
-      setPurchaseReceipts([]);
       setStatementTransactions([]);
       setSelectedTransactionType(null);
       setBillCurrentPage(1);
       setBillSearchTerm("");
       setBillStatusFilter("all");
       setIsTransactionNavDropdownOpen(false);
+      applyCachedVendorTransactions(cachedVendor._id || cachedVendor.id || id);
       setIsLoading(false);
     } else {
       setIsLoading(true);
@@ -3880,7 +4142,10 @@ export default function VendorDetail() {
                       {vendor.contactPersons && vendor.contactPersons.length > 0 ? (
                         <div className="space-y-3">
                           {vendor.contactPersons.map((contact, index) => (
-                            <div key={index} className="pb-3 border-b border-gray-100 last:border-b-0 last:pb-0 flex items-start justify-between group">
+                            <div
+                              key={contact.id || contact._id || contact.email || `${contact.firstName || ""}-${contact.lastName || ""}-${index}`}
+                              className="pb-3 border-b border-gray-100 last:border-b-0 last:pb-0 flex items-start justify-between group"
+                            >
                               <div className="flex-1">
                                 <div className="text-sm font-medium text-gray-900 mb-1">
                                   {contact.salutation && `${contact.salutation}. `}
@@ -4250,51 +4515,53 @@ export default function VendorDetail() {
                     <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Activity Timeline</span>
                   </div>
                   <div className="p-4">
-                    <div className="relative" style={{ paddingLeft: "20px" }}>
-                      {/* Timeline vertical line */}
-                      <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-[#156372]"></div>
+                    <div className="relative pl-20">
+                      <div className="absolute left-[58px] top-0 bottom-0 w-px bg-[#60a5fa]"></div>
 
-                      {/* Timeline entries */}
-                      <div className="space-y-6">
-                        {/* Sample activity entries - you can replace with actual data */}
-                        {expenses.length > 0 && expenses.slice(0, 3).map((expense, index) => {
-                          const expenseDateParts = formatDateTimeParts(expense.date || expense.createdAt || expense.updatedAt);
-                          if (!expenseDateParts) {
+                      <div className="space-y-8">
+                        {activityTimeline.map((activity: any) => {
+                          const dateParts = formatDateTimeParts(activity.parsedDate);
+                          if (!dateParts) {
                             return null;
                           }
+
                           return (
-                            <div key={index} className="relative">
-                              {/* Timeline circle */}
-                              <div className="absolute left-[-18px] top-1 w-3 h-3 bg-[#156372] rounded-full border-2 border-white"></div>
-                              <div className="text-xs font-semibold text-gray-900 mb-1">
-                                {expenseDateParts.date}, {expenseDateParts.time}
+                            <div key={activity.id} className="relative min-h-[72px]">
+                              <div className="absolute left-[-80px] top-1 text-right w-16">
+                                <div className="text-xs font-medium text-gray-700">{dateParts.date}</div>
+                                <div className="text-xs text-gray-500 mt-1">{dateParts.time}</div>
                               </div>
-                              <div className="text-xs text-gray-600 mb-1">Expense added</div>
-                              <div className="text-xs text-gray-500">
-                                Expense of amount {formatCurrency(expense.amount || 0, expense.currency || vendor.currency || baseCurrencyCode)} created by {expense.createdBy || "System"} - <a href="#" className="text-teal-700 hover:underline">View Details</a>
+
+                              <div className="absolute left-[-31px] top-2.5 flex items-center justify-center w-5 h-5 rounded-full border border-[#93c5fd] bg-white">
+                                <div className="w-2 h-2 rounded-full bg-[#60a5fa]"></div>
+                              </div>
+
+                              <div className="rounded-xl border border-gray-200 bg-white px-4 py-4 shadow-sm">
+                                <div className="text-sm font-semibold text-gray-900">{activity.title}</div>
+                                <div className="mt-2 text-sm text-gray-600">
+                                  {activity.description}
+                                </div>
+                                <div className="mt-2 text-sm text-gray-700">
+                                  <span className="font-semibold">by {activity.actor}</span>
+                                  {activity.detailsLink && (
+                                    <>
+                                      <span className="mx-1 text-gray-400">-</span>
+                                      <button
+                                        type="button"
+                                        className="text-teal-700 hover:underline"
+                                        onClick={() => navigate(activity.detailsLink)}
+                                      >
+                                        {activity.detailsLabel}
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           );
                         })}
-                        {vendor.contactPersons && vendor.contactPersons.length > 0 && vendor.contactPersons.slice(0, 2).map((contact, index) => {
-                          const contactDateParts = formatDateTimeParts(contact.createdAt || contact.date || contact.updatedAt);
-                          if (!contactDateParts) {
-                            return null;
-                          }
-                          return (
-                            <div key={`contact-${index}`} className="relative">
-                              <div className="absolute left-[-18px] top-1 w-3 h-3 bg-[#156372] rounded-full border-2 border-white"></div>
-                              <div className="text-xs font-semibold text-gray-900 mb-1">
-                                {contactDateParts.date}, {contactDateParts.time}
-                              </div>
-                              <div className="text-xs text-gray-600 mb-1">Contact person added</div>
-                              <div className="text-xs text-gray-500">
-                                Contact person {contact.firstName} {contact.lastName} has been created by {contact.createdBy || "System"}
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {expenses.length === 0 && (!vendor.contactPersons || vendor.contactPersons.length === 0) && (
+
+                        {activityTimeline.length === 0 && (
                           <div className="text-xs text-gray-500 text-center py-4">No activities yet.</div>
                         )}
                       </div>
@@ -5889,7 +6156,10 @@ export default function VendorDetail() {
                         }
 
                         return filtered.map((t, idx) => (
-                          <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
+                          <tr
+                            key={t.id || `${t.type}-${t.date}-${t.details || idx}`}
+                            className="hover:bg-gray-50/50 transition-colors"
+                          >
                             <td className="py-4 px-6 font-medium text-gray-500 whitespace-nowrap">
                               {new Date(t.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                             </td>

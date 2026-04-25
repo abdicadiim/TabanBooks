@@ -1,6 +1,12 @@
+<<<<<<< Updated upstream:taban-books/frontend/src/pages/items/ItemsPage.tsx
 // src/pages/items/ItemsPage.tsx
 import React, { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useLocation } from "react-router-dom";
+=======
+// src/features/items/ItemsPage.tsx
+import React, { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+>>>>>>> Stashed changes:taban-books/frontend/src/features/items/ItemsPage.tsx
 import toast from "react-hot-toast";
 import { itemsAPI, tagAssignmentsAPI } from "../../services/api";
 import { readCachedListResponse, writeCachedListResponse } from "../../services/swrListCache";
@@ -18,6 +24,7 @@ import { usePermissions } from "../../hooks/usePermissions";
 
 function ItemsPageContent() {
   const location = useLocation();
+  const navigate = useNavigate();
   const searchQuery = new URLSearchParams(location.search).get("search") || "";
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -347,6 +354,7 @@ function ItemsPageContent() {
     setView("list");
     setSelectedId(null);
     setClonedItem(null);
+    navigate("/items");
   };
 
   const handleCloneItem = (data: any) => {
@@ -383,7 +391,12 @@ function ItemsPageContent() {
             <ItemSidebar
               items={items}
               selectedId={selectedId}
-              onSelect={(id: string) => { setSelectedId(id); setView("detail"); window.scrollTo(0, 0); }}
+              onSelect={(id: string) => {
+                setSelectedId(id);
+                setView("detail");
+                navigate(`/items/${id}`);
+                window.scrollTo(0, 0);
+              }}
               onFilterChange={(viewName: string) => {
                 if (viewName === "All") return;
                 const selected = items.find((x: Item) => x.id === selectedId || x._id === selectedId);
@@ -435,7 +448,12 @@ function ItemsPageContent() {
             <ItemsList
               items={items}
               initialSearchTerm={searchQuery}
-              onSelect={(id: string) => { setSelectedId(id); setView("detail"); window.scrollTo(0, 0); }}
+              onSelect={(id: string) => {
+                setSelectedId(id);
+                setView("detail");
+                navigate(`/items/${id}`);
+                window.scrollTo(0, 0);
+              }}
               onNew={() => { if (canCreateItems) { setView("new"); setSelectedId(null); } }}
               onDelete={handleDeleteItem}
               onBulkDelete={async (ids: string[]) => setDeleteConfirmModal({ open: true, itemId: null, itemName: null, count: ids.length, itemIds: ids })}

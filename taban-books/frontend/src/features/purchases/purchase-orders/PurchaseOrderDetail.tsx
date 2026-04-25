@@ -25,6 +25,8 @@ import SendPurchaseOrderEmail from "./SendPurchaseOrderEmail";
 import { purchaseOrdersAPI, settingsAPI, profileAPI, vendorsAPI, billsAPI } from "../../../services/api";
 import { useCurrency } from "../../../hooks/useCurrency";
 
+const PURCHASE_ORDERS_CACHE_KEY = "purchase-orders-cache";
+
 export default function PurchaseOrderDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -32,8 +34,26 @@ export default function PurchaseOrderDetail() {
   const { code: baseCurrencyCode, symbol: baseCurrencySymbol } = useCurrency();
   const resolvedBaseCurrency = baseCurrencyCode || "USD";
   const resolvedBaseCurrencySymbol = baseCurrencySymbol || resolvedBaseCurrency;
-  const initialPurchaseOrder = location.state?.purchaseOrder || null;
-  const initialPurchaseOrders = location.state?.purchaseOrders || [];
+  const getCachedPurchaseOrders = () => {
+    if (typeof window === "undefined") return [];
+
+    try {
+      const cachedOrders = window.sessionStorage.getItem(PURCHASE_ORDERS_CACHE_KEY);
+      if (!cachedOrders) return [];
+      const parsedOrders = JSON.parse(cachedOrders);
+      return Array.isArray(parsedOrders) ? parsedOrders : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const initialPurchaseOrders = Array.isArray(location.state?.purchaseOrders) && location.state.purchaseOrders.length > 0
+    ? location.state.purchaseOrders
+    : getCachedPurchaseOrders();
+  const initialPurchaseOrder =
+    location.state?.purchaseOrder
+    || initialPurchaseOrders.find((order: any) => String(order?._id || order?.id || "") === String(id || ""))
+    || null;
   const [purchaseOrder, setPurchaseOrder] = useState(initialPurchaseOrder);
   const [isLoading, setIsLoading] = useState(!initialPurchaseOrder);
   const [purchaseOrders, setPurchaseOrders] = useState(initialPurchaseOrders);
@@ -56,6 +76,18 @@ export default function PurchaseOrderDetail() {
   const bulkActionsRef = useRef(null);
   const dropdownRef = useRef(null);
   const printContentRef = useRef<HTMLDivElement | null>(null);
+
+  const hydratePurchaseOrder = (sourceOrder: any) => {
+    if (!sourceOrder) return;
+    setPurchaseOrder(sourceOrder);
+    if (sourceOrder.vendor) {
+      setVendor(sourceOrder.vendor);
+    } else {
+      setVendor(null);
+    }
+    setBills([]);
+    setIsLoading(false);
+  };
 
   const formatDate = (dateString: any) => {
     if (!dateString) return "";
@@ -85,8 +117,8 @@ export default function PurchaseOrderDetail() {
     }
   };
 
-  const loadData = async () => {
-    if (!purchaseOrder) {
+  const loadData = async (existingOrder?: any) => {
+    if (!existingOrder) {
       setIsLoading(true);
     }
     try {
@@ -173,8 +205,28 @@ export default function PurchaseOrderDetail() {
   }, [isBulkActionsOpen]);
 
   useEffect(() => {
-    loadData();
-  }, [id]);
+    const statePurchaseOrder = location.state?.purchaseOrder;
+    const statePurchaseOrders = Array.isArray(location.state?.purchaseOrders) ? location.state.purchaseOrders : [];
+    const cachedOrders = statePurchaseOrders.length > 0 ? statePurchaseOrders : getCachedPurchaseOrders();
+    const matchedOrder = statePurchaseOrder && String(statePurchaseOrder?._id || statePurchaseOrder?.id || "") === String(id || "")
+      ? statePurchaseOrder
+      : cachedOrders.find((order: any) => String(order?._id || order?.id || "") === String(id || ""));
+
+    if (cachedOrders.length > 0) {
+      setPurchaseOrders(cachedOrders);
+    }
+
+    if (matchedOrder) {
+      hydratePurchaseOrder(matchedOrder);
+    } else {
+      setVendor(null);
+      setBills([]);
+      setPurchaseOrder(null);
+      setIsLoading(true);
+    }
+
+    loadData(matchedOrder);
+  }, [id, location.state]);
 
   const handleMarkAsIssued = async () => {
     try {
@@ -816,7 +868,14 @@ export default function PurchaseOrderDetail() {
             {filteredOrders.map((order) => (
               <div
                 key={order._id || order.id}
-                onClick={() => navigate(`/purchases/purchase-orders/${order._id || order.id}`)}
+                onClick={() =>
+                  navigate(`/purchases/purchase-orders/${order._id || order.id}`, {
+                    state: {
+                      purchaseOrder: order,
+                      purchaseOrders,
+                    },
+                  })
+                }
                 className={`w-full cursor-pointer border-b border-gray-100 box-border transition-colors ${
                   selectedPurchaseOrderIds.includes(String(order._id || order.id))
                     ? "bg-[#eff6ff]"

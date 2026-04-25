@@ -115,7 +115,6 @@ export default function PurchaseOrdersTable({
   };
 
   const isColumnVisible = (key: string) => visibleColumns.includes(key);
-  const checkboxAlignmentOffset = 28;
   const clipTextStyle = isClipTextEnabled
     ? {
         display: "inline-block",
@@ -146,6 +145,25 @@ export default function PurchaseOrdersTable({
     return order.receivedStatus || "";
   };
 
+  const checkboxCellStyle = {
+    ...styles.tableCell,
+    width: "52px",
+    padding: "12px 8px",
+  };
+
+  const checkboxStartInset = "28px";
+  const headerIconOffset = "4px";
+
+  const headerCheckboxWrapStyle = {
+    position: "relative",
+    minHeight: "24px",
+  };
+
+  const bodyCheckboxWrapStyle = {
+    position: "relative",
+    minHeight: "24px",
+  };
+
   return (
     <div style={styles.content}>
       <div style={styles.tableWrapper}>
@@ -155,18 +173,21 @@ export default function PurchaseOrdersTable({
               <th
                 style={{
                   ...styles.tableHeaderCellWithCheckbox,
-                  width: "72px",
+                  width: "52px",
                 }}
               >
                 <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    whiteSpace: "nowrap",
-                  }}
+                  style={headerCheckboxWrapStyle}
                 >
-                  <div style={{ position: "relative" }} ref={tableToolsRef}>
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: headerIconOffset,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                    }}
+                    ref={tableToolsRef}
+                  >
                     <button
                       ref={tableToolsButtonRef}
                       type="button"
@@ -276,7 +297,14 @@ export default function PurchaseOrdersTable({
                         setSelectedOrders([]);
                       }
                     }}
-                    style={styles.tableCheckbox}
+                    style={{
+                      ...styles.tableCheckbox,
+                      position: "absolute",
+                      left: checkboxStartInset,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      margin: 0,
+                    }}
                   />
                 </div>
               </th>
@@ -353,14 +381,15 @@ export default function PurchaseOrdersTable({
             {isRefreshing
               ? Array.from({ length: 5 }).map((_, index) => (
                   <tr key={`skeleton-${index}`} style={styles.tableRow}>
-                    <td style={styles.tableCell}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <div
-                          style={{
-                            width: `${checkboxAlignmentOffset}px`,
-                            flexShrink: 0,
-                          }}
-                        />
+                    <td style={checkboxCellStyle}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          minHeight: "24px",
+                        }}
+                      >
                         <div style={styles.skeletonCheckbox} />
                       </div>
                     </td>
@@ -466,14 +495,11 @@ export default function PurchaseOrdersTable({
                         }
                       }}
                     >
-                      <td style={styles.tableCell} onClick={(event) => event.stopPropagation()}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <div
-                            style={{
-                              width: `${checkboxAlignmentOffset}px`,
-                              flexShrink: 0,
-                            }}
-                          />
+                      <td
+                        style={checkboxCellStyle}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <div style={bodyCheckboxWrapStyle}>
                           <input
                             type="checkbox"
                             checked={selectedOrders.includes(order.id)}
@@ -488,7 +514,13 @@ export default function PurchaseOrdersTable({
                                 );
                               }
                             }}
-                            style={styles.tableCheckbox}
+                            style={{
+                              ...styles.tableCheckbox,
+                              position: "absolute",
+                              left: checkboxStartInset,
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                            }}
                           />
                         </div>
                       </td>

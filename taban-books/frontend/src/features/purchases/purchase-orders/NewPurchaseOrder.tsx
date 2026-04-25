@@ -2506,9 +2506,16 @@ export default function NewPurchaseOrder() {
                   />
                   <div className="relative">
                     <div className="flex items-stretch gap-0">
-                      <button
-                        type="button"
+                      <div
+                        role="button"
+                        tabIndex={0}
                         onClick={() => setVendorDropdownOpen((prev) => !prev)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setVendorDropdownOpen((prev) => !prev);
+                          }
+                        }}
                         className={`relative flex h-9 flex-1 items-center rounded-md rounded-r-none border bg-white px-3 pr-14 text-left text-sm text-gray-900 outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372] ${
                           validationErrors.vendorName ? "border-red-400 ring-1 ring-red-100" : "border-gray-300"
                         }`}
@@ -2534,7 +2541,7 @@ export default function NewPurchaseOrder() {
                         ) : (
                           <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         )}
-                      </button>
+                      </div>
                       <button
                         type="button"
                         onClick={() => setVendorDropdownOpen(true)}
