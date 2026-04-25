@@ -237,6 +237,31 @@ type PurchaseOrderFieldErrorKey =
 
 type PurchaseOrderItemError = Partial<Record<"itemDetails" | "account" | "quantity" | "rate", string>>;
 
+const VENDORS_CACHE_KEY = "purchase-order-vendors-cache";
+const PURCHASE_ORDERS_CACHE_KEY = "purchase-orders-cache";
+
+const readCachedArray = <T,>(key: string): T[] => {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const cached = window.sessionStorage.getItem(key);
+    if (!cached) return [];
+    const parsed = JSON.parse(cached);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeCachedArray = <T,>(key: string, value: T[]) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore cache write failures
+  }
+};
+
 const createEmptyItem = (id: number): PurchaseOrderItem => ({
   id,
   rowType: "item",
@@ -355,7 +380,7 @@ export default function NewPurchaseOrder() {
   });
   const [dateInputValue, setDateInputValue] = useState(() => formatIsoDateForDisplay(new Date().toISOString().split('T')[0]));
   const [deliveryDateInputValue, setDeliveryDateInputValue] = useState("");
-  const [vendors, setVendors] = useState<VendorRecord[]>([]);
+  const [vendors, setVendors] = useState<VendorRecord[]>(() => readCachedArray<VendorRecord>(VENDORS_CACHE_KEY));
   const [vendorDropdownOpen, setVendorDropdownOpen] = useState(false);
   const [vendorDropdownSearch, setVendorDropdownSearch] = useState("");
   const [vendorSearchModalOpen, setVendorSearchModalOpen] = useState(false);
@@ -366,7 +391,7 @@ export default function NewPurchaseOrder() {
   const [vendorSearchResults, setVendorSearchResults] = useState<VendorRecord[]>([]);
   const [vendorSearchPage, setVendorSearchPage] = useState(1);
   const [vendorSearchCriteriaOpen, setVendorSearchCriteriaOpen] = useState(false);
-  const [allVendors, setAllVendors] = useState<VendorRecord[]>([]);
+  const [allVendors, setAllVendors] = useState<VendorRecord[]>(() => readCachedArray<VendorRecord>(VENDORS_CACHE_KEY));
 
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
   const uploadMenuRef = useRef<HTMLDivElement>(null);
@@ -401,7 +426,7 @@ export default function NewPurchaseOrder() {
   const [taxOptions, setTaxOptions] = useState<TaxOption[]>([]);
   const [bulkItemsModalOpen, setBulkItemsModalOpen] = useState(false);
   const [bulkItemsLoading, setBulkItemsLoading] = useState(false);
-  const [bulkItems, setBulkItems] = useState<BulkItemOption[]>([]);
+  const [bulkItems, setBulkItems] = useState<BulkItemOption[]>(() => readCachedArray<BulkItemOption>("purchase-order-items-cache"));
   const [bulkItemsSearch, setBulkItemsSearch] = useState("");
   const [bulkSelectedItemIds, setBulkSelectedItemIds] = useState<Record<string, boolean>>({});
   const [bulkSelectedItems, setBulkSelectedItems] = useState<BulkItemOption[]>([]);
@@ -658,6 +683,13 @@ export default function NewPurchaseOrder() {
           const loadedVendors = filterActiveRecords<VendorRecord>(response.data || response.vendors || []);
           setVendors(loadedVendors);
           setAllVendors(loadedVendors);
+          if (typeof window !== "undefined") {
+            try {
+              window.sessionStorage.setItem(VENDORS_CACHE_KEY, JSON.stringify(loadedVendors));
+            } catch {
+              // ignore cache write failures
+            }
+          }
         }
       } catch (error) {
         console.error("Error loading vendors:", error);
@@ -684,6 +716,21 @@ export default function NewPurchaseOrder() {
         }
       } catch (error) {
         console.error("Error parsing organization data:", error);
+      }
+    }
+
+    if (typeof window !== "undefined") {
+      try {
+        const cachedVendors = window.sessionStorage.getItem(VENDORS_CACHE_KEY);
+        if (cachedVendors) {
+          const parsed = JSON.parse(cachedVendors);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setVendors(parsed);
+            setAllVendors(parsed);
+          }
+        }
+      } catch (error) {
+        console.error("Error reading cached vendors:", error);
       }
     }
 
@@ -992,6 +1039,10 @@ export default function NewPurchaseOrder() {
     };
 
     loadReportingTags();
+  }, []);
+
+  useEffect(() => {
+    void loadBulkItems(true);
   }, []);
 
   useEffect(() => {
@@ -1566,7 +1617,10 @@ export default function NewPurchaseOrder() {
       e.target instanceof HTMLInputElement && e.target.type === "checkbox"
         ? e.target.checked
         : value;
-    if (name === "purchaseOrderNumber") clearFieldError("purchaseOrderNumber");
+    if (name === "purchaseOrderNumber") {
+      clearFieldError("purchaseOrderNumber");
+      setPoNumberingMode("manual");
+    }
     if (name === "date") clearFieldError("date");
     if (name === "deliveryDate") clearFieldError("deliveryDate");
     setFormData((prev) => ({
@@ -1808,9 +1862,11 @@ export default function NewPurchaseOrder() {
     }
   };
 
-  const loadBulkItems = async () => {
+  const loadBulkItems = async (silent = false) => {
     try {
-      setBulkItemsLoading(true);
+      if (!silent) {
+        setBulkItemsLoading(true);
+      }
       const response = await itemsAPI.getAll();
       const rawItems = filterActiveRecords<any>(Array.isArray(response) ? response : (response?.data || []));
       const normalizedItems: BulkItemOption[] = (rawItems || []).map((item: any) => ({
@@ -1825,11 +1881,20 @@ export default function NewPurchaseOrder() {
         unit: item.unit || "",
       })).filter((item) => item.id);
       setBulkItems(normalizedItems);
+      if (typeof window !== "undefined") {
+        try {
+          window.sessionStorage.setItem("purchase-order-items-cache", JSON.stringify(normalizedItems));
+        } catch {
+          // ignore cache write failures
+        }
+      }
     } catch (error) {
       console.error("Error loading items for bulk insert:", error);
       setBulkItems([]);
     } finally {
-      setBulkItemsLoading(false);
+      if (!silent) {
+        setBulkItemsLoading(false);
+      }
     }
   };
 
@@ -2001,17 +2066,7 @@ export default function NewPurchaseOrder() {
 
   const createPurchaseOrderWithNumberRetry = async (purchaseOrderData: any) => {
     const shouldAutoRefreshNumber = !isEdit && poNumberingMode === "auto";
-    let payload = { ...purchaseOrderData };
-
-    if (shouldAutoRefreshNumber) {
-      const latestNumber = await fetchLatestPurchaseOrderNumber();
-      if (latestNumber) {
-        payload = {
-          ...payload,
-          purchase_order_number: latestNumber,
-        };
-      }
-    }
+    const payload = { ...purchaseOrderData };
 
     try {
       return await purchaseOrdersAPI.create(payload);
@@ -2033,6 +2088,34 @@ export default function NewPurchaseOrder() {
     }
   };
 
+  const syncPurchaseOrderCache = (savedOrder: any) => {
+    if (typeof window === "undefined") return [];
+
+    try {
+      const cached = window.sessionStorage.getItem(PURCHASE_ORDERS_CACHE_KEY);
+      const parsed = cached ? JSON.parse(cached) : [];
+      const currentCache = Array.isArray(parsed) ? parsed : [];
+      const savedId = String(savedOrder?._id || savedOrder?.id || "").trim();
+
+      const nextCache = savedId
+        ? currentCache.map((order: any) => {
+            const orderId = String(order?._id || order?.id || "").trim();
+            return orderId === savedId ? { ...order, ...savedOrder, id: savedId } : order;
+          })
+        : currentCache;
+
+      if (savedId && !nextCache.some((order: any) => String(order?._id || order?.id || "").trim() === savedId)) {
+        nextCache.unshift({ ...savedOrder, id: savedId });
+      }
+
+      writeCachedArray(PURCHASE_ORDERS_CACHE_KEY, nextCache);
+      return nextCache;
+    } catch (error) {
+      console.error("Failed to sync purchase order cache:", error);
+      return [];
+    }
+  };
+
   const handleSubmit = async (e: React.SyntheticEvent | undefined, status: PurchaseOrderSaveStatus) => {
     e?.preventDefault?.();
     if (saveLoadingState || submitLockRef.current) return;
@@ -2046,10 +2129,12 @@ export default function NewPurchaseOrder() {
         return;
       }
 
+      const currentNumber = String(formData.purchaseOrderNumber || "").trim();
+
       // Construct payload
       const purchaseOrderData = {
         date: formData.date,
-        purchase_order_number: formData.purchaseOrderNumber,
+        purchase_order_number: currentNumber,
         reference_number: formData.referenceNumber,
         vendor_name: resolvedVendorName,
         vendor_id: resolvedVendorId,
@@ -2103,15 +2188,22 @@ export default function NewPurchaseOrder() {
       }
 
       if (response && (response.code === 0 || response.success)) {
+        const savedOrder = response.data || response.purchaseOrder || response.purchase_order || null;
+        const cachedOrders = savedOrder ? syncPurchaseOrderCache(savedOrder) : [];
+
         // Trigger custom event for same-tab updates
         window.dispatchEvent(new Event("purchaseOrdersUpdated"));
 
         // If Save and Send was clicked, navigate to email page
-        if (status === "issued" && response.data?._id) {
-          navigate(`/purchases/purchase-orders/${response.data._id}/email`);
+        if (status === "issued" && savedOrder?._id) {
+          navigate(`/purchases/purchase-orders/${savedOrder._id}/email`, {
+            state: { purchaseOrder: savedOrder },
+          });
         } else {
           // Otherwise go back to the list
-          navigate("/purchases/purchase-orders");
+          navigate("/purchases/purchase-orders", {
+            state: { purchaseOrders: cachedOrders.length > 0 ? cachedOrders : undefined },
+          });
         }
       } else {
         alert(response?.message || "Failed to create purchase order");

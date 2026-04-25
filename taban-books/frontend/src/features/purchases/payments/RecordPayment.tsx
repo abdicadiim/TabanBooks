@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Upload,
   Trash2,
+  RefreshCw,
 } from "lucide-react";
 import TabanSelect from "../../../components/TabanSelect";
 import { useCurrency } from "../../../hooks/useCurrency";
@@ -39,8 +40,8 @@ export default function RecordPayment() {
           transition: all 0.2s ease-in-out !important;
         }
         .input-advanced:focus {
-          border-color: #3b82f6 !important;
-          box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1) !important;
+          border-color: #2563eb !important;
+          box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1) !important;
           background-color: #ffffff !important;
         }
         .button-advanced:hover {
@@ -94,7 +95,9 @@ export default function RecordPayment() {
   // Bill Allocation State
   const [bills, setBills] = useState<any[]>([]);
   const [allocations, setAllocations] = useState<Record<string, number>>({});
+  const [initialAllocations, setInitialAllocations] = useState<Record<string, number>>({});
   const [totalUsed, setTotalUsed] = useState(0);
+  const [isLoadingBills, setIsLoadingBills] = useState(isEditMode);
   const [excessAmount, setExcessAmount] = useState(0);
   const [paidThroughAccounts, setPaidThroughAccounts] = useState<any[]>([]);
   const [saveLoadingState, setSaveLoadingState] = useState<null | "draft" | "paid">(null);
@@ -135,17 +138,24 @@ export default function RecordPayment() {
   }, [resolvedBaseCurrency]);
 
   const getBillDueAmount = (bill: any): number => {
-    const balance = Number(bill?.balance);
-    if (!Number.isNaN(balance) && bill?.balance !== undefined && bill?.balance !== null && bill?.balance !== "") {
-      return Math.max(0, balance);
+    const billId = bill.id || bill._id;
+    let balance = 0;
+    
+    if (bill?.balance !== undefined && bill?.balance !== null && bill?.balance !== "") {
+      balance = Number(bill.balance);
+    } else if (bill?.balanceDue !== undefined && bill?.balanceDue !== null && bill?.balanceDue !== "") {
+      balance = Number(bill.balanceDue);
+    } else {
+      const total = Number(bill?.total || 0);
+      const paid = Number(bill?.paidAmount || 0);
+      balance = total - paid;
     }
-    const balanceDue = Number(bill?.balanceDue);
-    if (!Number.isNaN(balanceDue) && bill?.balanceDue !== undefined && bill?.balanceDue !== null && bill?.balanceDue !== "") {
-      return Math.max(0, balanceDue);
-    }
-    const total = Number(bill?.total || 0);
-    const paid = Number(bill?.paidAmount || 0);
-    return Math.max(0, total - paid);
+
+    const currentBalance = Math.max(0, Number.isNaN(balance) ? 0 : balance);
+    
+    // In edit mode, we add back the initial allocation to see the "original" due amount for this specific payment
+    const initiallyAllocated = initialAllocations[billId] || 0;
+    return currentBalance + initiallyAllocated;
   };
 
   // Load vendors from API
@@ -254,27 +264,120 @@ export default function RecordPayment() {
 
   // Load payment data if in edit mode
   useEffect(() => {
-    if (isEditMode && editPayment) {
-      setFormData({
-        vendorName: editPayment.vendorName || "",
-        vendorId: editPayment.vendorId || "",
-        location: editPayment.location || "Head Office",
-        paymentNumber: editPayment.paymentNumber || "1",
-        paymentCurrency: resolvedBaseCurrency,
-        paymentAmount: editPayment.amount || "",
-        bankCharges: editPayment.bankCharges || "",
-        paymentDate: editPayment.date || new Date().toISOString().split('T')[0],
-        paymentMode: editPayment.mode || "Cash",
-        paidThrough: editPayment.paidThrough || "Petty Cash",
-        paidThroughId: editPayment.paidThroughId || "",
-        reference: editPayment.reference || "",
-        deductTDS: editPayment.deductTDS || false,
-        xcv: editPayment.xcv || "None",
-        notes: editPayment.notes || "",
-        payFullAmount: false,
-      });
-      setIsFormEnabled(true); // Enable form in edit mode
-    }
+    const toId = (val: any) => {
+      if (!val) return "";
+      if (typeof val === "string") return val;
+      return val.id || val._id || "";
+    };
+
+    const toInputDate = (val: any) => {
+      if (!val) return new Date().toISOString().split('T')[0];
+      const d = new Date(val);
+      if (isNaN(d.getTime())) return new Date().toISOString().split('T')[0];
+      return d.toISOString().split('T')[0];
+    };
+
+    const initEditMode = async () => {
+      if (isEditMode && editPayment) {
+        const vId = toId(editPayment.vendorId || editPayment.vendor);
+        
+        setFormData({
+          vendorName: editPayment.vendorName || (typeof editPayment.vendor === 'object' ? editPayment.vendor.displayName || editPayment.vendor.name : ""),
+          vendorId: vId,
+          location: editPayment.location || "Head Office",
+          paymentNumber: editPayment.paymentNumber || "1",
+          paymentCurrency: editPayment.currency || resolvedBaseCurrency,
+          paymentAmount: String(editPayment.amount || ""),
+          bankCharges: String(editPayment.bankCharges || ""),
+          paymentDate: toInputDate(editPayment.date),
+          paymentMode: editPayment.mode || "Cash",
+          paidThrough: editPayment.paidThrough || "Petty Cash",
+          paidThroughId: toId(editPayment.paidThroughId || editPayment.paidThrough),
+          reference: editPayment.reference || "",
+          deductTDS: editPayment.deductTDS || false,
+          xcv: editPayment.xcv || "None",
+          notes: editPayment.notes || "",
+          payFullAmount: false,
+        });
+        setIsFormEnabled(true);
+
+        // Pre-populate bills from existing allocations for instant UI
+        if (Array.isArray(editPayment.allocations)) {
+          const initialBills = editPayment.allocations
+            .map((a: any) => a.bill)
+            .filter((b: any) => b && typeof b === 'object');
+            
+          if (initialBills.length > 0) {
+            setBills(initialBills);
+            
+            const existingAllocations: Record<string, number> = {};
+            editPayment.allocations.forEach((alloc: any) => {
+              const billId = toId(alloc.billId || alloc.bill);
+              if (billId) {
+                existingAllocations[billId] = Number(alloc.amount || 0);
+              }
+            });
+            setAllocations(existingAllocations);
+            setInitialAllocations(JSON.parse(JSON.stringify(existingAllocations)));
+            const totalAllocated = Object.values(existingAllocations).reduce((sum, val) => sum + val, 0);
+            setTotalUsed(totalAllocated);
+            
+            // Show the data immediately, background fetch will update later
+            setIsLoadingBills(false);
+          }
+        }
+
+        // Fetch all bills for this vendor to include other open ones
+        try {
+          if (vId) {
+            const response = await billsAPI.getByVendor(vId);
+            if (response && (response.code === 0 || response.success)) {
+              const vendorBills = response.data || [];
+              
+              // Get existing allocations and populate state
+              const existingAllocations: Record<string, number> = {};
+              const allocatedBillIds = new Set<string>();
+              
+              if (Array.isArray(editPayment.allocations)) {
+                editPayment.allocations.forEach((alloc: any) => {
+                  const billId = toId(alloc.billId || alloc.bill);
+                  if (billId) {
+                    existingAllocations[billId] = Number(alloc.amount || 0);
+                    allocatedBillIds.add(String(billId));
+                  }
+                });
+              }
+
+              // Filter bills: Show Open/Overdue/Partially Paid OR bills that are part of this payment
+              const filteredBills = vendorBills.filter((bill: any) => {
+                const bId = String(bill.id || bill._id);
+                if (allocatedBillIds.has(bId)) return true;
+                
+                const s = (bill.status || "").toUpperCase();
+                return s === "OPEN" || s === "OVERDUE" || s === "PARTIALLY_PAID" || s === "PARTIALLY PAID";
+              });
+
+              // Sort by date
+              filteredBills.sort((a: any, b: any) => new Date(a.date || a.billDate).getTime() - new Date(b.date || b.billDate).getTime());
+
+              setBills(filteredBills);
+              setAllocations(existingAllocations);
+              setInitialAllocations(JSON.parse(JSON.stringify(existingAllocations)));
+              const totalAllocated = Object.values(existingAllocations).reduce((sum, val) => sum + val, 0);
+              setTotalUsed(totalAllocated);
+            }
+          }
+        } catch (error) {
+          console.error("Error loading bills for edit mode:", error);
+        } finally {
+          setIsLoadingBills(false);
+        }
+      } else {
+        setIsLoadingBills(false);
+      }
+    };
+    
+    initEditMode();
   }, [isEditMode, editPayment, resolvedBaseCurrency]);
 
   useEffect(() => {
@@ -498,7 +601,12 @@ export default function RecordPayment() {
         }))
       };
 
-      const response = await paymentsMadeAPI.create(paymentData);
+      let response;
+      if (isEditMode && (editPayment?.id || editPayment?._id)) {
+        response = await paymentsMadeAPI.update(editPayment.id || editPayment._id, paymentData);
+      } else {
+        response = await paymentsMadeAPI.create(paymentData);
+      }
 
       if (response && (response.code === 0 || response.success)) {
         // Backend usually handles journal entries, but we could add a manual trigger here if needed
@@ -577,14 +685,15 @@ export default function RecordPayment() {
       backgroundColor: "#ffffff",
       fontFamily: "'Inter', system-ui, sans-serif",
       color: "#111827",
+      padding: "20px 24px 0 24px",
     },
     header: {
       display: "flex",
       justifyContent: "space-between",
       alignItems: "center",
-      padding: "12px 24px",
-      borderBottom: "1px solid #e5e7eb",
+      padding: "16px 24px",
       backgroundColor: "#ffffff",
+      borderBottom: "1px solid #e5e7eb",
     },
     headerTitle: {
       fontSize: "20px",
@@ -599,6 +708,7 @@ export default function RecordPayment() {
       flex: 1,
       overflowY: "auto",
       padding: "24px",
+      backgroundColor: "#ffffff",
     },
     section: {
       marginBottom: "24px",
@@ -639,7 +749,7 @@ export default function RecordPayment() {
       color: "#374151",
     },
     required: {
-      color: "#ef4444",
+      color: "#800000",
       marginLeft: "2px",
     },
     input: {
@@ -669,7 +779,7 @@ export default function RecordPayment() {
     vendorDropdownButton: {
       width: "420px",
       padding: "8px 12px",
-      border: "1px solid #3b82f6",
+      border: "1px solid #d1d5db",
       borderRadius: "6px",
       fontSize: "14px",
       backgroundColor: "#ffffff",
@@ -801,7 +911,7 @@ export default function RecordPayment() {
     },
     payInFull: {
       fontSize: "11px",
-      color: "#3b82f6",
+      color: "#2563eb",
       cursor: "pointer",
       marginTop: "4px",
       display: "block",
@@ -837,12 +947,12 @@ export default function RecordPayment() {
       display: "flex",
       gap: "12px",
       padding: "20px 24px",
-      borderTop: "1px solid #e5e7eb",
       backgroundColor: "#ffffff",
+      borderTop: "1px solid #e5e7eb",
     },
     primaryButton: {
-      padding: "8px 20px",
-      backgroundColor: "#3b82f6",
+      padding: "10px 24px",
+      backgroundColor: "#28a745",
       color: "#ffffff",
       borderRadius: "6px",
       fontSize: "14px",
@@ -864,10 +974,31 @@ export default function RecordPayment() {
     },
     clearLink: {
       fontSize: "13px",
-      color: "#3b82f6",
+      color: "#2563eb",
       cursor: "pointer",
       float: "right" as any,
-    }
+    },
+    uploadDropdown: {
+      position: "absolute",
+      top: "100%",
+      left: 0,
+      marginTop: "4px",
+      backgroundColor: "#ffffff",
+      borderRadius: "8px",
+      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+      border: "1px solid #e5e7eb",
+      zIndex: 1000,
+      minWidth: "180px",
+      padding: "4px 0",
+    },
+    uploadItem: {
+      padding: "8px 16px",
+      fontSize: "13px",
+      color: "#374151",
+      cursor: "pointer",
+      transition: "background-color 0.2s",
+      display: "block",
+    },
   };
 
   return (
@@ -890,7 +1021,7 @@ export default function RecordPayment() {
         <div style={styles.section}>
           {/* Vendor Name */}
           <div style={styles.horizontalField}>
-            <label style={{ ...styles.horizontalLabel, color: "#ef4444" }}>Vendor Name*</label>
+            <label style={{ ...styles.horizontalLabel, color: "#800000" }}>Vendor Name*</label>
             <div style={styles.vendorDropdownWrapper} ref={vendorRef}>
               <button
                 type="button"
@@ -901,7 +1032,7 @@ export default function RecordPayment() {
                 <span style={formData.vendorName ? { color: "#111827" } : { color: "#9ca3af" }}>
                   {formData.vendorName || "Select Vendor"}
                 </span>
-                <ChevronDown size={18} style={{ color: "#3b82f6" }} />
+                <ChevronDown size={18} style={{ color: "#2563eb" }} />
               </button>
 
               {vendorOpen && (
@@ -964,7 +1095,7 @@ export default function RecordPayment() {
 
           {/* Payment # */}
           <div style={styles.horizontalField}>
-            <label style={{ ...styles.horizontalLabel, color: "#ef4444" }}>Payment #*</label>
+            <label style={{ ...styles.horizontalLabel, color: "#800000" }}>Payment #*</label>
             <div style={{ position: "relative", width: "420px" }}>
                 <input 
                   className="input-advanced"
@@ -973,7 +1104,7 @@ export default function RecordPayment() {
                   value={formData.paymentNumber} 
                   onChange={handleChange} 
                 />
-              <Info size={14} style={{ position: "absolute", right: "12px", top: "10px", color: "#3b82f6" }} />
+              <Info size={14} style={{ position: "absolute", right: "12px", top: "10px", color: "#2563eb" }} />
             </div>
           </div>
         </div>
@@ -984,7 +1115,7 @@ export default function RecordPayment() {
         <div style={{ opacity: isFormEnabled ? 1 : 0.4, pointerEvents: isFormEnabled ? "auto" : "none" }}>
 
           <div style={{ ...styles.horizontalField, alignItems: "flex-start" }}>
-            <label style={{ ...styles.horizontalLabel, color: "#ef4444", marginTop: "8px" }}>Payment Made*</label>
+            <label style={{ ...styles.horizontalLabel, color: "#800000", marginTop: "8px" }}>Payment Made*</label>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
                 <div style={{ ...styles.paymentMadeInputRow, width: "300px" }}>
@@ -1051,7 +1182,7 @@ export default function RecordPayment() {
                 <span style={{ color: "#111827" }}>
                   {formData.paymentMode || "Select Mode"}
                 </span>
-                {paymentModeOpen ? <ChevronUp size={18} style={{ color: "#3b82f6" }} /> : <ChevronDown size={18} style={{ color: "#3b82f6" }} />}
+                {paymentModeOpen ? <ChevronUp size={18} style={{ color: "#2563eb" }} /> : <ChevronDown size={18} style={{ color: "#2563eb" }} />}
               </button>
 
               {paymentModeOpen && (
@@ -1097,7 +1228,7 @@ export default function RecordPayment() {
                   <div style={{ 
                     padding: "10px 16px", 
                     borderTop: "1px solid #f3f4f6", 
-                    color: "#3b82f6", 
+                    color: "#2563eb", 
                     fontSize: "13px", 
                     cursor: "pointer",
                     display: "flex",
@@ -1156,27 +1287,42 @@ export default function RecordPayment() {
                   <th style={styles.tableHeaderCell}>Payment</th>
                 </tr>
               </thead>
-              <tbody>
-                {bills.map((bill) => {
+              <tbody>                {bills.map((bill) => {
                   const billId = bill.id || bill._id;
                   const due = getBillDueAmount(bill);
+                  const billDate = bill.date || bill.billDate;
+                  const dueDate = bill.dueDate;
+                  
                   return (
                     <tr key={billId}>
-                      <td style={styles.tableCell}>{new Date(bill.date || bill.billDate).toLocaleDateString("en-GB")}</td>
-                      <td style={styles.tableCell}>{bill.billNumber}</td>
+                      <td style={styles.tableCell}>{new Date(billDate).toLocaleDateString("en-GB")}</td>
+                      <td style={styles.tableCell}>
+                        <div style={{ fontWeight: "600", color: "#111827" }}>{bill.billNumber}</div>
+                        {dueDate && (
+                          <div style={{ fontSize: "11px", color: "#6b7280", marginTop: "2px" }}>
+                            Due Date: {new Date(dueDate).toLocaleDateString("en-GB")}
+                          </div>
+                        )}
+                      </td>
                       <td style={styles.tableCell}>{bill.poNumber || "-"}</td>
                       <td style={styles.tableCell}>{bill.location || "Head Office"}</td>
-                      <td style={styles.tableCell}>{bill.total}</td>
-                      <td style={styles.tableCell}>{due.toLocaleString()}</td>
+                      <td style={styles.tableCell}>{parseFloat(bill.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      <td style={styles.tableCell}>{due.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                       <td style={styles.tableCell}>
-                        <input type="date" defaultValue={formData.paymentDate} style={{ ...styles.input, width: "130px" }} />
+                        <input 
+                          type="date" 
+                          value={formData.paymentDate} 
+                          onChange={(e) => setFormData(prev => ({ ...prev, paymentDate: e.target.value }))}
+                          style={{ ...styles.input, width: "135px", height: "32px", padding: "4px 8px" }} 
+                        />
                       </td>
                       <td style={styles.tableCell}>
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
                           <input
-                            style={{ ...styles.input, width: "100px", textAlign: "right" }}
-                            value={allocations[billId] || 0}
+                            style={{ ...styles.input, width: "110px", textAlign: "right", height: "32px", padding: "4px 8px" }}
+                            value={allocations[billId] || ""}
                             onChange={(e) => handleAllocationChange(billId, e.target.value)}
+                            placeholder="0"
                           />
                           <span 
                             style={styles.payInFull} 
@@ -1189,7 +1335,14 @@ export default function RecordPayment() {
                     </tr>
                   );
                 })}
-                {bills.length === 0 && (
+                {isLoadingBills ? (
+                  <tr>
+                    <td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>
+                      <RefreshCw className="animate-spin" size={24} style={{ margin: "0 auto 8px" }} />
+                      <p>Loading bills...</p>
+                    </td>
+                  </tr>
+                ) : bills.length === 0 && (
                   <tr>
                     <td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>
                       There are no bills for this vendor.
@@ -1209,40 +1362,83 @@ export default function RecordPayment() {
             <div style={styles.summaryBox}>
               <div style={styles.summaryRow}>
                 <span style={styles.summaryLabel}>Amount Paid:</span>
-                <span style={styles.summaryValue}>{parseFloat(formData.paymentAmount || "0").toFixed(2)}</span>
+                <span style={styles.summaryValue}>{formData.paymentCurrency} {parseFloat(formData.paymentAmount || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
               <div style={styles.summaryRow}>
                 <span style={styles.summaryLabel}>Amount used for Payments:</span>
-                <span style={styles.summaryValue}>{totalUsed.toFixed(2)}</span>
+                <span style={styles.summaryValue}>{formData.paymentCurrency} {totalUsed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
               <div style={styles.summaryRow}>
                 <span style={styles.summaryLabel}>Amount Refunded:</span>
-                <span style={styles.summaryValue}>0.00</span>
+                <span style={styles.summaryValue}>{formData.paymentCurrency} 0.00</span>
               </div>
               <div style={styles.summaryRow}>
                 <span style={styles.summaryLabel}>
-                  {excessAmount < 0 && <AlertTriangle size={14} style={{ color: "#d97706", marginRight: "4px" }} />}
+                  <AlertTriangle size={14} style={{ color: "#f59e0b", marginRight: "6px", display: "inline-block", verticalAlign: "middle" }} />
                   Amount in Excess:
                 </span>
-                <span style={styles.summaryValue}>{formData.paymentCurrency} {excessAmount.toFixed(2)}</span>
+                <span style={styles.summaryValue}>{formData.paymentCurrency} {excessAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
               <div style={styles.summaryRow}>
                 <span style={styles.summaryLabel}>Bank Charges :</span>
-                <span style={styles.summaryValue}>{formData.paymentCurrency} {(parseFloat(formData.bankCharges) || 0).toFixed(2)}</span>
+                <span style={styles.summaryValue}>{formData.paymentCurrency} {(parseFloat(formData.bankCharges) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
             </div>
           </div>
 
           {/* Notes and Attachments */}
           <div style={{ marginTop: "40px" }}>
-            <label style={styles.label}>Notes (Internal use. Not visible to vendor)</label>
+            <label style={{ ...styles.label, display: "block", marginBottom: "8px" }}>Notes (Internal use. Not visible to vendor)</label>
             <textarea 
               className="input-advanced"
-              style={{ ...styles.input, minHeight: "80px", marginTop: "8px", width: "420px" }} 
+              style={{ ...styles.input, minHeight: "100px", width: "100%", maxWidth: "800px" }} 
               name="notes" 
               value={formData.notes} 
               onChange={handleChange}
             />
+          </div>
+
+          <div style={{ marginTop: "32px" }}>
+            <label style={{ ...styles.label, display: "block", marginBottom: "12px" }}>Attachments</label>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div style={{ position: "relative" }}>
+                <button 
+                  type="button"
+                  style={{ ...styles.secondaryButton, display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px" }}
+                  onClick={() => setUploadMenuOpen(!uploadMenuOpen)}
+                >
+                  <Upload size={16} />
+                  Upload File
+                  <ChevronDown size={14} />
+                </button>
+                {uploadMenuOpen && (
+                  <div ref={uploadMenuRef} style={styles.uploadDropdown}>
+                    <div 
+                      style={styles.uploadItem} 
+                      onClick={handleAttachFromDesktop}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f9fafb")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                    >
+                      Attach from Desktop
+                    </div>
+                  </div>
+                )}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  style={{ display: "none" }}
+                  onChange={handleFileChange}
+                  multiple
+                />
+              </div>
+            </div>
+            <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "8px" }}>
+              You can upload a maximum of 5 files, 10MB each
+            </p>
+          </div>
+
+          <div style={{ marginTop: "32px", fontSize: "13px", color: "#6b7280", fontStyle: "italic" }}>
+            Additional Fields: Start adding custom fields for your payments made by going to Settings ➔ Purchases ➔ Payments Made.
           </div>
         </div>
       </div>
@@ -1250,16 +1446,10 @@ export default function RecordPayment() {
       {/* Footer */}
       <div style={styles.footer}>
         <button 
-          style={styles.secondaryButton} 
-          onClick={(e) => handleSubmit(e as any, "draft")}
-        >
-          Save as Draft
-        </button>
-        <button 
           style={styles.primaryButton} 
           onClick={(e) => handleSubmit(e as any, "paid")}
         >
-          Save as Paid
+          Save
         </button>
         <button style={styles.secondaryButton} onClick={handleCancel}>Cancel</button>
       </div>

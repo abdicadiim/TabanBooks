@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useEffect, useRef, useState } from "react";
-import { Check, Filter, MoreVertical, Upload, X } from "lucide-react";
+import { Check, FileText, Filter, MoreVertical, Mail, Printer, X } from "lucide-react";
 import { PURCHASE_ORDER_FILTER_OPTIONS } from "./PurchaseOrders.constants";
 
 export default function PurchaseOrdersSelectionBar({
@@ -9,11 +9,13 @@ export default function PurchaseOrdersSelectionBar({
   onClearSelection,
   onConvertToBill,
   onDeleteSelected,
+  onEmail,
+  onExportPdf,
   onMarkAsIssued,
   onMarkAsReceived,
   onMarkAsUnreceived,
   onReopenCancelled,
-  onUpload,
+  onPrint,
   onViewSelect,
   selectedOrdersCount,
 }) {
@@ -225,13 +227,33 @@ export default function PurchaseOrdersSelectionBar({
         </button>
 
         <button
-          onClick={onUpload}
+          onClick={onExportPdf}
           style={iconActionButtonStyle}
           onMouseEnter={setHoverBackground("#f9fafb")}
           onMouseLeave={setHoverBackground("#ffffff")}
-          title="Upload"
+          title="Export as PDF"
         >
-          <Upload size={16} />
+          <FileText size={16} />
+        </button>
+
+        <button
+          onClick={onPrint}
+          style={iconActionButtonStyle}
+          onMouseEnter={setHoverBackground("#f9fafb")}
+          onMouseLeave={setHoverBackground("#ffffff")}
+          title="Print"
+        >
+          <Printer size={16} />
+        </button>
+
+        <button
+          onClick={onEmail}
+          style={iconActionButtonStyle}
+          onMouseEnter={setHoverBackground("#f9fafb")}
+          onMouseLeave={setHoverBackground("#ffffff")}
+          title="Email"
+        >
+          <Mail size={16} />
         </button>
 
         <button

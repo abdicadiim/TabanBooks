@@ -22,6 +22,17 @@ interface Payment {
   unusedAmount?: number;
 }
 
+// In-memory cache for payments list to eliminate loading wait time
+let cachedPayments: Payment[] = [];
+let lastFetchTime = 0;
+const CACHE_DURATION = 60000; // 1 minute
+
+// Global listener to invalidate cache when updates happen anywhere in the app
+window.addEventListener("paymentsUpdated", () => {
+  lastFetchTime = 0;
+  cachedPayments = [];
+});
+
 export default function PaymentsMade() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -32,11 +43,11 @@ export default function PaymentsMade() {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [selectedView, setSelectedView] = useState("All Payments");
   const [showCustomViewModal, setShowCustomViewModal] = useState(false);
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const [payments, setPayments] = useState<Payment[]>(cachedPayments);
   const [selectedPayments, setSelectedPayments] = useState<(string | number)[]>([]);
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(cachedPayments.length > 0);
   const [exportSubmenuOpen, setExportSubmenuOpen] = useState(false);
   const [importSubmenuOpen, setImportSubmenuOpen] = useState(false);
   const [sortBySubmenuOpen, setSortBySubmenuOpen] = useState(false);
@@ -118,18 +129,29 @@ export default function PaymentsMade() {
   const preferencesDropdownRef = useRef<HTMLDivElement>(null);
 
   // Load payments from API
-  const loadPayments = async () => {
+  const loadPayments = async (force = false) => {
+    const now = Date.now();
+    const shouldRefresh = force || (now - lastFetchTime > CACHE_DURATION) || cachedPayments.length === 0;
+
+    if (!shouldRefresh && cachedPayments.length > 0) {
+      setPayments(cachedPayments);
+      setHasLoadedOnce(true);
+      return;
+    }
+
     try {
-      setIsRefreshing(true);
+      if (cachedPayments.length === 0) setIsRefreshing(true);
       const response = await paymentsMadeAPI.getAll();
       if (response && response.success && response.data) {
         setPayments(response.data);
+        cachedPayments = response.data;
+        lastFetchTime = now;
       } else {
-        setPayments([]);
+        if (cachedPayments.length === 0) setPayments([]);
       }
     } catch (error) {
       console.error("Error loading payments:", error);
-      setPayments([]);
+      if (cachedPayments.length === 0) setPayments([]);
     } finally {
       setIsRefreshing(false);
       setHasLoadedOnce(true);
@@ -137,12 +159,21 @@ export default function PaymentsMade() {
   };
 
   const handleRefresh = () => {
-    loadPayments();
+    loadPayments(true);
     setSelectedPayments([]);
   };
 
   useEffect(() => {
     loadPayments();
+
+    const handlePaymentsUpdate = () => {
+      loadPayments(true);
+    };
+
+    window.addEventListener("paymentsUpdated", handlePaymentsUpdate);
+    return () => {
+      window.removeEventListener("paymentsUpdated", handlePaymentsUpdate);
+    };
   }, []);
 
   // Reload payments when location changes (e.g., coming back from new payment page)
@@ -1304,7 +1335,7 @@ export default function PaymentsMade() {
                     onClick={(e) => {
                       // Don't navigate if clicking on checkbox
                       if (e.target instanceof HTMLElement && e.target.type !== "checkbox" && e.target.tagName !== "SPAN") {
-                        navigate(`/purchases/payments-made/${payment.id}`);
+                        navigate(`/purchases/payments-made/${payment.id}`, { state: { payment, allPayments: payments } });
                       }
                     }}
                     onMouseEnter={(e) => {
@@ -1345,7 +1376,7 @@ export default function PaymentsMade() {
                                style={styles.paymentNumberLink}
                                onClick={(e) => {
                                  e.stopPropagation();
-                                 navigate(`/purchases/payments-made/${payment.id}`);
+                                 navigate(`/purchases/payments-made/${payment.id}`, { state: { payment, allPayments: payments } });
                                }}
                              >
                                {value}

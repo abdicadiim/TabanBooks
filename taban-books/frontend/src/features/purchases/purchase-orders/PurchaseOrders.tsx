@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { jsPDF } from "jspdf";
 import DeleteConfirmationModal from "../shared/DeleteConfirmationModal";
 import SearchPurchaseOrdersModal from "./SearchPurchaseOrdersModal";
 import ExportPurchaseOrders from "./ExportPurchaseOrders";
@@ -16,10 +17,12 @@ import { useCurrency } from "../../../hooks/useCurrency";
 import {
   buildPurchaseOrderBulkUpdatePayload,
   filterPurchaseOrdersByView,
+  formatPurchaseOrderDate,
   sortPurchaseOrders,
 } from "./PurchaseOrders.utils";
 
 const PURCHASE_ORDER_COLUMNS_STORAGE_KEY = "purchase-orders-visible-columns";
+const PURCHASE_ORDERS_CACHE_KEY = "purchase-orders-cache";
 const PURCHASE_ORDER_COLUMN_OPTIONS = [
   { key: "date", label: "Date", locked: true },
   { key: "location", label: "Location" },
@@ -58,6 +61,23 @@ export default function PurchaseOrders() {
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>(() => {
     const stateOrders = location.state?.purchaseOrders;
     if (!Array.isArray(stateOrders)) {
+      if (typeof window !== "undefined") {
+        try {
+          const cachedOrders = window.sessionStorage.getItem(PURCHASE_ORDERS_CACHE_KEY);
+          if (cachedOrders) {
+            const parsedOrders = JSON.parse(cachedOrders);
+            if (Array.isArray(parsedOrders)) {
+              return parsedOrders.map((purchaseOrder: any) => ({
+                ...purchaseOrder,
+                id: purchaseOrder._id || purchaseOrder.id,
+              }));
+            }
+          }
+        } catch (error) {
+          console.error("Failed to read cached purchase orders:", error);
+        }
+      }
+
       return [];
     }
 
@@ -169,6 +189,18 @@ export default function PurchaseOrders() {
       return;
     }
 
+    try {
+      window.sessionStorage.setItem(PURCHASE_ORDERS_CACHE_KEY, JSON.stringify(purchaseOrders));
+    } catch (error) {
+      console.error("Failed to cache purchase orders:", error);
+    }
+  }, [purchaseOrders]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
     window.localStorage.setItem(
       PURCHASE_ORDER_COLUMNS_STORAGE_KEY,
       JSON.stringify(visibleColumns)
@@ -240,8 +272,296 @@ export default function PurchaseOrders() {
     setShowBulkUpdateModal(true);
   };
 
-  const handleUpload = () => {
-    setShowUploadModal(true);
+  const handleExportPdfSelected = () => {
+    try {
+      if (selectedOrders.length === 0) {
+        alert("Please select at least one purchase order to export as PDF.");
+        return;
+      }
+
+      const selectedPurchaseOrders = purchaseOrders.filter((order) =>
+        selectedOrders.includes(String(order.id ?? order._id ?? ""))
+      );
+
+      if (selectedPurchaseOrders.length === 0) {
+        alert("No selected purchase orders were found.");
+        return;
+      }
+
+      const pdf = new jsPDF("p", "mm", "a4");
+      const margin = 14;
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const lineHeight = 7;
+
+      const getVendorName = (order: any) =>
+        order.vendorName ||
+        order.vendor?.displayName ||
+        order.vendor?.name ||
+        order.vendor?.vendorName ||
+        "";
+
+      const getAmount = (order: any) => {
+        const amount = Number.parseFloat(order.amount ?? order.total ?? 0) || 0;
+        return `${displayCurrencySymbol}${amount.toFixed(2)}`;
+      };
+
+      const truncate = (value: string, maxChars = 90) => {
+        const text = String(value ?? "");
+        return text.length > maxChars ? `${text.slice(0, maxChars - 3)}...` : text;
+      };
+
+      let cursorY = margin;
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(16);
+      pdf.text("Purchase Orders", margin, cursorY);
+      cursorY += 8;
+
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(10);
+      pdf.text(`Exported on ${new Date().toLocaleDateString()}`, margin, cursorY);
+      cursorY += 12;
+
+      selectedPurchaseOrders.forEach((order: any, index: number) => {
+        if (index > 0) {
+          cursorY += 4;
+          if (cursorY > pageHeight - margin - 40) {
+            pdf.addPage();
+            cursorY = margin;
+          }
+        }
+
+        const lines = [
+          { label: "Purchase Order", value: order.purchaseOrderNumber || order.purchase_order_number || order.number || "" },
+          { label: "Date", value: formatPurchaseOrderDate(order.date) },
+          { label: "Reference #", value: order.referenceNumber || order.reference_number || order.reference || "" },
+          { label: "Vendor Name", value: getVendorName(order) },
+          { label: "Status", value: String(order.status || "") },
+          { label: "Billed Status", value: String(order.billedStatus || "") },
+          { label: "Amount", value: getAmount(order) },
+          { label: "Delivery Date", value: formatPurchaseOrderDate(order.deliveryDate || order.expectedDate) },
+        ];
+
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(12);
+        pdf.text(truncate(`Purchase Order: ${lines[0].value}`), margin, cursorY);
+        cursorY += 10;
+
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(10);
+        lines.slice(1).forEach(({ label, value }) => {
+          if (cursorY > pageHeight - margin) {
+            pdf.addPage();
+            cursorY = margin;
+          }
+
+          pdf.text(truncate(`${label}: ${value}`, 110), margin, cursorY);
+          cursorY += lineHeight;
+        });
+      });
+
+      const fileName = "purchaseorders.pdf";
+      pdf.save(fileName);
+    } catch (error) {
+      console.error("Failed to download purchase orders PDF:", error);
+      alert(`Failed to generate purchase orders PDF. ${error instanceof Error ? error.message : ""}`.trim());
+    }
+  };
+
+  const handlePrintSelected = () => {
+    try {
+      if (selectedOrders.length === 0) {
+        alert("Please select at least one purchase order to print.");
+        return;
+      }
+
+      const selectedPurchaseOrders = purchaseOrders.filter((order) =>
+        selectedOrders.includes(String(order.id ?? order._id ?? ""))
+      );
+
+      if (selectedPurchaseOrders.length === 0) {
+        alert("No selected purchase orders were found.");
+        return;
+      }
+
+      const escapeHtml = (value: any) =>
+        String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+
+      const getVendorName = (order: any) =>
+        order.vendorName ||
+        order.vendor?.displayName ||
+        order.vendor?.name ||
+        order.vendor?.vendorName ||
+        "";
+
+      const rowsHtml = selectedPurchaseOrders
+        .map((order: any) => {
+          const amount = Number.parseFloat(order.amount ?? order.total ?? 0) || 0;
+          return `
+            <tr>
+              <td>${escapeHtml(formatPurchaseOrderDate(order.date))}</td>
+              <td>${escapeHtml(order.purchaseOrderNumber || order.purchase_order_number || order.number || "")}</td>
+              <td>${escapeHtml(order.referenceNumber || order.reference_number || order.reference || "")}</td>
+              <td>${escapeHtml(getVendorName(order))}</td>
+              <td>${escapeHtml(order.status || "")}</td>
+              <td>${escapeHtml(order.billedStatus || "")}</td>
+              <td>${escapeHtml(`${displayCurrencySymbol}${amount.toFixed(2)}`)}</td>
+              <td>${escapeHtml(formatPurchaseOrderDate(order.deliveryDate || order.expectedDate))}</td>
+            </tr>
+          `;
+        })
+        .join("");
+
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      iframe.style.opacity = "0";
+      document.body.appendChild(iframe);
+
+      const printHtml = `
+        <!doctype html>
+        <html>
+          <head>
+            <title>Purchase Orders Print</title>
+            <style>
+              @page {
+                size: auto;
+                margin: 14mm;
+              }
+              body {
+                font-family: Arial, sans-serif;
+                color: #111827;
+                margin: 0;
+                padding: 0;
+              }
+              .page {
+                padding: 0;
+              }
+              h1 {
+                font-size: 18px;
+                margin: 0 0 12px;
+              }
+              .meta {
+                font-size: 12px;
+                color: #6b7280;
+                margin-bottom: 18px;
+              }
+              table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 12px;
+              }
+              th, td {
+                border: 1px solid #d1d5db;
+                padding: 8px;
+                text-align: left;
+                vertical-align: top;
+              }
+              th {
+                background: #f9fafb;
+                font-weight: 700;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="page">
+              <h1>Purchase Orders</h1>
+              <div class="meta">Printed on ${escapeHtml(new Date().toLocaleString())}</div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>PO #</th>
+                    <th>Reference #</th>
+                    <th>Vendor Name</th>
+                    <th>Status</th>
+                    <th>Billed Status</th>
+                    <th>Amount</th>
+                    <th>Delivery Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rowsHtml}
+                </tbody>
+              </table>
+            </div>
+          </body>
+        </html>
+      `;
+
+      const cleanup = () => {
+        window.removeEventListener("afterprint", cleanup);
+        if (iframe.parentNode) {
+          iframe.parentNode.removeChild(iframe);
+        }
+      };
+
+      iframe.onload = () => {
+        const doc = iframe.contentDocument;
+        const win = iframe.contentWindow;
+        if (!doc || !win) {
+          cleanup();
+          window.print();
+          return;
+        }
+
+        doc.open();
+        doc.write(printHtml);
+        doc.close();
+
+        window.addEventListener("afterprint", cleanup);
+
+        window.setTimeout(() => {
+          try {
+            win.focus();
+            win.print();
+          } catch (printError) {
+            console.error("Print preview failed:", printError);
+            cleanup();
+            alert("Failed to open print preview.");
+          }
+        }, 300);
+      };
+
+      iframe.src = "about:blank";
+    } catch (error) {
+      console.error("Failed to print purchase orders:", error);
+      alert("Failed to generate purchase orders print preview.");
+    }
+  };
+
+  const handleEmailSelected = () => {
+    if (selectedOrders.length === 0) {
+      alert("Please select at least one purchase order to email.");
+      return;
+    }
+
+    if (selectedOrders.length > 1) {
+      alert("Please select only one purchase order to email at a time.");
+      return;
+    }
+
+    const selectedOrder = purchaseOrders.find(
+      (order) => selectedOrders.includes(String(order.id ?? order._id ?? ""))
+    );
+
+    if (!selectedOrder) {
+      alert("No selected purchase order was found.");
+      return;
+    }
+
+    const orderId = String(selectedOrder.id ?? selectedOrder._id ?? "");
+    navigate(`/purchases/purchase-orders/${orderId}/email`, {
+      state: { purchaseOrder: selectedOrder },
+    });
   };
 
   const handleConvertToBill = () => {
@@ -613,7 +933,7 @@ export default function PurchaseOrders() {
       width: "100%",
     },
     content: {
-      padding: "24px",
+      padding: "24px 0",
     },
     contentHeader: {
       display: "flex",
@@ -647,7 +967,7 @@ export default function PurchaseOrders() {
     tableWrapper: {
       overflowX: "auto",
       border: "1px solid #e5e7eb",
-      borderRadius: "8px",
+      borderRadius: 0,
     },
     table: {
       width: "100%",
@@ -780,19 +1100,21 @@ export default function PurchaseOrders() {
           />
         ) : (
           <PurchaseOrdersSelectionBar
-            onBulkCancelItems={handleBulkCancelItems}
-            onBulkUpdate={handleBulkUpdate}
-            onClearSelection={handleClearSelection}
-            onConvertToBill={handleConvertToBill}
-            onDeleteSelected={handleDeleteSelected}
-            onMarkAsIssued={handleMarkAsIssued}
-            onMarkAsReceived={handleMarkAsReceived}
-            onMarkAsUnreceived={handleMarkAsUnreceived}
-            onReopenCancelled={handleReopenCancelled}
-            onUpload={handleUpload}
-            onViewSelect={handleViewSelect}
-            selectedOrdersCount={selectedOrders.length}
-          />
+          onBulkCancelItems={handleBulkCancelItems}
+          onBulkUpdate={handleBulkUpdate}
+          onClearSelection={handleClearSelection}
+          onConvertToBill={handleConvertToBill}
+          onDeleteSelected={handleDeleteSelected}
+          onEmail={handleEmailSelected}
+          onExportPdf={handleExportPdfSelected}
+          onMarkAsIssued={handleMarkAsIssued}
+          onMarkAsReceived={handleMarkAsReceived}
+          onMarkAsUnreceived={handleMarkAsUnreceived}
+          onReopenCancelled={handleReopenCancelled}
+          onPrint={handlePrintSelected}
+          onViewSelect={handleViewSelect}
+          selectedOrdersCount={selectedOrders.length}
+        />
         )}
 
         <PurchaseOrdersTable

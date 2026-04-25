@@ -19,16 +19,31 @@ export interface Item {
     tax?: any;
 }
 
+const ITEM_SELECT_CACHE_KEY = "purchase-order-items-cache";
+
 interface UseItemSelectProps {
     onSelect?: (item: Item) => void;
     initialValue?: string;
 }
 
 export const useItemSelect = ({ onSelect, initialValue = '' }: UseItemSelectProps = {}) => {
-    const [searchTerm, setSearchTerm] = useState(initialValue);
-    const [isOpen, setIsOpen] = useState(false);
-    const [items, setItems] = useState<Item[]>([]);
-    const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState(initialValue);
+  const [isOpen, setIsOpen] = useState(false);
+  const [items, setItems] = useState<Item[]>(() => {
+    if (typeof window === "undefined") {
+      return [];
+    }
+
+    try {
+      const cached = window.sessionStorage.getItem(ITEM_SELECT_CACHE_KEY);
+      if (!cached) return [];
+      const parsed = JSON.parse(cached);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -60,6 +75,13 @@ export const useItemSelect = ({ onSelect, initialValue = '' }: UseItemSelectProp
                     tax: item.tax
                 }));
                 setItems(fetchedItems);
+                if (!query && typeof window !== "undefined") {
+                    try {
+                        window.sessionStorage.setItem(ITEM_SELECT_CACHE_KEY, JSON.stringify(fetchedItems));
+                    } catch {
+                        // ignore cache write failures
+                    }
+                }
             }
         } catch (error) {
             console.error('Error fetching items:', error);
@@ -71,9 +93,26 @@ export const useItemSelect = ({ onSelect, initialValue = '' }: UseItemSelectProp
 
     // Initial load
     useEffect(() => {
-        if (isOpen && items.length === 0) {
-            fetchItems();
+        if (!isOpen || items.length > 0) {
+            return;
         }
+
+        try {
+            if (typeof window !== "undefined") {
+                const cached = window.sessionStorage.getItem(ITEM_SELECT_CACHE_KEY);
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        setItems(parsed);
+                        return;
+                    }
+                }
+            }
+        } catch {
+            // fall through to fetch
+        }
+
+        fetchItems();
     }, [isOpen, fetchItems, items.length]);
 
     // Handle search input change with debounce

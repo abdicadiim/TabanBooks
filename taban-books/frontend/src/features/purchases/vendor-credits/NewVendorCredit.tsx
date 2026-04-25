@@ -61,6 +61,8 @@ export default function NewVendorCredit() {
     adjustment: 0,
     notes: "",
     currency: "CAD",
+    location: "Head Office",
+    warehouseLocation: "Head Office",
   });
   const { code: baseCurrencyCode } = useCurrency();
   const [discountDropdownOpen, setDiscountDropdownOpen] = useState(false);
@@ -106,6 +108,7 @@ export default function NewVendorCredit() {
   const [showNewVendorModal, setShowNewVendorModal] = useState(false);
   const [taxExclusiveSearch, setTaxExclusiveSearch] = useState("");
   const [taxLevelSearch, setTaxLevelSearch] = useState("");
+  const [errors, setErrors] = useState<Record<string, boolean>>({});
   const [rowMenuOpen, setRowMenuOpen] = useState<{ [key: string]: boolean }>({});
   const [vendors, setVendors] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
@@ -341,6 +344,7 @@ export default function NewVendorCredit() {
     });
     setVendorDropdownOpen(false);
     setVendorSearch("");
+    if (errors.vendorName) setErrors({ ...errors, vendorName: false });
   };
 
   const handleVendorCreated = (vendor: any) => {
@@ -739,25 +743,25 @@ export default function NewVendorCredit() {
 
   const handleSave = async (status) => {
     if (saveLoadingState) return;
-    // Validate required fields
-    if (!formData.vendorName || !selectedVendor) {
-      toast.error("Please select a vendor");
-      return;
-    }
-
-    if (!formData.creditNote) {
-      toast.error("Credit Note# is required");
-      return;
-    }
 
     // Validate Items
-    const validItems = itemRows.filter(row => row.itemDetails && row.itemDetails.trim() !== "");
-    if (validItems.length === 0) {
-      toast.error("Please add at least one item");
+    const newErrors: Record<string, boolean> = {};
+    if (!formData.vendorName) newErrors.vendorName = true;
+    if (!formData.creditNote) newErrors.creditNote = true;
+    
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      toast.error("Please fill in all required fields");
       return;
     }
+    setErrors({});
 
     try {
+      const validItems = itemRows.filter(row => row.itemDetails && row.quantity > 0);
+      if (validItems.length === 0) {
+        toast.error("Please add at least one valid item");
+        return;
+      }
       setSaveLoadingState(status === "Draft" ? "Draft" : "Open");
       const objectIdRegex = /^[a-f\d]{24}$/i;
       const normalizedVendorName = String(formData.vendorName || "").trim().toLowerCase();
@@ -790,15 +794,14 @@ export default function NewVendorCredit() {
         creditNote: formData.creditNote,
         orderNumber: formData.orderNumber,
         date: formData.vendorCreditDate,
-        items: validItems.map(row => ({
-          item: row.item,
-          name: row.name,
-          description: row.description,
-          quantity: parseFloat(row.quantity as any || 0),
-          rate: parseFloat(row.rate as any || 0),
+        items: itemRows.map((row: any) => ({
+          itemDetails: row.itemDetails,
+          quantity: row.quantity,
+          rate: row.rate,
           tax: row.tax,
           amount: row.amount,
-          account: row.account
+          account: row.account,
+          sku: row.sku,
         })),
         subtotal: calculateSubTotal(),
         discount: showTransactionDiscount ? formData.discount : 0,
@@ -812,7 +815,9 @@ export default function NewVendorCredit() {
         subject: formData.subject,
         accountsPayable: formData.accountsPayable,
         taxPreference: formData.taxExclusive,
-        taxLevel: formData.taxLevel
+        taxLevel: formData.taxLevel,
+        location: formData.location,
+        warehouseLocation: formData.warehouseLocation,
       };
 
       const creditId = routeCreditId || editCredit?._id || editCredit?.id;
@@ -877,18 +882,20 @@ export default function NewVendorCredit() {
     },
     fieldRow: {
       display: "flex",
-      flexDirection: "column",
-      gap: "8px",
-      marginBottom: "20px",
-      maxWidth: "500px",
+      alignItems: "center",
+      gap: "24px",
+      marginBottom: "16px",
+      maxWidth: "850px",
     },
     label: {
       fontSize: "13px",
       fontWeight: "400",
       color: "#6b7280",
+      width: "180px",
       display: "flex",
       alignItems: "center",
       gap: "4px",
+      flexShrink: 0,
     },
     required: {
       color: "#156372",
@@ -955,11 +962,12 @@ export default function NewVendorCredit() {
       justifyContent: "center",
     },
     summaryBox: {
-      width: "480px",
+      width: "420px",
       marginLeft: "auto",
       backgroundColor: "#f9fafb",
-      padding: "24px",
+      padding: "20px",
       borderRadius: "4px",
+      border: "1px solid #f3f4f6",
     },
     summaryRow: {
       display: "flex",
@@ -980,18 +988,17 @@ export default function NewVendorCredit() {
       display: "flex",
       justifyContent: "space-between",
       alignItems: "center",
-      paddingTop: "16px",
-      borderTop: "1px solid #e5e7eb",
+      padding: "12px 0",
       marginTop: "8px",
     },
     totalLabel: {
       fontSize: "15px",
-      fontWeight: "500",
+      fontWeight: "600",
       color: "#111827",
     },
     totalValue: {
       fontSize: "15px",
-      fontWeight: "600",
+      fontWeight: "700",
       color: "#111827",
     },
     footer: {
@@ -999,8 +1006,10 @@ export default function NewVendorCredit() {
       borderTop: "1px solid #e5e7eb",
       backgroundColor: "#ffffff",
       display: "flex",
+      alignItems: "center",
       gap: "12px",
       flexShrink: 0,
+      justifyContent: "flex-start",
     },
     primaryButton: {
       padding: "8px 16px",
@@ -1149,6 +1158,21 @@ export default function NewVendorCredit() {
   return (
     <>
       <div style={styles.container}>
+        <style>
+          {`
+            .zoho-input:focus {
+              border-color: #3b82f6 !important;
+              box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1) !important;
+              outline: none !important;
+            }
+            .zoho-input-error {
+              border-color: #ef4444 !important;
+            }
+            .zoho-input-error:focus {
+              box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1) !important;
+            }
+          `}
+        </style>
         {/* Header */}
         <div style={styles.header}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -1168,41 +1192,29 @@ export default function NewVendorCredit() {
           <div style={styles.formSection}>
             {/* Vendor Name */}
             <div style={styles.fieldRow}>
-              <label style={{ ...styles.label, color: "#156372" }}>Vendor Name*</label>
-              <div style={{ display: "flex", gap: "8px", position: "relative" }}>
-                <div style={{ display: "flex", gap: "8px", position: "relative", flex: 1 }}>
+              <label style={{ ...styles.label, color: "#ef4444" }}>Vendor Name*</label>
+              <div style={{ flex: 1, display: "flex", alignItems: "stretch" }}>
+                <div style={{ flex: 1, position: "relative" }} ref={(el) => { vendorRef.current = el; }}>
                   <div
-                    style={{
-                      ...styles.input,
-                      display: "flex",
+                    className={`zoho-input ${errors.vendorName ? "zoho-input-error" : ""}`}
+                    style={{ 
+                      ...styles.select, 
+                      borderTopRightRadius: 0, 
+                      borderBottomRightRadius: 0, 
+                      height: "100%", 
+                      display: "flex", 
                       alignItems: "center",
-                      justifyContent: "space-between",
-                      cursor: "pointer",
-                      backgroundColor: "#fff",
-                      borderColor: vendorDropdownOpen ? "#156372" : "#d1d5db",
-                      boxShadow: vendorDropdownOpen ? "0 0 0 2px rgba(37, 99, 235, 0.1)" : "none"
+                      borderColor: errors.vendorName ? "#ef4444" : "#d1d5db"
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
                       setVendorDropdownOpen(!vendorDropdownOpen);
                     }}
                   >
-                    <span style={{ color: formData.vendorName ? "#111827" : "#9ca3af" }}>
+                    <span style={{ fontSize: "14px", color: formData.vendorName ? "#374151" : "#9ca3af" }}>
                       {formData.vendorName || "Select a Vendor"}
                     </span>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <ChevronDown size={16} style={{ color: "#6b7280", transform: vendorDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
-                      <div style={{
-                        backgroundColor: "#156372",
-                        padding: "6px",
-                        borderRadius: "4px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center"
-                      }}>
-                        <Search size={14} style={{ color: "#fff" }} />
-                      </div>
-                    </div>
+                    <ChevronDown size={16} style={{ color: "#6b7280", marginLeft: "auto" }} />
                   </div>
 
                   {vendorDropdownOpen && (
@@ -1324,8 +1336,11 @@ export default function NewVendorCredit() {
                 <button
                   type="button"
                   style={{
-                    padding: "8px",
-                    borderRadius: "4px",
+                    padding: "0 12px",
+                    borderTopLeftRadius: 0,
+                    borderBottomLeftRadius: 0,
+                    borderTopRightRadius: "4px",
+                    borderBottomRightRadius: "4px",
                     backgroundColor: "#156372",
                     border: "none",
                     display: "flex",
@@ -1339,15 +1354,34 @@ export default function NewVendorCredit() {
               </div>
             </div>
 
+            {/* Location */}
+            <div style={styles.fieldRow}>
+              <label style={styles.label}>Location</label>
+              <div style={{ flex: 1, maxWidth: "450px" }}>
+                <select 
+                  className="zoho-input"
+                  style={styles.input}
+                  value={formData.location}
+                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                >
+                  <option value="Head Office">Head Office</option>
+                </select>
+              </div>
+            </div>
+
             {/* Credit Note# */}
             <div style={styles.fieldRow}>
-              <label style={{ ...styles.label, color: "#156372" }}>Credit Note#*</label>
-              <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
+              <label style={{ ...styles.label, color: "#ef4444" }}>Credit Note#*</label>
+              <div style={{ flex: 1, maxWidth: "450px", display: "flex", alignItems: "center", position: "relative" }}>
                 <input
                   type="text"
-                  style={styles.input}
+                  className={`zoho-input ${errors.creditNote ? "zoho-input-error" : ""}`}
+                  style={{ ...styles.input, borderColor: errors.creditNote ? "#ef4444" : "#d1d5db" }}
                   value={formData.creditNote}
-                  onChange={(e) => setFormData({ ...formData, creditNote: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, creditNote: e.target.value });
+                    if (errors.creditNote) setErrors({ ...errors, creditNote: false });
+                  }}
                 />
                 <Settings size={14} style={{ position: "absolute", right: "12px", color: "#156372", cursor: "pointer" }} />
               </div>
@@ -1356,36 +1390,45 @@ export default function NewVendorCredit() {
             {/* Order Number */}
             <div style={styles.fieldRow}>
               <label style={styles.label}>Order Number</label>
-              <input
-                type="text"
-                style={styles.input}
-                value={formData.orderNumber}
-                onChange={(e) => setFormData({ ...formData, orderNumber: e.target.value })}
-              />
+              <div style={{ flex: 1, maxWidth: "450px" }}>
+                <input
+                  type="text"
+                  className="zoho-input"
+                  style={styles.input}
+                  value={formData.orderNumber}
+                  onChange={(e) => setFormData({ ...formData, orderNumber: e.target.value })}
+                />
+              </div>
             </div>
 
             {/* Vendor Credit Date */}
             <div style={styles.fieldRow}>
               <label style={styles.label}>Vendor Credit Date</label>
-              <input
-                type="date"
-                style={styles.input}
-                value={formData.vendorCreditDate}
-                onChange={(e) => setFormData({ ...formData, vendorCreditDate: e.target.value })}
-              />
+              <div style={{ flex: 1, maxWidth: "450px" }}>
+                <input
+                  type="date"
+                  className="zoho-input"
+                  style={styles.input}
+                  value={formData.vendorCreditDate}
+                  onChange={(e) => setFormData({ ...formData, vendorCreditDate: e.target.value })}
+                />
+              </div>
             </div>
 
-            {/* Subject */}
+            {/* Description (Formerly Subject) */}
             <div style={styles.fieldRow}>
               <label style={styles.label}>
-                Subject <Info size={14} style={{ color: "#9ca3af" }} />
+                Description <Info size={14} style={{ color: "#9ca3af" }} />
               </label>
-              <textarea
-                style={{ ...styles.textarea, minHeight: "36px" }}
-                value={formData.subject}
-                onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                placeholder="Enter a subject within 250 characters"
-              />
+              <div style={{ flex: 1, maxWidth: "450px" }}>
+                <textarea
+                  className="zoho-input"
+                  style={{ ...styles.textarea, minHeight: "36px" }}
+                  value={formData.subject}
+                  onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+                  placeholder="Enter a description within 250 characters"
+                />
+              </div>
             </div>
 
             {/* Accounts Payable */}
@@ -1393,8 +1436,9 @@ export default function NewVendorCredit() {
               <label style={styles.label}>
                 Accounts Payable <Info size={14} style={{ color: "#9ca3af" }} />
               </label>
-              <div style={{ flex: 1, position: "relative" }}>
+              <div style={{ flex: 1, maxWidth: "450px", position: "relative" }} ref={(el) => { accountsPayableRef.current = el; }}>
                 <div
+                  className="zoho-input"
                   style={{
                     ...styles.input,
                     display: "flex",
@@ -1489,7 +1533,18 @@ export default function NewVendorCredit() {
           </div>
 
           {/* Item Table Selection */}
-          <div style={{ display: "flex", gap: "32px", marginBottom: "24px", paddingBottom: "16px", borderBottom: "1px solid #e5e7eb" }}>
+          <div style={{ display: "flex", gap: "32px", marginBottom: "24px", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px" }}>
+              <span style={{ color: "#6b7280" }}>Warehouse Location</span>
+              <select 
+                style={{ ...styles.input, width: "auto", border: "none", color: "#156372", fontWeight: "600", padding: "0 4px" }}
+                value={formData.warehouseLocation}
+                onChange={(e) => setFormData({ ...formData, warehouseLocation: e.target.value })}
+              >
+                <option value="Head Office">Head Office</option>
+              </select>
+            </div>
+
             <div style={{ position: "relative" }}>
               <div
                 style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#374151", cursor: "pointer" }}
@@ -1669,7 +1724,7 @@ export default function NewVendorCredit() {
                         <div style={{ width: "32px", height: "32px", borderRadius: "4px", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center" }}>
                           <ImageIcon size={16} color="#d1d5db" />
                         </div>
-                        <div style={styles.itemDetailsContainer} ref={(el) => (itemRefs.current[index] = el)}>
+                        <div style={styles.itemDetailsContainer} ref={(el) => { itemRefs.current[index] = el; }}>
                           <input
                             style={{ ...styles.input, border: "none", padding: "0", fontSize: "13px", color: "#156372", fontWeight: "500" }}
                             value={itemDropdownOpen[index] ? (itemSearch[index] || "") : item.itemDetails}
@@ -2162,7 +2217,7 @@ export default function NewVendorCredit() {
               </div>
               )}
 
-              <div style={styles.totalRow}>
+              <div style={{ ...styles.totalRow, borderTop: "1px solid #e5e7eb", marginTop: "12px", paddingTop: "16px" }}>
                 <span style={styles.totalLabel}>Total ({formData.currency})</span>
                 <span style={styles.totalValue}>{calculateTotal().toFixed(2)}</span>
               </div>
@@ -2170,9 +2225,9 @@ export default function NewVendorCredit() {
           </div>
 
           {/* Notes & Attachments */}
-          <div style={{ display: "flex", gap: "32px", marginTop: "40px", padding: "24px", borderTop: "1px solid #f3f4f6" }}>
+          <div style={{ display: "flex", gap: "32px", marginTop: "40px", padding: "24px 0", borderTop: "1px solid #f3f4f6" }}>
             <div style={{ flex: 1 }}>
-              <label style={{ ...styles.label, marginBottom: "8px", fontWeight: "500" }}>Notes</label>
+              <label style={{ ...styles.label, marginBottom: "8px", fontWeight: "500", width: "auto" }}>Notes</label>
               <textarea
                 style={{ ...styles.textarea, minHeight: "100px" }}
                 value={formData.notes}
@@ -2181,7 +2236,7 @@ export default function NewVendorCredit() {
               />
             </div>
             <div style={{ flex: 1 }}>
-              <label style={{ ...styles.label, marginBottom: "8px", fontWeight: "500" }}>Attachments</label>
+              <label style={{ ...styles.label, marginBottom: "8px", fontWeight: "500", width: "auto" }}>Attach File(s) to Vendor Credits</label>
               <div
                 style={{
                   border: "2px dashed #e5e7eb",
@@ -2193,11 +2248,11 @@ export default function NewVendorCredit() {
                 }}
                 onClick={() => fileInputRef.current?.click()}
               >
-                <div style={{ color: "#156372", fontWeight: "500", fontSize: "14px" }}>
-                  Upload File
+                <div style={{ color: "#156372", fontWeight: "500", fontSize: "14px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+                  <UploadIcon size={16} /> Upload File
                 </div>
                 <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
-                  Maximum File Size: 10MB
+                  You can upload a maximum of 5 files, 10MB each
                 </div>
               </div>
               <input

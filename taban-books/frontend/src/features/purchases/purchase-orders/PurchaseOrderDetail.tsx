@@ -33,9 +33,10 @@ export default function PurchaseOrderDetail() {
   const resolvedBaseCurrency = baseCurrencyCode || "USD";
   const resolvedBaseCurrencySymbol = baseCurrencySymbol || resolvedBaseCurrency;
   const initialPurchaseOrder = location.state?.purchaseOrder || null;
+  const initialPurchaseOrders = location.state?.purchaseOrders || [];
   const [purchaseOrder, setPurchaseOrder] = useState(initialPurchaseOrder);
   const [isLoading, setIsLoading] = useState(!initialPurchaseOrder);
-  const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [purchaseOrders, setPurchaseOrders] = useState(initialPurchaseOrders);
   const [activeTab, setActiveTab] = useState("all");
   const [sendEmailOpen, setSendEmailOpen] = useState(false);
   const [vendor, setVendor] = useState(null);
@@ -47,9 +48,12 @@ export default function PurchaseOrderDetail() {
   const [organization, setOrganization] = useState(null);
   const [bills, setBills] = useState([]);
   const [isBillsExpanded, setIsBillsExpanded] = useState(false);
+  const [selectedPurchaseOrderIds, setSelectedPurchaseOrderIds] = useState<string[]>([]);
+  const [isBulkActionsOpen, setIsBulkActionsOpen] = useState(false);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const moreMenuRef = useRef(null);
   const pdfPrintMenuRef = useRef(null);
+  const bulkActionsRef = useRef(null);
   const dropdownRef = useRef(null);
   const printContentRef = useRef<HTMLDivElement | null>(null);
 
@@ -63,6 +67,20 @@ export default function PurchaseOrderDetail() {
       const year = date.getFullYear();
       return `${day} ${month} ${year}`;
     } catch (e) {
+      return dateString;
+    }
+  };
+
+  const formatSidebarDate = (dateString: any) => {
+    if (!dateString) return "";
+    try {
+      const date = new Date(dateString);
+      if (Number.isNaN(date.getTime())) return dateString;
+      const day = date.getDate().toString().padStart(2, "0");
+      const month = (date.getMonth() + 1).toString().padStart(2, "0");
+      const year = date.getFullYear();
+      return `${day}/${month}/${year}`;
+    } catch {
       return dateString;
     }
   };
@@ -87,49 +105,48 @@ export default function PurchaseOrderDetail() {
       }
 
       setPurchaseOrder(foundOrder);
-      setIsLoading(false);
-
-      // 2) Load secondary data in background (non-blocking).
-      Promise.allSettled([
-        profileAPI.get(),
-        purchaseOrdersAPI.getAll(),
-      ]).then(([orgResult, listResult]) => {
-        if (orgResult.status === "fulfilled") {
-          const orgResponse = orgResult.value;
-          if (orgResponse && (orgResponse.success || orgResponse.data)) {
-            setOrganization(orgResponse.data || orgResponse.organization);
-          }
-        }
-
-        if (listResult.status === "fulfilled") {
-          const response = listResult.value;
-          if (response && (response.code === 0 || response.success)) {
-            setPurchaseOrders(response.data || []);
-          }
-        }
-      });
 
       const vId = foundOrder.vendor_id || (foundOrder.vendor?._id || foundOrder.vendor);
-      if (vId && typeof vId === "string") {
-        vendorsAPI.getById(vId)
-          .then((vResponse) => {
-            const vendorData = vResponse.data || vResponse.vendor;
-            if (vendorData) setVendor(vendorData);
-          })
-          .catch((err) => {
-            console.error("Error fetching vendor:", err);
-          });
+      const vendorPromise =
+        vId && typeof vId === "string"
+          ? vendorsAPI.getById(vId)
+          : Promise.resolve(null);
+
+      const [orgResult, listResult, vendorResult, billsResult] = await Promise.allSettled([
+        profileAPI.get(),
+        purchaseOrdersAPI.getAll(),
+        vendorPromise,
+        billsAPI.getAll({ purchaseOrderId: id }),
+      ]);
+
+      if (orgResult.status === "fulfilled") {
+        const orgResponse = orgResult.value;
+        if (orgResponse && (orgResponse.success || orgResponse.data)) {
+          setOrganization(orgResponse.data || orgResponse.organization);
+        }
       }
 
-      billsAPI.getAll({ purchaseOrderId: id })
-        .then((billsResponse) => {
-          if (billsResponse && billsResponse.success) {
-            setBills(billsResponse.data || []);
-          }
-        })
-        .catch((err) => {
-          console.error("Error fetching associated bills:", err);
-        });
+      if (listResult.status === "fulfilled") {
+        const response = listResult.value;
+        if (response && (response.code === 0 || response.success)) {
+          setPurchaseOrders(response.data || []);
+        }
+      }
+
+      if (vendorResult.status === "fulfilled" && vendorResult.value) {
+        const vResponse = vendorResult.value;
+        const vendorData = vResponse.data || vResponse.vendor;
+        if (vendorData) {
+          setVendor(vendorData);
+        }
+      }
+
+      if (billsResult.status === "fulfilled") {
+        const billsResponse = billsResult.value;
+        if (billsResponse && billsResponse.success) {
+          setBills(billsResponse.data || []);
+        }
+      }
     } catch (error) {
       console.error("Error loading purchase order data:", error);
       navigate("/purchases/purchase-orders", { replace: true });
@@ -138,6 +155,22 @@ export default function PurchaseOrderDetail() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (bulkActionsRef.current && !bulkActionsRef.current.contains(event.target as Node)) {
+        setIsBulkActionsOpen(false);
+      }
+    };
+
+    if (isBulkActionsOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isBulkActionsOpen]);
 
   useEffect(() => {
     loadData();
@@ -180,7 +213,7 @@ export default function PurchaseOrderDetail() {
     };
   }, [moreMenuOpen, pdfPrintMenuOpen, dropdownOpen]);
 
-  if (isLoading) {
+  if (isLoading && !purchaseOrder) {
     return null;
   }
 
@@ -225,6 +258,29 @@ export default function PurchaseOrderDetail() {
   const tax = parseFloat(purchaseOrder.tax || 0);
   const total = parseFloat(purchaseOrder.total) || (subTotal - discount + tax);
   const currency = resolvedBaseCurrencySymbol;
+  const displayVendor =
+    vendor ||
+    purchaseOrder.vendor ||
+    {
+      name: purchaseOrder.vendorName || "Vendor",
+      displayName: purchaseOrder.vendorName || "Vendor",
+      address: {
+        city: purchaseOrder.vendorCity || purchaseOrder.city || "",
+        country: purchaseOrder.vendorCountry || "",
+      },
+      phone: purchaseOrder.vendorPhone || "",
+    };
+  const displayOrganization =
+    organization ||
+    {
+      name: purchaseOrder.companyName || purchaseOrder.organizationName || "Your Company Name",
+      displayName: purchaseOrder.companyName || purchaseOrder.organizationName || "Your Company Name",
+      address: {
+        city: purchaseOrder.companyCity || purchaseOrder.locationName || "Aland Islands",
+        country: purchaseOrder.companyCountry || "",
+      },
+      email: purchaseOrder.companyEmail || "organization@example.com",
+    };
 
   const getPurchaseOrderId = () => String(purchaseOrder?._id || purchaseOrder?.id || id || "");
 
@@ -482,6 +538,54 @@ export default function PurchaseOrderDetail() {
     return parsed.toISOString().split("T")[0];
   };
 
+  const selectedSidebarOrders = purchaseOrders.filter((order) =>
+    selectedPurchaseOrderIds.includes(String(order._id || order.id))
+  );
+
+  const handleSidebarOrderCheckboxChange = (orderId: string, checked: boolean) => {
+    setSelectedPurchaseOrderIds((current) => {
+      if (checked) {
+        return current.includes(orderId) ? current : [...current, orderId];
+      }
+
+      return current.filter((id) => id !== orderId);
+    });
+  };
+
+  const handleSelectAllSidebarOrders = (checked: boolean) => {
+    if (!checked) {
+      setSelectedPurchaseOrderIds([]);
+      return;
+    }
+
+    setSelectedPurchaseOrderIds(filteredOrders.map((order) => String(order._id || order.id)));
+  };
+
+  const handleClearSidebarSelection = () => {
+    setSelectedPurchaseOrderIds([]);
+    setIsBulkActionsOpen(false);
+  };
+
+  const handleBulkDeleteSelected = async () => {
+    if (!selectedSidebarOrders.length) return;
+
+    if (!window.confirm(`Are you sure you want to delete ${selectedSidebarOrders.length} purchase order(s)?`)) {
+      return;
+    }
+
+    try {
+      await Promise.all(
+        selectedSidebarOrders.map((order) => purchaseOrdersAPI.delete(String(order._id || order.id)))
+      );
+      window.dispatchEvent(new Event("purchaseOrdersUpdated"));
+      handleClearSidebarSelection();
+      navigate("/purchases/purchase-orders", { state: { purchaseOrders } });
+    } catch (error: any) {
+      console.error("Error deleting selected purchase orders:", error);
+      alert(error?.message || "Failed to delete selected purchase orders.");
+    }
+  };
+
   const navigateToPurchaseOrdersList = () => {
     navigate("/purchases/purchase-orders", {
       state: { purchaseOrders },
@@ -627,31 +731,85 @@ export default function PurchaseOrderDetail() {
         {/* Left Sidebar - No Print */}
         <div className="no-print w-64 border-r border-gray-200 flex flex-col">
           {/* Sidebar Header */}
-          <div className="p-4 border-b border-gray-200">
-            <div className="flex items-center justify-between mb-3">
-              <div className="relative" ref={dropdownRef}>
-                <button
-                  onClick={() => setDropdownOpen(!dropdownOpen)}
-                  className="flex items-center gap-2 text-sm font-medium text-gray-900 hover:text-gray-700"
-                >
-                  All Purchase Or...
-                  {dropdownOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </button>
+          {selectedPurchaseOrderIds.length > 0 ? (
+            <div className="mx-3 mt-3 mb-2 flex items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-3 shadow-sm">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={filteredOrders.length > 0 && selectedPurchaseOrderIds.length === filteredOrders.length}
+                  onChange={(event) => handleSelectAllSidebarOrders(event.target.checked)}
+                  className="h-4 w-4 shrink-0 cursor-pointer accent-[#156372]"
+                />
+                <div className="h-6 w-px shrink-0 bg-gray-200" />
+                <div className="relative" ref={bulkActionsRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsBulkActionsOpen((current) => !current)}
+                    className="flex items-center gap-1.5 whitespace-nowrap rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-700 cursor-pointer hover:bg-gray-50"
+                  >
+                    Bulk Actions
+                    <ChevronDown size={13} />
+                  </button>
+
+                  {isBulkActionsOpen && (
+                    <div className="absolute left-0 top-full z-50 mt-1 min-w-[200px] overflow-hidden rounded-md border border-gray-200 bg-white shadow-lg">
+                      <button
+                        type="button"
+                        className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                        onClick={() => {
+                          setIsBulkActionsOpen(false);
+                          void handleBulkDeleteSelected();
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="flex gap-1">
+              <div className="ml-2 flex shrink-0 items-center gap-2">
+                <div className="h-6 w-px shrink-0 bg-gray-200" />
+                <span className="flex min-w-[24px] items-center justify-center rounded-full bg-[#eaf2ff] px-1.5 h-6 text-xs font-semibold text-[#4b88f5]">
+                  {selectedPurchaseOrderIds.length}
+                </span>
+                <span className="whitespace-nowrap text-xs text-gray-700">Selected</span>
                 <button
-                  onClick={() => navigate("/purchases/purchase-orders/new")}
-                  className="p-1.5 bg-[#156372] text-white rounded hover:bg-[#0D4A52]"
+                  type="button"
+                  className="cursor-pointer p-1 text-red-500 hover:text-red-600"
+                  onClick={handleClearSidebarSelection}
                 >
-                  <Plus size={16} />
-                </button>
-                <button className="p-1.5 hover:bg-gray-100 rounded">
-                  <MoreVertical size={16} />
+                  <X size={16} />
                 </button>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="p-4 border-b border-gray-200">
+              <div className="flex items-center justify-between mb-3">
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    onClick={() => setDropdownOpen(!dropdownOpen)}
+                    className="flex items-center gap-2 text-sm font-medium text-gray-900 hover:text-gray-700"
+                  >
+                    All Purchase Or...
+                    {dropdownOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </button>
+                </div>
+
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => navigate("/purchases/purchase-orders/new")}
+                    className="p-1.5 bg-[#156372] text-white rounded hover:bg-[#0D4A52]"
+                  >
+                    <Plus size={16} />
+                  </button>
+                  <button className="p-1.5 hover:bg-gray-100 rounded">
+                    <MoreVertical size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Purchase Orders List */}
           <div className="flex-1 overflow-y-auto">
@@ -659,16 +817,27 @@ export default function PurchaseOrderDetail() {
               <div
                 key={order._id || order.id}
                 onClick={() => navigate(`/purchases/purchase-orders/${order._id || order.id}`)}
-                className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${String(order._id || order.id) === String(id) ? "bg-teal-50 border-l-4 border-l-blue-600" : ""
-                  }`}
+                className={`w-full cursor-pointer border-b border-gray-100 box-border transition-colors ${
+                  selectedPurchaseOrderIds.includes(String(order._id || order.id))
+                    ? "bg-[#eff6ff]"
+                    : "bg-white hover:bg-gray-50"
+                } ${String(order._id || order.id) === String(id) ? "border-l-4 border-l-blue-600" : "border-l-4 border-l-transparent"}`}
               >
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
+                <div className="flex w-full items-start gap-3 px-4 py-4">
+                  <input
+                    type="checkbox"
+                    checked={selectedPurchaseOrderIds.includes(String(order._id || order.id))}
+                    onChange={(event) => handleSidebarOrderCheckboxChange(String(order._id || order.id), event.target.checked)}
+                    onClick={(event) => event.stopPropagation()}
+                    className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-[#156372]"
+                  />
+                  <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-gray-900 mb-1">
                       {order.vendorName || "Vendor"}
                     </div>
                     <div className="text-xs text-gray-500 mb-1">
-                      {order.purchaseOrderNumber || "PO-00000"} • {formatDate(order.date)}
+                      {order.purchaseOrderNumber || "PO-00000"} • {formatSidebarDate(order.date)}
                     </div>
                     {order.status && (
                       <div className="inline-block px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 rounded">
@@ -676,9 +845,10 @@ export default function PurchaseOrderDetail() {
                       </div>
                     )}
                   </div>
-                  <div className="text-sm font-semibold text-gray-900">
+                  <div className="shrink-0 whitespace-nowrap text-sm font-semibold text-gray-900">
                     {resolvedBaseCurrencySymbol}{parseFloat(order.total || order.amount || 0).toFixed(2)}
                   </div>
+                </div>
                 </div>
               </div>
             ))}
@@ -1041,18 +1211,18 @@ export default function PurchaseOrderDetail() {
                       <div>
                         <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Vendor Address</div>
                         <div className="text-teal-700 font-medium cursor-pointer hover:underline">
-                          {vendor?.name || vendor?.displayName || purchaseOrder.vendorName || "Vendor"}
+                          {displayVendor?.name || displayVendor?.displayName || purchaseOrder.vendorName || "Vendor"}
                         </div>
                         <div className="text-sm text-gray-600 mt-1">
-                          {vendor?.address?.city || "—"}
-                          {vendor?.address?.country && `, ${vendor.address.country}`}
+                          {displayVendor?.address?.city || "—"}
+                          {displayVendor?.address?.country && `, ${displayVendor.address.country}`}
                         </div>
                       </div>
                       <div>
                         <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Delivery Address</div>
-                        <div className="text-sm text-gray-900 font-medium">{organization?.name || "Your Company"}</div>
+                        <div className="text-sm text-gray-900 font-medium">{displayOrganization?.name || "Your Company"}</div>
                         <div className="text-sm text-gray-600 mt-1">
-                          {organization?.address?.city || "Aland Islands"}{organization?.address?.country && `, ${organization.address.country}`}
+                          {displayOrganization?.address?.city || "Aland Islands"}{displayOrganization?.address?.country && `, ${displayOrganization.address.country}`}
                         </div>
                       </div>
                     </div>
@@ -1156,12 +1326,12 @@ export default function PurchaseOrderDetail() {
                     <div className="flex justify-between items-start mb-8">
                       {/* Company Info */}
                       <div>
-                        <div className="font-semibold text-gray-900 mb-1">{organization?.name || organization?.displayName || "Your Company Name"}</div>
+                        <div className="font-semibold text-gray-900 mb-1">{displayOrganization?.name || displayOrganization?.displayName || "Your Company Name"}</div>
                         <div className="text-sm text-gray-600">
-                          {organization?.address?.city || organization?.location || "Aland Islands"}
-                          {organization?.address?.country && `, ${organization.address.country}`}
+                          {displayOrganization?.address?.city || displayOrganization?.location || "Aland Islands"}
+                          {displayOrganization?.address?.country && `, ${displayOrganization.address.country}`}
                         </div>
-                        <div className="text-sm text-gray-600">{organization?.email || "organization@example.com"}</div>
+                        <div className="text-sm text-gray-600">{displayOrganization?.email || "organization@example.com"}</div>
                       </div>
 
                       {/* Title */}
@@ -1181,22 +1351,22 @@ export default function PurchaseOrderDetail() {
                         <div className="mb-4">
                           <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Vendor Address</div>
                           <div className="text-teal-700 font-medium cursor-pointer hover:underline">
-                            {vendor?.name || vendor?.displayName || purchaseOrder.vendorName || "waryaa"}
+                            {displayVendor?.name || displayVendor?.displayName || purchaseOrder.vendorName || "waryaa"}
                           </div>
                           <div className="text-sm text-gray-600 mt-1">
-                            {vendor?.address?.street1 && <div>{vendor.address.street1}</div>}
-                            {vendor?.address?.city && (
-                              <div>{vendor.address.city}{vendor.address.country && `, ${vendor.address.country}`}</div>
+                            {displayVendor?.address?.street1 && <div>{displayVendor.address.street1}</div>}
+                            {displayVendor?.address?.city && (
+                              <div>{displayVendor.address.city}{displayVendor.address.country && `, ${displayVendor.address.country}`}</div>
                             )}
-                            {vendor?.phone && <div>{vendor.phone}</div>}
+                            {displayVendor?.phone && <div>{displayVendor.phone}</div>}
                           </div>
                         </div>
 
                         <div>
                           <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Deliver To</div>
-                          <div className="text-sm text-gray-900 font-medium">{organization?.name || "asc wcs"}</div>
-                          <div className="text-sm text-gray-600">{organization?.address?.city || "Aland Islands"}{organization?.address?.country && `, ${organization.address.country}`}</div>
-                          <div className="text-sm text-gray-600">{organization?.email || "asscvcs685@gmail.com"}</div>
+                          <div className="text-sm text-gray-900 font-medium">{displayOrganization?.name || "asc wcs"}</div>
+                          <div className="text-sm text-gray-600">{displayOrganization?.address?.city || "Aland Islands"}{displayOrganization?.address?.country && `, ${displayOrganization.address.country}`}</div>
+                          <div className="text-sm text-gray-600">{displayOrganization?.email || "asscvcs685@gmail.com"}</div>
                         </div>
                       </div>
 

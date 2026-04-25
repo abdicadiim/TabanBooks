@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronUp, Plus, MoreVertical, Play, Star, X, ArrowUpDown, Search, Trash2, Download, Upload, Settings, RefreshCw, ChevronRight, CreditCard, GripVertical, User, Users, Lock, Check, FileText, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Eye, EyeOff, Info } from "lucide-react";
@@ -433,15 +433,23 @@ export default function VendorCredits() {
       backgroundColor: "#ffffff",
     },
     header: {
-      padding: "16px 24px",
+      padding: "20px 24px",
       borderBottom: "1px solid #e5e7eb",
       backgroundColor: "#ffffff",
+      position: "sticky" as const,
+      top: 0,
+      zIndex: 100,
+      boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+      minHeight: "80px",
+      display: "flex",
+      alignItems: "center",
     },
     headerContent: {
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
       gap: "16px",
+      width: "100%",
     },
     headerLeft: {
       display: "flex",
@@ -456,14 +464,15 @@ export default function VendorCredits() {
     headerTitle: {
       fontSize: "20px",
       fontWeight: "700",
-      color: "#111827",
+      color: "#156372",
       background: "none",
       border: "none",
       cursor: "pointer",
       display: "flex",
       alignItems: "center",
-      gap: "4px",
+      gap: "8px",
       padding: 0,
+      margin: "0 auto", // Center the title if it's the only thing in its flex container
     },
     dropdown: {
       position: "absolute",
@@ -551,231 +560,132 @@ export default function VendorCredits() {
       position: "relative",
       display: "inline-block",
     },
-    content: {
-      padding: "48px 24px",
+    // Premium Empty State (Zoho Style)
+    emptyStateContainer: {
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
       justifyContent: "center",
-      minHeight: "calc(100vh - 200px)",
-      backgroundColor: "#ffffff",
+      padding: "60px 20px",
+      textAlign: "center" as const,
+      backgroundColor: "#fff",
+      minHeight: "400px",
     },
-    videoCard: {
+    emptyStateImageWrapper: {
+      position: "relative" as const,
+      width: "100%",
+      maxWidth: "400px",
+      height: "220px",
       marginBottom: "32px",
-      width: "100%",
-      maxWidth: "700px",
-    },
-    videoThumbnail: {
-      position: "relative",
-      width: "100%",
-      paddingBottom: "40%",
-      backgroundColor: "#f3f4f6",
-      borderRadius: "8px",
-      overflow: "hidden",
-    },
-    videoPattern: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundImage: `
-        radial-gradient(circle at 10% 20%, rgba(200, 200, 200, 0.15) 0%, transparent 40%),
-        radial-gradient(circle at 90% 80%, rgba(200, 200, 200, 0.15) 0%, transparent 40%),
-        linear-gradient(135deg, transparent 30%, rgba(200, 200, 200, 0.08) 50%, transparent 70%),
-        repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(200, 200, 200, 0.03) 10px, rgba(200, 200, 200, 0.03) 20px)
-      `,
-      backgroundSize: "150px 150px, 180px 180px, 100px 100px, 40px 40px",
-    },
-    videoOverlay: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      padding: "32px",
-    },
-    videoLeft: {
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
+      background: "#f8fafc",
+      borderRadius: "12px",
+      border: "1px solid #f1f5f9",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.03)",
     },
-    playButton: {
-      width: "64px",
-      height: "64px",
+    playButtonCircle: {
+      width: "48px",
+      height: "48px",
       borderRadius: "50%",
-      backgroundColor: "#10b981",
-      color: "#ffffff",
-      border: "none",
-      cursor: "pointer",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-      transition: "transform 0.2s",
-    },
-    videoRight: {
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "flex-end",
-      gap: "8px",
-    },
-    videoLogo: {
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-    },
-    logoIcon: {
-      width: "32px",
-      height: "32px",
-      borderRadius: "6px",
       backgroundColor: "#156372",
-      color: "#ffffff",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      fontSize: "18px",
-      fontWeight: "700",
-      position: "relative",
+      color: "#fff",
+      cursor: "pointer",
+      boxShadow: "0 4px 6px -1px rgba(21, 99, 114, 0.4)",
     },
-    logoIconLines: {
-      position: "absolute",
-      bottom: "4px",
-      left: "50%",
-      transform: "translateX(-50%)",
-      width: "20px",
-      height: "2px",
-      backgroundColor: "#ffffff",
-      borderRadius: "1px",
-    },
-    logoText: {
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "flex-start",
-    },
-    logoTabanBooks: {
-      fontSize: "12px",
+    emptyStateTitle: {
+      fontSize: "24px",
       fontWeight: "600",
-      color: "#111827",
-      lineHeight: 1.2,
+      color: "#1e293b",
+      marginBottom: "12px",
     },
-    logoBooks: {
-      fontSize: "14px",
-      fontWeight: "700",
-      color: "#111827",
-      lineHeight: 1.2,
+    emptyStateText: {
+      fontSize: "15px",
+      color: "#64748b",
+      maxWidth: "500px",
+      marginBottom: "32px",
+      lineHeight: "1.5",
     },
-    videoTitle: {
-      fontSize: "14px",
-      color: "#6b7280",
-      textAlign: "right",
-    },
-    mainHeading: {
-      fontSize: "28px",
-      fontWeight: "600",
-      color: "#111827",
-      margin: "0 0 16px 0",
-      textAlign: "center",
-    },
-    description: {
-      fontSize: "16px",
-      color: "#6b7280",
-      textAlign: "center",
-      maxWidth: "600px",
-      margin: "0 0 32px 0",
-      lineHeight: 1.6,
-    },
-    actions: {
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      gap: "16px",
-    },
-    createButton: {
+    primaryActionBtn: {
       padding: "12px 24px",
+      backgroundColor: "#156372",
+      color: "#fff",
+      borderRadius: "4px",
       fontSize: "14px",
       fontWeight: "600",
-      backgroundColor: "#156372",
-      color: "#ffffff",
-      borderRadius: "6px",
       border: "none",
       cursor: "pointer",
-      textTransform: "uppercase",
-      letterSpacing: "0.5px",
+      marginBottom: "16px",
+      textTransform: "uppercase" as const,
       transition: "background-color 0.2s",
     },
-    importLink: {
-      padding: "8px 16px",
-      fontSize: "14px",
+    secondaryLink: {
       color: "#156372",
+      fontSize: "14px",
+      textDecoration: "none",
+      cursor: "pointer",
       background: "none",
       border: "none",
-      cursor: "pointer",
-      textDecoration: "none",
-    },
-    tableContainer: {
-      padding: "24px",
-    },
-    tableWrapper: {
-      overflowX: "auto",
-      border: "1px solid #e5e7eb",
-      borderRadius: "6px",
-    },
-    table: {
-      width: "100%",
-      borderCollapse: "collapse",
-      backgroundColor: "#ffffff",
-    },
-    tableHeader: {
-      backgroundColor: "#f9fafb",
-      borderBottom: "1px solid #e5e7eb",
-    },
-    tableHeaderCell: {
-      padding: "12px",
-      textAlign: "left",
-      fontSize: "12px",
-      fontWeight: "600",
-      color: "#6b7280",
-      textTransform: "uppercase",
-      whiteSpace: "nowrap",
-    },
-    tableRow: {
-      borderBottom: "1px solid #e5e7eb",
-      cursor: "pointer",
-    },
-    tableCell: {
-      padding: "12px",
-      fontSize: "14px",
-      color: "#111827",
-      whiteSpace: "nowrap",
-    },
-    tableCheckbox: {
-      width: "16px",
-      height: "16px",
-      cursor: "pointer",
-    },
-    statusBadge: {
-      padding: "4px 8px",
-      borderRadius: "4px",
-      fontSize: "12px",
       fontWeight: "500",
-      display: "inline-block",
     },
-    skeletonCell: {
-      height: "16px",
-      backgroundColor: "#e5e7eb",
-      borderRadius: "4px",
-      animation: "pulse 1.5s ease-in-out infinite",
+
+    // High Density List Style (Image 1)
+    listContainer: {
+      display: "flex",
+      flexDirection: "column" as const,
+      width: "100%",
+      maxWidth: "100%",
+      backgroundColor: "#fff",
     },
-    skeletonCheckbox: {
-      width: "16px",
-      height: "16px",
-      backgroundColor: "#e5e7eb",
-      borderRadius: "4px",
-      animation: "pulse 1.5s ease-in-out infinite",
+    listItem: {
+      display: "flex",
+      alignItems: "flex-start",
+      padding: "12px 16px",
+      borderBottom: "1px solid #f1f5f9",
+      transition: "background-color 0.2s",
+      cursor: "pointer",
+      gap: "12px",
+    },
+    listItemCheckbox: {
+      marginTop: "4px",
+    },
+    listItemMain: {
+      flex: 1,
+      display: "flex",
+      flexDirection: "column" as const,
+      gap: "2px",
+    },
+    listItemHeader: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    listItemVendor: {
+      fontSize: "15px",
+      fontWeight: "600",
+      color: "#1e293b",
+    },
+    listItemAmount: {
+      fontSize: "15px",
+      fontWeight: "600",
+      color: "#1e293b",
+    },
+    listItemSubText: {
+      fontSize: "13px",
+      color: "#64748b",
+      display: "flex",
+      alignItems: "center",
+      gap: "6px",
+    },
+    listItemStatus: {
+      fontSize: "11px",
+      fontWeight: "700",
+      textTransform: "uppercase" as const,
+      marginTop: "4px",
     },
   };
 
@@ -787,6 +697,9 @@ export default function VendorCredits() {
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
+        }
+        .animate-spin {
+          animation: spin 1s linear infinite;
         }
         @keyframes pulse {
           0%, 100% { opacity: 1; }
@@ -882,47 +795,66 @@ export default function VendorCredits() {
             >
               Delete
             </button>
-            <div style={{
-              width: "1px",
-              height: "20px",
-              backgroundColor: "#e5e7eb",
-              marginLeft: "4px"
-            }}></div>
-            <span style={{
-              fontSize: "14px",
-              color: "#374151",
-              fontWeight: "500",
-              marginLeft: "8px"
-            }}>
+            <span style={{ fontSize: "14px", fontWeight: "600", color: "#156372", marginRight: "8px" }}>
               {selectedCredits.length} Selected
             </span>
+            <button
+              onClick={() => handleBulkUpdate("Open")}
+              style={{
+                padding: "6px 12px",
+                fontSize: "13px",
+                fontWeight: "500",
+                color: "#374151",
+                backgroundColor: "#ffffff",
+                border: "1px solid #d1d5db",
+                borderRadius: "6px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px"
+              }}
+            >
+              Bulk Update
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              style={{
+                padding: "6px 12px",
+                fontSize: "13px",
+                fontWeight: "500",
+                color: "#ef4444",
+                backgroundColor: "#ffffff",
+                border: "1px solid #fee2e2",
+                borderRadius: "6px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px"
+              }}
+            >
+              Delete
+            </button>
           </div>
           <button
-            onClick={handleClearSelection}
+            onClick={() => setSelectedCredits([])}
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
               padding: "4px 8px",
-              fontSize: "14px",
-              color: "#374151",
+              fontSize: "13px",
+              color: "#64748b",
               backgroundColor: "transparent",
               border: "none",
-              cursor: "pointer"
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.backgroundColor = "#e5e7eb";
-              e.target.style.borderRadius = "4px";
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.backgroundColor = "transparent";
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px"
             }}
           >
-            <span>Esc</span>
-            <X size={16} style={{ color: "#156372" }} />
+            <X size={16} />
+            <span>Clear</span>
           </button>
         </div>
       )}
+
       {/* Header */}
       {selectedCredits.length === 0 && (
         <div style={styles.header}>
@@ -934,23 +866,27 @@ export default function VendorCredits() {
                   onClick={() => setDropdownOpen(!dropdownOpen)}
                 >
                   {selectedView === "All" ? "All Vendor Credits" : selectedView}
-                  {dropdownOpen ? <ChevronUp size={16} style={{ color: "#156372" }} /> : <ChevronDown size={16} style={{ color: "#156372" }} />}
+                  {dropdownOpen ? (
+                    <ChevronUp size={20} style={{ color: "#156372" }} />
+                  ) : (
+                    <ChevronDown size={20} style={{ color: "#156372" }} />
+                  )}
                 </button>
                 {dropdownOpen && (
                   <div style={styles.dropdown}>
                     <button
                       style={{
                         ...styles.dropdownItem,
-                        ...(selectedView === "All" ? { borderLeft: "3px solid #156372" } : {}),
+                        ...(selectedView === "All" ? { borderLeft: "3px solid #156372", backgroundColor: "#f9fafb" } : {}),
                       }}
                       onMouseEnter={(e) => {
                         if (selectedView !== "All") {
-                          e.target.style.backgroundColor = "#f9fafb";
+                          e.currentTarget.style.backgroundColor = "#f9fafb";
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (selectedView !== "All") {
-                          e.target.style.backgroundColor = "transparent";
+                          e.currentTarget.style.backgroundColor = "transparent";
                         }
                       }}
                       onClick={() => {
@@ -963,9 +899,12 @@ export default function VendorCredits() {
                     {["Draft", "Pending Approval", "Open", "Closed", "Void"].map((view) => (
                       <button
                         key={view}
-                        style={styles.dropdownItem}
-                        onMouseEnter={(e) => (e.target.style.backgroundColor = "#f9fafb")}
-                        onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
+                        style={{
+                          ...styles.dropdownItem,
+                          ...(selectedView === view ? { borderLeft: "3px solid #156372", backgroundColor: "#f9fafb" } : {}),
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f9fafb")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                         onClick={() => {
                           setSelectedView(view);
                           setDropdownOpen(false);
@@ -973,7 +912,7 @@ export default function VendorCredits() {
                       >
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
                           <span>{view}</span>
-                          <Star size={16} style={{ color: "#9ca3af" }} />
+                          <Star size={14} style={{ color: "#9ca3af" }} />
                         </div>
                       </button>
                     ))}
@@ -984,10 +923,11 @@ export default function VendorCredits() {
                         color: "#156372",
                         display: "flex",
                         alignItems: "center",
-                        gap: "4px",
+                        gap: "6px",
+                        fontWeight: "600",
                       }}
-                      onMouseEnter={(e) => (e.target.style.backgroundColor = "#f9fafb")}
-                      onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f9fafb")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                       onClick={() => {
                         setDropdownOpen(false);
                         setShowCustomViewModal(true);
@@ -1004,11 +944,7 @@ export default function VendorCredits() {
             <div style={styles.headerRight}>
               <button
                 style={styles.newButton}
-                onClick={() => {
-                  navigate("/purchases/vendor-credits/new");
-                }}
-                onMouseEnter={(e) => (e.target.style.backgroundColor = "#0D4A52")}
-                onMouseLeave={(e) => (e.target.style.backgroundColor = "#156372")}
+                onClick={() => navigate("/purchases/vendor-credits/new")}
               >
                 <Plus size={16} />
                 New
@@ -1017,12 +953,6 @@ export default function VendorCredits() {
                 <button
                   style={styles.moreButton}
                   onClick={() => setMoreMenuOpen(!moreMenuOpen)}
-                  onMouseEnter={(e) => {
-                    e.target.style.backgroundColor = "#f9fafb";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.backgroundColor = "#ffffff";
-                  }}
                 >
                   <MoreVertical size={18} />
                 </button>
@@ -1463,170 +1393,138 @@ export default function VendorCredits() {
       )}
 
       {/* Main Content */}
-      <div style={styles.tableContainer}>
-        <div style={styles.tableWrapper}>
-          <table style={styles.table}>
-            <thead style={styles.tableHeader}>
-              <tr>
-                <th style={styles.tableHeaderCell}>
-                  <input
-                    type="checkbox"
-                    checked={selectedCredits.length === filteredCredits.length && filteredCredits.length > 0}
-                    onChange={handleSelectAll}
-                    style={styles.tableCheckbox}
-                  />
-                </th>
-                <th style={styles.tableHeaderCell}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                    DATE
-                    <ArrowUpDown size={14} style={{ color: "#9ca3af" }} />
+      <div style={{ padding: "0", backgroundColor: "#fff", minHeight: "calc(100vh - 120px)" }}>
+        {isRefreshing ? (
+          <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+            <RefreshCw className="animate-spin" size={32} style={{ margin: "0 auto 12px" }} />
+            <p>Loading vendor credits...</p>
+          </div>
+        ) : filteredCredits.length === 0 ? (
+          /* Premium Empty State (Image 3) */
+          <div style={styles.emptyStateContainer}>
+            <div style={styles.emptyStateImageWrapper}>
+              <div style={{
+                width: "280px",
+                height: "160px",
+                background: "#fff",
+                borderRadius: "8px",
+                boxShadow: "0 10px 25px -5px rgba(0,0,0,0.05)",
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+                border: "1px solid #f1f5f9"
+              }}>
+                <div style={{ padding: "12px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <div style={{ width: "24px", height: "24px", borderRadius: "4px", backgroundColor: "#156372", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "12px", fontWeight: "bold" }}>Z</div>
+                  <div style={{ fontSize: "12px", fontWeight: "600", color: "#1e293b" }}>Zoho Books</div>
+                </div>
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div style={styles.playButtonCircle}>
+                    <Play size={20} fill="currentColor" />
                   </div>
-                </th>
-                <th style={styles.tableHeaderCell}>CREDIT NOTE#</th>
-                <th style={styles.tableHeaderCell}>REFERENCE NUMBER</th>
-                <th style={styles.tableHeaderCell}>VENDOR NAME</th>
-                <th style={styles.tableHeaderCell}>STATUS</th>
-                <th style={{ ...styles.tableHeaderCell, textAlign: "right" }}>AMOUNT</th>
-                <th style={{ ...styles.tableHeaderCell, textAlign: "right" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "4px", justifyContent: "flex-end" }}>
-                    BALANCE
-                    <button
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        padding: "4px",
-                        display: "flex",
-                        alignItems: "center",
-                        color: "#9ca3af",
-                      }}
-                      onClick={() => setShowSearchFormModal(true)}
-                    >
-                      <Search size={14} />
-                    </button>
+                </div>
+                <div style={{ padding: "8px 12px", backgroundColor: "#f8fafc", fontSize: "11px", color: "#64748b", textAlign: "left" }}>
+                  How to create a vendor credit
+                </div>
+              </div>
+            </div>
+            
+            <h2 style={styles.emptyStateTitle}>You deserve some credit too.</h2>
+            <p style={styles.emptyStateText}>
+              Create vendor credits and apply them to multiple bills when buying stuff from your vendor.
+            </p>
+            
+            <button 
+              style={styles.primaryActionBtn}
+              onClick={() => navigate("/purchases/vendor-credits/new")}
+            >
+              CREATE VENDOR CREDITS
+            </button>
+            
+            <button 
+              style={styles.secondaryLink}
+              onClick={() => navigate("/purchases/vendor-credits/import")}
+            >
+              Import Vendor Credits
+            </button>
+          </div>
+        ) : (
+          /* High Density List (Image 1) */
+          <div style={styles.listContainer}>
+            {/* List Header/Bulk Actions Header if needed */}
+            <div style={{ 
+              display: "flex", 
+              padding: "12px 16px", 
+              backgroundColor: "#f8fafc", 
+              borderBottom: "1px solid #f1f5f9",
+              alignItems: "center",
+              gap: "12px"
+            }}>
+              <input 
+                type="checkbox" 
+                checked={selectedCredits.length === filteredCredits.length && filteredCredits.length > 0}
+                onChange={handleSelectAll}
+                style={{ width: "16px", height: "16px" }}
+              />
+              <span style={{ fontSize: "12px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>
+                Date & Vendor
+              </span>
+            </div>
+
+            {filteredCredits.map((credit: any) => {
+              const isSelected = selectedCredits.includes(credit.id || credit._id);
+              const status = (credit.status || "DRAFT").toUpperCase();
+              
+              return (
+                <div 
+                  key={credit.id || credit._id}
+                  style={{
+                    ...styles.listItem,
+                    backgroundColor: isSelected ? "#f1f5f9" : "#fff"
+                  }}
+                  onClick={() => {
+                    if (selectedCredits.length === 0) {
+                      navigate(`/purchases/vendor-credits/${credit.id || credit._id}`);
+                    }
+                  }}
+                >
+                  <div onClick={(e) => e.stopPropagation()} style={styles.listItemCheckbox}>
+                    <input 
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={(e) => handleSelectItem(credit.id || credit._id, e)}
+                      style={{ width: "16px", height: "16px" }}
+                    />
                   </div>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {isRefreshing ? (
-                // Skeleton loading rows
-                Array.from({ length: 5 }).map((_, index) => (
-                  <tr key={`skeleton-${index}`} style={styles.tableRow}>
-                    <td style={styles.tableCell}>
-                      <div style={styles.skeletonCheckbox}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "100px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "120px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "70px" }}></div>
-                    </td>
-                    <td style={{ ...styles.tableCell, textAlign: "right" }}>
-                      <div style={{ ...styles.skeletonCell, width: "80px", marginLeft: "auto" }}></div>
-                    </td>
-                    <td style={{ ...styles.tableCell, textAlign: "right" }}>
-                      <div style={{ ...styles.skeletonCell, width: "80px", marginLeft: "auto" }}></div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                filteredCredits.map((credit) => (
-                  <tr
-                    key={credit.id}
-                    style={{
-                      ...styles.tableRow,
-                      ...(selectedCredits.includes(credit.id) ? { backgroundColor: "#eff6ff" } : {}),
-                    }}
-                    onClick={(e) => {
-                      // Don't navigate if clicking on checkbox or if items are selected
-                      if (e.target.type !== "checkbox" && selectedCredits.length === 0) {
-                        navigate(`/purchases/vendor-credits/${credit.id}`);
-                      }
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!selectedCredits.includes(credit.id)) {
-                        e.currentTarget.style.backgroundColor = "#f9fafb";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!selectedCredits.includes(credit.id)) {
-                        e.currentTarget.style.backgroundColor = "transparent";
-                      }
-                    }}
-                  >
-                    <td style={styles.tableCell} onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedCredits.includes(credit.id)}
-                        onChange={(e) => handleSelectItem(credit.id, e)}
-                        style={styles.tableCheckbox}
-                      />
-                    </td>
-                    <td style={styles.tableCell}>{formatDate(credit.date)}</td>
-                    <td style={styles.tableCell}>
-                      <span
-                        style={{
-                          color: "#156372",
-                          cursor: "pointer",
-                          textDecoration: "none",
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/purchases/vendor-credits/${credit.id}`);
-                        }}
-                      >
-                        {credit.creditNote}
+                  
+                  <div style={styles.listItemMain}>
+                    <div style={styles.listItemHeader}>
+                      <span style={styles.listItemVendor}>{credit.vendorName || "Unknown Vendor"}</span>
+                      <span style={styles.listItemAmount}>
+                        {formatCurrency(credit.amount, credit.currency)}
                       </span>
-                    </td>
-                    <td style={styles.tableCell}>{credit.referenceNumber || "-"}</td>
-                    <td style={styles.tableCell}>{credit.vendorName}</td>
-                    <td style={styles.tableCell}>
-                      <span
-                        style={{
-                          ...styles.statusBadge,
-                          ...(credit.status === "Open"
-                            ? { backgroundColor: "#dbeafe", color: "#1e40af" }
-                            : credit.status === "Draft"
-                              ? { backgroundColor: "#f3f4f6", color: "#374151" }
-                              : credit.status === "Closed"
-                                ? { backgroundColor: "#dcfce7", color: "#166534" }
-                                : credit.status === "Void"
-                                  ? { backgroundColor: "#fee2e2", color: "#991b1b" }
-                                  : { backgroundColor: "#fef3c7", color: "#92400e" }),
-                        }}
-                      >
-                        {credit.status ? credit.status.toUpperCase() : "DRAFT"}
-                      </span>
-                    </td>
-                    <td style={{ ...styles.tableCell, textAlign: "right" }}>
-                      {formatCurrency(credit.amount, credit.currency)}
-                    </td>
-                    <td style={{ ...styles.tableCell, textAlign: "right" }}>
-                      {formatCurrency(credit.balance, credit.currency)}
-                    </td>
-                  </tr>
-                ))
-              )}
-              {filteredCredits.length === 0 && !isRefreshing && (
-                <tr>
-                  <td colSpan="8" style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>
-                    No vendor credits found
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                    </div>
+                    
+                    <div style={styles.listItemSubText}>
+                      <span>{credit.creditNote || credit.vendorCreditNumber || credit.id}</span>
+                      <span style={{ color: "#cbd5e1" }}>â€¢</span>
+                      <span>{formatDate(credit.date)}</span>
+                    </div>
+                    
+                    <div style={{
+                      ...styles.listItemStatus,
+                      color: status === "CLOSED" || status === "APPLIED" ? "#10b981" : 
+                             status === "OPEN" ? "#3b82f6" : 
+                             status === "VOID" ? "#ef4444" : "#64748b"
+                    }}>
+                      {status}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* New Custom View Modal */}

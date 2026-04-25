@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
   Edit,
   Mail,
@@ -10,6 +10,8 @@ import {
   Plus,
   Search,
   RefreshCw,
+  Paperclip,
+  ExternalLink,
 } from "lucide-react";
 
 import { paymentsMadeAPI, billsAPI, vendorsAPI, settingsAPI } from "../../../services/api";
@@ -22,22 +24,29 @@ import { buildPaymentDeleteWarning } from "../../../utils/paymentDeleteWarning";
 export default function PaymentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { code: baseCurrencyCode, symbol: baseCurrencySymbol } = useCurrency();
   const resolvedBaseCurrency = baseCurrencyCode || "USD";
   const resolvedBaseCurrencySymbol = baseCurrencySymbol || resolvedBaseCurrency;
-  const [payment, setPayment] = useState<any>(null);
-  const [payments, setPayments] = useState<any[]>([]);
-  const [vendor, setVendor] = useState<any>(null);
+  
+  // Use passed state for instant load
+  const initialPayment = location.state?.payment;
+  const [payment, setPayment] = useState<any>(initialPayment || null);
+  const [payments, setPayments] = useState<any[]>(location.state?.allPayments || []);
+  const [vendor, setVendor] = useState<any>(initialPayment?.vendor && typeof initialPayment.vendor === 'object' ? initialPayment.vendor : null);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("cash");
   const [organizationInfo, setOrganizationInfo] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const isInitialLoad = useRef(true);
+  const [isLoading, setIsLoading] = useState(!initialPayment);
+  const [selectedPayments, setSelectedPayments] = useState<string[]>([]);
+  const [isBulkActionsOpen, setIsBulkActionsOpen] = useState(false);
+  const isInitialLoad = useRef(!initialPayment);
   const moreMenuRef = useRef(null);
   const dropdownRef = useRef(null);
+  const bulkActionsRef = useRef<HTMLDivElement>(null);
   const emailModalRef = useRef(null);
   const fileInputRef = useRef(null);
   const statementRef = useRef<HTMLDivElement | null>(null);
@@ -45,7 +54,7 @@ export default function PaymentDetail() {
   const fetchData = async (forceSidebar = false) => {
     if (isInitialLoad.current) setIsLoading(true);
     try {
-      const fetchSidebar = forceSidebar || isInitialLoad.current;
+      const fetchSidebar = true; // Always fetch sidebar on mount or refresh
 
       const requests: Promise<any>[] = [
         paymentsMadeAPI.getById(id).catch(e => { console.error("Error loading payment:", e); return null; })
@@ -118,12 +127,12 @@ export default function PaymentDetail() {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setDropdownOpen(false);
       }
-      if (emailModalRef.current && !emailModalRef.current.contains(event.target)) {
-        // Don't close on click outside for email modal - let user explicitly close
+      if (bulkActionsRef.current && !bulkActionsRef.current.contains(event.target)) {
+        setIsBulkActionsOpen(false);
       }
     };
 
-    if (moreMenuOpen || dropdownOpen) {
+    if (moreMenuOpen || dropdownOpen || isBulkActionsOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
@@ -378,6 +387,28 @@ export default function PaymentDetail() {
     }
   };
 
+  const handleSelectPayment = (e: React.MouseEvent, paymentId: string) => {
+    e.stopPropagation();
+    if (selectedPayments.includes(paymentId)) {
+      setSelectedPayments(selectedPayments.filter(id => id !== paymentId));
+    } else {
+      setSelectedPayments([...selectedPayments, paymentId]);
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (selectedPayments.length === filteredPayments.length && filteredPayments.length > 0) {
+      setSelectedPayments([]);
+    } else {
+      const allIds = filteredPayments.map(p => p._id || p.id).filter(Boolean);
+      setSelectedPayments(allIds);
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedPayments([]);
+  };
+
   // Filter payments based on search
   const filteredPayments = payments.filter((p) => {
     if (!searchQuery) return true;
@@ -389,7 +420,7 @@ export default function PaymentDetail() {
     );
   });
 
-  if (isLoading) {
+  if (isLoading && !payment) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", backgroundColor: "#ffffff" }}>
         <div style={{ textAlign: "center", color: "#6b7280" }}>
@@ -424,47 +455,99 @@ export default function PaymentDetail() {
     );
   }
 
-  // Get bills associated with this payment
-  const associatedBills = (payment.allocations || []).map((alloc) => {
-    const bill = alloc.bill;
-    if (!bill) return null;
-    return {
-      ...bill,
-      amountApplied: alloc.amount
-    };
-  }).filter(Boolean);
 
-  const vendorData = vendor || {};
-  const formData = vendorData.formData || vendorData;
-  const vendorAddressLines = [
-    formData.billingStreet1 || formData.address,
-    formData.billingCity || formData.city,
-    formData.billingState || formData.state,
-    formData.billingZipCode || formData.zipCode,
-    formData.billingCountry || formData.country,
-  ].filter(Boolean);
-
-  const currencySymbol = resolvedBaseCurrencySymbol;
 
   const styles = {
-    // Consolidated Styles
     container: {
       display: "flex",
       width: "100%",
       height: "100vh",
       overflow: "hidden",
       backgroundColor: "#ffffff",
+      fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
     },
     sidebar: {
       width: "320px",
       borderRight: "1px solid #e5e7eb",
       backgroundColor: "#ffffff",
       display: "flex",
-      flexDirection: "column",
+      flexDirection: "column" as const,
+      flexShrink: 0,
     },
     sidebarHeader: {
-      padding: "16px",
+      padding: "12px 16px",
       borderBottom: "1px solid #e5e7eb",
+      minHeight: "56px",
+      display: "flex",
+      alignItems: "center",
+    },
+    bulkActionsBar: {
+      display: "flex",
+      alignItems: "center",
+      gap: "12px",
+      width: "100%",
+    },
+    bulkButton: {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      padding: "6px 10px",
+      backgroundColor: "#ffffff",
+      border: "1px solid #d1d5db",
+      borderRadius: "6px",
+      fontSize: "13px",
+      fontWeight: "500",
+      color: "#374151",
+      cursor: "pointer",
+      whiteSpace: "nowrap" as const,
+    },
+    selectedBadge: {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      fontSize: "13px",
+      color: "#374151",
+      fontWeight: "500",
+    },
+    selectedCount: {
+      width: "24px",
+      height: "24px",
+      backgroundColor: "#eff6ff",
+      color: "#2563eb",
+      borderRadius: "50%",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: "12px",
+      fontWeight: "600",
+    },
+    bulkMenu: {
+      position: "absolute" as const,
+      top: "100%",
+      left: "16px",
+      marginTop: "4px",
+      width: "180px",
+      backgroundColor: "#ffffff",
+      borderRadius: "8px",
+      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+      border: "1px solid #e5e7eb",
+      zIndex: 1000,
+      padding: "4px",
+    },
+    bulkMenuItem: {
+      padding: "10px 16px",
+      fontSize: "14px",
+      color: "#374151",
+      cursor: "pointer",
+      borderRadius: "6px",
+      transition: "all 0.2s",
+    },
+    bulkMenuItemBlue: {
+      backgroundColor: "#2563eb",
+      color: "#ffffff",
+    },
+    bulkMenuItemDanger: {
+      color: "#ef4444",
     },
     searchBar: {
       display: "flex",
@@ -481,41 +564,21 @@ export default function PaymentDetail() {
       border: "none",
       outline: "none",
       backgroundColor: "transparent",
-      fontSize: "14px",
-      color: "#6b7280",
+      fontSize: "13px",
+      color: "#111827",
     },
     sidebarTitle: {
-      fontSize: "16px",
+      fontSize: "15px",
       fontWeight: "600",
       color: "#111827",
       margin: 0,
-      marginBottom: "12px",
       display: "flex",
       alignItems: "center",
-      justifyContent: "space-between",
-    },
-    dropdownWrapper: {
-      position: "relative",
-      display: "inline-block",
-    },
-    sidebarActions: {
-      display: "flex",
-      gap: "8px",
-    },
-    sidebarButton: {
-      padding: "6px",
-      backgroundColor: "#156372",
-      color: "#ffffff",
-      border: "none",
-      borderRadius: "4px",
-      cursor: "pointer",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
+      gap: "6px",
     },
     sidebarList: {
       flex: 1,
-      overflowY: "auto",
+      overflowY: "auto" as const,
     },
     sidebarItem: {
       padding: "16px",
@@ -523,52 +586,59 @@ export default function PaymentDetail() {
       cursor: "pointer",
       backgroundColor: "transparent",
       display: "flex",
-      justifyContent: "space-between",
       alignItems: "flex-start",
+      gap: "12px",
+      transition: "background-color 0.2s",
     },
     sidebarItemActive: {
-      backgroundColor: "#eff6ff",
-      borderLeft: "3px solid #156372",
+      backgroundColor: "#f0f7ff",
+      borderLeft: "4px solid #156372",
     },
     sidebarItemContent: {
       flex: 1,
       display: "flex",
-      flexDirection: "column",
+      flexDirection: "column" as const,
       gap: "4px",
     },
     sidebarItemVendor: {
-      fontSize: "14px",
+      fontSize: "13px",
       fontWeight: "600",
       color: "#111827",
-      marginBottom: "4px",
     },
     sidebarItemNumber: {
-      fontSize: "14px",
+      fontSize: "12px",
       color: "#6b7280",
-      marginBottom: "4px",
+      marginTop: "2px",
     },
     sidebarItemStatus: {
-      fontSize: "12px",
-      fontWeight: "500",
+      fontSize: "10px",
+      fontWeight: "700",
       color: "#10b981",
+      marginTop: "4px",
     },
     sidebarItemAmount: {
-      fontSize: "14px",
-      fontWeight: "600",
+      fontSize: "13px",
+      fontWeight: "700",
       color: "#111827",
-      textAlign: "right",
+      marginLeft: "auto",
+    },
+    sidebarCheckbox: {
+      marginTop: "2px",
+      width: "14px",
+      height: "14px",
+      border: "1px solid #d1d5db",
+      borderRadius: "2px",
     },
     mainContent: {
       flex: 1,
       display: "flex",
-      flexDirection: "column",
+      flexDirection: "column" as const,
       overflow: "hidden",
-      minHeight: 0, // Important for flex scrolling
-      backgroundColor: "#ffffff",
+      backgroundColor: "#f9fafb",
     },
     header: {
       backgroundColor: "#ffffff",
-      padding: "16px 24px",
+      padding: "12px 24px",
       borderBottom: "1px solid #e5e7eb",
       display: "flex",
       alignItems: "center",
@@ -578,11 +648,11 @@ export default function PaymentDetail() {
     headerLeft: {
       display: "flex",
       alignItems: "center",
-      gap: "16px",
+      gap: "12px",
     },
     headerTitle: {
-      fontSize: "20px",
-      fontWeight: "600",
+      fontSize: "16px",
+      fontWeight: "700",
       color: "#111827",
       margin: 0,
     },
@@ -591,11 +661,19 @@ export default function PaymentDetail() {
       alignItems: "center",
       gap: "8px",
     },
-    headerButton: {
+    actionBar: {
+      display: "flex",
+      gap: "12px",
+      alignItems: "center",
+      padding: "8px 24px",
+      backgroundColor: "#ffffff",
+      borderBottom: "1px solid #e5e7eb",
+    },
+    actionButton: {
       padding: "6px 12px",
-      fontSize: "14px",
+      fontSize: "13px",
       fontWeight: "500",
-      borderRadius: "6px",
+      borderRadius: "4px",
       border: "1px solid #d1d5db",
       backgroundColor: "#ffffff",
       color: "#374151",
@@ -603,9 +681,15 @@ export default function PaymentDetail() {
       display: "flex",
       alignItems: "center",
       gap: "6px",
+      transition: "all 0.2s",
+    },
+    actionButtonPrimary: {
+      backgroundColor: "#156372",
+      color: "#ffffff",
+      border: "none",
     },
     headerIconButton: {
-      padding: "8px",
+      padding: "6px",
       color: "#6b7280",
       backgroundColor: "transparent",
       border: "none",
@@ -614,205 +698,269 @@ export default function PaymentDetail() {
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
+      transition: "background-color 0.2s",
     },
-    moreDropdownWrapper: {
-      position: "relative",
-      display: "inline-block",
-    },
-    moreDropdown: {
-      position: "absolute",
-      top: "100%",
-      right: 0,
-      marginTop: "8px",
-      backgroundColor: "#ffffff",
-      borderRadius: "8px",
-      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-      border: "1px solid #e5e7eb",
-      minWidth: "200px",
-      zIndex: 100,
-      padding: "4px 0",
-    },
-    moreDropdownItem: {
-      display: "flex",
-      alignItems: "center",
-      padding: "8px 16px",
-      fontSize: "14px",
-      color: "#111827",
-      cursor: "pointer",
-      border: "none",
-      background: "none",
-      width: "100%",
-      textAlign: "left",
-    },
-    content: {
+    contentArea: {
       flex: 1,
-      overflowY: "auto",
-      overflowX: "auto",
-      padding: "24px",
-      backgroundColor: "#f9fafb",
+      overflowY: "auto" as const,
+      padding: "40px 24px",
       display: "flex",
-      justifyContent: "center",
-      minHeight: 0, // Important for flex scrolling
-      height: "100%",
+      flexDirection: "column" as const,
+      alignItems: "center",
     },
     document: {
       backgroundColor: "#ffffff",
-      borderRadius: "8px",
-      padding: "48px",
-      boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-      position: "relative",
-      overflow: "visible", // Changed from "hidden" to allow content to be visible
+      borderRadius: "2px",
+      padding: "60px",
+      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+      position: "relative" as const,
       maxWidth: "800px",
       width: "100%",
-      minHeight: "fit-content", // Ensure content is fully visible
+      marginBottom: "40px",
     },
-    // Redesign Styles
     ribbon: {
       position: "absolute" as const,
       top: 0,
       left: 0,
       width: 0,
       height: 0,
-      borderLeft: "64px solid #34d399",
+      borderLeft: "64px solid #10b981",
       borderBottom: "64px solid transparent",
-      zIndex: 10,
     },
     ribbonText: {
       position: "absolute" as const,
-      top: "12px",
-      left: "-56px",
+      top: "14px",
+      left: "-54px",
       color: "#ffffff",
-      fontSize: "11px",
-      fontWeight: "700",
+      fontSize: "10px",
+      fontWeight: "800",
       transform: "rotate(-45deg)",
       width: "80px",
       textAlign: "center" as const,
-      letterSpacing: "0.5px",
-    },
-    amountBox: {
-      backgroundColor: "#7ca45c",
-      color: "#ffffff",
-      padding: "20px 0",
-      borderRadius: "0px",
-      textAlign: "center" as const,
-      minWidth: "131px",
-      height: "fit-content",
-    },
-    amountBoxLabel: {
-      fontSize: "11px",
-      fontWeight: "600",
-      marginBottom: "8px",
       textTransform: "uppercase" as const,
+      letterSpacing: "1px",
     },
-    amountBoxValue: {
-      fontSize: "18px",
-      fontWeight: "700",
+    orgHeader: {
+      display: "flex",
+      justifyContent: "space-between",
+      marginBottom: "60px",
     },
-    detailGrid: {
-      display: "grid",
-      gridTemplateColumns: "1fr auto",
-      gap: "24px",
-      marginBottom: "32px",
-    },
-    infoStack: {
+    orgInfo: {
       display: "flex",
       flexDirection: "column" as const,
-      gap: "12px",
+      gap: "4px",
     },
-    infoRow: {
-      display: "flex",
-      gap: "16px",
+    orgName: {
+      fontSize: "24px",
+      fontWeight: "800",
+      color: "#111827",
+      letterSpacing: "-0.5px",
+    },
+    orgSubText: {
       fontSize: "13px",
+      color: "#6b7280",
+      lineHeight: "1.6",
+    },
+    locationBadge: {
+      fontSize: "11px",
+      color: "#6b7280",
+      marginBottom: "4px",
+    },
+    docTitleArea: {
+      textAlign: "center" as const,
+      marginBottom: "48px",
+      marginTop: "20px",
+    },
+    docTitle: {
+      fontSize: "16px",
+      fontWeight: "700",
+      color: "#a94442",
+      textTransform: "uppercase" as const,
+      letterSpacing: "1.5px",
+    },
+    mainDetails: {
+      display: "grid",
+      gridTemplateColumns: "1fr 200px",
+      gap: "40px",
+      marginBottom: "60px",
+    },
+    detailsGrid: {
+      display: "flex",
+      flexDirection: "column" as const,
+    },
+    detailRow: {
+      display: "grid",
+      gridTemplateColumns: "160px 1fr",
+      padding: "10px 0",
+      borderBottom: "1px solid #f3f4f6",
+      alignItems: "center",
+    },
+    detailLabel: {
+      fontSize: "13px",
+      color: "#6b7280",
+      fontWeight: "500",
+    },
+    detailValue: {
+      fontSize: "13px",
+      color: "#111827",
+      fontWeight: "600",
+    },
+    detailValueBlue: {
+      fontSize: "13px",
+      color: "#2563eb",
+      fontWeight: "600",
+      cursor: "pointer",
+    },
+    amountCard: {
+      backgroundColor: "#7cb342",
+      color: "#ffffff",
+      padding: "24px",
+      borderRadius: "4px",
+      display: "flex",
+      flexDirection: "column" as const,
+      alignItems: "center",
+      justifyContent: "center",
+      height: "100px",
+    },
+    amountLabel: {
+      fontSize: "13px",
+      fontWeight: "600",
+      marginBottom: "8px",
+    },
+    amountValue: {
+      fontSize: "24px",
+      fontWeight: "800",
+    },
+    vendorSection: {
+      marginTop: "40px",
+    },
+    sectionTitle: {
+      fontSize: "12px",
+      fontWeight: "700",
+      color: "#6b7280",
+      textTransform: "uppercase" as const,
+      letterSpacing: "1px",
+      marginBottom: "12px",
       borderBottom: "1px solid #f3f4f6",
       paddingBottom: "8px",
     },
-    infoLabel: {
-      width: "140px",
-      color: "#6b7280",
-    },
-    infoValue: {
-      color: "#111827",
-      fontWeight: "500",
-    },
-    vendorLink: {
+    vendorName: {
+      fontSize: "16px",
+      fontWeight: "700",
       color: "#156372",
       cursor: "pointer",
     },
-    paymentForTable: {
+    table: {
       width: "100%",
       borderCollapse: "collapse" as const,
-      marginTop: "16px",
+      marginTop: "20px",
     },
-    paymentForHeader: {
-      backgroundColor: "#f3f4f6",
-    },
-    paymentForTh: {
-      padding: "10px 12px",
+    th: {
+      backgroundColor: "#f9fafb",
+      padding: "12px",
       fontSize: "11px",
-      fontWeight: "600",
+      fontWeight: "700",
       color: "#6b7280",
       textAlign: "left" as const,
       textTransform: "uppercase" as const,
+      borderBottom: "2px solid #e5e7eb",
     },
-    paymentForTd: {
-      padding: "12px",
+    td: {
+      padding: "16px 12px",
       fontSize: "13px",
       color: "#111827",
       borderBottom: "1px solid #f3f4f6",
     },
-    paymentForTdRight: {
-      textAlign: "right" as const,
+    journalSection: {
+      width: "100%",
+      maxWidth: "800px",
+      backgroundColor: "#ffffff",
+      borderRadius: "4px",
+      padding: "32px",
+      boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+      marginBottom: "60px",
     },
-    journalSectionStyle: {
-      padding: "0",
-      backgroundColor: "transparent",
-      borderRadius: "0",
-      marginTop: "40px",
+    journalHeader: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: "24px",
+      borderBottom: "1px solid #e5e7eb",
+    },
+    journalTabs: {
+      display: "flex",
+      gap: "24px",
     },
     journalTab: {
-      fontSize: "13px",
+      paddingBottom: "12px",
+      fontSize: "14px",
       fontWeight: "600",
-      color: "#111827",
-      borderBottom: "2px solid #156372",
-      paddingBottom: "8px",
-      width: "fit-content",
-      marginBottom: "16px",
+      color: "#6b7280",
+      cursor: "pointer",
+      position: "relative" as const,
     },
-    accrualCashToggle: {
+    journalTabActive: {
+      color: "#156372",
+    },
+    journalTabIndicator: {
+      position: "absolute" as const,
+      bottom: 0,
+      left: 0,
+      width: "100%",
+      height: "2px",
+      backgroundColor: "#156372",
+    },
+    toggleContainer: {
       display: "flex",
-      gap: "4px",
-      padding: "2px",
       backgroundColor: "#f3f4f6",
+      padding: "2px",
       borderRadius: "4px",
     },
-    toggleBtn: {
-      padding: "2px 8px",
-      fontSize: "10px",
-      border: "1px solid #d1d5db",
-      backgroundColor: "transparent",
-      cursor: "pointer",
+    toggleItem: {
+      padding: "4px 12px",
+      fontSize: "12px",
+      fontWeight: "600",
       color: "#6b7280",
+      cursor: "pointer",
+      borderRadius: "3px",
+      transition: "all 0.2s",
     },
-    toggleBtnActive: {
+    toggleItemActive: {
       backgroundColor: "#ffffff",
       color: "#111827",
       boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
     },
-    actionBar: {
+    dropdownMenu: {
+      position: "absolute" as const,
+      top: "100%",
+      right: 0,
+      marginTop: "8px",
+      backgroundColor: "#ffffff",
+      borderRadius: "6px",
+      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+      border: "1px solid #e5e7eb",
+      minWidth: "160px",
+      zIndex: 50,
+      overflow: "hidden",
+    },
+    dropdownItem: {
+      padding: "10px 16px",
+      fontSize: "13px",
+      color: "#374151",
+      cursor: "pointer",
       display: "flex",
-      gap: "12px",
       alignItems: "center",
-      padding: "8px 24px",
-      backgroundColor: "#f9fafb",
-      borderBottom: "1px solid #e5e7eb",
+      gap: "8px",
+      transition: "background-color 0.2s",
+      width: "100%",
+      border: "none",
+      background: "none",
+      textAlign: "left" as const,
     },
   };
 
-  // Get currency symbol
-  const currency = resolvedBaseCurrency;
-  // const currencySymbol = currency === "USD" ? "USD" : currency === "USD" ? "$" : currency === "CAD" ? "$" : currency === "AWG" ? "$" : currency;
 
-  // Calculate journal entries
+
   const journalEntries = [
     {
       account: payment.paidThrough || "Petty Cash",
@@ -829,210 +977,327 @@ export default function PaymentDetail() {
   const totalDebit = journalEntries.reduce((sum, entry) => sum + parseFloat(entry.debit), 0).toFixed(2);
   const totalCredit = journalEntries.reduce((sum, entry) => sum + parseFloat(entry.credit), 0).toFixed(2);
 
+  const associatedBills = (payment.allocations || []).map((alloc: any) => {
+    const bill = alloc.bill;
+    if (!bill) return null;
+    return { ...bill, amountApplied: alloc.amount };
+  }).filter(Boolean);
+
   return (
     <div style={styles.container}>
       {/* Left Sidebar */}
       <div style={styles.sidebar}>
         <div style={styles.sidebarHeader}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-            <div style={styles.dropdownWrapper} ref={dropdownRef}>
-              <h2 style={{ ...styles.sidebarTitle, marginBottom: 0 }}>
-                All Payments
-                <ChevronDown size={14} style={{ marginLeft: "4px" }} />
-              </h2>
-            </div>
-            <div style={styles.sidebarActions}>
-              <button
-                style={{ ...styles.sidebarButton, backgroundColor: "#156372" }}
-                onClick={() => navigate("/purchases/payments-made/new")}
+          {selectedPayments.length > 0 ? (
+            <div style={{ ...styles.bulkActionsBar, position: "relative" }} ref={bulkActionsRef}>
+              <input 
+                type="checkbox" 
+                style={styles.sidebarCheckbox} 
+                checked={selectedPayments.length === filteredPayments.length && filteredPayments.length > 0}
+                onChange={handleSelectAll}
+              />
+              <button 
+                style={styles.bulkButton}
+                onClick={() => setIsBulkActionsOpen(!isBulkActionsOpen)}
               >
-                <Plus size={16} />
+                Bulk Actions <ChevronDown size={14} />
               </button>
-              <button style={{ ...styles.sidebarButton, backgroundColor: "transparent", color: "#6b7280", border: "1px solid #e5e7eb" }}>
-                <MoreVertical size={16} />
+              
+              {isBulkActionsOpen && (
+                <div style={styles.bulkMenu}>
+                  <div 
+                    style={{ ...styles.bulkMenuItem, ...styles.bulkMenuItemBlue }}
+                    onClick={() => {
+                      setIsBulkActionsOpen(false);
+                      toast.success("Bulk Update triggered for " + selectedPayments.length + " payments");
+                    }}
+                  >
+                    Bulk Update
+                  </div>
+                  <div 
+                    style={styles.bulkMenuItem}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = "#f9fafb";
+                      e.currentTarget.style.color = "#ef4444";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "transparent";
+                      e.currentTarget.style.color = "#374151";
+                    }}
+                    onClick={() => {
+                      setIsBulkActionsOpen(false);
+                      if (window.confirm(`Are you sure you want to delete ${selectedPayments.length} payments?`)) {
+                        toast.success("Payments deleted");
+                        setSelectedPayments([]);
+                      }
+                    }}
+                  >
+                    Delete
+                  </div>
+                </div>
+              )}
+
+              <div style={{ width: "1px", height: "24px", backgroundColor: "#e5e7eb" }}></div>
+              <div style={styles.selectedBadge}>
+                <span style={styles.selectedCount}>{selectedPayments.length}</span>
+                <span>Selected</span>
+              </div>
+              <button 
+                style={{ ...styles.headerIconButton, marginLeft: "auto" }}
+                onClick={clearSelection}
+              >
+                <X size={18} style={{ color: "#ef4444" }} />
               </button>
             </div>
-          </div>
-
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+              <div style={styles.sidebarTitle}>
+                All Payments <ChevronDown size={14} />
+              </div>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button 
+                  style={{ 
+                    ...styles.headerIconButton, 
+                    backgroundColor: "#10b981", 
+                    color: "#ffffff", 
+                    borderRadius: "4px",
+                    padding: "4px 8px"
+                  }}
+                  onClick={() => navigate("/purchases/payments-made/new")}
+                >
+                  <Plus size={16} />
+                </button>
+                <button 
+                  style={{ 
+                    ...styles.headerIconButton, 
+                    backgroundColor: "#f3f4f6", 
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "4px",
+                    padding: "4px"
+                  }}
+                >
+                  <MoreVertical size={16} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={styles.sidebarList}>
-          {filteredPayments.map((p) => (
-            <div
-              key={p.id}
-              style={{
-                ...styles.sidebarItem,
-                ...(String(p.id) === String(id) ? styles.sidebarItemActive : {}),
-                padding: "12px 16px",
-              }}
-              onClick={() => navigate(`/purchases/payments-made/${p.id}`)}
-            >
-              <input type="checkbox" style={{ marginRight: "12px", marginTop: "4px" }} onClick={(e) => e.stopPropagation()} />
-              <div style={styles.sidebarItemContent}>
-                <div style={styles.sidebarItemVendor}>
-                  {p.vendorName || "Vendor"}
+          {filteredPayments.map((p) => {
+            const pId = p._id || p.id;
+            return (
+              <div
+                key={pId}
+                style={{
+                  ...styles.sidebarItem,
+                  ...(String(pId) === String(id) ? styles.sidebarItemActive : {}),
+                }}
+                onClick={() => navigate(`/purchases/payments-made/${pId}`, { state: { payment: p, allPayments: payments } })}
+              >
+              <input 
+                type="checkbox" 
+                style={styles.sidebarCheckbox} 
+                checked={selectedPayments.includes(String(pId))}
+                onClick={(e) => handleSelectPayment(e, String(pId))}
+                onChange={() => {}}
+              />
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={styles.sidebarItemVendor}>{p.vendorName || "Vendor"}</div>
+                  <div style={styles.sidebarItemAmount}>
+                    {resolvedBaseCurrencySymbol}{parseFloat(p.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                  </div>
                 </div>
-                <div style={{ ...styles.sidebarItemNumber, fontSize: "12px" }}>
+                <div style={styles.sidebarItemNumber}>
                   {formatDateShort(p.date)} • {p.mode || "Cash"}
                 </div>
-                <div style={{ ...styles.sidebarItemStatus, color: "#10b981", fontSize: "11px" }}>PAID</div>
+                <div style={styles.sidebarItemStatus}>PAID</div>
               </div>
-              <div style={styles.sidebarItemAmount}>
-                {currencySymbol}{parseFloat(p.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
       {/* Main Content */}
       <div style={styles.mainContent}>
-        {/* Header */}
-        <div style={{ ...styles.header, borderBottom: "1px solid #e5e7eb", backgroundColor: "#ffffff", padding: "12px 24px" }}>
-          <div style={{ fontSize: "16px", fontWeight: "700", color: "#111827" }}>
-            {payment.paymentNumber || id}
+        {/* Top Header */}
+        <div style={styles.header}>
+          <div style={styles.headerLeft}>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <div style={styles.locationBadge}>Location: Head Office</div>
+              <div style={styles.headerTitle}>{payment.paymentNumber || "4"}</div>
+            </div>
           </div>
           <div style={styles.headerRight}>
-
-            <button style={styles.headerIconButton} onClick={() => navigate("/purchases/payments-made")}><X size={20} /></button>
+            <button style={styles.headerIconButton}><Paperclip size={18} /></button>
+            <button style={styles.headerIconButton}><ExternalLink size={18} /></button>
+            <button style={styles.headerIconButton} onClick={() => navigate("/purchases/payments-made")}>
+              <X size={20} />
+            </button>
           </div>
         </div>
 
-        {/* Buttons Row */}
-        <div style={{ ...styles.actionBar, display: "flex", gap: "12px", borderBottom: "1px solid #e5e7eb", padding: "8px 24px", backgroundColor: "#f9fafb" }}>
+        {/* Action Bar */}
+        <div style={styles.actionBar}>
           <button
-            style={styles.headerButton}
+            style={styles.actionButton}
             onClick={() => navigate(`/purchases/payments-made/new`, {
               state: { editPayment: payment, isEdit: true, paymentId: id }
             })}
           >
             <Edit size={14} /> Edit
           </button>
-          <button style={styles.headerButton} onClick={() => navigate(`/purchases/payments-made/${id}/email`)}>
+          <button style={styles.actionButton} onClick={() => navigate(`/purchases/payments-made/${id}/email`)}>
             <Mail size={14} /> Send Email
           </button>
-          <button style={styles.headerButton} onClick={handleDownloadPDF} disabled={isDownloadingPdf}>
-            <FileText size={14} /> {isDownloadingPdf ? "Downloading..." : "Download PDF"}
+          <button style={styles.actionButton} onClick={handleDownloadPDF} disabled={isDownloadingPdf}>
+            <FileText size={14} /> {isDownloadingPdf ? "Exporting..." : "Download PDF"}
           </button>
-          <div style={styles.moreDropdownWrapper} ref={moreMenuRef}>
-            <button style={styles.headerButton} onClick={() => setMoreMenuOpen(!moreMenuOpen)}>
+          <div style={{ position: "relative" }} ref={moreMenuRef}>
+            <button style={styles.actionButton} onClick={() => setMoreMenuOpen(!moreMenuOpen)}>
               <MoreVertical size={14} />
             </button>
             {moreMenuOpen && (
-              <div style={styles.moreDropdown}>
-                <button style={styles.moreDropdownItem} onClick={handleClone}>Clone</button>
-                <button style={styles.moreDropdownItem}>Export</button>
-                <button style={styles.moreDropdownItem} onClick={handleDelete}>Delete</button>
+              <div style={styles.dropdownMenu}>
+                <button style={styles.dropdownItem} onClick={handleClone}>
+                  <Plus size={14} /> Clone
+                </button>
+                <button style={styles.dropdownItem} onClick={handleDelete} style={{ ...styles.dropdownItem, color: "#ef4444" }}>
+                  <X size={14} /> Delete
+                </button>
               </div>
             )}
           </div>
         </div>
 
-        {/* Content */}
-          <div style={styles.content}>
-          <div ref={statementRef} style={{ ...styles.document, padding: "48px", position: "relative" }}>
-            {/* Paid Ribbon */}
+        {/* Content Area */}
+        <div style={styles.contentArea}>
+          <div ref={statementRef} style={styles.document}>
             <div style={styles.ribbon}>
               <div style={styles.ribbonText}>Paid</div>
             </div>
 
-            {/* Document Header (Org Info) */}
-            <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: "40px" }}>
-              <div style={styles.infoStack}>
-                <div style={{ fontSize: "24px", fontWeight: "700", color: "#111827" }}>
-                  {organizationInfo?.companyName?.[0] || organizationInfo?.name?.[0] || "d"}
+            {/* Org Info */}
+            <div style={styles.orgHeader}>
+              <div style={styles.orgInfo}>
+                <div style={styles.orgName}>
+                  {organizationInfo?.companyName || organizationInfo?.name || "Taban Books"}
                 </div>
-                <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "16px" }}>
+                <div style={styles.orgSubText}>
                   {organizationInfo?.address?.city || "Aland Islands"}<br />
                   {organizationInfo?.email || "ascwcs685@gmail.com"}
                 </div>
               </div>
             </div>
 
-            {/* Centered Document Title */}
-            <div style={{ textAlign: "center", marginBottom: "40px", borderTop: "1px solid #f3f4f6", paddingTop: "20px" }}>
-              <div style={{ fontSize: "14px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", letterSpacing: "1px" }}>
-                PAYMENTS MADE
-              </div>
+            {/* Title */}
+            <div style={styles.docTitleArea}>
+              <div style={styles.docTitle}>PAYMENTS MADE</div>
             </div>
 
-            {/* Detail Grid with Amount Paid Box */}
-            <div style={styles.detailGrid}>
-              <div style={styles.infoStack}>
-                <div style={styles.infoRow}>
-                  <div style={styles.infoLabel}>Payment#</div>
-                  <div style={styles.infoValue}>{payment.paymentNumber || id}</div>
+            {/* Main Details */}
+            <div style={styles.mainDetails}>
+              <div style={styles.detailsGrid}>
+                <div style={styles.detailRow}>
+                  <div style={styles.detailLabel}>Payment#</div>
+                  <div style={styles.detailValue}>{payment.paymentNumber || "4"}</div>
                 </div>
-                <div style={styles.infoRow}>
-                  <div style={styles.infoLabel}>Payment Date</div>
-                  <div style={styles.infoValue}>{formatDate(payment.date)}</div>
+                
+                <div style={styles.detailRow}>
+                  <div style={styles.detailLabel}>Payment Date</div>
+                  <div style={styles.detailValue}>{formatDateShort(payment.date)}</div>
                 </div>
-                <div style={styles.infoRow}>
-                  <div style={styles.infoLabel}>Reference Number</div>
-                  <div style={styles.infoValue}>{payment.reference || ""}</div>
+                
+                <div style={styles.detailRow}>
+                  <div style={styles.detailLabel}>Reference Number</div>
+                  <div style={styles.detailValue}>{payment.reference || "---"}</div>
                 </div>
-                <div style={styles.infoRow}>
-                  <div style={styles.infoLabel}>Paid To</div>
-                  <div style={{ ...styles.infoValue, ...styles.vendorLink }} onClick={() => vendor && navigate(`/purchases/vendors/${vendor.id}`)}>
-                    {payment.vendorName || "Vendor"}
+                
+                <div style={styles.detailRow}>
+                  <div style={styles.detailLabel}>Paid To</div>
+                  <div 
+                    style={styles.detailValueBlue}
+                    onClick={() => vendor && navigate(`/purchases/vendors/${vendor.id}`)}
+                  >
+                    {payment.vendorName || "Vendor Name"}
                   </div>
                 </div>
-                <div style={styles.infoRow}>
-                  <div style={styles.infoLabel}>Payment Mode</div>
-                  <div style={styles.infoValue}>{payment.mode || "Cash"}</div>
-                </div>
-                <div style={styles.infoRow}>
-                  <div style={styles.infoLabel}>Paid Through</div>
-                  <div style={styles.infoValue}>{payment.paidThrough || "Petty Cash"}</div>
-                </div>
 
-                <div style={{ marginTop: "32px", marginBottom: "32px" }}>
-                  <div style={{ fontSize: "11px", color: "#6b7280", fontWeight: "600", marginBottom: "8px", textTransform: "uppercase" }}>Paid To</div>
-                  <div style={{ fontSize: "14px", fontWeight: "700", color: "#111827" }}>{payment.vendorName || "Vendor"}</div>
+                <div style={styles.detailRow}>
+                  <div style={styles.detailLabel}>Payment Mode</div>
+                  <div style={styles.detailValue}>{payment.mode || "Cash"}</div>
+                </div>
+                
+                <div style={styles.detailRow}>
+                  <div style={styles.detailLabel}>Paid Through</div>
+                  <div style={styles.detailValue}>{payment.paidThrough || "Petty Cash"}</div>
                 </div>
               </div>
 
-              {/* Amount Paid Box */}
-              <div style={styles.amountBox}>
-                <div style={styles.amountBoxLabel}>Amount Paid</div>
-                <div style={styles.amountBoxValue}>
-                  {currencySymbol}{parseFloat(payment.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+              <div style={styles.amountCard}>
+                <div style={styles.amountLabel}>Amount Paid</div>
+                <div style={styles.amountValue}>
+                  {resolvedBaseCurrencySymbol}{parseFloat(payment.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
                 </div>
               </div>
             </div>
 
-            {/* Payment for Table */}
-            <div style={{ borderTop: "1px solid #f3f4f6", paddingTop: "24px" }}>
-              <div style={{ fontSize: "16px", fontWeight: "700", color: "#111827", marginBottom: "16px" }}>Payment for</div>
-              <table style={styles.paymentForTable}>
-                <thead style={styles.paymentForHeader}>
+            {/* Vendor Info */}
+            <div style={styles.vendorSection}>
+              <div style={styles.sectionTitle}>Paid To</div>
+              <div 
+                style={styles.vendorName}
+                onClick={() => vendor && navigate(`/purchases/vendors/${vendor.id}`)}
+              >
+                {payment.vendorName || "Vendor Name"}
+              </div>
+            </div>
+
+            {/* Associated Bills Table */}
+            <div style={{ marginTop: "40px" }}>
+              <div style={styles.sectionTitle}>Payment For</div>
+              <table style={styles.table}>
+                <thead>
                   <tr>
-                    <th style={styles.paymentForTh}>Bill Number</th>
-                    <th style={styles.paymentForTh}>Bill Date</th>
-                    <th style={styles.paymentForTh}>Bill Amount</th>
-                    <th style={styles.paymentForTh}>Payment Amount</th>
+                    <th style={styles.th}>Bill Number</th>
+                    <th style={styles.th}>Bill Date</th>
+                    <th style={{ ...styles.th, textAlign: "right" }}>Bill Amount</th>
+                    <th style={{ ...styles.th, textAlign: "right" }}>Amount Applied</th>
                   </tr>
                 </thead>
                 <tbody>
                   {associatedBills.length > 0 ? (
-                    associatedBills.map((bill) => (
+                    associatedBills.map((bill: any) => (
                       <tr key={bill.id}>
-                        <td style={{ ...styles.paymentForTd, color: "#156372", cursor: "pointer" }} onClick={() => navigate(`/purchases/bills/${bill.id}`)}>
+                        <td 
+                          style={{ ...styles.td, color: "#156372", fontWeight: "600", cursor: "pointer" }}
+                          onClick={() => navigate(`/purchases/bills/${bill.id}`)}
+                        >
                           {bill.billNumber || bill.id}
                         </td>
-                        <td style={styles.paymentForTd}>{formatDate(bill.date)}</td>
-                        <td style={styles.paymentForTd}>{currencySymbol} {parseFloat(bill.total || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
-                        <td style={styles.paymentForTd}>{currencySymbol} {parseFloat(bill.amountApplied || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
+                        <td style={styles.td}>{formatDate(bill.date)}</td>
+                        <td style={{ ...styles.td, textAlign: "right" }}>
+                          {resolvedBaseCurrencySymbol}{parseFloat(bill.total || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                        </td>
+                        <td style={{ ...styles.td, textAlign: "right", fontWeight: "600" }}>
+                          {resolvedBaseCurrencySymbol}{parseFloat(bill.amountApplied || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                        </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td style={{ ...styles.paymentForTd, color: "#156372", cursor: "pointer" }} onClick={() => payment.billId && navigate(`/purchases/bills/${payment.billId}`)}>
+                      <td style={{ ...styles.td, color: "#156372", fontWeight: "600", cursor: "pointer" }} onClick={() => payment.billId && navigate(`/purchases/bills/${payment.billId}`)}>
                         {payment.billNumber || "---"}
                       </td>
-                      <td style={styles.paymentForTd}>{formatDate(payment.billDate || payment.date)}</td>
-                      <td style={styles.paymentForTd}>{currencySymbol} {parseFloat(payment.billAmount || payment.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
-                      <td style={styles.paymentForTd}>{currencySymbol} {parseFloat(payment.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
+                      <td style={styles.td}>{formatDate(payment.billDate || payment.date)}</td>
+                      <td style={{ ...styles.td, textAlign: "right" }}>
+                        {resolvedBaseCurrencySymbol}{parseFloat(payment.billAmount || payment.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td style={{ ...styles.td, textAlign: "right", fontWeight: "600" }}>
+                        {resolvedBaseCurrencySymbol}{parseFloat(payment.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      </td>
                     </tr>
                   )}
                 </tbody>
@@ -1040,73 +1305,74 @@ export default function PaymentDetail() {
             </div>
           </div>
 
-          {/* Journal Section - Integrated below */}
-          <div style={{ width: "100%", maxWidth: "800px", margin: "0 auto", padding: "0 48px", marginBottom: "100px" }}>
-            <div style={styles.journalSectionStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e5e7eb", marginBottom: "16px" }}>
-                <div style={{ ...styles.journalTab, borderBottom: "2px solid #156372", marginBottom: "-1px" }}>Journal</div>
-                <div style={{ ...styles.accrualCashToggle, borderRadius: "2px", border: "1px solid #d1d5db", padding: 0 }}>
-                  <button
-                    style={{
-                      ...styles.toggleBtn,
-                      ...(activeTab === "accrual" ? styles.toggleBtnActive : {}),
-                      border: "none",
-                      borderRight: "1px solid #d1d5db"
-                    }}
-                    onClick={() => setActiveTab("accrual")}
-                  >
-                    Accrual
-                  </button>
-                  <button
-                    style={{
-                      ...styles.toggleBtn,
-                      ...(activeTab === "cash" ? styles.toggleBtnActive : {}),
-                      border: "none"
-                    }}
-                    onClick={() => setActiveTab("cash")}
-                  >
-                    Cash
-                  </button>
+          {/* Journal Section */}
+          <div style={styles.journalSection}>
+            <div style={styles.journalHeader}>
+              <div style={styles.journalTabs}>
+                <div style={{ ...styles.journalTab, ...styles.journalTabActive }}>
+                  Journal
+                  <div style={styles.journalTabIndicator}></div>
                 </div>
               </div>
-
-              <div style={{ fontSize: "11px", color: "#6b7280", marginBottom: "16px", display: "flex", alignItems: "center", gap: "6px" }}>
-                Amount is displayed in your base currency
-                <span style={{ backgroundColor: "#82ac5d", color: "#ffffff", padding: "0 4px", borderRadius: "2px", fontSize: "10px", fontWeight: "700" }}>{currency}</span>
+              <div style={styles.toggleContainer}>
+                <div 
+                  style={{ ...styles.toggleItem, ...(activeTab === "accrual" ? styles.toggleItemActive : {}) }}
+                  onClick={() => setActiveTab("accrual")}
+                >
+                  Accrual
+                </div>
+                <div 
+                  style={{ ...styles.toggleItem, ...(activeTab === "cash" ? styles.toggleItemActive : {}) }}
+                  onClick={() => setActiveTab("cash")}
+                >
+                  Cash
+                </div>
               </div>
-
-              <div style={{ fontSize: "13px", fontWeight: "700", color: "#111827", marginBottom: "12px" }}>
-                Payments Made - {associatedBills.length > 0 ? associatedBills[0].billNumber : payment.billNumber || payment.paymentNumber || id}
-              </div>
-
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid #e5e7eb" }}>
-                    <th style={{ ...styles.paymentForTh, backgroundColor: "transparent", color: "#9ca3af", padding: "8px 0" }}>ACCOUNT</th>
-                    <th style={{ ...styles.paymentForTh, backgroundColor: "transparent", textAlign: "right", color: "#9ca3af", padding: "8px 0" }}>DEBIT</th>
-                    <th style={{ ...styles.paymentForTh, backgroundColor: "transparent", textAlign: "right", color: "#9ca3af", padding: "8px 0" }}>CREDIT</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {journalEntries.map((entry, index) => (
-                    <tr key={index}>
-                      <td style={{ ...styles.paymentForTd, padding: "8px 0", border: "none" }}>{entry.account}</td>
-                      <td style={{ ...styles.paymentForTd, textAlign: "right", padding: "8px 0", border: "none" }}>{parseFloat(entry.debit).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
-                      <td style={{ ...styles.paymentForTd, textAlign: "right", padding: "8px 0", border: "none" }}>{parseFloat(entry.credit).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
-                    </tr>
-                  ))}
-                  <tr style={{ fontWeight: "700", borderTop: "1px solid #e5e7eb" }}>
-                    <td style={{ ...styles.paymentForTd, padding: "8px 0", border: "none" }}></td>
-                    <td style={{ ...styles.paymentForTd, textAlign: "right", padding: "8px 0", border: "none" }}>{parseFloat(totalDebit).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
-                    <td style={{ ...styles.paymentForTd, textAlign: "right", padding: "8px 0", border: "none" }}>{parseFloat(totalCredit).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
-                  </tr>
-                </tbody>
-              </table>
             </div>
+
+            <div style={{ fontSize: "11px", color: "#6b7280", marginBottom: "16px", display: "flex", alignItems: "center", gap: "6px" }}>
+              Amounts are in base currency
+              <span style={{ backgroundColor: "#156372", color: "#ffffff", padding: "1px 6px", borderRadius: "2px", fontSize: "10px", fontWeight: "700" }}>
+                {resolvedBaseCurrency}
+              </span>
+            </div>
+
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ ...styles.th, backgroundColor: "transparent", borderBottom: "1px solid #e5e7eb", paddingLeft: 0 }}>Account</th>
+                  <th style={{ ...styles.th, backgroundColor: "transparent", borderBottom: "1px solid #e5e7eb", textAlign: "right" }}>Debit</th>
+                  <th style={{ ...styles.th, backgroundColor: "transparent", borderBottom: "1px solid #e5e7eb", textAlign: "right", paddingRight: 0 }}>Credit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {journalEntries.map((entry, index) => (
+                  <tr key={index}>
+                    <td style={{ ...styles.td, paddingLeft: 0, borderBottom: index === journalEntries.length - 1 ? "1px solid #e5e7eb" : "1px solid #f3f4f6" }}>
+                      {entry.account}
+                    </td>
+                    <td style={{ ...styles.td, textAlign: "right", borderBottom: index === journalEntries.length - 1 ? "1px solid #e5e7eb" : "1px solid #f3f4f6" }}>
+                      {parseFloat(entry.debit).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ ...styles.td, textAlign: "right", paddingRight: 0, borderBottom: index === journalEntries.length - 1 ? "1px solid #e5e7eb" : "1px solid #f3f4f6" }}>
+                      {parseFloat(entry.credit).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                ))}
+                <tr style={{ fontWeight: "700" }}>
+                  <td style={{ ...styles.td, paddingLeft: 0, border: "none" }}>Total</td>
+                  <td style={{ ...styles.td, textAlign: "right", border: "none" }}>
+                    {parseFloat(totalDebit).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                  </td>
+                  <td style={{ ...styles.td, textAlign: "right", paddingRight: 0, border: "none" }}>
+                    {parseFloat(totalCredit).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
-
     </div>
   );
 }

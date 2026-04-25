@@ -234,6 +234,7 @@ export default function NewVendor() {
   const [availableTaxes, setAvailableTaxes] = useState<TaxOption[]>([]);
   const [accountsPayableOptions, setAccountsPayableOptions] = useState<string[]>([]);
   const [fieldErrors, setFieldErrors] = useState<{ displayName?: string }>({});
+  const [isDisplayNameDropdownOpen, setIsDisplayNameDropdownOpen] = useState(false);
   const [isWorkPhoneCodeDropdownOpen, setIsWorkPhoneCodeDropdownOpen] = useState(false);
   const [isMobilePhoneCodeDropdownOpen, setIsMobilePhoneCodeDropdownOpen] = useState(false);
   const [phoneCodeSearch, setPhoneCodeSearch] = useState("");
@@ -244,9 +245,11 @@ export default function NewVendor() {
   const [isVendorLanguageDropdownOpen, setIsVendorLanguageDropdownOpen] = useState(false);
   const [vendorLanguageSearch, setVendorLanguageSearch] = useState("");
   const vendorLanguageDropdownRef = useRef<HTMLDivElement | null>(null);
+  const displayNameDropdownRef = useRef<HTMLDivElement | null>(null);
   const [isTaxRateDropdownOpen, setIsTaxRateDropdownOpen] = useState(false);
   const [taxRateSearch, setTaxRateSearch] = useState("");
   const taxRateDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [openingBalanceLocation, setOpeningBalanceLocation] = useState("Head Office");
   const [isAccountsPayableDropdownOpen, setIsAccountsPayableDropdownOpen] = useState(false);
   const [accountsPayableSearch, setAccountsPayableSearch] = useState("");
   const accountsPayableDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -268,6 +271,63 @@ export default function NewVendor() {
   const [isShippingStateDropdownOpen, setIsShippingStateDropdownOpen] = useState(false);
   const [shippingStateSearch, setShippingStateSearch] = useState("");
   const shippingStateDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const resetNewVendorForm = () => {
+    setFormData({
+      salutation: "",
+      firstName: "",
+      lastName: "",
+      companyName: "",
+      displayName: "",
+      email: "",
+      workPhone: "",
+      mobile: "",
+      vendorLanguage: "English",
+      taxRate: "",
+      enableTDS: false,
+      companyId: "",
+      currency: "",
+      accountsPayable: "",
+      openingBalance: "",
+      paymentTerms: "Due on Receipt",
+      enablePortal: false,
+      locationCode: "",
+      billingAttention: "",
+      billingCountry: "",
+      billingStreet1: "",
+      billingStreet2: "",
+      billingCity: "",
+      billingState: "",
+      billingZipCode: "",
+      billingPhone: "",
+      billingFax: "",
+      shippingAttention: "",
+      shippingCountry: "",
+      shippingStreet1: "",
+      shippingStreet2: "",
+      shippingCity: "",
+      shippingState: "",
+      shippingZipCode: "",
+      shippingPhone: "",
+      shippingFax: "",
+      remarks: "",
+      websiteUrl: "",
+      department: "",
+      designation: "",
+      xSocial: "",
+      skypeName: "",
+      facebook: "",
+    });
+    setContactPersons([
+      { id: Date.now(), salutation: "", firstName: "", lastName: "", email: "", workPhone: "", mobile: "", skypeName: "", designation: "", department: "" },
+    ]);
+    setDocuments([]);
+    setHasManualDisplayNameSelection(false);
+    setOpeningBalanceLocation("Head Office");
+    setWorkPhoneCode("+254");
+    setMobilePhoneCode("+254");
+    setFieldErrors({});
+  };
 
   const parsePhoneValue = (value?: string) => {
     const rawValue = String(value || "").trim();
@@ -348,6 +408,19 @@ export default function NewVendor() {
       String(entry.name || "").toLowerCase().includes(term)
     );
   }, [phoneCodeSearch]);
+  const displayNameOptions = useMemo(() => {
+    const options = generateDisplayNameOptions({
+      salutation: formData.salutation,
+      firstName: formData.firstName,
+      lastName: formData.lastName,
+      companyName: formData.companyName,
+    });
+    const current = String(formData.displayName || "").trim();
+    if (current && !options.includes(current)) {
+      options.unshift(current);
+    }
+    return Array.from(new Set(options.filter(Boolean)));
+  }, [formData.salutation, formData.firstName, formData.lastName, formData.companyName, formData.displayName]);
   const filteredTaxRates = useMemo(() => {
     const term = String(taxRateSearch || "").trim().toLowerCase();
     if (!term) return availableTaxes;
@@ -576,6 +649,8 @@ export default function NewVendor() {
         if (cloned.formData && cloned.formData.contactPersons) {
           setContactPersons(cloned.formData.contactPersons);
         }
+      } else {
+        resetNewVendorForm();
       }
     };
 
@@ -681,8 +756,8 @@ export default function NewVendor() {
       [name]: isCheckbox ? (e.target as HTMLInputElement).checked : value,
     };
 
-    // Auto-generate display name options when firstName, lastName, or companyName changes
-    if (name === "firstName" || name === "lastName" || name === "companyName") {
+    // Auto-generate display name options when contact/company fields change
+    if (name === "salutation" || name === "firstName" || name === "lastName" || name === "companyName") {
       const options = generateDisplayNameOptions(updatedData);
       // Keep the list/detail name in sync with the edited contact/company fields
       // unless the user explicitly picked a custom display name.
@@ -698,29 +773,43 @@ export default function NewVendor() {
     setFormData(updatedData);
   };
 
-  const generateDisplayNameOptions = (data: Pick<VendorFormData, "firstName" | "lastName" | "companyName">) => {
-    const { firstName, lastName, companyName } = data;
+  function generateDisplayNameOptions(data: Pick<VendorFormData, "salutation" | "firstName" | "lastName" | "companyName">) {
+    const { salutation, firstName, lastName, companyName } = data;
     const options: string[] = [];
+    const seen = new Set<string>();
+    const pushOption = (value: string) => {
+      const normalized = String(value || "").trim();
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+      options.push(normalized);
+    };
 
-    if (companyName) {
-      options.push(companyName);
-    }
+    const first = String(firstName || "").trim();
+    const last = String(lastName || "").trim();
+    const title = String(salutation || "").trim();
+    const company = String(companyName || "").trim();
 
-    if (firstName && lastName) {
-      options.push(`${firstName} ${lastName}`);
-      options.push(`${lastName}, ${firstName}`);
-    } else if (firstName) {
-      options.push(firstName);
-    } else if (lastName) {
-      options.push(lastName);
-    }
+    const fullContactName = [title, first, last].filter(Boolean).join(" ").trim();
+    const firstLastName = [first, last].filter(Boolean).join(" ").trim();
+    const lastFirstName = [last, first].filter(Boolean).join(", ").trim();
+    const salutationFirstName = [title, first].filter(Boolean).join(" ").trim();
+    const salutationLastName = [title, last].filter(Boolean).join(" ").trim();
 
-    if (companyName && firstName && lastName) {
-      options.push(`${companyName} (${firstName} ${lastName})`);
+    pushOption(fullContactName);
+    pushOption(firstLastName);
+    pushOption(lastFirstName);
+    pushOption(salutationFirstName);
+    pushOption(salutationLastName);
+    pushOption(first);
+    pushOption(last);
+    pushOption(company);
+
+    if (company && (firstLastName || fullContactName)) {
+      pushOption(`${company} (${firstLastName || fullContactName})`.trim());
     }
 
     return options.length > 0 ? options : [""];
-  };
+  }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -729,7 +818,7 @@ export default function NewVendor() {
     // Create vendorData object matching API structure
     // Ensure displayName and name are never empty
     const displayName = formData.displayName || formData.companyName || `${formData.firstName || ''} ${formData.lastName || ''}`.trim() || 'Vendor';
-    if (!formData.displayName) {
+    if (!displayName || displayName === "Vendor") {
       setFieldErrors({ displayName: "Enter the Display Name of your vendor." });
       return;
     }
@@ -786,6 +875,7 @@ export default function NewVendor() {
         fax: formData.shippingFax || ''
       },
       contactPersons: contactPersons.filter(cp => cp.firstName && cp.lastName).map(cp => ({
+        id: cp.id || Date.now(),
         salutation: cp.salutation || '',
         firstName: cp.firstName,
         lastName: cp.lastName,
@@ -795,7 +885,9 @@ export default function NewVendor() {
         designation: cp.designation || '',
         department: cp.department || '',
         skypeName: cp.skypeName || '',
-        isPrimary: cp.isPrimary || false
+        isPrimary: cp.isPrimary || false,
+        createdAt: cp.createdAt || new Date().toISOString(),
+        createdBy: cp.createdBy || "System"
       })),
       documents: documents.map(doc => ({
         name: doc.name,
@@ -803,6 +895,10 @@ export default function NewVendor() {
         uploadedAt: doc.uploadedAt || new Date()
       }))
     };
+
+    if (!vendorData.createdAt) {
+      vendorData.createdAt = new Date().toISOString();
+    }
 
     try {
       setIsSaving(true);
@@ -823,6 +919,7 @@ export default function NewVendor() {
       if (response && response.success) {
         // Get the vendor ID from the response
         const newVendorId = response.data?._id || response.data?.id || response._id || response.id;
+        const savedVendor = response.data || vendorData;
 
         // Dispatch custom event to notify Vendor component
         window.dispatchEvent(new Event("vendorSaved"));
@@ -830,7 +927,12 @@ export default function NewVendor() {
         // If we have a valid vendor ID, navigate to the detail page
         if (newVendorId && /^[0-9a-fA-F]{24}$/.test(String(newVendorId))) {
           console.log('Navigating to vendor detail page with ID:', newVendorId);
-          navigate(`/purchases/vendors/${newVendorId}`);
+          navigate(`/purchases/vendors/${newVendorId}`, {
+            state: {
+              vendor: savedVendor,
+              skipInitialLoad: true,
+            },
+          });
           return; // Exit early to prevent default navigation
         } else {
           console.warn('Vendor created but ID is invalid:', newVendorId);
@@ -873,15 +975,19 @@ export default function NewVendor() {
   useEffect(() => {
     const onClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
+      const clickedDisplayName = displayNameDropdownRef.current?.contains(target);
       const clickedWork = workPhoneCodeDropdownRef.current?.contains(target);
       const clickedMobile = mobilePhoneCodeDropdownRef.current?.contains(target);
+      if (!clickedDisplayName) {
+        setIsDisplayNameDropdownOpen(false);
+      }
       if (!clickedWork) {
         setIsWorkPhoneCodeDropdownOpen(false);
       }
       if (!clickedMobile) {
         setIsMobilePhoneCodeDropdownOpen(false);
       }
-      if (!clickedWork && !clickedMobile) {
+      if (!clickedDisplayName && !clickedWork && !clickedMobile) {
         setPhoneCodeSearch("");
       }
     };
@@ -1627,16 +1733,49 @@ export default function NewVendor() {
                   Display Name <span className="text-red-500">*</span> <HelpTooltip text="This name will be displayed on all the transactions you create for this Vendor."><Info size={14} className="text-gray-400" /></HelpTooltip>
                 </label>
                 <div className="w-full max-w-[390px]">
-                  <div className="relative">
+                  <div className="relative" ref={displayNameDropdownRef}>
                     <input
                       id="displayName"
                       name="displayName"
                       value={formData.displayName}
                       onChange={handleChange}
+                      onFocus={() => setIsDisplayNameDropdownOpen(true)}
                       placeholder="Select or type to add"
                       className={`w-full rounded-md bg-white py-1.5 pl-3 pr-8 text-base text-gray-900 transition-all duration-200 ease-out hover:shadow-sm focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6 ${fieldErrors.displayName ? "border border-red-400 focus:border-red-500" : "border border-gray-300 hover:border-[#156372]/40 focus:border-[#156372]"}`}
                     />
-                    <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 sm:size-4" />
+                    <button
+                      type="button"
+                      onClick={() => setIsDisplayNameDropdownOpen((prev) => !prev)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    >
+                      <ChevronDown size={16} className={`transition-transform ${isDisplayNameDropdownOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {isDisplayNameDropdownOpen && displayNameOptions.length > 0 && (
+                      <div className="absolute left-0 top-full z-50 mt-2 w-full overflow-hidden rounded-md border border-gray-300 bg-white shadow-xl">
+                        <div className="max-h-56 overflow-y-auto py-1">
+                          {displayNameOptions.map((option) => {
+                            const isSelected = String(formData.displayName || "").trim() === option;
+                            return (
+                              <button
+                                key={option}
+                                type="button"
+                                onClick={() => {
+                                  setFormData((prev) => ({ ...prev, displayName: option }));
+                                  setHasManualDisplayNameSelection(true);
+                                  setIsDisplayNameDropdownOpen(false);
+                                }}
+                                className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${
+                                  isSelected ? "bg-gray-100 text-gray-900" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                                }`}
+                              >
+                                <span className="truncate">{option}</span>
+                                {isSelected && <ChevronDown size={14} className="rotate-180 text-gray-600" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   {fieldErrors.displayName && (
                     <div className="mt-2 flex items-center gap-2 text-sm text-red-500">
@@ -1957,23 +2096,6 @@ export default function NewVendor() {
                     </div>
                   </div>
 
-                  {/* Company ID */}
-                  <div className="mb-4 flex items-start gap-6">
-                    <label htmlFor="companyId" className="w-[160px] shrink-0 pt-2 flex items-center gap-1 text-sm/6 font-medium text-gray-900">
-                      Company ID <Info size={14} className="text-gray-400" />
-                    </label>
-                    <div className="flex-1 max-w-[360px]">
-                      <input
-                        id="companyId"
-                        type="text"
-                        name="companyId"
-                        value={formData.companyId}
-                        onChange={handleChange}
-                        className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 shadow-sm transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-md focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6"
-                      />
-                    </div>
-                  </div>
-
                   {/* Accounts Payable */}
                   <div className="mb-4 flex items-start gap-6">
                     <label htmlFor="accountsPayable" className="w-[160px] shrink-0 pt-2 flex items-center gap-1 text-sm/6 font-medium text-gray-900">
@@ -2060,19 +2182,19 @@ export default function NewVendor() {
                           onClick={() => setIsOpeningBalanceLocationDropdownOpen((prev) => !prev)}
                           className="flex h-[38px] w-[150px] items-center justify-between rounded-md border border-gray-300 bg-white px-3 text-left text-sm text-gray-700 shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition-all duration-200 ease-out hover:border-[#156372]/50 hover:shadow-[0_8px_20px_rgba(15,23,42,0.08)] focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none"
                         >
-                          <span className="truncate">{formData.locationCode || "Head Office"}</span>
+                          <span className="truncate">{openingBalanceLocation || "Head Office"}</span>
                           <ChevronDown size={14} className={`ml-3 shrink-0 text-gray-500 transition-transform ${isOpeningBalanceLocationDropdownOpen ? "rotate-180" : ""}`} />
                         </button>
                         {isOpeningBalanceLocationDropdownOpen && (
                           <div className="absolute z-50 mt-2 w-[150px] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0_18px_30px_-12px_rgba(15,23,42,0.22)]">
                             {["Head Office", "Branch Office"].map((location) => {
-                              const isSelected = (formData.locationCode || "Head Office") === location;
+                              const isSelected = (openingBalanceLocation || "Head Office") === location;
                               return (
                                 <button
                                   key={location}
                                   type="button"
                                   onClick={() => {
-                                    setFormData((prev) => ({ ...prev, locationCode: location }));
+                                    setOpeningBalanceLocation(location);
                                     setIsOpeningBalanceLocationDropdownOpen(false);
                                   }}
                                   className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors ${isSelected ? "bg-blue-50 text-[#156372]" : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"}`}

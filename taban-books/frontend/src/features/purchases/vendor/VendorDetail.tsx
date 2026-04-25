@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import { getBills, getPaymentsMade, getVendorCredits, getExpenses, getPurchaseOrders, getRecurringBills, getRecurringExpenses, getJournals, getProjects, getPurchaseReceipts } from "../shared/purchasesModel";
 // Note: getVendors and updateVendor from purchasesModel.js are no longer used - using vendorsAPI instead
@@ -166,6 +166,7 @@ interface CustomView {
 export default function VendorDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { code: baseCurrencyCode } = useCurrency();
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -259,6 +260,33 @@ export default function VendorDetail() {
     date.setDate(0);
     return date;
   });
+
+  const mapVendorFromSource = (source: any, fallbackId?: string): Vendor => {
+    const vendorIdFromData = source?._id ? String(source._id) : (source?.id ? String(source.id) : null);
+    return {
+      ...source,
+      id: vendorIdFromData || String(fallbackId || ""),
+      _id: source?._id || vendorIdFromData || fallbackId,
+      billingStreet1: source?.billingAddress?.street1 || source?.billingStreet1 || '',
+      billingStreet2: source?.billingAddress?.street2 || source?.billingStreet2 || '',
+      billingCity: source?.billingAddress?.city || source?.billingCity || '',
+      billingState: source?.billingAddress?.state || source?.billingState || '',
+      billingZipCode: source?.billingAddress?.zipCode || source?.billingZipCode || '',
+      billingPhone: source?.billingAddress?.phone || source?.billingPhone || '',
+      billingFax: source?.billingAddress?.fax || source?.billingFax || '',
+      billingAttention: source?.billingAddress?.attention || source?.billingAttention || '',
+      billingCountry: source?.billingAddress?.country || source?.billingCountry || '',
+      shippingStreet1: source?.shippingAddress?.street1 || source?.shippingStreet1 || '',
+      shippingStreet2: source?.shippingAddress?.street2 || source?.shippingStreet2 || '',
+      shippingCity: source?.shippingAddress?.city || source?.shippingCity || '',
+      shippingState: source?.shippingAddress?.state || source?.shippingState || '',
+      shippingZipCode: source?.shippingAddress?.zipCode || source?.shippingZipCode || '',
+      shippingPhone: source?.shippingAddress?.phone || source?.shippingPhone || '',
+      shippingFax: source?.shippingAddress?.fax || source?.shippingFax || '',
+      shippingAttention: source?.shippingAddress?.attention || source?.shippingAttention || '',
+      shippingCountry: source?.shippingAddress?.country || source?.shippingCountry || ''
+    };
+  };
   const [isStartDatePickerOpen, setIsStartDatePickerOpen] = useState(false);
   const [isEndDatePickerOpen, setIsEndDatePickerOpen] = useState(false);
   const [startDateCalendarMonth, setStartDateCalendarMonth] = useState(new Date());
@@ -990,6 +1018,9 @@ export default function VendorDetail() {
 
   useEffect(() => {
     let isCancelled = false;
+    const savedVendor = location.state?.vendor;
+    const savedVendorId = savedVendor?._id || savedVendor?.id;
+    const canHydrateFromState = Boolean(savedVendor && id && String(savedVendorId) === String(id));
 
     const loadVendor = async () => {
       if (!id) {
@@ -1079,35 +1110,61 @@ export default function VendorDetail() {
       }
     };
 
-    // Reset detail state immediately when switching vendor so old data does not linger
-    setIsLoading(true);
-    setVendor(null);
-    setComments([]);
-    setMails([]);
-    setAttachments([]);
-    setBills([]);
-    setPaymentsMade([]);
-    setVendorCredits([]);
-    setExpenses([]);
-    setPurchaseOrders([]);
-    setRecurringBills([]);
-    setRecurringExpenses([]);
-    setJournals([]);
-    setProjects([]);
-    setPurchaseReceipts([]);
-    setStatementTransactions([]);
-    setSelectedTransactionType(null);
-    setBillCurrentPage(1);
-    setBillSearchTerm("");
-    setBillStatusFilter("all");
-    setIsTransactionNavDropdownOpen(false);
+    // If the vendor was just saved, hydrate the detail page immediately from route state
+    // so the user does not get stuck on the loading screen while the API fetch catches up.
+    if (canHydrateFromState) {
+      const mappedVendor = mapVendorFromSource(savedVendor, String(id));
+      setVendor(mappedVendor);
+      setComments(normalizeCommentList(savedVendor.comments || savedVendor.customFields?.vendorComments || []));
+      setAttachments(normalizeAttachmentList(savedVendor.documents || savedVendor.customFields?.vendorDocuments || []));
+      setMails([]);
+      setBills([]);
+      setPaymentsMade([]);
+      setVendorCredits([]);
+      setExpenses([]);
+      setPurchaseOrders([]);
+      setRecurringBills([]);
+      setRecurringExpenses([]);
+      setJournals([]);
+      setProjects([]);
+      setPurchaseReceipts([]);
+      setStatementTransactions([]);
+      setSelectedTransactionType(null);
+      setBillCurrentPage(1);
+      setBillSearchTerm("");
+      setBillStatusFilter("all");
+      setIsTransactionNavDropdownOpen(false);
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+      setVendor(null);
+      setComments([]);
+      setMails([]);
+      setAttachments([]);
+      setBills([]);
+      setPaymentsMade([]);
+      setVendorCredits([]);
+      setExpenses([]);
+      setPurchaseOrders([]);
+      setRecurringBills([]);
+      setRecurringExpenses([]);
+      setJournals([]);
+      setProjects([]);
+      setPurchaseReceipts([]);
+      setStatementTransactions([]);
+      setSelectedTransactionType(null);
+      setBillCurrentPage(1);
+      setBillSearchTerm("");
+      setBillStatusFilter("all");
+      setIsTransactionNavDropdownOpen(false);
+    }
 
     loadVendor();
 
     return () => {
       isCancelled = true;
     };
-  }, [id, navigate]);
+  }, [id, navigate, location.state]);
 
   useEffect(() => {
     // Load sidebar list/profile once instead of every vendor switch.

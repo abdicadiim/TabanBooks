@@ -451,7 +451,7 @@ export default function PurchaseOrdersTable({
 
                         if (!clickedCheckbox && selectedOrders.length === 0) {
                           navigate(`/purchases/purchase-orders/${order.id}`, {
-                            state: { purchaseOrder: order },
+                            state: { purchaseOrder: order, purchaseOrders: orders },
                           });
                         }
                       }}
@@ -512,7 +512,7 @@ export default function PurchaseOrdersTable({
                               event.preventDefault();
                               event.stopPropagation();
                               navigate(`/purchases/purchase-orders/${order.id}`, {
-                                state: { purchaseOrder: order },
+                                state: { purchaseOrder: order, purchaseOrders: orders },
                               });
                             }}
                             style={styles.purchaseOrderLink}
