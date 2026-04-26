@@ -476,7 +476,7 @@ export default function NewVendorCredit() {
     setItemSearch((prev) => ({ ...prev, [index]: "" }));
   };
 
-  const handleAddItem = (item: any, quantity: number) => {
+  const handleBulkItemSelect = (item: any, quantity: number) => {
     const isSelected = selectedBulkItems.some(selected => selected.id === item.id);
     if (isSelected) {
       setSelectedBulkItems(selectedBulkItems.filter(selected => selected.id !== item.id));
@@ -509,6 +509,64 @@ export default function NewVendorCredit() {
     setSelectedBulkItems([]);
     setBulkItemQuantities({});
     setBulkItemsSearch("");
+  };
+
+  const handleBulkQuantityChange = (id: string, value: string) => {
+    setBulkItemQuantities({ ...bulkItemQuantities, [id]: parseInt(value) || 1 });
+  };
+
+  const filteredBulkItems = items.filter(item => 
+    (item.name || "").toLowerCase().includes(bulkItemsSearch.toLowerCase()) ||
+    (item.sku || "").toLowerCase().includes(bulkItemsSearch.toLowerCase())
+  );
+
+  const addNewRow = () => {
+    setItemRows([...itemRows, {
+      itemDetails: "",
+      account: "Cost of Goods Sold",
+      quantity: 1,
+      rate: 0.0,
+      discount: "0 %-",
+      tax: "",
+      amount: 0.0,
+      purchaseDiscount: "",
+      project: "",
+      reportingTag: "",
+    }]);
+  };
+
+  const removeRow = (index: number) => {
+    if (itemRows.length > 1) {
+      const newItems = itemRows.filter((_, i) => i !== index);
+      setItemRows(newItems);
+    } else {
+      setItemRows([{
+        itemDetails: "",
+        account: "Cost of Goods Sold",
+        quantity: 1,
+        rate: 0.0,
+        discount: "0 %-",
+        tax: "",
+        amount: 0.0,
+        purchaseDiscount: "",
+        project: "",
+        reportingTag: "",
+      }]);
+    }
+  };
+
+  const handleNewItemSave = (newItem: any) => {
+    setItems(prev => [...prev, newItem]);
+    setShowNewItemModal(false);
+    toast.success("Item created successfully");
+  };
+
+  const handleVendorCreated = (newVendor: any) => {
+    setVendors(prev => [...prev, newVendor]);
+    setSelectedVendor(newVendor);
+    setFormData(prev => ({ ...prev, vendorName: newVendor.displayName || newVendor.name }));
+    setShowNewVendorModal(false);
+    toast.success("Vendor created successfully");
   };
 
   const calculateSubTotal = () => {
