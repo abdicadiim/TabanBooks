@@ -137,6 +137,15 @@ export default function NewVendorCredit() {
   const [itemSearch, setItemSearch] = useState<{ [key: string]: string }>({});
   const [showNewItemModal, setShowNewItemModal] = useState(false);
   const [showBulkItemsModal, setShowBulkItemsModal] = useState(false);
+  const [tagsPopoverOpen, setTagsPopoverOpen] = useState<{ [key: number]: boolean }>({});
+  const [tagSearch, setTagSearch] = useState<{ [key: number]: string }>({});
+  const [tagDropdownOpen, setTagDropdownOpen] = useState<{ [key: number]: boolean }>({});
+  const tagsRef = useRef<{ [key: number]: HTMLDivElement | null }>({});
+
+  const [availableTags, setAvailableTags] = useState<any[]>([
+    { id: 1, name: "asc" },
+    { id: 2, name: "wcs" }
+  ]);
   const [bulkItemsInsertIndex, setBulkItemsInsertIndex] = useState(0);
   const [bulkItemsSearch, setBulkItemsSearch] = useState("");
   const [selectedBulkItems, setSelectedBulkItems] = useState<any[]>([]);
@@ -1125,32 +1134,40 @@ export default function NewVendorCredit() {
       fontWeight: "500",
       cursor: "pointer",
     },
+
     itemDetailsContainer: {
       position: "relative",
       flex: 1,
+      height: "36px",
+      display: "flex",
+      alignItems: "center",
+      padding: "0 12px",
+      border: "1px solid #e5e7eb",
+      borderRadius: "4px",
+      backgroundColor: "#fff",
+      boxSizing: "border-box",
     },
     itemDropdown: {
       position: "absolute",
-      top: "100%",
       left: 0,
       right: 0,
       backgroundColor: "#ffffff",
       border: "1px solid #d1d5db",
       borderRadius: "4px",
-      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
       zIndex: 1000,
       maxHeight: "300px",
       overflowY: "auto",
       marginTop: "4px",
     },
     itemDropdownRow: {
-      padding: "10px 12px",
+      padding: "8px 12px",
       cursor: "pointer",
       borderBottom: "1px solid #f3f4f6",
       display: "flex",
       justifyContent: "space-between",
       alignItems: "flex-start",
-      transition: "background-color 0.2s",
+      transition: "all 0.1s ease",
     },
     itemDropdownInfo: {
       display: "flex",
@@ -1188,7 +1205,7 @@ export default function NewVendorCredit() {
       backgroundColor: "#ffffff",
       border: "none",
       borderTop: "1px solid #e5e7eb",
-      color: "#156372",
+      color: "#2563eb",
       fontSize: "13px",
       fontWeight: "500",
       cursor: "pointer",
@@ -1933,14 +1950,14 @@ export default function NewVendorCredit() {
               <tbody>
                 {itemRows.map((item, index) => (
                   <tr key={index} style={{ borderBottom: "1px solid #e5e7eb" }}>
-                    <td style={{ ...styles.tableCell, width: "4%", padding: "12px 10px", verticalAlign: "middle" }}>
+                    <td style={{ ...styles.tableCell, width: "4%", padding: "12px 10px", verticalAlign: "top" }}>
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
                         <GripVertical size={16} style={{ color: "#d1d5db" }} />
                         <span style={{ fontSize: "12px", color: "#6b7280", fontWeight: "500" }}>{index + 1}</span>
                       </div>
                     </td>
-                    <td style={{ ...styles.tableCell, width: "35%", padding: "12px 16px" }}>
-                      <div style={{ display: "flex", gap: "12px" }}>
+                    <td style={{ ...styles.tableCell, width: "35%", padding: "12px 16px", verticalAlign: "top" }}>
+                      <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
                         <div style={{ width: "36px", height: "36px", borderRadius: "4px", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#f9fafb" } as any}>
                           <ImageIcon size={20} color="#d1d5db" />
                         </div>
@@ -1954,7 +1971,18 @@ export default function NewVendorCredit() {
                             ref={(el) => { (itemRefs.current as any)[index] = el; }}
                           >
                             <input
-                              style={{ ...styles.input, border: "none", padding: "0", fontSize: "14px", color: "#156372", fontWeight: "500", backgroundColor: "transparent" }}
+                              style={{ 
+                                ...styles.input, 
+                                border: "none", 
+                                padding: "0", 
+                                fontSize: "14px", 
+                                color: "#111827", 
+                                fontWeight: "400", 
+                                backgroundColor: "transparent",
+                                height: "100%",
+                                width: "100%",
+                                outline: "none"
+                              }}
                               value={itemDropdownOpen[index] ? (itemSearch[index] || "") : item.itemDetails}
                               placeholder="Type or click to select an item."
                               onChange={(e) => {
@@ -1975,12 +2003,24 @@ export default function NewVendorCredit() {
                                       key={shopItem.id || shopItem._id}
                                       style={styles.itemDropdownRow}
                                       onClick={(e) => { e.stopPropagation(); handleItemSelect(index, shopItem); }}
-                                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#eff6ff")}
-                                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.backgroundColor = "#2563eb";
+                                        const nameEl = e.currentTarget.querySelector('.item-name') as HTMLElement;
+                                        const subEl = e.currentTarget.querySelector('.item-subtext') as HTMLElement;
+                                        if (nameEl) nameEl.style.color = "#ffffff";
+                                        if (subEl) subEl.style.color = "rgba(255, 255, 255, 0.8)";
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.backgroundColor = "#ffffff";
+                                        const nameEl = e.currentTarget.querySelector('.item-name') as HTMLElement;
+                                        const subEl = e.currentTarget.querySelector('.item-subtext') as HTMLElement;
+                                        if (nameEl) nameEl.style.color = "#111827";
+                                        if (subEl) subEl.style.color = "#6b7280";
+                                      }}
                                     >
                                       <div style={styles.itemDropdownInfo}>
-                                        <div style={styles.itemDropdownName}>{shopItem.name}</div>
-                                        <div style={styles.itemDropdownSubtext}>
+                                        <div className="item-name" style={styles.itemDropdownName}>{shopItem.name}</div>
+                                        <div className="item-subtext" style={styles.itemDropdownSubtext}>
                                           SKU: {shopItem.sku || "N/A"} Purchase Rate: {formData.currency} {parseFloat(shopItem.costPrice || 0).toFixed(2)}
                                         </div>
                                       </div>
@@ -2013,9 +2053,7 @@ export default function NewVendorCredit() {
                               </div>
                             )}
                           </div>
-                          <div style={{ marginTop: "4px" }}>
-                            <span style={{ fontSize: "12px", color: "#156372", cursor: "pointer" }}>Add a description to your item</span>
-                          </div>
+
                           
                           {/* Secondary Row for Project and Tags - Forced Single Line */}
                           <div style={{ display: "flex", gap: "8px", marginTop: "12px", alignItems: "center", flexWrap: "nowrap" }}>
@@ -2036,29 +2074,148 @@ export default function NewVendorCredit() {
                               <span>Select a project</span>
                               <ChevronDown size={11} />
                             </div>
-                            <div style={{ 
-                              display: "flex", 
-                              alignItems: "center", 
-                              gap: "4px", 
-                              fontSize: "11px", 
-                              color: "#6b7280", 
-                              cursor: "pointer",
-                              padding: "2px 6px",
-                              backgroundColor: "#f9fafb",
-                              border: "1px solid #e5e7eb",
-                              borderRadius: "4px",
-                              whiteSpace: "nowrap"
-                            }}>
-                              <Tag size={11} />
-                              <span style={{ color: "#ef4444" }}>Reporting Tags* :</span>
-                              <span style={{ color: "#374151" }}>1 out of 1 selected.</span>
-                              <ChevronDown size={11} />
-                            </div>
+                            <div 
+                               ref={(el) => { (tagsRef.current as any)[index] = el; }}
+                               style={{ 
+                                 display: "flex", 
+                                 alignItems: "center", 
+                                 gap: "4px", 
+                                 fontSize: "11px", 
+                                 color: "#6b7280", 
+                                 cursor: "pointer",
+                                 padding: "2px 6px",
+                                 backgroundColor: "#f9fafb",
+                                 border: "1px solid #e5e7eb",
+                                 borderRadius: "4px",
+                                 whiteSpace: "nowrap",
+                                 position: "relative"
+                               }}
+                               onClick={() => setTagsPopoverOpen(prev => ({ ...prev, [index]: !prev[index] }))}
+                             >
+                               <Tag size={11} />
+                               <span style={{ color: "#ef4444" }}>Reporting Tags* :</span>
+                               <span style={{ color: "#374151" }}>{item.reportingTag ? "1 out of 1 selected." : "Select tags"}</span>
+                               <ChevronDown size={11} />
+
+                               {tagsPopoverOpen[index] && (
+                                 <div 
+                                   style={{
+                                     position: "absolute",
+                                     top: "100%",
+                                     left: "0",
+                                     width: "400px",
+                                     backgroundColor: "white",
+                                     border: "1px solid #e5e7eb",
+                                     borderRadius: "8px",
+                                     marginTop: "8px",
+                                     boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                                     zIndex: 2000,
+                                     padding: "0",
+                                     cursor: "default"
+                                   }}
+                                   onClick={(e) => e.stopPropagation()}
+                                 >
+                                   <div style={{ padding: "12px 16px", borderBottom: "1px solid #f3f4f6", fontWeight: "600", color: "#111827", fontSize: "14px" }}>
+                                     Reporting Tags
+                                   </div>
+                                   <div style={{ padding: "20px 24px" }}>
+                                     <div style={{ marginBottom: "8px", color: "#ef4444", fontSize: "13px" }}>as *</div>
+                                     <div style={{ position: "relative" }}>
+                                       <div 
+                                         style={{
+                                           width: "100%",
+                                           height: "36px",
+                                           padding: "0 12px",
+                                           border: "1px solid #3b82f6",
+                                           borderRadius: "8px",
+                                           display: "flex",
+                                           alignItems: "center",
+                                           justifyContent: "space-between",
+                                           backgroundColor: "#fff",
+                                           cursor: "pointer",
+                                           fontSize: "14px",
+                                           color: item.reportingTag ? "#111827" : "#9ca3af"
+                                         }}
+                                         onClick={() => setTagDropdownOpen(prev => ({ ...prev, [index]: !prev[index] }))}
+                                       >
+                                         <span>{item.reportingTag || "None"}</span>
+                                         <ChevronDown size={14} style={{ transform: tagDropdownOpen[index] ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+                                       </div>
+
+                                       {tagDropdownOpen[index] && (
+                                         <div style={{
+                                           position: "absolute",
+                                           top: "100%",
+                                           left: 0,
+                                           right: 0,
+                                           backgroundColor: "white",
+                                           border: "1px solid #e5e7eb",
+                                           borderRadius: "8px",
+                                           marginTop: "4px",
+                                           boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+                                           zIndex: 2100,
+                                           maxHeight: "200px",
+                                           overflowY: "auto"
+                                         }}>
+                                           <div style={{ padding: "8px", borderBottom: "1px solid #f3f4f6" }}>
+                                             <div style={{ position: "relative" }}>
+                                               <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
+                                               <input 
+                                                 style={{ width: "100%", padding: "6px 8px 6px 32px", fontSize: "13px", borderRadius: "4px", border: "1px solid #e5e7eb", outline: "none" }}
+                                                 placeholder="Search"
+                                                 value={tagSearch[index] || ""}
+                                                 onChange={(e) => setTagSearch(prev => ({ ...prev, [index]: e.target.value }))}
+                                               />
+                                             </div>
+                                           </div>
+                                           {availableTags
+                                             .filter(tag => tag.name.toLowerCase().includes((tagSearch[index] || "").toLowerCase()))
+                                             .map(tag => (
+                                               <div 
+                                                 key={tag.id}
+                                                 style={{ 
+                                                   padding: "8px 12px", 
+                                                   cursor: "pointer", 
+                                                   fontSize: "13px",
+                                                   backgroundColor: item.reportingTag === tag.name ? "#2563eb" : "transparent",
+                                                   color: item.reportingTag === tag.name ? "white" : "#111827"
+                                                 }}
+                                                 onMouseEnter={(e) => { if (item.reportingTag !== tag.name) e.currentTarget.style.backgroundColor = "#f3f4f6"; }}
+                                                 onMouseLeave={(e) => { if (item.reportingTag !== tag.name) e.currentTarget.style.backgroundColor = "transparent"; }}
+                                                 onClick={() => {
+                                                   handleItemChange(index, "reportingTag", tag.name);
+                                                   setTagDropdownOpen(prev => ({ ...prev, [index]: false }));
+                                                 }}
+                                               >
+                                                 {tag.name}
+                                               </div>
+                                             ))}
+                                         </div>
+                                       )}
+                                     </div>
+                                   </div>
+                                   <div style={{ padding: "12px 16px", borderTop: "1px solid #f3f4f6", display: "flex", gap: "8px" }}>
+                                     <button 
+                                       style={{ padding: "6px 16px", backgroundColor: "#10b981", color: "white", border: "none", borderRadius: "4px", fontSize: "13px", fontWeight: "500", cursor: "pointer" }}
+                                       onClick={() => setTagsPopoverOpen(prev => ({ ...prev, [index]: false }))}
+                                     >
+                                       Save
+                                     </button>
+                                     <button 
+                                       style={{ padding: "6px 16px", backgroundColor: "white", color: "#374151", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "13px", fontWeight: "500", cursor: "pointer" }}
+                                       onClick={() => setTagsPopoverOpen(prev => ({ ...prev, [index]: false }))}
+                                     >
+                                       Cancel
+                                     </button>
+                                   </div>
+                                 </div>
+                               )}
+                             </div>
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td style={{ ...styles.tableCell, width: "20%", verticalAlign: "middle" }}>
+                    <td style={{ ...styles.tableCell, width: "20%", verticalAlign: "top", padding: "12px 8px" }}>
                       <div style={{ position: "relative" } as any} ref={(el) => { (accountRefs.current as any)[index] = el; }}>
                         <div
                           className="zoho-input"
@@ -2070,11 +2227,12 @@ export default function NewVendorCredit() {
                             cursor: "pointer",
                             fontSize: "13px",
                             height: "36px",
-                            border: accountDropdownOpen[index] ? "1.5px solid #2563eb" : "1px solid #d1d5db",
+                            border: accountDropdownOpen[index] ? "1.5px solid #2563eb" : "1px solid transparent",
                             borderRadius: "4px",
-                            padding: "0 12px",
-                            backgroundColor: "#fff",
-                            boxSizing: "border-box"
+                            padding: "0 8px",
+                            backgroundColor: accountDropdownOpen[index] ? "#fff" : "transparent",
+                            boxSizing: "border-box",
+                            width: "100%"
                           }}
                           onClick={() => setAccountDropdownOpen(prev => ({ ...prev, [index]: !prev[index] }))}
                         >
@@ -2190,66 +2348,88 @@ export default function NewVendorCredit() {
                         )}
                       </div>
                     </td>
-                    <td style={{ ...styles.tableCell, width: "9%", padding: "8px", verticalAlign: "middle" }}>
-                      <input
-                        type="text"
-                        style={{ 
-                          width: "100%", 
-                          border: "1px solid #d1d5db", 
-                          borderRadius: "4px",
-                          backgroundColor: "#fff", 
-                          textAlign: "right", 
-                          fontSize: "13px", 
-                          color: "#111827", 
-                          outline: "none", 
-                          padding: "8px 12px",
-                          transition: "border-color 0.2s"
-                        }}
-                        value={item.quantity}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/[^0-9.]/g, '');
-                          handleItemChange(index, "quantity", val);
-                        }}
-                        onFocus={(e) => e.target.style.borderColor = "#2563eb"}
-                        onBlur={(e) => {
-                          e.target.style.borderColor = "#d1d5db";
-                          const val = parseFloat(item.quantity || "0").toFixed(2);
-                          handleItemChange(index, "quantity", val);
-                        }}
-                      />
-                    </td>
-                    <td style={{ ...styles.tableCell, width: "15%", padding: "8px", verticalAlign: "middle" }}>
-                      <input
-                        type="text"
-                        style={{ 
-                          width: "100%", 
-                          border: "1px solid #d1d5db", 
-                          borderRadius: "4px",
-                          backgroundColor: "#fff", 
-                          textAlign: "right", 
-                          fontSize: "13px", 
-                          color: "#111827", 
-                          outline: "none", 
-                          padding: "8px 12px",
-                          transition: "border-color 0.2s"
-                        }}
-                        value={item.rate}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/[^0-9.]/g, '');
-                          handleItemChange(index, "rate", val);
-                        }}
-                        onFocus={(e) => e.target.style.borderColor = "#2563eb"}
-                        onBlur={(e) => {
-                          e.target.style.borderColor = "#d1d5db";
-                          const val = parseFloat(item.rate || "0").toFixed(2);
-                          handleItemChange(index, "rate", val);
-                        }}
-                      />
-                      <div style={{ textAlign: "right", marginTop: "4px" }}>
-                        <span style={{ fontSize: "10px", color: "#156372", cursor: "pointer" }}>Recent Transactions</span>
+                    <td style={{ ...styles.tableCell, width: "9%", padding: "8px", verticalAlign: "top" }}>
+                      <div style={{ height: "36px", display: "flex", alignItems: "center" }}>
+                        <input
+                          type="text"
+                          style={{ 
+                            width: "100%", 
+                            border: "1px solid transparent", 
+                            borderRadius: "4px",
+                            backgroundColor: "transparent", 
+                            textAlign: "right", 
+                            fontSize: "13px", 
+                            color: "#111827", 
+                            outline: "none", 
+                            padding: "8px 12px",
+                            height: "36px",
+                            boxSizing: "border-box",
+                            transition: "all 0.2s"
+                          }}
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '');
+                            handleItemChange(index, "quantity", val);
+                          }}
+                          onFocus={(e) => {
+                            e.target.style.borderColor = "#2563eb";
+                            e.target.style.backgroundColor = "#fff";
+                            e.target.style.borderWidth = "1.5px";
+                          }}
+                          onBlur={(e) => {
+                            e.target.style.borderColor = "transparent";
+                            e.target.style.backgroundColor = "transparent";
+                            e.target.style.borderWidth = "1px";
+                            const val = parseFloat(item.quantity || "0").toFixed(2);
+                            handleItemChange(index, "quantity", val);
+                          }}
+                        />
                       </div>
                     </td>
-                    <td style={{ ...styles.tableCell, width: "17%", textAlign: "right", borderRight: "none", verticalAlign: "middle" }}>
+                    <td style={{ ...styles.tableCell, width: "15%", padding: "8px", verticalAlign: "top" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                        <div style={{ height: "36px", display: "flex", alignItems: "center" }}>
+                          <input
+                            type="text"
+                            style={{ 
+                              width: "100%", 
+                              border: "1px solid transparent", 
+                              borderRadius: "4px",
+                              backgroundColor: "transparent", 
+                              textAlign: "right", 
+                              fontSize: "13px", 
+                              color: "#111827", 
+                              outline: "none", 
+                              padding: "8px 12px",
+                              height: "36px",
+                              boxSizing: "border-box",
+                              transition: "all 0.2s"
+                            }}
+                            value={item.rate}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/[^0-9.]/g, '');
+                              handleItemChange(index, "rate", val);
+                            }}
+                            onFocus={(e) => {
+                              e.target.style.borderColor = "#2563eb";
+                              e.target.style.backgroundColor = "#fff";
+                              e.target.style.borderWidth = "1.5px";
+                            }}
+                            onBlur={(e) => {
+                              e.target.style.borderColor = "transparent";
+                              e.target.style.backgroundColor = "transparent";
+                              e.target.style.borderWidth = "1px";
+                              const val = parseFloat(item.rate || "0").toFixed(2);
+                              handleItemChange(index, "rate", val);
+                            }}
+                          />
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <span style={{ fontSize: "10px", color: "#156372", cursor: "pointer" }}>Recent Transactions</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ ...styles.tableCell, width: "17%", textAlign: "right", borderRight: "none", verticalAlign: "top", padding: "12px 16px" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", height: "36px" }}>
                         <span style={{ fontSize: "14px", fontWeight: "600", color: "#111827" }}>{parseFloat(String(item.amount || 0)).toFixed(2)}</span>
                         <div style={{ display: "flex", gap: "4px" }}>
