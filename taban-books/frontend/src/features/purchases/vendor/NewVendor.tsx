@@ -247,6 +247,8 @@ export default function NewVendor() {
   const [vendorLanguageSearch, setVendorLanguageSearch] = useState("");
   const vendorLanguageDropdownRef = useRef<HTMLDivElement | null>(null);
   const displayNameDropdownRef = useRef<HTMLDivElement | null>(null);
+  const displayNameInputRef = useRef<HTMLInputElement | null>(null);
+  const [displayNameDropdownStyle, setDisplayNameDropdownStyle] = useState<React.CSSProperties>({});
   const [isTaxRateDropdownOpen, setIsTaxRateDropdownOpen] = useState(false);
   const [taxRateSearch, setTaxRateSearch] = useState("");
   const taxRateDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -992,6 +994,32 @@ export default function NewVendor() {
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (!isDisplayNameDropdownOpen) return;
+
+    const updateDropdownPosition = () => {
+      const input = displayNameInputRef.current;
+      if (!input) return;
+      const rect = input.getBoundingClientRect();
+      setDisplayNameDropdownStyle({
+        position: "fixed",
+        top: rect.bottom + 8,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 9999,
+      });
+    };
+
+    updateDropdownPosition();
+    window.addEventListener("resize", updateDropdownPosition);
+    window.addEventListener("scroll", updateDropdownPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateDropdownPosition);
+      window.removeEventListener("scroll", updateDropdownPosition, true);
+    };
+  }, [isDisplayNameDropdownOpen, formData.displayName]);
+
 
   const handleCancel = () => {
     navigate("/purchases/vendors");
@@ -1733,6 +1761,7 @@ export default function NewVendor() {
                   <div className="relative" ref={displayNameDropdownRef}>
                     <input
                       id="displayName"
+                      ref={displayNameInputRef}
                       name="displayName"
                       type="text"
                       value={formData.displayName}

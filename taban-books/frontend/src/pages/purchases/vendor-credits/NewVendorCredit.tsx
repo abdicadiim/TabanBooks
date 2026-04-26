@@ -30,9 +30,9 @@ import {
   Lock,
   User,
   Copy,
-  // PlusCircle,
+  Mail,
 } from "lucide-react";
-import { vendorsAPI, itemsAPI, taxesAPI, accountantAPI, vendorCreditsAPI } from "../../../services/api";
+import { vendorsAPI, itemsAPI, taxesAPI, accountantAPI, vendorCreditsAPI, locationsAPI } from "../../../services/api";
 import { useCurrency } from "../../../hooks/useCurrency";
 import toast from "react-hot-toast";
 import NewVendorModal from "../../../components/modals/NewVendorModal";
@@ -40,6 +40,7 @@ import { API_BASE_URL, getToken } from "../../../services/auth";
 import { filterActiveRecords } from "../shared/activeFilters";
 
 export default function NewVendorCredit() {
+  type SaveStatus = "Draft" | "Open";
   const navigate = useNavigate();
   const location = useLocation();
   const { id: routeCreditId } = useParams();
@@ -48,8 +49,8 @@ export default function NewVendorCredit() {
   const isEdit = !!(stateIsEdit || routeCreditId);
   const [enabledSettings, setEnabledSettings] = useState<any>(null);
   const [formData, setFormData] = useState({
-    vendorName: "",
     vendorId: "",
+    vendorName: "",
     creditNote: "",
     orderNumber: "",
     vendorCreditDate: new Date().toISOString().split("T")[0],
@@ -57,6 +58,8 @@ export default function NewVendorCredit() {
     accountsPayable: "Accounts Payable",
     taxExclusive: "Tax Inclusive",
     taxLevel: "At Transaction Level",
+    locationId: "",
+    locationName: "",
     discount: 0,
     discountType: "%", // "%" or "Currency"
     adjustment: 0,
@@ -68,7 +71,7 @@ export default function NewVendorCredit() {
   const [selectedVendor, setSelectedVendor] = useState<any>(null);
   const [billingAddressEditMode, setBillingAddressEditMode] = useState(false);
 
-  const [itemRows, setItemRows] = useState([
+  const [itemRows, setItemRows] = useState<any[]>([
     {
       itemDetails: "",
       account: "",
@@ -93,8 +96,6 @@ export default function NewVendorCredit() {
   const [vendorSearchCriteriaOpen, setVendorSearchCriteriaOpen] = useState(false);
   const [allVendors, setAllVendors] = useState<any[]>([]);
 
-  // const [accountDropdownOpen, setAccountDropdownOpen] = useState<{ [key: string]: boolean }>({});
-  // const [taxDropdownOpen, setTaxDropdownOpen] = useState<{ [key: string]: boolean }>({});
   const [accountsPayableOpen, setAccountsPayableOpen] = useState(false);
   const [taxExclusiveOpen, setTaxExclusiveOpen] = useState(false);
   const [taxLevelOpen, setTaxLevelOpen] = useState(false);
@@ -121,6 +122,11 @@ export default function NewVendorCredit() {
   const [accountDropdownOpen, setAccountDropdownOpen] = useState<{ [key: string]: boolean }>({});
   const [taxDropdownOpen, setTaxDropdownOpen] = useState<{ [key: string]: boolean }>({});
   const [accountSearch, setAccountSearch] = useState<{ [key: string]: string }>({});
+  
+  const [locations, setLocations] = useState<any[]>([]);
+  const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
+  const [locationSearch, setLocationSearch] = useState("");
+  const locationRef = useRef<HTMLDivElement | null>(null);
   const [taxSearch, setTaxSearch] = useState<{ [key: string]: string }>({});
   const [itemSearch, setItemSearch] = useState<{ [key: string]: string }>({});
   const [showNewItemModal, setShowNewItemModal] = useState(false);
@@ -130,6 +136,12 @@ export default function NewVendorCredit() {
   const [selectedBulkItems, setSelectedBulkItems] = useState<any[]>([]);
   const [bulkItemQuantities, setBulkItemQuantities] = useState<{ [key: string]: number }>({});
   const [saveLoadingState, setSaveLoadingState] = useState<null | "Draft" | "Open">(null);
+
+  const [showNumberPreferencesModal, setShowNumberPreferencesModal] = useState(false);
+  const [numberingPreference, setNumberingPreference] = useState<"auto" | "manual">("auto");
+  const [numberPrefix, setNumberPrefix] = useState("DN-");
+  const [nextNumber, setNextNumber] = useState("00001");
+  const [restartYearly, setRestartYearly] = useState(false);
   const [newItemData, setNewItemData] = useState({
     type: "Goods",
     name: "",
@@ -148,20 +160,19 @@ export default function NewVendorCredit() {
     purchaseTax: "",
     preferredVendor: "",
   });
-  const itemRefs = useRef<any>({});
-  const rowMenuRefs = useRef<any>({});
+  const itemRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const rowMenuRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
-  const vendorRef = useRef<any>(null);
-  const currencyRef = useRef<any>(null);
-  const accountsPayableRef = useRef<any>(null);
-  const taxExclusiveRef = useRef<any>(null);
-  const taxLevelRef = useRef<any>(null);
-  const uploadMenuRef = useRef<any>(null);
-  const fileInputRef = useRef<any>(null);
-  const bulkActionsRef = useRef<any>(null);
-  const addNewRowRef = useRef<any>(null);
+  const vendorRef = useRef<HTMLDivElement | null>(null);
+  const currencyRef = useRef<HTMLDivElement | null>(null);
+  const accountsPayableRef = useRef<HTMLDivElement | null>(null);
+  const taxExclusiveRef = useRef<HTMLDivElement | null>(null);
+  const taxLevelRef = useRef<HTMLDivElement | null>(null);
+  const uploadMenuRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const bulkActionsRef = useRef<HTMLDivElement | null>(null);
+  const addNewRowRef = useRef<HTMLDivElement | null>(null);
 
-  // Load vendors from localStorage
   const [taxes, setTaxes] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
 
@@ -177,33 +188,42 @@ export default function NewVendorCredit() {
       ? ["Tax Inclusive"]
       : ["Tax Exclusive", "Tax Inclusive", "Out of Scope"];
 
-  // Handle click outside to close dropdowns
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      // Close account dropdowns
+      const target = event.target as Node;
+      
+      if (vendorRef.current && !vendorRef.current.contains(target)) setVendorDropdownOpen(false);
+      if (accountsPayableRef.current && !accountsPayableRef.current.contains(target)) setAccountsPayableOpen(false);
+      if (taxExclusiveRef.current && !taxExclusiveRef.current.contains(target)) setTaxExclusiveOpen(false);
+      if (taxLevelRef.current && !taxLevelRef.current.contains(target)) setTaxLevelOpen(false);
+      if (uploadMenuRef.current && !uploadMenuRef.current.contains(target)) setUploadMenuOpen(false);
+      if (currencyRef.current && !currencyRef.current.contains(target)) setCurrencyDropdownOpen(false);
+      if (bulkActionsRef.current && !bulkActionsRef.current.contains(target)) setBulkActionsOpen(false);
+      if (addNewRowRef.current && !addNewRowRef.current.contains(target)) setAddNewRowDropdownOpen(false);
+      
       setAccountDropdownOpen({});
-      // Close tax dropdowns
       setTaxDropdownOpen({});
-      // Close item dropdowns
-      setItemDropdownOpen({});
-      // Close AP dropdown
-      setAccountsPayableOpen(false);
-      // Close Discount dropdown
       setDiscountDropdownOpen(false);
-      // Close New Vendor dropdown
-      setVendorDropdownOpen(false);
-      // Close Tax Preference dropdown
-      setTaxExclusiveOpen(false);
-      // Close Discount Level dropdown
-      setTaxLevelOpen(false);
+
+      Object.keys(itemDropdownOpen).forEach((index) => {
+        const itemEl = itemRefs.current[index];
+        if (itemEl && !itemEl.contains(target)) {
+          setItemDropdownOpen((prev) => ({ ...prev, [index]: false }));
+          setItemSearch((prev) => ({ ...prev, [index]: "" }));
+        }
+      });
+      Object.keys(rowMenuOpen).forEach((index) => {
+        const rowMenuEl = rowMenuRefs.current[index];
+        if (rowMenuOpen[index] && rowMenuEl && !rowMenuEl.contains(target)) {
+          setRowMenuOpen((prev) => ({ ...prev, [index]: false }));
+        }
+      });
     };
 
-    // Use 'click' instead of 'mousedown' to allow component onClick handlers to fire first
-    document.addEventListener("click", handleClickOutside);
-    return () => document.removeEventListener("click", handleClickOutside);
-  }, []);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [itemDropdownOpen, rowMenuOpen]);
 
-  // Load vendors from API
   useEffect(() => {
     const loadVendors = async () => {
       try {
@@ -218,6 +238,21 @@ export default function NewVendorCredit() {
       }
     };
     loadVendors();
+  }, []);
+
+  useEffect(() => {
+    const loadLocations = async () => {
+      try {
+        const response = await locationsAPI.getAll();
+        if (response && (response.code === 0 || response.success)) {
+          const loadedLocations = filterActiveRecords(response.data || response.locations || []);
+          setLocations(loadedLocations);
+        }
+      } catch (error) {
+        console.error("Error loading locations:", error);
+      }
+    };
+    loadLocations();
   }, []);
 
   useEffect(() => {
@@ -268,6 +303,8 @@ export default function NewVendorCredit() {
       accountsPayable: editCredit.accountsPayable || prev.accountsPayable,
       taxExclusive: editCredit.taxPreference || prev.taxExclusive,
       taxLevel: editCredit.taxLevel || prev.taxLevel,
+      locationId: editCredit.location || prev.locationId,
+      locationName: editCredit.locationName || prev.locationName,
       discount: Number(editCredit.discount || 0),
       discountType: editCredit.discountType || prev.discountType,
       adjustment: Number(editCredit.adjustment || 0),
@@ -315,10 +352,8 @@ export default function NewVendorCredit() {
     loadGeneralSettings();
   }, []);
 
-  // Update currency when base currency is loaded
   useEffect(() => {
     if (baseCurrencyCode) {
-      // Use just the short code (e.g., "USD") instead of the full name
       const shortCode = baseCurrencyCode.split(' - ')[0] || baseCurrencyCode;
       setFormData(prev => ({ ...prev, currency: isEdit ? (prev.currency || shortCode) : shortCode }));
     }
@@ -340,7 +375,6 @@ export default function NewVendorCredit() {
     });
   }, [showTransactionDiscount, showAdjustment, taxMode]);
 
-  // Vendor selection handler
   const handleVendorSelect = (vendor: any) => {
     setSelectedVendor(vendor);
     setFormData({
@@ -351,16 +385,6 @@ export default function NewVendorCredit() {
     setVendorSearch("");
   };
 
-  const handleVendorCreated = (vendor: any) => {
-    // Add new vendor to both lists and select it
-    setVendors(prev => [vendor, ...prev]);
-    setAllVendors(prev => [vendor, ...prev]);
-    handleVendorSelect(vendor);
-  };
-
-
-
-  // Load items from API
   useEffect(() => {
     const loadItems = async () => {
       try {
@@ -375,7 +399,6 @@ export default function NewVendorCredit() {
     loadItems();
   }, []);
 
-  // Load taxes from API
   useEffect(() => {
     const loadTaxes = async () => {
       try {
@@ -390,7 +413,6 @@ export default function NewVendorCredit() {
     loadTaxes();
   }, []);
 
-  // Load accounts from API
   useEffect(() => {
     const loadAccounts = async () => {
       try {
@@ -410,90 +432,10 @@ export default function NewVendorCredit() {
     loadAccounts();
   }, []);
 
-  const filteredVendors = vendors.filter((vendor) =>
-    vendor.name?.toLowerCase().includes(vendorSearch.toLowerCase()) ||
-    (vendor.email && vendor.email.toLowerCase().includes(vendorSearch.toLowerCase())) ||
-    (vendor.companyName && vendor.companyName.toLowerCase().includes(vendorSearch.toLowerCase()))
-  );
-
-  // Get billing address from selected vendor
-  const getBillingAddress = () => {
-    if (!selectedVendor || !selectedVendor.formData) return null;
-    const billing = selectedVendor.formData;
-    return {
-      companyName: billing.companyName || billing.billingAttention || "",
-      street1: billing.billingStreet1 || "",
-      street2: billing.billingStreet2 || "",
-      city: billing.billingCity || "",
-      state: billing.billingState || "",
-      zipCode: billing.billingZipCode || "",
-      country: billing.billingCountry || "",
-      phone: billing.billingPhone || billing.workPhone || "",
-      fax: billing.billingFax || "",
-    };
-  };
-
-  const billingAddress = getBillingAddress();
-
-  // Close dropdowns when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (vendorRef.current && !vendorRef.current.contains(event.target)) {
-        setVendorDropdownOpen(false);
-      }
-      if (accountsPayableRef.current && !accountsPayableRef.current.contains(event.target)) {
-        setAccountsPayableOpen(false);
-      }
-      if (taxExclusiveRef.current && !taxExclusiveRef.current.contains(event.target)) {
-        setTaxExclusiveOpen(false);
-      }
-      if (taxLevelRef.current && !taxLevelRef.current.contains(event.target)) {
-        setTaxLevelOpen(false);
-      }
-      if (uploadMenuRef.current && !uploadMenuRef.current.contains(event.target)) {
-        setUploadMenuOpen(false);
-      }
-      if (currencyRef.current && !currencyRef.current.contains(event.target)) {
-        setCurrencyDropdownOpen(false);
-      }
-      if (bulkActionsRef.current && !bulkActionsRef.current.contains(event.target)) {
-        setBulkActionsOpen(false);
-      }
-      if (addNewRowRef.current && !addNewRowRef.current.contains(event.target)) {
-        setAddNewRowDropdownOpen(false);
-      }
-      // Close item dropdowns
-      Object.keys(itemDropdownOpen).forEach((index) => {
-        if (itemRefs.current[index] && !itemRefs.current[index].contains(event.target)) {
-          setItemDropdownOpen((prev) => ({ ...prev, [index]: false }));
-          setItemSearch((prev) => ({ ...prev, [index]: "" }));
-        }
-      });
-      // Close row menus
-      Object.keys(rowMenuOpen).forEach((index) => {
-        if (rowMenuOpen[index] && rowMenuRefs.current[index] && !rowMenuRefs.current[index].contains(event.target)) {
-          setRowMenuOpen((prev) => ({ ...prev, [index]: false }));
-        }
-      });
-    };
-
-    const hasOpenDropdowns = vendorDropdownOpen || uploadMenuOpen || currencyDropdownOpen ||
-      taxLevelOpen || bulkActionsOpen || addNewRowDropdownOpen || Object.values(itemDropdownOpen).some(Boolean) ||
-      Object.values(rowMenuOpen).some(Boolean);
-
-    if (hasOpenDropdowns) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [vendorDropdownOpen, uploadMenuOpen, currencyDropdownOpen, taxLevelOpen, bulkActionsOpen, addNewRowDropdownOpen, itemDropdownOpen, rowMenuOpen]);
-
   const handleItemChange = (index: number, field: string, value: any) => {
     const newItems = [...itemRows];
     (newItems[index] as any)[field] = value;
 
-    // Calculate amount
     if (field === "quantity" || field === "rate" || field === "discount") {
       const quantity = parseFloat(String(newItems[index].quantity || 0));
       const rate = parseFloat(String(newItems[index].rate || 0));
@@ -506,7 +448,6 @@ export default function NewVendorCredit() {
 
     setItemRows(newItems);
 
-    // Check if item name is missing
     const hasEmptyItem = newItems.some(item => !item.itemDetails || item.itemDetails.trim() === "");
     setShowItemWarning(hasEmptyItem && newItems.length > 0);
   };
@@ -519,12 +460,9 @@ export default function NewVendorCredit() {
     (newItems[index] as any).stockQuantity = item.stockQuantity || 0;
     (newItems[index] as any).unit = item.unit || "";
     (newItems[index] as any).trackInventory = item.trackInventory || false;
-    // Default account to "Cost of Goods Sold" as requested by user
     newItems[index].account = "Cost of Goods Sold";
-    // Set rate from item if available
     if (item.costPrice) {
       newItems[index].rate = item.costPrice;
-      // Recalculate amount
       const quantity = parseFloat(String(newItems[index].quantity || 0));
       const rate = parseFloat(String(item.costPrice || 0));
       const discountMatch = (newItems[index].discount || "0 %-").match(/(\d+(?:\.\d+)?)/);
@@ -538,78 +476,7 @@ export default function NewVendorCredit() {
     setItemSearch((prev) => ({ ...prev, [index]: "" }));
   };
 
-  const filteredItems = (index: number) => {
-    const searchTerm = (itemSearch[index] || "").toLowerCase();
-    if (!searchTerm) return items;
-    return items.filter((item) =>
-      (item.name || "").toLowerCase().includes(searchTerm) ||
-      (item.sku || "").toLowerCase().includes(searchTerm)
-    );
-  };
-
-  const addNewRow = () => {
-    setItemRows([...itemRows, {
-      itemDetails: "",
-      account: "",
-      quantity: 1.0,
-      rate: 0.0,
-      discount: "0 %-",
-      tax: "",
-      amount: 0.0,
-      purchaseDiscount: "",
-      project: "",
-      reportingTag: "",
-    }]);
-  };
-
-  const removeRow = (index: number) => {
-    if (itemRows.length > 1) {
-      setItemRows(itemRows.filter((_, i) => i !== index));
-    }
-  };
-
-  const cloneRow = (index: number) => {
-    const rowToClone = itemRows[index];
-    const newRow = {
-      ...rowToClone,
-      itemDetails: "",
-      amount: 0.0,
-    };
-    const newRows = [...itemRows];
-    newRows.splice(index + 1, 0, newRow);
-    setItemRows(newRows);
-    setRowMenuOpen((prev) => ({ ...prev, [index]: false }));
-  };
-
-  const insertNewRow = (index: number) => {
-    const newRow = {
-      itemDetails: "",
-      account: "",
-      quantity: 1.0,
-      rate: 0.0,
-      discount: "0 %-",
-      tax: "",
-      amount: 0.0,
-      purchaseDiscount: "",
-      project: "",
-      reportingTag: "",
-    };
-    const newRows = [...itemRows];
-    newRows.splice(index + 1, 0, newRow);
-    setItemRows(newRows);
-    setRowMenuOpen((prev) => ({ ...prev, [index]: false }));
-  };
-
-  const insertItemsInBulk = (index: number) => {
-    setBulkItemsInsertIndex(index);
-    setShowBulkItemsModal(true);
-    setBulkItemsSearch("");
-    setSelectedBulkItems([]);
-    setBulkItemQuantities({});
-    setRowMenuOpen((prev) => ({ ...prev, [index]: false }));
-  };
-
-  const handleBulkItemSelect = (item: any) => {
+  const handleAddItem = (item: any, quantity: number) => {
     const isSelected = selectedBulkItems.some(selected => selected.id === item.id);
     if (isSelected) {
       setSelectedBulkItems(selectedBulkItems.filter(selected => selected.id !== item.id));
@@ -618,12 +485,8 @@ export default function NewVendorCredit() {
       setBulkItemQuantities(newQuantities);
     } else {
       setSelectedBulkItems([...selectedBulkItems, item]);
-      setBulkItemQuantities({ ...bulkItemQuantities, [item.id]: 1 });
+      setBulkItemQuantities({ ...bulkItemQuantities, [item.id]: quantity });
     }
-  };
-
-  const handleBulkQuantityChange = (itemId: any, quantity: any) => {
-    setBulkItemQuantities({ ...bulkItemQuantities, [itemId]: parseFloat(quantity) || 1 });
   };
 
   const handleAddBulkItems = () => {
@@ -648,75 +511,17 @@ export default function NewVendorCredit() {
     setBulkItemsSearch("");
   };
 
-  const filteredBulkItems = bulkItemsSearch.trim() === ""
-    ? items
-    : items.filter(item =>
-      item.name?.toLowerCase().includes(bulkItemsSearch.toLowerCase()) ||
-      item.sku?.toLowerCase().includes(bulkItemsSearch.toLowerCase())
-    );
-
-  const handleNewItemSave = () => {
-    const newItem = {
-      id: Date.now().toString(),
-      name: newItemData.name,
-      type: newItemData.type,
-      unit: newItemData.unit,
-      sellable: newItemData.sellable,
-      sellingPrice: parseFloat(String(newItemData.sellingPrice || 0)),
-      salesAccount: newItemData.salesAccount,
-      salesDescription: newItemData.salesDescription,
-      salesTax: newItemData.salesTax,
-      purchasable: newItemData.purchasable,
-      costPrice: parseFloat(String(newItemData.costPrice || 0)),
-      purchaseAccount: newItemData.purchaseAccount,
-      purchaseDescription: newItemData.purchaseDescription,
-      purchaseTax: newItemData.purchaseTax,
-      preferredVendor: newItemData.preferredVendor,
-      sku: newItemData.sku,
-      stockOnHand: parseFloat(String(newItemData.initialStock || 0)),
-      transactions: [],
-    };
-
-    const savedItems = JSON.parse(localStorage.getItem("inv_items_v1") || "[]");
-    savedItems.push(newItem);
-    localStorage.setItem("inv_items_v1", JSON.stringify(savedItems));
-    setItems([...items, newItem]);
-
-    // Reset form and close modal
-    setNewItemData({
-      type: "Goods",
-      name: "",
-      unit: "",
-      sellable: true,
-      sellingPrice: "",
-      salesAccount: "Sales",
-      salesDescription: "",
-      salesTax: "",
-      purchasable: true,
-      costPrice: "",
-      purchaseAccount: "Cost of Goods Sold",
-      purchaseDescription: "",
-      purchaseTax: "",
-      preferredVendor: "",
-      sku: "",
-      initialStock: "0",
-    });
-    setShowNewItemModal(false);
-  };
-
   const calculateSubTotal = () => {
     return itemRows.reduce((sum, item) => sum + (item.amount || 0), 0);
   };
 
   const calculateTaxAmount = () => {
-    // Calculate tax based on items with tax
     let taxTotal = 0;
     itemRows.forEach(item => {
       if (item.tax) {
         const taxMatch = item.tax.match(/(\d+(?:\.\d+)?)/);
         const taxPercent = taxMatch ? parseFloat(taxMatch[1]) : 0;
         if (formData.taxExclusive === "Tax Inclusive") {
-          // Tax is already included in amount
           const subtotal = parseFloat(String(item.quantity || 0)) * parseFloat(String(item.rate || 0));
           taxTotal += (subtotal * taxPercent) / (100 + taxPercent);
         } else {
@@ -745,20 +550,16 @@ export default function NewVendorCredit() {
     return subTotal - discountAmount + taxAmount + adjustment;
   };
 
-  const handleSave = async (status: any) => {
+  const handleSave = async (status: SaveStatus) => {
     if (saveLoadingState) return;
-    // Validate required fields
     if (!formData.vendorName || !selectedVendor) {
       toast.error("Please select a vendor");
       return;
     }
-
     if (!formData.creditNote) {
       toast.error("Credit Note# is required");
       return;
     }
-
-    // Validate Items
     const validItems = itemRows.filter(row => row.itemDetails && row.itemDetails.trim() !== "");
     if (validItems.length === 0) {
       toast.error("Please add at least one item");
@@ -791,7 +592,6 @@ export default function NewVendorCredit() {
         return;
       }
 
-      // Prepare vendor credit data for API
       const payload = {
         vendor: vendorId,
         vendorName: formData.vendorName,
@@ -820,7 +620,9 @@ export default function NewVendorCredit() {
         subject: formData.subject,
         accountsPayable: formData.accountsPayable,
         taxPreference: formData.taxExclusive,
-        taxLevel: formData.taxLevel
+        taxLevel: formData.taxLevel,
+        location: formData.locationId,
+        locationName: formData.locationName
       };
 
       const creditId = routeCreditId || editCredit?._id || editCredit?.id;
@@ -833,7 +635,6 @@ export default function NewVendorCredit() {
           ? (status === "Draft" ? "updated as draft" : "updated")
           : (status === "Draft" ? "saved as draft" : "saved");
         toast.success(`Vendor credit ${actionLabel} successfully`);
-        // Remove from local storage to keep it clean if user previously had data there
         localStorage.removeItem("vendor_credits");
         if (isEdit && creditId) {
           navigate(`/purchases/vendor-credits/${creditId}`);
@@ -849,325 +650,24 @@ export default function NewVendorCredit() {
     }
   };
 
-  const styles = {
-    container: {
-      width: "100%",
-      backgroundColor: "#ffffff",
-      height: "100vh",
-      display: "flex",
-      flexDirection: "column" as any,
-      fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
-    },
-    header: {
-      padding: "16px 24px",
-      borderBottom: "1px solid #e5e7eb",
-      backgroundColor: "#ffffff",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      flexShrink: 0,
-    },
-    headerTitle: {
-      fontSize: "18px",
-      fontWeight: "500",
-      color: "#111827",
-      margin: 0,
-    },
-    content: {
-      padding: "32px",
-      flex: 1,
-      overflowY: "auto" as any,
-      backgroundColor: "#ffffff",
-    },
-    formSection: {
-      maxWidth: "800px",
-      marginBottom: "32px",
-    },
-    fieldRow: {
-      display: "flex",
-      flexDirection: "row" as any,
-      alignItems: "flex-start",
-      gap: "24px",
-      marginBottom: "16px",
-      maxWidth: "800px",
-    },
-    label: {
-      width: "160px",
-      fontSize: "13px",
-      fontWeight: "400",
-      color: "#374151",
-      display: "flex",
-      alignItems: "center",
-      gap: "4px",
-      paddingTop: "10px",
-      flexShrink: 0,
-    },
-    requiredLabel: {
-      width: "160px",
-      fontSize: "13px",
-      fontWeight: "400",
-      color: "#dc2626",
-      display: "flex",
-      alignItems: "center",
-      gap: "4px",
-      paddingTop: "10px",
-      flexShrink: 0,
-    },
-    input: {
-      padding: "8px 12px",
-      fontSize: "14px",
-      border: "1px solid #d1d5db",
-      borderRadius: "4px",
-      width: "100%",
-      backgroundColor: "#ffffff",
-      outline: "none",
-      transition: "border-color 0.2s",
-    },
-    select: {
-      padding: "8px 12px",
-      fontSize: "14px",
-      border: "1px solid #d1d5db",
-      borderRadius: "4px",
-      width: "100%",
-      backgroundColor: "#ffffff",
-      cursor: "pointer",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    textarea: {
-      padding: "8px 12px",
-      fontSize: "14px",
-      border: "1px solid #d1d5db",
-      borderRadius: "4px",
-      width: "100%",
-      minHeight: "40px",
-      resize: "vertical" as any,
-      outline: "none",
-    },
-    itemTable: {
-      marginTop: "32px",
-      border: "1px solid #e5e7eb",
-      borderRadius: "4px",
-      overflow: "visible",
-    },
-    tableHeaderRow: {
-      backgroundColor: "#f9fafb",
-      borderBottom: "1px solid #e5e7eb",
-    },
-    tableHeaderCell: {
-      padding: "8px 12px",
-      fontSize: "11px",
-      fontWeight: "500",
-      color: "#6b7280",
-      textTransform: "uppercase",
-      letterSpacing: "0.05em",
-      textAlign: "left" as any,
-    },
-    tableCell: {
-      padding: "16px 12px",
-      borderBottom: "1px solid #e5e7eb",
-      verticalAlign: "top",
-    },
-    summarySection: {
-      marginTop: "24px",
-      display: "flex",
-      justifyContent: "center",
-    },
-    summaryBox: {
-      width: "480px",
-      marginLeft: "auto",
-      backgroundColor: "#f9fafb",
-      padding: "24px",
-      borderRadius: "4px",
-    },
-    summaryRow: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: "16px",
-    },
-    summaryLabel: {
-      fontSize: "14px",
-      color: "#111827",
-    },
-    summaryValue: {
-      fontSize: "14px",
-      fontWeight: "500",
-      color: "#111827",
-    },
-    totalRow: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingTop: "16px",
-      borderTop: "1px solid #e5e7eb",
-      marginTop: "8px",
-    },
-    totalLabel: {
-      fontSize: "15px",
-      fontWeight: "500",
-      color: "#111827",
-    },
-    totalValue: {
-      fontSize: "15px",
-      fontWeight: "600",
-      color: "#111827",
-    },
-    footer: {
-      padding: "16px 24px",
-      borderTop: "1px solid #e5e7eb",
-      backgroundColor: "#ffffff",
-      display: "flex",
-      gap: "12px",
-      flexShrink: 0,
-    },
-    primaryButton: {
-      padding: "8px 16px",
-      backgroundColor: "#156372",
-      color: "#ffffff",
-      border: "none",
-      borderRadius: "4px",
-      fontSize: "14px",
-      fontWeight: "500",
-      cursor: "pointer",
-    },
-    secondaryButton: {
-      padding: "8px 16px",
-      backgroundColor: "#ffffff",
-      color: "#374151",
-      border: "1px solid #d1d5db",
-      borderRadius: "4px",
-      fontSize: "14px",
-      fontWeight: "500",
-      cursor: "pointer",
-    },
-    fieldGroup: {
-      display: "flex",
-      flexDirection: "column" as any,
-      gap: "8px",
-    },
-    saveDraftButton: {
-      padding: "8px 16px",
-      backgroundColor: "#f3f4f6",
-      color: "#374151",
-      border: "1px solid #d1d5db",
-      borderRadius: "4px",
-      fontSize: "14px",
-      fontWeight: "500",
-      cursor: "pointer",
-    },
-    saveOpenButton: {
-      padding: "8px 16px",
-      backgroundColor: "#156372",
-      color: "#ffffff",
-      border: "none",
-      borderRadius: "4px",
-      fontSize: "14px",
-      fontWeight: "500",
-      cursor: "pointer",
-    },
-    footerButton: {
-      padding: "8px 16px",
-      fontSize: "14px",
-      fontWeight: "500",
-      borderRadius: "4px",
-      cursor: "pointer",
-    },
-    cancelButton: {
-      padding: "8px 16px",
-      backgroundColor: "#ffffff",
-      color: "#374151",
-      border: "1px solid #d1d5db",
-      borderRadius: "4px",
-      fontSize: "14px",
-      fontWeight: "500",
-      cursor: "pointer",
-    },
-    itemDetailsContainer: {
-      position: "relative" as any,
-      flex: 1,
-    },
-    itemDropdown: {
-      position: "absolute" as any,
-      top: "100%",
-      left: 0,
-      right: 0,
-      backgroundColor: "#ffffff",
-      border: "1px solid #d1d5db",
-      borderRadius: "4px",
-      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-      zIndex: 1000,
-      maxHeight: "300px",
-      overflowY: "auto" as any,
-      marginTop: "4px",
-    },
-    itemDropdownRow: {
-      padding: "10px 12px",
-      cursor: "pointer",
-      borderBottom: "1px solid #f3f4f6",
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "flex-start",
-      transition: "background-color 0.2s",
-    },
-    itemDropdownInfo: {
-      display: "flex",
-      flexDirection: "column" as any,
-      gap: "2px",
-    },
-    itemDropdownName: {
-      fontSize: "13px",
-      fontWeight: "500",
-      color: "#111827",
-    },
-    itemDropdownSubtext: {
-      fontSize: "11px",
-      color: "#6b7280",
-    },
-    itemDropdownStock: {
-      textAlign: "right" as any,
-      display: "flex",
-      flexDirection: "column" as any,
-      alignItems: "flex-end",
-    },
-    itemDropdownStockLabel: {
-      fontSize: "10px",
-      color: "#9ca3af",
-    },
-    itemDropdownStockValue: {
-      fontSize: "11px",
-      fontWeight: "500",
-      color: "#059669",
-    },
-    addNewItemDropdownBtn: {
-      padding: "10px 12px",
-      width: "100%",
-      textAlign: "left" as any,
-      backgroundColor: "#ffffff",
-      border: "none",
-      borderTop: "1px solid #e5e7eb",
-      color: "#156372",
-      fontSize: "13px",
-      fontWeight: "500",
-      cursor: "pointer",
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-    }
-  };
-
-  const formatDate = (dateString: any) => {
+  const formatDate = (dateString: string | Date | null | undefined) => {
     if (!dateString) return "";
     const date = new Date(dateString);
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
     return `${day}/${month}/${year}`;
   };
 
   return (
     <>
+      <style>{`
+        .animated-field {
+          transition: all 0.2s ease-in-out !important;
+        }
+        .animated-field:focus, .animated-field:focus-within {
+          border-color: #3b82f6 !important;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
+          outline: none !important;
+        }
+      `}</style>
       <div style={styles.container}>
         {/* Header */}
         <div style={styles.header}>
@@ -1201,17 +701,31 @@ export default function NewVendorCredit() {
                     borderColor: vendorDropdownOpen ? "#2563eb" : "#d1d5db",
                     borderTopRightRadius: 0,
                     borderBottomRightRadius: 0,
-                    flex: 1
+                    flex: 1,
+                    height: "36px"
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
                     setVendorDropdownOpen(!vendorDropdownOpen);
                   }}
                 >
-                  <span style={{ color: formData.vendorName ? "#111827" : "#9ca3af" }}>
+                  <span style={{ fontSize: "14px", color: formData.vendorName ? "#374151" : "#9ca3af" }}>
                     {formData.vendorName || "Select a Vendor"}
                   </span>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>{formData.vendorName && (<X size={14} style={{ color: "#ef4444", cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, vendorName: "", vendorId: "" }); }} />)}<ChevronDown size={16} style={{ color: "#6b7280", transform: vendorDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    {formData.vendorName && (
+                      <X
+                        size={14}
+                        style={{ color: "#ef4444", cursor: "pointer" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFormData({ ...formData, vendorId: "", vendorName: "" });
+                          setSelectedVendor(null);
+                        }}
+                      />
+                    )}
+                    <ChevronDown size={16} style={{ color: "#3b82f6", transform: vendorDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+                  </div>
                 </div>
 
                 <button
@@ -1225,7 +739,9 @@ export default function NewVendorCredit() {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    cursor: "pointer"
+                    cursor: "pointer",
+                    height: "36px",
+                    width: "36px"
                   }}
                 >
                   <Search size={16} color="#fff" />
@@ -1290,10 +806,29 @@ export default function NewVendorCredit() {
                             }}
                             onClick={() => handleVendorSelect(vendor)}
                           >
+                            <div style={{
+                              width: "32px",
+                              height: "32px",
+                              borderRadius: "50%",
+                              backgroundColor: "#f3f4f6",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: "12px",
+                              fontWeight: "600",
+                              color: "#6b7280"
+                            }}>
+                              {(vendor.displayName || vendor.name || "V")[0].toUpperCase()}
+                            </div>
                             <div style={{ display: "flex", flexDirection: "column" as any }}>
                               <span style={{ fontSize: "13px", fontWeight: "500", color: "#1f2937" }}>
                                 {vendor.displayName || vendor.name}
                               </span>
+                              {vendor.email && (
+                                <span style={{ fontSize: "11px", color: "#6b7280", display: "flex", alignItems: "center", gap: "4px" }}>
+                                  <Mail size={10} /> {vendor.email}
+                                </span>
+                              )}
                             </div>
                             {formData.vendorName === (vendor.displayName || vendor.name) && (
                               <Check size={14} style={{ marginLeft: "auto", color: "#2563eb" }} />
@@ -1326,26 +861,18 @@ export default function NewVendorCredit() {
                   </div>
                 )}
               </div>
-            </div>
 
-            {/* Location */}
-            <div style={styles.fieldRow}>
-              <label style={styles.label}>Location</label>
-              <div style={{ flex: 1, maxWidth: "350px" }}>
-                <div
-                  style={{
-                    ...styles.input,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    cursor: "pointer",
-                    backgroundColor: "#fff",
-                  }}
-                >
-                  <span style={{ fontSize: "14px", color: "#374151" }}>Head Office</span>
-                  <ChevronDown size={16} style={{ color: "#6b7280" }} />
+              {/* Billing Address Display */}
+              {selectedVendor && (
+                <div style={{ fontSize: "13px", color: "#374151", lineHeight: "1.5", marginTop: "12px" }}>
+                  <div style={{ color: "#6b7280", fontSize: "11px", fontWeight: "600", textTransform: "uppercase", marginBottom: "4px", display: "flex", alignItems: "center", gap: "4px" }}>
+                    BILLING ADDRESS <Pencil size={12} style={{ color: "#9ca3af", cursor: "pointer" }} />
+                  </div>
+                  <div style={{ fontWeight: "600", color: "#111827" }}>{selectedVendor.displayName || selectedVendor.name}</div>
+                  {selectedVendor.billingAddress?.street1 && <div>{selectedVendor.billingAddress.street1}</div>}
+                  {selectedVendor.billingAddress?.city && <div>{selectedVendor.billingAddress.city}, {selectedVendor.billingAddress.state}</div>}
                 </div>
-              </div>
+              )}
             </div>
 
             <div style={{ borderTop: "1px solid #f3f4f6", margin: "24px 0", maxWidth: "800px" }}></div>
@@ -1356,8 +883,9 @@ export default function NewVendorCredit() {
               <div style={{ display: "flex", alignItems: "center", position: "relative" as any, flex: 1, maxWidth: "350px" }}>
                 <input
                   type="text"
-                  style={{ ...styles.input, paddingRight: "40px" }}
+                  style={{ ...styles.input, paddingRight: "40px", height: "36px" }}
                   value={formData.creditNote}
+                  readOnly={numberingSettings.mode === 'auto'}
                   onChange={(e) => setFormData({ ...formData, creditNote: e.target.value })}
                 />
                 <div 
@@ -1385,7 +913,7 @@ export default function NewVendorCredit() {
               <div style={{ flex: 1, maxWidth: "350px" }}>
                 <input
                   type="text"
-                  style={styles.input}
+                  style={{ ...styles.input, height: "36px" }}
                   value={formData.orderNumber}
                   onChange={(e) => setFormData({ ...formData, orderNumber: e.target.value })}
                 />
@@ -1398,14 +926,76 @@ export default function NewVendorCredit() {
               <div style={{ flex: 1, maxWidth: "350px" }}>
                 <input
                   type="date"
-                  style={styles.input}
+                  style={{ ...styles.input, height: "36px" }}
                   value={formData.vendorCreditDate}
                   onChange={(e) => setFormData({ ...formData, vendorCreditDate: e.target.value })}
                 />
               </div>
             </div>
 
-            <div style={{ height: "24px" }}></div>
+            {/* Location */}
+            <div style={styles.fieldRow}>
+              <label style={styles.label}>Location</label>
+              <div style={{ position: "relative" as any, flex: 1, maxWidth: "350px" }} ref={locationRef}>
+                <div
+                  style={{ ...styles.input, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", backgroundColor: "#fff", height: "36px" }}
+                  onClick={() => setLocationDropdownOpen(!locationDropdownOpen)}
+                >
+                  <span style={{ fontSize: "14px", color: formData.locationName ? "#374151" : "#9ca3af" }}>
+                    {formData.locationName || "Select Location"}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {formData.locationName && (
+                      <X
+                        size={14}
+                        style={{ color: "#ef4444", cursor: "pointer" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFormData({ ...formData, locationId: "", locationName: "" });
+                        }}
+                      />
+                    )}
+                    <ChevronDown size={16} style={{ color: "#6b7280" }} />
+                  </div>
+                </div>
+                
+                {locationDropdownOpen && (
+                  <div style={{
+                    position: "absolute" as any,
+                    top: "100%",
+                    left: 0,
+                    right: 0,
+                    zIndex: 1000,
+                    background: "white",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
+                    marginTop: "4px",
+                    boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                    maxHeight: "300px",
+                    overflowY: "auto" as any
+                  }}>
+                    {locations.map(loc => (
+                      <div
+                        key={loc._id}
+                        style={{
+                          padding: "10px 16px",
+                          fontSize: "13px",
+                          cursor: "pointer",
+                          backgroundColor: formData.locationId === loc._id ? "#eff6ff" : "white",
+                          color: formData.locationId === loc._id ? "#2563eb" : "#374151"
+                        }}
+                        onClick={() => {
+                          setFormData({ ...formData, locationId: loc._id, locationName: loc.name });
+                          setLocationDropdownOpen(false);
+                        }}
+                      >
+                        {loc.name}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
 
             {/* Description */}
             <div style={styles.fieldRow}>
@@ -1414,10 +1004,10 @@ export default function NewVendorCredit() {
               </label>
               <div style={{ flex: 1, maxWidth: "350px" }}>
                 <textarea
-                  style={{ ...styles.textarea, minHeight: "40px" }}
+                  style={{ ...styles.textarea, minHeight: "36px", padding: "8px 12px" }}
                   value={formData.subject}
                   onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                  placeholder="Enter a description within 250 characters"
+                  placeholder="Enter a description"
                 />
               </div>
             </div>
@@ -1436,6 +1026,7 @@ export default function NewVendorCredit() {
                     justifyContent: "space-between",
                     cursor: "pointer",
                     backgroundColor: "#fff",
+                    height: "36px"
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1445,7 +1036,19 @@ export default function NewVendorCredit() {
                   <span style={{ fontSize: "14px", color: formData.accountsPayable ? "#374151" : "#9ca3af" }}>
                     {formData.accountsPayable || "Accounts Payable"}
                   </span>
-                  <ChevronDown size={16} style={{ color: "#6b7280" }} />
+                  <div className="flex items-center gap-2">
+                    {formData.accountsPayable && (
+                      <X
+                        size={14}
+                        style={{ color: "#ef4444", cursor: "pointer" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFormData({ ...formData, accountsPayable: "" });
+                        }}
+                      />
+                    )}
+                    <ChevronDown size={16} style={{ color: "#6b7280" }} />
+                  </div>
                 </div>
 
                 {accountsPayableOpen && (
@@ -1463,7 +1066,7 @@ export default function NewVendorCredit() {
                     maxHeight: "300px",
                     overflowY: "auto" as any
                   }} onClick={(e) => e.stopPropagation()}>
-                    <div style={{ padding: "8px", borderBottom: "1px solid #f3f4f6", position: "sticky" as any, top: 0, background: "white", zIndex: 1 }}>
+                    <div style={{ padding: "8px", borderBottom: "1px solid #f3f4f6" }}>
                       <div style={{ position: "relative" as any }}>
                         <Search size={14} style={{ position: "absolute" as any, left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
                         <input
@@ -1478,44 +1081,28 @@ export default function NewVendorCredit() {
                           placeholder="Search accounts..."
                           value={apSearchTerm}
                           onChange={(e) => setApSearchTerm(e.target.value)}
-                          autoFocus
                         />
                       </div>
                     </div>
-                    <div style={{ padding: "4px 0" }}>
-                      {accounts
-                        .filter(acc =>
-                          (acc.type === "Accounts Payable" || acc.name === "Accounts Payable") &&
-                          acc.name.toLowerCase().includes(apSearchTerm.toLowerCase())
-                        )
-                        .map(acc => (
-                          <div
-                            key={acc.id}
-                            style={{
-                              padding: "10px 16px",
-                              fontSize: "13px",
-                              cursor: "pointer",
-                              backgroundColor: formData.accountsPayable === acc.name ? "#eff6ff" : "white",
-                              color: formData.accountsPayable === acc.name ? "#156372" : "#374151",
-                              transition: "background-color 0.2s"
-                            }}
-                            onClick={() => {
-                              setFormData({ ...formData, accountsPayable: acc.name });
-                              setAccountsPayableOpen(false);
-                              setApSearchTerm("");
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = formData.accountsPayable === acc.name ? "#eff6ff" : "#f3f4f6")}
-                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = formData.accountsPayable === acc.name ? "#eff6ff" : "white")}
-                          >
-                            {acc.name}
-                          </div>
-                        ))}
-                      {accounts.filter(acc => (acc.type === "Accounts Payable" || acc.name === "Accounts Payable") && acc.name.toLowerCase().includes(apSearchTerm.toLowerCase())).length === 0 && (
-                        <div style={{ padding: "12px", fontSize: "12px", color: "#6b7280", textAlign: "center" as any }}>
-                          No matching liability accounts found
+                    {accounts
+                      .filter(acc => acc.name.toLowerCase().includes(apSearchTerm.toLowerCase()))
+                      .map(acc => (
+                        <div
+                          key={acc.id}
+                          style={{
+                            padding: "10px 16px",
+                            fontSize: "13px",
+                            cursor: "pointer",
+                            backgroundColor: formData.accountsPayable === acc.name ? "#eff6ff" : "white"
+                          }}
+                          onClick={() => {
+                            setFormData({ ...formData, accountsPayable: acc.name });
+                            setAccountsPayableOpen(false);
+                          }}
+                        >
+                          {acc.name}
                         </div>
-                      )}
-                    </div>
+                      ))}
                   </div>
                 )}
               </div>
@@ -1703,240 +1290,199 @@ export default function NewVendorCredit() {
                     <th className="w-0 px-0 py-2"></th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-200 bg-white">
                   {itemRows.map((item, index) => (
-                    <tr key={index} className="group border-b border-gray-200 align-top min-h-[118px]">
-                      <td className="border-r border-gray-200 px-3 py-2.5 text-sm">
-                        <div className="relative flex items-start gap-2">
-                          <div className="flex flex-col gap-1 cursor-move px-0.5 py-1.5">
-                            <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
-                            <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
-                            <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
-                          </div>
-                          <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50">
-                            <ImageIcon size={18} className="text-gray-300" />
-                          </div>
-                          <div className="relative flex-1" ref={(el) => { itemRefs.current[index] = el; }}>
-                            <input
-                              className="h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-900 shadow-sm outline-none focus:border-teal-600"
-                              value={itemDropdownOpen[index] ? (itemSearch[index] || "") : item.itemDetails}
-                              placeholder="Type or click to select an item"
+                    <tr key={index} className="group hover:bg-gray-50/50 transition-colors">
+                      <td className="w-8 border-r border-gray-200 px-2 py-3 text-center align-top">
+                        <div className="flex flex-col items-center gap-4">
+                          <GripVertical size={14} className="cursor-move text-gray-300 group-hover:text-gray-400" />
+                          <span className="text-[11px] font-medium text-gray-400">{index + 1}</span>
+                        </div>
+                      </td>
+                      <td className="border-r border-gray-200 px-3 py-3 text-sm">
+                        <div className="flex flex-col gap-2">
+                          <div className="relative">
+                            <textarea
+                              style={{ ...styles.textarea, minHeight: "36px", padding: "8px 12px", fontSize: "13px", lineHeight: "1.4" }}
+                              value={item.itemDetails || ""}
+                              placeholder="Type to search items..."
                               onChange={(e) => {
                                 handleItemChange(index, "itemDetails", e.target.value);
-                                setItemSearch((prev) => ({ ...prev, [index]: e.target.value }));
-                                setItemDropdownOpen((prev) => ({ ...prev, [index]: true }));
+                                setItemDropdownOpen(prev => ({ ...prev, [index]: true }));
                               }}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setItemDropdownOpen((prev) => ({ ...prev, [index]: true }));
+                                setItemDropdownOpen(prev => ({ ...prev, [index]: true }));
                               }}
                             />
                             {itemDropdownOpen[index] && (
-                              <div style={styles.itemDropdown}>
-                                {filteredItems(index).length > 0 ? (
-                                  filteredItems(index).map((shopItem) => (
+                              <div style={{
+                                position: "absolute",
+                                top: "100%",
+                                left: 0,
+                                right: 0,
+                                zIndex: 1000,
+                                background: "white",
+                                border: "1px solid #e5e7eb",
+                                borderRadius: "8px",
+                                marginTop: "4px",
+                                boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                                maxHeight: "300px",
+                                overflowY: "auto" as any
+                              }}>
+                                {items
+                                  .filter(i => (i.name || "").toLowerCase().includes((item.itemDetails || "").toLowerCase()))
+                                  .map(i => (
                                     <div
-                                      key={shopItem.id || shopItem._id}
-                                      style={styles.itemDropdownRow}
-                                      onClick={(e) => { e.stopPropagation(); handleItemSelect(index, shopItem); }}
-                                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#eff6ff")}
-                                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
+                                      key={i.id}
+                                      style={{
+                                        padding: "10px 16px",
+                                        fontSize: "13px",
+                                        cursor: "pointer",
+                                        borderBottom: "1px solid #f9fafb"
+                                      }}
+                                      onClick={() => {
+                                        handleItemSelect(index, i);
+                                        setItemDropdownOpen(prev => ({ ...prev, [index]: false }));
+                                      }}
+                                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f3f4f6")}
+                                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "white")}
                                     >
-                                      <div style={styles.itemDropdownInfo}>
-                                        <div style={styles.itemDropdownName}>{shopItem.name}</div>
-                                        <div style={styles.itemDropdownSubtext}>
-                                          SKU: {shopItem.sku || "N/A"} Purchase Rate: {formData.currency} {parseFloat(String(shopItem.costPrice || 0)).toFixed(2)}
-                                        </div>
-                                      </div>
-                                      {shopItem.trackInventory && (
-                                        <div style={styles.itemDropdownStock}>
-                                          <div style={styles.itemDropdownStockLabel}>Stock on Hand</div>
-                                          <div style={styles.itemDropdownStockValue}>
-                                            {parseFloat(String(shopItem.stockQuantity || 0)).toFixed(2)} {shopItem.unit || "N/A"}
-                                          </div>
-                                        </div>
-                                      )}
+                                      <div style={{ fontWeight: "500", color: "#111827" }}>{i.name}</div>
+                                      <div style={{ fontSize: "11px", color: "#6b7280" }}>SKU: {i.sku || "N/A"} | Rate: {i.purchaseRate || 0}</div>
                                     </div>
-                                  ))
-                                ) : (
-                                  <div style={{ padding: "12px", fontSize: "12px", color: "#6b7280", textAlign: "center" as any }}>
-                                    No items found
-                                  </div>
-                                )}
-                                <button
-                                  type="button"
-                                  style={styles.addNewItemDropdownBtn}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
+                                  ))}
+                                <div
+                                  style={{
+                                    padding: "12px",
+                                    borderTop: "1px solid #f3f4f6",
+                                    color: "#2563eb",
+                                    fontSize: "13px",
+                                    fontWeight: "500",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "8px",
+                                    cursor: "pointer",
+                                    backgroundColor: "#fff"
+                                  }}
+                                  onClick={() => {
                                     setShowNewItemModal(true);
-                                    setItemDropdownOpen((prev) => ({ ...prev, [index]: false }));
+                                    setItemDropdownOpen(prev => ({ ...prev, [index]: false }));
                                   }}
                                 >
-                                  <Plus size={16} /> Add New Item
-                                </button>
+                                  <PlusCircle size={16} /> New Item
+                                </div>
                               </div>
                             )}
-                            {!!(item as any).sku && (
-                              <div className="mt-1 text-xs text-slate-500">
-                                SKU: {(item as any).sku}
-                              </div>
-                            )}
-                            <button
-                              type="button"
-                              className="mt-2 text-xs font-medium text-teal-600 hover:text-teal-700"
-                              onClick={() => setShowAdditionalFields(!showAdditionalFields)}
-                            >
-                              Add a description to your item
-                            </button>
-                            {showAdditionalFields && (
-                              <textarea
-                                value={(item as any).description || ""}
-                                onChange={(e) => handleItemChange(index, "description", e.target.value)}
-                                placeholder="Add a description to your item"
-                                className="mt-3 min-h-[64px] w-full rounded-lg border border-gray-100 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-teal-600"
-                              />
-                            )}
+                          <textarea
+                            style={{ ...styles.textarea, minHeight: "48px", padding: "8px 12px", fontSize: "12px", color: "#6b7280", lineHeight: "1.4" }}
+                            placeholder="Add item description"
+                            value={item.description || ""}
+                            onChange={(e) => handleItemChange(index, "description", e.target.value)}
+                          />
                           </div>
                         </div>
                       </td>
                       <td className="border-r border-gray-200 px-3 py-2.5 text-sm">
                         <div className="relative">
                           <div
-                            className="flex h-11 w-full cursor-pointer items-center justify-between rounded-lg border border-gray-200 bg-white px-3 text-sm shadow-sm hover:border-teal-600"
-                            onClick={(e) => { e.stopPropagation(); setAccountDropdownOpen(prev => ({ ...prev, [index]: !prev[index] })); }}
+                            style={{ ...styles.input, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", height: "36px", padding: "0 12px" }}
+                            onClick={() => setAccountDropdownOpen(prev => ({ ...prev, [index]: !prev[index] }))}
                           >
-                            <span className={item.account ? "text-gray-900 font-medium" : "text-gray-400"}>
-                              {item.account || "Select an account"}
+                            <span style={{ fontSize: "13px", color: item.account ? "#374151" : "#9ca3af" }}>
+                              {item.account || "Select Account"}
                             </span>
-                            <ChevronDown size={14} className="text-gray-400" />
+                            <ChevronDown size={14} style={{ color: "#9ca3af" }} />
                           </div>
                           {accountDropdownOpen[index] && (
-                            <div style={{
-                              position: "absolute",
-                              top: "100%",
-                              left: 0,
-                              right: 0,
-                              zIndex: 1000,
-                              background: "white",
-                              border: "1px solid #e5e7eb",
-                              borderRadius: "8px",
-                              marginTop: "4px",
-                              boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
-                              maxHeight: "300px",
-                              overflowY: "auto" as any
-                            }}>
-                              <div style={{ padding: "12px", borderBottom: "1px solid #f3f4f6", position: "sticky" as any, top: 0, background: "white", zIndex: 1 }}>
-                                <div style={{ position: "relative" as any }}>
-                                  <Search size={14} style={{ position: "absolute" as any, left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
-                                  <input
-                                    style={{
-                                      width: "100%",
-                                      padding: "8px 8px 8px 32px",
-                                      border: "1px solid #e5e7eb",
-                                      borderRadius: "6px",
-                                      fontSize: "13px",
-                                      outline: "none"
-                                    }}
-                                    placeholder="Search accounts..."
-                                    value={accountSearch[index] || ""}
-                                    onChange={(e) => setAccountSearch(prev => ({ ...prev, [index]: e.target.value }))}
-                                    onClick={(e) => e.stopPropagation()}
-                                    autoFocus
-                                  />
+                            <>
+                              <div style={{
+                                position: "absolute",
+                                top: "100%",
+                                left: 0,
+                                right: 0,
+                                zIndex: 1000,
+                                background: "white",
+                                border: "1px solid #e5e7eb",
+                                borderRadius: "8px",
+                                marginTop: "4px",
+                                boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                                maxHeight: "300px",
+                                overflowY: "auto" as any
+                              }}>
+                                <div style={{ padding: "8px", borderBottom: "1px solid #f3f4f6" }}>
+                                  <div style={{ position: "relative" as any }}>
+                                    <Search size={14} style={{ position: "absolute" as any, left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
+                                    <input
+                                      style={{
+                                        width: "100%",
+                                        padding: "8px 8px 8px 32px",
+                                        border: "1px solid #e5e7eb",
+                                        borderRadius: "6px",
+                                        fontSize: "13px",
+                                        outline: "none"
+                                      }}
+                                      placeholder="Search accounts..."
+                                      autoFocus
+                                    />
+                                  </div>
                                 </div>
-                              </div>
-                              <div style={{ padding: "4px 0" }}>
-                                {Object.entries(
-                                  (accounts || []).reduce((acc: any, curr: any) => {
-                                    const type = curr.type || "Other";
-                                    if (!acc[type]) acc[type] = [];
-                                    acc[type].push(curr);
-                                    return acc;
-                                  }, {})
-                                ).map(([type, typeAccounts]: [string, any]) => {
-                                  const filtered = typeAccounts.filter((acc: any) =>
-                                    acc.name.toLowerCase().includes((accountSearch[index] || "").toLowerCase())
-                                  );
-                                  if (filtered.length === 0) return null;
-                                  return (
-                                    <div key={type}>
-                                      <div style={{ padding: "8px 12px", fontSize: "11px", fontWeight: "600", color: "#6b7280", background: "#f9fafb", textTransform: "uppercase", letterSpacing: "0.5px" }}>{type}</div>
-                                      {filtered.map((acc: any) => (
-                                        <div
-                                          key={acc.id || acc._id}
-                                          style={{
-                                            padding: "10px 16px",
-                                            fontSize: "13px",
-                                            cursor: "pointer",
-                                            backgroundColor: item.account === acc.name ? "#eff6ff" : "white",
-                                            color: item.account === acc.name ? "#156372" : "#374151",
-                                            transition: "background-color 0.2s"
-                                          }}
-                                          onClick={() => {
-                                            handleItemChange(index, "account", acc.name);
-                                            setAccountDropdownOpen(prev => ({ ...prev, [index]: false }));
-                                          }}
-                                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = item.account === acc.name ? "#eff6ff" : "#f3f4f6")}
-                                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = item.account === acc.name ? "#eff6ff" : "white")}
-                                        >
-                                          {acc.name}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  );
-                                })}
+                                {accounts.map(acc => (
+                                  <div
+                                    key={acc.id}
+                                    style={{
+                                      padding: "10px 16px",
+                                      fontSize: "13px",
+                                      cursor: "pointer",
+                                      backgroundColor: item.account === acc.name ? "#eff6ff" : "white"
+                                    }}
+                                    onClick={() => {
+                                      handleItemChange(index, "account", acc.name);
+                                      setAccountDropdownOpen(prev => ({ ...prev, [index]: false }));
+                                    }}
+                                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = item.account === acc.name ? "#eff6ff" : "#f3f4f6")}
+                                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = item.account === acc.name ? "#eff6ff" : "white")}
+                                  >
+                                    {acc.name}
+                                  </div>
+                                ))}
                               </div>
                               <div
                                 style={{
                                   padding: "12px",
                                   borderTop: "1px solid #f3f4f6",
-                                  color: "#156372",
+                                  color: "#2563eb",
                                   fontSize: "13px",
                                   fontWeight: "500",
                                   display: "flex",
                                   alignItems: "center",
                                   gap: "8px",
                                   cursor: "pointer",
-                                  position: "sticky" as any,
-                                  bottom: 0,
-                                  background: "white",
-                                  zIndex: 1
+                                  backgroundColor: "#fff"
                                 }}
                                 onClick={() => console.log("New Account clicked")}
                               >
                                 <PlusCircle size={16} /> New Account
                               </div>
-                            </div>
+                            </>
                           )}
                         </div>
                       </td>
-                      <td className="border-r border-gray-200 px-3 py-2.5 text-sm align-top">
-                        <div className="flex min-h-[118px] flex-col items-stretch justify-start">
-                          <input
-                            type="text"
-                            value={item.quantity}
-                            onChange={(e) => handleItemChange(index, "quantity", e.target.value)}
-                            className="h-11 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none focus:border-teal-600"
-                          />
-                          {(item as any).trackInventory && (
-                            <div className="mt-2 space-y-1 text-center text-[11px] leading-4">
-                              <div className="text-gray-700">
-                                <span className="font-medium">Stock on Hand:</span>{" "}
-                                <span className="text-gray-900">
-                                  {parseFloat(String((item as any).stockQuantity || 0)).toFixed(0)} {(item as any).unit || ""}
-                                </span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                      <td className="border-r border-gray-200 px-3 py-2 text-sm">
+                        <input
+                          type="text"
+                          value={item.quantity}
+                          onChange={(e) => handleItemChange(index, "quantity", e.target.value)}
+                          className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-right text-sm font-medium text-gray-900 outline-none focus:border-teal-600 transition-all"
+                        />
                       </td>
-                      <td className="border-r border-gray-200 px-3 py-2.5 text-sm">
+                      <td className="border-r border-gray-200 px-3 py-2 text-sm">
                         <div className="flex flex-col items-end">
                           <input
                             type="text"
                             value={item.rate}
                             onChange={(e) => handleItemChange(index, "rate", e.target.value)}
-                            className="h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none focus:border-teal-600"
+                            className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none focus:border-teal-600 transition-all"
                           />
                           <button
                             type="button"
@@ -1946,24 +1492,22 @@ export default function NewVendorCredit() {
                           </button>
                         </div>
                       </td>
-                      {formData.taxLevel === "At Line Item Level" && (
-                        <td className="border-r border-gray-200 px-3 py-2.5 text-sm">
+                        <td className="border-r border-gray-200 px-3 py-2 text-sm">
                           <div className="relative">
                             <input
                               type="text"
                               value={item.discount || ""}
                               onChange={(e) => handleItemChange(index, "discount", e.target.value)}
-                              className="h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none focus:border-teal-600"
+                              className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-right text-sm font-medium text-gray-900 outline-none focus:border-teal-600 transition-all"
                               placeholder="0"
                             />
-                            <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-gray-500">%</div>
+                            <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-gray-400 text-xs">%</div>
                           </div>
                         </td>
-                      )}
                       <td className="border-r border-gray-200 px-3 py-2.5 text-sm">
                         <div className="relative">
                           <div
-                            className="flex h-11 w-full cursor-pointer items-center justify-between rounded-lg border border-gray-200 bg-white px-3 text-sm shadow-sm hover:border-teal-600"
+                            className="flex h-9 w-full cursor-pointer items-center justify-between rounded-md border border-gray-200 bg-white px-3 text-sm shadow-sm hover:border-teal-600 transition-all"
                             onClick={(e) => { e.stopPropagation(); setTaxDropdownOpen(prev => ({ ...prev, [index]: !prev[index] })); }}
                           >
                             <span className={item.tax ? "text-gray-900 font-medium" : "text-gray-400"}>
@@ -2073,14 +1617,9 @@ export default function NewVendorCredit() {
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 text-sm">
-                        <div className="flex items-center justify-end">
-                          <input
-                            type="text"
-                            value={parseFloat(String(item.amount || 0)).toFixed(2)}
-                            readOnly
-                            className="h-11 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none"
-                          />
+                      <td className="px-3 py-2 text-sm">
+                        <div className="text-right font-semibold text-gray-900 tabular-nums">
+                          {parseFloat(String(item.amount || 0)).toFixed(2)}
                         </div>
                       </td>
                       <td className="relative w-0 px-0 py-2.5 text-sm overflow-visible">
@@ -2164,7 +1703,7 @@ export default function NewVendorCredit() {
               </div>
 
               <div className="w-full max-w-[350px] flex-shrink-0 xl:ml-auto">
-                <div className="rounded-3xl border border-gray-200 bg-gray-50/80 px-5 py-5 shadow-[0_14px_30px_rgba(15,23,42,0.04)]">
+                <div style={styles.summaryBox}>
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="text-[14px] font-semibold text-gray-900">Sub Total</div>
@@ -2182,7 +1721,7 @@ export default function NewVendorCredit() {
                           type="text"
                           value={formData.discount}
                           onChange={(e) => setFormData({ ...formData, discount: parseFloat(e.target.value) || 0 })}
-                          className="h-10 w-24 rounded-l-lg border border-gray-200 bg-white px-3 text-right text-sm outline-none focus:border-teal-600"
+                          className="h-9 w-24 rounded-l-lg border border-gray-200 bg-white px-3 text-right text-sm outline-none focus:border-teal-600"
                           min="0"
                         />
                         <div className="relative">
@@ -2192,7 +1731,7 @@ export default function NewVendorCredit() {
                               e.stopPropagation();
                               setDiscountDropdownOpen(!discountDropdownOpen);
                             }}
-                            className="-ml-2 flex h-10 w-12 items-center justify-center gap-1 rounded-r-lg border border-l-0 border-gray-200 bg-gray-50 text-sm text-gray-600 hover:bg-gray-100"
+                            className="-ml-2 flex h-9 w-12 items-center justify-center gap-1 rounded-r-lg border border-l-0 border-gray-200 bg-gray-50 text-sm text-gray-600 hover:bg-gray-100"
                           >
                             {formData.discountType === "%" ? "%" : formData.currency}
                             <ChevronDown size={12} className="text-gray-400" />
@@ -2333,11 +1872,202 @@ export default function NewVendorCredit() {
         }}
         styles={styles}
       />
+
+      {/* Number Preferences Modal */}
+      {showNumberPreferencesModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.4)",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "flex-start",
+          paddingTop: "60px",
+          zIndex: 9999
+        }}>
+          <div style={{
+            backgroundColor: "white",
+            borderRadius: "8px",
+            width: "600px",
+            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden"
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "16px 24px",
+              borderBottom: "1px solid #e5e7eb"
+            }}>
+              <h2 style={{ fontSize: "16px", fontWeight: "500", color: "#156372", margin: 0 }}>Configure Vendor Credit Number Preferences</h2>
+              <X 
+                size={20} 
+                style={{ color: "#ef4444", cursor: "pointer" }} 
+                onClick={() => setShowNumberPreferencesModal(false)}
+              />
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: "24px" }}>
+              {/* Context Info */}
+              <div style={{ display: "flex", gap: "40px", marginBottom: "24px", paddingBottom: "24px", borderBottom: "1px solid #e5e7eb" }}>
+                <div>
+                  <div style={{ fontSize: "12px", color: "#111827", fontWeight: "600", marginBottom: "4px" }}>Location</div>
+                  <div style={{ fontSize: "13px", color: "#6b7280" }}>{formData.locationName || "Head Office"}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "12px", color: "#111827", fontWeight: "600", marginBottom: "4px" }}>Associated Series</div>
+                  <div style={{ fontSize: "13px", color: "#6b7280" }}>Default Transaction Series</div>
+                </div>
+              </div>
+
+              {/* Dynamic Text based on selection */}
+              <p style={{ fontSize: "13px", color: "#374151", marginBottom: "20px", lineHeight: "1.5" }}>
+                {numberingPreference === "auto" 
+                  ? "Your Vendor Credits numbers are set on auto-generate mode to save your time. Are you sure about changing this setting?"
+                  : "You have selected manual Vendor Credits numbering. Do you want us to auto-generate it for you?"}
+              </p>
+
+              {/* Radio 1: Auto */}
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", marginBottom: numberingPreference === "auto" ? "12px" : "0" }}>
+                  <input 
+                    type="radio" 
+                    checked={numberingPreference === "auto"}
+                    onChange={() => setNumberingPreference("auto")}
+                    style={{ cursor: "pointer", width: "16px", height: "16px", accentColor: "#3b82f6" }}
+                  />
+                  <span style={{ fontSize: "14px", color: "#111827" }}>Continue auto-generating Vendor Credits numbers</span>
+                  <Info size={14} style={{ color: "#9ca3af" }} />
+                </label>
+
+                {numberingPreference === "auto" && (
+                  <div style={{ marginLeft: "24px" }}>
+                    <div style={{ display: "flex", gap: "16px", marginBottom: "12px" }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: "block", fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>Prefix</label>
+                        <div style={{ position: "relative" }}>
+                          <input 
+                            type="text" 
+                            value={numberPrefix}
+                            onChange={(e) => setNumberPrefix(e.target.value)}
+                            style={{ 
+                              width: "100%", 
+                              padding: "8px 12px", 
+                              border: "1px solid #d1d5db", 
+                              borderRadius: "4px", 
+                              fontSize: "13px", 
+                              color: "#111827",
+                              boxSizing: "border-box"
+                            }} 
+                          />
+                          <Settings size={14} style={{ position: "absolute", right: "12px", top: "10px", color: "#3b82f6" }} />
+                        </div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: "block", fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>Next Number</label>
+                        <input 
+                          type="text" 
+                          value={nextNumber}
+                          onChange={(e) => setNextNumber(e.target.value)}
+                          style={{ 
+                            width: "100%", 
+                            padding: "8px 12px", 
+                            border: "1px solid #d1d5db", 
+                            borderRadius: "4px", 
+                            fontSize: "13px", 
+                            color: "#111827",
+                            boxSizing: "border-box"
+                          }} 
+                        />
+                      </div>
+                    </div>
+                    
+                    <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                      <input 
+                        type="checkbox"
+                        checked={restartYearly}
+                        onChange={(e) => setRestartYearly(e.target.checked)}
+                        style={{ cursor: "pointer", width: "14px", height: "14px", borderRadius: "3px" }}
+                      />
+                      <span style={{ fontSize: "13px", color: "#6b7280" }}>Restart numbering for vendor credits at the start of each fiscal year.</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {/* Radio 2: Manual */}
+              <div>
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                  <input 
+                    type="radio" 
+                    checked={numberingPreference === "manual"}
+                    onChange={() => setNumberingPreference("manual")}
+                    style={{ cursor: "pointer", width: "16px", height: "16px", accentColor: "#3b82f6" }}
+                  />
+                  <span style={{ fontSize: "14px", color: "#111827" }}>Enter Vendor Credits numbers manually</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ 
+              padding: "16px 24px", 
+              backgroundColor: "#f9fafb", 
+              borderTop: "1px solid #e5e7eb",
+              display: "flex",
+              gap: "12px"
+            }}>
+              <button 
+                onClick={() => {
+                  if (numberingPreference === "auto") {
+                    setFormData({ ...formData, creditNote: `${numberPrefix}${nextNumber}` });
+                  }
+                  setShowNumberPreferencesModal(false);
+                }}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#10b981",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  cursor: "pointer"
+                }}
+              >
+                Save
+              </button>
+              <button 
+                onClick={() => setShowNumberPreferencesModal(false)}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "white",
+                  color: "#374151",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  cursor: "pointer"
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
 
-const NewItemModal = ({ show, onClose, data, onChange, onSave, taxes, vendors, styles }: any) => {
+const NewItemModal = ({ show, onClose, data, onChange, onSave, styles }: any) => {
   if (!show) return null;
   return (
     <div style={{ position: "fixed" as any, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }} onClick={onClose}>

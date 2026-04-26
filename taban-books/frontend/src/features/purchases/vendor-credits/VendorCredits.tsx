@@ -1399,130 +1399,128 @@ export default function VendorCredits() {
             <RefreshCw className="animate-spin" size={32} style={{ margin: "0 auto 12px" }} />
             <p>Loading vendor credits...</p>
           </div>
-        ) : filteredCredits.length === 0 ? (
-          /* Premium Empty State (Image 3) */
+        ) : vendorCredits.length === 0 ? (
           <div style={styles.emptyStateContainer}>
             <div style={styles.emptyStateImageWrapper}>
-              <div style={{
-                width: "280px",
-                height: "160px",
-                background: "#fff",
-                borderRadius: "8px",
-                boxShadow: "0 10px 25px -5px rgba(0,0,0,0.05)",
-                display: "flex",
-                flexDirection: "column",
-                overflow: "hidden",
-                border: "1px solid #f1f5f9"
-              }}>
-                <div style={{ padding: "12px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: "8px" }}>
-                  <div style={{ width: "24px", height: "24px", borderRadius: "4px", backgroundColor: "#156372", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "12px", fontWeight: "bold" }}>Z</div>
-                  <div style={{ fontSize: "12px", fontWeight: "600", color: "#1e293b" }}>Zoho Books</div>
+              {/* Pattern Background */}
+              <div style={{ position: "absolute", inset: 0, opacity: 0.04, backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'24\' height=\'24\' viewBox=\'0 0 24 24\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M3 3h4v4H3V3zm8 0h4v4h-4V3zm8 0h4v4h-4V3zM3 11h4v4H3v-4zm8 0h4v4h-4v-4zm8 0h4v4h-4v-4zM3 19h4v4H3v-4zm8 0h4v4h-4v-4zm8 0h4v4h-4v-4z\' fill=\'%23000000\' fill-rule=\'evenodd\'/%3E%3C/svg%3E")', backgroundSize: '24px 24px', borderRadius: '12px' }} />
+              
+              <div style={{ display: "flex", alignItems: "center", gap: "16px", zIndex: 1 }}>
+                <div style={styles.playButtonCircle}>
+                  <Play fill="currentColor" size={22} style={{ marginLeft: "4px" }} />
                 </div>
-                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <div style={styles.playButtonCircle}>
-                    <Play size={20} fill="currentColor" />
+                <div style={{ textAlign: "left" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                    <div style={{ width: "22px", height: "22px", backgroundColor: "#007be5", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <span style={{ color: "#fff", fontSize: "13px", fontWeight: "bold" }}>B</span>
+                    </div>
+                    <span style={{ fontSize: "17px", fontWeight: "600", color: "#1e293b", letterSpacing: "-0.3px" }}>Zoho Books</span>
                   </div>
-                </div>
-                <div style={{ padding: "8px 12px", backgroundColor: "#f8fafc", fontSize: "11px", color: "#64748b", textAlign: "left" }}>
-                  How to create a vendor credit
+                  <span style={{ fontSize: "14px", color: "#64748b" }}>How to create a vendor credit</span>
                 </div>
               </div>
             </div>
-            
-            <h2 style={styles.emptyStateTitle}>You deserve some credit too.</h2>
+            <h3 style={styles.emptyStateTitle}>You deserve some credit too.</h3>
             <p style={styles.emptyStateText}>
               Create vendor credits and apply them to multiple bills when buying stuff from your vendor.
             </p>
-            
             <button 
               style={styles.primaryActionBtn}
               onClick={() => navigate("/purchases/vendor-credits/new")}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#0f4a55"}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#156372"}
             >
               CREATE VENDOR CREDITS
             </button>
-            
-            <button 
+            <button
               style={styles.secondaryLink}
               onClick={() => navigate("/purchases/vendor-credits/import")}
+              onMouseEnter={(e) => e.currentTarget.style.textDecoration = "underline"}
+              onMouseLeave={(e) => e.currentTarget.style.textDecoration = "none"}
             >
               Import Vendor Credits
             </button>
           </div>
         ) : (
-          /* High Density List (Image 1) */
-          <div style={styles.listContainer}>
-            {/* List Header/Bulk Actions Header if needed */}
-            <div style={{ 
-              display: "flex", 
-              padding: "12px 16px", 
-              backgroundColor: "#f8fafc", 
-              borderBottom: "1px solid #f1f5f9",
-              alignItems: "center",
-              gap: "12px"
-            }}>
-              <input 
-                type="checkbox" 
-                checked={selectedCredits.length === filteredCredits.length && filteredCredits.length > 0}
-                onChange={handleSelectAll}
-                style={{ width: "16px", height: "16px" }}
-              />
-              <span style={{ fontSize: "12px", fontWeight: "600", color: "#64748b", textTransform: "uppercase" }}>
-                Date & Vendor
-              </span>
-            </div>
-
-            {filteredCredits.map((credit: any) => {
-              const isSelected = selectedCredits.includes(credit.id || credit._id);
-              const status = (credit.status || "DRAFT").toUpperCase();
-              
-              return (
-                <div 
-                  key={credit.id || credit._id}
-                  style={{
-                    ...styles.listItem,
-                    backgroundColor: isSelected ? "#f1f5f9" : "#fff"
-                  }}
-                  onClick={() => {
-                    if (selectedCredits.length === 0) {
-                      navigate(`/purchases/vendor-credits/${credit.id || credit._id}`);
-                    }
-                  }}
-                >
-                  <div onClick={(e) => e.stopPropagation()} style={styles.listItemCheckbox}>
+          <div style={{ width: "100%", overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid #e5e7eb", backgroundColor: "#fff" }}>
+                  <th style={{ padding: "12px 16px", width: "40px" }}>
                     <input 
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={(e) => handleSelectItem(credit.id || credit._id, e)}
-                      style={{ width: "16px", height: "16px" }}
+                      type="checkbox" 
+                      checked={selectedCredits.length === filteredCredits.length && filteredCredits.length > 0}
+                      onChange={handleSelectAll}
+                      style={{ width: "14px", height: "14px", cursor: "pointer" }}
                     />
-                  </div>
-                  
-                  <div style={styles.listItemMain}>
-                    <div style={styles.listItemHeader}>
-                      <span style={styles.listItemVendor}>{credit.vendorName || "Unknown Vendor"}</span>
-                      <span style={styles.listItemAmount}>
-                        {formatCurrency(credit.amount, credit.currency)}
-                      </span>
-                    </div>
+                  </th>
+                  <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", color: "#6b7280", fontWeight: "600", textTransform: "uppercase" }}>DATE <ArrowUpDown size={12} style={{ display: "inline", marginLeft: "4px", verticalAlign: "middle", cursor: "pointer" }}/></th>
+                  <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", color: "#6b7280", fontWeight: "600", textTransform: "uppercase" }}>CREDIT NOTE#</th>
+                  <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", color: "#6b7280", fontWeight: "600", textTransform: "uppercase" }}>REFERENCE NUMBER</th>
+                  <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", color: "#6b7280", fontWeight: "600", textTransform: "uppercase" }}>VENDOR NAME</th>
+                  <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", color: "#6b7280", fontWeight: "600", textTransform: "uppercase" }}>STATUS</th>
+                  <th style={{ padding: "12px 16px", textAlign: "right", fontSize: "11px", color: "#6b7280", fontWeight: "600", textTransform: "uppercase" }}>AMOUNT</th>
+                  <th style={{ padding: "12px 16px", textAlign: "right", fontSize: "11px", color: "#6b7280", fontWeight: "600", textTransform: "uppercase" }}>BALANCE <Search size={12} style={{ display: "inline", marginLeft: "4px", verticalAlign: "middle", cursor: "pointer" }}/></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredCredits.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ padding: "40px 16px", textAlign: "center", fontSize: "13px", color: "#6b7280", borderBottom: "1px solid #e5e7eb" }}>
+                      No vendor credits found
+                    </td>
+                  </tr>
+                ) : (
+                  filteredCredits.map((credit: any) => {
+                    const isSelected = selectedCredits.includes(credit.id || credit._id);
+                    const status = (credit.status || "DRAFT").toUpperCase();
                     
-                    <div style={styles.listItemSubText}>
-                      <span>{credit.creditNote || credit.vendorCreditNumber || credit.id}</span>
-                      <span style={{ color: "#cbd5e1" }}>â€¢</span>
-                      <span>{formatDate(credit.date)}</span>
-                    </div>
-                    
-                    <div style={{
-                      ...styles.listItemStatus,
-                      color: status === "CLOSED" || status === "APPLIED" ? "#10b981" : 
-                             status === "OPEN" ? "#3b82f6" : 
-                             status === "VOID" ? "#ef4444" : "#64748b"
-                    }}>
-                      {status}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+                    return (
+                      <tr 
+                        key={credit.id || credit._id}
+                        style={{
+                          backgroundColor: isSelected ? "#f8fafc" : "#fff",
+                          borderBottom: "1px solid #f1f5f9",
+                          cursor: "pointer",
+                          transition: "background-color 0.2s"
+                        }}
+                        onClick={() => {
+                          if (selectedCredits.length === 0) {
+                            navigate(`/purchases/vendor-credits/${credit.id || credit._id}`);
+                          }
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) e.currentTarget.style.backgroundColor = "#f8fafc";
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelected) e.currentTarget.style.backgroundColor = "#fff";
+                        }}
+                      >
+                        <td onClick={(e) => e.stopPropagation()} style={{ padding: "12px 16px" }}>
+                          <input 
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => handleSelectItem(credit.id || credit._id, e)}
+                            style={{ width: "14px", height: "14px", cursor: "pointer" }}
+                          />
+                        </td>
+                        <td style={{ padding: "12px 16px", fontSize: "13px", color: "#374151" }}>{formatDate(credit.date)}</td>
+                        <td style={{ padding: "12px 16px", fontSize: "13px", color: "#3b82f6" }}>{credit.creditNote || credit.vendorCreditNumber || credit.id}</td>
+                        <td style={{ padding: "12px 16px", fontSize: "13px", color: "#374151" }}>{credit.referenceNumber || ""}</td>
+                        <td style={{ padding: "12px 16px", fontSize: "13px", color: "#374151" }}>{credit.vendorName || "Unknown Vendor"}</td>
+                        <td style={{ padding: "12px 16px", fontSize: "13px" }}>
+                          <span style={{ color: status === "CLOSED" || status === "APPLIED" ? "#10b981" : status === "OPEN" ? "#3b82f6" : status === "VOID" ? "#ef4444" : "#64748b" }}>
+                            {status}
+                          </span>
+                        </td>
+                        <td style={{ padding: "12px 16px", fontSize: "13px", color: "#374151", textAlign: "right" }}>{formatCurrency(credit.amount, credit.currency)}</td>
+                        <td style={{ padding: "12px 16px", fontSize: "13px", color: "#374151", textAlign: "right" }}>{formatCurrency(credit.balance || credit.amount, credit.currency)}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

@@ -1464,7 +1464,7 @@ export default function VendorCredits() {
       )}
 
       {/* Main Content */}
-      <div style={styles.tableContainer}>
+<div style={styles.tableContainer}>
         {vendorCredits.length === 0 && !isRefreshing ? (
           <div className="flex flex-col items-center justify-center py-10 px-4 text-center max-w-2xl mx-auto animate-in fade-in duration-700">
             <div className="mb-8 relative group cursor-pointer" onClick={() => console.log("Video tutorial clicked")}>
@@ -1677,7 +1677,7 @@ export default function VendorCredits() {
             </tbody>
           </table>
         </div>
-      )}
+)}
     </div>
 
       {/* New Custom View Modal */}
