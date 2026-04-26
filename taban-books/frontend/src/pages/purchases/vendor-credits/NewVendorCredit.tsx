@@ -650,9 +650,165 @@ export default function NewVendorCredit() {
     }
   };
 
+  const styles: Record<string, React.CSSProperties> = {
+    container: {
+      width: "100%",
+      backgroundColor: "#ffffff",
+      height: "100vh",
+      display: "flex",
+      flexDirection: "column" as any,
+      fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+    },
+    header: {
+      padding: "16px 24px",
+      borderBottom: "1px solid #e5e7eb",
+      backgroundColor: "#ffffff",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      flexShrink: 0,
+    },
+    headerTitle: {
+      fontSize: "18px",
+      fontWeight: "500",
+      color: "#111827",
+      margin: 0,
+    },
+    content: {
+      padding: "32px",
+      flex: 1,
+      overflowY: "auto" as any,
+      backgroundColor: "#ffffff",
+    },
+    formSection: {
+      maxWidth: "800px",
+      marginBottom: "32px",
+    },
+    fieldRow: {
+      display: "flex",
+      flexDirection: "row" as any,
+      alignItems: "flex-start",
+      gap: "24px",
+      marginBottom: "16px",
+      maxWidth: "800px",
+    },
+    label: {
+      width: "160px",
+      fontSize: "13px",
+      fontWeight: "400",
+      color: "#374151",
+      display: "flex",
+      alignItems: "center",
+      gap: "4px",
+      paddingTop: "10px",
+      flexShrink: 0,
+    },
+    requiredLabel: {
+      width: "160px",
+      fontSize: "13px",
+      fontWeight: "400",
+      color: "#dc2626",
+      display: "flex",
+      alignItems: "center",
+      gap: "4px",
+      paddingTop: "10px",
+      flexShrink: 0,
+    },
+    input: {
+      padding: "8px 12px",
+      fontSize: "13px",
+      border: "1px solid #d1d5db",
+      borderRadius: "4px",
+      width: "100%",
+      backgroundColor: "#ffffff",
+      outline: "none",
+      transition: "border-color 0.2s",
+      minHeight: "36px",
+    },
+    select: {
+      padding: "8px 12px",
+      fontSize: "14px",
+      border: "1px solid #d1d5db",
+      borderRadius: "4px",
+      width: "100%",
+      backgroundColor: "#ffffff",
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    textarea: {
+      padding: "8px 12px",
+      fontSize: "14px",
+      border: "1px solid #d1d5db",
+      borderRadius: "4px",
+      width: "100%",
+      minHeight: "40px",
+      resize: "vertical" as any,
+      outline: "none",
+    },
+    itemTable: {
+      marginTop: "32px",
+      border: "1px solid #e5e7eb",
+      borderRadius: "4px",
+      overflow: "visible",
+    },
+    footer: {
+      padding: "16px 24px",
+      borderTop: "1px solid #e5e7eb",
+      backgroundColor: "#ffffff",
+      display: "flex",
+      gap: "12px",
+      flexShrink: 0,
+    },
+    primaryButton: {
+      padding: "8px 16px",
+      backgroundColor: "#156372",
+      color: "#ffffff",
+      border: "none",
+      borderRadius: "4px",
+      fontSize: "14px",
+      fontWeight: "500",
+      cursor: "pointer",
+    },
+    secondaryButton: {
+      padding: "8px 16px",
+      backgroundColor: "#ffffff",
+      color: "#374151",
+      border: "1px solid #d1d5db",
+      borderRadius: "4px",
+      fontSize: "14px",
+      fontWeight: "500",
+      cursor: "pointer",
+    },
+    tabs: {
+      display: "flex",
+      gap: "32px",
+      borderBottom: "1px solid #e5e7eb",
+      marginBottom: "24px",
+    },
+    tab: {
+      padding: "8px 0",
+      fontSize: "13px",
+      color: "#6b7280",
+      cursor: "pointer",
+      borderBottom: "2px solid transparent",
+      background: "none",
+      border: "none",
+    },
+    tabActive: {
+      color: "#156372",
+      borderBottom: "2px solid #156372",
+      fontWeight: "500",
+    },
+  };
+
   const formatDate = (dateString: string | Date | null | undefined) => {
     if (!dateString) return "";
     const date = new Date(dateString);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
     return `${day}/${month}/${year}`;
   };
 
@@ -672,13 +828,13 @@ export default function NewVendorCredit() {
         {/* Header */}
         <div style={styles.header}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <Briefcase size={20} style={{ color: "#374151" }} />
+            <Briefcase size={20} style={ { color: "#374151" } } />
             <h1 style={styles.headerTitle}>{isEdit ? "Edit Vendor Credit" : "New Vendor Credits"}</h1>
           </div>
           <button
             type="button"
             onClick={() => navigate("/purchases/vendor-credits")}
-            style={{ background: "none", border: "none", cursor: "pointer", color: "#6b7280" }}
+            style={ { background: "none", border: "none", cursor: "pointer", color: "#6b7280" } }
           >
             <X size={20} />
           </button>
@@ -689,16 +845,12 @@ export default function NewVendorCredit() {
             {/* Vendor Name */}
             <div style={styles.fieldRow}>
               <label style={styles.requiredLabel}>Vendor Name*</label>
-              <div style={{ display: "flex", gap: "0px", position: "relative" as any, flex: 1, maxWidth: "450px" }}>
+              <div style={ { display: "flex", gap: "0px", position: "relative" as any, flex: 1, maxWidth: "450px" } }>
                 <div
-                  style={{
+                  style={ {
                     ...styles.input,
                     display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    cursor: "pointer",
-                    backgroundColor: "#fff",
-                    borderColor: vendorDropdownOpen ? "#2563eb" : "#d1d5db",
+borderColor: vendorDropdownOpen ? "#2563eb" : "#d1d5db",
                     borderTopRightRadius: 0,
                     borderBottomRightRadius: 0,
                     flex: 1,
