@@ -89,7 +89,7 @@ export default function Login() {
     } catch (err: any) {
       let errorMessage = err.message || "Login failed. Please check your credentials.";
       if (errorMessage.includes('Backend server is not running') || errorMessage.includes('Cannot connect')) {
-        errorMessage = "Cannot connect to backend server. Please ensure the server is running on port 5000.";
+        errorMessage = "Cannot connect to backend server. Please ensure the server is running on port 5001.";
       }
       setError(errorMessage);
     } finally {
