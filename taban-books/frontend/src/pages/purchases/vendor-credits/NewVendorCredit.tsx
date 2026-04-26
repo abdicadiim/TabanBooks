@@ -104,6 +104,13 @@ export default function NewVendorCredit() {
   const [showAdditionalFields, setShowAdditionalFields] = useState(true);
   const [showBanner, setShowBanner] = useState(true);
   const [showNewVendorModal, setShowNewVendorModal] = useState(false);
+  const [showNumberSettings, setShowNumberSettings] = useState(false);
+  const [numberingSettings, setNumberingSettings] = useState({
+    mode: 'auto',
+    prefix: 'DN-',
+    nextNumber: '00001',
+    restartFiscalYear: false
+  });
   const [taxExclusiveSearch, setTaxExclusiveSearch] = useState("");
   const [taxLevelSearch, setTaxLevelSearch] = useState("");
   const [rowMenuOpen, setRowMenuOpen] = useState<{ [key: string]: boolean }>({});
@@ -872,26 +879,38 @@ export default function NewVendorCredit() {
       backgroundColor: "#ffffff",
     },
     formSection: {
-      maxWidth: "1000px",
+      maxWidth: "800px",
       marginBottom: "32px",
     },
     fieldRow: {
       display: "flex",
-      flexDirection: "column" as any,
-      gap: "8px",
-      marginBottom: "20px",
-      maxWidth: "500px",
+      flexDirection: "row" as any,
+      alignItems: "flex-start",
+      gap: "24px",
+      marginBottom: "16px",
+      maxWidth: "800px",
     },
     label: {
+      width: "160px",
       fontSize: "13px",
       fontWeight: "400",
-      color: "#6b7280",
+      color: "#374151",
       display: "flex",
       alignItems: "center",
       gap: "4px",
+      paddingTop: "10px",
+      flexShrink: 0,
     },
-    required: {
-      color: "#156372",
+    requiredLabel: {
+      width: "160px",
+      fontSize: "13px",
+      fontWeight: "400",
+      color: "#dc2626",
+      display: "flex",
+      alignItems: "center",
+      gap: "4px",
+      paddingTop: "10px",
+      flexShrink: 0,
     },
     input: {
       padding: "8px 12px",
@@ -1168,165 +1187,39 @@ export default function NewVendorCredit() {
           <div style={styles.formSection}>
             {/* Vendor Name */}
             <div style={styles.fieldRow}>
-              <label style={{ ...styles.label, color: "#156372" }}>Vendor Name*</label>
-              <div style={{ display: "flex", gap: "8px", position: "relative" as any }}>
-                <div style={{ display: "flex", gap: "8px", position: "relative" as any, flex: 1 }}>
-                  <div
-                    style={{
-                      ...styles.input,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      cursor: "pointer",
-                      backgroundColor: "#fff",
-                      borderColor: vendorDropdownOpen ? "#156372" : "#d1d5db",
-                      boxShadow: vendorDropdownOpen ? "0 0 0 2px rgba(37, 99, 235, 0.1)" : "none"
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setVendorDropdownOpen(!vendorDropdownOpen);
-                    }}
-                  >
-                    <span style={{ color: formData.vendorName ? "#111827" : "#9ca3af" }}>
-                      {formData.vendorName || "Select a Vendor"}
-                    </span>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <ChevronDown size={16} style={{ color: "#6b7280", transform: vendorDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
-                      <div style={{
-                        backgroundColor: "#156372",
-                        padding: "6px",
-                        borderRadius: "4px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center"
-                      }}>
-                        <Search size={14} style={{ color: "#fff" }} />
-                      </div>
-                    </div>
-                  </div>
-
-                  {vendorDropdownOpen && (
-                    <div style={{
-                      position: "absolute",
-                      top: "100%",
-                      left: 0,
-                      right: 0,
-                      zIndex: 1000,
-                      background: "white",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: "8px",
-                      marginTop: "4px",
-                      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
-                      maxHeight: "400px",
-                      display: "flex",
-                      flexDirection: "column" as any,
-                      overflow: "hidden"
-                    }}>
-                      <div style={{ padding: "12px", borderBottom: "1px solid #f3f4f6" }}>
-                        <div style={{ position: "relative" as any }}>
-                          <Search size={14} style={{ position: "absolute" as any, left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
-                          <input
-                            style={{
-                              width: "100%",
-                              padding: "8px 8px 8px 32px",
-                              border: "1px solid #e5e7eb",
-                              borderRadius: "6px",
-                              fontSize: "13px",
-                              outline: "none"
-                            }}
-                            placeholder="Search"
-                            value={vendorSearch}
-                            onChange={(e) => setVendorSearch(e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
-                            autoFocus
-                          />
-                        </div>
-                      </div>
-
-                      <div style={{ overflowY: "auto" as any, flex: 1 }}>
-                        {vendors
-                          .filter(v =>
-                            (v.name?.toLowerCase().includes(vendorSearch.toLowerCase())) ||
-                            (v.email?.toLowerCase().includes(vendorSearch.toLowerCase())) ||
-                            (v.displayName?.toLowerCase().includes(vendorSearch.toLowerCase()))
-                          )
-                          .map(vendor => (
-                            <div
-                              key={vendor.id}
-                              style={{
-                                padding: "10px 12px",
-                                cursor: "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "12px",
-                                backgroundColor: formData.vendorName === (vendor.displayName || vendor.name) ? "#eff6ff" : "white",
-                                borderBottom: "1px solid #f9fafb"
-                              }}
-                              onClick={() => handleVendorSelect(vendor)}
-                              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = formData.vendorName === (vendor.displayName || vendor.name) ? "#eff6ff" : "#f9fafb")}
-                              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = formData.vendorName === (vendor.displayName || vendor.name) ? "#eff6ff" : "white")}
-                            >
-                              <div style={{
-                                width: "32px",
-                                height: "32px",
-                                borderRadius: "50%",
-                                backgroundColor: "#f3f4f6",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                fontSize: "12px",
-                                fontWeight: "600",
-                                color: "#6b7280"
-                              }}>
-                                {(vendor.displayName || vendor.name || "V")[0].toUpperCase()}
-                              </div>
-                              <div style={{ display: "flex", flexDirection: "column" as any }}>
-                                <span style={{ fontSize: "13px", fontWeight: "500", color: "#1f2937" }}>
-                                  {vendor.displayName || vendor.name}
-                                </span>
-                                {vendor.email && (
-                                  <span style={{ fontSize: "11px", color: "#6b7280", display: "flex", alignItems: "center", gap: "4px" }}>
-                                    <FileText size={10} /> {vendor.email} | <Copy size={10} /> {vendor.displayName || vendor.name}
-                                  </span>
-                                )}
-                              </div>
-                              {formData.vendorName === (vendor.displayName || vendor.name) && (
-                                <Check size={14} style={{ marginLeft: "auto", color: "#156372" }} />
-                              )}
-                            </div>
-                          ))}
-                      </div>
-
-                      <div
-                        style={{
-                          padding: "12px",
-                          borderTop: "1px solid #f3f4f6",
-                          color: "#156372",
-                          fontSize: "13px",
-                          fontWeight: "500",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          cursor: "pointer",
-                          backgroundColor: "#fff"
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowNewVendorModal(true);
-                          setVendorDropdownOpen(false);
-                        }}
-                      >
-                        <PlusCircle size={16} /> New Vendor
-                      </div>
-                    </div>
-                  )}
+              <label style={styles.requiredLabel}>Vendor Name*</label>
+              <div style={{ display: "flex", gap: "0px", position: "relative" as any, flex: 1, maxWidth: "450px" }}>
+                <div
+                  style={{
+                    ...styles.input,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    cursor: "pointer",
+                    backgroundColor: "#fff",
+                    borderColor: vendorDropdownOpen ? "#2563eb" : "#d1d5db",
+                    borderTopRightRadius: 0,
+                    borderBottomRightRadius: 0,
+                    flex: 1
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setVendorDropdownOpen(!vendorDropdownOpen);
+                  }}
+                >
+                  <span style={{ color: formData.vendorName ? "#111827" : "#9ca3af" }}>
+                    {formData.vendorName || "Select a Vendor"}
+                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>{formData.vendorName && (<X size={14} style={{ color: "#ef4444", cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, vendorName: "", vendorId: "" }); }} />)}<ChevronDown size={16} style={{ color: "#6b7280", transform: vendorDropdownOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></div>
                 </div>
+
                 <button
                   type="button"
                   style={{
-                    padding: "8px",
-                    borderRadius: "4px",
-                    backgroundColor: "#156372",
+                    padding: "8px 12px",
+                    borderTopRightRadius: "4px",
+                    borderBottomRightRadius: "4px",
+                    backgroundColor: "#22c55e",
                     border: "none",
                     display: "flex",
                     alignItems: "center",
@@ -1336,64 +1229,108 @@ export default function NewVendorCredit() {
                 >
                   <Search size={16} color="#fff" />
                 </button>
+
+                {vendorDropdownOpen && (
+                  <div style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    right: 0,
+                    zIndex: 1000,
+                    background: "white",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
+                    marginTop: "4px",
+                    boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                    maxHeight: "400px",
+                    display: "flex",
+                    flexDirection: "column" as any,
+                    overflow: "hidden"
+                  }}>
+                    <div style={{ padding: "12px", borderBottom: "1px solid #f3f4f6" }}>
+                      <div style={{ position: "relative" as any }}>
+                        <Search size={14} style={{ position: "absolute" as any, left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
+                        <input
+                          style={{
+                            width: "100%",
+                            padding: "8px 8px 8px 32px",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: "6px",
+                            fontSize: "13px",
+                            outline: "none"
+                          }}
+                          placeholder="Search"
+                          value={vendorSearch}
+                          onChange={(e) => setVendorSearch(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ overflowY: "auto" as any, flex: 1 }}>
+                      {vendors
+                        .filter(v =>
+                          (v.name?.toLowerCase().includes(vendorSearch.toLowerCase())) ||
+                          (v.email?.toLowerCase().includes(vendorSearch.toLowerCase())) ||
+                          (v.displayName?.toLowerCase().includes(vendorSearch.toLowerCase()))
+                        )
+                        .map(vendor => (
+                          <div
+                            key={vendor.id}
+                            style={{
+                              padding: "10px 12px",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "12px",
+                              backgroundColor: formData.vendorName === (vendor.displayName || vendor.name) ? "#eff6ff" : "white",
+                              borderBottom: "1px solid #f9fafb"
+                            }}
+                            onClick={() => handleVendorSelect(vendor)}
+                          >
+                            <div style={{ display: "flex", flexDirection: "column" as any }}>
+                              <span style={{ fontSize: "13px", fontWeight: "500", color: "#1f2937" }}>
+                                {vendor.displayName || vendor.name}
+                              </span>
+                            </div>
+                            {formData.vendorName === (vendor.displayName || vendor.name) && (
+                              <Check size={14} style={{ marginLeft: "auto", color: "#2563eb" }} />
+                            )}
+                          </div>
+                        ))}
+                    </div>
+
+                    <div
+                      style={{
+                        padding: "12px",
+                        borderTop: "1px solid #f3f4f6",
+                        color: "#2563eb",
+                        fontSize: "13px",
+                        fontWeight: "500",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        cursor: "pointer",
+                        backgroundColor: "#fff"
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowNewVendorModal(true);
+                        setVendorDropdownOpen(false);
+                      }}
+                    >
+                      <PlusCircle size={16} /> New Vendor
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Credit Note# */}
+            {/* Location */}
             <div style={styles.fieldRow}>
-              <label style={{ ...styles.label, color: "#156372" }}>Credit Note#*</label>
-              <div style={{ display: "flex", alignItems: "center", position: "relative" as any }}>
-                <input
-                  type="text"
-                  style={styles.input}
-                  value={formData.creditNote}
-                  onChange={(e) => setFormData({ ...formData, creditNote: e.target.value })}
-                />
-                <Settings size={14} style={{ position: "absolute" as any, right: "12px", color: "#156372", cursor: "pointer" }} />
-              </div>
-            </div>
-
-            {/* Order Number */}
-            <div style={styles.fieldRow}>
-              <label style={styles.label}>Order Number</label>
-              <input
-                type="text"
-                style={styles.input}
-                value={formData.orderNumber}
-                onChange={(e) => setFormData({ ...formData, orderNumber: e.target.value })}
-              />
-            </div>
-
-            {/* Vendor Credit Date */}
-            <div style={styles.fieldRow}>
-              <label style={styles.label}>Vendor Credit Date</label>
-              <input
-                type="date"
-                style={styles.input}
-                value={formData.vendorCreditDate}
-                onChange={(e) => setFormData({ ...formData, vendorCreditDate: e.target.value })}
-              />
-            </div>
-
-            {/* Subject */}
-            <div style={styles.fieldRow}>
-              <label style={styles.label}>
-                Subject <Info size={14} style={{ color: "#9ca3af" }} />
-              </label>
-              <textarea
-                style={{ ...styles.textarea, minHeight: "36px" }}
-                value={formData.subject}
-                onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                placeholder="Enter a subject within 250 characters"
-              />
-            </div>
-
-            {/* Accounts Payable */}
-            <div style={styles.fieldRow}>
-              <label style={styles.label}>
-                Accounts Payable <Info size={14} style={{ color: "#9ca3af" }} />
-              </label>
-              <div style={{ flex: 1, position: "relative" as any }}>
+              <label style={styles.label}>Location</label>
+              <div style={{ flex: 1, maxWidth: "350px" }}>
                 <div
                   style={{
                     ...styles.input,
@@ -1401,7 +1338,103 @@ export default function NewVendorCredit() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     cursor: "pointer",
-                    backgroundColor: "#fff"
+                    backgroundColor: "#fff",
+                  }}
+                >
+                  <span style={{ fontSize: "14px", color: "#374151" }}>Head Office</span>
+                  <ChevronDown size={16} style={{ color: "#6b7280" }} />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ borderTop: "1px solid #f3f4f6", margin: "24px 0", maxWidth: "800px" }}></div>
+
+            {/* Credit Note# */}
+            <div style={styles.fieldRow}>
+              <label style={styles.requiredLabel}>Credit Note#*</label>
+              <div style={{ display: "flex", alignItems: "center", position: "relative" as any, flex: 1, maxWidth: "350px" }}>
+                <input
+                  type="text"
+                  style={{ ...styles.input, paddingRight: "40px" }}
+                  value={formData.creditNote}
+                  onChange={(e) => setFormData({ ...formData, creditNote: e.target.value })}
+                />
+                <div 
+                  onClick={() => setShowNumberSettings(true)}
+                  style={{
+                    position: "absolute" as any,
+                    right: "12px",
+                    color: "#2563eb",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "4px",
+                    padding: "4px"
+                  }}>
+                  <Settings size={14} />
+                </div>
+              </div>
+            </div>
+
+            {/* Order Number */}
+            <div style={styles.fieldRow}>
+              <label style={styles.label}>Order Number</label>
+              <div style={{ flex: 1, maxWidth: "350px" }}>
+                <input
+                  type="text"
+                  style={styles.input}
+                  value={formData.orderNumber}
+                  onChange={(e) => setFormData({ ...formData, orderNumber: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {/* Vendor Credit Date */}
+            <div style={styles.fieldRow}>
+              <label style={styles.label}>Vendor Credit Date</label>
+              <div style={{ flex: 1, maxWidth: "350px" }}>
+                <input
+                  type="date"
+                  style={styles.input}
+                  value={formData.vendorCreditDate}
+                  onChange={(e) => setFormData({ ...formData, vendorCreditDate: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div style={{ height: "24px" }}></div>
+
+            {/* Description */}
+            <div style={styles.fieldRow}>
+              <label style={styles.label}>
+                Description <Info size={14} style={{ color: "#9ca3af" }} />
+              </label>
+              <div style={{ flex: 1, maxWidth: "350px" }}>
+                <textarea
+                  style={{ ...styles.textarea, minHeight: "40px" }}
+                  value={formData.subject}
+                  onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+                  placeholder="Enter a description within 250 characters"
+                />
+              </div>
+            </div>
+
+            {/* Accounts Payable */}
+            <div style={styles.fieldRow}>
+              <label style={styles.label}>
+                Accounts Payable <Info size={14} style={{ color: "#9ca3af" }} />
+              </label>
+              <div style={{ flex: 1, maxWidth: "350px", position: "relative" as any }}>
+                <div
+                  style={{
+                    ...styles.input,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    cursor: "pointer",
+                    backgroundColor: "#fff",
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1409,7 +1442,7 @@ export default function NewVendorCredit() {
                   }}
                 >
                   <span style={{ fontSize: "14px", color: formData.accountsPayable ? "#374151" : "#9ca3af" }}>
-                    {formData.accountsPayable || "Select Accounts Payable"}
+                    {formData.accountsPayable || "Accounts Payable"}
                   </span>
                   <ChevronDown size={16} style={{ color: "#6b7280" }} />
                 </div>
@@ -2403,6 +2436,163 @@ const BulkItemsModal = ({ show, onClose, items, selectedItems, onToggleSelect, o
         <div style={{ padding: "20px 24px", borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "flex-end", gap: "12px" }}>
           <button onClick={onClose} style={styles.secondaryButton}>Cancel</button>
           <button onClick={onAdd} style={styles.primaryButton} disabled={selectedItems.length === 0}>Add Items</button>
+        </div>
+      </div>
+      <NumberSettingsModal 
+        show={showNumberSettings} 
+        onClose={() => setShowNumberSettings(false)} 
+        settings={numberingSettings}
+        onSave={(newSettings: any) => {
+          setNumberingSettings(newSettings);
+          if (newSettings.mode === 'auto') {
+            setFormData({ ...formData, creditNote: `${newSettings.prefix}${newSettings.nextNumber}` });
+          }
+          setShowNumberSettings(false);
+        }}
+        styles={styles}
+      />
+    </div>
+  );
+};
+
+const NumberSettingsModal = ({ show, onClose, settings, onSave, styles }: any) => {
+  const [localSettings, setLocalSettings] = useState(settings);
+
+  useEffect(() => {
+    setLocalSettings(settings);
+  }, [settings, show]);
+
+  if (!show) return null;
+
+  return (
+    <div style={{ position: "fixed" as any, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0, 0, 0, 0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }} onClick={onClose}>
+      <div style={{ backgroundColor: "#ffffff", borderRadius: "12px", width: "100%", maxWidth: "600px", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ padding: "20px 24px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fff" }}>
+          <h2 style={{ fontSize: "18px", fontWeight: "600", color: "#1f2937", margin: 0 }}>Configure Vendor Credit Number Preferences</h2>
+          <button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer", color: "#ef4444", padding: "4px", borderRadius: "4px" }}><X size={20} /></button>
+        </div>
+        
+        <div style={{ padding: "28px 24px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px", marginBottom: "32px" }}>
+            <div>
+              <div style={{ fontSize: "12px", color: "#6b7280", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Location</div>
+              <div style={{ fontSize: "15px", color: "#111827", fontWeight: "500" }}>Head Office</div>
+            </div>
+            <div>
+              <div style={{ fontSize: "12px", color: "#6b7280", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Associated Series</div>
+              <div style={{ fontSize: "15px", color: "#111827", fontWeight: "500" }}>Default Transaction Series</div>
+            </div>
+          </div>
+
+          <div style={{ padding: "14px 18px", backgroundColor: "#fef2f2", border: "1px solid #fee2e2", borderRadius: "8px", marginBottom: "32px", fontSize: "14px", lineHeight: "1.5", color: "#991b1b" }}>
+            {localSettings.mode === 'auto' ? 
+              "Your Vendor Credits numbers are set on auto-generate mode to save your time. Are you sure about changing this setting?" :
+              "You have selected manual Vendor Credits numbering. Do you want us to auto-generate it for you?"
+            }
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column" as any, gap: "24px" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", cursor: "pointer" }} onClick={() => setLocalSettings({ ...localSettings, mode: 'auto' })}>
+              <div style={{ 
+                width: "20px", 
+                height: "20px", 
+                borderRadius: "50%", 
+                border: localSettings.mode === 'auto' ? "6px solid #3b82f6" : "2px solid #d1d5db",
+                backgroundColor: "#fff",
+                marginTop: "2px",
+                flexShrink: 0,
+                transition: "all 0.2s"
+              }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "15px", fontWeight: "600", color: "#111827", display: "flex", alignItems: "center", gap: "8px" }}>
+                  Continue auto-generating Vendor Credits numbers
+                  <Info size={14} style={{ color: "#9ca3af", cursor: "help" }} />
+                </div>
+                
+                {localSettings.mode === 'auto' && (
+                  <div style={{ marginTop: "20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                    <div>
+                      <label style={{ fontSize: "13px", fontWeight: "500", color: "#4b5563", marginBottom: "8px", display: "block" }}>Prefix</label>
+                      <input 
+                        style={{ ...styles.input, padding: "10px 12px", width: "100%", fontSize: "14px" }} 
+                        value={localSettings.prefix} 
+                        onChange={(e) => setLocalSettings({ ...localSettings, prefix: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "13px", fontWeight: "500", color: "#4b5563", marginBottom: "8px", display: "block" }}>Next Number</label>
+                      <input 
+                        style={{ ...styles.input, padding: "10px 12px", width: "100%", fontSize: "14px" }} 
+                        value={localSettings.nextNumber} 
+                        onChange={(e) => setLocalSettings({ ...localSettings, nextNumber: e.target.value })}
+                      />
+                    </div>
+                    <div style={{ gridColumn: "span 2" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "14px", color: "#4b5563" }}>
+                        <input 
+                          type="checkbox" 
+                          checked={localSettings.restartFiscalYear} 
+                          onChange={(e) => setLocalSettings({ ...localSettings, restartFiscalYear: e.target.checked })}
+                          style={{ width: "16px", height: "16px", borderRadius: "4px" }}
+                        />
+                        Restart numbering for vendor credits at the start of each fiscal year.
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", cursor: "pointer" }} onClick={() => setLocalSettings({ ...localSettings, mode: 'manual' })}>
+              <div style={{ 
+                width: "20px", 
+                height: "20px", 
+                borderRadius: "50%", 
+                border: localSettings.mode === 'manual' ? "6px solid #3b82f6" : "2px solid #d1d5db",
+                backgroundColor: "#fff",
+                flexShrink: 0,
+                transition: "all 0.2s"
+              }} />
+              <div style={{ fontSize: "15px", fontWeight: "600", color: "#111827" }}>
+                Enter Vendor Credits numbers manually
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ padding: "20px 24px", borderTop: "1px solid #f3f4f6", display: "flex", gap: "12px", backgroundColor: "#fff" }}>
+          <button 
+            style={{ 
+              ...styles.primaryButton, 
+              padding: "10px 24px", 
+              backgroundColor: "#10b981", 
+              fontSize: "14px", 
+              fontWeight: "600",
+              border: "none",
+              borderRadius: "6px",
+              color: "#fff",
+              cursor: "pointer"
+            }} 
+            onClick={() => onSave(localSettings)}
+          >
+            Save
+          </button>
+          <button 
+            style={{ 
+              ...styles.secondaryButton, 
+              padding: "10px 24px", 
+              fontSize: "14px", 
+              fontWeight: "600",
+              backgroundColor: "#f3f4f6",
+              border: "1px solid #e5e7eb",
+              borderRadius: "6px",
+              color: "#4b5563",
+              cursor: "pointer"
+            }} 
+            onClick={onClose}
+          >
+            Cancel
+          </button>
         </div>
       </div>
     </div>

@@ -1476,7 +1476,7 @@ export default function VendorCredits() {
                 />
                 <div className="absolute inset-0 bg-black/5 group-hover:bg-transparent transition-colors" />
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-14 h-14 bg-[#22c55e] rounded-full flex items-center justify-center text-white shadow-[0_0_20px_rgba(34,197,94,0.3)] transition-all group-hover:scale-110 group-hover:rotate-6">
+                  <div className="w-14 h-14 bg-[#156372] rounded-full flex items-center justify-center text-white shadow-[0_0_20px_rgba(21,99,114,0.3)] transition-all group-hover:scale-110 group-hover:rotate-6">
                     <Play size={24} fill="white" className="ml-1" />
                   </div>
                 </div>
@@ -1489,7 +1489,7 @@ export default function VendorCredits() {
                   </div>
                 </div>
               </div>
-              <div className="absolute -z-10 -bottom-4 -right-4 w-24 h-24 bg-green-50 rounded-full blur-2xl opacity-50" />
+              <div className="absolute -z-10 -bottom-4 -right-4 w-24 h-24 bg-teal-50 rounded-full blur-2xl opacity-50" />
               <div className="absolute -z-10 -top-4 -left-4 w-24 h-24 bg-blue-50 rounded-full blur-2xl opacity-50" />
             </div>
 
@@ -1501,13 +1501,13 @@ export default function VendorCredits() {
             <div className="flex flex-col items-center gap-4">
               <button
                 onClick={() => navigate("/purchases/vendor-credits/new")}
-                className="bg-[#22c55e] hover:bg-[#16a34a] text-white font-bold py-2.5 px-6 rounded-lg uppercase text-[12px] tracking-widest shadow-lg shadow-green-500/10 transform transition-all active:scale-95"
+                className="bg-[#156372] hover:bg-[#0D4A52] text-white font-bold py-2.5 px-6 rounded-lg uppercase text-[12px] tracking-widest shadow-lg shadow-[#156372]/10 transform transition-all active:scale-95"
               >
                 Create Vendor Credits
               </button>
               <button
                 onClick={() => navigate("/purchases/vendor-credits/import")}
-                className="text-[#3b82f6] hover:text-[#2563eb] text-[13px] font-medium"
+                className="text-[#156372] hover:text-[#0D4A52] text-[13px] font-medium"
               >
                 Import Vendor Credits
               </button>

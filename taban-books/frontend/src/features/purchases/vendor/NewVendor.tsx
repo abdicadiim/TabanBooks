@@ -7,6 +7,7 @@ import { useCurrency } from "../../../hooks/useCurrency";
 import NewCurrencyModal from "../../settings/organization-settings/setup-configurations/currencies/NewCurrencyModal";
 
 import {
+  Check,
   ChevronDown,
   X,
   Info,
@@ -756,18 +757,13 @@ export default function NewVendor() {
       [name]: isCheckbox ? (e.target as HTMLInputElement).checked : value,
     };
 
-    // Auto-generate display name options when contact/company fields change
     if (name === "salutation" || name === "firstName" || name === "lastName" || name === "companyName") {
-      const options = generateDisplayNameOptions(updatedData);
-      // Keep the list/detail name in sync with the edited contact/company fields
-      // unless the user explicitly picked a custom display name.
-      if (!hasManualDisplayNameSelection || !updatedData.displayName || options.includes(updatedData.displayName)) {
-        updatedData.displayName = options[0] || "";
-      }
+      setIsDisplayNameDropdownOpen(true);
     }
 
     if (name === "displayName") {
       setHasManualDisplayNameSelection(true);
+      setIsDisplayNameDropdownOpen(true);
     }
 
     setFormData(updatedData);
@@ -795,6 +791,7 @@ export default function NewVendor() {
     const salutationFirstName = [title, first].filter(Boolean).join(" ").trim();
     const salutationLastName = [title, last].filter(Boolean).join(" ").trim();
 
+    pushOption(title);
     pushOption(fullContactName);
     pushOption(firstLastName);
     pushOption(lastFirstName);
@@ -1732,26 +1729,31 @@ export default function NewVendor() {
                 <label htmlFor="displayName" className="w-[180px] shrink-0 pt-1.5 flex items-center gap-1 text-sm/6 font-medium text-red-600">
                   Display Name <span className="text-red-500">*</span> <HelpTooltip text="This name will be displayed on all the transactions you create for this Vendor."><Info size={14} className="text-gray-400" /></HelpTooltip>
                 </label>
-                <div className="w-full max-w-[390px]">
+                <div className="w-full max-w-[390px] min-w-0">
                   <div className="relative" ref={displayNameDropdownRef}>
                     <input
                       id="displayName"
                       name="displayName"
+                      type="text"
                       value={formData.displayName}
                       onChange={handleChange}
+                      onClick={() => setIsDisplayNameDropdownOpen(true)}
                       onFocus={() => setIsDisplayNameDropdownOpen(true)}
                       placeholder="Select or type to add"
-                      className={`w-full rounded-md bg-white py-1.5 pl-3 pr-8 text-base text-gray-900 transition-all duration-200 ease-out hover:shadow-sm focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6 ${fieldErrors.displayName ? "border border-red-400 focus:border-red-500" : "border border-gray-300 hover:border-[#156372]/40 focus:border-[#156372]"}`}
+                      aria-haspopup="listbox"
+                      aria-expanded={isDisplayNameDropdownOpen}
+                      className={`block w-full box-border rounded-md bg-white py-1.5 pl-3 pr-9 text-base text-gray-900 transition-all duration-200 ease-out hover:shadow-sm focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6 ${fieldErrors.displayName ? "border border-red-400 focus:border-red-500" : "border border-gray-300 hover:border-[#156372]/40 focus:border-[#156372]"}`}
                     />
                     <button
                       type="button"
+                      tabIndex={-1}
                       onClick={() => setIsDisplayNameDropdownOpen((prev) => !prev)}
                       className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
                     >
                       <ChevronDown size={16} className={`transition-transform ${isDisplayNameDropdownOpen ? "rotate-180" : ""}`} />
                     </button>
                     {isDisplayNameDropdownOpen && displayNameOptions.length > 0 && (
-                      <div className="absolute left-0 top-full z-50 mt-2 w-full overflow-hidden rounded-md border border-gray-300 bg-white shadow-xl">
+                      <div className="absolute left-0 right-0 top-full z-50 mt-1 box-border overflow-hidden rounded-md border border-[#e4e8f0] bg-white shadow-[0_10px_24px_rgba(15,23,42,0.12)]">
                         <div className="max-h-56 overflow-y-auto py-1">
                           {displayNameOptions.map((option) => {
                             const isSelected = String(formData.displayName || "").trim() === option;
@@ -1764,12 +1766,12 @@ export default function NewVendor() {
                                   setHasManualDisplayNameSelection(true);
                                   setIsDisplayNameDropdownOpen(false);
                                 }}
-                                className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${
-                                  isSelected ? "bg-gray-100 text-gray-900" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                                className={`flex w-full items-center justify-between px-3 py-2.5 text-left text-sm ${
+                                  isSelected ? "bg-[#eef2ff] text-gray-900" : "text-gray-900 hover:bg-[#f8fafc]"
                                 }`}
                               >
                                 <span className="truncate">{option}</span>
-                                {isSelected && <ChevronDown size={14} className="rotate-180 text-gray-600" />}
+                                {isSelected && <Check size={14} className="shrink-0 text-[#3b82f6]" />}
                               </button>
                             );
                           })}

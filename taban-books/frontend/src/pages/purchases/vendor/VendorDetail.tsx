@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { getBills, getPaymentsMade, getVendorCredits, getExpenses, getPurchaseOrders, getRecurringBills, getRecurringExpenses, getJournals, getProjects, getPurchaseReceipts } from "../shared/purchasesModel";
@@ -56,6 +57,18 @@ const currencies = [
   { code: "SEK", name: "Swedish Krona" },
   { code: "NOK", name: "Norwegian Krone" },
   { code: "DKK", name: "Danish Krone" }
+];
+
+const expenseDateRangeOptions = [
+  { value: "this-fiscal-year", label: "This Fiscal Year" },
+  { value: "previous-fiscal-year", label: "Previous Fiscal Year" },
+  { value: "last-12-months", label: "Last 12 Months" },
+  { value: "last-6-months", label: "Last 6 Months" },
+];
+
+const expenseBasisOptions = [
+  { value: "accrual", label: "Accrual" },
+  { value: "cash", label: "Cash" },
 ];
 
 // Type definitions
@@ -155,6 +168,14 @@ interface Customer {
   companyName?: string;
   email?: string;
   [key: string]: any;
+}
+
+interface ActivityEntry {
+  id: string;
+  dateValue: Date;
+  title: string;
+  description: string;
+  author?: string;
 }
 
 interface CustomView {
@@ -305,6 +326,10 @@ export default function VendorDetail() {
   const [statementFilter, setStatementFilter] = useState("all");
   const [isStatementPeriodDropdownOpen, setIsStatementPeriodDropdownOpen] = useState(false);
   const [isStatementFilterDropdownOpen, setIsStatementFilterDropdownOpen] = useState(false);
+  const [expensesDateRange, setExpensesDateRange] = useState("last-6-months");
+  const [expensesBasis, setExpensesBasis] = useState("accrual");
+  const [isExpensesDateRangeDropdownOpen, setIsExpensesDateRangeDropdownOpen] = useState(false);
+  const [isExpensesBasisDropdownOpen, setIsExpensesBasisDropdownOpen] = useState(false);
   // const statementPeriodDropdownRef = useRef(null);
   // const statementFilterDropdownRef = useRef(null);
   const [statementTransactions, setStatementTransactions] = useState<Transaction[]>([]);
@@ -351,6 +376,8 @@ export default function VendorDetail() {
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const statementPeriodDropdownRef = useRef<HTMLDivElement>(null);
   const statementFilterDropdownRef = useRef<HTMLDivElement>(null);
+  const expensesDateRangeDropdownRef = useRef<HTMLDivElement>(null);
+  const expensesBasisDropdownRef = useRef<HTMLDivElement>(null);
   const customerDropdownRef = useRef<HTMLDivElement>(null);
   const customizeDropdownRef = useRef<HTMLDivElement>(null);
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
@@ -386,6 +413,195 @@ export default function VendorDetail() {
   const [availableDocuments, setAvailableDocuments] = useState<any[]>([]);
   const [cloudSearchQuery, setCloudSearchQuery] = useState("");
   const [selectedCloudFiles, setSelectedCloudFiles] = useState([]);
+
+  const selectedExpensesDateRangeLabel = expenseDateRangeOptions.find((option) => option.value === expensesDateRange)?.label || "Last 6 Months";
+  const selectedExpensesBasisLabel = expenseBasisOptions.find((option) => option.value === expensesBasis)?.label || "Accrual";
+  const filteredExpensesForOverview = useMemo(() => {
+    const now = new Date();
+    const startDate = new Date(now);
+
+    switch (expensesDateRange) {
+      case "this-fiscal-year":
+        startDate.setMonth(0, 1);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+      case "previous-fiscal-year": {
+        const currentYear = now.getFullYear();
+        startDate.setFullYear(currentYear - 1, 0, 1);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+      }
+      case "last-12-months":
+        startDate.setMonth(startDate.getMonth() - 12);
+        break;
+      case "last-6-months":
+      default:
+        startDate.setMonth(startDate.getMonth() - 6);
+        break;
+    }
+
+    const endDate = new Date(now);
+    if (expensesDateRange === "previous-fiscal-year") {
+      endDate.setFullYear(now.getFullYear() - 1, 11, 31);
+      endDate.setHours(23, 59, 59, 999);
+    }
+
+    return expenses.filter((expense: any) => {
+      const expenseDate = new Date(expense.date || expense.expenseDate || expense.createdAt || expense.updatedAt || now);
+      if (Number.isNaN(expenseDate.getTime())) return false;
+      return expenseDate >= startDate && expenseDate <= endDate;
+    });
+  }, [expenses, expensesDateRange]);
+  const filteredExpensesTotal = filteredExpensesForOverview.reduce(
+    (sum: number, expense: any) => sum + Number(expense.amount || expense.total || 0),
+    0
+  );
+  const activityTimelineEntries = useMemo<ActivityEntry[]>(() => {
+    const entries: ActivityEntry[] = [];
+    const pushEntry = (entry: Omit<ActivityEntry, "dateValue"> & { dateValue?: Date | string | null }) => {
+      const parsedDate = entry.dateValue ? new Date(entry.dateValue) : null;
+      if (!parsedDate || Number.isNaN(parsedDate.getTime())) return;
+      entries.push({
+        id: entry.id,
+        dateValue: parsedDate,
+        title: entry.title,
+        description: entry.description,
+        author: entry.author,
+      });
+    };
+
+    if (vendor?.createdAt || vendor?.updatedAt) {
+      pushEntry({
+        id: `vendor-${vendor.id || vendor._id || "created"}`,
+        dateValue: vendor.createdAt || vendor.updatedAt,
+        title: "Vendor created",
+        description: `${vendor.displayName || vendor.name || "Vendor"} profile was created`,
+        author: vendor.createdBy || "System",
+      });
+    }
+
+    (vendor?.contactPersons || []).forEach((contact: any, index: number) => {
+      pushEntry({
+        id: `contact-${contact.id || contact._id || index}`,
+        dateValue: contact.createdAt || contact.updatedAt,
+        title: "Contact person added",
+        description: `Contact person ${(contact.firstName || "").trim()} ${(contact.lastName || "").trim()}`.trim(),
+        author: contact.createdBy || "System",
+      });
+    });
+
+    comments.forEach((comment: any, index: number) => {
+      pushEntry({
+        id: `comment-${comment.id || index}`,
+        dateValue: comment.date || comment.createdAt,
+        title: "Comment added",
+        description: String(comment.text || "Comment created").trim(),
+        author: comment.author || comment.createdBy || "System",
+      });
+    });
+
+    attachments.forEach((doc: any, index: number) => {
+      pushEntry({
+        id: `document-${doc.id || index}`,
+        dateValue: doc.uploadedAt || doc.createdAt,
+        title: "Document uploaded",
+        description: doc.name || "Document attached",
+        author: doc.uploadedBy || doc.createdBy || "System",
+      });
+    });
+
+    expenses.forEach((expense: any, index: number) => {
+      pushEntry({
+        id: `expense-${expense.id || expense._id || index}`,
+        dateValue: expense.date || expense.expenseDate || expense.createdAt || expense.updatedAt,
+        title: "Expense added",
+        description: `${expense.referenceNumber || expense.expenseNumber || expense.name || "Expense"} • ${formatCurrency(expense.amount || expense.total || 0, expense.currency || vendor?.currency || baseCurrencyCode)}`,
+        author: expense.createdBy || "System",
+      });
+    });
+
+    bills.forEach((bill: any, index: number) => {
+      pushEntry({
+        id: `bill-${bill.id || bill._id || index}`,
+        dateValue: bill.billDate || bill.date || bill.createdAt || bill.updatedAt,
+        title: "Bill created",
+        description: `${bill.billNumber || bill.referenceNumber || bill.number || "Bill"} • ${formatCurrency(bill.total || bill.amount || 0, bill.currency || vendor?.currency || baseCurrencyCode)}`,
+        author: bill.createdBy || "System",
+      });
+    });
+
+    paymentsMade.forEach((payment: any, index: number) => {
+      pushEntry({
+        id: `payment-${payment.id || payment._id || index}`,
+        dateValue: payment.paymentDate || payment.date || payment.createdAt || payment.updatedAt,
+        title: "Payment made",
+        description: `${payment.paymentNumber || payment.referenceNumber || payment.number || "Payment"} • ${formatCurrency(payment.amountPaid || payment.amount || 0, payment.currency || vendor?.currency || baseCurrencyCode)}`,
+        author: payment.createdBy || "System",
+      });
+    });
+
+    vendorCredits.forEach((credit: any, index: number) => {
+      pushEntry({
+        id: `credit-${credit.id || credit._id || index}`,
+        dateValue: credit.creditDate || credit.date || credit.createdAt || credit.updatedAt,
+        title: "Vendor credit created",
+        description: `${credit.creditNumber || credit.referenceNumber || credit.number || "Vendor Credit"} • ${formatCurrency(credit.total || credit.amount || 0, credit.currency || vendor?.currency || baseCurrencyCode)}`,
+        author: credit.createdBy || "System",
+      });
+    });
+
+    purchaseOrders.forEach((po: any, index: number) => {
+      pushEntry({
+        id: `po-${po.id || po._id || index}`,
+        dateValue: po.date || po.purchaseOrderDate || po.createdAt || po.updatedAt,
+        title: "Purchase order created",
+        description: `${po.orderNumber || po.purchaseOrderNumber || po.referenceNumber || "Purchase Order"} • ${formatCurrency(po.total || po.amount || 0, po.currency || vendor?.currency || baseCurrencyCode)}`,
+        author: po.createdBy || "System",
+      });
+    });
+
+    recurringBills.forEach((bill: any, index: number) => {
+      pushEntry({
+        id: `recurring-bill-${bill.id || bill._id || index}`,
+        dateValue: bill.startDate || bill.createdAt || bill.updatedAt,
+        title: "Recurring bill created",
+        description: `${bill.profileName || bill.billNumber || "Recurring Bill"} • ${formatCurrency(bill.amount || bill.total || 0, bill.currency || vendor?.currency || baseCurrencyCode)}`,
+        author: bill.createdBy || "System",
+      });
+    });
+
+    recurringExpenses.forEach((expense: any, index: number) => {
+      pushEntry({
+        id: `recurring-expense-${expense.id || expense._id || index}`,
+        dateValue: expense.startDate || expense.createdAt || expense.updatedAt,
+        title: "Recurring expense created",
+        description: `${expense.profileName || expense.referenceNumber || "Recurring Expense"} • ${formatCurrency(expense.amount || expense.total || 0, expense.currency || vendor?.currency || baseCurrencyCode)}`,
+        author: expense.createdBy || "System",
+      });
+    });
+
+    purchaseReceipts.forEach((receipt: any, index: number) => {
+      pushEntry({
+        id: `receipt-${receipt.id || receipt._id || index}`,
+        dateValue: receipt.date || receipt.receiptDate || receipt.createdAt || receipt.updatedAt,
+        title: "Purchase receipt created",
+        description: `${receipt.receiptNumber || receipt.referenceNumber || "Purchase Receipt"} • ${formatCurrency(receipt.total || receipt.amount || 0, receipt.currency || vendor?.currency || baseCurrencyCode)}`,
+        author: receipt.createdBy || "System",
+      });
+    });
+
+    journals.forEach((journal: any, index: number) => {
+      pushEntry({
+        id: `journal-${journal.id || journal._id || index}`,
+        dateValue: journal.date || journal.journalDate || journal.createdAt || journal.updatedAt,
+        title: "Journal created",
+        description: `${journal.referenceNumber || journal.number || journal.description || "Journal"} • ${formatCurrency(journal.amount || journal.total || 0, journal.currency || vendor?.currency || baseCurrencyCode)}`,
+        author: journal.createdBy || "System",
+      });
+    });
+
+    return entries.sort((a, b) => b.dateValue.getTime() - a.dateValue.getTime());
+  }, [vendor, comments, attachments, expenses, bills, paymentsMade, vendorCredits, purchaseOrders, recurringBills, recurringExpenses, purchaseReceipts, journals, baseCurrencyCode]);
 
   const vendorFieldOptions = [
     {
@@ -1425,16 +1641,22 @@ export default function VendorDetail() {
       if (isCustomizeDropdownOpen && customizeDropdownRef?.current && !customizeDropdownRef.current.contains(target)) {
         setIsCustomizeDropdownOpen(false);
       }
+      if (expensesDateRangeDropdownRef.current && !expensesDateRangeDropdownRef.current.contains(target)) {
+        setIsExpensesDateRangeDropdownOpen(false);
+      }
+      if (expensesBasisDropdownRef.current && !expensesBasisDropdownRef.current.contains(target)) {
+        setIsExpensesBasisDropdownOpen(false);
+      }
     };
 
-    if (isInvoiceViewDropdownOpen || isStatusDropdownOpen || isLinkEmailDropdownOpen || isStatementPeriodDropdownOpen || isStatementFilterDropdownOpen || isBulkActionsDropdownOpen || isStartDatePickerOpen || isEndDatePickerOpen || isMergeVendorDropdownOpen || isNewTransactionDropdownOpen || isTransactionNavDropdownOpen || isMailsTypeDropdownOpen || isAttachmentsDropdownOpen || isUploadDropdownOpen || isMoreDropdownOpen || isCustomizeDropdownOpen) {
+    if (isInvoiceViewDropdownOpen || isStatusDropdownOpen || isLinkEmailDropdownOpen || isStatementPeriodDropdownOpen || isStatementFilterDropdownOpen || isBulkActionsDropdownOpen || isStartDatePickerOpen || isEndDatePickerOpen || isMergeVendorDropdownOpen || isNewTransactionDropdownOpen || isTransactionNavDropdownOpen || isMailsTypeDropdownOpen || isAttachmentsDropdownOpen || isUploadDropdownOpen || isMoreDropdownOpen || isCustomizeDropdownOpen || isExpensesDateRangeDropdownOpen || isExpensesBasisDropdownOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isInvoiceViewDropdownOpen, isStatusDropdownOpen, isLinkEmailDropdownOpen, isStatementPeriodDropdownOpen, isStatementFilterDropdownOpen, isBulkActionsDropdownOpen, isStartDatePickerOpen, isEndDatePickerOpen, isMergeVendorDropdownOpen, isNewTransactionDropdownOpen, isTransactionNavDropdownOpen, isMailsTypeDropdownOpen, isAttachmentsDropdownOpen, isUploadDropdownOpen, isMoreDropdownOpen, openContactDropdown, isCustomizeDropdownOpen, isCustomerDropdownOpen]);
+  }, [isInvoiceViewDropdownOpen, isStatusDropdownOpen, isLinkEmailDropdownOpen, isStatementPeriodDropdownOpen, isStatementFilterDropdownOpen, isBulkActionsDropdownOpen, isStartDatePickerOpen, isEndDatePickerOpen, isMergeVendorDropdownOpen, isNewTransactionDropdownOpen, isTransactionNavDropdownOpen, isMailsTypeDropdownOpen, isAttachmentsDropdownOpen, isUploadDropdownOpen, isMoreDropdownOpen, openContactDropdown, isCustomizeDropdownOpen, isCustomerDropdownOpen, isExpensesDateRangeDropdownOpen, isExpensesBasisDropdownOpen]);
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
@@ -3973,15 +4195,61 @@ export default function VendorDetail() {
                   <div className="flex items-center justify-between p-4 border-b border-gray-200">
                     <div className="flex items-center gap-4">
                       <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Expenses</span>
-                      <div className="flex gap-2">
-                        <button className="flex items-center gap-1 px-3 py-1 text-xs border border-gray-300 rounded-md bg-white text-gray-700 cursor-pointer hover:bg-gray-50">
-                          Last 6 Months
-                          <ChevronDown size={14} />
-                        </button>
-                        <button className="flex items-center gap-1 px-3 py-1 text-xs border border-gray-300 rounded-md bg-white text-gray-700 cursor-pointer hover:bg-gray-50">
-                          Accrual
-                          <ChevronDown size={14} />
-                        </button>
+                      <div className="flex items-center gap-2">
+                        <div className="relative" ref={expensesDateRangeDropdownRef}>
+                          <button
+                            type="button"
+                            onClick={() => setIsExpensesDateRangeDropdownOpen((prev) => !prev)}
+                            className="flex items-center gap-1 px-3 py-1 text-xs border border-gray-300 rounded-md bg-white text-gray-700 cursor-pointer hover:bg-gray-50"
+                          >
+                            {selectedExpensesDateRangeLabel}
+                            <ChevronDown size={14} />
+                          </button>
+                          {isExpensesDateRangeDropdownOpen && (
+                            <div className="absolute right-0 mt-2 w-44 rounded-md border border-gray-200 bg-white shadow-lg z-30 overflow-hidden">
+                              {expenseDateRangeOptions.map((option) => (
+                                <button
+                                  key={option.value}
+                                  type="button"
+                                  onClick={() => {
+                                    setExpensesDateRange(option.value);
+                                    setIsExpensesDateRangeDropdownOpen(false);
+                                  }}
+                                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 ${expensesDateRange === option.value ? "bg-blue-500 text-white hover:bg-blue-500" : "text-gray-700"}`}
+                                >
+                                  {option.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="relative" ref={expensesBasisDropdownRef}>
+                          <button
+                            type="button"
+                            onClick={() => setIsExpensesBasisDropdownOpen((prev) => !prev)}
+                            className="flex items-center gap-1 px-3 py-1 text-xs border border-gray-300 rounded-md bg-white text-gray-700 cursor-pointer hover:bg-gray-50"
+                          >
+                            {selectedExpensesBasisLabel}
+                            <ChevronDown size={14} />
+                          </button>
+                          {isExpensesBasisDropdownOpen && (
+                            <div className="absolute right-0 mt-2 w-36 rounded-md border border-gray-200 bg-white shadow-lg z-30 overflow-hidden">
+                              {expenseBasisOptions.map((option) => (
+                                <button
+                                  key={option.value}
+                                  type="button"
+                                  onClick={() => {
+                                    setExpensesBasis(option.value);
+                                    setIsExpensesBasisDropdownOpen(false);
+                                  }}
+                                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 ${expensesBasis === option.value ? "bg-blue-500 text-white hover:bg-blue-500" : "text-gray-700"}`}
+                                >
+                                  {option.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -3991,10 +4259,14 @@ export default function VendorDetail() {
                     </p>
                     <div className="h-48 bg-gray-50 rounded-md flex flex-col items-center justify-center mb-4">
                       <TrendingUp size={48} className="text-gray-400 mb-2" />
-                      <p className="text-sm text-gray-500">No Expenses data available</p>
+                      <p className="text-sm text-gray-500">
+                        {filteredExpensesForOverview.length > 0
+                          ? `${filteredExpensesForOverview.length} expense${filteredExpensesForOverview.length === 1 ? "" : "s"} loaded`
+                          : "No Expenses data available"}
+                      </p>
                     </div>
                     <div className="text-sm font-medium text-gray-900 pt-4 border-t border-gray-200">
-                      Total Expenses (Last 6 Months) - {formatCurrency(0, vendor.currency || baseCurrencyCode)}
+                      Total Expenses ({selectedExpensesDateRangeLabel}, {selectedExpensesBasisLabel}) - {formatCurrency(filteredExpensesTotal, vendor.currency || baseCurrencyCode)}
                     </div>
                   </div>
                 </div>
@@ -4005,53 +4277,49 @@ export default function VendorDetail() {
                     <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Activity Timeline</span>
                   </div>
                   <div className="p-4">
-                    <div className="relative" style={{ paddingLeft: "20px" }}>
-                      {/* Timeline vertical line */}
-                      <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-[#156372]"></div>
+                    {activityTimelineEntries.length > 0 ? (
+                      <div className="relative">
+                        <div className="absolute left-[116px] top-0 bottom-0 w-px bg-[#3b82f6]"></div>
+                        <div className="space-y-8">
+                          {activityTimelineEntries.slice(0, 20).map((entry) => {
+                            const formattedDate = entry.dateValue.toLocaleDateString("en-GB", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                            });
+                            const formattedTime = entry.dateValue.toLocaleTimeString("en-US", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: true,
+                            });
 
-                      {/* Timeline entries */}
-                      <div className="space-y-6">
-                        {/* Sample activity entries - you can replace with actual data */}
-                        {expenses.length > 0 && expenses.slice(0, 3).map((expense, index) => {
-                          const expenseDate = new Date(expense.date || expense.createdAt || new Date());
-                          const formattedDate = expenseDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                          const formattedTime = expenseDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-                          return (
-                            <div key={index} className="relative">
-                              {/* Timeline circle */}
-                              <div className="absolute left-[-18px] top-1 w-3 h-3 bg-[#156372] rounded-full border-2 border-white"></div>
-                              <div className="text-xs font-semibold text-gray-900 mb-1">
-                                {formattedDate}, {formattedTime}
+                            return (
+                              <div key={entry.id} className="relative flex gap-6">
+                                <div className="w-[100px] shrink-0 pt-3 text-right">
+                                  <div className="text-[13px] text-gray-900">{formattedDate}</div>
+                                  <div className="mt-1 text-[13px] text-gray-900">{formattedTime}</div>
+                                </div>
+                                <div className="relative w-8 shrink-0">
+                                  <div className="absolute left-1/2 top-5 h-6 w-6 -translate-x-1/2 rounded-full border border-[#93c5fd] bg-white shadow-sm flex items-center justify-center">
+                                    <div className="h-2.5 w-2.5 rounded-sm border border-[#60a5fa] bg-[#eff6ff]"></div>
+                                  </div>
+                                </div>
+                                <div className="flex-1 rounded-lg border border-gray-200 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                                  <div className="text-[15px] font-medium text-gray-900">{entry.title}</div>
+                                  <div className="mt-3 text-[15px] text-[#64748b]">{entry.description}</div>
+                                  <div className="mt-1 text-[15px] font-semibold text-[#334155]">by {entry.author || "System"}</div>
+                                </div>
                               </div>
-                              <div className="text-xs text-gray-600 mb-1">Expense added</div>
-                              <div className="text-xs text-gray-500">
-                                Expense of amount {formatCurrency(expense.amount || 0, expense.currency || vendor.currency || baseCurrencyCode)} created by {expense.createdBy || "System"} - <a href="#" className="text-teal-700 hover:underline">View Details</a>
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {vendor.contactPersons && vendor.contactPersons.length > 0 && vendor.contactPersons.slice(0, 2).map((contact, index) => {
-                          const contactDate = new Date(contact.createdAt || new Date());
-                          const formattedDate = contactDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                          const formattedTime = contactDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-                          return (
-                            <div key={`contact-${index}`} className="relative">
-                              <div className="absolute left-[-18px] top-1 w-3 h-3 bg-[#156372] rounded-full border-2 border-white"></div>
-                              <div className="text-xs font-semibold text-gray-900 mb-1">
-                                {formattedDate}, {formattedTime}
-                              </div>
-                              <div className="text-xs text-gray-600 mb-1">Contact person added</div>
-                              <div className="text-xs text-gray-500">
-                                Contact person {contact.firstName} {contact.lastName} has been created by {contact.createdBy || "System"}
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {expenses.length === 0 && (!vendor.contactPersons || vendor.contactPersons.length === 0) && (
-                          <div className="text-xs text-gray-500 text-center py-4">No activities yet.</div>
-                        )}
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="text-xs text-gray-500 text-center py-4">No activities yet.</div>
+                    )}
+                    {activityTimelineEntries.length > 20 && (
+                      <div className="mt-4 text-xs text-center text-gray-500">Showing latest 20 activities</div>
+                    )}
                   </div>
                 </div>
               </div>

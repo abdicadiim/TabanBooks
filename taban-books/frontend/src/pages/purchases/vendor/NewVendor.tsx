@@ -1957,23 +1957,6 @@ export default function NewVendor() {
                     </div>
                   </div>
 
-                  {/* Company ID */}
-                  <div className="mb-4 flex items-start gap-6">
-                    <label htmlFor="companyId" className="w-[160px] shrink-0 pt-2 flex items-center gap-1 text-sm/6 font-medium text-gray-900">
-                      Company ID <Info size={14} className="text-gray-400" />
-                    </label>
-                    <div className="flex-1 max-w-[360px]">
-                      <input
-                        id="companyId"
-                        type="text"
-                        name="companyId"
-                        value={formData.companyId}
-                        onChange={handleChange}
-                        className="block w-full rounded-md bg-white px-3 py-2 text-base text-gray-900 border border-gray-300 placeholder:text-gray-400 shadow-sm transition-all duration-200 ease-out hover:border-[#156372]/40 hover:shadow-md focus:border-[#156372] focus:shadow-[0_0_0_3px_rgba(21,99,114,0.12)] focus:outline-none sm:text-sm/6"
-                      />
-                    </div>
-                  </div>
-
                   {/* Accounts Payable */}
                   <div className="mb-4 flex items-start gap-6">
                     <label htmlFor="accountsPayable" className="w-[160px] shrink-0 pt-2 flex items-center gap-1 text-sm/6 font-medium text-gray-900">
@@ -3236,17 +3219,15 @@ export default function NewVendor() {
               <button
                 type="button"
                 onClick={handleCancel}
-                disabled={isSaving}
                 className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                disabled={isSaving}
                 className="rounded-md bg-[#156372] px-5 py-2 text-sm font-medium text-white hover:bg-[#0d4a52]"
               >
-                {isSaving ? "Saving..." : "Save"}
+                Save
               </button>
             </div>
         </form>
