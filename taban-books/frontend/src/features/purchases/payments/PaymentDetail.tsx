@@ -44,11 +44,11 @@ export default function PaymentDetail() {
   const [selectedPayments, setSelectedPayments] = useState<string[]>([]);
   const [isBulkActionsOpen, setIsBulkActionsOpen] = useState(false);
   const isInitialLoad = useRef(!initialPayment);
-  const moreMenuRef = useRef(null);
-  const dropdownRef = useRef(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const bulkActionsRef = useRef<HTMLDivElement>(null);
-  const emailModalRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const emailModalRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const statementRef = useRef<HTMLDivElement | null>(null);
 
   const fetchData = async (forceSidebar = false) => {
@@ -121,13 +121,13 @@ export default function PaymentDetail() {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target)) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
         setMoreMenuOpen(false);
       }
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setDropdownOpen(false);
       }
-      if (bulkActionsRef.current && !bulkActionsRef.current.contains(event.target)) {
+      if (bulkActionsRef.current && !bulkActionsRef.current.contains(event.target as Node)) {
         setIsBulkActionsOpen(false);
       }
     };
@@ -1164,7 +1164,7 @@ export default function PaymentDetail() {
                 <button style={styles.dropdownItem} onClick={handleClone}>
                   <Plus size={14} /> Clone
                 </button>
-                <button style={styles.dropdownItem} onClick={handleDelete} style={{ ...styles.dropdownItem, color: "#ef4444" }}>
+                <button onClick={handleDelete} style={{ ...styles.dropdownItem, color: "#ef4444" }}>
                   <X size={14} /> Delete
                 </button>
               </div>
