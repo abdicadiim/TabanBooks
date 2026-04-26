@@ -24,8 +24,8 @@ const getScopeKey = () => {
 
   return [
     authMode,
-    String(user?.id || user?._id || "anonymous"),
-    String(organization?.id || organization?._id || "no-org"),
+    String((user as any)?.id || (user as any)?._id || "anonymous"),
+    String((organization as any)?.id || (organization as any)?._id || "no-org"),
   ].join(":");
 };
 

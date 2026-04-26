@@ -1,21 +1,14 @@
 import React, { useState, useMemo } from "react";
 import { Search, X } from "lucide-react";
 
-export default function SearchItemsModal({ 
-  isOpen, 
-  onClose, 
-  items = [] as any[], 
-  onItemSelect, 
-  searchFields = ["name"], 
-  placeholder = "Search items..." 
-}: any) {
+export default function SearchItemsModal({ isOpen, onClose, items = [], onItemSelect, searchFields = ["name"], placeholder = "Search items..." }) {
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredItems = useMemo(() => {
     if (!searchQuery.trim()) return items;
     const query = searchQuery.toLowerCase();
-    return items.filter((item: any) => {
-      return searchFields.some((field: any) => {
+    return items.filter((item) => {
+      return searchFields.some((field) => {
         const value = item[field];
         return value && value.toString().toLowerCase().includes(query);
       });
@@ -24,7 +17,7 @@ export default function SearchItemsModal({
 
   if (!isOpen) return null;
 
-  const handleItemClick = (item: any) => {
+  const handleItemClick = (item) => {
     if (onItemSelect) {
       onItemSelect(item);
     }
@@ -94,10 +87,10 @@ export default function SearchItemsModal({
               color: "#6b7280",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.color = "#111827";
+              e.target.style.color = "#111827";
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.color = "#6b7280";
+              e.target.style.color = "#6b7280";
             }}
           >
             <X size={20} />
@@ -139,10 +132,10 @@ export default function SearchItemsModal({
                 boxSizing: "border-box",
               }}
               onFocus={(e) => {
-                e.currentTarget.style.borderColor = "#156372";
+                e.target.style.borderColor = "#156372";
               }}
               onBlur={(e) => {
-                e.currentTarget.style.borderColor = "#d1d5db";
+                e.target.style.borderColor = "#d1d5db";
               }}
             />
           </div>
@@ -168,7 +161,7 @@ export default function SearchItemsModal({
               {searchQuery.trim() ? "No items found" : "Start typing to search..."}
             </div>
           ) : (
-            filteredItems.map((item: any, index: number) => (
+            filteredItems.map((item, index) => (
               <div
                 key={item.id || index}
                 onClick={() => handleItemClick(item)}
@@ -178,10 +171,10 @@ export default function SearchItemsModal({
                   borderBottom: "1px solid #f3f4f6",
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                  e.target.style.backgroundColor = "#f9fafb";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "transparent";
+                  e.target.style.backgroundColor = "transparent";
                 }}
               >
                 <div

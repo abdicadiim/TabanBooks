@@ -29,7 +29,7 @@ const MODULE_CATEGORIES = [
     }
 ];
 
-export default function ExportVendorCredits({ onClose, exportType = "vendor-credits", data = [] as any[] }: any) {
+export default function ExportVendorCredits({ onClose, exportType = "vendor-credits", data = [] }) {
     const [module, setModule] = useState(exportType === "current-view" ? "Vendor Credits (Current View)" : "Vendor Credits");
     const [dataRange, setDataRange] = useState("all");
     const [exportFileFormat, setExportFileFormat] = useState("csv");

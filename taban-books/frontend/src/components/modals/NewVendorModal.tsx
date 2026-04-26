@@ -310,7 +310,7 @@ export default function NewVendorModal({ isOpen, onClose, onCreated }: NewVendor
 
     if (!isOpen) return null;
 
-    const modalStyles = {
+    const modalStyles: any = {
         overlay: {
             position: "fixed" as const,
             top: 0,

@@ -6,10 +6,10 @@ export default function BulkUpdateModal({
   isOpen,
   onClose,
   title,
-  fieldOptions = [] as any[],
+  fieldOptions = [],
   onUpdate,
   entityName = "items",
-}: any) {
+}) {
   const [selectedField, setSelectedField] = useState("");
   const [newValue, setNewValue] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);

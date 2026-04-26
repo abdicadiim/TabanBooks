@@ -67,7 +67,7 @@ export default function NewVendorCredit() {
   });
   const { code: baseCurrencyCode } = useCurrency();
 
-  const [selectedVendor, setSelectedVendor] = useState(null);
+  const [selectedVendor, setSelectedVendor] = useState<any>(null);
   const [billingAddressEditMode, setBillingAddressEditMode] = useState(false);
 
   const [itemRows, setItemRows] = useState([
@@ -160,19 +160,19 @@ export default function NewVendorCredit() {
     purchaseTax: "",
     preferredVendor: "",
   });
-  const itemRefs = useRef({});
-  const rowMenuRefs = useRef({});
-  const accountRefs = useRef({});
+  const itemRefs = useRef<Record<string, any>>({});
+  const rowMenuRefs = useRef<Record<string, any>>({});
+  const accountRefs = useRef<Record<string, any>>({});
 
-  const vendorRef = useRef(null);
-  const currencyRef = useRef(null);
-  const accountsPayableRef = useRef(null);
-  const taxExclusiveRef = useRef(null);
-  const taxLevelRef = useRef(null);
-  const uploadMenuRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const bulkActionsRef = useRef(null);
-  const addNewRowRef = useRef(null);
+  const vendorRef = useRef<HTMLDivElement>(null);
+  const currencyRef = useRef<HTMLDivElement>(null);
+  const accountsPayableRef = useRef<HTMLDivElement>(null);
+  const taxExclusiveRef = useRef<HTMLDivElement>(null);
+  const taxLevelRef = useRef<HTMLDivElement>(null);
+  const uploadMenuRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const bulkActionsRef = useRef<HTMLDivElement>(null);
+  const addNewRowRef = useRef<HTMLDivElement>(null);
 
   // Load vendors from localStorage
   const [taxes, setTaxes] = useState<any[]>([]);
@@ -240,12 +240,13 @@ export default function NewVendorCredit() {
       try {
         const response = await locationsAPI.getAll();
         if (response && (response.code === 0 || response.success)) {
-          const loadedLocations = filterActiveRecords(response.data || []);
+          const loadedLocations = filterActiveRecords(response.data || []) as any[];
           setLocations(loadedLocations);
           
           // Set default location if not already set
           if (!formData.location && loadedLocations.length > 0) {
-            const defaultLoc = loadedLocations.find((l: any) => l.isDefault)?.name || loadedLocations[0].name;
+            const firstLoc = loadedLocations[0] as any;
+            const defaultLoc = loadedLocations.find((l: any) => l.isDefault)?.name || firstLoc?.name || "";
             setFormData(prev => ({ ...prev, location: defaultLoc, warehouseLocation: defaultLoc }));
           }
         }
@@ -491,33 +492,33 @@ export default function NewVendorCredit() {
         setDiscountDropdownOpen(false);
       }
       if (taxExclusiveRef.current && !taxExclusiveRef.current.contains(event.target as Node)) {
-        setTaxExclusiveOpen(false);
+        setTaxPreferenceOpen(false);
       }
       if (taxLevelRef.current && !taxLevelRef.current.contains(event.target as Node)) {
         setTaxLevelOpen(false);
       }
-      if (uploadMenuRef.current && !uploadMenuRef.current.contains(event.target)) {
+      if (uploadMenuRef.current && !uploadMenuRef.current.contains(event.target as Node)) {
         setUploadMenuOpen(false);
       }
-      if (currencyRef.current && !currencyRef.current.contains(event.target)) {
+      if (currencyRef.current && !currencyRef.current.contains(event.target as Node)) {
         setCurrencyDropdownOpen(false);
       }
-      if (bulkActionsRef.current && !bulkActionsRef.current.contains(event.target)) {
+      if (bulkActionsRef.current && !bulkActionsRef.current.contains(event.target as Node)) {
         setBulkActionsOpen(false);
       }
-      if (addNewRowRef.current && !addNewRowRef.current.contains(event.target)) {
+      if (addNewRowRef.current && !addNewRowRef.current.contains(event.target as Node)) {
         setAddNewRowDropdownOpen(false);
       }
       // Close item dropdowns
       Object.keys(itemDropdownOpen).forEach((index) => {
-        if (itemRefs.current[index] && !itemRefs.current[index].contains(event.target)) {
+        if (itemRefs.current[index] && !itemRefs.current[index].contains(event.target as Node)) {
           setItemDropdownOpen((prev) => ({ ...prev, [index]: false }));
           setItemSearch((prev) => ({ ...prev, [index]: "" }));
         }
       });
       // Close row menus
       Object.keys(rowMenuOpen).forEach((index) => {
-        if (rowMenuOpen[index] && rowMenuRefs.current[index] && !rowMenuRefs.current[index].contains(event.target)) {
+        if (rowMenuOpen[index] && rowMenuRefs.current[index] && !rowMenuRefs.current[index].contains(event.target as Node)) {
           setRowMenuOpen((prev) => ({ ...prev, [index]: false }));
         }
       });
@@ -537,12 +538,12 @@ export default function NewVendorCredit() {
 
   const handleItemChange = (index: number, field: string, value: any) => {
     const newItems = [...itemRows];
-    newItems[index][field] = value;
+    (newItems[index] as any)[field] = value;
 
     // Calculate amount
     if (field === "quantity" || field === "rate" || field === "discount") {
-      const quantity = parseFloat(newItems[index].quantity || 0);
-      const rate = parseFloat(newItems[index].rate || 0);
+      const quantity = parseFloat(String(newItems[index].quantity || 0));
+      const rate = parseFloat(String(newItems[index].rate || 0));
       const discountMatch = (newItems[index].discount || "0 %-").match(/(\d+(?:\.\d+)?)/);
       const discountPercent = discountMatch ? parseFloat(discountMatch[1]) : 0;
       const subtotal = quantity * rate;
@@ -571,8 +572,8 @@ export default function NewVendorCredit() {
     if (item.costPrice) {
       newItems[index].rate = item.costPrice;
       // Recalculate amount
-      const quantity = parseFloat(newItems[index].quantity || 0);
-      const rate = parseFloat(item.costPrice || 0);
+      const quantity = parseFloat(String(newItems[index].quantity || 0));
+      const rate = parseFloat(String(item.costPrice || 0));
       const discountMatch = (newItems[index].discount || "0 %-").match(/(\d+(?:\.\d+)?)/);
       const discountPercent = discountMatch ? parseFloat(discountMatch[1]) : 0;
       const subtotal = quantity * rate;
@@ -584,7 +585,7 @@ export default function NewVendorCredit() {
     setItemSearch((prev) => ({ ...prev, [index]: "" }));
   };
 
-  const filteredItems = (index) => {
+  const filteredItems = (index: any) => {
     const searchTerm = (itemSearch[index] || "").toLowerCase();
     if (!searchTerm) return items;
     return items.filter((item) =>
@@ -608,7 +609,7 @@ export default function NewVendorCredit() {
     }]);
   };
 
-  const removeRow = (index) => {
+  const removeRow = (index: number) => {
     if (itemRows.length > 1) {
       setItemRows(itemRows.filter((_, i) => i !== index));
     }
@@ -655,7 +656,7 @@ export default function NewVendorCredit() {
     setRowMenuOpen((prev) => ({ ...prev, [index]: false }));
   };
 
-  const handleBulkItemSelect = (item) => {
+  const handleBulkItemSelect = (item: any) => {
     const isSelected = selectedBulkItems.some(selected => selected.id === item.id);
     if (isSelected) {
       setSelectedBulkItems(selectedBulkItems.filter(selected => selected.id !== item.id));
@@ -668,7 +669,7 @@ export default function NewVendorCredit() {
     }
   };
 
-  const handleBulkQuantityChange = (itemId, quantity) => {
+  const handleBulkQuantityChange = (itemId: string, quantity: any) => {
     setBulkItemQuantities({ ...bulkItemQuantities, [itemId]: parseFloat(quantity) || 1 });
   };
 
@@ -708,18 +709,18 @@ export default function NewVendorCredit() {
       type: newItemData.type,
       unit: newItemData.unit,
       sellable: newItemData.sellable,
-      sellingPrice: parseFloat(newItemData.sellingPrice || 0),
+      sellingPrice: parseFloat(String(newItemData.sellingPrice || 0)),
       salesAccount: newItemData.salesAccount,
       salesDescription: newItemData.salesDescription,
       salesTax: newItemData.salesTax,
       purchasable: newItemData.purchasable,
-      costPrice: parseFloat(newItemData.costPrice || 0),
+      costPrice: parseFloat(String(newItemData.costPrice || 0)),
       purchaseAccount: newItemData.purchaseAccount,
       purchaseDescription: newItemData.purchaseDescription,
       purchaseTax: newItemData.purchaseTax,
       preferredVendor: newItemData.preferredVendor,
       sku: newItemData.sku,
-      stockOnHand: parseFloat(newItemData.initialStock || 0),
+      stockOnHand: parseFloat(String(newItemData.initialStock || 0)),
       transactions: [],
     };
 
@@ -763,7 +764,9 @@ export default function NewVendorCredit() {
         const taxPercent = taxMatch ? parseFloat(taxMatch[1]) : 0;
         if (formData.taxExclusive === "Tax Inclusive") {
           // Tax is already included in amount
-          const subtotal = parseFloat(item.quantity || 0) * parseFloat(item.rate || 0);
+          const quantity = parseFloat(String(item.quantity || 0));
+          const rate = parseFloat(String(item.rate || 0));
+          const subtotal = quantity * rate;
           taxTotal += (subtotal * taxPercent) / (100 + taxPercent);
         } else {
           taxTotal += ((item.amount || 0) * taxPercent) / 100;
@@ -776,7 +779,7 @@ export default function NewVendorCredit() {
   const calculateDiscountAmount = () => {
     if (!showTransactionDiscount) return 0;
     const subTotal = calculateSubTotal();
-    const discountValue = parseFloat(formData.discount as any || 0);
+    const discountValue = parseFloat(String(formData.discount || 0));
     if (formData.discountType === "%") {
       return (subTotal * discountValue) / 100;
     }
@@ -787,11 +790,11 @@ export default function NewVendorCredit() {
     const subTotal = calculateSubTotal();
     const discountAmount = calculateDiscountAmount();
     const taxAmount = calculateTaxAmount();
-    const adjustment = showAdjustment ? (parseFloat(formData.adjustment as any || 0) || 0) : 0;
+    const adjustment = showAdjustment ? (parseFloat(String(formData.adjustment || 0)) || 0) : 0;
     return subTotal - discountAmount + taxAmount + adjustment;
   };
 
-  const handleSave = async (status) => {
+  const handleSave = async (status: string) => {
     if (saveLoadingState) return;
 
     // Validate Items
@@ -896,7 +899,7 @@ export default function NewVendorCredit() {
     }
   };
 
-  const styles = {
+  const styles: any = {
     container: {
       width: "100%",
       backgroundColor: "#ffffff",
@@ -1195,7 +1198,7 @@ export default function NewVendorCredit() {
     }
   };
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: string) => {
     if (!dateString) return "";
     const date = new Date(dateString);
     const day = String(date.getDate()).padStart(2, '0');
@@ -1243,7 +1246,7 @@ export default function NewVendorCredit() {
             <div style={styles.fieldRow}>
               <label style={{ ...styles.label, color: "#ef4444" }}>Vendor Name*</label>
               <div style={{ flex: 1, maxWidth: "225px", display: "flex", alignItems: "stretch" }}>
-                <div style={{ flex: 1, position: "relative" }} ref={(el) => { vendorRef.current = el; }}>
+                <div style={{ flex: 1, position: "relative" } as any} ref={vendorRef}>
                   <div
                     className={`zoho-input ${errors.vendorName ? "zoho-input-error" : ""}`}
                     style={{ 
@@ -1253,6 +1256,7 @@ export default function NewVendorCredit() {
                       height: "100%", 
                       display: "flex", 
                       alignItems: "center",
+                      justifyContent: "space-between",
                       borderColor: errors.vendorName ? "#ef4444" : "#d1d5db"
                     }}
                     onClick={(e) => {
@@ -1263,7 +1267,7 @@ export default function NewVendorCredit() {
                     <span style={{ fontSize: "14px", color: formData.vendorName ? "#374151" : "#9ca3af" }}>
                       {formData.vendorName || "Select a Vendor"}
                     </span>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       {formData.vendorName && (
                         <>
                           <X 
@@ -1278,7 +1282,7 @@ export default function NewVendorCredit() {
                           <div style={{ width: "1px", height: "16px", backgroundColor: "#e5e7eb" }} />
                         </>
                       )}
-                      <ChevronDown size={16} style={{ color: "#6b7280" }} />
+                      <ChevronDown size={14} style={{ color: "#9ca3af" }} />
                     </div>
                   </div>
 
@@ -1647,7 +1651,7 @@ export default function NewVendorCredit() {
               <div style={{ flex: 1, maxWidth: "225px" }}>
                 <textarea
                   className="zoho-input"
-                  style={{ ...styles.textarea, minHeight: "36px" }}
+                  style={{ ...styles.textarea, minHeight: "36px" } as any}
                   value={formData.subject}
                   onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
                   placeholder="Enter a description within 250 characters"
@@ -1660,7 +1664,7 @@ export default function NewVendorCredit() {
               <label style={styles.label}>
                 Accounts Payable <Info size={14} style={{ color: "#9ca3af" }} />
               </label>
-              <div style={{ flex: 1, maxWidth: "225px", position: "relative" }} ref={(el) => { accountsPayableRef.current = el; }}>
+              <div style={{ flex: 1, maxWidth: "225px", position: "relative" } as any} ref={accountsPayableRef}>
                 <div
                   className="zoho-input"
                   style={{
@@ -1679,7 +1683,11 @@ export default function NewVendorCredit() {
                   <span style={{ fontSize: "14px", color: formData.accountsPayable ? "#374151" : "#9ca3af" }}>
                     {formData.accountsPayable || "Select Accounts Payable"}
                   </span>
-                  <ChevronDown size={16} style={{ color: "#6b7280" }} />
+                  {accountsPayableOpen ? (
+                    <ChevronUp size={16} style={{ color: "#3b82f6" }} />
+                  ) : (
+                    <ChevronDown size={16} style={{ color: "#6b7280" }} />
+                  )}
                 </div>
 
                 {accountsPayableOpen && (
@@ -1913,12 +1921,12 @@ export default function NewVendorCredit() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={styles.tableHeaderRow}>
-                  <th style={{ ...styles.tableHeaderCell, width: "35%", fontSize: "11px", color: "#6b7280", fontWeight: "600", padding: "10px 16px" }}>ITEM DETAILS</th>
-                  <th style={{ ...styles.tableHeaderCell, width: "18%", fontSize: "11px", color: "#6b7280", fontWeight: "600" }}>ACCOUNT</th>
-                  <th style={{ ...styles.tableHeaderCell, width: "10%", fontSize: "11px", color: "#6b7280", fontWeight: "600", textAlign: "right" }}>QUANTITY</th>
-                  <th style={{ ...styles.tableHeaderCell, width: "15%", fontSize: "11px", color: "#6b7280", fontWeight: "600", textAlign: "right" }}>RATE <Grid3x3 size={12} style={{ display: "inline", marginLeft: "4px" }} /></th>
-                  {!showTransactionDiscount && <th style={{ ...styles.tableHeaderCell, width: "12%", fontSize: "11px", color: "#6b7280", fontWeight: "600", textAlign: "right" }}>DISCOUNT</th>}
-                  <th style={{ ...styles.tableHeaderCell, width: "15%", fontSize: "11px", color: "#6b7280", fontWeight: "600", textAlign: "right", borderRight: "none" }}>AMOUNT</th>
+                  <th style={{ ...styles.tableHeaderCell, width: "35%", fontSize: "11px", color: "#6b7280", fontWeight: "600", padding: "10px 16px" } as any}>ITEM DETAILS</th>
+                  <th style={{ ...styles.tableHeaderCell, width: "18%", fontSize: "11px", color: "#6b7280", fontWeight: "600" } as any}>ACCOUNT</th>
+                  <th style={{ ...styles.tableHeaderCell, width: "10%", fontSize: "11px", color: "#6b7280", fontWeight: "600", textAlign: "right" } as any}>QUANTITY</th>
+                  <th style={{ ...styles.tableHeaderCell, width: "15%", fontSize: "11px", color: "#6b7280", fontWeight: "600", textAlign: "right" } as any}>RATE <Grid3x3 size={12} style={{ display: "inline", marginLeft: "4px" }} /></th>
+                  {!showTransactionDiscount && <th style={{ ...styles.tableHeaderCell, width: "12%", fontSize: "11px", color: "#6b7280", fontWeight: "600", textAlign: "right" } as any}>DISCOUNT</th>}
+                  <th style={{ ...styles.tableHeaderCell, width: "15%", fontSize: "11px", color: "#6b7280", fontWeight: "600", textAlign: "right", borderRight: "none" } as any}>AMOUNT</th>
                 </tr>
               </thead>
               <tbody>
@@ -1927,11 +1935,11 @@ export default function NewVendorCredit() {
                     <td style={{ ...styles.tableCell, padding: "12px 16px" }}>
                       <div style={{ display: "flex", gap: "12px" }}>
                         <GripVertical size={16} style={{ color: "#d1d5db", marginTop: "8px" }} />
-                        <div style={{ width: "36px", height: "36px", borderRadius: "4px", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#f9fafb" }}>
+                        <div style={{ width: "36px", height: "36px", borderRadius: "4px", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#f9fafb" } as any}>
                           <ImageIcon size={20} color="#d1d5db" />
                         </div>
                         <div style={{ flex: 1 }}>
-                          <div style={styles.itemDetailsContainer} ref={(el) => { itemRefs.current[index] = el; }}>
+                          <div style={styles.itemDetailsContainer} ref={(el) => { (itemRefs.current as any)[index] = el; }}>
                             <input
                               style={{ ...styles.input, border: "none", padding: "0", fontSize: "14px", color: "#156372", fontWeight: "500", backgroundColor: "transparent" }}
                               value={itemDropdownOpen[index] ? (itemSearch[index] || "") : item.itemDetails}
@@ -2013,7 +2021,7 @@ export default function NewVendorCredit() {
                       </div>
                     </td>
                     <td style={{ ...styles.tableCell, width: "18%" }}>
-                      <div style={{ position: "relative" }} ref={(el) => { accountRefs.current[index] = el; }}>
+                      <div style={{ position: "relative" } as any} ref={(el) => { (accountRefs.current as any)[index] = el; }}>
                         <div
                           className="zoho-input"
                           style={{
@@ -2123,7 +2131,7 @@ export default function NewVendorCredit() {
                     )}
                     <td style={{ ...styles.tableCell, width: "15%", textAlign: "right", borderRight: "none" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", height: "36px" }}>
-                        <span style={{ fontSize: "14px", fontWeight: "600", color: "#111827" }}>{parseFloat(item.amount || 0).toFixed(2)}</span>
+                        <span style={{ fontSize: "14px", fontWeight: "600", color: "#111827" }}>{parseFloat(String(item.amount || 0)).toFixed(2)}</span>
                         <div style={{ display: "flex", gap: "4px" }}>
                           <MoreVertical size={14} style={{ color: "#d1d5db", cursor: "pointer" }} />
                           <X size={14} style={{ color: "#156372", cursor: "pointer" }} onClick={() => removeRow(index)} />
@@ -2246,7 +2254,7 @@ export default function NewVendorCredit() {
             <div style={{ flex: 1 }}>
               <label style={{ ...styles.label, marginBottom: "8px", fontWeight: "500", width: "auto" }}>Notes</label>
               <textarea
-                style={{ ...styles.textarea, minHeight: "100px" }}
+                style={{ ...styles.textarea, minHeight: "100px" } as any}
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 placeholder="Enter notes"
@@ -2263,7 +2271,7 @@ export default function NewVendorCredit() {
                   cursor: "pointer",
                   backgroundColor: "#f9fafb"
                 }}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => (fileInputRef.current as any)?.click()}
               >
                 <div style={{ color: "#156372", fontWeight: "500", fontSize: "14px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
                   <UploadIcon size={16} /> Upload File

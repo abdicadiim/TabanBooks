@@ -39,8 +39,10 @@ import NewVendorModal from "../../../components/modals/NewVendorModal";
 import { API_BASE_URL, getToken } from "../../../services/auth";
 import { filterActiveRecords } from "../shared/activeFilters";
 
+type SaveStatus = "Draft" | "Open";
+type ElementRefMap = Record<number, HTMLDivElement | null>;
+
 export default function NewVendorCredit() {
-  type SaveStatus = "Draft" | "Open";
   const navigate = useNavigate();
   const location = useLocation();
   const { id: routeCreditId } = useParams();
@@ -160,8 +162,8 @@ export default function NewVendorCredit() {
     purchaseTax: "",
     preferredVendor: "",
   });
-  const itemRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
-  const rowMenuRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const itemRefs = useRef<ElementRefMap>({});
+  const rowMenuRefs = useRef<ElementRefMap>({});
 
   const vendorRef = useRef<HTMLDivElement | null>(null);
   const currencyRef = useRef<HTMLDivElement | null>(null);
@@ -205,14 +207,16 @@ export default function NewVendorCredit() {
       setTaxDropdownOpen({});
       setDiscountDropdownOpen(false);
 
-      Object.keys(itemDropdownOpen).forEach((index) => {
+      Object.keys(itemDropdownOpen).forEach((key) => {
+        const index = Number(key);
         const itemEl = itemRefs.current[index];
         if (itemEl && !itemEl.contains(target)) {
           setItemDropdownOpen((prev) => ({ ...prev, [index]: false }));
           setItemSearch((prev) => ({ ...prev, [index]: "" }));
         }
       });
-      Object.keys(rowMenuOpen).forEach((index) => {
+      Object.keys(rowMenuOpen).forEach((key) => {
+        const index = Number(key);
         const rowMenuEl = rowMenuRefs.current[index];
         if (rowMenuOpen[index] && rowMenuEl && !rowMenuEl.contains(target)) {
           setRowMenuOpen((prev) => ({ ...prev, [index]: false }));
@@ -494,10 +498,10 @@ export default function NewVendorCredit() {
       itemDetails: item.name,
       account: item.purchaseAccount || "Cost of Goods Sold",
       quantity: bulkItemQuantities[item.id] || 1,
-      rate: parseFloat(item.costPrice) || 0.0,
+      rate: parseFloat(String(item.costPrice || 0)) || 0.0,
       discount: "0 %-",
       tax: item.purchaseTax || "",
-      amount: (bulkItemQuantities[item.id] || 1) * (parseFloat(item.costPrice) || 0.0),
+      amount: (bulkItemQuantities[item.id] || 1) * (parseFloat(String(item.costPrice || 0)) || 0.0),
       purchaseDiscount: "",
       project: "",
       reportingTag: "",
@@ -593,7 +597,7 @@ export default function NewVendorCredit() {
   const calculateDiscountAmount = () => {
     if (!showTransactionDiscount) return 0;
     const subTotal = calculateSubTotal();
-    const discountValue = parseFloat(formData.discount as any || 0);
+    const discountValue = parseFloat(String(formData.discount ?? 0));
     if (formData.discountType === "%") {
       return (subTotal * discountValue) / 100;
     }
@@ -604,7 +608,7 @@ export default function NewVendorCredit() {
     const subTotal = calculateSubTotal();
     const discountAmount = calculateDiscountAmount();
     const taxAmount = calculateTaxAmount();
-    const adjustment = showAdjustment ? (parseFloat(formData.adjustment as any || 0) || 0) : 0;
+    const adjustment = showAdjustment ? (parseFloat(String(formData.adjustment ?? 0)) || 0) : 0;
     return subTotal - discountAmount + taxAmount + adjustment;
   };
 
@@ -660,8 +664,8 @@ export default function NewVendorCredit() {
           item: (row as any).item,
           name: (row as any).name,
           description: (row as any).description,
-          quantity: parseFloat(row.quantity as any || 0),
-          rate: parseFloat(row.rate as any || 0),
+          quantity: parseFloat(String(row.quantity || 0)),
+          rate: parseFloat(String(row.rate || 0)),
           tax: row.tax,
           amount: row.amount,
           account: row.account
@@ -1918,7 +1922,7 @@ borderColor: vendorDropdownOpen ? "#2563eb" : "#d1d5db",
                     <div>
                       <div className="text-[14px] font-semibold text-gray-900">Sub Total</div>
                       <div className="mt-1 text-[14px] font-medium text-gray-900">
-                        Total Quantity : {itemRows.reduce((sum, item) => sum + (parseFloat(item.quantity as any) || 0), 0)}
+                        Total Quantity : {itemRows.reduce((sum, item) => sum + (parseFloat(String(item.quantity || 0)) || 0), 0)}
                       </div>
                     </div>
                     <span className="text-[14px] font-semibold text-gray-900 tabular-nums">{calculateSubTotal().toFixed(2)}</span>
@@ -1994,7 +1998,7 @@ borderColor: vendorDropdownOpen ? "#2563eb" : "#d1d5db",
                           className="h-10 w-24 rounded-lg border border-gray-200 bg-white px-3 text-right text-sm outline-none focus:border-teal-600"
                         />
                         <span className="w-20 text-right text-[14px] font-medium text-gray-900 tabular-nums">
-                          {parseFloat(formData.adjustment as any || 0).toFixed(2)}
+                          {parseFloat(String(formData.adjustment ?? 0)).toFixed(2)}
                         </span>
                       </div>
                     </div>

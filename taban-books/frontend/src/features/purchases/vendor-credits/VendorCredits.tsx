@@ -26,9 +26,9 @@ export default function VendorCredits() {
   const exportSubmenuRef = useRef(null);
   const [selectedView, setSelectedView] = useState("All");
   const [showCustomViewModal, setShowCustomViewModal] = useState(false);
-  const [vendorCredits, setVendorCredits] = useState([]);
+  const [vendorCredits, setVendorCredits] = useState<any[]>([]);
   const [organizationInfo, setOrganizationInfo] = useState<any>(null);
-  const [selectedCredits, setSelectedCredits] = useState([]);
+  const [selectedCredits, setSelectedCredits] = useState<any[]>([]);
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(true);
   const [showSearchModal, setShowSearchModal] = useState(false);
@@ -53,7 +53,7 @@ export default function VendorCredits() {
     taxExemptions: "",
   });
   const [showExportModal, setShowExportModal] = useState(false);
-  const [exportModalType, setExportModalType] = useState(null); // 'vendor-credits', 'applied', 'current-view', 'refunds'
+  const [exportModalType, setExportModalType] = useState<any>(null); // 'vendor-credits', 'applied', 'current-view', 'refunds'
   const dropdownRef = useRef(null);
   const moreMenuRef = useRef(null);
 
@@ -98,7 +98,7 @@ export default function VendorCredits() {
 
   // Handle Esc key to clear selection
   useEffect(() => {
-    const handleKeyDown = (event) => {
+    const handleKeyDown = (event: any) => {
       if (event.key === "Escape" && selectedCredits.length > 0) {
         setSelectedCredits([]);
       }
@@ -107,7 +107,7 @@ export default function VendorCredits() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [selectedCredits.length]);
 
-  const handleSelectAll = (e) => {
+  const handleSelectAll = (e: any) => {
     if (e.target.checked) {
       setSelectedCredits(filteredCredits.map((credit) => credit.id));
     } else {
@@ -115,7 +115,7 @@ export default function VendorCredits() {
     }
   };
 
-  const handleSelectItem = (creditId, e) => {
+  const handleSelectItem = (creditId: any, e: any) => {
     e.stopPropagation();
     if (e.target.checked) {
       setSelectedCredits([...selectedCredits, creditId]);
@@ -146,7 +146,7 @@ export default function VendorCredits() {
     setShowBulkUpdateModal(true);
   };
 
-  const handleBulkUpdateSubmit = async (field, value) => {
+  const handleBulkUpdateSubmit = async (field: any, value: any) => {
     const selectedIds = selectedCredits.map(String);
     if (!selectedIds.length) return;
 
@@ -249,7 +249,7 @@ export default function VendorCredits() {
   };
 
   // Format date
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: any) => {
     if (!dateString) return "";
 
     // Check if it's already an ISO string or similar
@@ -271,7 +271,7 @@ export default function VendorCredits() {
   };
 
   // Format currency
-  const formatCurrency = (amount, currency = "CAD") => {
+  const formatCurrency = (amount: any, currency = "CAD") => {
     const symbol = currency === "CAD" ? "$" : currency === "USD" ? "$" : currency === "AWG" ? "AWG" : currency;
     const formattedAmount = parseFloat(amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return `${symbol}${formattedAmount}`;
@@ -281,7 +281,7 @@ export default function VendorCredits() {
   const sortOptions = ['Credit Note #', 'Date', 'Vendor Name', 'Amount', 'Status'];
 
   // Sorting function
-  const getSortedCredits = (creditsList) => {
+  const getSortedCredits = (creditsList: any) => {
     const sorted = [...creditsList];
 
     sorted.sort((a, b) => {
@@ -342,8 +342,8 @@ export default function VendorCredits() {
   }, [vendorCredits, selectedView, selectedSort, sortDirection]);
 
   // Handle sort selection
-  const handleSortSelect = (sortOption) => {
-    const sortMap = {
+  const handleSortSelect = (sortOption: string) => {
+    const sortMap: Record<string, string> = {
       'Credit Note #': 'creditNote',
       'Date': 'date',
       'Vendor Name': 'vendor',
@@ -362,7 +362,7 @@ export default function VendorCredits() {
   };
 
   // Export function
-  const exportVendorCredits = (format, creditsToExport) => {
+  const exportVendorCredits = (format: any, creditsToExport: any) => {
     const exportData = creditsToExport.slice(0, 25000);
 
     if (format === "csv") {
@@ -370,7 +370,7 @@ export default function VendorCredits() {
 
       let csvContent = headers.join(",") + "\n";
 
-      exportData.forEach((credit) => {
+      exportData.forEach((credit: any) => {
         const row = [
           `"${(credit.creditNote || credit.id || "").replace(/"/g, '""')}"`,
           `"${(credit.date || "").replace(/"/g, '""')}"`,
@@ -407,7 +407,7 @@ export default function VendorCredits() {
 
   // Close dropdown when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event) => {
+    const handleClickOutside = (event: any) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setDropdownOpen(false);
       }
@@ -427,7 +427,7 @@ export default function VendorCredits() {
     };
   }, [dropdownOpen, moreMenuOpen]);
 
-  const styles = {
+  const styles: any = {
     container: {
       width: "100%",
       backgroundColor: "#ffffff",
@@ -736,10 +736,10 @@ export default function VendorCredits() {
                 gap: "6px"
               }}
               onMouseEnter={(e) => {
-                e.target.style.backgroundColor = "#f9fafb";
+                e.currentTarget.style.backgroundColor = "#f9fafb";
               }}
               onMouseLeave={(e) => {
-                e.target.style.backgroundColor = "#ffffff";
+                e.currentTarget.style.backgroundColor = "#ffffff";
               }}
             >
               Bulk Update
@@ -762,10 +762,10 @@ export default function VendorCredits() {
                 height: "32px"
               }}
               onMouseEnter={(e) => {
-                e.target.style.backgroundColor = "#f9fafb";
+                e.currentTarget.style.backgroundColor = "#f9fafb";
               }}
               onMouseLeave={(e) => {
-                e.target.style.backgroundColor = "#ffffff";
+                e.currentTarget.style.backgroundColor = "#ffffff";
               }}
               title="Download PDF"
             >
@@ -787,10 +787,10 @@ export default function VendorCredits() {
                 gap: "6px"
               }}
               onMouseEnter={(e) => {
-                e.target.style.backgroundColor = "#f9fafb";
+                e.currentTarget.style.backgroundColor = "#f9fafb";
               }}
               onMouseLeave={(e) => {
-                e.target.style.backgroundColor = "#ffffff";
+                e.currentTarget.style.backgroundColor = "#ffffff";
               }}
             >
               Delete
@@ -799,7 +799,7 @@ export default function VendorCredits() {
               {selectedCredits.length} Selected
             </span>
             <button
-              onClick={() => handleBulkUpdate("Open")}
+              onClick={handleBulkUpdate}
               style={{
                 padding: "6px 12px",
                 fontSize: "13px",
@@ -817,7 +817,7 @@ export default function VendorCredits() {
               Bulk Update
             </button>
             <button
-              onClick={handleBulkDelete}
+              onClick={handleDeleteSelected}
               style={{
                 padding: "6px 12px",
                 fontSize: "13px",
@@ -916,26 +916,7 @@ export default function VendorCredits() {
                         </div>
                       </button>
                     ))}
-                    <div style={{ height: "1px", backgroundColor: "#e5e7eb", margin: "4px 0" }} />
-                    <button
-                      style={{
-                        ...styles.dropdownItem,
-                        color: "#156372",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        fontWeight: "600",
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f9fafb")}
-                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                      onClick={() => {
-                        setDropdownOpen(false);
-                        setShowCustomViewModal(true);
-                      }}
-                    >
-                      <Plus size={16} />
-                      New Custom View
-                    </button>
+
                   </div>
                 )}
               </div>
@@ -976,12 +957,12 @@ export default function VendorCredits() {
                         }}
                         onMouseEnter={(e) => {
                           if (!sortSubmenuOpen) {
-                            e.target.style.backgroundColor = "#f3f4f6";
+                            e.currentTarget.style.backgroundColor = "#f3f4f6";
                           }
                         }}
                         onMouseLeave={(e) => {
                           if (!sortSubmenuOpen) {
-                            e.target.style.backgroundColor = "transparent";
+                            e.currentTarget.style.backgroundColor = "transparent";
                           }
                         }}
                       >
@@ -1038,12 +1019,12 @@ export default function VendorCredits() {
                                 }}
                                 onMouseEnter={(e) => {
                                   if (!isSelected) {
-                                    e.target.style.backgroundColor = "#f3f4f6";
+                                    e.currentTarget.style.backgroundColor = "#f3f4f6";
                                   }
                                 }}
                                 onMouseLeave={(e) => {
                                   if (!isSelected) {
-                                    e.target.style.backgroundColor = "transparent";
+                                    e.currentTarget.style.backgroundColor = "transparent";
                                   }
                                 }}
                               >
@@ -1074,12 +1055,12 @@ export default function VendorCredits() {
                         }}
                         onMouseEnter={(e) => {
                           if (!importSubmenuOpen) {
-                            e.target.style.backgroundColor = "#f3f4f6";
+                            e.currentTarget.style.backgroundColor = "#f3f4f6";
                           }
                         }}
                         onMouseLeave={(e) => {
                           if (!importSubmenuOpen) {
-                            e.target.style.backgroundColor = "transparent";
+                            e.currentTarget.style.backgroundColor = "transparent";
                           }
                         }}
                       >
@@ -1121,8 +1102,8 @@ export default function VendorCredits() {
                               background: "none",
                               textAlign: "left"
                             }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = "#f3f4f6"}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f3f4f6"}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
                           >
                             Import Applied Vendor Credits
                           </button>
@@ -1144,8 +1125,8 @@ export default function VendorCredits() {
                               background: "none",
                               textAlign: "left"
                             }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = "#f3f4f6"}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f3f4f6"}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
                           >
                             Import Refunds
                           </button>
@@ -1167,8 +1148,8 @@ export default function VendorCredits() {
                               background: "none",
                               textAlign: "left"
                             }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = "#f3f4f6"}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f3f4f6"}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
                           >
                             Import Vendor Credits
                           </button>
@@ -1190,12 +1171,12 @@ export default function VendorCredits() {
                         }}
                         onMouseEnter={(e) => {
                           if (!exportSubmenuOpen) {
-                            e.target.style.backgroundColor = "#f3f4f6";
+                            e.currentTarget.style.backgroundColor = "#f3f4f6";
                           }
                         }}
                         onMouseLeave={(e) => {
                           if (!exportSubmenuOpen) {
-                            e.target.style.backgroundColor = "transparent";
+                            e.currentTarget.style.backgroundColor = "transparent";
                           }
                         }}
                       >
@@ -1237,8 +1218,8 @@ export default function VendorCredits() {
                               background: "none",
                               textAlign: "left"
                             }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = "#f3f4f6"}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f3f4f6"}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
                           >
                             Export Vendor Credits
                           </button>
@@ -1260,8 +1241,8 @@ export default function VendorCredits() {
                               background: "none",
                               textAlign: "left"
                             }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = "#f3f4f6"}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f3f4f6"}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
                           >
                             Export Applied Vendor Credits
                           </button>
@@ -1283,8 +1264,8 @@ export default function VendorCredits() {
                               background: "none",
                               textAlign: "left"
                             }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = "#f3f4f6"}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f3f4f6"}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
                           >
                             Export Current View
                           </button>
@@ -1306,8 +1287,8 @@ export default function VendorCredits() {
                               background: "none",
                               textAlign: "left"
                             }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = "#f3f4f6"}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f3f4f6"}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
                           >
                             Export Refunds
                           </button>
@@ -1319,10 +1300,10 @@ export default function VendorCredits() {
                     <button
                       style={styles.moreDropdownItem}
                       onMouseEnter={(e) => {
-                        e.target.style.backgroundColor = "#f3f4f6";
+                        e.currentTarget.style.backgroundColor = "#f3f4f6";
                       }}
                       onMouseLeave={(e) => {
-                        e.target.style.backgroundColor = "transparent";
+                        e.currentTarget.style.backgroundColor = "transparent";
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1340,10 +1321,10 @@ export default function VendorCredits() {
                     <button
                       style={styles.moreDropdownItem}
                       onMouseEnter={(e) => {
-                        e.target.style.backgroundColor = "#f3f4f6";
+                        e.currentTarget.style.backgroundColor = "#f3f4f6";
                       }}
                       onMouseLeave={(e) => {
-                        e.target.style.backgroundColor = "transparent";
+                        e.currentTarget.style.backgroundColor = "transparent";
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1361,10 +1342,10 @@ export default function VendorCredits() {
                     <button
                       style={styles.moreDropdownItem}
                       onMouseEnter={(e) => {
-                        e.target.style.backgroundColor = "#f3f4f6";
+                        e.currentTarget.style.backgroundColor = "#f3f4f6";
                       }}
                       onMouseLeave={(e) => {
-                        e.target.style.backgroundColor = "transparent";
+                        e.currentTarget.style.backgroundColor = "transparent";
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -2096,10 +2077,10 @@ export default function VendorCredits() {
                   cursor: "pointer",
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.backgroundColor = "#f9fafb";
+                  e.currentTarget.style.backgroundColor = "#f9fafb";
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.backgroundColor = "#ffffff";
+                  e.currentTarget.style.backgroundColor = "#ffffff";
                 }}
               >
                 Cancel
@@ -2120,10 +2101,10 @@ export default function VendorCredits() {
                   cursor: "pointer",
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.backgroundColor = "#0D4A52";
+                  e.currentTarget.style.backgroundColor = "#0D4A52";
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.backgroundColor = "#156372";
+                  e.currentTarget.style.backgroundColor = "#156372";
                 }}
               >
                 Search
@@ -2390,7 +2371,7 @@ export default function VendorCredits() {
   );
 }
 
-function NewCustomViewModal({ onClose, onSave }) {
+function NewCustomViewModal({ onClose, onSave }: any) {
   const [formData, setFormData] = useState({
     name: "",
     markAsFavorite: false,
@@ -2412,7 +2393,7 @@ function NewCustomViewModal({ onClose, onSave }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [userType, setUserType] = useState("Users");
   const [selectedUserInput, setSelectedUserInput] = useState("");
-  const [selectedUsersList, setSelectedUsersList] = useState([]);
+  const [selectedUsersList, setSelectedUsersList] = useState<any[]>([]);
   const [isUserTypeDropdownOpen, setIsUserTypeDropdownOpen] = useState(false);
   const userTypeDropdownRef = useRef(null);
 
@@ -2536,7 +2517,7 @@ function NewCustomViewModal({ onClose, onSave }) {
     "is not empty",
   ];
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: any) => {
     e.preventDefault();
     onSave(formData);
   };
@@ -2545,7 +2526,7 @@ function NewCustomViewModal({ onClose, onSave }) {
     col.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const modalStyles = {
+  const modalStyles: any = {
     overlay: {
       position: "fixed",
       top: 0,
@@ -2918,8 +2899,8 @@ function NewCustomViewModal({ onClose, onSave }) {
                         gap: "8px",
                       }}
                       onClick={() => moveColumnToSelected(column)}
-                      onMouseEnter={(e) => (e.target.style.backgroundColor = "#f9fafb")}
-                      onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f9fafb")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                     >
                       <GripVertical size={16} style={{ color: "#9ca3af", cursor: "grab" }} />
                       <span style={{ flex: 1 }}>{column}</span>
@@ -2958,12 +2939,12 @@ function NewCustomViewModal({ onClose, onSave }) {
                         onClick={() => !isRequired && moveColumnToAvailable(column)}
                         onMouseEnter={(e) => {
                           if (!isRequired) {
-                            e.target.style.backgroundColor = "#f9fafb";
+                            e.currentTarget.style.backgroundColor = "#f9fafb";
                           }
                         }}
                         onMouseLeave={(e) => {
                           if (!isRequired) {
-                            e.target.style.backgroundColor = "transparent";
+                            e.currentTarget.style.backgroundColor = "transparent";
                           }
                         }}
                       >
@@ -3147,12 +3128,12 @@ function NewCustomViewModal({ onClose, onSave }) {
                           }}
                           onMouseEnter={(e) => {
                             if (userType !== "Users") {
-                              e.target.style.backgroundColor = "#f9fafb";
+                              e.currentTarget.style.backgroundColor = "#f9fafb";
                             }
                           }}
                           onMouseLeave={(e) => {
                             if (userType !== "Users") {
-                              e.target.style.backgroundColor = "transparent";
+                              e.currentTarget.style.backgroundColor = "transparent";
                             }
                           }}
                         >
@@ -3172,12 +3153,12 @@ function NewCustomViewModal({ onClose, onSave }) {
                           }}
                           onMouseEnter={(e) => {
                             if (userType !== "Roles") {
-                              e.target.style.backgroundColor = "#f9fafb";
+                              e.currentTarget.style.backgroundColor = "#f9fafb";
                             }
                           }}
                           onMouseLeave={(e) => {
                             if (userType !== "Roles") {
-                              e.target.style.backgroundColor = "transparent";
+                              e.currentTarget.style.backgroundColor = "transparent";
                             }
                           }}
                         >
@@ -3237,8 +3218,8 @@ function NewCustomViewModal({ onClose, onSave }) {
                       gap: "6px",
                       fontWeight: "500",
                     }}
-                    onMouseEnter={(e) => (e.target.style.backgroundColor = "#0D4A52")}
-                    onMouseLeave={(e) => (e.target.style.backgroundColor = "#156372")}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#0D4A52")}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#156372")}
                   >
                     <Plus size={16} />
                     Add Users
@@ -3295,8 +3276,8 @@ function NewCustomViewModal({ onClose, onSave }) {
             <button
               type="submit"
               style={modalStyles.saveButton}
-              onMouseEnter={(e) => (e.target.style.backgroundColor = "#0D4A52")}
-              onMouseLeave={(e) => (e.target.style.backgroundColor = "#156372")}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#0D4A52")}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#156372")}
             >
               Save
             </button>
@@ -3304,8 +3285,8 @@ function NewCustomViewModal({ onClose, onSave }) {
               type="button"
               onClick={onClose}
               style={modalStyles.cancelButton}
-              onMouseEnter={(e) => (e.target.style.backgroundColor = "#f9fafb")}
-              onMouseLeave={(e) => (e.target.style.backgroundColor = "#ffffff")}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f9fafb")}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
             >
               Cancel
             </button>
