@@ -1,13 +1,15 @@
-import { defineConfig } from "vite";
+import { defineConfig, ProxyOptions } from "vite";
 import react from "@vitejs/plugin-react";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import type { HttpProxy } from "vite";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
   // Load environment variables
-  const rawApiBaseUrl = process.env.VITE_API_BASE_URL || "http://127.0.0.1:5000";
+  const rawApiBaseUrl = process.env.VITE_API_BASE_URL || "http://127.0.0.1:5001";
   // Normalize localhost to IPv4 loopback to avoid intermittent Node DNS localhost resolution issues in proxy.
   const apiBaseUrl = rawApiBaseUrl.replace("http://localhost:", "http://127.0.0.1:");
   const frontendUrl = process.env.VITE_FRONTEND_URL || "http://localhost:5175";
@@ -137,14 +139,14 @@ export default defineConfig(({ mode }) => {
           timeout: 30000,
           proxyTimeout: 30000,
           // Retry on connection errors
-          configure: (proxy, _options) => {
-            proxy.on('error', (err, req, res) => {
+          configure: (proxy: HttpProxy.Server, _options: ProxyOptions) => {
+            proxy.on('error', (err: Error, req: IncomingMessage, res: ServerResponse) => {
               console.error('[Vite Proxy] Proxy error:', err.message);
               console.error('[Vite Proxy] Request:', req.url);
             });
 
             if (isProxyDebugEnabled) {
-              proxy.on('proxyReq', (_proxyReq, req, _res) => {
+              proxy.on('proxyReq', (_proxyReq: any, req: IncomingMessage, _res: ServerResponse) => {
                 console.log('[Vite Proxy] Proxying:', req.method, req.url);
               });
               console.log('[Vite Proxy] Proxy middleware configured');
