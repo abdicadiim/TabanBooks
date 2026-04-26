@@ -49,6 +49,7 @@ export default function NewVendorCredit() {
   const [enabledSettings, setEnabledSettings] = useState<any>(null);
   const [formData, setFormData] = useState({
     vendorName: "",
+    vendorId: "",
     creditNote: "",
     orderNumber: "",
     vendorCreditDate: new Date().toISOString().split("T")[0],
@@ -2319,6 +2320,19 @@ export default function NewVendorCredit() {
           onCreated={handleVendorCreated}
         />
       )}
+      <NumberSettingsModal 
+        show={showNumberSettings} 
+        onClose={() => setShowNumberSettings(false)} 
+        settings={numberingSettings}
+        onSave={(newSettings: any) => {
+          setNumberingSettings(newSettings);
+          if (newSettings.mode === 'auto') {
+            setFormData({ ...formData, creditNote: `${newSettings.prefix}${newSettings.nextNumber}` });
+          }
+          setShowNumberSettings(false);
+        }}
+        styles={styles}
+      />
     </>
   );
 }
@@ -2438,19 +2452,6 @@ const BulkItemsModal = ({ show, onClose, items, selectedItems, onToggleSelect, o
           <button onClick={onAdd} style={styles.primaryButton} disabled={selectedItems.length === 0}>Add Items</button>
         </div>
       </div>
-      <NumberSettingsModal 
-        show={showNumberSettings} 
-        onClose={() => setShowNumberSettings(false)} 
-        settings={numberingSettings}
-        onSave={(newSettings: any) => {
-          setNumberingSettings(newSettings);
-          if (newSettings.mode === 'auto') {
-            setFormData({ ...formData, creditNote: `${newSettings.prefix}${newSettings.nextNumber}` });
-          }
-          setShowNumberSettings(false);
-        }}
-        styles={styles}
-      />
     </div>
   );
 };
@@ -2598,4 +2599,5 @@ const NumberSettingsModal = ({ show, onClose, settings, onSave, styles }: any) =
     </div>
   );
 };
+
 
