@@ -64,7 +64,7 @@ export default function NewVendorCredit() {
   });
   const { code: baseCurrencyCode } = useCurrency();
   const [discountDropdownOpen, setDiscountDropdownOpen] = useState(false);
-  const [selectedVendor, setSelectedVendor] = useState(null);
+  const [selectedVendor, setSelectedVendor] = useState<any>(null);
   const [billingAddressEditMode, setBillingAddressEditMode] = useState(false);
 
   const [itemRows, setItemRows] = useState([
@@ -140,18 +140,18 @@ export default function NewVendorCredit() {
     purchaseTax: "",
     preferredVendor: "",
   });
-  const itemRefs = useRef({});
-  const rowMenuRefs = useRef({});
+  const itemRefs = useRef<any>({});
+  const rowMenuRefs = useRef<any>({});
 
-  const vendorRef = useRef(null);
-  const currencyRef = useRef(null);
-  const accountsPayableRef = useRef(null);
-  const taxExclusiveRef = useRef(null);
-  const taxLevelRef = useRef(null);
-  const uploadMenuRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const bulkActionsRef = useRef(null);
-  const addNewRowRef = useRef(null);
+  const vendorRef = useRef<any>(null);
+  const currencyRef = useRef<any>(null);
+  const accountsPayableRef = useRef<any>(null);
+  const taxExclusiveRef = useRef<any>(null);
+  const taxLevelRef = useRef<any>(null);
+  const uploadMenuRef = useRef<any>(null);
+  const fileInputRef = useRef<any>(null);
+  const bulkActionsRef = useRef<any>(null);
+  const addNewRowRef = useRef<any>(null);
 
   // Load vendors from localStorage
   const [taxes, setTaxes] = useState<any[]>([]);
@@ -483,12 +483,12 @@ export default function NewVendorCredit() {
 
   const handleItemChange = (index: number, field: string, value: any) => {
     const newItems = [...itemRows];
-    newItems[index][field] = value;
+    (newItems[index] as any)[field] = value;
 
     // Calculate amount
     if (field === "quantity" || field === "rate" || field === "discount") {
-      const quantity = parseFloat(newItems[index].quantity || 0);
-      const rate = parseFloat(newItems[index].rate || 0);
+      const quantity = parseFloat(String(newItems[index].quantity || 0));
+      const rate = parseFloat(String(newItems[index].rate || 0));
       const discountMatch = (newItems[index].discount || "0 %-").match(/(\d+(?:\.\d+)?)/);
       const discountPercent = discountMatch ? parseFloat(discountMatch[1]) : 0;
       const subtotal = quantity * rate;
@@ -517,8 +517,8 @@ export default function NewVendorCredit() {
     if (item.costPrice) {
       newItems[index].rate = item.costPrice;
       // Recalculate amount
-      const quantity = parseFloat(newItems[index].quantity || 0);
-      const rate = parseFloat(item.costPrice || 0);
+      const quantity = parseFloat(String(newItems[index].quantity || 0));
+      const rate = parseFloat(String(item.costPrice || 0));
       const discountMatch = (newItems[index].discount || "0 %-").match(/(\d+(?:\.\d+)?)/);
       const discountPercent = discountMatch ? parseFloat(discountMatch[1]) : 0;
       const subtotal = quantity * rate;
@@ -530,7 +530,7 @@ export default function NewVendorCredit() {
     setItemSearch((prev) => ({ ...prev, [index]: "" }));
   };
 
-  const filteredItems = (index) => {
+  const filteredItems = (index: number) => {
     const searchTerm = (itemSearch[index] || "").toLowerCase();
     if (!searchTerm) return items;
     return items.filter((item) =>
@@ -554,7 +554,7 @@ export default function NewVendorCredit() {
     }]);
   };
 
-  const removeRow = (index) => {
+  const removeRow = (index: number) => {
     if (itemRows.length > 1) {
       setItemRows(itemRows.filter((_, i) => i !== index));
     }
@@ -601,7 +601,7 @@ export default function NewVendorCredit() {
     setRowMenuOpen((prev) => ({ ...prev, [index]: false }));
   };
 
-  const handleBulkItemSelect = (item) => {
+  const handleBulkItemSelect = (item: any) => {
     const isSelected = selectedBulkItems.some(selected => selected.id === item.id);
     if (isSelected) {
       setSelectedBulkItems(selectedBulkItems.filter(selected => selected.id !== item.id));
@@ -614,7 +614,7 @@ export default function NewVendorCredit() {
     }
   };
 
-  const handleBulkQuantityChange = (itemId, quantity) => {
+  const handleBulkQuantityChange = (itemId: any, quantity: any) => {
     setBulkItemQuantities({ ...bulkItemQuantities, [itemId]: parseFloat(quantity) || 1 });
   };
 
@@ -654,18 +654,18 @@ export default function NewVendorCredit() {
       type: newItemData.type,
       unit: newItemData.unit,
       sellable: newItemData.sellable,
-      sellingPrice: parseFloat(newItemData.sellingPrice || 0),
+      sellingPrice: parseFloat(String(newItemData.sellingPrice || 0)),
       salesAccount: newItemData.salesAccount,
       salesDescription: newItemData.salesDescription,
       salesTax: newItemData.salesTax,
       purchasable: newItemData.purchasable,
-      costPrice: parseFloat(newItemData.costPrice || 0),
+      costPrice: parseFloat(String(newItemData.costPrice || 0)),
       purchaseAccount: newItemData.purchaseAccount,
       purchaseDescription: newItemData.purchaseDescription,
       purchaseTax: newItemData.purchaseTax,
       preferredVendor: newItemData.preferredVendor,
       sku: newItemData.sku,
-      stockOnHand: parseFloat(newItemData.initialStock || 0),
+      stockOnHand: parseFloat(String(newItemData.initialStock || 0)),
       transactions: [],
     };
 
@@ -709,7 +709,7 @@ export default function NewVendorCredit() {
         const taxPercent = taxMatch ? parseFloat(taxMatch[1]) : 0;
         if (formData.taxExclusive === "Tax Inclusive") {
           // Tax is already included in amount
-          const subtotal = parseFloat(item.quantity || 0) * parseFloat(item.rate || 0);
+          const subtotal = parseFloat(String(item.quantity || 0)) * parseFloat(String(item.rate || 0));
           taxTotal += (subtotal * taxPercent) / (100 + taxPercent);
         } else {
           taxTotal += ((item.amount || 0) * taxPercent) / 100;
@@ -737,7 +737,7 @@ export default function NewVendorCredit() {
     return subTotal - discountAmount + taxAmount + adjustment;
   };
 
-  const handleSave = async (status) => {
+  const handleSave = async (status: any) => {
     if (saveLoadingState) return;
     // Validate required fields
     if (!formData.vendorName || !selectedVendor) {
@@ -791,9 +791,9 @@ export default function NewVendorCredit() {
         orderNumber: formData.orderNumber,
         date: formData.vendorCreditDate,
         items: validItems.map(row => ({
-          item: row.item,
-          name: row.name,
-          description: row.description,
+          item: (row as any).item,
+          name: (row as any).name,
+          description: (row as any).description,
           quantity: parseFloat(row.quantity as any || 0),
           rate: parseFloat(row.rate as any || 0),
           tax: row.tax,
@@ -847,7 +847,7 @@ export default function NewVendorCredit() {
       backgroundColor: "#ffffff",
       height: "100vh",
       display: "flex",
-      flexDirection: "column",
+      flexDirection: "column" as any,
       fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
     },
     header: {
@@ -868,7 +868,7 @@ export default function NewVendorCredit() {
     content: {
       padding: "32px",
       flex: 1,
-      overflowY: "auto",
+      overflowY: "auto" as any,
       backgroundColor: "#ffffff",
     },
     formSection: {
@@ -877,7 +877,7 @@ export default function NewVendorCredit() {
     },
     fieldRow: {
       display: "flex",
-      flexDirection: "column",
+      flexDirection: "column" as any,
       gap: "8px",
       marginBottom: "20px",
       maxWidth: "500px",
@@ -922,7 +922,7 @@ export default function NewVendorCredit() {
       borderRadius: "4px",
       width: "100%",
       minHeight: "40px",
-      resize: "vertical",
+      resize: "vertical" as any,
       outline: "none",
     },
     itemTable: {
@@ -942,7 +942,7 @@ export default function NewVendorCredit() {
       color: "#6b7280",
       textTransform: "uppercase",
       letterSpacing: "0.05em",
-      textAlign: "left",
+      textAlign: "left" as any,
     },
     tableCell: {
       padding: "16px 12px",
@@ -1024,7 +1024,7 @@ export default function NewVendorCredit() {
     },
     fieldGroup: {
       display: "flex",
-      flexDirection: "column",
+      flexDirection: "column" as any,
       gap: "8px",
     },
     saveDraftButton: {
@@ -1065,11 +1065,11 @@ export default function NewVendorCredit() {
       cursor: "pointer",
     },
     itemDetailsContainer: {
-      position: "relative",
+      position: "relative" as any,
       flex: 1,
     },
     itemDropdown: {
-      position: "absolute",
+      position: "absolute" as any,
       top: "100%",
       left: 0,
       right: 0,
@@ -1079,7 +1079,7 @@ export default function NewVendorCredit() {
       boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
       zIndex: 1000,
       maxHeight: "300px",
-      overflowY: "auto",
+      overflowY: "auto" as any,
       marginTop: "4px",
     },
     itemDropdownRow: {
@@ -1093,7 +1093,7 @@ export default function NewVendorCredit() {
     },
     itemDropdownInfo: {
       display: "flex",
-      flexDirection: "column",
+      flexDirection: "column" as any,
       gap: "2px",
     },
     itemDropdownName: {
@@ -1106,9 +1106,9 @@ export default function NewVendorCredit() {
       color: "#6b7280",
     },
     itemDropdownStock: {
-      textAlign: "right",
+      textAlign: "right" as any,
       display: "flex",
-      flexDirection: "column",
+      flexDirection: "column" as any,
       alignItems: "flex-end",
     },
     itemDropdownStockLabel: {
@@ -1123,7 +1123,7 @@ export default function NewVendorCredit() {
     addNewItemDropdownBtn: {
       padding: "10px 12px",
       width: "100%",
-      textAlign: "left",
+      textAlign: "left" as any,
       backgroundColor: "#ffffff",
       border: "none",
       borderTop: "1px solid #e5e7eb",
@@ -1137,7 +1137,7 @@ export default function NewVendorCredit() {
     }
   };
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: any) => {
     if (!dateString) return "";
     const date = new Date(dateString);
     const day = String(date.getDate()).padStart(2, '0');
@@ -1169,8 +1169,8 @@ export default function NewVendorCredit() {
             {/* Vendor Name */}
             <div style={styles.fieldRow}>
               <label style={{ ...styles.label, color: "#156372" }}>Vendor Name*</label>
-              <div style={{ display: "flex", gap: "8px", position: "relative" }}>
-                <div style={{ display: "flex", gap: "8px", position: "relative", flex: 1 }}>
+              <div style={{ display: "flex", gap: "8px", position: "relative" as any }}>
+                <div style={{ display: "flex", gap: "8px", position: "relative" as any, flex: 1 }}>
                   <div
                     style={{
                       ...styles.input,
@@ -1219,12 +1219,12 @@ export default function NewVendorCredit() {
                       boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
                       maxHeight: "400px",
                       display: "flex",
-                      flexDirection: "column",
+                      flexDirection: "column" as any,
                       overflow: "hidden"
                     }}>
                       <div style={{ padding: "12px", borderBottom: "1px solid #f3f4f6" }}>
-                        <div style={{ position: "relative" }}>
-                          <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
+                        <div style={{ position: "relative" as any }}>
+                          <Search size={14} style={{ position: "absolute" as any, left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
                           <input
                             style={{
                               width: "100%",
@@ -1243,7 +1243,7 @@ export default function NewVendorCredit() {
                         </div>
                       </div>
 
-                      <div style={{ overflowY: "auto", flex: 1 }}>
+                      <div style={{ overflowY: "auto" as any, flex: 1 }}>
                         {vendors
                           .filter(v =>
                             (v.name?.toLowerCase().includes(vendorSearch.toLowerCase())) ||
@@ -1280,7 +1280,7 @@ export default function NewVendorCredit() {
                               }}>
                                 {(vendor.displayName || vendor.name || "V")[0].toUpperCase()}
                               </div>
-                              <div style={{ display: "flex", flexDirection: "column" }}>
+                              <div style={{ display: "flex", flexDirection: "column" as any }}>
                                 <span style={{ fontSize: "13px", fontWeight: "500", color: "#1f2937" }}>
                                   {vendor.displayName || vendor.name}
                                 </span>
@@ -1342,14 +1342,14 @@ export default function NewVendorCredit() {
             {/* Credit Note# */}
             <div style={styles.fieldRow}>
               <label style={{ ...styles.label, color: "#156372" }}>Credit Note#*</label>
-              <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
+              <div style={{ display: "flex", alignItems: "center", position: "relative" as any }}>
                 <input
                   type="text"
                   style={styles.input}
                   value={formData.creditNote}
                   onChange={(e) => setFormData({ ...formData, creditNote: e.target.value })}
                 />
-                <Settings size={14} style={{ position: "absolute", right: "12px", color: "#156372", cursor: "pointer" }} />
+                <Settings size={14} style={{ position: "absolute" as any, right: "12px", color: "#156372", cursor: "pointer" }} />
               </div>
             </div>
 
@@ -1393,7 +1393,7 @@ export default function NewVendorCredit() {
               <label style={styles.label}>
                 Accounts Payable <Info size={14} style={{ color: "#9ca3af" }} />
               </label>
-              <div style={{ flex: 1, position: "relative" }}>
+              <div style={{ flex: 1, position: "relative" as any }}>
                 <div
                   style={{
                     ...styles.input,
@@ -1427,11 +1427,11 @@ export default function NewVendorCredit() {
                     marginTop: "4px",
                     boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
                     maxHeight: "300px",
-                    overflowY: "auto"
+                    overflowY: "auto" as any
                   }} onClick={(e) => e.stopPropagation()}>
-                    <div style={{ padding: "8px", borderBottom: "1px solid #f3f4f6", position: "sticky", top: 0, background: "white", zIndex: 1 }}>
-                      <div style={{ position: "relative" }}>
-                        <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
+                    <div style={{ padding: "8px", borderBottom: "1px solid #f3f4f6", position: "sticky" as any, top: 0, background: "white", zIndex: 1 }}>
+                      <div style={{ position: "relative" as any }}>
+                        <Search size={14} style={{ position: "absolute" as any, left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
                         <input
                           style={{
                             width: "100%",
@@ -1477,7 +1477,7 @@ export default function NewVendorCredit() {
                           </div>
                         ))}
                       {accounts.filter(acc => (acc.type === "Accounts Payable" || acc.name === "Accounts Payable") && acc.name.toLowerCase().includes(apSearchTerm.toLowerCase())).length === 0 && (
-                        <div style={{ padding: "12px", fontSize: "12px", color: "#6b7280", textAlign: "center" }}>
+                        <div style={{ padding: "12px", fontSize: "12px", color: "#6b7280", textAlign: "center" as any }}>
                           No matching liability accounts found
                         </div>
                       )}
@@ -1490,7 +1490,7 @@ export default function NewVendorCredit() {
 
           {/* Item Table Selection */}
           <div style={{ display: "flex", gap: "32px", marginBottom: "24px", paddingBottom: "16px", borderBottom: "1px solid #e5e7eb" }}>
-            <div style={{ position: "relative" }}>
+            <div style={{ position: "relative" as any }}>
               <div
                 style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#374151", cursor: "pointer" }}
                 onClick={(e) => {
@@ -1505,7 +1505,7 @@ export default function NewVendorCredit() {
               </div>
               {taxExclusiveOpen && (
                 <div style={{
-                  position: "absolute",
+                  position: "absolute" as any,
                   top: "100%",
                   left: 0,
                   zIndex: 1000,
@@ -1518,8 +1518,8 @@ export default function NewVendorCredit() {
                   overflow: "hidden"
                 }}>
                   <div style={{ padding: "12px", borderBottom: "1px solid #f3f4f6" }}>
-                    <div style={{ position: "relative" }}>
-                      <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
+                    <div style={{ position: "relative" as any }}>
+                      <Search size={14} style={{ position: "absolute" as any, left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
                       <input
                         style={{
                           width: "100%",
@@ -1567,7 +1567,7 @@ export default function NewVendorCredit() {
               )}
             </div>
 
-            <div style={{ position: "relative" }}>
+            <div style={{ position: "relative" as any }}>
               <div
                 style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#374151", cursor: "pointer" }}
                 onClick={(e) => { e.stopPropagation(); setTaxLevelOpen(!taxLevelOpen); }}
@@ -1578,7 +1578,7 @@ export default function NewVendorCredit() {
               </div>
               {taxLevelOpen && (
                 <div style={{
-                  position: "absolute",
+                  position: "absolute" as any,
                   top: "100%",
                   left: 0,
                   zIndex: 1000,
@@ -1591,8 +1591,8 @@ export default function NewVendorCredit() {
                   overflow: "hidden"
                 }}>
                   <div style={{ padding: "12px", borderBottom: "1px solid #f3f4f6" }}>
-                    <div style={{ position: "relative" }}>
-                      <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
+                    <div style={{ position: "relative" as any }}>
+                      <Search size={14} style={{ position: "absolute" as any, left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
                       <input
                         style={{
                           width: "100%",
@@ -1641,572 +1641,591 @@ export default function NewVendorCredit() {
           </div>
 
           {/* Item Table */}
-          <div style={styles.itemTable}>
-            <div style={{ padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e5e7eb" }}>
-              <span style={{ fontSize: "14px", fontWeight: "500", color: "#111827" }}>Item Table</span>
-              <div style={{ display: "flex", alignItems: "center", color: "#156372", gap: "4px", fontSize: "13px", cursor: "pointer" }}>
-                <CheckCircle size={14} />
+          <div className="mt-8">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-900">Item Table</h2>
+              <button
+                type="button"
+                className="flex items-center gap-2 text-sm font-medium text-teal-600 hover:text-teal-700"
+              >
+                <CheckCircle size={16} />
                 Bulk Actions
-              </div>
+              </button>
             </div>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={styles.tableHeaderRow}>
-                  <th style={{ ...styles.tableHeaderCell, width: "35%" }}>Item Details</th>
-                  <th style={{ ...styles.tableHeaderCell, width: "15%" }}>Account</th>
-                  <th style={{ ...styles.tableHeaderCell, width: "10%", textAlign: "right" }}>Quantity</th>
-                  <th style={{ ...styles.tableHeaderCell, width: "15%", textAlign: "right" }}>Rate <Grid3x3 size={12} style={{ display: "inline", marginLeft: "4px" }} /></th>
-                  <th style={{ ...styles.tableHeaderCell, width: "10%" }}>Tax</th>
-                  <th style={{ ...styles.tableHeaderCell, width: "15%", textAlign: "right" }}>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {itemRows.map((item, index) => (
-                  <tr key={index} style={{ borderBottom: "1px solid #e5e7eb" }}>
-                    <td style={styles.tableCell}>
-                      <div style={{ display: "flex", gap: "12px" }}>
-                        <GripVertical size={16} style={{ color: "#d1d5db", marginTop: "4px" }} />
-                        <div style={{ width: "32px", height: "32px", borderRadius: "4px", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          <ImageIcon size={16} color="#d1d5db" />
-                        </div>
-                        <div style={styles.itemDetailsContainer} ref={(el) => (itemRefs.current[index] = el)}>
-                          <input
-                            style={{ ...styles.input, border: "none", padding: "0", fontSize: "13px", color: "#156372", fontWeight: "500" }}
-                            value={itemDropdownOpen[index] ? (itemSearch[index] || "") : item.itemDetails}
-                            placeholder="Type or click to select an item."
-                            onChange={(e) => {
-                              handleItemChange(index, "itemDetails", e.target.value);
-                              setItemSearch((prev) => ({ ...prev, [index]: e.target.value }));
-                              setItemDropdownOpen((prev) => ({ ...prev, [index]: true }));
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setItemDropdownOpen((prev) => ({ ...prev, [index]: !prev[index] }));
-                            }}
-                          />
-                          {itemDropdownOpen[index] && (
-                            <div style={styles.itemDropdown}>
-                              {filteredItems(index).length > 0 ? (
-                                filteredItems(index).map((shopItem) => (
-                                  <div
-                                    key={shopItem.id || shopItem._id}
-                                    style={styles.itemDropdownRow}
-                                    onClick={(e) => { e.stopPropagation(); handleItemSelect(index, shopItem); }}
-                                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#eff6ff")}
-                                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
-                                  >
-                                    <div style={styles.itemDropdownInfo}>
-                                      <div style={styles.itemDropdownName}>{shopItem.name}</div>
-                                      <div style={styles.itemDropdownSubtext}>
-                                        SKU: {shopItem.sku || "N/A"} Purchase Rate: {formData.currency} {parseFloat(shopItem.costPrice || 0).toFixed(2)}
-                                      </div>
-                                    </div>
-                                    {shopItem.trackInventory && (
-                                      <div style={styles.itemDropdownStock}>
-                                        <div style={styles.itemDropdownStockLabel}>Stock on Hand</div>
-                                        <div style={styles.itemDropdownStockValue}>
-                                          {parseFloat(shopItem.stockQuantity || 0).toFixed(2)} {shopItem.unit || "N/A"}
+            
+            <div className="overflow-x-auto overflow-y-visible rounded-lg border border-gray-200">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-[#fcfcfd] border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 w-[30%]">Item Details</th>
+                    <th className="px-3 py-2 w-[15%]">Account</th>
+                    <th className="px-3 py-2 w-[12%] text-right">Quantity</th>
+                    <th className="px-3 py-2 w-[15%] text-right">Rate</th>
+                    {formData.taxLevel === "At Line Item Level" && (
+                      <th className="px-3 py-2 w-[13%] text-right">Discount</th>
+                    )}
+                    <th className="px-3 py-2 w-[15%] text-right">Tax</th>
+                    <th className="px-3 py-2 w-[13%] text-right">Amount</th>
+                    <th className="w-0 px-0 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {itemRows.map((item, index) => (
+                    <tr key={index} className="group border-b border-gray-200 align-top min-h-[118px]">
+                      <td className="border-r border-gray-200 px-3 py-2.5 text-sm">
+                        <div className="relative flex items-start gap-2">
+                          <div className="flex flex-col gap-1 cursor-move px-0.5 py-1.5">
+                            <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
+                            <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
+                            <div style={{ width: "3px", height: "3px", borderRadius: "1px", backgroundColor: "#6b7280" }}></div>
+                          </div>
+                          <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50">
+                            <ImageIcon size={18} className="text-gray-300" />
+                          </div>
+                          <div className="relative flex-1" ref={(el) => { itemRefs.current[index] = el; }}>
+                            <input
+                              className="h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-900 shadow-sm outline-none focus:border-teal-600"
+                              value={itemDropdownOpen[index] ? (itemSearch[index] || "") : item.itemDetails}
+                              placeholder="Type or click to select an item"
+                              onChange={(e) => {
+                                handleItemChange(index, "itemDetails", e.target.value);
+                                setItemSearch((prev) => ({ ...prev, [index]: e.target.value }));
+                                setItemDropdownOpen((prev) => ({ ...prev, [index]: true }));
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setItemDropdownOpen((prev) => ({ ...prev, [index]: true }));
+                              }}
+                            />
+                            {itemDropdownOpen[index] && (
+                              <div style={styles.itemDropdown}>
+                                {filteredItems(index).length > 0 ? (
+                                  filteredItems(index).map((shopItem) => (
+                                    <div
+                                      key={shopItem.id || shopItem._id}
+                                      style={styles.itemDropdownRow}
+                                      onClick={(e) => { e.stopPropagation(); handleItemSelect(index, shopItem); }}
+                                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#eff6ff")}
+                                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
+                                    >
+                                      <div style={styles.itemDropdownInfo}>
+                                        <div style={styles.itemDropdownName}>{shopItem.name}</div>
+                                        <div style={styles.itemDropdownSubtext}>
+                                          SKU: {shopItem.sku || "N/A"} Purchase Rate: {formData.currency} {parseFloat(String(shopItem.costPrice || 0)).toFixed(2)}
                                         </div>
                                       </div>
-                                    )}
+                                      {shopItem.trackInventory && (
+                                        <div style={styles.itemDropdownStock}>
+                                          <div style={styles.itemDropdownStockLabel}>Stock on Hand</div>
+                                          <div style={styles.itemDropdownStockValue}>
+                                            {parseFloat(String(shopItem.stockQuantity || 0)).toFixed(2)} {shopItem.unit || "N/A"}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div style={{ padding: "12px", fontSize: "12px", color: "#6b7280", textAlign: "center" as any }}>
+                                    No items found
                                   </div>
-                                ))
-                              ) : (
-                                <div style={{ padding: "12px", fontSize: "12px", color: "#6b7280", textAlign: "center" }}>
-                                  No items found
-                                </div>
-                              )}
-                              <button
-                                type="button"
-                                style={styles.addNewItemDropdownBtn}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setShowNewItemModal(true);
-                                  setItemDropdownOpen((prev) => ({ ...prev, [index]: false }));
-                                }}
-                              >
-                                <Plus size={16} /> Add New Item
-                              </button>
-                            </div>
-                          )}
-                          <div style={{ fontSize: "11px", color: "#9ca3af", marginTop: "2px" }}>
-                            {item.sku ? `SKU: ${item.sku}` : ""}
-                          </div>
-                          <div
-                            style={{ color: "#156372", fontSize: "12px", marginTop: "8px", cursor: "pointer" }}
-                            onClick={() => setShowAdditionalFields(!showAdditionalFields)}
-                          >
-                            Add a description to your item
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ position: "relative" }}>
-                        <div
-                          style={{
-                            ...styles.input,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            cursor: "pointer",
-                            fontSize: "13px"
-                          }}
-                          onClick={(e) => { e.stopPropagation(); setAccountDropdownOpen(prev => ({ ...prev, [index]: !prev[index] })); }}
-                        >
-                          <span style={{ color: item.account ? "#374151" : "#9ca3af" }}>
-                            {item.account || "Select an account"}
-                          </span>
-                          <ChevronDown size={14} style={{ color: "#6b7280" }} />
-                        </div>
-                        {accountDropdownOpen[index] && (
-                          <div style={{
-                            position: "absolute",
-                            top: "100%",
-                            left: 0,
-                            right: 0,
-                            zIndex: 1000,
-                            background: "white",
-                            border: "1px solid #e5e7eb",
-                            borderRadius: "8px",
-                            marginTop: "4px",
-                            boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
-                            maxHeight: "300px",
-                            overflowY: "auto"
-                          }}>
-                            <div style={{ padding: "12px", borderBottom: "1px solid #f3f4f6", position: "sticky", top: 0, background: "white", zIndex: 1 }}>
-                              <div style={{ position: "relative" }}>
-                                <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
-                                <input
-                                  style={{
-                                    width: "100%",
-                                    padding: "8px 8px 8px 32px",
-                                    border: "1px solid #e5e7eb",
-                                    borderRadius: "6px",
-                                    fontSize: "13px",
-                                    outline: "none"
+                                )}
+                                <button
+                                  type="button"
+                                  style={styles.addNewItemDropdownBtn}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowNewItemModal(true);
+                                    setItemDropdownOpen((prev) => ({ ...prev, [index]: false }));
                                   }}
-                                  placeholder="Search accounts..."
-                                  value={accountSearch[index] || ""}
-                                  onChange={(e) => setAccountSearch(prev => ({ ...prev, [index]: e.target.value }))}
-                                  onClick={(e) => e.stopPropagation()}
-                                  autoFocus
-                                />
+                                >
+                                  <Plus size={16} /> Add New Item
+                                </button>
                               </div>
-                            </div>
-                            <div style={{ padding: "4px 0" }}>
-                              {Object.entries(
-                                (accounts || []).reduce((acc: any, curr: any) => {
-                                  const type = curr.type || "Other";
-                                  if (!acc[type]) acc[type] = [];
-                                  acc[type].push(curr);
-                                  return acc;
-                                }, {})
-                              ).map(([type, typeAccounts]: [string, any]) => {
-                                const filtered = typeAccounts.filter((acc: any) =>
-                                  acc.name.toLowerCase().includes((accountSearch[index] || "").toLowerCase())
-                                );
-                                if (filtered.length === 0) return null;
-                                return (
-                                  <div key={type}>
-                                    <div style={{ padding: "8px 12px", fontSize: "11px", fontWeight: "600", color: "#6b7280", background: "#f9fafb", textTransform: "uppercase", letterSpacing: "0.5px" }}>{type}</div>
-                                    {filtered.map((acc: any) => (
-                                      <div
-                                        key={acc.id || acc._id}
-                                        style={{
-                                          padding: "10px 16px",
-                                          fontSize: "13px",
-                                          cursor: "pointer",
-                                          backgroundColor: item.account === acc.name ? "#eff6ff" : "white",
-                                          color: item.account === acc.name ? "#156372" : "#374151",
-                                          transition: "background-color 0.2s"
-                                        }}
-                                        onClick={() => {
-                                          handleItemChange(index, "account", acc.name);
-                                          setAccountDropdownOpen(prev => ({ ...prev, [index]: false }));
-                                        }}
-                                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = item.account === acc.name ? "#eff6ff" : "#f3f4f6")}
-                                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = item.account === acc.name ? "#eff6ff" : "white")}
-                                      >
-                                        {acc.name}
-                                      </div>
-                                    ))}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            <div
-                              style={{
-                                padding: "12px",
-                                borderTop: "1px solid #f3f4f6",
-                                color: "#156372",
-                                fontSize: "13px",
-                                fontWeight: "500",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "8px",
-                                cursor: "pointer",
-                                position: "sticky",
-                                bottom: 0,
-                                background: "white",
-                                zIndex: 1
-                              }}
-                              onClick={() => console.log("New Account clicked")}
+                            )}
+                            {!!(item as any).sku && (
+                              <div className="mt-1 text-xs text-slate-500">
+                                SKU: {(item as any).sku}
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              className="mt-2 text-xs font-medium text-teal-600 hover:text-teal-700"
+                              onClick={() => setShowAdditionalFields(!showAdditionalFields)}
                             >
-                              <PlusCircle size={16} /> New Account
-                            </div>
+                              Add a description to your item
+                            </button>
+                            {showAdditionalFields && (
+                              <textarea
+                                value={(item as any).description || ""}
+                                onChange={(e) => handleItemChange(index, "description", e.target.value)}
+                                placeholder="Add a description to your item"
+                                className="mt-3 min-h-[64px] w-full rounded-lg border border-gray-100 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-teal-600"
+                              />
+                            )}
                           </div>
-                        )}
-                      </div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ textAlign: "right" }}>
-                        <input
-                          style={{ ...styles.input, textAlign: "right", fontSize: "13px" }}
-                          value={item.quantity}
-                          onChange={(e) => handleItemChange(index, "quantity", e.target.value)}
-                        />
-                        {(item as any).trackInventory && (
-                          <>
-                            <div style={{ fontSize: "10px", color: "#9ca3af", marginTop: "4px" }}>Stock on Hand:</div>
-                            <div style={{ fontSize: "10px", color: "#374151" }}>
-                              {(item as any).stockQuantity || 0} {(item as any).unit || ""}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ textAlign: "right" }}>
-                        <input
-                          style={{ ...styles.input, textAlign: "right", fontSize: "13px" }}
-                          value={item.rate}
-                          onChange={(e) => handleItemChange(index, "rate", e.target.value)}
-                        />
-                        <div style={{ color: "#156372", fontSize: "10px", marginTop: "4px", cursor: "pointer" }}>Recent Transactions</div>
-                      </div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ position: "relative" }}>
-                        <div
-                          style={{
-                            ...styles.input,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            cursor: "pointer",
-                            fontSize: "13px"
-                          }}
-                          onClick={(e) => { e.stopPropagation(); setTaxDropdownOpen(prev => ({ ...prev, [index]: !prev[index] })); }}
-                        >
-                          <span style={{ color: item.tax ? "#374151" : "#9ca3af" }}>
-                            {item.tax || "Select a Tax"}
-                          </span>
-                          <ChevronDown size={14} style={{ color: "#6b7280" }} />
                         </div>
-                        {taxDropdownOpen[index] && (
-                          <div style={{
-                            position: "absolute",
-                            top: "100%",
-                            left: 0,
-                            right: 0,
-                            zIndex: 1000,
-                            background: "white",
-                            border: "1px solid #e5e7eb",
-                            borderRadius: "8px",
-                            marginTop: "4px",
-                            boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
-                            maxHeight: "300px",
-                            overflowY: "auto"
-                          }}>
-                            <div style={{ padding: "12px", borderBottom: "1px solid #f3f4f6", position: "sticky", top: 0, background: "white", zIndex: 1 }}>
-                              <div style={{ position: "relative" }}>
-                                <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
-                                <input
-                                  style={{
-                                    width: "100%",
-                                    padding: "8px 8px 8px 32px",
-                                    border: "1px solid #e5e7eb",
-                                    borderRadius: "6px",
-                                    fontSize: "13px",
-                                    outline: "none"
-                                  }}
-                                  placeholder="Search taxes..."
-                                  value={taxSearch[index] || ""}
-                                  onChange={(e) => setTaxSearch(prev => ({ ...prev, [index]: e.target.value }))}
-                                  onClick={(e) => e.stopPropagation()}
-                                  autoFocus
-                                />
+                      </td>
+                      <td className="border-r border-gray-200 px-3 py-2.5 text-sm">
+                        <div className="relative">
+                          <div
+                            className="flex h-11 w-full cursor-pointer items-center justify-between rounded-lg border border-gray-200 bg-white px-3 text-sm shadow-sm hover:border-teal-600"
+                            onClick={(e) => { e.stopPropagation(); setAccountDropdownOpen(prev => ({ ...prev, [index]: !prev[index] })); }}
+                          >
+                            <span className={item.account ? "text-gray-900 font-medium" : "text-gray-400"}>
+                              {item.account || "Select an account"}
+                            </span>
+                            <ChevronDown size={14} className="text-gray-400" />
+                          </div>
+                          {accountDropdownOpen[index] && (
+                            <div style={{
+                              position: "absolute",
+                              top: "100%",
+                              left: 0,
+                              right: 0,
+                              zIndex: 1000,
+                              background: "white",
+                              border: "1px solid #e5e7eb",
+                              borderRadius: "8px",
+                              marginTop: "4px",
+                              boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                              maxHeight: "300px",
+                              overflowY: "auto" as any
+                            }}>
+                              <div style={{ padding: "12px", borderBottom: "1px solid #f3f4f6", position: "sticky" as any, top: 0, background: "white", zIndex: 1 }}>
+                                <div style={{ position: "relative" as any }}>
+                                  <Search size={14} style={{ position: "absolute" as any, left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
+                                  <input
+                                    style={{
+                                      width: "100%",
+                                      padding: "8px 8px 8px 32px",
+                                      border: "1px solid #e5e7eb",
+                                      borderRadius: "6px",
+                                      fontSize: "13px",
+                                      outline: "none"
+                                    }}
+                                    placeholder="Search accounts..."
+                                    value={accountSearch[index] || ""}
+                                    onChange={(e) => setAccountSearch(prev => ({ ...prev, [index]: e.target.value }))}
+                                    onClick={(e) => e.stopPropagation()}
+                                    autoFocus
+                                  />
+                                </div>
                               </div>
-                            </div>
-                            <div style={{ padding: "4px 0" }}>
+                              <div style={{ padding: "4px 0" }}>
+                                {Object.entries(
+                                  (accounts || []).reduce((acc: any, curr: any) => {
+                                    const type = curr.type || "Other";
+                                    if (!acc[type]) acc[type] = [];
+                                    acc[type].push(curr);
+                                    return acc;
+                                  }, {})
+                                ).map(([type, typeAccounts]: [string, any]) => {
+                                  const filtered = typeAccounts.filter((acc: any) =>
+                                    acc.name.toLowerCase().includes((accountSearch[index] || "").toLowerCase())
+                                  );
+                                  if (filtered.length === 0) return null;
+                                  return (
+                                    <div key={type}>
+                                      <div style={{ padding: "8px 12px", fontSize: "11px", fontWeight: "600", color: "#6b7280", background: "#f9fafb", textTransform: "uppercase", letterSpacing: "0.5px" }}>{type}</div>
+                                      {filtered.map((acc: any) => (
+                                        <div
+                                          key={acc.id || acc._id}
+                                          style={{
+                                            padding: "10px 16px",
+                                            fontSize: "13px",
+                                            cursor: "pointer",
+                                            backgroundColor: item.account === acc.name ? "#eff6ff" : "white",
+                                            color: item.account === acc.name ? "#156372" : "#374151",
+                                            transition: "background-color 0.2s"
+                                          }}
+                                          onClick={() => {
+                                            handleItemChange(index, "account", acc.name);
+                                            setAccountDropdownOpen(prev => ({ ...prev, [index]: false }));
+                                          }}
+                                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = item.account === acc.name ? "#eff6ff" : "#f3f4f6")}
+                                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = item.account === acc.name ? "#eff6ff" : "white")}
+                                        >
+                                          {acc.name}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                               <div
                                 style={{
-                                  padding: "10px 16px",
+                                  padding: "12px",
+                                  borderTop: "1px solid #f3f4f6",
+                                  color: "#156372",
                                   fontSize: "13px",
+                                  fontWeight: "500",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "8px",
                                   cursor: "pointer",
-                                  backgroundColor: item.tax === "Non-Taxable" ? "#eff6ff" : "white",
-                                  color: item.tax === "Non-Taxable" ? "#156372" : "#374151",
-                                  transition: "background-color 0.2s"
+                                  position: "sticky" as any,
+                                  bottom: 0,
+                                  background: "white",
+                                  zIndex: 1
                                 }}
-                                onClick={() => {
-                                  handleItemChange(index, "tax", "Non-Taxable");
-                                  setTaxDropdownOpen(prev => ({ ...prev, [index]: false }));
-                                }}
-                                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = item.tax === "Non-Taxable" ? "#eff6ff" : "#f3f4f6")}
-                                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = item.tax === "Non-Taxable" ? "#eff6ff" : "white")}
+                                onClick={() => console.log("New Account clicked")}
                               >
-                                Non-Taxable
+                                <PlusCircle size={16} /> New Account
                               </div>
-                              {(taxes || []).filter((t: any) =>
-                                t.name.toLowerCase().includes((taxSearch[index] || "").toLowerCase())
-                              ).map((t: any) => (
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="border-r border-gray-200 px-3 py-2.5 text-sm align-top">
+                        <div className="flex min-h-[118px] flex-col items-stretch justify-start">
+                          <input
+                            type="text"
+                            value={item.quantity}
+                            onChange={(e) => handleItemChange(index, "quantity", e.target.value)}
+                            className="h-11 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none focus:border-teal-600"
+                          />
+                          {(item as any).trackInventory && (
+                            <div className="mt-2 space-y-1 text-center text-[11px] leading-4">
+                              <div className="text-gray-700">
+                                <span className="font-medium">Stock on Hand:</span>{" "}
+                                <span className="text-gray-900">
+                                  {parseFloat(String((item as any).stockQuantity || 0)).toFixed(0)} {(item as any).unit || ""}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="border-r border-gray-200 px-3 py-2.5 text-sm">
+                        <div className="flex flex-col items-end">
+                          <input
+                            type="text"
+                            value={item.rate}
+                            onChange={(e) => handleItemChange(index, "rate", e.target.value)}
+                            className="h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none focus:border-teal-600"
+                          />
+                          <button
+                            type="button"
+                            className="mt-4 text-[12px] font-medium text-[#3b82f6] hover:text-[#2563eb]"
+                          >
+                            Recent Transactions
+                          </button>
+                        </div>
+                      </td>
+                      {formData.taxLevel === "At Line Item Level" && (
+                        <td className="border-r border-gray-200 px-3 py-2.5 text-sm">
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={item.discount || ""}
+                              onChange={(e) => handleItemChange(index, "discount", e.target.value)}
+                              className="h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none focus:border-teal-600"
+                              placeholder="0"
+                            />
+                            <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-gray-500">%</div>
+                          </div>
+                        </td>
+                      )}
+                      <td className="border-r border-gray-200 px-3 py-2.5 text-sm">
+                        <div className="relative">
+                          <div
+                            className="flex h-11 w-full cursor-pointer items-center justify-between rounded-lg border border-gray-200 bg-white px-3 text-sm shadow-sm hover:border-teal-600"
+                            onClick={(e) => { e.stopPropagation(); setTaxDropdownOpen(prev => ({ ...prev, [index]: !prev[index] })); }}
+                          >
+                            <span className={item.tax ? "text-gray-900 font-medium" : "text-gray-400"}>
+                              {item.tax || "Select a Tax"}
+                            </span>
+                            <ChevronDown size={14} className="text-gray-400" />
+                          </div>
+                          {taxDropdownOpen[index] && (
+                            <div style={{
+                              position: "absolute",
+                              top: "100%",
+                              left: 0,
+                              right: 0,
+                              zIndex: 1000,
+                              background: "white",
+                              border: "1px solid #e5e7eb",
+                              borderRadius: "8px",
+                              marginTop: "4px",
+                              boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                              maxHeight: "300px",
+                              overflowY: "auto" as any
+                            }}>
+                              <div style={{ padding: "12px", borderBottom: "1px solid #f3f4f6", position: "sticky" as any, top: 0, background: "white", zIndex: 1 }}>
+                                <div style={{ position: "relative" as any }}>
+                                  <Search size={14} style={{ position: "absolute" as any, left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
+                                  <input
+                                    style={{
+                                      width: "100%",
+                                      padding: "8px 8px 8px 32px",
+                                      border: "1px solid #e5e7eb",
+                                      borderRadius: "6px",
+                                      fontSize: "13px",
+                                      outline: "none"
+                                    }}
+                                    placeholder="Search taxes..."
+                                    value={taxSearch[index] || ""}
+                                    onChange={(e) => setTaxSearch(prev => ({ ...prev, [index]: e.target.value }))}
+                                    onClick={(e) => e.stopPropagation()}
+                                    autoFocus
+                                  />
+                                </div>
+                              </div>
+                              <div style={{ padding: "4px 0" }}>
                                 <div
-                                  key={t.id}
                                   style={{
                                     padding: "10px 16px",
                                     fontSize: "13px",
                                     cursor: "pointer",
-                                    backgroundColor: item.tax === t.name ? "#eff6ff" : "white",
-                                    color: item.tax === t.name ? "#156372" : "#374151",
+                                    backgroundColor: item.tax === "Non-Taxable" ? "#eff6ff" : "white",
+                                    color: item.tax === "Non-Taxable" ? "#156372" : "#374151",
                                     transition: "background-color 0.2s"
                                   }}
                                   onClick={() => {
-                                    handleItemChange(index, "tax", t.name);
+                                    handleItemChange(index, "tax", "Non-Taxable");
                                     setTaxDropdownOpen(prev => ({ ...prev, [index]: false }));
                                   }}
-                                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = item.tax === t.name ? "#eff6ff" : "#f3f4f6")}
-                                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = item.tax === t.name ? "#eff6ff" : "white")}
+                                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = item.tax === "Non-Taxable" ? "#eff6ff" : "#f3f4f6")}
+                                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = item.tax === "Non-Taxable" ? "#eff6ff" : "white")}
                                 >
-                                  {t.name}
+                                  Non-Taxable
                                 </div>
-                              ))}
+                                {(taxes || []).filter((t: any) =>
+                                  t.name.toLowerCase().includes((taxSearch[index] || "").toLowerCase())
+                                ).map((t: any) => (
+                                  <div
+                                    key={t.id}
+                                    style={{
+                                      padding: "10px 16px",
+                                      fontSize: "13px",
+                                      cursor: "pointer",
+                                      backgroundColor: item.tax === t.name ? "#eff6ff" : "white",
+                                      color: item.tax === t.name ? "#156372" : "#374151",
+                                      transition: "background-color 0.2s"
+                                    }}
+                                    onClick={() => {
+                                      handleItemChange(index, "tax", t.name);
+                                      setTaxDropdownOpen(prev => ({ ...prev, [index]: false }));
+                                    }}
+                                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = item.tax === t.name ? "#eff6ff" : "#f3f4f6")}
+                                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = item.tax === t.name ? "#eff6ff" : "white")}
+                                  >
+                                    {t.name}
+                                  </div>
+                                ))}
+                              </div>
+                              <div
+                                style={{
+                                  padding: "12px",
+                                  borderTop: "1px solid #f3f4f6",
+                                  color: "#156372",
+                                  fontSize: "13px",
+                                  fontWeight: "500",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "8px",
+                                  cursor: "pointer",
+                                  position: "sticky" as any,
+                                  bottom: 0,
+                                  background: "white",
+                                  zIndex: 1
+                                }}
+                                onClick={() => console.log("New Tax clicked")}
+                              >
+                                <PlusCircle size={16} /> New Tax
+                              </div>
                             </div>
-                            <div
-                              style={{
-                                padding: "12px",
-                                borderTop: "1px solid #f3f4f6",
-                                color: "#156372",
-                                fontSize: "13px",
-                                fontWeight: "500",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "8px",
-                                cursor: "pointer",
-                                position: "sticky",
-                                bottom: 0,
-                                background: "white",
-                                zIndex: 1
-                              }}
-                              onClick={() => console.log("New Tax clicked")}
-                            >
-                              <PlusCircle size={16} /> New Tax
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px" }}>
-                        <span style={{ fontSize: "13px", fontWeight: "500" }}>{parseFloat(item.amount || 0).toFixed(2)}</span>
-                        <MoreVertical size={14} style={{ color: "#d1d5db", cursor: "pointer" }} onClick={() => setRowMenuOpen(prev => ({ ...prev, [index]: !prev[index] }))} />
-                        <X size={14} style={{ color: "#156372", cursor: "pointer" }} onClick={() => removeRow(index)} />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div style={{ padding: "16px", display: "flex", gap: "16px" }}>
-              <button type="button" onClick={addNewRow} style={{ ...styles.secondaryButton, display: "flex", alignItems: "center", gap: "4px", color: "#156372", border: "none", padding: "0" }}>
-                <PlusCircle size={14} /> Add New Row
-              </button>
-              <button type="button" onClick={() => setShowBulkItemsModal(true)} style={{ ...styles.secondaryButton, display: "flex", alignItems: "center", gap: "4px", color: "#156372", border: "none", padding: "0" }}>
-                <PlusCircle size={14} /> Add Items in Bulk
-              </button>
-            </div>
-          </div>
-
-          {/* Summary */}
-          <div style={styles.summarySection}>
-            <div style={styles.summaryBox}>
-              <div style={styles.summaryRow}>
-                <span style={styles.summaryLabel}>Sub Total</span>
-                <span style={styles.summaryValue}>{calculateSubTotal().toFixed(2)}</span>
-              </div>
-              {showTransactionDiscount && (
-                <div style={styles.summaryRow}>
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                    <span style={styles.summaryLabel}>Discount</span>
-                    <div style={{ display: "flex", position: "relative" }}>
-                      <input
-                        style={{
-                          width: "80px",
-                          padding: "6px 8px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "4px 0 0 4px",
-                          fontSize: "13px",
-                          textAlign: "right",
-                          outline: "none"
-                        }}
-                        value={formData.discount}
-                        onChange={(e) => setFormData({ ...formData, discount: parseFloat(e.target.value) || 0 })}
-                      />
-                      <div
-                        style={{
-                          padding: "6px 12px",
-                          border: "1px solid #d1d5db",
-                          borderLeft: "none",
-                          borderRadius: "0 4px 4px 0",
-                          fontSize: "13px",
-                          backgroundColor: "#f3f4f6",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          minWidth: "60px",
-                          justifyContent: "center"
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDiscountDropdownOpen(!discountDropdownOpen);
-                        }}
-                      >
-                        {formData.discountType === "%" ? "%" : formData.currency}
-                        <ChevronDown size={12} style={{ color: "#6b7280" }} />
-                      </div>
-
-                      {discountDropdownOpen && (
-                        <div style={{
-                          position: "absolute",
-                          top: "100%",
-                          right: 0,
-                          zIndex: 1000,
-                          background: "white",
-                          border: "1px solid #e5e7eb",
-                          borderRadius: "8px",
-                          marginTop: "4px",
-                          boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
-                          width: "120px",
-                          overflow: "hidden"
-                        }}>
-                          <div
-                            style={{
-                              padding: "10px 16px",
-                              fontSize: "13px",
-                              cursor: "pointer",
-                              backgroundColor: formData.discountType === "%" ? "#eff6ff" : "white",
-                              color: formData.discountType === "%" ? "#156372" : "#374151",
-                              fontWeight: formData.discountType === "%" ? "500" : "400"
-                            }}
-                            onClick={() => {
-                              setFormData({ ...formData, discountType: "%" });
-                              setDiscountDropdownOpen(false);
-                            }}
-                          >
-                            %
-                          </div>
-                          <div
-                            style={{
-                              padding: "10px 16px",
-                              fontSize: "13px",
-                              cursor: "pointer",
-                              backgroundColor: formData.discountType === "Currency" ? "#eff6ff" : "white",
-                              color: formData.discountType === "Currency" ? "#156372" : "#374151",
-                              fontWeight: formData.discountType === "Currency" ? "500" : "400"
-                            }}
-                            onClick={() => {
-                              setFormData({ ...formData, discountType: "Currency" });
-                              setDiscountDropdownOpen(false);
-                            }}
-                          >
-                            {formData.currency}
-                          </div>
+                          )}
                         </div>
-                      )}
+                      </td>
+                      <td className="px-3 py-2.5 text-sm">
+                        <div className="flex items-center justify-end">
+                          <input
+                            type="text"
+                            value={parseFloat(String(item.amount || 0)).toFixed(2)}
+                            readOnly
+                            className="h-11 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-right text-sm font-medium text-gray-900 tabular-nums shadow-sm outline-none"
+                          />
+                        </div>
+                      </td>
+                      <td className="relative w-0 px-0 py-2.5 text-sm overflow-visible">
+                        <div className="absolute -right-16 top-1/2 z-10 flex -translate-y-1/2 items-center gap-2 opacity-0 transition-all duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+                          <button
+                            type="button"
+                            onClick={() => setRowMenuOpen(prev => ({ ...prev, [index]: !prev[index] }))}
+                            className="flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-400 shadow-sm hover:bg-gray-50 hover:text-gray-600"
+                          >
+                            <MoreVertical size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeRow(index)}
+                            className="flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white text-rose-400 shadow-sm hover:bg-rose-50 hover:text-rose-500"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_350px] xl:items-start">
+              <div className="space-y-6">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={addNewRow}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-md bg-[#eef2ff] px-4 py-2.5 text-sm font-medium text-[#156372] shadow-sm hover:bg-[#e0e7ff]"
+                  >
+                    <Plus size={14} className="text-[#3b82f6]" />
+                    Add New Row
+                    <ChevronDown size={14} className="text-gray-400" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowBulkItemsModal(true)}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-md bg-[#eef2ff] px-4 py-2.5 text-sm font-medium text-[#156372] shadow-sm hover:bg-[#e0e7ff]"
+                  >
+                    <Plus size={14} className="text-[#3b82f6]" />
+                    Add Items in Bulk
+                  </button>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-900">Notes</label>
+                  <textarea
+                    name="notes"
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    placeholder="Enter notes"
+                    className="min-h-[100px] w-full rounded-md border border-gray-300 bg-white px-3 py-3 text-sm font-inherit outline-none resize-y focus:border-teal-600"
+                  />
+                </div>
+                
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-900">Attachments</label>
+                  <div
+                    className="relative cursor-pointer rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-6 py-8 text-center hover:border-gray-400"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <div className="text-sm font-medium text-[#156372]">
+                      Upload File
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      Maximum File Size: 10MB
                     </div>
                   </div>
-                  <span style={styles.summaryValue}>{calculateDiscountAmount().toFixed(2)}</span>
-                </div>
-              )}
-
-              {showAdjustment && (
-              <div style={styles.summaryRow}>
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                  <div style={{
-                    padding: "6px 12px",
-                    border: "1px dashed #d1d5db",
-                    borderRadius: "4px",
-                    fontSize: "13px",
-                    color: "#6b7280",
-                    backgroundColor: "#fff"
-                  }}>
-                    Adjustment
-                  </div>
                   <input
-                    style={{
-                      width: "80px",
-                      padding: "6px 8px",
-                      border: "1px solid #d1d5db",
-                      borderRadius: "4px",
-                      fontSize: "13px",
-                      textAlign: "right",
-                      outline: "none"
-                    }}
-                    value={formData.adjustment}
-                    onChange={(e) => setFormData({ ...formData, adjustment: parseFloat(e.target.value) || 0 })}
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    style={{ display: "none" }}
+                    onChange={(e) => console.log("Files selected:", e.target.files)}
                   />
-                  <Info size={14} style={{ color: "#9ca3af" }} />
                 </div>
-                <span style={styles.summaryValue}>{parseFloat(formData.adjustment as any || 0).toFixed(2)}</span>
               </div>
-              )}
 
-              <div style={styles.totalRow}>
-                <span style={styles.totalLabel}>Total ({formData.currency})</span>
-                <span style={styles.totalValue}>{calculateTotal().toFixed(2)}</span>
-              </div>
-            </div>
-          </div>
+              <div className="w-full max-w-[350px] flex-shrink-0 xl:ml-auto">
+                <div className="rounded-3xl border border-gray-200 bg-gray-50/80 px-5 py-5 shadow-[0_14px_30px_rgba(15,23,42,0.04)]">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="text-[14px] font-semibold text-gray-900">Sub Total</div>
+                      <div className="mt-1 text-[14px] font-medium text-gray-900">
+                        Total Quantity : {itemRows.reduce((sum, item) => sum + (parseFloat(item.quantity as any) || 0), 0)}
+                      </div>
+                    </div>
+                    <span className="text-[14px] font-semibold text-gray-900 tabular-nums">{calculateSubTotal().toFixed(2)}</span>
+                  </div>
+                  {showTransactionDiscount && (
+                    <div className="mt-5 grid grid-cols-[1fr_auto] items-center gap-4">
+                      <label className="text-[14px] font-medium text-gray-700">Discount</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={formData.discount}
+                          onChange={(e) => setFormData({ ...formData, discount: parseFloat(e.target.value) || 0 })}
+                          className="h-10 w-24 rounded-l-lg border border-gray-200 bg-white px-3 text-right text-sm outline-none focus:border-teal-600"
+                          min="0"
+                        />
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDiscountDropdownOpen(!discountDropdownOpen);
+                            }}
+                            className="-ml-2 flex h-10 w-12 items-center justify-center gap-1 rounded-r-lg border border-l-0 border-gray-200 bg-gray-50 text-sm text-gray-600 hover:bg-gray-100"
+                          >
+                            {formData.discountType === "%" ? "%" : formData.currency}
+                            <ChevronDown size={12} className="text-gray-400" />
+                          </button>
+                          {discountDropdownOpen && (
+                            <div className="absolute right-0 top-full mt-1 z-50 w-24 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFormData({ ...formData, discountType: "%" });
+                                  setDiscountDropdownOpen(false);
+                                }}
+                                className={`w-full px-4 py-2 text-left text-sm ${formData.discountType === "%" ? "bg-blue-50 text-teal-700 font-medium" : "text-gray-700 hover:bg-gray-50"}`}
+                              >
+                                %
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFormData({ ...formData, discountType: "Currency" });
+                                  setDiscountDropdownOpen(false);
+                                }}
+                                className={`w-full px-4 py-2 text-left text-sm ${formData.discountType === "Currency" ? "bg-blue-50 text-teal-700 font-medium" : "text-gray-700 hover:bg-gray-50"}`}
+                              >
+                                {formData.currency}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <span className="w-20 text-right text-[14px] font-medium text-gray-900 tabular-nums">
+                          {calculateDiscountAmount().toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
-          {/* Notes & Attachments */}
-          <div style={{ display: "flex", gap: "32px", marginTop: "40px", padding: "24px", borderTop: "1px solid #f3f4f6" }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ ...styles.label, marginBottom: "8px", fontWeight: "500" }}>Notes</label>
-              <textarea
-                style={{ ...styles.textarea, minHeight: "100px" }}
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Enter notes"
-              />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ ...styles.label, marginBottom: "8px", fontWeight: "500" }}>Attachments</label>
-              <div
-                style={{
-                  border: "2px dashed #e5e7eb",
-                  borderRadius: "8px",
-                  padding: "24px",
-                  textAlign: "center",
-                  cursor: "pointer",
-                  backgroundColor: "#f9fafb"
-                }}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <div style={{ color: "#156372", fontWeight: "500", fontSize: "14px" }}>
-                  Upload File
-                </div>
-                <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
-                  Maximum File Size: 10MB
+                  {showAdjustment && (
+                    <div className="mt-5 grid grid-cols-[1fr_auto] items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[14px] font-medium text-gray-700 border-b border-dashed border-gray-400 cursor-pointer">
+                          Adjustment
+                        </span>
+                        <Info size={14} className="text-gray-400" />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={formData.adjustment}
+                          onChange={(e) => setFormData({ ...formData, adjustment: parseFloat(e.target.value) || 0 })}
+                          className="h-10 w-24 rounded-lg border border-gray-200 bg-white px-3 text-right text-sm outline-none focus:border-teal-600"
+                        />
+                        <span className="w-20 text-right text-[14px] font-medium text-gray-900 tabular-nums">
+                          {parseFloat(formData.adjustment as any || 0).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-5 flex items-center justify-between border-t border-gray-200 pt-5">
+                    <span className="text-[17px] font-semibold text-gray-900">Total</span>
+                    <div className="text-right">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">{formData.currency}</div>
+                      <span className="text-[17px] font-semibold text-gray-900 tabular-nums">{calculateTotal().toFixed(2)}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                style={{ display: "none" }}
-                onChange={(e) => console.log("Files selected:", e.target.files)}
-              />
             </div>
           </div>
         </div>
@@ -2274,8 +2293,8 @@ export default function NewVendorCredit() {
 const NewItemModal = ({ show, onClose, data, onChange, onSave, taxes, vendors, styles }: any) => {
   if (!show) return null;
   return (
-    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }} onClick={onClose}>
-      <div style={{ backgroundColor: "#fff", borderRadius: "8px", width: "90%", maxWidth: "800px", maxHeight: "90vh", overflowY: "auto", padding: "24px" }} onClick={e => e.stopPropagation()}>
+    <div style={{ position: "fixed" as any, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }} onClick={onClose}>
+      <div style={{ backgroundColor: "#fff", borderRadius: "8px", width: "90%", maxWidth: "800px", maxHeight: "90vh", overflowY: "auto" as any, padding: "24px" }} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
           <h2 style={{ margin: 0 }}>New Item</h2>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={24} /></button>
@@ -2343,18 +2362,18 @@ const NewItemModal = ({ show, onClose, data, onChange, onSave, taxes, vendors, s
 const BulkItemsModal = ({ show, onClose, items, selectedItems, onToggleSelect, onQuantityChange, quantities, onAdd, styles, bulkItemsSearch, setBulkItemsSearch, filteredBulkItems }: any) => {
   if (!show) return null;
   return (
-    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0, 0, 0, 0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }} onClick={onClose}>
-      <div style={{ backgroundColor: "#ffffff", borderRadius: "8px", width: "90%", maxWidth: "1000px", maxHeight: "90vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+    <div style={{ position: "fixed" as any, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0, 0, 0, 0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }} onClick={onClose}>
+      <div style={{ backgroundColor: "#ffffff", borderRadius: "8px", width: "90%", maxWidth: "1000px", maxHeight: "90vh", display: "flex", flexDirection: "column" as any }} onClick={(e) => e.stopPropagation()}>
         <div style={{ padding: "20px 24px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <h2 style={{ fontSize: "18px", fontWeight: "600", color: "#111827", margin: 0 }}>Add Items in Bulk</h2>
           <button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer" }}><X size={20} /></button>
         </div>
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-          <div style={{ width: "60%", borderRight: "1px solid #eee", display: "flex", flexDirection: "column" }}>
+          <div style={{ width: "60%", borderRight: "1px solid #eee", display: "flex", flexDirection: "column" as any }}>
             <div style={{ padding: "16px" }}>
               <input style={styles.input} placeholder="Search items..." value={bulkItemsSearch} onChange={e => setBulkItemsSearch(e.target.value)} />
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+            <div style={{ flex: 1, overflowY: "auto" as any, padding: "16px" }}>
               {filteredBulkItems.map((item: any) => {
                 const isSelected = selectedItems.some((i: any) => i.id === item.id);
                 return (
@@ -2366,9 +2385,9 @@ const BulkItemsModal = ({ show, onClose, items, selectedItems, onToggleSelect, o
               })}
             </div>
           </div>
-          <div style={{ width: "40%", display: "flex", flexDirection: "column" }}>
+          <div style={{ width: "40%", display: "flex", flexDirection: "column" as any }}>
             <div style={{ padding: "16px", borderBottom: "1px solid #eee", fontWeight: "600" }}>Selected Items ({selectedItems.length})</div>
-            <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+            <div style={{ flex: 1, overflowY: "auto" as any, padding: "16px" }}>
               {selectedItems.map((item: any) => (
                 <div key={item.id} style={{ padding: "12px", border: "1px solid #eee", borderRadius: "6px", marginBottom: "8px" }}>
                   <div style={{ fontWeight: "500", marginBottom: "8px" }}>{item.name}</div>

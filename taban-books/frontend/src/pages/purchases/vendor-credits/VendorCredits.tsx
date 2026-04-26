@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronUp, Plus, MoreVertical, Play, Star, X, ArrowUpDown, Search, Trash2, Download, Upload, Settings, RefreshCw, ChevronRight, CreditCard, GripVertical, User, Users, Lock, Check, FileText, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Eye, EyeOff, Info } from "lucide-react";
@@ -8,6 +8,7 @@ import ExportVendorCredits from "./ExportVendorCredits";
 import { settingsAPI, vendorCreditsAPI } from "../../../services/api";
 import toast from "react-hot-toast";
 import { downloadVendorCreditsPaperPdf } from "./vendorCreditPdf";
+import emptyIllustration from "../../../assets/vendor_credits_empty.png";
 
 export default function VendorCredits() {
   const navigate = useNavigate();
@@ -1464,8 +1465,57 @@ export default function VendorCredits() {
 
       {/* Main Content */}
       <div style={styles.tableContainer}>
-        <div style={styles.tableWrapper}>
-          <table style={styles.table}>
+        {vendorCredits.length === 0 && !isRefreshing ? (
+          <div className="flex flex-col items-center justify-center py-10 px-4 text-center max-w-2xl mx-auto animate-in fade-in duration-700">
+            <div className="mb-8 relative group cursor-pointer" onClick={() => console.log("Video tutorial clicked")}>
+              <div className="relative overflow-hidden rounded-xl shadow-xl border-4 border-white bg-white">
+                <img 
+                  src={emptyIllustration} 
+                  alt="How to create a vendor credit" 
+                  className="w-[320px] h-auto object-cover opacity-90 transition-opacity group-hover:opacity-100" 
+                />
+                <div className="absolute inset-0 bg-black/5 group-hover:bg-transparent transition-colors" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-14 h-14 bg-[#22c55e] rounded-full flex items-center justify-center text-white shadow-[0_0_20px_rgba(34,197,94,0.3)] transition-all group-hover:scale-110 group-hover:rotate-6">
+                    <Play size={24} fill="white" className="ml-1" />
+                  </div>
+                </div>
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/10 to-transparent p-4 text-left">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-6 rounded bg-white/20 backdrop-blur-md flex items-center justify-center">
+                       <FileText size={14} className="text-white" />
+                    </div>
+                    <span className="text-white font-medium text-xs drop-shadow-sm">How to create a vendor credit</span>
+                  </div>
+                </div>
+              </div>
+              <div className="absolute -z-10 -bottom-4 -right-4 w-24 h-24 bg-green-50 rounded-full blur-2xl opacity-50" />
+              <div className="absolute -z-10 -top-4 -left-4 w-24 h-24 bg-blue-50 rounded-full blur-2xl opacity-50" />
+            </div>
+
+            <h2 className="text-[19px] font-bold text-gray-900 mb-2 tracking-tight">You deserve some credit too.</h2>
+            <p className="text-[13px] text-gray-500 mb-6 max-w-[400px] leading-relaxed">
+              Create vendor credits and apply them to multiple bills when buying stuff from your vendor. Use them to track returns and overpayments.
+            </p>
+
+            <div className="flex flex-col items-center gap-4">
+              <button
+                onClick={() => navigate("/purchases/vendor-credits/new")}
+                className="bg-[#22c55e] hover:bg-[#16a34a] text-white font-bold py-2.5 px-6 rounded-lg uppercase text-[12px] tracking-widest shadow-lg shadow-green-500/10 transform transition-all active:scale-95"
+              >
+                Create Vendor Credits
+              </button>
+              <button
+                onClick={() => navigate("/purchases/vendor-credits/import")}
+                className="text-[#3b82f6] hover:text-[#2563eb] text-[13px] font-medium"
+              >
+                Import Vendor Credits
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={styles.tableWrapper}>
+            <table style={styles.table}>
             <thead style={styles.tableHeader}>
               <tr>
                 <th style={styles.tableHeaderCell}>
@@ -1627,7 +1677,8 @@ export default function VendorCredits() {
             </tbody>
           </table>
         </div>
-      </div>
+      )}
+    </div>
 
       {/* New Custom View Modal */}
       {showCustomViewModal && (
