@@ -180,10 +180,10 @@ export default function PurchaseOrdersHeader({
               style={styles.moreButton}
               onClick={() => setMoreMenuOpen((current) => !current)}
               onMouseEnter={(event) => {
-                event.currentTarget.style.backgroundColor = "#e5e7eb";
+                event.currentTarget.style.backgroundColor = "#f8fafc";
               }}
               onMouseLeave={(event) => {
-                event.currentTarget.style.backgroundColor = "#f3f4f6";
+                event.currentTarget.style.backgroundColor = "#ffffff";
               }}
             >
               <MoreVertical size={18} />

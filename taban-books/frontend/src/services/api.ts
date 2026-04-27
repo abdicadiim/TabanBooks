@@ -684,7 +684,13 @@ export const billsAPI = {
 // ============================================================================
 
 export const purchaseOrdersAPI = {
-  getAll: () => apiRequest('/purchase-orders'),
+  getAll: () =>
+    apiRequest('/purchase-orders', {
+      meta: {
+        cacheTtlMs: 30000,
+        dedupeKey: 'purchase-orders:getAll',
+      },
+    }),
   getById: (id: any) => apiRequest(`/purchase-orders/${id}`),
   create: (data: any) => apiRequest('/purchase-orders', { method: 'POST', body: data }),
   update: (id: any, data: any) => apiRequest(`/purchase-orders/${id}`, { method: 'PUT', body: data }),

@@ -20,6 +20,7 @@ import {
 } from "./PurchaseOrders.utils";
 
 const PURCHASE_ORDER_COLUMNS_STORAGE_KEY = "purchase-orders-visible-columns";
+const PURCHASE_ORDERS_LIST_CACHE_KEY = "purchase-orders-list-cache";
 const PURCHASE_ORDER_COLUMN_OPTIONS = [
   { key: "date", label: "Date", locked: true },
   { key: "location", label: "Location" },
@@ -38,6 +39,7 @@ const PURCHASE_ORDER_COLUMN_OPTIONS = [
 
 const DEFAULT_VISIBLE_COLUMNS = [
   "date",
+  "location",
   "purchaseOrderNumber",
   "referenceNumber",
   "vendorName",
@@ -46,6 +48,31 @@ const DEFAULT_VISIBLE_COLUMNS = [
   "amount",
   "deliveryDate",
 ];
+
+const mapPurchaseOrdersForView = (orders: any[] = []) =>
+  orders.map((purchaseOrder: any) => ({
+    ...purchaseOrder,
+    id: purchaseOrder._id || purchaseOrder.id,
+  }));
+
+const readCachedPurchaseOrders = () => {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const rawValue = window.sessionStorage.getItem(PURCHASE_ORDERS_LIST_CACHE_KEY);
+    if (!rawValue) {
+      return [];
+    }
+
+    const parsed = JSON.parse(rawValue);
+    return Array.isArray(parsed) ? mapPurchaseOrdersForView(parsed) : [];
+  } catch (error) {
+    console.error("Failed to parse cached purchase orders:", error);
+    return [];
+  }
+};
 
 export default function PurchaseOrders() {
   const navigate = useNavigate();
@@ -57,14 +84,11 @@ export default function PurchaseOrders() {
   const [selectedView, setSelectedView] = useState("All");
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>(() => {
     const stateOrders = location.state?.purchaseOrders;
-    if (!Array.isArray(stateOrders)) {
-      return [];
+    if (Array.isArray(stateOrders) && stateOrders.length > 0) {
+      return mapPurchaseOrdersForView(stateOrders);
     }
 
-    return stateOrders.map((purchaseOrder: any) => ({
-      ...purchaseOrder,
-      id: purchaseOrder._id || purchaseOrder.id,
-    }));
+    return readCachedPurchaseOrders();
   });
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [showCustomViewModal, setShowCustomViewModal] = useState(false);
@@ -146,10 +170,7 @@ export default function PurchaseOrders() {
       const response = await purchaseOrdersAPI.getAll();
 
       if (response && (response.code === 0 || response.success)) {
-        const mappedOrders = (response.data || []).map((purchaseOrder: any) => ({
-          ...purchaseOrder,
-          id: purchaseOrder._id || purchaseOrder.id,
-        }));
+        const mappedOrders = mapPurchaseOrdersForView(response.data || []);
 
         setPurchaseOrders(mappedOrders);
       }
@@ -162,6 +183,32 @@ export default function PurchaseOrders() {
 
   useEffect(() => {
     loadPurchaseOrders();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      window.sessionStorage.setItem(
+        PURCHASE_ORDERS_LIST_CACHE_KEY,
+        JSON.stringify(purchaseOrders)
+      );
+    } catch (error) {
+      console.error("Failed to cache purchase orders:", error);
+    }
+  }, [purchaseOrders]);
+
+  useEffect(() => {
+    const handlePurchaseOrdersUpdated = () => {
+      loadPurchaseOrders();
+    };
+
+    window.addEventListener("purchaseOrdersUpdated", handlePurchaseOrdersUpdated);
+    return () => {
+      window.removeEventListener("purchaseOrdersUpdated", handlePurchaseOrdersUpdated);
+    };
   }, []);
 
   useEffect(() => {
@@ -414,7 +461,7 @@ export default function PurchaseOrders() {
       minHeight: "100vh",
     },
     header: {
-      padding: "16px 24px",
+      padding: "14px 24px 8px",
       borderBottom: "1px solid #e5e7eb",
       backgroundColor: "#ffffff",
       display: "flex",
@@ -442,7 +489,7 @@ export default function PurchaseOrders() {
       display: "inline-block",
     },
     title: {
-      fontSize: "24px",
+      fontSize: "20px",
       fontWeight: "700",
       color: "#111827",
       margin: 0,
@@ -477,7 +524,7 @@ export default function PurchaseOrders() {
       backgroundColor: "#156372",
       color: "#ffffff",
       fontSize: "14px",
-      fontWeight: "500",
+      fontWeight: "600",
       borderRadius: "6px",
       border: "none",
       cursor: "pointer",
@@ -488,8 +535,8 @@ export default function PurchaseOrders() {
     moreButton: {
       padding: "8px",
       color: "#6b7280",
-      backgroundColor: "#f3f4f6",
-      border: "none",
+      backgroundColor: "#ffffff",
+      border: "1px solid #dbe3ef",
       borderRadius: "6px",
       cursor: "pointer",
       display: "flex",
@@ -613,7 +660,7 @@ export default function PurchaseOrders() {
       width: "100%",
     },
     content: {
-      padding: "24px",
+      padding: "0",
     },
     contentHeader: {
       display: "flex",
@@ -646,45 +693,50 @@ export default function PurchaseOrders() {
     },
     tableWrapper: {
       overflowX: "auto",
-      border: "1px solid #e5e7eb",
-      borderRadius: "8px",
+      borderTop: "none",
+      borderBottom: "1px solid #e7edf5",
+      borderLeft: "1px solid #e7edf5",
+      borderRight: "1px solid #e7edf5",
+      borderRadius: "0",
+      backgroundColor: "#ffffff",
     },
     table: {
       width: "100%",
       borderCollapse: "collapse",
-      minWidth: "1200px",
+      minWidth: "1380px",
     },
     tableHeader: {
-      backgroundColor: "#f9fafb",
-      borderBottom: "1px solid #e5e7eb",
+      backgroundColor: "#fbfcfe",
+      borderBottom: "1px solid #e7edf5",
     },
     tableHeaderCell: {
-      padding: "12px 16px",
+      padding: "11px 16px",
       textAlign: "left",
       fontSize: "12px",
       fontWeight: "600",
-      color: "#6b7280",
+      color: "#667085",
       textTransform: "uppercase",
       whiteSpace: "nowrap",
     },
     tableHeaderCellWithCheckbox: {
-      padding: "12px 16px",
+      padding: "11px 16px",
       textAlign: "left",
       fontSize: "12px",
       fontWeight: "600",
-      color: "#6b7280",
+      color: "#667085",
       textTransform: "uppercase",
       width: "40px",
     },
     tableRow: {
-      borderBottom: "1px solid #e5e7eb",
+      borderBottom: "1px solid #edf2f7",
       cursor: "pointer",
     },
     tableCell: {
-      padding: "12px 16px",
+      padding: "14px 16px",
       fontSize: "14px",
       color: "#111827",
       whiteSpace: "nowrap",
+      verticalAlign: "top",
     },
     tableCheckbox: {
       width: "16px",
@@ -692,7 +744,7 @@ export default function PurchaseOrders() {
       cursor: "pointer",
     },
     purchaseOrderLink: {
-      color: "#156372",
+      color: "#2563eb",
       textDecoration: "none",
       fontWeight: "500",
       cursor: "pointer",
@@ -704,10 +756,12 @@ export default function PurchaseOrders() {
     statusClosed: {
       color: "#16a34a",
       fontSize: "14px",
+      fontWeight: "500",
     },
     statusIssued: {
-      color: "#156372",
+      color: "#2563eb",
       fontSize: "14px",
+      fontWeight: "500",
     },
     billedStatusBilled: {
       color: "#16a34a",
@@ -715,16 +769,17 @@ export default function PurchaseOrders() {
       fontWeight: "500",
     },
     billedStatusYetToBeBilled: {
-      color: "#f6ad55",
+      color: "#fb923c",
       fontSize: "14px",
       fontWeight: "500",
     },
     amount: {
       fontWeight: "500",
       fontSize: "14px",
+      color: "#111827",
     },
     overdueText: {
-      color: "#156372",
+      color: "#ef4444",
       fontSize: "12px",
       marginTop: "4px",
     },

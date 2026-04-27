@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { AlignLeft, Columns3, Search, SlidersHorizontal } from "lucide-react";
-import { formatPurchaseOrderDate } from "./PurchaseOrders.utils";
+import { formatPurchaseOrderDate, parsePurchaseOrderDate } from "./PurchaseOrders.utils";
 
 export default function PurchaseOrdersTable({
   displayCurrencySymbol,
@@ -98,8 +98,8 @@ export default function PurchaseOrdersTable({
       return null;
     }
 
-    const deliveryDate = new Date(rawDate);
-    if (Number.isNaN(deliveryDate.getTime())) {
+    const deliveryDate = parsePurchaseOrderDate(rawDate);
+    if (!deliveryDate) {
       return null;
     }
 
@@ -107,7 +107,16 @@ export default function PurchaseOrdersTable({
     today.setHours(0, 0, 0, 0);
     deliveryDate.setHours(0, 0, 0, 0);
 
-    if (deliveryDate.getTime() <= today.getTime()) {
+    if (deliveryDate.getTime() < today.getTime()) {
+      const diffInMs = today.getTime() - deliveryDate.getTime();
+      const diffInDays = Math.max(1, Math.round(diffInMs / (1000 * 60 * 60 * 24)));
+      return {
+        label: `Overdue by ${diffInDays} day${diffInDays === 1 ? "" : "s"}`,
+        color: "#f97316",
+      };
+    }
+
+    if (deliveryDate.getTime() === today.getTime()) {
       return { label: "Due Today", color: "#4f46e5" };
     }
 
@@ -115,7 +124,7 @@ export default function PurchaseOrdersTable({
   };
 
   const isColumnVisible = (key: string) => visibleColumns.includes(key);
-  const checkboxAlignmentOffset = 28;
+  const checkboxAlignmentOffset = 26;
   const clipTextStyle = isClipTextEnabled
     ? {
         display: "inline-block",
@@ -162,7 +171,7 @@ export default function PurchaseOrdersTable({
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: "8px",
+                    gap: "10px",
                     whiteSpace: "nowrap",
                   }}
                 >
@@ -311,7 +320,7 @@ export default function PurchaseOrdersTable({
                 style={{
                   ...styles.tableHeaderCell,
                   width: "50px",
-                  padding: "8px",
+                  padding: "8px 10px 8px 8px",
                   textAlign: "center",
                 }}
               >
@@ -323,8 +332,8 @@ export default function PurchaseOrdersTable({
                     fontWeight: "500",
                     color: "#374151",
                     backgroundColor: "#ffffff",
-                    border: "1px solid #d1d5db",
-                    borderRadius: "4px",
+                    border: "1px solid #dbe3ef",
+                    borderRadius: "6px",
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
@@ -354,7 +363,7 @@ export default function PurchaseOrdersTable({
               ? Array.from({ length: 5 }).map((_, index) => (
                   <tr key={`skeleton-${index}`} style={styles.tableRow}>
                     <td style={styles.tableCell}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                         <div
                           style={{
                             width: `${checkboxAlignmentOffset}px`,
@@ -457,7 +466,7 @@ export default function PurchaseOrdersTable({
                       }}
                       onMouseEnter={(event) => {
                         if (!selectedOrders.includes(order.id)) {
-                          event.currentTarget.style.backgroundColor = "#f9fafb";
+                          event.currentTarget.style.backgroundColor = "#fafcff";
                         }
                       }}
                       onMouseLeave={(event) => {
@@ -467,7 +476,14 @@ export default function PurchaseOrdersTable({
                       }}
                     >
                       <td style={styles.tableCell} onClick={(event) => event.stopPropagation()}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "flex-start",
+                            gap: "10px",
+                          }}
+                        >
                           <div
                             style={{
                               width: `${checkboxAlignmentOffset}px`,
@@ -488,7 +504,10 @@ export default function PurchaseOrdersTable({
                                 );
                               }
                             }}
-                            style={styles.tableCheckbox}
+                            style={{
+                              ...styles.tableCheckbox,
+                              marginLeft: "-4px",
+                            }}
                           />
                         </div>
                       </td>
@@ -556,8 +575,19 @@ export default function PurchaseOrdersTable({
                         </td>
                       )}
                       {isColumnVisible("amount") && (
-                        <td style={styles.tableCell}>
-                          <span style={styles.amount}>
+                        <td
+                          style={{
+                            ...styles.tableCell,
+                            textAlign: "right",
+                          }}
+                        >
+                          <span
+                            style={{
+                              ...styles.amount,
+                              display: "inline-block",
+                              minWidth: "120px",
+                            }}
+                          >
                             <span style={clipTextStyle}>
                               {displayCurrencySymbol}
                               {(order.amount || order.total || 0).toLocaleString("en-US", {

@@ -2,12 +2,51 @@ import { PURCHASE_ORDER_BULK_UPDATE_FIELD_MAP } from "./PurchaseOrders.constants
 
 const normalizeValue = (value: unknown) => String(value ?? "").trim().toUpperCase();
 
+export const parsePurchaseOrderDate = (dateValue: any) => {
+  if (!dateValue) {
+    return null;
+  }
+
+  if (dateValue instanceof Date) {
+    return Number.isNaN(dateValue.getTime()) ? null : new Date(dateValue.getTime());
+  }
+
+  if (typeof dateValue === "string") {
+    const trimmedValue = dateValue.trim();
+
+    const isoDateOnlyMatch = trimmedValue.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+    if (isoDateOnlyMatch) {
+      const [, year, month, day] = isoDateOnlyMatch;
+      const parsedDate = new Date(
+        Number(year),
+        Number(month) - 1,
+        Number(day)
+      );
+      return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+    }
+
+    const slashDateMatch = trimmedValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (slashDateMatch) {
+      const [, day, month, year] = slashDateMatch;
+      const parsedDate = new Date(
+        Number(year),
+        Number(month) - 1,
+        Number(day)
+      );
+      return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+    }
+  }
+
+  const parsedDate = new Date(dateValue);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+};
+
 export const formatPurchaseOrderDate = (dateString: any) => {
   if (!dateString) return "";
 
   try {
-    const date = new Date(dateString);
-    if (Number.isNaN(date.getTime())) {
+    const date = parsePurchaseOrderDate(dateString);
+    if (!date) {
       return dateString;
     }
 
@@ -54,11 +93,11 @@ const getSortValue = (order: any, field: string) => {
     case "amount":
       return Number.parseFloat(order.amount ?? order.total ?? 0) || 0;
     case "deliveryDate":
-      return new Date(order.deliveryDate || order.expectedDate || 0).getTime();
+      return parsePurchaseOrderDate(order.deliveryDate || order.expectedDate)?.getTime() || 0;
     case "date":
     case "createdTime":
     case "lastModifiedTime":
-      return new Date(order[field] || order.date || 0).getTime();
+      return parsePurchaseOrderDate(order[field] || order.date)?.getTime() || 0;
     default:
       return (order[field] || "").toString().toLowerCase();
   }
