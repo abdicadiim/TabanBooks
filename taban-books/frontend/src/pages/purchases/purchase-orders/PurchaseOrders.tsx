@@ -461,7 +461,7 @@ export default function PurchaseOrders() {
       minHeight: "100vh",
     },
     header: {
-      padding: "14px 24px 8px",
+      padding: "14px 24px 10px",
       borderBottom: "1px solid #e5e7eb",
       backgroundColor: "#ffffff",
       display: "flex",
@@ -660,7 +660,7 @@ export default function PurchaseOrders() {
       width: "100%",
     },
     content: {
-      padding: "0",
+      padding: "0 16px 16px",
     },
     contentHeader: {
       display: "flex",
@@ -695,22 +695,23 @@ export default function PurchaseOrders() {
       overflowX: "auto",
       borderTop: "none",
       borderBottom: "1px solid #e7edf5",
-      borderLeft: "1px solid #e7edf5",
-      borderRight: "1px solid #e7edf5",
+      borderLeft: "none",
+      borderRight: "none",
       borderRadius: "0",
       backgroundColor: "#ffffff",
     },
     table: {
-      width: "100%",
+      width: "calc(100% + 16px)",
+      marginLeft: "-16px",
       borderCollapse: "collapse",
-      minWidth: "1380px",
+      minWidth: "1500px",
     },
     tableHeader: {
       backgroundColor: "#fbfcfe",
       borderBottom: "1px solid #e7edf5",
     },
     tableHeaderCell: {
-      padding: "11px 16px",
+      padding: "12px 16px",
       textAlign: "left",
       fontSize: "12px",
       fontWeight: "600",
@@ -719,7 +720,7 @@ export default function PurchaseOrders() {
       whiteSpace: "nowrap",
     },
     tableHeaderCellWithCheckbox: {
-      padding: "11px 16px",
+      padding: "12px 16px",
       textAlign: "left",
       fontSize: "12px",
       fontWeight: "600",
@@ -732,7 +733,7 @@ export default function PurchaseOrders() {
       cursor: "pointer",
     },
     tableCell: {
-      padding: "14px 16px",
+      padding: "16px 16px",
       fontSize: "14px",
       color: "#111827",
       whiteSpace: "nowrap",

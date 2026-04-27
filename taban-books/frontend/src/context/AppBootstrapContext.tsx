@@ -142,6 +142,16 @@ const normalizeBootstrapCache = (snapshot: BootstrapCacheSnapshot | null) =>
       }
     : null;
 
+const isTransientBootstrapNetworkError = (error: unknown) => {
+  const message = String((error as any)?.message || error || "").toLowerCase();
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("networkerror") ||
+    message.includes("err_network_changed") ||
+    message.includes("network changed")
+  );
+};
+
 export function AppBootstrapProvider({ children }: { children: React.ReactNode }) {
   const [initialBootstrapSnapshot] = useState<BootstrapCacheSnapshot | null>(() =>
     normalizeBootstrapCache(readSessionBootstrapCache()),
@@ -265,7 +275,11 @@ export function AppBootstrapProvider({ children }: { children: React.ReactNode }
         last_updated: bootstrap.last_updated,
       });
     } catch (error) {
-      console.error("Error refreshing bootstrap data:", error);
+      if (isTransientBootstrapNetworkError(error)) {
+        console.warn("Transient bootstrap network error:", error);
+      } else {
+        console.error("Error refreshing bootstrap data:", error);
+      }
     } finally {
       if (showBlockingLoader) {
         await Promise.allSettled([primeCachePromise, minimumLoaderDelay]);

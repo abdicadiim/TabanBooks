@@ -46,6 +46,8 @@ import { useCurrency } from "../../../hooks/useCurrency";
 
 import { billsAPI, purchaseOrdersAPI } from "../../../services/api";
 
+const BILLS_LIST_CACHE_KEY = "bills-list-cache";
+
 let billsJsPdfLoader: Promise<typeof import("jspdf")> | null = null;
 
 const loadBillsJsPdf = async () => {
@@ -87,6 +89,31 @@ const styles = {
   },
 };
 
+const mapBillsForView = (rows: any[] = []) =>
+  rows.map((bill: any) => ({
+    ...bill,
+    id: bill._id || bill.id,
+  }));
+
+const readCachedBills = () => {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const rawValue = window.sessionStorage.getItem(BILLS_LIST_CACHE_KEY);
+    if (!rawValue) {
+      return [];
+    }
+
+    const parsed = JSON.parse(rawValue);
+    return Array.isArray(parsed) ? mapBillsForView(parsed) : [];
+  } catch (error) {
+    console.error("Failed to parse cached bills:", error);
+    return [];
+  }
+};
+
 export default function Bills() {
   const navigate = useNavigate();
   const { code: baseCurrencyCode, symbol: baseCurrencySymbol } = useCurrency();
@@ -99,7 +126,7 @@ export default function Bills() {
   const [selectedView, setSelectedView] = useState("All");
   const [showBillsViewDropdown, setShowBillsViewDropdown] = useState(false);
   const [showCustomViewModal, setShowCustomViewModal] = useState(false);
-  const [bills, setBills] = useState([]);
+  const [bills, setBills] = useState<any[]>(() => readCachedBills());
   const [selectedItems, setSelectedItems] = useState([]);
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -288,6 +315,20 @@ export default function Bills() {
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
+  const navigateToBillDetail = (bill: any) => {
+    const billId = bill._id || bill.id;
+    if (!billId) {
+      return;
+    }
+
+    navigate(`/purchases/bills/${billId}`, {
+      state: {
+        bill,
+        bills: sortedBills,
+      },
+    });
+  };
+
   // Load bills from API
   const loadBills = async (
     page = currentPage,
@@ -319,10 +360,7 @@ export default function Bills() {
         },
       });
       if (response && (response.code === 0 || response.success)) {
-        const billsData = (response.data || []).map((bill: any) => ({
-          ...bill,
-          id: bill._id || bill.id,
-        }));
+        const billsData = mapBillsForView(response.data || []);
         setBills(billsData);
         if (response.pagination) {
           setTotalItems(response.pagination.total);
@@ -338,7 +376,9 @@ export default function Bills() {
   };
 
   useEffect(() => {
-    loadBills(1, itemsPerPage, selectedView, "Bills:initial-load");
+    if (bills.length === 0) {
+      loadBills(1, itemsPerPage, selectedView, "Bills:initial-load");
+    }
 
     // Listen for updates
     const handleBillsUpdate = () => {
@@ -350,6 +390,18 @@ export default function Bills() {
       window.removeEventListener("billsUpdated", handleBillsUpdate);
     };
   }, [itemsPerPage, selectedView, sortBy, sortOrder]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      window.sessionStorage.setItem(BILLS_LIST_CACHE_KEY, JSON.stringify(bills));
+    } catch (error) {
+      console.error("Failed to cache bills:", error);
+    }
+  }, [bills]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -1437,7 +1489,7 @@ export default function Bills() {
               </div>
               <button
                 className="px-4 py-2 text-sm font-medium text-white border-none rounded-md cursor-pointer flex items-center gap-2 transition-all hover:opacity-90"
-                style={{ background: "#22c55e" }}
+                style={{ background: "#156372" }}
                 onClick={() => navigate("/purchases/bills/new")}
               >
                 <Plus size={16} />
@@ -2287,8 +2339,11 @@ export default function Bills() {
                 // Skeleton loading rows
                 Array.from({ length: 5 }).map((_, index) => (
                   <tr key={`skeleton-${index}`} className="border-b border-gray-200">
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      <div className="skeleton-checkbox"></div>
+                    <td className="py-3 text-sm text-gray-900" style={{ width: "72px", paddingLeft: "12px", paddingRight: "12px" }}>
+                      <div className="flex items-center gap-2 whitespace-nowrap">
+                        <span style={{ width: "20px", display: "inline-block", flexShrink: 0 }} />
+                        <div className="skeleton-checkbox"></div>
+                      </div>
                     </td>
                     {visibleBillColumns.includes("Date") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "80px" }}></div></td>}
                     {visibleBillColumns.includes("Location") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "100px" }}></div></td>}
@@ -2311,15 +2366,18 @@ export default function Bills() {
                     <tr
                       key={bill._id || bill.id || index}
                       className="border-b border-gray-200 cursor-pointer hover:bg-gray-50"
-                      onClick={() => navigate(`/purchases/bills/${bill._id || bill.id}`)}
+                      onClick={() => navigateToBillDetail(bill)}
                     >
-                      <td className="py-3 text-sm text-gray-900" style={{ width: "72px", paddingLeft: "6px", paddingRight: "12px" }} onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedItems.includes(bill.id)}
-                          onChange={() => handleSelectItem(bill.id)}
-                          className="w-4 h-4 cursor-pointer accent-blue-600"
-                        />
+                      <td className="py-3 text-sm text-gray-900" style={{ width: "72px", paddingLeft: "12px", paddingRight: "12px" }} onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-2 whitespace-nowrap">
+                          <span style={{ width: "20px", display: "inline-block", flexShrink: 0 }} />
+                          <input
+                            type="checkbox"
+                            checked={selectedItems.includes(bill.id)}
+                            onChange={() => handleSelectItem(bill.id)}
+                            className="w-4 h-4 cursor-pointer accent-blue-600"
+                          />
+                        </div>
                       </td>
                       {visibleBillColumns.includes("Date") && <td className="px-4 py-3 text-sm text-gray-900">{formatDate(bill.date)}</td>}
                       {visibleBillColumns.includes("Location") && <td className="px-4 py-3 text-sm text-gray-900">{bill.locationName || bill.location || bill.locationCode || "Head Office"}</td>}
@@ -2338,7 +2396,7 @@ export default function Bills() {
                   );
                 })
               )}
-              {sortedBills.length === 0 && (
+              {!isRefreshing && sortedBills.length === 0 && (
                 <tr>
                   <td colSpan={1 + visibleBillColumns.filter(Boolean).length} style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>
                     No bills found

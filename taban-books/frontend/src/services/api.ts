@@ -172,6 +172,16 @@ const buildGetRequestKey = (url: string, authorizationHeader?: string, dedupeKey
   });
 };
 
+const isTransientNetworkError = (error: unknown): boolean => {
+  const message = String((error as any)?.message || error || "").toLowerCase();
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("networkerror") ||
+    message.includes("err_network_changed") ||
+    message.includes("network changed")
+  );
+};
+
 /**
  * Generic API request wrapper
  * Handles errors and JSON parsing
@@ -344,7 +354,11 @@ export async function apiRequest(endpoint: string, options: ApiRequestOptions = 
     try {
       return await executeRequest();
     } catch (error) {
-      console.error('API Error:', error);
+      if (isTransientNetworkError(error)) {
+        console.warn('Transient API network error:', error);
+      } else {
+        console.error('API Error:', error);
+      }
       throw error;
     }
   })();

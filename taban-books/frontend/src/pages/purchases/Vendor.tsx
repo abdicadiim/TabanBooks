@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "react-toastify";
-import { vendorsAPI } from "../../services/api";
+import { billsAPI, vendorsAPI } from "../../services/api";
 import {
   ChevronDown,
   ChevronUp,
@@ -131,7 +131,10 @@ export default function Vendor() {
     try {
       setIsRefreshing(true);
       console.log('Loading vendors from API...');
-      const response = await vendorsAPI.getAll();
+      const [response, billsResponse] = await Promise.all([
+        vendorsAPI.getAll(),
+        billsAPI.getAll()
+      ]);
       console.log('API Response:', response);
       console.log('Response structure:', {
         success: response?.success,
@@ -167,6 +170,31 @@ export default function Vendor() {
 
         // Map API response to component format
         // Map all vendors - backend can handle all ID formats (ObjectId and old timestamp IDs)
+        const allBills = Array.isArray(billsResponse?.data) ? billsResponse.data : [];
+        const payablesByVendor = new Map<string, number>();
+
+        allBills.forEach((bill: any) => {
+          const rawVendorId =
+            bill?.vendor?._id ||
+            bill?.vendor?.id ||
+            bill?.vendorId ||
+            bill?.vendor_id ||
+            bill?.vendor;
+          const vendorKey = rawVendorId ? String(rawVendorId) : "";
+          if (!vendorKey) return;
+
+          const openBalance = Number(
+            bill?.balance !== undefined && bill?.balance !== null
+              ? bill.balance
+              : bill?.total || 0
+          );
+
+          payablesByVendor.set(
+            vendorKey,
+            (payablesByVendor.get(vendorKey) || 0) + (Number.isFinite(openBalance) ? openBalance : 0)
+          );
+        });
+
         const mappedVendors = vendorsArray
           .map(vendor => {
             // Always prioritize MongoDB _id, convert to string
@@ -184,7 +212,9 @@ export default function Vendor() {
               id: vendorId, // Use MongoDB _id as id (already converted to string)
               _id: vendor._id || vendorId, // Keep original _id (ObjectId or string)
               name: vendor.displayName || vendor.name || `${vendor.firstName || ''} ${vendor.lastName || ''}`.trim() || vendor.companyName || 'Vendor',
-              payables: vendor.payables || 0,
+              payables: payablesByVendor.has(vendorId)
+                ? payablesByVendor.get(vendorId)
+                : (vendor.payables || 0),
               currency: vendor.currency || 'KES'
             };
           })
@@ -225,10 +255,15 @@ export default function Vendor() {
     const handleVendorSaved = () => {
       loadVendors();
     };
-    window.addEventListener("vendorSaved", handleVendorSaved);
+    const vendorRefreshEvents = ["vendorSaved", "paymentsUpdated", "billsUpdated"];
+    vendorRefreshEvents.forEach((eventName) => {
+      window.addEventListener(eventName, handleVendorSaved);
+    });
 
     return () => {
-      window.removeEventListener("vendorSaved", handleVendorSaved);
+      vendorRefreshEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, handleVendorSaved);
+      });
     };
   }, [location.pathname]);
 
@@ -339,10 +374,15 @@ export default function Vendor() {
       loadVendors();
     };
 
-    window.addEventListener("vendorSaved", handleVendorSaved);
+    const vendorRefreshEvents = ["vendorSaved", "paymentsUpdated", "billsUpdated"];
+    vendorRefreshEvents.forEach((eventName) => {
+      window.addEventListener(eventName, handleVendorSaved);
+    });
 
     return () => {
-      window.removeEventListener("vendorSaved", handleVendorSaved);
+      vendorRefreshEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, handleVendorSaved);
+      });
     };
   }, []);
 

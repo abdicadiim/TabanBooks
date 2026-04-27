@@ -5,6 +5,7 @@ import AppShell from "../layout/AppShell";
 import PermissionRoute from "../components/PermissionRoute";
 import ProtectedRoute from "../components/ProtectedRoute";
 import { usePermissions } from "../hooks/usePermissions";
+import { lazyRetry } from "../utils/lazyRetry";
 
 const Login = lazy(() => import("../auth/Login"));
 const Signup = lazy(() => import("../auth/Signup"));
@@ -58,7 +59,7 @@ function AccountsReceivableLedger() {
   );
 }
 
-const PurchasesPage = lazy(() => import("../pages/purchases/PurchasesPage"));
+const PurchasesPage = lazy(() => lazyRetry(() => import("../pages/purchases/PurchasesPage")));
 const TimeTrackingPage = lazy(() => import("../pages/timeTracking/TimeTrackingPage"));
 const ProjectsGuidePage = lazy(() => import("../pages/timeTracking/ProjectsGuidePage"));
 

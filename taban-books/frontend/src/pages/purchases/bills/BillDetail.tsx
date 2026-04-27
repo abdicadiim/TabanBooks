@@ -36,6 +36,8 @@ import html2canvas from "html2canvas";
 import { getAccountOptionLabel, getBankAccountsFromResponse, getChartAccountsFromResponse, mergeAccountOptions } from "../shared/accountOptions";
 import ExportBills from "./ExportBills";
 
+const BILLS_LIST_CACHE_KEY = "bills-list-cache";
+
 interface BillItem {
   id: string;
   itemDetails: string;
@@ -110,6 +112,31 @@ interface Payment {
   paymentMode?: string;
 }
 
+const mapBillsForView = (rows: any[] = []) =>
+  rows.map((bill: any) => ({
+    ...bill,
+    id: bill._id || bill.id,
+  }));
+
+const readCachedBills = () => {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const rawValue = window.sessionStorage.getItem(BILLS_LIST_CACHE_KEY);
+    if (!rawValue) {
+      return [];
+    }
+
+    const parsed = JSON.parse(rawValue);
+    return Array.isArray(parsed) ? mapBillsForView(parsed) : [];
+  } catch (error) {
+    console.error("Failed to parse cached bills for detail page:", error);
+    return [];
+  }
+};
+
 export default function BillDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -117,9 +144,21 @@ export default function BillDetail() {
   const { code: baseCurrencyCode, symbol: baseCurrencySymbol } = useCurrency();
   const resolvedBaseCurrency = baseCurrencyCode || "USD";
   const resolvedBaseCurrencySymbol = baseCurrencySymbol || resolvedBaseCurrency;
-  const [bill, setBill] = useState<Bill | null>(null);
-  const [isBillLoading, setIsBillLoading] = useState(true);
-  const [bills, setBills] = useState<Bill[]>([]);
+  const stateBill = location.state?.bill || null;
+  const stateBills = Array.isArray(location.state?.bills)
+    ? mapBillsForView(location.state.bills)
+    : [];
+  const cachedBills = readCachedBills();
+  const initialBills = stateBills.length > 0 ? stateBills : cachedBills;
+  const matchedInitialBill =
+    stateBill ||
+    initialBills.find(
+      (entry: any) => String(entry.id || entry._id) === String(id)
+    ) ||
+    null;
+  const [bill, setBill] = useState<Bill | null>(() => matchedInitialBill);
+  const [isBillLoading, setIsBillLoading] = useState(() => !matchedInitialBill);
+  const [bills, setBills] = useState<Bill[]>(() => initialBills as Bill[]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [sidebarMoreMenuOpen, setSidebarMoreMenuOpen] = useState(false);
@@ -293,7 +332,9 @@ export default function BillDetail() {
   };
 
   const loadBill = async () => {
-    setIsBillLoading(true);
+    if (!bill) {
+      setIsBillLoading(true);
+    }
     try {
       if (!id || id === 'undefined' || id === 'null') {
         setBill(null);
@@ -1308,6 +1349,9 @@ export default function BillDetail() {
             setBill(transformedBill);
           }
         }
+        window.dispatchEvent(new Event("paymentsUpdated"));
+        window.dispatchEvent(new Event("billsUpdated"));
+        window.dispatchEvent(new Event("vendorSaved"));
       } else {
         toast.error(response?.message || "Failed to record payment");
       }
