@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { X, Info, CheckCircle, FileText } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { invoicesAPI } from "../../../services/api";
+import { debitNotesAPI, invoicesAPI } from "../../../services/api";
 
 type ApplyRetainersToInvoiceModalProps = {
   isOpen: boolean;
@@ -49,6 +49,9 @@ const getInvoiceOutstandingBalance = (invoice: any): number => {
 const getInvoiceId = (invoice: any): string =>
   String(invoice?.id || invoice?._id || "").trim();
 
+const getDocumentId = (document: any): string =>
+  String(document?.id || document?._id || "").trim();
+
 const getInvoiceCustomerId = (invoice: any): string =>
   String(
     invoice?.customerId ||
@@ -75,6 +78,12 @@ const isRetainerInvoice = (invoice: any): boolean =>
     .toUpperCase()
     .startsWith("RET-");
 
+const isDebitNote = (document: any): boolean =>
+  Boolean(document?.debitNote || document?.documentType === "debit_note") ||
+  String(document?.debitNoteNumber || document?.invoiceNumber || "")
+    .toUpperCase()
+    .startsWith("CDN-");
+
 const isLikelyCustomerId = (value: string): boolean =>
   /^(cus|cust)[-_]/i.test(value) || /^[a-f0-9]{24}$/i.test(value);
 
@@ -94,6 +103,51 @@ const isInvoiceEligible = (invoice: any): boolean => {
   return !["draft", "paid", "void", "closed", "cancelled"].includes(status);
 };
 
+const normalizeDebitNoteRow = (debitNote: any) => {
+  const id = getDocumentId(debitNote);
+  return {
+    ...debitNote,
+    id,
+    _id: id,
+    documentType: "debit_note",
+    debitNote: true,
+    invoiceNumber: debitNote?.debitNoteNumber || debitNote?.invoiceNumber || debitNote?.number || id,
+    debitNoteNumber: debitNote?.debitNoteNumber || debitNote?.invoiceNumber || debitNote?.number || id,
+    date: debitNote?.date || debitNote?.debitNoteDate || debitNote?.invoiceDate || debitNote?.createdAt,
+    invoiceDate: debitNote?.invoiceDate || debitNote?.date || debitNote?.debitNoteDate || debitNote?.createdAt,
+    total: debitNote?.total ?? debitNote?.amount ?? debitNote?.debitAmount ?? 0,
+    balance:
+      debitNote?.balance ??
+      debitNote?.balanceDue ??
+      debitNote?.amountDue ??
+      debitNote?.remainingBalance ??
+      debitNote?.total ??
+      debitNote?.amount ??
+      0,
+    balanceDue:
+      debitNote?.balanceDue ??
+      debitNote?.balance ??
+      debitNote?.amountDue ??
+      debitNote?.remainingBalance ??
+      debitNote?.total ??
+      debitNote?.amount ??
+      0,
+    customerId:
+      debitNote?.customerId ||
+      debitNote?.customer?._id ||
+      debitNote?.customer?.id ||
+      (typeof debitNote?.customer === "string" ? debitNote.customer : "") ||
+      "",
+    customerName:
+      debitNote?.customerName ||
+      debitNote?.customer?.displayName ||
+      debitNote?.customer?.companyName ||
+      debitNote?.customer?.name ||
+      (typeof debitNote?.customer === "string" ? debitNote.customer : "") ||
+      "",
+  };
+};
+
 const formatDate = (dateString: string) => {
   if (!dateString) return "-";
   return new Date(dateString).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -109,7 +163,7 @@ const ApplyRetainersToInvoiceModal: React.FC<ApplyRetainersToInvoiceModalProps> 
   payment,
   onSave,
 }) => {
-  const [invoices, setInvoices] = useState<any[]>([]);
+  const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [appliedAmounts, setAppliedAmounts] = useState<Record<string, number>>({});
   const [isDateToggleEnabled, setIsDateToggleEnabled] = useState(true);
@@ -140,18 +194,43 @@ const ApplyRetainersToInvoiceModal: React.FC<ApplyRetainersToInvoiceModalProps> 
     const fetchInvoices = async () => {
       setLoading(true);
       try {
-        const response = await invoicesAPI.getAll({
-          limit: 10000,
-        });
-        const rows = Array.isArray((response as any)?.data) ? (response as any).data : [];
-        const filtered = rows.filter((inv: any) => {
-          const invoiceId = getInvoiceId(inv);
-          if (!invoiceId || invoiceId === currentRetainerInvoiceId) return false;
-          if (isRetainerInvoice(inv)) return false;
-          if (!doesInvoiceBelongToCustomer(inv, customerId, customerName)) return false;
-          return isInvoiceEligible(inv);
-        });
-        setInvoices(filtered);
+        const [invoicesResponse, debitNotesResponse] = await Promise.all([
+          invoicesAPI.getAll({ limit: 10000 }),
+          debitNotesAPI.getAll({ limit: 10000 }),
+        ]);
+
+        const invoiceRows = Array.isArray((invoicesResponse as any)?.data) ? (invoicesResponse as any).data : [];
+        const debitNoteRows = Array.isArray((debitNotesResponse as any)?.data) ? (debitNotesResponse as any).data : [];
+
+        const normalizedDocuments = [
+          ...invoiceRows
+            .map((inv: any) => ({
+              ...inv,
+              documentType: isDebitNote(inv) ? "debit_note" : "invoice",
+            }))
+            .filter((inv: any) => {
+              const invoiceId = getInvoiceId(inv);
+              if (!invoiceId || invoiceId === currentRetainerInvoiceId) return false;
+              if (isRetainerInvoice(inv)) return false;
+              if (!doesInvoiceBelongToCustomer(inv, customerId, customerName)) return false;
+              return isInvoiceEligible(inv);
+            }),
+          ...debitNoteRows
+            .map(normalizeDebitNoteRow)
+            .filter((note: any) => {
+              const noteId = getDocumentId(note);
+              if (!noteId) return false;
+              if (noteId === currentRetainerInvoiceId) return false;
+              if (!doesInvoiceBelongToCustomer(note, customerId, customerName)) return false;
+              return isInvoiceEligible(note);
+            }),
+        ];
+
+        const uniqueDocuments = Array.from(
+          new Map(normalizedDocuments.map((doc: any) => [getDocumentId(doc), doc])).values()
+        );
+
+        setDocuments(uniqueDocuments);
         setAppliedAmounts({});
       } catch (error) {
         console.error("Error fetching invoices:", error);
@@ -280,14 +359,14 @@ const ApplyRetainersToInvoiceModal: React.FC<ApplyRetainersToInvoiceModalProps> 
                     <span className="text-[14px] font-bold text-gray-900 leading-tight">
                       {formatCurrency(retainerAvailable, retainerInvoice?.currency || "USD")}
                     </span>
-                    <span className="text-[11px] text-blue-500 font-medium cursor-pointer">Apply Credits to Invoices</span>
+                    <span className="text-[11px] text-blue-500 font-medium cursor-pointer">Apply Credits to Documents</span>
                   </div>
                 </div>
               </div>
             </div>
 
             <div className="flex justify-between items-end mb-4">
-              <h4 className="text-[13px] font-semibold text-gray-800">Customer Invoices</h4>
+              <h4 className="text-[13px] font-semibold text-gray-800">Customer Documents</h4>
               <div className="flex flex-col items-end space-y-2">
                 <div className="flex items-center space-x-2">
                   <span className="text-[11px] text-gray-500">Set Applied on Date</span>
@@ -320,7 +399,7 @@ const ApplyRetainersToInvoiceModal: React.FC<ApplyRetainersToInvoiceModalProps> 
               <table className="min-w-full table-fixed divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="w-[14%] px-4 py-3 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider">Invoice Number</th>
+                    <th className="w-[14%] px-4 py-3 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider">Document Number</th>
                     <th className="w-[12%] px-4 py-3 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     <th className="w-[14%] px-4 py-3 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider">Invoice Date</th>
                     <th className="w-[16%] px-4 py-3 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider">Location</th>
@@ -333,33 +412,44 @@ const ApplyRetainersToInvoiceModal: React.FC<ApplyRetainersToInvoiceModalProps> 
                 <tbody className="bg-white divide-y divide-gray-200">
                   {loading ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-10 text-center text-gray-500 text-[12px]">Loading invoices...</td>
-                    </tr>
-                  ) : invoices.length === 0 ? (
+                      <td colSpan={8} className="px-6 py-10 text-center text-gray-500 text-[12px]">Loading documents...</td>
+                  </tr>
+                  ) : documents.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-10 text-center text-gray-500 text-[12px]">No customer invoices found.</td>
+                      <td colSpan={8} className="px-6 py-10 text-center text-gray-500 text-[12px]">
+                        No customer invoices or debit notes found.
+                      </td>
                     </tr>
                   ) : (
-                    invoices.map((invoice, index) => {
-                      const balance = getInvoiceOutstandingBalance(invoice);
-                      const amount = appliedAmounts[String(invoice.id || invoice._id || "")] || 0;
-                      const status = getNormalizedInvoiceStatus(invoice) || "-";
+                    documents.map((document, index) => {
+                      const isDebitDocument = document?.documentType === "debit_note" || Boolean(document?.debitNote);
+                      const balance = getInvoiceOutstandingBalance(document);
+                      const amount = appliedAmounts[String(document.id || document._id || "")] || 0;
+                      const status = getNormalizedInvoiceStatus(document) || "-";
+                      const docId = String(document.id || document._id || index);
                       return (
-                        <tr key={String(invoice.id || invoice._id || index)} className={index % 2 === 0 ? "bg-white" : "bg-gray-50/30"}>
+                        <tr key={docId} className={index % 2 === 0 ? "bg-white" : "bg-gray-50/30"}>
                           <td className="px-4 py-4 whitespace-nowrap text-[12px] text-gray-700 font-medium">
-                            {invoice.invoiceNumber || "-"}
+                            <div className="flex items-center gap-2">
+                              <span>{document.invoiceNumber || document.debitNoteNumber || "-"}</span>
+                              {isDebitDocument && (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                                  Debit Note
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-4 whitespace-nowrap text-[12px] text-gray-500 capitalize">
                             {status}
                           </td>
                           <td className="px-4 py-4 whitespace-nowrap text-[12px] text-gray-500">
-                            {formatDate(invoice.date || invoice.invoiceDate || "")}
+                            {formatDate(document.date || document.invoiceDate || "")}
                           </td>
                           <td className="px-4 py-4 whitespace-nowrap text-[12px] text-gray-500">
-                            {String(invoice.location || invoice.locationName || "Head Office")}
+                            {String(document.location || document.locationName || "Head Office")}
                           </td>
                           <td className="px-4 py-4 whitespace-nowrap text-[12px] text-gray-700 text-right">
-                            {formatCurrency(Number(invoice.total || 0), retainerInvoice?.currency || "USD")}
+                            {formatCurrency(Number(document.total || 0), retainerInvoice?.currency || "USD")}
                           </td>
                           <td className="px-4 py-4 whitespace-nowrap text-[12px] text-gray-700 text-right font-medium">
                             {formatCurrency(balance, retainerInvoice?.currency || "USD")}
@@ -372,14 +462,14 @@ const ApplyRetainersToInvoiceModal: React.FC<ApplyRetainersToInvoiceModalProps> 
                               <input
                                 type="number"
                                 value={amount === 0 ? "" : amount}
-                                onChange={(e) => handleAmountChange(String(invoice.id || invoice._id || ""), e.target.value, balance)}
+                                onChange={(e) => handleAmountChange(docId, e.target.value, balance)}
                                 disabled={balance <= 0}
                                 className={`w-24 px-2 py-1.5 text-right border ${balance <= 0 ? "bg-gray-100 cursor-not-allowed border-gray-200" : "border-blue-300 focus:ring-blue-500"} rounded-md text-[12px] focus:outline-none focus:ring-1 transition-shadow`}
                                 placeholder="0.00"
                               />
                               {balance > 0 ? (
                                 <button
-                                  onClick={() => handlePayInFull(String(invoice.id || invoice._id || ""), balance)}
+                                  onClick={() => handlePayInFull(docId, balance)}
                                   className="text-[11px] text-blue-500 hover:text-blue-700 font-medium hover:underline"
                                 >
                                   Pay in Full

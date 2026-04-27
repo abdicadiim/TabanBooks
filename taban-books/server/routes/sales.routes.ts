@@ -227,6 +227,7 @@ router.delete("/retainer-invoices/:id", salesController.deleteRetainerInvoice);
 
 // Debit Note routes
 router.get("/debit-notes", salesController.getAllDebitNotes);
+router.get("/debit-notes/invoice/:invoiceId", salesController.getAllDebitNotes);
 router.get("/debit-notes/:id", salesController.getDebitNoteById);
 router.post("/debit-notes", salesController.createDebitNote);
 router.put("/debit-notes/:id", salesController.updateDebitNote);

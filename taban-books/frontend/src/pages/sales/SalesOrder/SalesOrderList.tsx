@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, MoreHorizontal, ChevronDown, RefreshCcw } from 'lucide-react';
+import { Plus, MoreHorizontal, ChevronDown } from 'lucide-react';
 import ViewDropdown from './ViewDropdown';
 import ActionDropdown from './ActionDropdown';
 import NewSalesOrder from './newPage/NewSalesOrder'; 
@@ -91,20 +91,6 @@ const SalesOrderList: React.FC = () => {
       </header>
 
       <main className="p-8">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="text-sm text-gray-500">
-            {isLoading ? "Loading sales orders..." : `${salesOrders.length} sales order(s)`}
-          </div>
-          <button
-            type="button"
-            onClick={() => void loadSalesOrders()}
-            className="inline-flex items-center gap-2 rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-          >
-            <RefreshCcw size={14} />
-            Refresh
-          </button>
-        </div>
-
         {salesOrders.length > 0 ? (
           <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
             <table className="w-full text-left">
@@ -135,8 +121,11 @@ const SalesOrderList: React.FC = () => {
             </table>
           </div>
         ) : (
-          <div className="flex min-h-[60vh] flex-col items-center justify-center">
-            <p className="text-sm italic text-gray-400">No sales orders found for this view.</p>
+          <div className="flex min-h-[72vh] flex-col items-center justify-center text-center px-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-3">No sales orders found, yet</h2>
+            <p className="text-gray-600 max-w-md">
+              Sales orders will appear here once they are created or match your selected view.
+            </p>
           </div>
         )}
       </main>

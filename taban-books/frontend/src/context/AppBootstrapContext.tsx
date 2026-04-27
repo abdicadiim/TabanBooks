@@ -157,6 +157,7 @@ export function AppBootstrapProvider({ children }: { children: React.ReactNode }
     () => initialBootstrapSnapshot?.baseCurrency || readStoredBaseCurrency(),
   );
   const [loading, setLoading] = useState(Boolean(getToken()) && !initialBootstrapSnapshot);
+  const BOOTSTRAP_LOADER_MIN_DURATION_MS = 2500;
 
   const updateBootstrapCache = (
     nextBranding: BootstrapBranding,
@@ -204,6 +205,11 @@ export function AppBootstrapProvider({ children }: { children: React.ReactNode }
     if (showBlockingLoader) {
       setLoading(true);
     }
+
+    const minimumLoaderDelay = showBlockingLoader
+      ? new Promise<void>((resolve) => window.setTimeout(resolve, BOOTSTRAP_LOADER_MIN_DURATION_MS))
+      : Promise.resolve();
+    const primeCachePromise = showBlockingLoader ? primeSWRCache() : Promise.resolve();
 
     if (storedUser) {
       setCurrentUser(storedUser);
@@ -258,13 +264,11 @@ export function AppBootstrapProvider({ children }: { children: React.ReactNode }
         version_id: bootstrap.version_id,
         last_updated: bootstrap.last_updated,
       });
-
-      // Prime key lists in the background so the initial shell is not blocked.
-      void primeSWRCache();
     } catch (error) {
       console.error("Error refreshing bootstrap data:", error);
     } finally {
       if (showBlockingLoader) {
+        await Promise.allSettled([primeCachePromise, minimumLoaderDelay]);
         setLoading(false);
       }
     }

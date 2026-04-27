@@ -255,22 +255,31 @@ const NewQuote = () => {
     const source = initialQuoteSource as any;
     return formatInitialQuoteDate(source?.expiryDate || source?.expiry || source?.validUntil);
   })();
+  const initialQuoteSourceData = initialQuoteSource as any;
+  const initialText = (...values: any[]) => {
+    for (const value of values) {
+      if (value === null || value === undefined) continue;
+      const text = String(value).trim();
+      if (text) return text;
+    }
+    return "";
+  };
   const [isLoading, setIsLoading] = useState(true);
   const [saveLoading, setSaveLoading] = useState<null | "draft" | "send">(null);
   const [taxes, setTaxes] = useState<Tax[]>([]);
   const [enabledSettings, setEnabledSettings] = useState<any>(cachedGeneralSettings);
   const [formData, setFormData] = useState<QuoteFormData>({
-    customerName: "",
-    selectedLocation: "Head Office",
-    selectedPriceList: "Select Price List",
+    customerName: initialText(initialQuoteSourceData?.customerName, initialQuoteSourceData?.customer?.displayName, initialQuoteSourceData?.customer?.name, initialQuoteSourceData?.customer),
+    selectedLocation: initialText(initialQuoteSourceData?.selectedLocation, initialQuoteSourceData?.location, "Head Office"),
+    selectedPriceList: initialText(initialQuoteSourceData?.selectedPriceList, initialQuoteSourceData?.priceListName, initialQuoteSourceData?.priceList, "Select Price List"),
     quoteNumber: initialQuoteNumber,
-    referenceNumber: "",
+    referenceNumber: initialText(initialQuoteSourceData?.referenceNumber),
     quoteDate: initialQuoteDate, // DD/MM/YYYY format which our salesModel now handles
     expiryDate: initialExpiryDate,
-    salesperson: "",
-    salespersonId: "",
-    projectName: "",
-    subject: "",
+    salesperson: initialText(initialQuoteSourceData?.salesperson),
+    salespersonId: initialText(initialQuoteSourceData?.salespersonId),
+    projectName: initialText(initialQuoteSourceData?.projectName),
+    subject: initialText(initialQuoteSourceData?.subject),
     taxExclusive: initialTaxExclusiveValue,
     items: [
       { id: 1, itemType: "item", itemDetails: "", quantity: 1, rate: 0, tax: "", taxRate: 0, amount: 0, description: "", stockOnHand: 0, reportingTags: [] }
@@ -286,8 +295,8 @@ const NewQuote = () => {
     roundOff: 0,
     total: 0,
     currency: baseCurrencyCode || "USD",
-    customerNotes: "Looking forward for your business.",
-    termsAndConditions: "",
+    customerNotes: initialText(initialQuoteSourceData?.customerNotes, initialQuoteSourceData?.notes, "Looking forward for your business."),
+    termsAndConditions: initialText(initialQuoteSourceData?.termsAndConditions, initialQuoteSourceData?.terms),
     attachedFiles: [],
     createRetainerInvoice: false,
     retainerPercentage: "",
@@ -593,6 +602,7 @@ const NewQuote = () => {
   const [newTaxTargetItemId, setNewTaxTargetItemId] = useState<string | number | null>(null);
   const [taxSearches, setTaxSearches] = useState<Record<string, string>>({});
   const [selectedItemIds, setSelectedItemIds] = useState<Record<string, boolean>>({});
+  const pendingQuoteItemSelectionsRef = useRef<any[] | null>(null);
   const itemDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const taxDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const taxOptionGroups = useMemo(() => buildTaxOptionGroups(taxes as any[]), [taxes]);
@@ -1944,6 +1954,12 @@ const NewQuote = () => {
               attachedFiles: (loadedQuote as any).attachedFiles || prev.attachedFiles,
               reportingTags: Array.isArray((loadedQuote as any).reportingTags) ? (loadedQuote as any).reportingTags : prev.reportingTags
             }));
+
+            pendingQuoteItemSelectionsRef.current = mappedItems;
+            const preselectedItemIds = syncSelectedItemsFromRows(mappedItems, availableItems);
+            if (Object.keys(preselectedItemIds).length > 0) {
+              setSelectedItemIds((prev) => ({ ...prev, ...preselectedItemIds }));
+            }
             setFormErrors((prev: any) => ({
               ...prev,
               quoteNumber: "",
@@ -3754,6 +3770,128 @@ const NewQuote = () => {
     return availableItems.find((item: any) => String(item.id) === String(selectedUiId)) || null;
   };
 
+  const normalizeItemLookupText = (value: any) => String(value ?? "").trim().toLowerCase();
+
+  const resolveCatalogItemForQuoteRow = (row: any, catalogItems: any[] = availableItems) => {
+    const rows = Array.isArray(catalogItems) ? catalogItems : [];
+    if (!rows.length || !row) return null;
+
+    const candidateIds = [
+      row?.itemId,
+      row?.item?._id,
+      row?.item?.id,
+      row?.item?.sourceId,
+      row?.sourceId,
+      row?.catalogItemId,
+      row?.productId,
+      row?.serviceId,
+      row?.item?.itemId,
+      row?.item?.item_id,
+    ]
+      .map((value) => normalizeItemLookupText(value))
+      .filter(Boolean);
+
+    for (const candidateId of candidateIds) {
+      const byId = rows.find((item: any) => {
+        const itemIds = [
+          item?.id,
+          item?._id,
+          item?.sourceId,
+          item?.itemId,
+          item?.item_id,
+        ].map((value) => normalizeItemLookupText(value));
+        return itemIds.some((idValue) => idValue && idValue === candidateId);
+      });
+      if (byId) return byId;
+    }
+
+    const candidateNames = [
+      row?.itemDetails,
+      row?.name,
+      row?.itemName,
+      row?.description,
+      row?.item?.name,
+      row?.item?.itemName,
+    ]
+      .map((value) => normalizeItemLookupText(value))
+      .filter(Boolean);
+
+    for (const candidateName of candidateNames) {
+      const byName = rows.find((item: any) => {
+        const itemNames = [
+          item?.name,
+          item?.itemName,
+          item?.displayName,
+          item?.title,
+        ].map((value) => normalizeItemLookupText(value));
+        return itemNames.some((nameValue) => nameValue && nameValue === candidateName);
+      });
+      if (byName) return byName;
+    }
+
+    const candidateCodes = [
+      row?.sku,
+      row?.code,
+      row?.item?.sku,
+      row?.item?.code,
+    ]
+      .map((value) => normalizeItemLookupText(value))
+      .filter(Boolean);
+
+    for (const candidateCode of candidateCodes) {
+      const byCode = rows.find((item: any) => {
+        const itemCodes = [item?.sku, item?.code, item?.itemCode].map((value) => normalizeItemLookupText(value));
+        return itemCodes.some((codeValue) => codeValue && codeValue === candidateCode);
+      });
+      if (byCode) return byCode;
+    }
+
+    const candidateRate = Number(row?.rate ?? row?.unitPrice ?? row?.price ?? row?.catalogRate ?? 0) || 0;
+    if (candidateRate > 0) {
+      const byRate = rows.find((item: any) => Math.abs((Number(item?.rate ?? 0) || 0) - candidateRate) < 0.0001);
+      if (byRate) return byRate;
+    }
+
+    return null;
+  };
+
+  const syncSelectedItemsFromRows = (rows: any[], catalogItems: any[] = availableItems) => {
+    const nextSelected: Record<string, string> = {};
+    (rows || [])
+      .filter((row: any) => row?.itemType !== "header")
+      .forEach((row: any) => {
+        const matchedItem = resolveCatalogItemForQuoteRow(row, catalogItems);
+        if (matchedItem) {
+          nextSelected[String(row.id)] = String(matchedItem.id || matchedItem._id || matchedItem.sourceId || "");
+        }
+      });
+    return nextSelected;
+  };
+
+  useEffect(() => {
+    if (!isEditMode) return;
+    const pendingRows = pendingQuoteItemSelectionsRef.current;
+    if (!pendingRows || pendingRows.length === 0) return;
+    if (!availableItems.length) return;
+
+    const nextSelectedItemIds = syncSelectedItemsFromRows(pendingRows, availableItems);
+    if (!Object.keys(nextSelectedItemIds).length) return;
+
+    setSelectedItemIds((prev) => {
+      let changed = false;
+      const merged = { ...prev };
+      Object.entries(nextSelectedItemIds).forEach(([rowId, itemId]) => {
+        if (String(merged[rowId] || "") !== String(itemId || "")) {
+          merged[rowId] = itemId;
+          changed = true;
+        }
+      });
+      return changed ? merged : prev;
+    });
+
+    pendingQuoteItemSelectionsRef.current = null;
+  }, [availableItems, isEditMode, formData.items]);
+
   const formatItemStock = (item: any) => {
     const stock = Number(item?.stockOnHand ?? item?.stock ?? item?.availableStock ?? 0) || 0;
     const unit = String(item?.unit || item?.uom || (item?.entityType === "plan" ? "box" : "pcs")).trim() || "pcs";
@@ -5257,7 +5395,7 @@ const NewQuote = () => {
         })) || [],
 
         // Status
-        status: "Draft"
+        status: "draft"
       };
 
       // Save or update quote
@@ -5368,7 +5506,7 @@ const NewQuote = () => {
           size: file.size,
           url: file.url
         })) || [],
-        status: "Draft", // Save as draft first
+        status: "draft", // Save as draft first
         date: formData.quoteDate
       };
 

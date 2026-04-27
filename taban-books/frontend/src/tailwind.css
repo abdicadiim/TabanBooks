@@ -8,6 +8,12 @@
   #root {
     background-color: #ffffff;
   }
+
+  body.quotes-bulk-modal-open header,
+  body.quotes-bulk-modal-open aside {
+    pointer-events: none;
+    user-select: none;
+  }
 }
 
 @layer utilities {

@@ -11,7 +11,11 @@ export default function AppShell() {
   const isPurchaseOrdersListPage = /^\/purchases(?:\/purchase-orders)?\/?$/.test(
     location.pathname
   );
+<<<<<<< HEAD
   const isVendorsListPage = location.pathname === "/purchases/vendors";
+=======
+  const isQuoteDetailPage = /^\/sales\/quotes\/[^/]+\/?$/.test(location.pathname);
+>>>>>>> 785ffcf3b6422822d8deb3ef26aac4d0a95ac4a6
 
   if (isEmbedded) {
     return (
@@ -27,7 +31,9 @@ export default function AppShell() {
       <Sidebar />
 
       <main
-        className={`h-full min-h-0 box-border overflow-y-auto overflow-x-hidden pt-[92px] scroll-pt-[92px] pb-4 pl-0 ${
+        className={`h-full min-h-0 box-border overflow-x-hidden pt-[92px] scroll-pt-[92px] pb-4 pl-0 ${
+          isQuoteDetailPage ? "overflow-hidden" : "overflow-y-auto"
+        } ${
           isPurchaseOrdersListPage
             ? "pr-0 md:pl-[calc(var(--sidebar-width)+12px)]"
             : isVendorsListPage

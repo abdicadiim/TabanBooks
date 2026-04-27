@@ -96,7 +96,7 @@ export default function useCustomersPageController() {
   const [statusOverrides, setStatusOverrides] = useState<Record<string, "active" | "inactive">>({});
   const [selectedCustomers, setSelectedCustomers] = useState(new Set<string>());
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isDownloading, setIsDownloading] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: string | null; direction: "asc" | "desc" }>({
     key: null,
@@ -1087,7 +1087,6 @@ export default function useCustomersPageController() {
     () => tableVisibleColumns.reduce((total, col) => total + col.width, 0) + 112,
     [tableVisibleColumns]
   );
-  const showCustomerSkeletons = isLoading && customers.length === 0;
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
@@ -1222,6 +1221,8 @@ export default function useCustomersPageController() {
     limit: itemsPerPage,
     search: "",
   });
+  const showCustomerSkeletons =
+    (isLoading || customersListQuery.isPending || customersListQuery.isFetching) && customers.length === 0;
 
   useEffect(() => {
     if (customersListQuery.data) {
@@ -1293,7 +1294,7 @@ export default function useCustomersPageController() {
     const hasLoadedRows =
       Array.isArray(customersListQuery.data?.data) && customersListQuery.data.data.length > 0;
     setIsRefreshing(customersListQuery.isFetching);
-    setIsLoading(customersListQuery.isPending && !hasLoadedRows && customers.length === 0);
+    setIsLoading((customersListQuery.isPending || customersListQuery.isFetching) && !hasLoadedRows && customers.length === 0);
   }, [
     customers.length,
     customersListQuery.data?.data,

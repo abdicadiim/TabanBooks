@@ -29,6 +29,9 @@ export default function QuoteQueryWarmup() {
       queryKey: quoteQueryKeys.list(),
       queryFn: fetchQuotesList,
     });
+
+    void import("./QuoteDetail/QuoteDetail");
+    void import("./SendQuoteEmail/SendQuoteEmail");
   }, [queryClient]);
 
   return null;

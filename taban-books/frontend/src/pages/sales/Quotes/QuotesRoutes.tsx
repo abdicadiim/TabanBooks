@@ -7,7 +7,11 @@ const QuoteDetail = lazy(() => import("./QuoteDetail/QuoteDetail"));
 const SendQuoteEmail = lazy(() => import("./SendQuoteEmail/SendQuoteEmail"));
 
 function RouteFallback() {
-  return null;
+  return (
+    <div className="min-h-[40vh] flex items-center justify-center bg-white text-sm text-gray-500">
+      Loading quote details...
+    </div>
+  );
 }
 
 export default function QuotesRoutes() {

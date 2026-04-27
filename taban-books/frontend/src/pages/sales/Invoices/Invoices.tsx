@@ -40,7 +40,7 @@ import {
   RotateCcw
 } from "lucide-react";
 import { getCustomers, getInvoiceById, updateInvoice, deleteInvoice, Invoice } from "../salesModel";
-import { invoicesAPI } from "../../../services/api";
+import { invoicesAPI, debitNotesAPI } from "../../../services/api";
 import { getInvoiceStatusDisplay } from "../../../utils/invoiceUtils";
 import { useCurrency } from "../../../hooks/useCurrency";
 import html2canvas from "html2canvas";
@@ -52,7 +52,7 @@ const preloadCustomersRoutes = async () => undefined;
 const preloadCustomerDetailRoute = async () => undefined;
 
 const invoiceViews = [
-  "All Invoices",
+  "All",
   "Draft",
   "Locked",
   "Pending Approval",
@@ -114,13 +114,106 @@ const normalizeCustomerLookupValue = (value: any) =>
 const isLikelyCustomerId = (value: any) =>
   /^[a-f0-9]{24}$/i.test(String(value ?? "").trim()) || /^cus[-_]/i.test(String(value ?? "").trim());
 
+const normalizeInvoiceStatus = (value: any) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+const normalizeInvoiceViewLabel = (value: any) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, " ");
+
+const normalizeDebitNoteRecord = (note: any) => {
+  const id = String(note?._id || note?.id || "").trim();
+  const customerName = String(
+    note?.customerName ||
+    note?.customer?.displayName ||
+    note?.customer?.companyName ||
+    note?.customer?.name ||
+    note?.customer ||
+    ""
+  ).trim();
+  const invoiceNumber = String(
+    note?.debitNoteNumber ||
+    note?.invoiceNumber ||
+    note?.number ||
+    id ||
+    ""
+  ).trim();
+  const sourceInvoiceId = String(
+    note?.invoiceId ||
+    note?.associatedInvoiceId ||
+    note?.invoice?._id ||
+    note?.invoice?.id ||
+    ""
+  ).trim();
+  const sourceInvoiceNumber = String(
+    note?.associatedInvoiceNumber ||
+    note?.invoice?.invoiceNumber ||
+    ""
+  ).trim();
+  const date = note?.debitNoteDate || note?.date || note?.createdAt || "";
+  const total = Number(note?.total ?? note?.amount ?? 0) || 0;
+  const balance = Number(note?.balance ?? note?.total ?? note?.amount ?? 0) || 0;
+
+  return {
+    ...note,
+    id,
+    _id: id,
+    debitNote: true,
+    invoiceType: note?.invoiceType || "debit_note",
+    type: note?.type || "debit_note",
+    documentType: note?.documentType || "debit_note",
+    invoiceNumber,
+    number: invoiceNumber,
+    date,
+    invoiceDate: date,
+    dueDate: note?.dueDate || date,
+    customerName,
+    total,
+    amount: total,
+    balance,
+    balanceDue: balance,
+    associatedInvoiceId: sourceInvoiceId,
+    invoiceId: sourceInvoiceId,
+    associatedInvoiceNumber: sourceInvoiceNumber,
+    status: note?.status || "draft",
+  };
+};
+
+const extractApiRows = (response: any): any[] => {
+  const candidates = [
+    response?.data,
+    response?.items,
+    response?.rows,
+    response?.results,
+    response?.debitNotes,
+    response?.invoices,
+    response?.data?.data,
+    response?.data?.items,
+    response?.data?.rows,
+    response?.data?.results,
+    response?.data?.debitNotes,
+    response?.data?.invoices,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+
+  return [];
+};
+
 // Skeleton Loader Component - logic inline in table body
 export default function Invoices() {
   const navigate = useNavigate();
   const { formatMoney } = useCurrency();
   const [searchParams] = useSearchParams();
   const [isInvoiceDropdownOpen, setIsInvoiceDropdownOpen] = useState(false);
-  const [selectedView, setSelectedView] = useState("All Invoices");
+  const [selectedView, setSelectedView] = useState("All");
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isNewDropdownOpen, setIsNewDropdownOpen] = useState(false);
@@ -180,6 +273,87 @@ export default function Invoices() {
   };
   const stripRetainerInvoices = (records: any[] = []) =>
     (Array.isArray(records) ? records : []).filter((invoice) => !isRetainerInvoiceRecord(invoice));
+  const matchesInvoiceView = (invoice: any, view: string, status: string) => {
+    const normalizedView = normalizeInvoiceViewLabel(view);
+    const normalizedStatus = normalizeInvoiceStatus(status);
+    const rowStatus = normalizeInvoiceStatus(invoice?.status || invoice?.emailStatus || "");
+    const rawType = normalizeInvoiceStatus(invoice?.invoiceType || invoice?.type || invoice?.documentType || invoice?.module || invoice?.source || "");
+    const rawNumber = String(invoice?.invoiceNumber || invoice?.number || "").toUpperCase();
+    const balanceDue = Number(
+      invoice?.balance !== undefined
+        ? invoice.balance
+        : invoice?.balanceDue !== undefined
+          ? invoice.balanceDue
+          : (getInvoiceDisplayTotal(invoice) - Number(invoice?.amountPaid || 0))
+    ) || 0;
+    const total = Number(getInvoiceDisplayTotal(invoice)) || 0;
+    const dueDate = new Date(invoice?.dueDate || invoice?.invoiceDate || invoice?.date || 0);
+    const isOverdueByDate = Boolean(balanceDue > 0 && !Number.isNaN(dueDate.getTime()) && dueDate < new Date());
+    const isCustomerViewed = Boolean(invoice?.customerViewed || rowStatus === "viewed" || rowStatus === "customer_viewed");
+    const isDebitNote = Boolean(
+      invoice?.debitNote ||
+      invoice?.isDebitNote ||
+      invoice?.is_debit_note ||
+      rawType.includes("debit") ||
+      /^CDN[-\d]/.test(rawNumber)
+    );
+    const isPaid = Boolean(rowStatus === "paid" || total > 0 && balanceDue <= 0);
+    const isPartiallyPaid = Boolean(
+      rowStatus === "partially_paid" ||
+      rowStatus === "partially paid" ||
+      (total > 0 && balanceDue > 0 && balanceDue < total)
+    );
+
+    if (normalizedView === "all invoices") {
+      return normalizedStatus === "all" || !normalizedStatus;
+    }
+    if (normalizedStatus && normalizedStatus !== "all") {
+      const statusMatch =
+        rowStatus === normalizedStatus ||
+        (normalizedStatus === "customer_viewed" && isCustomerViewed) ||
+        (normalizedStatus === "partially_paid" && isPartiallyPaid) ||
+        (normalizedStatus === "overdue" && isOverdueByDate) ||
+        (normalizedStatus === "paid" && isPaid) ||
+        (normalizedStatus === "void" && rowStatus === "void") ||
+        (normalizedStatus === "write_off" && rowStatus === "write_off") ||
+        (normalizedStatus === "pending_approval" && rowStatus === "pending_approval") ||
+        (normalizedStatus === "locked" && (rowStatus === "locked" || Boolean(invoice?.locked)));
+      if (!statusMatch) return false;
+    }
+
+    switch (normalizedView) {
+      case "draft":
+        return rowStatus === "draft";
+      case "locked":
+        return rowStatus === "locked" || Boolean(invoice?.locked);
+      case "pending approval":
+        return rowStatus === "pending_approval";
+      case "approved":
+        return rowStatus === "approved";
+      case "customer viewed":
+        return isCustomerViewed;
+      case "partially paid":
+        return isPartiallyPaid;
+      case "unpaid":
+        return rowStatus === "unpaid" || (total > 0 && balanceDue > 0 && !isPaid);
+      case "overdue":
+        return rowStatus === "overdue" || isOverdueByDate;
+      case "payment initiated":
+        return rowStatus === "payment_initiated";
+      case "paid":
+        return isPaid;
+      case "void":
+        return rowStatus === "void" || rowStatus === "cancelled";
+      case "debit note":
+        return isDebitNote;
+      case "write off":
+        return rowStatus === "write_off";
+      case "sent":
+        return rowStatus === "sent" || rowStatus === "viewed";
+      default:
+        return true;
+    }
+  };
   const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
   const [hoveredView, setHoveredView] = useState(null);
   const [isFieldCustomizationOpen, setIsFieldCustomizationOpen] = useState(false);
@@ -521,10 +695,123 @@ export default function Invoices() {
     const applyInvoiceRows = async () => {
       if (!invoiceListQuery.data) return;
 
+      const normalizedView = normalizeInvoiceViewLabel(selectedView);
+      const shouldUseDirectMergedFetch =
+        normalizedView === "all" ||
+        normalizedView === "draft" ||
+        normalizedView === "debit note";
+
+      const mergeRows = async (invoiceRowsRaw: any[], debitNotesRowsRaw: any[]) => {
+        const invoiceRows = stripRetainerInvoices(
+          invoiceRowsRaw.filter((row: any) => matchesInvoiceView(row, selectedView, selectedStatus))
+        );
+        const normalizedDebitNotes = debitNotesRowsRaw
+          .map(normalizeDebitNoteRecord)
+          .filter((note: any) => matchesInvoiceView(note, selectedView, selectedStatus));
+
+        const mergedRows = [...invoiceRows, ...normalizedDebitNotes];
+        const dedupedRows = Array.from(
+          new Map(
+            mergedRows.map((row: any) => {
+              const rowId = String(row?.id || row?._id || row?.invoiceNumber || row?.number || "").trim();
+              return [rowId || `${String(row?.invoiceNumber || row?.number || "row")}`, row];
+            })
+          ).values()
+        );
+
+        console.debug("[InvoicesList] merged rows", {
+          selectedView,
+          selectedStatus,
+          invoiceRows: invoiceRows.length,
+          debitNoteRows: normalizedDebitNotes.length,
+          mergedRows: mergedRows.length,
+          dedupedRows: dedupedRows.length,
+        });
+
+        return dedupedRows;
+      };
+
+      if (shouldUseDirectMergedFetch) {
+        try {
+          const [invoiceResponse, debitNotesResponse] = await Promise.all([
+            invoicesAPI.getAll({ page: 1, limit: FULL_INVOICE_LIST_LIMIT, _ts: Date.now() }),
+            debitNotesAPI.getAll({ page: 1, limit: FULL_INVOICE_LIST_LIMIT, _ts: Date.now() }),
+          ]);
+          const invoiceRows = extractApiRows(invoiceResponse);
+          const debitNotesRows = extractApiRows(debitNotesResponse);
+          console.debug("[InvoicesList] direct merged fetch", {
+            selectedView,
+            selectedStatus,
+            invoiceCount: invoiceRows.length,
+            debitNoteCount: debitNotesRows.length,
+          });
+          const mergedRows = await mergeRows(invoiceRows, debitNotesRows);
+          if (!cancelled) {
+            setInvoices(mergedRows);
+          }
+          return;
+        } catch (error) {
+          console.error("Invoice direct merged fetch failed:", error);
+        }
+      }
+
       const queryRows = Array.isArray(invoiceListQuery.data.data) ? invoiceListQuery.data.data : [];
+      const baseInvoiceRows = stripRetainerInvoices(
+        queryRows.filter((invoice: any) => matchesInvoiceView(invoice, selectedView, selectedStatus))
+      );
+      const shouldIncludeDebitNotes =
+        normalizedView === "all" ||
+        normalizedView === "all invoices" ||
+        normalizedView === "draft" ||
+        normalizedView === "debit note";
+
+      console.debug("[InvoicesList] query merge", {
+        selectedView,
+        selectedStatus,
+        normalizedView,
+        queryRows: queryRows.length,
+        baseInvoiceRows: baseInvoiceRows.length,
+        shouldIncludeDebitNotes,
+      });
+
       if (queryRows.length > 0) {
+        let mergedRows = [...baseInvoiceRows];
+
+        if (shouldIncludeDebitNotes) {
+          try {
+            const debitNotesResponse: any = await debitNotesAPI.getAll({ page: 1, limit: FULL_INVOICE_LIST_LIMIT });
+            const debitNotesRows = extractApiRows(debitNotesResponse);
+            console.debug("[InvoicesList] debit notes fetched", {
+              count: debitNotesRows.length,
+              sample: debitNotesRows[0]
+                ? {
+                    id: debitNotesRows[0]?.id || debitNotesRows[0]?._id,
+                    number: debitNotesRows[0]?.debitNoteNumber || debitNotesRows[0]?.invoiceNumber || debitNotesRows[0]?.number,
+                    status: debitNotesRows[0]?.status,
+                    invoiceType: debitNotesRows[0]?.invoiceType || debitNotesRows[0]?.type || debitNotesRows[0]?.documentType,
+                  }
+                : null,
+            });
+            const normalizedDebitNotes = debitNotesRows
+              .map(normalizeDebitNoteRecord)
+              .filter((note: any) => matchesInvoiceView(note, selectedView, selectedStatus));
+            mergedRows = [...mergedRows, ...normalizedDebitNotes];
+          } catch (error) {
+            console.error("Invoice debit-note fetch failed:", error);
+          }
+        }
+
+        const dedupedRows = Array.from(
+          new Map(
+            mergedRows.map((row: any) => {
+              const rowId = String(row?.id || row?._id || row?.invoiceNumber || row?.number || "").trim();
+              return [rowId || `${String(row?.invoiceNumber || row?.number || "row")}`, row];
+            })
+          ).values()
+        );
+
         if (!cancelled) {
-          setInvoices(stripRetainerInvoices(queryRows));
+          setInvoices(dedupedRows);
         }
         return;
       }
@@ -532,18 +819,29 @@ export default function Invoices() {
       // Fallback: fetch directly from API when query layer resolves to empty.
       try {
         const response: any = await invoicesAPI.getAll({ page: 1, limit: FULL_INVOICE_LIST_LIMIT, _ts: Date.now() });
-        const directRows = Array.isArray(response?.data)
-          ? response.data
-          : Array.isArray(response?.items)
-            ? response.items
-            : Array.isArray(response?.data?.data)
-              ? response.data.data
-              : Array.isArray(response?.data?.items)
-                ? response.data.items
-                : [];
+        const directRows = extractApiRows(response);
+        console.debug("[InvoicesList] invoice fallback rows", directRows.length);
+
+        let normalizedRows = stripRetainerInvoices(
+          directRows.filter((invoice: any) => matchesInvoiceView(invoice, selectedView, selectedStatus))
+        );
+
+        if (shouldIncludeDebitNotes) {
+          try {
+            const debitNotesResponse: any = await debitNotesAPI.getAll({ page: 1, limit: FULL_INVOICE_LIST_LIMIT, _ts: Date.now() });
+            const debitNotesRows = extractApiRows(debitNotesResponse);
+            console.debug("[InvoicesList] debit note fallback rows", debitNotesRows.length);
+            const normalizedDebitNotes = debitNotesRows
+              .map(normalizeDebitNoteRecord)
+              .filter((note: any) => matchesInvoiceView(note, selectedView, selectedStatus));
+            normalizedRows = [...normalizedRows, ...normalizedDebitNotes];
+          } catch (error) {
+            console.error("Invoice debit-note fallback fetch failed:", error);
+          }
+        }
 
         if (!cancelled) {
-          setInvoices(stripRetainerInvoices(directRows));
+          setInvoices(Array.from(new Map(normalizedRows.map((row: any) => [String(row?.id || row?._id || row?.invoiceNumber || row?.number || ""), row])).values()));
         }
       } catch (error) {
         console.error("Invoice list fallback fetch failed:", error);
@@ -558,7 +856,7 @@ export default function Invoices() {
     return () => {
       cancelled = true;
     };
-  }, [invoiceListQuery.data]);
+  }, [invoiceListQuery.data, selectedView, selectedStatus]);
 
   useEffect(() => {
     setIsRefreshing(invoiceListQuery.isFetching);
@@ -668,9 +966,11 @@ export default function Invoices() {
   }, [isInvoiceDropdownOpen, isStatusDropdownOpen, isMoreMenuOpen, isNewDropdownOpen, isDownloadDropdownOpen, isBulkUpdateFieldDropdownOpen, isBulkUpdateValueDropdownOpen, isDecimalFormatDropdownOpen, activeActionInvoiceId, isVisibilityDropdownOpen]);
 
   const handleViewSelect = async (view: string) => {
+    const normalizedView = normalizeInvoiceViewLabel(view);
     setSelectedView(view);
+    setSelectedStatus("All");
     setIsInvoiceDropdownOpen(false);
-    await applyFilters(view, selectedStatus);
+    await applyFilters(view, "All");
   };
 
   const filteredDefaultViews = invoiceViews.filter(view =>
@@ -721,7 +1021,7 @@ export default function Invoices() {
       nextFilters.status = status.toLowerCase();
     }
 
-    if (view !== "All Invoices") {
+    if (view !== "All") {
       switch (view) {
         case "Draft":
         case "Locked":
@@ -2843,11 +3143,11 @@ export default function Invoices() {
                     </tr>
                   ))
                 ) : (
-                  paginatedInvoices.map((invoice) => {
+                  paginatedInvoices.map((invoice, index) => {
                     const isSelected = selectedInvoices.has(invoice.id);
                     return (
                       <tr
-                        key={invoice.id}
+                        key={String(invoice.id || invoice._id || invoice.invoiceNumber || index)}
                         className="text-[13px] h-[50px] group transition-all border-b border-[#eef1f6] cursor-pointer hover:bg-[#f8fafc]"
                         style={isSelected ? { backgroundColor: "#1b5e6a1A" } : {}}
                         onClick={(e) => {

@@ -1417,102 +1417,173 @@ export default function CreditNotes() {
       )}
 
       <div className="flex-1 min-h-0 w-full overflow-y-auto custom-scrollbar">
-        <div className="relative w-full min-w-0">
-          <div className="w-full bg-white overflow-hidden">
-            <div className="w-full min-w-0 overflow-x-auto">
-              <table className="min-w-full w-full text-left border-collapse">
-                <thead className="sticky top-0 z-10 bg-[#f6f7fb] border-b border-[#e6e9f2]">
-                <tr className="text-[10px] font-semibold text-[#7b8494] uppercase tracking-wider">
-                  <th className="px-4 py-3 w-16 min-w-[64px]">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsCustomizeColumnsOpen(true);
-                        }}
-                        className="h-6 w-6 flex items-center justify-center rounded border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
-                        title="Customize Columns"
-                      >
-                        <SlidersHorizontal size={13} className="text-[#1b5e6a]" />
-                      </button>
-                      <div className="h-5 w-px bg-gray-200" />
-                      <button
-                        className="h-4 w-4 flex items-center justify-center hover:bg-gray-200 rounded transition-colors"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSelectAll();
-                        }}
-                      >
-                        {paginatedCreditNotes.length > 0 && paginatedCreditNotes.every((note) => selectedCreditNotes.includes(note.id)) ? (
-                          <CheckSquare size={16} fill="#6b7280" color="#6b7280" />
-                        ) : (
-                          <Square size={16} className="text-gray-400" />
-                        )}
-                      </button>
-                    </div>
-                  </th>
-                  {isColumnVisible("date") && <th className="px-4 py-3 text-left">
-                    <button className="flex items-center gap-2 hover:text-blue-600 transition-colors">
-                        DATE
-                      </button>
-                  </th>}
-                  {isColumnVisible("location") && <th className="px-4 py-3 text-left">LOCATION</th>}
-                  {isColumnVisible("creditNoteNumber") && <th className="px-4 py-3 text-left">
-                    <button className="flex items-center gap-2 hover:text-blue-600 transition-colors">
-                        CREDIT NOTE#
-                        <ArrowUpDown size={14} className="text-gray-400" />
-                      </button>
-                  </th>}
-                  {isColumnVisible("referenceNumber") && <th className="px-4 py-3 text-left">REFERENCE NUMBER</th>}
-                  {isColumnVisible("customerName") && <th className="px-4 py-3 text-left">CUSTOMER NAME</th>}
-                  {isColumnVisible("invoiceNumber") && <th className="px-4 py-3 text-left">INVOICE#</th>}
-                  {isColumnVisible("status") && <th className="px-4 py-3 text-left">STATUS</th>}
-                  {isColumnVisible("amount") && <th className="px-4 py-3 text-left">AMOUNT</th>}
-                  {isColumnVisible("balance") && <th className="px-4 py-3 text-left">BALANCE</th>}
-                  {isColumnVisible("salesPerson") && <th className="px-4 py-3 text-left">SALES PERSON</th>}
-                  <th className="px-4 py-3 text-left bg-[#f6f7fb]">
-                      <button
-                        onClick={() => setShowSearchModal(true)}
-                        className="cursor-pointer hover:text-gray-700"
-                      >
-                        <Search size={16} className="text-gray-500" />
-                      </button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {isRefreshing || !hasLoadedOnce ? (
-                  Array(5).fill(0).map((_, index) => (
-                    <tr key={`skeleton-${index}`} className="animate-pulse border-b border-gray-50">
-                      <td className="px-4 py-3">
+        {isRefreshing || !hasLoadedOnce ? (
+          <div className="relative w-full min-w-0">
+            <div className="w-full bg-white overflow-hidden">
+              <div className="w-full min-w-0 overflow-x-auto">
+                <table className="min-w-full w-full text-left border-collapse">
+                  <thead className="sticky top-0 z-10 bg-[#f6f7fb] border-b border-[#e6e9f2]">
+                    <tr className="text-[10px] font-semibold text-[#7b8494] uppercase tracking-wider">
+                      <th className="px-4 py-3 w-16 min-w-[64px]">
                         <div className="flex items-center gap-2">
-                          <span className="h-6 w-6 shrink-0" aria-hidden />
-                          <span className="h-5 w-px shrink-0 bg-transparent" aria-hidden />
-                          <div className="w-4 h-4 bg-gray-100 rounded"></div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsCustomizeColumnsOpen(true);
+                            }}
+                            className="h-6 w-6 flex items-center justify-center rounded border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                            title="Customize Columns"
+                          >
+                            <SlidersHorizontal size={13} className="text-[#1b5e6a]" />
+                          </button>
+                          <div className="h-5 w-px bg-gray-200" />
+                          <button
+                            className="h-4 w-4 flex items-center justify-center hover:bg-gray-200 rounded transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectAll();
+                            }}
+                          >
+                            {paginatedCreditNotes.length > 0 && paginatedCreditNotes.every((note) => selectedCreditNotes.includes(note.id)) ? (
+                              <CheckSquare size={16} fill="#6b7280" color="#6b7280" />
+                            ) : (
+                              <Square size={16} className="text-gray-400" />
+                            )}
+                          </button>
                         </div>
-                      </td>
-                      {isColumnVisible("date") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
-                      {isColumnVisible("location") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
-                      {isColumnVisible("creditNoteNumber") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-32"></div></td>}
-                      {isColumnVisible("referenceNumber") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
-                      {isColumnVisible("customerName") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-32"></div></td>}
-                      {isColumnVisible("invoiceNumber") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
-                      {isColumnVisible("status") && <td className="px-4 py-3"><div className="h-6 bg-gray-100 rounded w-20"></div></td>}
-                      {isColumnVisible("amount") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-20"></div></td>}
-                      {isColumnVisible("balance") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-20"></div></td>}
-                      {isColumnVisible("salesPerson") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
-                      <td className="px-4 py-3"></td>
+                      </th>
+                      {isColumnVisible("date") && <th className="px-4 py-3 text-left">
+                        <button className="flex items-center gap-2 hover:text-blue-600 transition-colors">
+                            DATE
+                          </button>
+                      </th>}
+                      {isColumnVisible("location") && <th className="px-4 py-3 text-left">LOCATION</th>}
+                      {isColumnVisible("creditNoteNumber") && <th className="px-4 py-3 text-left">
+                        <button className="flex items-center gap-2 hover:text-blue-600 transition-colors">
+                            CREDIT NOTE#
+                            <ArrowUpDown size={14} className="text-gray-400" />
+                          </button>
+                      </th>}
+                      {isColumnVisible("referenceNumber") && <th className="px-4 py-3 text-left">REFERENCE NUMBER</th>}
+                      {isColumnVisible("customerName") && <th className="px-4 py-3 text-left">CUSTOMER NAME</th>}
+                      {isColumnVisible("invoiceNumber") && <th className="px-4 py-3 text-left">INVOICE#</th>}
+                      {isColumnVisible("status") && <th className="px-4 py-3 text-left">STATUS</th>}
+                      {isColumnVisible("amount") && <th className="px-4 py-3 text-left">AMOUNT</th>}
+                      {isColumnVisible("balance") && <th className="px-4 py-3 text-left">BALANCE</th>}
+                      {isColumnVisible("salesPerson") && <th className="px-4 py-3 text-left">SALES PERSON</th>}
+                      <th className="px-4 py-3 text-left bg-[#f6f7fb]">
+                          <button
+                            onClick={() => setShowSearchModal(true)}
+                            className="cursor-pointer hover:text-gray-700"
+                          >
+                            <Search size={16} className="text-gray-500" />
+                          </button>
+                      </th>
                     </tr>
-                  ))
-                ) : filteredCreditNotes.length === 0 ? (
-                  <tr>
-                    <td colSpan={visibleColumns.length + 2} className="px-4 py-8 text-center text-gray-500 text-sm">
-                      No credit notes found matching the selected filter.
-                    </td>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {Array(5).fill(0).map((_, index) => (
+                      <tr key={`skeleton-${index}`} className="animate-pulse border-b border-gray-50">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="h-6 w-6 shrink-0" aria-hidden />
+                            <span className="h-5 w-px shrink-0 bg-transparent" aria-hidden />
+                            <div className="w-4 h-4 bg-gray-100 rounded"></div>
+                          </div>
+                        </td>
+                        {isColumnVisible("date") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
+                        {isColumnVisible("location") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
+                        {isColumnVisible("creditNoteNumber") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-32"></div></td>}
+                        {isColumnVisible("referenceNumber") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
+                        {isColumnVisible("customerName") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-32"></div></td>}
+                        {isColumnVisible("invoiceNumber") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
+                        {isColumnVisible("status") && <td className="px-4 py-3"><div className="h-6 bg-gray-100 rounded w-20"></div></td>}
+                        {isColumnVisible("amount") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-20"></div></td>}
+                        {isColumnVisible("balance") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-20"></div></td>}
+                        {isColumnVisible("salesPerson") && <td className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-24"></div></td>}
+                        <td className="px-4 py-3"></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        ) : filteredCreditNotes.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <h2 className="text-2xl font-bold text-gray-900 mb-3">No credit notes found, yet</h2>
+            <p className="text-gray-600 mb-6 max-w-md">
+              Credit notes will appear here once they are created or match your selected filter.
+            </p>
+          </div>
+        ) : (
+          <div className="relative w-full min-w-0">
+            <div className="w-full bg-white overflow-hidden">
+              <div className="w-full min-w-0 overflow-x-auto">
+                <table className="min-w-full w-full text-left border-collapse">
+                  <thead className="sticky top-0 z-10 bg-[#f6f7fb] border-b border-[#e6e9f2]">
+                  <tr className="text-[10px] font-semibold text-[#7b8494] uppercase tracking-wider">
+                    <th className="px-4 py-3 w-16 min-w-[64px]">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsCustomizeColumnsOpen(true);
+                          }}
+                          className="h-6 w-6 flex items-center justify-center rounded border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                          title="Customize Columns"
+                        >
+                          <SlidersHorizontal size={13} className="text-[#1b5e6a]" />
+                        </button>
+                        <div className="h-5 w-px bg-gray-200" />
+                        <button
+                          className="h-4 w-4 flex items-center justify-center hover:bg-gray-200 rounded transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectAll();
+                          }}
+                        >
+                          {paginatedCreditNotes.length > 0 && paginatedCreditNotes.every((note) => selectedCreditNotes.includes(note.id)) ? (
+                            <CheckSquare size={16} fill="#6b7280" color="#6b7280" />
+                          ) : (
+                            <Square size={16} className="text-gray-400" />
+                          )}
+                        </button>
+                      </div>
+                    </th>
+                    {isColumnVisible("date") && <th className="px-4 py-3 text-left">
+                      <button className="flex items-center gap-2 hover:text-blue-600 transition-colors">
+                          DATE
+                        </button>
+                    </th>}
+                    {isColumnVisible("location") && <th className="px-4 py-3 text-left">LOCATION</th>}
+                    {isColumnVisible("creditNoteNumber") && <th className="px-4 py-3 text-left">
+                      <button className="flex items-center gap-2 hover:text-blue-600 transition-colors">
+                          CREDIT NOTE#
+                          <ArrowUpDown size={14} className="text-gray-400" />
+                        </button>
+                    </th>}
+                    {isColumnVisible("referenceNumber") && <th className="px-4 py-3 text-left">REFERENCE NUMBER</th>}
+                    {isColumnVisible("customerName") && <th className="px-4 py-3 text-left">CUSTOMER NAME</th>}
+                    {isColumnVisible("invoiceNumber") && <th className="px-4 py-3 text-left">INVOICE#</th>}
+                    {isColumnVisible("status") && <th className="px-4 py-3 text-left">STATUS</th>}
+                    {isColumnVisible("amount") && <th className="px-4 py-3 text-left">AMOUNT</th>}
+                    {isColumnVisible("balance") && <th className="px-4 py-3 text-left">BALANCE</th>}
+                    {isColumnVisible("salesPerson") && <th className="px-4 py-3 text-left">SALES PERSON</th>}
+                    <th className="px-4 py-3 text-left bg-[#f6f7fb]">
+                        <button
+                          onClick={() => setShowSearchModal(true)}
+                          className="cursor-pointer hover:text-gray-700"
+                        >
+                          <Search size={16} className="text-gray-500" />
+                        </button>
+                    </th>
                   </tr>
-                ) : (
-                  paginatedCreditNotes.map((note) => {
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {paginatedCreditNotes.map((note) => {
                     const isSelected = selectedCreditNotes.includes(note.id);
                     return (
                       <tr
@@ -1585,13 +1656,13 @@ export default function CreditNotes() {
                         <td className="px-4 py-3"></td>
                       </tr>
                     );
-                  })
-                )}
-              </tbody>
-              </table>
+                  })}
+                </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       <PaginationFooter
