@@ -11,11 +11,8 @@ export default function AppShell() {
   const isPurchaseOrdersListPage = /^\/purchases(?:\/purchase-orders)?\/?$/.test(
     location.pathname
   );
-<<<<<<< HEAD
   const isVendorsListPage = location.pathname === "/purchases/vendors";
-=======
   const isQuoteDetailPage = /^\/sales\/quotes\/[^/]+\/?$/.test(location.pathname);
->>>>>>> 785ffcf3b6422822d8deb3ef26aac4d0a95ac4a6
 
   if (isEmbedded) {
     return (
