@@ -24,6 +24,48 @@ import { jsPDF } from "jspdf";
 import SendPurchaseOrderEmail from "./SendPurchaseOrderEmail";
 import { purchaseOrdersAPI, settingsAPI, profileAPI, vendorsAPI, billsAPI } from "../../../services/api";
 import { useCurrency } from "../../../hooks/useCurrency";
+import { PURCHASE_ORDER_VIEWS } from "./PurchaseOrders.constants";
+import { filterPurchaseOrdersByView, getPurchaseOrdersDisplayText } from "./PurchaseOrders.utils";
+
+const PURCHASE_ORDERS_LIST_CACHE_KEY = "purchase-orders-list-cache";
+
+const mapPurchaseOrderForView = (purchaseOrder: any) => ({
+  ...purchaseOrder,
+  id: purchaseOrder?._id || purchaseOrder?.id,
+});
+
+const readCachedPurchaseOrders = () => {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const rawValue = window.sessionStorage.getItem(PURCHASE_ORDERS_LIST_CACHE_KEY);
+    if (!rawValue) {
+      return [];
+    }
+
+    const parsed = JSON.parse(rawValue);
+    return Array.isArray(parsed) ? parsed.map(mapPurchaseOrderForView) : [];
+  } catch (error) {
+    console.error("Failed to parse cached purchase orders in detail view:", error);
+    return [];
+  }
+};
+
+const readCachedOrganization = () => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem("organization");
+    return rawValue ? JSON.parse(rawValue) : null;
+  } catch (error) {
+    console.error("Failed to parse cached organization:", error);
+    return null;
+  }
+};
 
 export default function PurchaseOrderDetail() {
   const { id } = useParams();
@@ -35,16 +77,30 @@ export default function PurchaseOrderDetail() {
   const initialPurchaseOrder = location.state?.purchaseOrder || null;
   const [purchaseOrder, setPurchaseOrder] = useState(initialPurchaseOrder);
   const [isLoading, setIsLoading] = useState(!initialPurchaseOrder);
-  const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>(() => {
+    const stateOrders = location.state?.purchaseOrders;
+    if (Array.isArray(stateOrders) && stateOrders.length > 0) {
+      return stateOrders.map(mapPurchaseOrderForView);
+    }
+
+    return readCachedPurchaseOrders();
+  });
   const [activeTab, setActiveTab] = useState("all");
+  const [selectedView, setSelectedView] = useState("All");
   const [sendEmailOpen, setSendEmailOpen] = useState(false);
-  const [vendor, setVendor] = useState(null);
+  const [vendor, setVendor] = useState(
+    initialPurchaseOrder?.vendor && typeof initialPurchaseOrder.vendor === "object"
+      ? initialPurchaseOrder.vendor
+      : initialPurchaseOrder?.vendorName
+        ? { name: initialPurchaseOrder.vendorName, displayName: initialPurchaseOrder.vendorName }
+        : null
+  );
   const [showPdfView, setShowPdfView] = useState(true);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [pdfPrintMenuOpen, setPdfPrintMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [organization, setOrganization] = useState(null);
+  const [organization, setOrganization] = useState(() => readCachedOrganization());
   const [bills, setBills] = useState([]);
   const [isBillsExpanded, setIsBillsExpanded] = useState(false);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
@@ -104,7 +160,7 @@ export default function PurchaseOrderDetail() {
         if (listResult.status === "fulfilled") {
           const response = listResult.value;
           if (response && (response.code === 0 || response.success)) {
-            setPurchaseOrders(response.data || []);
+            setPurchaseOrders((response.data || []).map(mapPurchaseOrderForView));
           }
         }
       });
@@ -142,6 +198,21 @@ export default function PurchaseOrderDetail() {
   useEffect(() => {
     loadData();
   }, [id]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !purchaseOrders.length) {
+      return;
+    }
+
+    try {
+      window.sessionStorage.setItem(
+        PURCHASE_ORDERS_LIST_CACHE_KEY,
+        JSON.stringify(purchaseOrders)
+      );
+    } catch (error) {
+      console.error("Failed to persist purchase order detail cache:", error);
+    }
+  }, [purchaseOrders]);
 
   const handleMarkAsIssued = async () => {
     try {
@@ -591,8 +662,10 @@ export default function PurchaseOrderDetail() {
     }
   };
 
+  const viewFilteredOrders = filterPurchaseOrdersByView(purchaseOrders, selectedView);
+
   // Filter purchase orders based on search
-  const filteredOrders = purchaseOrders.filter((order) => {
+  const filteredOrders = viewFilteredOrders.filter((order) => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
@@ -632,11 +705,45 @@ export default function PurchaseOrderDetail() {
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setDropdownOpen(!dropdownOpen)}
-                  className="flex items-center gap-2 text-sm font-medium text-gray-900 hover:text-gray-700"
+                  className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-gray-900 hover:text-gray-700 whitespace-nowrap"
                 >
-                  All Purchase Or...
+                  {getPurchaseOrdersDisplayText(selectedView)}
                   {dropdownOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                 </button>
+
+                {dropdownOpen && (
+                  <div className="absolute left-0 top-full z-20 mt-2 max-h-[420px] w-[230px] overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                    {PURCHASE_ORDER_VIEWS.map((view) => (
+                      <button
+                        key={view}
+                        type="button"
+                        onClick={() => {
+                          setSelectedView(view);
+                          setDropdownOpen(false);
+                        }}
+                        className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm ${
+                          selectedView === view
+                            ? "border-l-2 border-l-[#156372] bg-[#eff6ff] font-medium text-gray-900"
+                            : "text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        <span>{view}</span>
+                        <span className="text-gray-300">☆</span>
+                      </button>
+                    ))}
+                    <div className="my-1 border-t border-gray-100" />
+                    <button
+                      type="button"
+                      onClick={() => setDropdownOpen(false)}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#eff6ff] text-[#2563eb]">
+                        <Plus size={12} />
+                      </span>
+                      <span>New Custom View</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-1">
@@ -659,10 +766,19 @@ export default function PurchaseOrderDetail() {
               <div
                 key={order._id || order.id}
                 onClick={() => navigate(`/purchases/purchase-orders/${order._id || order.id}`)}
-                className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${String(order._id || order.id) === String(id) ? "bg-teal-50 border-l-4 border-l-blue-600" : ""
+                className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${String(order._id || order.id) === String(id) ? "bg-[#f1f3ff]" : ""
                   }`}
               >
-                <div className="flex justify-between items-start">
+                <div className="flex items-start gap-3">
+                  <div className="pt-1">
+                    <input
+                      type="checkbox"
+                      onClick={(event) => event.stopPropagation()}
+                      className="h-4 w-4 rounded border border-gray-300 cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="flex justify-between items-start flex-1">
                   <div className="flex-1">
                     <div className="text-sm font-medium text-gray-900 mb-1">
                       {order.vendorName || "Vendor"}
@@ -679,6 +795,7 @@ export default function PurchaseOrderDetail() {
                   <div className="text-sm font-semibold text-gray-900">
                     {resolvedBaseCurrencySymbol}{parseFloat(order.total || order.amount || 0).toFixed(2)}
                   </div>
+                </div>
                 </div>
               </div>
             ))}
