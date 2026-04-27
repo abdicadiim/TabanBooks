@@ -3,9 +3,9 @@ import { Routes, Route, useLocation } from "react-router-dom";
 import { usePermissions } from "../../hooks/usePermissions";
 import AccessDenied from "../../components/AccessDenied";
 
-const Vendor = lazy(() => import("./vendor/Vendor"));
+import Vendor from "./vendor/Vendor";
+import VendorDetail from "./vendor/VendorDetail";
 const NewVendor = lazy(() => import("./vendor/NewVendor"));
-const VendorDetail = lazy(() => import("./vendor/VendorDetail"));
 const NewVendorCustomView = lazy(() => import("./vendor/NewVendorCustomView"));
 const NewExpenseCustomView = lazy(() => import("./expenses/NewExpenseCustomView"));
 const ImportVendors = lazy(() => import("./vendor/ImportVendors"));

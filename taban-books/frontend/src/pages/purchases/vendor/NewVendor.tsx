@@ -823,6 +823,7 @@ export default function NewVendor() {
       if (response && response.success) {
         // Get the vendor ID from the response
         const newVendorId = response.data?._id || response.data?.id || response._id || response.id;
+        const savedVendor = response.data || vendorData;
 
         // Dispatch custom event to notify Vendor component
         window.dispatchEvent(new Event("vendorSaved"));
@@ -830,7 +831,12 @@ export default function NewVendor() {
         // If we have a valid vendor ID, navigate to the detail page
         if (newVendorId && /^[0-9a-fA-F]{24}$/.test(String(newVendorId))) {
           console.log('Navigating to vendor detail page with ID:', newVendorId);
-          navigate(`/purchases/vendors/${newVendorId}`);
+          navigate(`/purchases/vendors/${newVendorId}`, {
+            state: {
+              vendor: savedVendor,
+              skipInitialLoad: true,
+            },
+          });
           return; // Exit early to prevent default navigation
         } else {
           console.warn('Vendor created but ID is invalid:', newVendorId);
@@ -1323,19 +1329,25 @@ export default function NewVendor() {
       marginBottom: "16px",
       display: "flex",
       alignItems: "center",
-      justifyContent: "space-between",
+      justifyContent: "flex-start",
+      gap: "8px",
+      flexWrap: "wrap",
     },
     copyLink: {
       display: "flex",
       alignItems: "center",
       gap: "4px",
-      color: "#156372",
-      fontSize: "13px",
+      color: "#2563eb",
+      fontSize: "12px",
+      fontWeight: "500",
       cursor: "pointer",
       textDecoration: "none",
       background: "none",
       border: "none",
       padding: 0,
+    },
+    copyLinkParen: {
+      opacity: 0.7,
     },
     textarea: {
       width: "100%",
@@ -2731,8 +2743,10 @@ export default function NewVendor() {
                         onClick={copyBillingToShipping}
                         style={styles.copyLink}
                       >
+                        <span style={styles.copyLinkParen}>(</span>
                         <Copy size={14} />
                         Copy billing address
+                        <span style={styles.copyLinkParen}>)</span>
                       </button>
                     </div>
                     <div style={styles.formGroup}>

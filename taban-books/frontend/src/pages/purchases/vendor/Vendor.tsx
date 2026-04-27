@@ -5,8 +5,10 @@ import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
+import { toast } from "react-toastify";
 import ExportVendors from "./ExportVendors";
 import BulkUpdateModal from "../shared/BulkUpdateModal";
+import DeleteConfirmationModal from "../shared/DeleteConfirmationModal";
 import { vendorsAPI } from "../../../services/api";
 import {
   ChevronDown,
@@ -43,6 +45,7 @@ import {
   GitMerge,
   Edit,
   Settings,
+  Columns,
   SlidersHorizontal,
 } from "lucide-react";
 
@@ -61,7 +64,14 @@ const purchasesTheme = {
 export default function Vendor() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [vendors, setVendors] = useState([]);
+  const [vendors, setVendors] = useState(() => {
+    try {
+      const cached = localStorage.getItem("vendors");
+      return cached ? JSON.parse(cached) : [];
+    } catch (error) {
+      return [];
+    }
+  });
   const [selectedVendors, setSelectedVendors] = useState([]);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [notification, setNotification] = useState(null);
@@ -70,6 +80,8 @@ export default function Vendor() {
   const [showMoreDropdown, setShowMoreDropdown] = useState(false);
   const [showBulkActionMoreDropdown, setShowBulkActionMoreDropdown] = useState(false);
   const [showCustomViewModal, setShowCustomViewModal] = useState(false);
+  const [showColumnMenu, setShowColumnMenu] = useState(false);
+  const [showCustomizeColumnsModal, setShowCustomizeColumnsModal] = useState(false);
   const [showSortSubmenu, setShowSortSubmenu] = useState(false);
   const [showImportSubmenu, setShowImportSubmenu] = useState(false);
   const [showExportSubmenu, setShowExportSubmenu] = useState(false);
@@ -225,6 +237,14 @@ export default function Vendor() {
   const [hoveredRowId, setHoveredRowId] = useState(null);
   const [openDropdownId, setOpenDropdownId] = useState(null);
   const [customViews, setCustomViews] = useState([]);
+  const [visibleColumns, setVisibleColumns] = useState([
+    "name",
+    "companyName",
+    "email",
+    "workPhone",
+    "payablesBcy",
+    "unusedCreditsBcy",
+  ]);
   const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false);
   const [currencySearch, setCurrencySearch] = useState("");
   const currencyDropdownRef = useRef(null);
@@ -237,7 +257,31 @@ export default function Vendor() {
   const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
   const [accountSearch, setAccountSearch] = useState("");
   const accountDropdownRef = useRef(null);
+  const columnMenuRef = useRef(null);
   const getVendorId = (vendor) => String(vendor?.id || vendor?._id || "").trim();
+  const getVendorField = (vendor, field, fallback = "-") => {
+    const formData = vendor?.formData || {};
+    const value = vendor?.[field] ?? formData?.[field];
+    if (value === undefined || value === null || value === "") {
+      return fallback;
+    }
+    return value;
+  };
+  const getVendorWebsite = (vendor) =>
+    getVendorField(vendor, "website", vendor?.websiteUrl ?? vendor?.formData?.websiteUrl ?? "-");
+  const getVendorStatus = (vendor) => {
+    const rawStatus = getVendorField(vendor, "status", vendor?.active === false ? "Inactive" : "Active");
+    return String(rawStatus)
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+  const persistVendors = (nextVendors) => {
+    setVendors(nextVendors);
+    try {
+      localStorage.setItem("vendors", JSON.stringify(nextVendors));
+    } catch (storageError) {
+    }
+  };
   const normalizeVendorsList = (list) =>
     (Array.isArray(list) ? list : []).map((vendor) => ({
       ...vendor,
@@ -245,9 +289,11 @@ export default function Vendor() {
       _id: vendor?._id || vendor?.id || "",
     }));
 
-  const loadVendors = async () => {
+  const loadVendors = async ({ showLoader = vendors.length === 0 } = {}) => {
     try {
-      setIsRefreshing(true);
+      if (showLoader) {
+        setIsRefreshing(true);
+      }
       const response = await vendorsAPI.getAll();
 
       const vendorsList = Array.isArray(response)
@@ -257,15 +303,12 @@ export default function Vendor() {
           : (response.data?.data && Array.isArray(response.data.data) ? response.data.data : []));
 
       const normalized = normalizeVendorsList(vendorsList);
-      setVendors(normalized);
-
-      try {
-        localStorage.setItem("vendors", JSON.stringify(normalized));
-      } catch (storageError) {
-      }
+      persistVendors(normalized);
     } catch (error) {
     } finally {
-      setIsRefreshing(false);
+      if (showLoader) {
+        setIsRefreshing(false);
+      }
     }
   };
   const openSearchModalForCurrentContext = () => {
@@ -277,7 +320,7 @@ export default function Vendor() {
 
   useEffect(() => {
     setCustomViews(getVendorCustomViews());
-  }, [location.pathname]);
+  }, []);
 
   // Get display text for header based on selected view
   const getDisplayText = () => {
@@ -296,10 +339,9 @@ export default function Vendor() {
 
   const handleNewVendor = () => navigate("/purchases/vendors/new");
 
-  // Load vendors from API on component mount and when location changes
   useEffect(() => {
-    loadVendors();
-  }, [location.pathname]);
+    loadVendors({ showLoader: vendors.length === 0 });
+  }, []);
 
   // Fail-safe for isRefreshing
   useEffect(() => {
@@ -445,22 +487,23 @@ export default function Vendor() {
   };
 
   const filteredVendors = getSortedVendors(getFilteredVendors());
-
-  useEffect(() => {
-    const handleVendorRefresh = () => {
-      loadVendors();
-    };
-
-    window.addEventListener("vendorSaved", handleVendorRefresh);
-    window.addEventListener("focus", handleVendorRefresh);
-    window.addEventListener("storage", handleVendorRefresh);
-
-    return () => {
-      window.removeEventListener("vendorSaved", handleVendorRefresh);
-      window.removeEventListener("focus", handleVendorRefresh);
-      window.removeEventListener("storage", handleVendorRefresh);
-    };
-  }, []);
+  const vendorColumnOptions = [
+    { id: "name", label: "Name", required: true },
+    { id: "companyName", label: "Company Name" },
+    { id: "email", label: "Email" },
+    { id: "workPhone", label: "Work Phone" },
+    { id: "payablesBcy", label: "Payables (BCY)" },
+    { id: "unusedCreditsBcy", label: "Unused Credits (BCY)" },
+    { id: "payables", label: "Payables" },
+    { id: "unusedCredits", label: "Unused Credits" },
+    { id: "source", label: "Source" },
+    { id: "firstName", label: "First Name" },
+    { id: "lastName", label: "Last Name" },
+    { id: "mobilePhone", label: "Mobile Phone" },
+    { id: "paymentTerms", label: "Payment Terms" },
+    { id: "status", label: "Status" },
+    { id: "website", label: "Website" },
+  ];
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -518,10 +561,13 @@ export default function Vendor() {
       if (isEndDatePickerOpen && endDatePickerRef.current && !endDatePickerRef.current.contains(event.target)) {
         setIsEndDatePickerOpen(false);
       }
+      if (showColumnMenu && columnMenuRef.current && !columnMenuRef.current.contains(event.target)) {
+        setShowColumnMenu(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showDropdown, showMoreDropdown, showBulkActionMoreDropdown, openDropdownId, isCurrencyDropdownOpen, isPaymentTermsDropdownOpen, isLanguageDropdownOpen, isAccountDropdownOpen, isStartDatePickerOpen, isEndDatePickerOpen, showSortSubmenu, showImportSubmenu, showExportSubmenu]);
+  }, [showDropdown, showMoreDropdown, showBulkActionMoreDropdown, openDropdownId, isCurrencyDropdownOpen, isPaymentTermsDropdownOpen, isLanguageDropdownOpen, isAccountDropdownOpen, isStartDatePickerOpen, isEndDatePickerOpen, showSortSubmenu, showImportSubmenu, showExportSubmenu, showColumnMenu]);
 
   // Handle Esc key to clear selection
   useEffect(() => {
@@ -559,15 +605,16 @@ export default function Vendor() {
       width: "100%",
       backgroundColor: "#ffffff",
       borderRadius: "0",
-      border: "1px solid #e5e7eb",
+      border: "1px solid #e9eef5",
       borderLeft: "none",
       borderRight: "none",
-      boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
-      paddingLeft: "12px",
+      boxShadow: "0 1px 3px rgba(15, 23, 42, 0.04)",
+      paddingLeft: 0,
     },
     header: {
-      padding: "16px 24px",
-      borderBottom: "1px solid #e5e7eb",
+      padding: "14px 22px",
+      borderBottom: "1px solid #e8edf4",
+      backgroundColor: "#ffffff",
     },
     headerContent: {
       display: "flex",
@@ -584,13 +631,13 @@ export default function Vendor() {
       minWidth: 0,
     },
     title: {
-      fontSize: "24px",
+      fontSize: "17px",
       fontWeight: "700",
-      color: "#111827",
+      color: "#1f2937",
       margin: 0,
       display: "flex",
       alignItems: "center",
-      gap: "2px",
+      gap: "4px",
       flexWrap: "wrap",
     },
     statusText: {
@@ -617,8 +664,8 @@ export default function Vendor() {
     },
     bulkActionBar: {
       padding: "12px 24px",
-      borderBottom: "1px solid #e5e7eb",
-      backgroundColor: "#f9fafb",
+      borderBottom: "1px solid #e8edf4",
+      backgroundColor: "#ffffff",
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
@@ -716,13 +763,14 @@ export default function Vendor() {
       width: "100%",
       borderCollapse: "collapse",
       minWidth: "800px",
+      tableLayout: "fixed",
     },
     thead: {
-      backgroundColor: "#f9fafb",
-      borderBottom: "1px solid #e5e7eb",
+      backgroundColor: "#ffffff",
+      borderBottom: "1px solid #e8edf4",
     },
     th: {
-      padding: "12px 12px",
+      padding: "11px 14px",
       textAlign: "left",
     },
     thContent: {
@@ -732,9 +780,10 @@ export default function Vendor() {
       minHeight: "24px",
     },
     thText: {
-      fontSize: "12px",
+      fontSize: "11px",
       fontWeight: "600",
-      color: "#4b5563",
+      color: "#667085",
+      letterSpacing: "0.04em",
       textTransform: "uppercase",
     },
     thRight: {
@@ -746,14 +795,16 @@ export default function Vendor() {
       backgroundColor: "#ffffff",
     },
     tr: {
-      borderBottom: "1px solid #e5e7eb",
+      borderBottom: "1px solid #eef2f7",
+      backgroundColor: "#ffffff",
     },
     trHover: {
-      backgroundColor: "#f9fafb",
+      backgroundColor: "#f8fbff",
     },
     td: {
-      padding: "12px 12px",
+      padding: "16px 14px",
       fontSize: "14px",
+      verticalAlign: "middle",
     },
     tdEmpty: {
       padding: "40px 16px",
@@ -764,12 +815,41 @@ export default function Vendor() {
     checkbox: {
       width: "16px",
       height: "16px",
+      minWidth: "16px",
+      minHeight: "16px",
+      maxWidth: "16px",
+      maxHeight: "16px",
+      boxSizing: "border-box",
       cursor: "pointer",
       display: "block",
       margin: 0,
     },
+    checkboxColumn: {
+      width: "56px",
+      minWidth: "56px",
+      maxWidth: "56px",
+      padding: "14px 10px",
+      textAlign: "left",
+      verticalAlign: "middle",
+    },
+    checkboxHeaderContent: {
+      position: "relative",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "flex-start",
+      width: "100%",
+      paddingLeft: "20px",
+    },
+    checkboxCellContent: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "flex-start",
+      width: "100%",
+      minHeight: "24px",
+      paddingLeft: "20px",
+    },
     vendorLink: {
-      color: purchasesTheme.secondary,
+      color: "#2457ff",
       textDecoration: "none",
       fontSize: "14px",
       fontWeight: "500",
@@ -777,17 +857,19 @@ export default function Vendor() {
       backgroundColor: "transparent",
       border: "none",
       padding: 0,
+      textAlign: "left",
     },
     vendorLinkHover: {
       textDecoration: "none",
     },
     tdText: {
       fontSize: "14px",
-      color: "#374151",
+      color: "#111827",
     },
     tdTextDark: {
       fontSize: "14px",
-      color: "#111827",
+      color: "#101828",
+      fontWeight: "500",
     },
     skeletonText: {
       height: "16px",
@@ -974,6 +1056,19 @@ export default function Vendor() {
       position: "relative",
       display: "inline-block",
     },
+    moreButton: {
+      width: "36px",
+      height: "32px",
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#ffffff",
+      border: "1px solid #d8e0ea",
+      borderRadius: "6px",
+      color: "#475467",
+      cursor: "pointer",
+      boxShadow: "0 1px 2px rgba(16, 24, 40, 0.04)",
+    },
     moreDropdown: {
       position: "absolute",
       top: "100%",
@@ -1051,7 +1146,7 @@ export default function Vendor() {
 
   const handleDeleteSelected = () => {
     if (selectedVendors.length === 0) {
-      alert("Please select at least one vendor to delete.");
+      toast.error("Please select at least one vendor to delete.");
       return;
     }
     setShowDeleteModal(true);
@@ -1391,8 +1486,7 @@ export default function Vendor() {
           const vendorsList = Array.isArray(response.data) ? response.data :
             (response.data.data && Array.isArray(response.data.data) ? response.data.data : []);
           const normalized = normalizeVendorsList(vendorsList);
-          setVendors(normalized);
-          localStorage.setItem("vendors", JSON.stringify(normalized));
+          persistVendors(normalized);
         }
       } catch (error) {
       } finally {
@@ -1966,25 +2060,72 @@ export default function Vendor() {
         <table style={styles.table} className="vendor-table">
           <thead style={styles.thead}>
             <tr>
-              <th style={styles.th}>
-                <div style={styles.thContent}>
+              <th style={{ ...styles.th, ...styles.checkboxColumn }}>
+                <div style={styles.checkboxHeaderContent} ref={columnMenuRef}>
                   <button
                     type="button"
                     style={{
+                      position: "absolute",
+                      left: "-2px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
                       border: "none",
                       background: "transparent",
                       padding: 0,
-                      marginRight: "4px",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       color: "#3b82f6",
                       cursor: "pointer",
                     }}
+                    onClick={() => setShowColumnMenu((prev) => !prev)}
                     title="Filter vendors"
                   >
                     <SlidersHorizontal size={14} />
                   </button>
+                  {showColumnMenu && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "calc(100% + 8px)",
+                        left: "-2px",
+                        minWidth: "190px",
+                        backgroundColor: "#ffffff",
+                        border: "1px solid #dbe3ea",
+                        borderRadius: "12px",
+                        boxShadow: "0 16px 36px rgba(15, 23, 42, 0.18)",
+                        padding: "8px",
+                        zIndex: 30,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowColumnMenu(false);
+                          setShowCustomizeColumnsModal(true);
+                        }}
+                        style={{
+                          width: "100%",
+                          border: "none",
+                          borderRadius: "10px",
+                          background: "#3b82f6",
+                          color: "#ffffff",
+                          padding: "10px 12px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                          fontSize: "14px",
+                          fontWeight: "600",
+                          whiteSpace: "nowrap",
+                          cursor: "pointer",
+                          boxShadow: "inset 0 0 0 2px rgba(255,255,255,0.85)",
+                        }}
+                      >
+                        <Columns size={16} />
+                        <span>Customize Columns</span>
+                      </button>
+                    </div>
+                  )}
                   <input
                     type="checkbox"
                     checked={
@@ -1995,12 +2136,13 @@ export default function Vendor() {
                     onChange={handleSelectAll}
                     style={{
                       ...styles.checkbox,
-                      marginLeft: "2px",
+                      marginLeft: "6px",
                     }}
                   />
                 </div>
               </th>
 
+              {visibleColumns.includes("name") && (
               <th style={styles.th}>
                 <div style={styles.thContent}>
                   <span style={styles.thText}>Name</span>
@@ -2009,26 +2151,91 @@ export default function Vendor() {
                   </button>
                 </div>
               </th>
+              )}
 
+              {visibleColumns.includes("companyName") && (
               <th style={styles.th}>
                 <div style={styles.thText}>Company Name</div>
               </th>
+              )}
 
+              {visibleColumns.includes("email") && (
               <th style={styles.th}>
                 <div style={styles.thText}>Email</div>
               </th>
+              )}
 
+              {visibleColumns.includes("workPhone") && (
               <th style={styles.th}>
                 <div style={styles.thText}>Work Phone</div>
               </th>
+              )}
 
+              {visibleColumns.includes("payablesBcy") && (
               <th style={styles.th}>
                 <div style={styles.thText}>Payables (BCY)</div>
               </th>
+              )}
 
+              {visibleColumns.includes("unusedCreditsBcy") && (
               <th style={styles.th}>
                 <div style={styles.thText}>Unused Credits (BCY)</div>
               </th>
+              )}
+
+              {visibleColumns.includes("payables") && (
+              <th style={styles.th}>
+                <div style={styles.thText}>Payables</div>
+              </th>
+              )}
+
+              {visibleColumns.includes("unusedCredits") && (
+              <th style={styles.th}>
+                <div style={styles.thText}>Unused Credits</div>
+              </th>
+              )}
+
+              {visibleColumns.includes("source") && (
+              <th style={styles.th}>
+                <div style={styles.thText}>Source</div>
+              </th>
+              )}
+
+              {visibleColumns.includes("firstName") && (
+              <th style={styles.th}>
+                <div style={styles.thText}>First Name</div>
+              </th>
+              )}
+
+              {visibleColumns.includes("lastName") && (
+              <th style={styles.th}>
+                <div style={styles.thText}>Last Name</div>
+              </th>
+              )}
+
+              {visibleColumns.includes("mobilePhone") && (
+              <th style={styles.th}>
+                <div style={styles.thText}>Mobile Phone</div>
+              </th>
+              )}
+
+              {visibleColumns.includes("paymentTerms") && (
+              <th style={styles.th}>
+                <div style={styles.thText}>Payment Terms</div>
+              </th>
+              )}
+
+              {visibleColumns.includes("status") && (
+              <th style={styles.th}>
+                <div style={styles.thText}>Status</div>
+              </th>
+              )}
+
+              {visibleColumns.includes("website") && (
+              <th style={styles.th}>
+                <div style={styles.thText}>Website</div>
+              </th>
+              )}
               <th style={styles.th}>
                 <div style={styles.thRight}>
                   <button
@@ -2047,27 +2254,29 @@ export default function Vendor() {
               // Skeleton loading rows
               Array.from({ length: 5 }).map((_, index) => (
                 <tr key={`skeleton-${index}`} style={styles.tr}>
-                  <td style={styles.td}>
-                    <div style={styles.skeletonCheckbox}></div>
+                  <td style={{ ...styles.td, ...styles.checkboxColumn }}>
+                    <div style={styles.checkboxCellContent}>
+                      <div style={styles.skeletonCheckbox}></div>
+                    </div>
                   </td>
-                  <td style={styles.td}>
+                  {visibleColumns.includes("name") && <td style={styles.td}>
                     <div style={styles.skeletonText}></div>
-                  </td>
-                  <td style={styles.td}>
+                  </td>}
+                  {visibleColumns.includes("companyName") && <td style={styles.td}>
                     <div style={styles.skeletonText}></div>
-                  </td>
-                  <td style={styles.td}>
+                  </td>}
+                  {visibleColumns.includes("email") && <td style={styles.td}>
                     <div style={styles.skeletonText}></div>
-                  </td>
-                  <td style={styles.td}>
+                  </td>}
+                  {visibleColumns.includes("workPhone") && <td style={styles.td}>
                     <div style={styles.skeletonText}></div>
-                  </td>
-                  <td style={styles.td}>
+                  </td>}
+                  {visibleColumns.includes("payablesBcy") && <td style={styles.td}>
                     <div style={styles.skeletonText}></div>
-                  </td>
-                  <td style={styles.td}>
+                  </td>}
+                  {visibleColumns.includes("unusedCreditsBcy") && <td style={styles.td}>
                     <div style={styles.skeletonText}></div>
-                  </td>
+                  </td>}
                   <td style={styles.td}>
                     <div style={styles.skeletonText}></div>
                   </td>
@@ -2075,7 +2284,7 @@ export default function Vendor() {
               ))
             ) : filteredVendors.length === 0 ? (
               <tr>
-                <td colSpan={8} style={styles.tdEmpty}>
+                <td colSpan={visibleColumns.length + 2} style={styles.tdEmpty}>
                   No vendors found
                 </td>
               </tr>
@@ -2096,7 +2305,7 @@ export default function Vendor() {
                       }
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = "rgba(21, 99, 114, 0.05)";
+                      e.currentTarget.style.backgroundColor = "#f8fbff";
                       e.currentTarget.style.cursor = "pointer";
                       setHoveredRowId(vendorId);
                     }}
@@ -2106,55 +2315,89 @@ export default function Vendor() {
                     }}
                   >
                     <td
-                      style={{
-                        ...styles.td,
-                        paddingLeft: "24px",
-                      }}
+                      style={{ ...styles.td, ...styles.checkboxColumn }}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <input
-                        type="checkbox"
-                        checked={selectedVendors.includes(vendorId)}
-                        onChange={() => handleCheckboxChange(vendorId)}
-                        style={{
-                          ...styles.checkbox,
-                          marginLeft: "0",
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      />
+                      <div style={styles.checkboxCellContent}>
+                        <input
+                          type="checkbox"
+                          checked={selectedVendors.includes(vendorId)}
+                          onChange={() => handleCheckboxChange(vendorId)}
+                          style={styles.checkbox}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
                     </td>
 
-                    <td style={styles.td}>
+                    {visibleColumns.includes("name") && <td style={styles.td}>
                       <button
                         style={styles.vendorLink}
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate(`/purchases/vendors/${vendorId}`);
+                          navigate(`/purchases/vendors/${vendorId}`, {
+                            state: { vendor }
+                          });
                         }}
                       >
                         {vendor.name || vendor.displayName}
                       </button>
-                    </td>
+                    </td>}
 
-                    <td style={styles.td}>
+                    {visibleColumns.includes("companyName") && <td style={styles.td}>
                       <span style={styles.tdText}>{vendor.companyName || "-"}</span>
-                    </td>
+                    </td>}
 
-                    <td style={styles.td}>
+                    {visibleColumns.includes("email") && <td style={styles.td}>
                       <span style={styles.tdText}>{vendor.email || "-"}</span>
-                    </td>
+                    </td>}
 
-                    <td style={styles.td}>
+                    {visibleColumns.includes("workPhone") && <td style={styles.td}>
                       <span style={styles.tdText}>{vendor.workPhone || "-"}</span>
-                    </td>
+                    </td>}
 
-                    <td style={styles.td}>
+                    {visibleColumns.includes("payablesBcy") && <td style={styles.td}>
                       <span style={styles.tdTextDark}>{vendor.payables}</span>
-                    </td>
+                    </td>}
 
-                    <td style={styles.td}>
+                    {visibleColumns.includes("unusedCreditsBcy") && <td style={styles.td}>
                       <span style={styles.tdTextDark}>{vendor.unusedCredits}</span>
-                    </td>
+                    </td>}
+
+                    {visibleColumns.includes("payables") && <td style={styles.td}>
+                      <span style={styles.tdTextDark}>{getVendorField(vendor, "payables")}</span>
+                    </td>}
+
+                    {visibleColumns.includes("unusedCredits") && <td style={styles.td}>
+                      <span style={styles.tdTextDark}>{getVendorField(vendor, "unusedCredits")}</span>
+                    </td>}
+
+                    {visibleColumns.includes("source") && <td style={styles.td}>
+                      <span style={styles.tdText}>{getVendorField(vendor, "source")}</span>
+                    </td>}
+
+                    {visibleColumns.includes("firstName") && <td style={styles.td}>
+                      <span style={styles.tdText}>{getVendorField(vendor, "firstName")}</span>
+                    </td>}
+
+                    {visibleColumns.includes("lastName") && <td style={styles.td}>
+                      <span style={styles.tdText}>{getVendorField(vendor, "lastName")}</span>
+                    </td>}
+
+                    {visibleColumns.includes("mobilePhone") && <td style={styles.td}>
+                      <span style={styles.tdText}>{getVendorField(vendor, "mobile", vendor?.mobilePhone ?? vendor?.formData?.mobilePhone ?? "-")}</span>
+                    </td>}
+
+                    {visibleColumns.includes("paymentTerms") && <td style={styles.td}>
+                      <span style={styles.tdText}>{getVendorField(vendor, "paymentTerms")}</span>
+                    </td>}
+
+                    {visibleColumns.includes("status") && <td style={styles.td}>
+                      <span style={styles.tdText}>{getVendorStatus(vendor)}</span>
+                    </td>}
+
+                    {visibleColumns.includes("website") && <td style={styles.td}>
+                      <span style={styles.tdText}>{getVendorWebsite(vendor)}</span>
+                    </td>}
                     <td
                       style={{
                         ...styles.td,
@@ -2172,8 +2415,8 @@ export default function Vendor() {
                               width: "24px",
                               height: "24px",
                               borderRadius: "50%",
-                              border: `1px solid ${purchasesTheme.secondary}`,
-                              background: purchasesTheme.primary,
+                              border: "1px solid #0f6674",
+                              background: "#0f6674",
                               display: "inline-flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -2206,8 +2449,8 @@ export default function Vendor() {
                               minWidth: "128px",
                               padding: "10px 14px",
                               borderRadius: "10px",
-                              border: `1px solid ${purchasesTheme.secondary}`,
-                              background: purchasesTheme.primary,
+                              border: "1px solid #0f6674",
+                              background: "#0f6674",
                               boxShadow: "0 10px 25px rgba(15, 23, 42, 0.18)",
                               display: "inline-flex",
                               alignItems: "center",
@@ -2246,6 +2489,19 @@ export default function Vendor() {
           onSave={(customView) => {
             // Handle saving custom view
             setShowCustomViewModal(false);
+          }}
+        />,
+        document.body
+      )}
+
+      {showCustomizeColumnsModal && typeof document !== 'undefined' && document.body && createPortal(
+        <CustomizeColumnsModal
+          columns={vendorColumnOptions}
+          selectedColumns={visibleColumns}
+          onClose={() => setShowCustomizeColumnsModal(false)}
+          onSave={(nextColumns) => {
+            setVisibleColumns(nextColumns);
+            setShowCustomizeColumnsModal(false);
           }}
         />,
         document.body
@@ -4218,13 +4474,15 @@ function NewCustomViewModal({ onClose, onSave }) {
           const count = idsToDelete.length;
           try {
             await vendorsAPI.bulkDelete(idsToDelete);
-            await handleRefresh();
-            setNotification(`The selected vendor${count > 1 ? "s have" : " has"} been deleted.`);
-            setTimeout(() => setNotification(null), 3000);
+
+            const remainingVendors = vendors.filter((vendor) => !idsToDelete.includes(getVendorId(vendor)));
+            persistVendors(remainingVendors);
             setSelectedVendors([]);
             setShowDeleteModal(false);
+            toast.success(`Vendor${count > 1 ? "s" : ""} deleted successfully.`);
+            window.dispatchEvent(new Event("vendorSaved"));
           } catch (error) {
-            alert("Failed to delete selected vendors. Please try again.");
+            toast.error(error?.message || "Failed to delete selected vendors.");
           }
         }}
         entityName="vendor(s)"
@@ -4460,6 +4718,192 @@ function NewCustomViewModal({ onClose, onSave }) {
       )}
 
       {/* Portals moved to Vendor component */}
+    </div>
+  );
+}
+
+function CustomizeColumnsModal({ columns, selectedColumns, onClose, onSave }) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [draftColumns, setDraftColumns] = useState(selectedColumns);
+
+  const filteredColumns = columns.filter((column) =>
+    column.label.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const toggleColumn = (columnId, required) => {
+    if (required) return;
+    setDraftColumns((prev) =>
+      prev.includes(columnId)
+        ? prev.filter((id) => id !== columnId)
+        : [...prev, columnId]
+    );
+  };
+
+  const selectedCount = draftColumns.length;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        backgroundColor: "rgba(15, 23, 42, 0.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 100000,
+        padding: "20px",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "500px",
+          maxHeight: "90vh",
+          backgroundColor: "#ffffff",
+          borderRadius: "14px",
+          boxShadow: "0 22px 50px rgba(15, 23, 42, 0.22)",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          style={{
+            padding: "16px 18px",
+            borderBottom: "1px solid #e5e7eb",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <SlidersHorizontal size={18} style={{ color: "#156372" }} />
+            <h2 style={{ margin: 0, fontSize: "16px", fontWeight: "600", color: "#111827" }}>
+              Customize Columns
+            </h2>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+            <span style={{ fontSize: "13px", color: "#4b5563" }}>
+              {selectedCount} of {columns.length} Selected
+            </span>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                width: "28px",
+                height: "28px",
+                borderRadius: "8px",
+                border: "1px solid #d1d5db",
+                backgroundColor: "#ffffff",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#ef4444",
+              }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        <div style={{ padding: "18px", borderBottom: "1px solid #eef2f7" }}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search"
+            style={{
+              width: "100%",
+              padding: "10px 14px",
+              border: "1px solid #d1d5db",
+              borderRadius: "8px",
+              fontSize: "14px",
+              outline: "none",
+              boxSizing: "border-box",
+            }}
+          />
+        </div>
+
+        <div style={{ padding: "8px 18px 0", overflowY: "auto", flex: 1 }}>
+          {filteredColumns.map((column) => {
+            const checked = draftColumns.includes(column.id);
+            return (
+              <label
+                key={column.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  padding: "10px 8px",
+                  borderBottom: "1px solid #f1f5f9",
+                  cursor: column.required ? "default" : "pointer",
+                  color: "#374151",
+                  fontSize: "14px",
+                }}
+              >
+                <GripVertical size={14} style={{ color: "#94a3b8", flexShrink: 0 }} />
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={column.required}
+                  onChange={() => toggleColumn(column.id, column.required)}
+                  style={{ width: "16px", height: "16px", cursor: column.required ? "default" : "pointer" }}
+                />
+                <span>
+                  {column.label}
+                  {column.required ? " *" : ""}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+
+        <div
+          style={{
+            padding: "16px 18px",
+            borderTop: "1px solid #e5e7eb",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => onSave(draftColumns)}
+            style={{
+              padding: "9px 18px",
+              borderRadius: "8px",
+              border: "none",
+              backgroundColor: "#10b981",
+              color: "#ffffff",
+              fontSize: "14px",
+              fontWeight: "600",
+              cursor: "pointer",
+            }}
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: "9px 18px",
+              borderRadius: "8px",
+              border: "1px solid #d1d5db",
+              backgroundColor: "#ffffff",
+              color: "#374151",
+              fontSize: "14px",
+              cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

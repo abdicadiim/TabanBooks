@@ -23,20 +23,8 @@ import {
   Check,
   CheckCircle,
   PlusCircle,
-  Grid3x3,
-  Mountain,
-  Briefcase,
-  Tag,
-  Lock,
-  User,
-  Copy,
-  Globe,
-  Percent
 } from "lucide-react";
-import { vendorsAPI, itemsAPI, taxesAPI, accountantAPI, vendorCreditsAPI, locationsAPI } from "../../../services/api";
 import { useCurrency } from "../../../hooks/useCurrency";
-import toast from "react-hot-toast";
-import NewVendorModal from "../../../components/modals/NewVendorModal";
 import { API_BASE_URL, getToken } from "../../../services/auth";
 import { filterActiveRecords } from "../shared/activeFilters";
 
@@ -73,7 +61,7 @@ export default function NewVendorCredit() {
   const [itemRows, setItemRows] = useState([
     {
       itemDetails: "",
-      account: "",
+      account: "Cost of Goods Sold",
       quantity: "1.00",
       rate: "0.00",
       discount: "0 %-",
@@ -82,69 +70,8 @@ export default function NewVendorCredit() {
       purchaseDiscount: "",
       project: "",
       reportingTag: "",
+      showAdditionalInfo: true,
     },
-  ]);
-  const [exchangeRateEditMode, setExchangeRateEditMode] = useState(false);
-  const [exchangeRate, setExchangeRate] = useState(1.30077230885);
-  const [showItemWarning, setShowItemWarning] = useState(false);
-
-  const [vendorDropdownOpen, setVendorDropdownOpen] = useState(false);
-  const [vendorSearch, setVendorSearch] = useState("");
-  const [vendorSearchModalOpen, setVendorSearchModalOpen] = useState(false);
-
-  const [vendorSearchCriteriaOpen, setVendorSearchCriteriaOpen] = useState(false);
-  const [allVendors, setAllVendors] = useState<any[]>([]);
-
-  // const [accountDropdownOpen, setAccountDropdownOpen] = useState<{ [key: string]: boolean }>({});
-  // const [taxDropdownOpen, setTaxDropdownOpen] = useState<{ [key: string]: boolean }>({});
-  const [accountsPayableOpen, setAccountsPayableOpen] = useState(false);
-  const [taxPreferenceOpen, setTaxPreferenceOpen] = useState(false);
-  const [taxLevelOpen, setTaxLevelOpen] = useState(false);
-  const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
-  const [currencyDropdownOpen, setCurrencyDropdownOpen] = useState(false);
-  const [bulkActionsOpen, setBulkActionsOpen] = useState(false);
-  const [addNewRowDropdownOpen, setAddNewRowDropdownOpen] = useState(false);
-  const [showAdditionalFields, setShowAdditionalFields] = useState(true);
-  const [showBanner, setShowBanner] = useState(true);
-  const [showNewVendorModal, setShowNewVendorModal] = useState(false);
-  const [showNumberingModal, setShowNumberingModal] = useState(false);
-  const [warehouseDropdownOpen, setWarehouseDropdownOpen] = useState(false);
-  const [warehouseSearch, setWarehouseSearch] = useState("");
-  const warehouseRef = useRef<HTMLDivElement>(null);
-  const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
-  const [locationSearch, setLocationSearch] = useState("");
-  const locationRef = useRef<HTMLDivElement>(null);
-  const [discountDropdownOpen, setDiscountDropdownOpen] = useState(false);
-  const [discountSearch, setDiscountSearch] = useState("");
-  const discountRef = useRef<HTMLDivElement>(null);
-  const [numberingPrefs, setNumberingPrefs] = useState({
-    mode: "manual", // "auto" | "manual"
-    prefix: "DN-",
-    nextNumber: "00001",
-    restartYearly: false
-  });
-  const [taxExclusiveSearch, setTaxExclusiveSearch] = useState("");
-  const [taxLevelSearch, setTaxLevelSearch] = useState("");
-  const [errors, setErrors] = useState<Record<string, boolean>>({});
-  const [rowMenuOpen, setRowMenuOpen] = useState<{ [key: string]: boolean }>({});
-  const [vendors, setVendors] = useState<any[]>([]);
-  const [items, setItems] = useState<any[]>([]);
-  const [itemDropdownOpen, setItemDropdownOpen] = useState<{ [key: string]: boolean }>({});
-  const [accountDropdownOpen, setAccountDropdownOpen] = useState<{ [key: string]: boolean }>({});
-  const [taxDropdownOpen, setTaxDropdownOpen] = useState<{ [key: string]: boolean }>({});
-  const [accountSearch, setAccountSearch] = useState<{ [key: string]: string }>({});
-  const [taxSearch, setTaxSearch] = useState<{ [key: string]: string }>({});
-  const [itemSearch, setItemSearch] = useState<{ [key: string]: string }>({});
-  const [showNewItemModal, setShowNewItemModal] = useState(false);
-  const [showBulkItemsModal, setShowBulkItemsModal] = useState(false);
-  const [tagsPopoverOpen, setTagsPopoverOpen] = useState<{ [key: number]: boolean }>({});
-  const [tagSearch, setTagSearch] = useState<{ [key: number]: string }>({});
-  const [tagDropdownOpen, setTagDropdownOpen] = useState<{ [key: number]: boolean }>({});
-  const tagsRef = useRef<{ [key: number]: HTMLDivElement | null }>({});
-
-  const [availableTags, setAvailableTags] = useState<any[]>([
-    { id: 1, name: "asc" },
-    { id: 2, name: "wcs" }
   ]);
   const [bulkItemsInsertIndex, setBulkItemsInsertIndex] = useState(0);
   const [bulkItemsSearch, setBulkItemsSearch] = useState("");
@@ -169,10 +96,48 @@ export default function NewVendorCredit() {
     purchaseTax: "",
     preferredVendor: "",
   });
+
+  // RESTORED MISSING STATES
+  const [vendors, setVendors] = useState<any[]>([]);
+  const [allVendors, setAllVendors] = useState<any[]>([]);
+  const [vendorSearch, setVendorSearch] = useState("");
+  const [vendorDropdownOpen, setVendorDropdownOpen] = useState(false);
+  const [items, setItems] = useState<any[]>([]);
+  const [itemSearch, setItemSearch] = useState<Record<string, string>>({});
+  const [itemDropdownOpen, setItemDropdownOpen] = useState<Record<string, boolean>>({});
+  const [locationSearch, setLocationSearch] = useState("");
+  const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
+  const [warehouseSearch, setWarehouseSearch] = useState("");
+  const [warehouseDropdownOpen, setWarehouseDropdownOpen] = useState(false);
+  const [taxLevelOpen, setTaxLevelOpen] = useState(false);
+  const [taxDropdownOpen, setTaxDropdownOpen] = useState<Record<string, boolean>>({});
+  const [accountDropdownOpen, setAccountDropdownOpen] = useState<Record<string, boolean>>({});
+  const [accountSearch, setAccountSearch] = useState<Record<string, string>>({});
+  const [rowMenuOpen, setRowMenuOpen] = useState<Record<string, boolean>>({});
+  const [showNewVendorModal, setShowNewVendorModal] = useState(false);
+  const [showNewItemModal, setShowNewItemModal] = useState(false);
+  const [showBulkItemsModal, setShowBulkItemsModal] = useState(false);
+  const [showNumberingModal, setShowNumberingModal] = useState(false);
+  const [showItemWarning, setShowItemWarning] = useState(false);
+  const [item, setItem] = useState<any>(null);
+  const [errors, setErrors] = useState<any>({});
+  const [numberingPrefs, setNumberingPrefs] = useState({ mode: "auto", prefix: "VC-", nextNumber: "0001" });
+  const [accountsPayableOpen, setAccountsPayableOpen] = useState(false);
+  const [discountDropdownOpen, setDiscountDropdownOpen] = useState(false);
+  const [taxPreferenceOpen, setTaxPreferenceOpen] = useState(false);
+  const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
+  const [currencyDropdownOpen, setCurrencyDropdownOpen] = useState(false);
+  const [bulkActionsOpen, setBulkActionsOpen] = useState(false);
+  const [addNewRowDropdownOpen, setAddNewRowDropdownOpen] = useState(false);
+  const [tagsPopoverOpen, setTagsPopoverOpen] = useState<Record<string, boolean>>({});
+  const [tagDropdownOpen, setTagDropdownOpen] = useState<Record<string, boolean>>({});
+  const [tagSearch, setTagSearch] = useState<Record<string, string>>({});
+  const [availableTags, setAvailableTags] = useState<any[]>([]);
+  // END RESTORED STATES
+
   const itemRefs = useRef<Record<string, any>>({});
   const rowMenuRefs = useRef<Record<string, any>>({});
   const accountRefs = useRef<Record<string, any>>({});
-
   const vendorRef = useRef<HTMLDivElement>(null);
   const currencyRef = useRef<HTMLDivElement>(null);
   const accountsPayableRef = useRef<HTMLDivElement>(null);
@@ -182,6 +147,10 @@ export default function NewVendorCredit() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bulkActionsRef = useRef<HTMLDivElement>(null);
   const addNewRowRef = useRef<HTMLDivElement>(null);
+  const warehouseRef = useRef<HTMLDivElement>(null);
+  const locationRef = useRef<HTMLDivElement>(null);
+  const discountRef = useRef<HTMLDivElement>(null);
+  const tagsRef = useRef<Record<string, any>>({});
 
   // Load vendors from localStorage
   const [taxes, setTaxes] = useState<any[]>([]);
@@ -545,6 +514,48 @@ export default function NewVendorCredit() {
     };
   }, [vendorDropdownOpen, uploadMenuOpen, currencyDropdownOpen, taxLevelOpen, bulkActionsOpen, addNewRowDropdownOpen, itemDropdownOpen, rowMenuOpen]);
 
+  
+  const toggleAdditionalInfo = (index: number) => {
+    const newRows = [...itemRows];
+    newRows[index].showAdditionalInfo = newRows[index].showAdditionalInfo === false ? true : false;
+    setItemRows(newRows);
+    setRowMenuOpen(prev => ({ ...prev, [index]: false }));
+  };
+
+  const cloneRow = (index: number) => {
+    const rowToClone = JSON.parse(JSON.stringify(itemRows[index]));
+    const newRows = [...itemRows];
+    newRows.splice(index + 1, 0, rowToClone);
+    setItemRows(newRows);
+    setRowMenuOpen(prev => ({ ...prev, [index]: false }));
+  };
+
+  const insertNewRowBelow = (index: number) => {
+    const emptyRow = {
+      itemDetails: "",
+      account: "Cost of Goods Sold",
+      quantity: "1.00",
+      rate: "0.00",
+      discount: "0 %-",
+      tax: "",
+      amount: "0.00",
+      purchaseDiscount: "",
+      project: "",
+      reportingTag: "",
+      showAdditionalInfo: true
+    };
+    const newRows = [...itemRows];
+    newRows.splice(index + 1, 0, emptyRow);
+    setItemRows(newRows);
+    setRowMenuOpen(prev => ({ ...prev, [index]: false }));
+  };
+
+  const openBulkModalAtIndex = (index: number) => {
+    setBulkItemsInsertIndex(index);
+    setShowBulkItemsModal(true);
+    setRowMenuOpen(prev => ({ ...prev, [index]: false }));
+  };
+
   const handleItemChange = (index: number, field: string, value: any) => {
     const newItems = [...itemRows];
     (newItems[index] as any)[field] = value;
@@ -624,37 +635,6 @@ export default function NewVendorCredit() {
     }
   };
 
-  const cloneRow = (index: number) => {
-    const rowToClone = itemRows[index];
-    const newRow = {
-      ...rowToClone,
-      itemDetails: "",
-      amount: "0.00",
-    };
-    const newRows = [...itemRows];
-    newRows.splice(index + 1, 0, newRow);
-    setItemRows(newRows);
-    setRowMenuOpen((prev) => ({ ...prev, [index]: false }));
-  };
-
-  const insertNewRow = (index: number) => {
-    const newRow = {
-      itemDetails: "",
-      account: "",
-      quantity: "1.00",
-      rate: "0.00",
-      discount: "0 %-",
-      tax: "",
-      amount: "0.00",
-      purchaseDiscount: "",
-      project: "",
-      reportingTag: "",
-    };
-    const newRows = [...itemRows];
-    newRows.splice(index + 1, 0, newRow);
-    setItemRows(newRows);
-    setRowMenuOpen((prev) => ({ ...prev, [index]: false }));
-  };
 
   const insertItemsInBulk = (index: number) => {
     setBulkItemsInsertIndex(index);
@@ -694,14 +674,28 @@ export default function NewVendorCredit() {
       purchaseDiscount: "",
       project: "",
       reportingTag: "",
+      showAdditionalInfo: true
     }));
     const currentRows = [...itemRows];
-    currentRows.splice(bulkItemsInsertIndex + 1, 0, ...newRows);
+    
+    // Check if we are inserting at a specific index
+    if (bulkItemsInsertIndex !== undefined && bulkItemsInsertIndex < currentRows.length) {
+        // If the current row is empty, we replace it; otherwise insert after
+        if (!currentRows[bulkItemsInsertIndex].itemDetails) {
+            currentRows.splice(bulkItemsInsertIndex, 1, ...newRows);
+        } else {
+            currentRows.splice(bulkItemsInsertIndex + 1, 0, ...newRows);
+        }
+    } else {
+        currentRows.push(...newRows);
+    }
+    
     setItemRows(currentRows);
     setShowBulkItemsModal(false);
     setSelectedBulkItems([]);
     setBulkItemQuantities({});
     setBulkItemsSearch("");
+    setBulkItemsInsertIndex(currentRows.length);
   };
 
   const filteredBulkItems = bulkItemsSearch.trim() === ""
@@ -1012,13 +1006,13 @@ export default function NewVendorCredit() {
       textTransform: "uppercase",
       letterSpacing: "0.05em",
       textAlign: "left",
-      borderRight: "1px solid #e5e7eb",
+
       backgroundColor: "#f9fafb",
     },
     tableCell: {
       padding: "16px 12px",
       borderBottom: "1px solid #e5e7eb",
-      borderRight: "1px solid #e5e7eb",
+
       verticalAlign: "top",
     },
     summarySection: {
@@ -1105,31 +1099,34 @@ export default function NewVendorCredit() {
       gap: "8px",
     },
     saveDraftButton: {
-      padding: "8px 16px",
-      backgroundColor: "#f3f4f6",
-      color: "#374151",
-      border: "1px solid #d1d5db",
-      borderRadius: "4px",
-      fontSize: "14px",
-      fontWeight: "500",
-      cursor: "pointer",
-    },
-    saveOpenButton: {
-      padding: "8px 24px",
-      backgroundColor: "#10b981",
-      color: "#ffffff",
-      border: "none",
-      borderRadius: "4px",
-      fontSize: "14px",
-      fontWeight: "500",
-      cursor: "pointer",
-    },
-    cancelButton: {
-      padding: "8px 24px",
+      padding: "10px 20px",
       backgroundColor: "#ffffff",
       color: "#374151",
       border: "1px solid #d1d5db",
-      borderRadius: "4px",
+      borderRadius: "6px",
+      fontSize: "14px",
+      fontWeight: "500",
+      cursor: "pointer",
+      transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+    },
+    saveOpenButton: {
+      padding: "10px 24px",
+      backgroundColor: "#156372",
+      color: "#ffffff",
+      border: "none",
+      borderRadius: "6px",
+      fontSize: "14px",
+      fontWeight: "500",
+      cursor: "pointer",
+      transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+      boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+    },
+    cancelButton: {
+      padding: "10px 24px",
+      backgroundColor: "#ffffff",
+      color: "#374151",
+      border: "1px solid #d1d5db",
+      borderRadius: "6px",
       fontSize: "14px",
       fontWeight: "500",
       cursor: "pointer",
@@ -1212,6 +1209,141 @@ export default function NewVendorCredit() {
       display: "flex",
       alignItems: "center",
       gap: "8px",
+    },
+    rowActionsContainer: {
+      position: "absolute",
+      right: "-75px",
+      top: "4px",
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      zIndex: 10,
+    },
+    actionCircle: {
+      width: "28px",
+      height: "28px",
+      borderRadius: "50%",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      cursor: "pointer",
+      border: "1px solid #e5e7eb",
+      backgroundColor: "#ffffff",
+      color: "#6b7280",
+      transition: "all 0.2s",
+    },
+    deleteCircle: {
+      width: "28px",
+      height: "28px",
+      borderRadius: "50%",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      cursor: "pointer",
+      border: "1px solid #fee2e2",
+      backgroundColor: "#ffffff",
+      color: "#ef4444",
+      transition: "all 0.2s",
+    },
+    rowDropdown: {
+      position: "absolute",
+      top: "100%",
+      right: 0,
+      width: "240px",
+      backgroundColor: "#ffffff",
+      borderRadius: "8px",
+      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+      zIndex: 1000,
+      padding: "8px 0",
+      marginTop: "4px",
+      border: "1px solid #e5e7eb",
+      textAlign: "left",
+    },
+    rowDropdownItem: {
+      padding: "10px 16px",
+      fontSize: "13px",
+      color: "#374151",
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      gap: "10px",
+      transition: "all 0.1s ease",
+    },
+    bulkModalHeader: {
+      padding: "16px 24px",
+      borderBottom: "1px solid #e5e7eb",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: "#fff",
+    },
+    bulkModalTitle: {
+      fontSize: "18px",
+      fontWeight: "600",
+      color: "#111827",
+      margin: 0,
+    },
+    bulkModalContent: {
+      display: "flex",
+      flex: 1,
+      overflow: "hidden",
+      backgroundColor: "#f9fafb",
+    },
+    bulkModalLeft: {
+      width: "60%",
+      borderRight: "1px solid #e5e7eb",
+      display: "flex",
+      flexDirection: "column",
+      backgroundColor: "#fff",
+    },
+    bulkModalRight: {
+      width: "40%",
+      display: "flex",
+      flexDirection: "column",
+      backgroundColor: "#f9fafb",
+    },
+    bulkItemRow: {
+      padding: "12px 16px",
+      borderBottom: "1px solid #f3f4f6",
+      cursor: "pointer",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      transition: "all 0.2s",
+    },
+    bulkItemName: {
+      fontSize: "14px",
+      fontWeight: "500",
+      color: "#3b82f6",
+    },
+    bulkItemSku: {
+      fontSize: "12px",
+      color: "#6b7280",
+      marginTop: "2px",
+    },
+    bulkItemSelected: {
+      backgroundColor: "#eff6ff",
+    },
+    bulkQuantityControl: {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      backgroundColor: "#fff",
+      border: "1px solid #d1d5db",
+      borderRadius: "6px",
+      padding: "2px 4px",
+    },
+    bulkQuantityBtn: {
+      width: "24px",
+      height: "24px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: "4px",
+      border: "none",
+      backgroundColor: "#f3f4f6",
+      cursor: "pointer",
+      color: "#374151",
     }
   };
 
@@ -1236,9 +1368,28 @@ export default function NewVendorCredit() {
             }
             .zoho-input-error {
               border-color: #ef4444 !important;
+              background-color: #fffafb !important;
             }
             .zoho-input-error:focus {
-              box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1) !important;
+              box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.08) !important;
+            }
+            .premium-action-btn:hover {
+              background-color: #e0f2fe !important;
+              color: #0284c7 !important;
+            }
+            .save-btn-hover:hover {
+              filter: brightness(0.95);
+              transform: translateY(-1px);
+            }
+            .action-circle-hover:hover {
+              background-color: #f9fafb !important;
+              border-color: #d1d5db !important;
+              color: #111827 !important;
+            }
+            .delete-circle-hover:hover {
+              background-color: #fef2f2 !important;
+              border-color: #fecaca !important;
+              color: #dc2626 !important;
             }
           `}
         </style>
@@ -1789,7 +1940,7 @@ export default function NewVendorCredit() {
 
           {/* Item Table Selection */}
           <div style={{ display: "flex", gap: "24px", alignItems: "center", marginBottom: "24px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", position: "relative" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", position: "relative" }} ref={warehouseRef}>
               <span style={{ color: "#6b7280" }}>Warehouse Location</span>
               <div 
                 style={{ 
@@ -2056,7 +2207,8 @@ export default function NewVendorCredit() {
 
                           
                           {/* Secondary Row for Project and Tags - Forced Single Line */}
-                          <div style={{ display: "flex", gap: "8px", marginTop: "12px", alignItems: "center", flexWrap: "nowrap" }}>
+                          {item.showAdditionalInfo !== false && (
+                            <div style={{ display: "flex", gap: "8px", marginTop: "12px", alignItems: "center", flexWrap: "nowrap" }}>
                             <div style={{ 
                               display: "flex", 
                               alignItems: "center", 
@@ -2211,7 +2363,8 @@ export default function NewVendorCredit() {
                                  </div>
                                )}
                              </div>
-                          </div>
+                             </div>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -2430,11 +2583,42 @@ export default function NewVendorCredit() {
                       </div>
                     </td>
                     <td style={{ ...styles.tableCell, width: "17%", textAlign: "right", borderRight: "none", verticalAlign: "top", padding: "12px 16px" }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", height: "36px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", height: "36px", position: "relative" }}>
                         <span style={{ fontSize: "14px", fontWeight: "600", color: "#111827" }}>{parseFloat(String(item.amount || 0)).toFixed(2)}</span>
-                        <div style={{ display: "flex", gap: "4px" }}>
-                          <MoreVertical size={14} style={{ color: "#d1d5db", cursor: "pointer" }} />
-                          <X size={14} style={{ color: "#156372", cursor: "pointer" }} onClick={() => removeRow(index)} />
+                        {/* Row Actions - Outside */}
+                        <div style={styles.rowActionsContainer} ref={(el) => { (rowMenuRefs.current as any)[index] = el; }}>
+                          <div 
+                            className="action-circle-hover" 
+                            style={styles.actionCircle} 
+                            title="More Actions"
+                            onClick={() => setRowMenuOpen(prev => ({ ...prev, [index]: !prev[index] }))}
+                          >
+                            <MoreVertical size={14} />
+                          </div>
+
+                          {rowMenuOpen[index] && (
+                            <div style={styles.rowDropdown}>
+                              <div className="action-circle-hover" style={styles.rowDropdownItem} onClick={() => toggleAdditionalInfo(index)}>
+                                <Info size={14} /> {item.showAdditionalInfo === false ? "Show Additional Information" : "Hide Additional Information"}
+                              </div>
+                              <div className="action-circle-hover" style={styles.rowDropdownItem} onClick={() => cloneRow(index)}>
+                                <Copy size={14} /> Clone
+                              </div>
+                              <div className="action-circle-hover" style={styles.rowDropdownItem} onClick={() => insertNewRowBelow(index)}>
+                                <Plus size={14} /> Insert New Row
+                              </div>
+                              <div className="action-circle-hover" style={styles.rowDropdownItem} onClick={() => openBulkModalAtIndex(index)}>
+                                <PlusCircle size={14} /> Insert Items in Bulk
+                              </div>
+                            </div>
+                          )}
+                          <div 
+                            className="delete-circle-hover" style={styles.deleteCircle} 
+                            onClick={() => removeRow(index)}
+                            title="Delete Row"
+                          >
+                            <X size={14} />
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -2444,11 +2628,21 @@ export default function NewVendorCredit() {
             </table>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "16px" }}>
               <div style={{ display: "flex", gap: "12px", marginLeft: "calc(4% + 16px)" }}>
-                <button type="button" onClick={addNewRow} style={{ padding: "8px 12px", height: "32px", display: "flex", alignItems: "center", gap: "6px", borderRadius: "6px", fontSize: "13px", fontWeight: "500", color: "#3b82f6", backgroundColor: "#eff6ff", border: "none", cursor: "pointer" }}>
-                  <PlusCircle size={14} /> Add New Row <ChevronDown size={14} style={{ marginLeft: "4px" }} />
+                <button 
+                  type="button" 
+                  onClick={addNewRow} 
+                  className="premium-action-btn"
+                  style={{ padding: "0 14px", height: "34px", display: "flex", alignItems: "center", gap: "8px", borderRadius: "6px", fontSize: "13px", fontWeight: "600", color: "#3b82f6", backgroundColor: "#f0f7ff", border: "1px solid #dbeafe", cursor: "pointer", transition: "all 0.2s" }}
+                >
+                  <PlusCircle size={16} /> Add New Row <ChevronDown size={14} style={{ opacity: 0.7 }} />
                 </button>
-                <button type="button" onClick={() => setShowBulkItemsModal(true)} style={{ padding: "8px 12px", height: "32px", display: "flex", alignItems: "center", gap: "6px", borderRadius: "6px", fontSize: "13px", fontWeight: "500", color: "#3b82f6", backgroundColor: "#eff6ff", border: "none", cursor: "pointer" }}>
-                  <PlusCircle size={14} /> Add Items in Bulk
+                <button 
+                  type="button" 
+                  onClick={() => setShowBulkItemsModal(true)} 
+                  className="premium-action-btn"
+                  style={{ padding: "0 14px", height: "34px", display: "flex", alignItems: "center", gap: "8px", borderRadius: "6px", fontSize: "13px", fontWeight: "600", color: "#3b82f6", backgroundColor: "#f0f7ff", border: "1px solid #dbeafe", cursor: "pointer", transition: "all 0.2s" }}
+                >
+                  <PlusCircle size={16} /> Add Items in Bulk
                 </button>
               </div>
 
@@ -2618,14 +2812,14 @@ export default function NewVendorCredit() {
         {/* Footer */}
         <div style={styles.footer}>
           <button
-            style={styles.saveDraftButton}
+            className="save-btn-hover" style={styles.saveDraftButton}
             onClick={() => handleSave("Draft")}
             disabled={!!saveLoadingState}
           >
             {saveLoadingState === "Draft" ? "Saving..." : (isEdit ? "Update as Draft" : "Save as Draft")}
           </button>
           <button
-            style={styles.saveOpenButton}
+            className="save-btn-hover" style={styles.saveOpenButton}
             onClick={() => handleSave("Open")}
             disabled={!!saveLoadingState}
           >
@@ -2907,51 +3101,168 @@ const NewItemModal = ({ show, onClose, data, onChange, onSave, taxes, vendors, s
 
 const BulkItemsModal = ({ show, onClose, items, selectedItems, onToggleSelect, onQuantityChange, quantities, onAdd, styles, bulkItemsSearch, setBulkItemsSearch, filteredBulkItems }: any) => {
   if (!show) return null;
+
+  const totalSelectedQty = Object.values(quantities).reduce((acc: number, qty: any) => acc + (parseFloat(String(qty)) || 0), 0);
+
   return (
-    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0, 0, 0, 0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }} onClick={onClose}>
-      <div style={{ backgroundColor: "#ffffff", borderRadius: "8px", width: "90%", maxWidth: "1000px", maxHeight: "90vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ padding: "20px 24px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h2 style={{ fontSize: "18px", fontWeight: "600", color: "#111827", margin: 0 }}>Add Items in Bulk</h2>
-          <button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer" }}><X size={20} /></button>
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0, 0, 0, 0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000 }} onClick={onClose}>
+      <div style={{ backgroundColor: "#ffffff", borderRadius: "12px", width: "95%", maxWidth: "1100px", height: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+        
+        {/* Header */}
+        <div style={styles.bulkModalHeader}>
+          <h2 style={styles.bulkModalTitle}>Add Items in Bulk</h2>
+          <button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer", color: "#6b7280" }}>
+            <X size={24} />
+          </button>
         </div>
-        <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-          <div style={{ width: "60%", borderRight: "1px solid #eee", display: "flex", flexDirection: "column" }}>
-            <div style={{ padding: "16px" }}>
-              <input style={styles.input} placeholder="Search items..." value={bulkItemsSearch} onChange={e => setBulkItemsSearch(e.target.value)} />
+
+        <div style={styles.bulkModalContent}>
+          {/* Left Side: Item Selection */}
+          <div style={styles.bulkModalLeft}>
+            <div style={{ padding: "20px" }}>
+              <div style={{ position: "relative" }}>
+                <input 
+                  style={{ ...styles.input, width: "100%", height: "42px", padding: "0 16px", fontSize: "14px", borderColor: "#3b82f6" }} 
+                  placeholder="Type to search or scan the barcode of the item" 
+                  value={bulkItemsSearch} 
+                  onChange={e => setBulkItemsSearch(e.target.value)} 
+                  autoFocus
+                />
+              </div>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+
+            <div style={{ flex: 1, overflowY: "auto" }}>
               {filteredBulkItems.map((item: any) => {
-                const isSelected = selectedItems.some((i: any) => i.id === item.id);
+                const isSelected = selectedItems.some((i: any) => i.id === item.id || i._id === item._id);
                 return (
-                  <div key={item.id} onClick={() => onToggleSelect(item)} style={{ padding: "12px", border: "1px solid #eee", borderRadius: "6px", marginBottom: "8px", cursor: "pointer", backgroundColor: isSelected ? "#eff6ff" : "#fff", borderColor: isSelected ? "#156372" : "#eee" }}>
-                    <div style={{ fontWeight: "500" }}>{item.name}</div>
-                    <div style={{ fontSize: "12px", color: "#666" }}>SKU: {item.sku || "N/A"} | Price: {item.costPrice}</div>
+                  <div 
+                    key={item.id || item._id} 
+                    onClick={() => onToggleSelect(item)} 
+                    style={{ 
+                      ...styles.bulkItemRow,
+                      backgroundColor: isSelected ? "#f0f7ff" : "#fff",
+                    }}
+                  >
+                    <div>
+                      <div style={styles.bulkItemName}>{item.name}</div>
+                      <div style={styles.bulkItemSku}>
+                        SKU: {item.sku || "N/A"} | Purchase Rate: KES{item.costPrice || "0.00"}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: "12px", color: "#6b7280" }}>Stock on Hand</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                         <span style={{ fontSize: "14px", fontWeight: "500", color: "#374151" }}>{item.stockQuantity || "0.00"} {item.unit || "pcs"}</span>
+                         {isSelected ? (
+                           <CheckCircle size={20} color="#10b981" />
+                         ) : (
+                           <div style={{ width: "20px", height: "20px", borderRadius: "50%", border: "2px solid #d1d5db", backgroundColor: "#fff" }} />
+                         )}
+                      </div>
+                    </div>
                   </div>
                 );
               })}
             </div>
           </div>
-          <div style={{ width: "40%", display: "flex", flexDirection: "column" }}>
-            <div style={{ padding: "16px", borderBottom: "1px solid #eee", fontWeight: "600" }}>Selected Items ({selectedItems.length})</div>
-            <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+
+          {/* Right Side: Selected Items List */}
+          <div style={styles.bulkModalRight}>
+            <div style={{ padding: "20px", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <span style={{ fontSize: "18px", fontWeight: "600", color: "#111827" }}>Selected Items</span>
+                <span style={{ backgroundColor: "#fff", border: "1px solid #d1d5db", borderRadius: "12px", padding: "2px 10px", fontSize: "14px", fontWeight: "500" }}>{selectedItems.length}</span>
+              </div>
+              <span style={{ fontSize: "13px", color: "#6b7280" }}>Total Quantity: {totalSelectedQty}</span>
+            </div>
+
+            <div style={{ flex: 1, overflowY: "auto", padding: "10px" }}>
               {selectedItems.map((item: any) => (
-                <div key={item.id} style={{ padding: "12px", border: "1px solid #eee", borderRadius: "6px", marginBottom: "8px" }}>
-                  <div style={{ fontWeight: "500", marginBottom: "8px" }}>{item.name}</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <span style={{ fontSize: "12px" }}>Qty:</span>
-                    <input style={{ ...styles.input, width: "70px", padding: "4px" }} type="number" value={quantities[item.id] || 1} onChange={e => onQuantityChange(item.id, e.target.value)} />
+                <div key={item.id || item._id} style={{ padding: "12px", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: "8px", marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontSize: "14px", fontWeight: "500", color: "#374151" }}>[{item.sku || "N/A"}] {item.name}</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div style={styles.bulkQuantityControl}>
+                      <button 
+                        style={styles.bulkQuantityBtn} 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const currentQty = parseFloat(String(quantities[item.id || item._id] || 1));
+                          if (currentQty > 1) onQuantityChange(item.id || item._id, currentQty - 1);
+                        }}
+                      >
+                        <Minus size={14} />
+                      </button>
+                      <input 
+                        style={{ border: "none", width: "40px", textAlign: "center", fontSize: "14px", fontWeight: "600", outline: "none" }} 
+                        type="text" 
+                        value={quantities[item.id || item._id] || 1} 
+                        onChange={e => onQuantityChange(item.id || item._id, e.target.value)} 
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <button 
+                        style={styles.bulkQuantityBtn} 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const currentQty = parseFloat(String(quantities[item.id || item._id] || 1));
+                          onQuantityChange(item.id || item._id, currentQty + 1);
+                        }}
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </div>
+                    <X 
+                      size={18} 
+                      style={{ color: "#ef4444", cursor: "pointer" }} 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleSelect(item);
+                      }} 
+                    />
                   </div>
                 </div>
               ))}
             </div>
           </div>
         </div>
-        <div style={{ padding: "20px 24px", borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "flex-end", gap: "12px" }}>
-          <button onClick={onClose} style={styles.secondaryButton}>Cancel</button>
-          <button onClick={onAdd} style={styles.primaryButton} disabled={selectedItems.length === 0}>Add Items</button>
+
+        {/* Footer */}
+        <div style={{ padding: "16px 24px", borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "flex-end", gap: "12px", backgroundColor: "#fff" }}>
+          <button 
+            onClick={onAdd} 
+            style={{ 
+              padding: "10px 24px", 
+              backgroundColor: "#10b981", 
+              color: "#ffffff", 
+              border: "none", 
+              borderRadius: "6px", 
+              fontSize: "14px", 
+              fontWeight: "600", 
+              cursor: "pointer",
+              transition: "all 0.2s"
+            }}
+            disabled={selectedItems.length === 0}
+          >
+            Add Items
+          </button>
+          <button 
+            onClick={onClose} 
+            style={{ 
+              padding: "10px 24px", 
+              backgroundColor: "#ffffff", 
+              color: "#374151", 
+              border: "1px solid #d1d5db", 
+              borderRadius: "6px", 
+              fontSize: "14px", 
+              fontWeight: "600", 
+              cursor: "pointer" 
+            }}
+          >
+            Cancel
+          </button>
         </div>
       </div>
     </div>
   );
 };
-

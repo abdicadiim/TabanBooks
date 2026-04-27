@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle } from "lucide-react";
 
@@ -9,11 +9,19 @@ export default function DeleteConfirmationModal({
   entityName = "item(s)",
   count = 1,
 }) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   if (!isOpen) return null;
 
-  const handleConfirm = () => {
-    onConfirm();
-    onClose();
+  const handleConfirm = async () => {
+    if (isSubmitting) return;
+
+    try {
+      setIsSubmitting(true);
+      await onConfirm();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return createPortal(
@@ -126,27 +134,32 @@ export default function DeleteConfirmationModal({
           >
             <button
               onClick={handleConfirm}
+              disabled={isSubmitting}
               style={{
                 padding: "8px 16px",
                 fontSize: "14px",
                 fontWeight: "500",
-                backgroundColor: "#156372",
+                backgroundColor: isSubmitting ? "#7aaab3" : "#156372",
                 color: "#ffffff",
                 borderRadius: "6px",
                 border: "none",
-                cursor: "pointer",
+                cursor: isSubmitting ? "not-allowed" : "pointer",
+                opacity: isSubmitting ? 0.8 : 1,
               }}
               onMouseEnter={(e) => {
-                e.target.style.backgroundColor = "#0D4A52";
+                if (!isSubmitting) {
+                  e.target.style.backgroundColor = "#0D4A52";
+                }
               }}
               onMouseLeave={(e) => {
-                e.target.style.backgroundColor = "#156372";
+                e.target.style.backgroundColor = isSubmitting ? "#7aaab3" : "#156372";
               }}
             >
-              Delete
+              {isSubmitting ? "Deleting..." : "Delete"}
             </button>
             <button
               onClick={onClose}
+              disabled={isSubmitting}
               style={{
                 padding: "8px 16px",
                 fontSize: "14px",
@@ -155,7 +168,8 @@ export default function DeleteConfirmationModal({
                 color: "#374151",
                 borderRadius: "6px",
                 border: "1px solid #d1d5db",
-                cursor: "pointer",
+                cursor: isSubmitting ? "not-allowed" : "pointer",
+                opacity: isSubmitting ? 0.7 : 1,
               }}
               onMouseEnter={(e) => {
                 e.target.style.backgroundColor = "#f9fafb";

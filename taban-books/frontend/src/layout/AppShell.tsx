@@ -11,6 +11,7 @@ export default function AppShell() {
   const isPurchaseOrdersListPage = /^\/purchases(?:\/purchase-orders)?\/?$/.test(
     location.pathname
   );
+  const isVendorsListPage = location.pathname === "/purchases/vendors";
 
   if (isEmbedded) {
     return (
@@ -29,6 +30,8 @@ export default function AppShell() {
         className={`h-full min-h-0 box-border overflow-y-auto overflow-x-hidden pt-[92px] scroll-pt-[92px] pb-4 pl-0 ${
           isPurchaseOrdersListPage
             ? "pr-0 md:pl-[calc(var(--sidebar-width)+12px)]"
+            : isVendorsListPage
+              ? "pr-4 md:pl-[calc(var(--sidebar-width)+10px)]"
             : "pr-4 md:pl-[calc(var(--sidebar-width)+28px)]"
         }`}
       >

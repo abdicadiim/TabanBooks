@@ -103,7 +103,7 @@ export const LocationSelectDropdown: React.FC<LocationSelectDropdownProps> = ({
         type="button"
         onClick={toggleDropdown}
         className={`flex h-10 w-full items-center justify-between gap-2 rounded-md border bg-white px-3 text-left text-sm outline-none transition-colors ${
-          isOpen ? "border-[#3B82F6]" : "border-gray-300"
+          isOpen ? "border-[#156372]" : "border-gray-300"
         }`}
       >
         <span className={selectedOption ? "text-gray-900" : "text-gray-400"}>
@@ -111,7 +111,7 @@ export const LocationSelectDropdown: React.FC<LocationSelectDropdownProps> = ({
         </span>
         <ChevronDown
           size={14}
-          className={`shrink-0 text-gray-400 transition-transform ${isOpen ? "rotate-180 text-[#3B82F6]" : ""}`}
+          className={`shrink-0 text-gray-400 transition-transform ${isOpen ? "rotate-180 text-[#156372]" : ""}`}
         />
       </button>
 
@@ -130,7 +130,7 @@ export const LocationSelectDropdown: React.FC<LocationSelectDropdownProps> = ({
               }}
             >
               <div className="border-b border-slate-200 bg-white p-2.5">
-                <div className="flex items-center gap-2 rounded-md border border-blue-400 bg-white px-2.5 py-2 focus-within:border-blue-500">
+                <div className="flex items-center gap-2 rounded-md border border-[#156372] bg-white px-2.5 py-2 focus-within:border-[#156372]">
                   <Search size={14} className="shrink-0 text-slate-400" />
                   <input
                     type="text"
@@ -156,14 +156,14 @@ export const LocationSelectDropdown: React.FC<LocationSelectDropdownProps> = ({
                           setIsOpen(false);
                         }}
                         className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-left text-sm transition-colors ${
-                          isSelected ? "bg-[#3B82F6] text-white" : "text-slate-700 hover:bg-slate-50"
+                          isSelected ? "bg-[#f0fdfa] text-[#156372]" : "text-slate-700 hover:bg-slate-50"
                         }`}
                       >
                         <span className="flex min-w-0 items-center gap-2">
                           {!isSelected ? <span className="text-slate-400">•</span> : null}
                           <span className="truncate font-medium">{option.label}</span>
                         </span>
-                        {isSelected && <Check size={15} className="shrink-0 text-white" />}
+                        {isSelected && <Check size={15} className="shrink-0 text-[#156372]" />}
                       </button>
                     );
                   })

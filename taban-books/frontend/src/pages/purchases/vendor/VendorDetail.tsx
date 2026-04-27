@@ -1,8 +1,8 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import toast from "react-hot-toast";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { toast } from "react-toastify";
 import { getBills, getPaymentsMade, getVendorCredits, getExpenses, getPurchaseOrders, getRecurringBills, getRecurringExpenses, getJournals, getProjects, getPurchaseReceipts } from "../shared/purchasesModel";
 // Note: getVendors and updateVendor from purchasesModel.js are no longer used - using vendorsAPI instead
 import { getCustomers } from "../../sales/salesModel";
@@ -80,6 +80,9 @@ interface Vendor {
   companyName?: string;
   openingBalance?: number | string;
   contactPersons?: any[];
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+  createdBy?: string;
   billingAddress?: {
     attention?: string;
     street1?: string;
@@ -147,6 +150,15 @@ interface Vendor {
     type?: string;
     uploadedAt?: string | Date;
   }>;
+  firstName?: string;
+  lastName?: string;
+  additionalAddresses?: any[];
+  vendorLanguage?: string;
+  portalLanguage?: string;
+  formData?: any;
+  paymentTerms?: string;
+  payables?: number;
+  unusedVendorCredits?: number;
 }
 
 interface Transaction {
@@ -184,12 +196,42 @@ interface CustomView {
   [key: string]: any;
 }
 
+const mapVendorForDetail = (vendorData: any, fallbackId?: string) => {
+  const vendorIdFromData = vendorData?._id ? String(vendorData._id) : (vendorData?.id ? String(vendorData.id) : null);
+
+  return {
+    ...vendorData,
+    id: vendorIdFromData || String(fallbackId || ""),
+    _id: vendorData?._id || vendorIdFromData,
+    billingStreet1: vendorData?.billingAddress?.street1 || vendorData?.billingStreet1 || '',
+    billingStreet2: vendorData?.billingAddress?.street2 || vendorData?.billingStreet2 || '',
+    billingCity: vendorData?.billingAddress?.city || vendorData?.billingCity || '',
+    billingState: vendorData?.billingAddress?.state || vendorData?.billingState || '',
+    billingZipCode: vendorData?.billingAddress?.zipCode || vendorData?.billingZipCode || '',
+    billingPhone: vendorData?.billingAddress?.phone || vendorData?.billingPhone || '',
+    billingFax: vendorData?.billingAddress?.fax || vendorData?.billingFax || '',
+    billingAttention: vendorData?.billingAddress?.attention || vendorData?.billingAttention || '',
+    billingCountry: vendorData?.billingAddress?.country || vendorData?.billingCountry || '',
+    shippingStreet1: vendorData?.shippingAddress?.street1 || vendorData?.shippingStreet1 || '',
+    shippingStreet2: vendorData?.shippingAddress?.street2 || vendorData?.shippingStreet2 || '',
+    shippingCity: vendorData?.shippingAddress?.city || vendorData?.shippingCity || '',
+    shippingState: vendorData?.shippingAddress?.state || vendorData?.shippingState || '',
+    shippingZipCode: vendorData?.shippingAddress?.zipCode || vendorData?.shippingZipCode || '',
+    shippingPhone: vendorData?.shippingAddress?.phone || vendorData?.shippingPhone || '',
+    shippingFax: vendorData?.shippingAddress?.fax || vendorData?.shippingFax || '',
+    shippingAttention: vendorData?.shippingAddress?.attention || vendorData?.shippingAttention || '',
+    shippingCountry: vendorData?.shippingAddress?.country || vendorData?.shippingCountry || ''
+  };
+};
+
 export default function VendorDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { code: baseCurrencyCode } = useCurrency();
-  const [vendor, setVendor] = useState<Vendor | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const initialRouteVendor = location.state?.vendor ? mapVendorForDetail(location.state.vendor, id) : null;
+  const [vendor, setVendor] = useState<Vendor | null>(initialRouteVendor);
+  const [isLoading, setIsLoading] = useState(!initialRouteVendor);
   const [organizationProfile, setOrganizationProfile] = useState<any>(null);
   const [paidThroughAccounts, setPaidThroughAccounts] = useState<any[]>([]);
 
@@ -309,8 +351,8 @@ export default function VendorDetail() {
     vendorCredits: "Default",
     paymentThankYou: "Default"
   });
-  const [openTemplateDropdown, setOpenTemplateDropdown] = useState(null);
-  const [templateSearches, setTemplateSearches] = useState({});
+  const [openTemplateDropdown, setOpenTemplateDropdown] = useState<string | null>(null);
+  const [templateSearches, setTemplateSearches] = useState<Record<string, string>>({});
 
   const pdfTemplateOptions = ["Standard Template", "Elite Template", "Classic Template", "Modern Template"];
   const emailTemplateOptions = ["Default", "Professional", "Friendly", "Formal"];
@@ -708,7 +750,7 @@ export default function VendorDetail() {
             "Vendor",
         }))
       );
-    } catch (error) {
+    } catch (error: any) {
     }
   };
 
@@ -730,7 +772,7 @@ export default function VendorDetail() {
 
   // Configure Vendor Portal Modal state
   const [isConfigurePortalModalOpen, setIsConfigurePortalModalOpen] = useState(false);
-  const [portalAccessContacts, setPortalAccessContacts] = useState([]);
+  const [portalAccessContacts, setPortalAccessContacts] = useState<any[]>([]);
 
   // Default Currency hover and edit state
   const [isCurrencyHovered, setIsCurrencyHovered] = useState(false);
@@ -778,8 +820,8 @@ export default function VendorDetail() {
     websiteUrl: "",
     industry: ""
   });
-  const [logoFile, setLogoFile] = useState(null);
-  const [logoPreview, setLogoPreview] = useState(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [termsData, setTermsData] = useState({
     notes: "Looking forward for your business.",
     termsAndConditions: "",
@@ -792,7 +834,7 @@ export default function VendorDetail() {
   // Contact Person Edit/Delete state
   // const [openContactDropdown, setOpenContactDropdown] = useState(null);
   const [isEditContactModalOpen, setIsEditContactModalOpen] = useState(false);
-  const [editingContactIndex, setEditingContactIndex] = useState(null);
+  const [editingContactIndex, setEditingContactIndex] = useState<number | null>(null);
   const [editContactData, setEditContactData] = useState({
     salutation: "",
     firstName: "",
@@ -990,7 +1032,7 @@ export default function VendorDetail() {
           );
           setBills(vendorBills);
           nextTransactions.bills = vendorBills;
-        } catch (error) {
+        } catch (error: any) {
           setBills([]);
         }
 
@@ -1003,7 +1045,7 @@ export default function VendorDetail() {
           );
           setPaymentsMade(vendorPayments);
           nextTransactions.paymentsMade = vendorPayments;
-        } catch (error) {
+        } catch (error: any) {
           setPaymentsMade([]);
         }
 
@@ -1016,7 +1058,7 @@ export default function VendorDetail() {
           );
           setVendorCredits(vendorCreditsFiltered);
           nextTransactions.vendorCredits = vendorCreditsFiltered;
-        } catch (error) {
+        } catch (error: any) {
           setVendorCredits([]);
         }
 
@@ -1029,7 +1071,7 @@ export default function VendorDetail() {
           );
           setExpenses(vendorExpenses);
           nextTransactions.expenses = vendorExpenses;
-        } catch (error) {
+        } catch (error: any) {
           setExpenses([]);
         }
 
@@ -1042,7 +1084,7 @@ export default function VendorDetail() {
           );
           setPurchaseOrders(vendorPurchaseOrders);
           nextTransactions.purchaseOrders = vendorPurchaseOrders;
-        } catch (error) {
+        } catch (error: any) {
           setPurchaseOrders([]);
         }
 
@@ -1055,7 +1097,7 @@ export default function VendorDetail() {
           );
           setRecurringBills(vendorRecurringBills);
           nextTransactions.recurringBills = vendorRecurringBills;
-        } catch (error) {
+        } catch (error: any) {
           setRecurringBills([]);
         }
 
@@ -1068,7 +1110,7 @@ export default function VendorDetail() {
           );
           setRecurringExpenses(vendorRecurringExpenses);
           nextTransactions.recurringExpenses = vendorRecurringExpenses;
-        } catch (error) {
+        } catch (error: any) {
           setRecurringExpenses([]);
         }
 
@@ -1081,7 +1123,7 @@ export default function VendorDetail() {
           );
           setProjects(vendorProjects);
           nextTransactions.projects = vendorProjects;
-        } catch (error) {
+        } catch (error: any) {
           setProjects([]);
         }
 
@@ -1094,7 +1136,7 @@ export default function VendorDetail() {
           );
           setPurchaseReceipts(vendorReceipts);
           nextTransactions.purchaseReceipts = vendorReceipts;
-        } catch (error) {
+        } catch (error: any) {
           setPurchaseReceipts([]);
         }
 
@@ -1107,12 +1149,12 @@ export default function VendorDetail() {
           );
           setJournals(vendorJournals);
           nextTransactions.journals = vendorJournals;
-        } catch (error) {
+        } catch (error: any) {
           setJournals([]);
         }
 
         vendorTransactionsCacheRef.current[cacheKey] = nextTransactions;
-      } catch (error) {
+      } catch (error: any) {
       } finally {
         setIsTransactionsLoading(false);
       }
@@ -1120,6 +1162,40 @@ export default function VendorDetail() {
 
     loadVendorTransactions();
   }, [id, vendor]);
+
+  useEffect(() => {
+    if (!vendor) return;
+
+    const refreshVendorTransactions = () => {
+      const cacheKey = String(vendor?._id || vendor?.id || "").trim();
+      if (cacheKey) {
+        delete vendorTransactionsCacheRef.current[cacheKey];
+      }
+
+      setVendor((prev) => (prev ? { ...prev } : prev));
+    };
+
+    const transactionEvents = [
+      "billsUpdated",
+      "paymentsUpdated",
+      "vendorCreditsUpdated",
+      "purchaseOrdersUpdated",
+      "recurringBillsUpdated",
+      "recurringExpensesUpdated",
+      "expensesUpdated",
+      "vendorSaved",
+    ];
+
+    transactionEvents.forEach((eventName) => {
+      window.addEventListener(eventName, refreshVendorTransactions);
+    });
+
+    return () => {
+      transactionEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, refreshVendorTransactions);
+      });
+    };
+  }, [vendor]);
 
 
   // Build statement transactions from bills, payments made, and vendor credits
@@ -1206,6 +1282,7 @@ export default function VendorDetail() {
 
   useEffect(() => {
     let isCancelled = false;
+    const preloadedVendor = location.state?.vendor;
 
     const loadVendor = async () => {
       if (!id) {
@@ -1226,33 +1303,7 @@ export default function VendorDetail() {
         // Match customer's pattern exactly: check response.success && response.data
         if (response && response.success && response.data) {
           const vendorData = response.data;
-          // Map nested address structure to flat structure for display
-          // Ensure we have an id field - handle both ObjectId and string formats
-          const vendorIdFromData = vendorData._id ? String(vendorData._id) : (vendorData.id ? String(vendorData.id) : null);
-
-          const mappedVendor = {
-            ...vendorData,
-            id: vendorIdFromData || String(vendorId), // Ensure ID is always a string
-            _id: vendorData._id || vendorIdFromData, // Keep _id for MongoDB compatibility
-            billingStreet1: vendorData.billingAddress?.street1 || vendorData.billingStreet1 || '',
-            billingStreet2: vendorData.billingAddress?.street2 || vendorData.billingStreet2 || '',
-            billingCity: vendorData.billingAddress?.city || vendorData.billingCity || '',
-            billingState: vendorData.billingAddress?.state || vendorData.billingState || '',
-            billingZipCode: vendorData.billingAddress?.zipCode || vendorData.billingZipCode || '',
-            billingPhone: vendorData.billingAddress?.phone || vendorData.billingPhone || '',
-            billingFax: vendorData.billingAddress?.fax || vendorData.billingFax || '',
-            billingAttention: vendorData.billingAddress?.attention || vendorData.billingAttention || '',
-            billingCountry: vendorData.billingAddress?.country || vendorData.billingCountry || '',
-            shippingStreet1: vendorData.shippingAddress?.street1 || vendorData.shippingStreet1 || '',
-            shippingStreet2: vendorData.shippingAddress?.street2 || vendorData.shippingStreet2 || '',
-            shippingCity: vendorData.shippingAddress?.city || vendorData.shippingCity || '',
-            shippingState: vendorData.shippingAddress?.state || vendorData.shippingState || '',
-            shippingZipCode: vendorData.shippingAddress?.zipCode || vendorData.shippingZipCode || '',
-            shippingPhone: vendorData.shippingAddress?.phone || vendorData.shippingPhone || '',
-            shippingFax: vendorData.shippingAddress?.fax || vendorData.shippingFax || '',
-            shippingAttention: vendorData.shippingAddress?.attention || vendorData.shippingAttention || '',
-            shippingCountry: vendorData.shippingAddress?.country || vendorData.shippingCountry || ''
-          };
+          const mappedVendor = mapVendorForDetail(vendorData, vendorId);
           setVendor(mappedVendor);
           const serverComments = vendorData.comments || vendorData.customFields?.vendorComments || [];
           const serverDocuments = vendorData.documents || vendorData.customFields?.vendorDocuments || [];
@@ -1288,19 +1339,33 @@ export default function VendorDetail() {
           alert('Vendor data is invalid: Missing required fields');
           navigate("/purchases/vendors");
         }
-      } catch (error) {
+      } catch (error: any) {
         if (isCancelled) return;
         toast.error('Failed to load vendor: ' + (error instanceof Error ? error.message : 'Unknown error'));
         setIsLoading(false);
       }
     };
 
-    // Reset detail state immediately when switching vendor so old data does not linger
-    setIsLoading(true);
-    setVendor(null);
-    setComments([]);
+    // Show preloaded list-row data immediately when available, then refresh in background.
+    const hasMatchingPreloadedVendor =
+      preloadedVendor && String(preloadedVendor.id || preloadedVendor._id || "") === String(id || "");
+
+    if (hasMatchingPreloadedVendor) {
+      const mappedPreloadedVendor = mapVendorForDetail(preloadedVendor, id);
+      setVendor(mappedPreloadedVendor);
+      if (mappedPreloadedVendor.profileImage) {
+        setProfileImage(mappedPreloadedVendor.profileImage);
+      }
+      setComments(normalizeCommentList(preloadedVendor.comments || preloadedVendor.customFields?.vendorComments || []));
+      setAttachments(normalizeAttachmentList(preloadedVendor.documents || preloadedVendor.customFields?.vendorDocuments || []));
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+      setVendor(null);
+      setComments([]);
+      setAttachments([]);
+    }
     setMails([]);
-    setAttachments([]);
     setBills([]);
     setPaymentsMade([]);
     setVendorCredits([]);
@@ -1323,391 +1388,15 @@ export default function VendorDetail() {
     return () => {
       isCancelled = true;
     };
-  }, [id, navigate]);
+  }, [id, navigate, location.state]);
 
-  useEffect(() => {
-    // Load sidebar list/profile once instead of every vendor switch.
-    loadVendors();
-    const fetchOrganizationProfile = async () => {
-      try {
-        const resp = await profileAPI.getOrganizationProfile();
-        if (resp && resp.success && resp.data) {
-          setOrganizationProfile(resp.data);
-          localStorage.setItem('organization_profile', JSON.stringify(resp.data));
-        } else {
-          const fallback = localStorage.getItem('organization_profile');
-          if (fallback) setOrganizationProfile(JSON.parse(fallback));
-        }
-      } catch (error) {
-        const fallback = localStorage.getItem('organization_profile');
-        if (fallback) setOrganizationProfile(JSON.parse(fallback));
-      }
-    };
-    fetchOrganizationProfile();
-  }, []);
-
-  useEffect(() => {
-    const handleVendorRefresh = () => {
-      loadVendors();
-    };
-
-    window.addEventListener("vendorSaved", handleVendorRefresh);
-    window.addEventListener("focus", handleVendorRefresh);
-    window.addEventListener("storage", handleVendorRefresh);
-
-    return () => {
-      window.removeEventListener("vendorSaved", handleVendorRefresh);
-      window.removeEventListener("focus", handleVendorRefresh);
-      window.removeEventListener("storage", handleVendorRefresh);
-    };
-  }, []);
-
-  useEffect(() => {
-    const loadAccounts = async () => {
-      try {
-        const response = await chartOfAccountsAPI.getAccounts({ limit: 1000 });
-        const accounts = Array.isArray(response?.data)
-          ? response.data
-          : (Array.isArray(response) ? response : []);
-        setPaidThroughAccounts(accounts);
-      } catch (error) {
-        setPaidThroughAccounts([]);
-      }
-    };
-
-    loadAccounts();
-  }, []);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (sidebarViewDropdownRef.current && !sidebarViewDropdownRef.current.contains(event.target as Node)) {
-        setIsSidebarViewDropdownOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const sidebarViewOptions = [
-    "All Vendors",
-    "Active Vendors",
-    "CRM Vendors",
-    "Duplicate Vendors",
-    "Inactive Vendors",
-    "Vendor Portal Enabled",
-    "Vendor Portal Disabled",
-  ];
-
-  const getSidebarFilteredVendors = () => {
-    if (selectedSidebarView === "All Vendors") {
-      return vendors;
-    }
-
-    if (selectedSidebarView === "Active Vendors") {
-      return vendors.filter((v: any) => String(v?.status || "active").toLowerCase() !== "inactive");
-    }
-
-    if (selectedSidebarView === "Inactive Vendors") {
-      return vendors.filter((v: any) => String(v?.status || "").toLowerCase() === "inactive");
-    }
-
-    if (selectedSidebarView === "CRM Vendors") {
-      return vendors.filter((v: any) => v?.crmSync === true || v?.formData?.crmSync === true);
-    }
-
-    if (selectedSidebarView === "Vendor Portal Enabled") {
-      return vendors.filter((v: any) => v?.enablePortal === true || v?.formData?.enablePortal === true);
-    }
-
-    if (selectedSidebarView === "Vendor Portal Disabled") {
-      return vendors.filter((v: any) => v?.enablePortal !== true && v?.formData?.enablePortal !== true);
-    }
-
-    if (selectedSidebarView === "Duplicate Vendors") {
-      const nameMap = new Map<string, string>();
-      const emailMap = new Map<string, string>();
-      const duplicates = new Set<string>();
-
-      vendors.forEach((v: any) => {
-        const vendorId = String(v?._id || v?.id || "");
-        const name = String(v?.displayName || v?.name || v?.companyName || "").trim().toLowerCase();
-        const email = String(v?.email || "").trim().toLowerCase();
-
-        if (name) {
-          if (nameMap.has(name)) {
-            duplicates.add(String(nameMap.get(name)));
-            duplicates.add(vendorId);
-          } else {
-            nameMap.set(name, vendorId);
-          }
-        }
-
-        if (email) {
-          if (emailMap.has(email)) {
-            duplicates.add(String(emailMap.get(email)));
-            duplicates.add(vendorId);
-          } else {
-            emailMap.set(email, vendorId);
-          }
-        }
-      });
-
-      return vendors.filter((v: any) => duplicates.has(String(v?._id || v?.id || "")));
-    }
-
-    return vendors;
-  };
-
-  const sidebarVendors = getSidebarFilteredVendors();
-  const sidebarVendorRows = sidebarVendors.length > 0
-    ? sidebarVendors
-    : (vendor
-      ? [{
-          ...vendor,
-          id: String(vendor?._id || vendor?.id || id || ""),
-          _id: vendor?._id || vendor?.id || id || "",
-          name:
-            vendor?.displayName ||
-            vendor?.name ||
-            vendor?.companyName ||
-            `${(vendor as any)?.firstName || ""} ${(vendor as any)?.lastName || ""}`.trim() ||
-            "Vendor",
-        }]
-      : []);
-
-  useEffect(() => {
-    const fetchCustomers = async () => {
-      try {
-        const data = await getCustomers();
-        setCustomers((data || []).map((c: any) => ({
-          ...c,
-          id: String(c._id || c.id),
-          _id: c._id || c.id,
-          name: c.displayName || c.name || c.companyName || `${c.firstName || ""} ${c.lastName || ""}`.trim()
-        })));
-      } catch (error) {
-      }
-    };
-    fetchCustomers();
-  }, [id, navigate]);
-
-  useEffect(() => {
-    const linkedCustomerId = String(vendor?.linkedCustomerId || "").trim();
-    if (!linkedCustomerId) {
-      setLinkedCustomerSales([]);
-      setLinkedCustomerPayments([]);
-      setLinkedCustomerQuotes([]);
-      setLinkedCustomerCreditNotes([]);
-      setLinkedCustomerSalesReceipts([]);
-      return;
-    }
-
-    let isActive = true;
-    const loadLinkedCustomerSales = async () => {
-      setIsLinkedCustomerSalesLoading(true);
-      try {
-        const linkedCustomerName = String(vendor?.linkedCustomerName || "").toLowerCase().trim();
-        const matchesLinkedCustomer = (row: any) => {
-          const rowCustomerId = String(row.customerId || row.customer?._id || row.customer || "").trim();
-          if (rowCustomerId && rowCustomerId === linkedCustomerId) return true;
-
-          const rowCustomerName = String(
-            row.customerName || row.customer_name || row.customer?.name || ""
-          ).toLowerCase().trim();
-          return Boolean(
-            linkedCustomerName &&
-            rowCustomerName &&
-            (rowCustomerName === linkedCustomerName ||
-              rowCustomerName.includes(linkedCustomerName) ||
-              linkedCustomerName.includes(rowCustomerName))
-          );
-        };
-
-        const [invoiceByCustomerResponse, allInvoicesResponse, paymentsResponse, quotesResponse, creditNotesResponse, salesReceiptsResponse] = await Promise.all([
-          invoicesAPI.getByCustomer(linkedCustomerId).catch(() => null),
-          invoicesAPI.getAll().catch(() => ({ data: [] })),
-          paymentsReceivedAPI.getByInvoice(linkedCustomerId).catch(() => ({ data: [] })),
-          quotesAPI.getAll({ customerId: linkedCustomerId }).catch(() => ({ data: [] })),
-          creditNotesAPI.getByCustomer(linkedCustomerId).catch(() => ({ data: [] })),
-          salesReceiptsAPI.getAll({ customerId: linkedCustomerId }).catch(() => ({ data: [] }))
-        ]);
-
-        let sales = Array.isArray(invoiceByCustomerResponse?.data) ? invoiceByCustomerResponse.data : (Array.isArray(invoiceByCustomerResponse) ? invoiceByCustomerResponse : []);
-        if (sales.length === 0) {
-          const allInvoices = Array.isArray(allInvoicesResponse?.data)
-            ? allInvoicesResponse.data
-            : (Array.isArray(allInvoicesResponse) ? allInvoicesResponse : []);
-          sales = allInvoices.filter(matchesLinkedCustomer);
-        }
-
-        const payments = (Array.isArray(paymentsResponse?.data) ? paymentsResponse.data : (Array.isArray(paymentsResponse) ? paymentsResponse : [])).filter(matchesLinkedCustomer);
-        const quotes = (Array.isArray(quotesResponse?.data) ? quotesResponse.data : (Array.isArray(quotesResponse) ? quotesResponse : [])).filter(matchesLinkedCustomer);
-        const creditNotes = (Array.isArray(creditNotesResponse?.data) ? creditNotesResponse.data : (Array.isArray(creditNotesResponse) ? creditNotesResponse : [])).filter(matchesLinkedCustomer);
-        const salesReceipts = (Array.isArray(salesReceiptsResponse?.data) ? salesReceiptsResponse.data : (Array.isArray(salesReceiptsResponse) ? salesReceiptsResponse : [])).filter(matchesLinkedCustomer);
-
-        if (isActive) {
-          setLinkedCustomerSales(sales);
-          setLinkedCustomerPayments(payments);
-          setLinkedCustomerQuotes(quotes);
-          setLinkedCustomerCreditNotes(creditNotes);
-          setLinkedCustomerSalesReceipts(salesReceipts);
-        }
-      } catch (error) {
-        if (isActive) {
-          setLinkedCustomerSales([]);
-          setLinkedCustomerPayments([]);
-          setLinkedCustomerQuotes([]);
-          setLinkedCustomerCreditNotes([]);
-          setLinkedCustomerSalesReceipts([]);
-        }
-      } finally {
-        if (isActive) setIsLinkedCustomerSalesLoading(false);
-      }
-    };
-
-    loadLinkedCustomerSales();
-    return () => {
-      isActive = false;
-    };
-  }, [vendor?.linkedCustomerId, vendor?.linkedCustomerName]);
-
-  useEffect(() => {
-    if (activeTab === "sales" && !vendor?.linkedCustomerId) {
-      setActiveTab("overview");
-    }
-  }, [activeTab, vendor?.linkedCustomerId]);
-
-  // Close dropdowns when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (invoiceViewDropdownRef.current && !invoiceViewDropdownRef.current.contains(target)) {
-        setIsInvoiceViewDropdownOpen(false);
-      }
-      if (statusDropdownRef.current && !statusDropdownRef.current.contains(target)) {
-        setIsStatusDropdownOpen(false);
-      }
-      if (linkEmailDropdownRef.current && !linkEmailDropdownRef.current.contains(target)) {
-        setIsLinkEmailDropdownOpen(false);
-      }
-      if (statementPeriodDropdownRef?.current && !statementPeriodDropdownRef.current.contains(target)) {
-        setIsStatementPeriodDropdownOpen(false);
-      }
-      if (statementFilterDropdownRef?.current && !statementFilterDropdownRef.current.contains(target)) {
-        setIsStatementFilterDropdownOpen(false);
-      }
-      if (bulkActionsDropdownRef.current && !bulkActionsDropdownRef.current.contains(target)) {
-        setIsBulkActionsDropdownOpen(false);
-      }
-      if (startDatePickerRef.current && !startDatePickerRef.current.contains(target)) {
-        setIsStartDatePickerOpen(false);
-      }
-      if (endDatePickerRef.current && !endDatePickerRef.current.contains(target)) {
-        setIsEndDatePickerOpen(false);
-      }
-      if (mergeVendorDropdownRef.current && !mergeVendorDropdownRef.current.contains(target)) {
-        setIsMergeVendorDropdownOpen(false);
-      }
-      // Close contact person dropdowns
-      const contactRefs = contactDropdownRefs as any;
-      const clickedInsideContactDropdown = Object.values(contactRefs).some((ref: any) =>
-        ref?.current && ref.current.contains(target)
-      );
-      if (!clickedInsideContactDropdown) {
-        setOpenContactDropdown(null);
-      }
-      if (newTransactionDropdownRef.current && !newTransactionDropdownRef.current.contains(target)) {
-        setIsNewTransactionDropdownOpen(false);
-      }
-      if (mailsTypeDropdownRef.current && !mailsTypeDropdownRef.current.contains(target)) {
-        setIsMailsTypeDropdownOpen(false);
-      }
-      if (transactionNavDropdownRef.current && !transactionNavDropdownRef.current.contains(target)) {
-        setIsTransactionNavDropdownOpen(false);
-      }
-      if (attachmentsDropdownRef.current && !attachmentsDropdownRef.current.contains(target)) {
-        setIsAttachmentsDropdownOpen(false);
-      }
-      if (uploadDropdownRef.current && !uploadDropdownRef.current.contains(target)) {
-        setIsUploadDropdownOpen(false);
-      }
-      if (moreDropdownRef.current && !moreDropdownRef.current.contains(target)) {
-        setIsMoreDropdownOpen(false);
-      }
-      if (customerDropdownRef?.current && !customerDropdownRef.current.contains(target)) {
-        setIsCustomerDropdownOpen(false);
-      }
-      if (isCustomizeDropdownOpen && customizeDropdownRef?.current && !customizeDropdownRef.current.contains(target)) {
-        setIsCustomizeDropdownOpen(false);
-      }
-      if (expensesDateRangeDropdownRef.current && !expensesDateRangeDropdownRef.current.contains(target)) {
-        setIsExpensesDateRangeDropdownOpen(false);
-      }
-      if (expensesBasisDropdownRef.current && !expensesBasisDropdownRef.current.contains(target)) {
-        setIsExpensesBasisDropdownOpen(false);
-      }
-    };
-
-    if (isInvoiceViewDropdownOpen || isStatusDropdownOpen || isLinkEmailDropdownOpen || isStatementPeriodDropdownOpen || isStatementFilterDropdownOpen || isBulkActionsDropdownOpen || isStartDatePickerOpen || isEndDatePickerOpen || isMergeVendorDropdownOpen || isNewTransactionDropdownOpen || isTransactionNavDropdownOpen || isMailsTypeDropdownOpen || isAttachmentsDropdownOpen || isUploadDropdownOpen || isMoreDropdownOpen || isCustomizeDropdownOpen || isExpensesDateRangeDropdownOpen || isExpensesBasisDropdownOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isInvoiceViewDropdownOpen, isStatusDropdownOpen, isLinkEmailDropdownOpen, isStatementPeriodDropdownOpen, isStatementFilterDropdownOpen, isBulkActionsDropdownOpen, isStartDatePickerOpen, isEndDatePickerOpen, isMergeVendorDropdownOpen, isNewTransactionDropdownOpen, isTransactionNavDropdownOpen, isMailsTypeDropdownOpen, isAttachmentsDropdownOpen, isUploadDropdownOpen, isMoreDropdownOpen, openContactDropdown, isCustomizeDropdownOpen, isCustomerDropdownOpen, isExpensesDateRangeDropdownOpen, isExpensesBasisDropdownOpen]);
-
-  const toggleSection = (section: keyof typeof expandedSections) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
-  };
-
-  const toggleTransactionSection = (section: keyof typeof expandedTransactions) => {
-    setExpandedTransactions(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
-  };
-
-  const toggleLinkedCustomerSalesSection = (section: keyof typeof linkedCustomerSalesSections) => {
-    setLinkedCustomerSalesSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
-  };
-
-  const transactionNavOptions: Array<{ key: keyof typeof expandedTransactions; label: string }> = [
-    { key: "bills", label: "Bills" },
-    { key: "paymentsMade", label: "Bill Payments" },
-    { key: "expenses", label: "Expenses" },
-    { key: "recurringBills", label: "Recurring Bills" },
-    { key: "recurringExpenses", label: "Recurring Expenses" },
-    { key: "purchaseOrders", label: "Purchase Orders" },
-    { key: "vendorCredits", label: "Vendor Credits" },
-    { key: "journals", label: "Journals" }
-  ];
-
-  const handleTransactionNavSelect = (sectionKey: keyof typeof expandedTransactions, label: string) => {
-    setSelectedTransactionType(label);
-    setExpandedTransactions(prev => ({ ...prev, [sectionKey]: true }));
-    setIsTransactionNavDropdownOpen(false);
-    window.requestAnimationFrame(() => {
-      transactionSectionRefs.current[sectionKey]?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  };
-
-  // Vendor selection handlers
-  const handleVendorCheckboxChange = (vendorId: string, e: React.MouseEvent) => {
+  const handleVendorCheckboxChange = (vendorId: string, e: React.ChangeEvent<HTMLInputElement>) => {
     e.stopPropagation();
-    setSelectedVendors(prev => {
+    setSelectedVendors((prev) => {
       if (prev.includes(vendorId)) {
-        return prev.filter(id => id !== vendorId);
-      } else {
-        return [...prev, vendorId];
+        return prev.filter((id) => id !== vendorId);
       }
+      return [...prev, vendorId];
     });
   };
 
@@ -1759,7 +1448,7 @@ export default function VendorDetail() {
               setVendor(mappedVendor);
             }
             toast.success('Profile image updated successfully');
-          } catch (error) {
+          } catch (error: any) {
             toast.error('Failed to update profile image: ' + (error instanceof Error ? error.message : 'Unknown error'));
           }
         }
@@ -1848,7 +1537,7 @@ export default function VendorDetail() {
         }
         setShowAddressModal(false);
         toast.success(`${addressType === "billing" ? "Billing" : "Shipping"} address saved successfully`);
-      } catch (error) {
+      } catch (error: any) {
         toast.error('Failed to update address: ' + (error.message || 'Unknown error'));
       }
     }
@@ -1959,7 +1648,7 @@ export default function VendorDetail() {
         }
         setIsEditOpeningBalanceModalOpen(false);
         toast.success('Opening balance saved successfully');
-      } catch (error) {
+      } catch (error: any) {
         toast.error('Failed to update opening balance: ' + (error.message || 'Unknown error'));
       }
     }
@@ -2034,7 +1723,7 @@ export default function VendorDetail() {
           enablePortalAccess: true
         });
         toast.success('Contact person added successfully');
-      } catch (error) {
+      } catch (error: any) {
         toast.error('Failed to add contact person: ' + (error.message || 'Unknown error'));
       }
     }
@@ -2130,6 +1819,45 @@ export default function VendorDetail() {
     (v.email && v.email.toLowerCase().includes(mergeVendorSearch.toLowerCase()))
   );
 
+  const sidebarVendorRows = vendors.filter((vend: any) => {
+    if (selectedSidebarView === "All Vendors") {
+      return true;
+    }
+    if (selectedSidebarView === "Active Vendors") {
+      return String(vend?.status || "").toLowerCase() !== "inactive" && vend?.active !== false;
+    }
+    if (selectedSidebarView === "Inactive Vendors") {
+      return String(vend?.status || "").toLowerCase() === "inactive" || vend?.active === false;
+    }
+    if (selectedSidebarView === "CRM Vendors") {
+      return vend?.crmSync === true || vend?.formData?.crmSync === true;
+    }
+    if (selectedSidebarView === "Vendor Portal Enabled") {
+      return vend?.enablePortal === true || vend?.formData?.enablePortal === true;
+    }
+    if (selectedSidebarView === "Vendor Portal Disabled") {
+      return !vend?.formData?.enablePortal && vend?.enablePortal !== true;
+    }
+    if (selectedSidebarView === "Duplicate Vendors") {
+      const currentName = String(vend?.name || vend?.displayName || vend?.companyName || "").trim().toLowerCase();
+      const currentEmail = String(vend?.email || vend?.formData?.email || "").trim().toLowerCase();
+
+      return vendors.some((candidate: any) => {
+        if (String(candidate?.id || candidate?._id || "") === String(vend?.id || vend?._id || "")) {
+          return false;
+        }
+
+        const candidateName = String(candidate?.name || candidate?.displayName || candidate?.companyName || "").trim().toLowerCase();
+        const candidateEmail = String(candidate?.email || candidate?.formData?.email || "").trim().toLowerCase();
+
+        return (currentName && candidateName && currentName === candidateName)
+          || (currentEmail && candidateEmail && currentEmail === candidateEmail);
+      });
+    }
+
+    return true;
+  });
+
   const handleAssociateTemplates = () => {
     setIsBulkActionsDropdownOpen(false);
     setIsAssociateTemplatesModalOpen(true);
@@ -2141,7 +1869,7 @@ export default function VendorDetail() {
     alert("Templates associated successfully!");
   };
 
-  const handleTemplateSelect = (category, field, value) => {
+  const handleTemplateSelect = (category: string, field: string, value: string) => {
     if (category === "pdf") {
       setPdfTemplates(prev => ({ ...prev, [field]: value }));
     } else {
@@ -2151,12 +1879,12 @@ export default function VendorDetail() {
     setTemplateSearches({});
   };
 
-  const getFilteredTemplateOptions = (options, field) => {
+  const getFilteredTemplateOptions = (options: string[], field: string) => {
     const search = templateSearches[field] || "";
     return options.filter(opt => opt.toLowerCase().includes(search.toLowerCase()));
   };
 
-  const formatFileSize = (bytes) => {
+  const formatFileSize = (bytes: number) => {
     if (bytes === 0) return "0 Bytes";
     const k = 1024;
     const sizes = ["Bytes", "KB", "MB", "GB"];
@@ -2164,7 +1892,7 @@ export default function VendorDetail() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   };
 
-  const parseFileSize = (sizeStr) => {
+  const parseFileSize = (sizeStr: string | number | undefined) => {
     if (typeof sizeStr === 'number') return sizeStr;
     if (!sizeStr) return 0;
     const match = sizeStr.match(/^([\d.]+)\s*(KB|MB|GB|B)$/i);
@@ -2465,20 +2193,18 @@ export default function VendorDetail() {
     void createVendorClone();
   };
 
-  // const handleAssociateTemplates = () => {
-  //   setIsMoreDropdownOpen(false);
-  //   setIsAssociateTemplatesModalOpen(true);
-  // };
-
   const handleConfigurePortal = () => {
     setIsMoreDropdownOpen(false);
+    if (!vendor) return;
+
     // Initialize portal access contacts from vendor contact persons
-    const contacts = vendor.contactPersons?.map(contact => ({
+    const contacts = (vendor.contactPersons || []).map((contact: any) => ({
       id: contact.id || Date.now() + Math.random(),
-      name: `${contact.salutation ? `${contact.salutation}. ` : ''}${contact.firstName} ${contact.lastName}`,
+      name: `${contact.salutation ? `${contact.salutation}. ` : ''}${contact.firstName || ''} ${contact.lastName || ''}`.trim(),
       email: contact.email || '',
       hasAccess: contact.hasPortalAccess || false
-    })) || [];
+    }));
+
     // If no contact persons, add vendor as a contact
     if (contacts.length === 0 && vendor.name) {
       contacts.push({
@@ -2508,7 +2234,6 @@ export default function VendorDetail() {
     setCustomerSearch("");
     setIsLinkToCustomerModalOpen(true);
   };
-
   const handleUnlinkCustomer = async () => {
     setIsMoreDropdownOpen(false);
     if (!vendor) return;
@@ -2584,6 +2309,23 @@ export default function VendorDetail() {
       setVendor(previousVendor as any);
       setVendors(previousVendors as any[]);
       toast.error(error?.message || "Failed to update vendor status");
+    }
+  };
+
+  const handleDeleteVendor = async () => {
+    const targetVendorId = String(vendor?.id || vendor?._id || id || "").trim();
+    if (!targetVendorId) {
+      toast.error("Vendor ID not found. Please refresh and try again.");
+      return;
+    }
+
+    try {
+      await vendorsAPI.delete(targetVendorId);
+      window.dispatchEvent(new Event("vendorSaved"));
+      toast.success("Vendor deleted successfully");
+      navigate("/purchases/vendors");
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to delete vendor");
     }
   };
 
@@ -2974,7 +2716,7 @@ export default function VendorDetail() {
     };
   };
 
-  if (isLoading) {
+  if (isLoading && !vendor) {
     return (
       <div className="w-full h-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-4">
@@ -3185,7 +2927,9 @@ export default function VendorDetail() {
               key={vend.id}
               className={`flex items-center gap-3 py-3 pr-3 pl-5 cursor-pointer border-b border-gray-100 hover:bg-gray-50 ${vend.id === id ? "border-l-4" : ""}`}
               style={vend.id === id ? { background: '#f0fdfa', borderLeftColor: purchasesTheme.secondary } : selectedVendors.includes(vend.id) ? { background: '#ccfbf1' } : {}}
-              onClick={() => navigate(`/purchases/vendors/${vend.id}`)}
+              onClick={() => navigate(`/purchases/vendors/${vend.id}`, {
+                state: { vendor: vend }
+              })}
             >
               <input
                 type="checkbox"
@@ -3398,11 +3142,11 @@ export default function VendorDetail() {
                       </button>
                       <button
                         className="w-full text-left px-4 py-2 text-sm text-red-600 cursor-pointer hover:bg-red-50 transition-colors"
-                        onClick={() => {
+                        onClick={async () => {
                           setIsMoreDropdownOpen(false);
                           const shouldDelete = window.confirm("Are you sure you want to delete this vendor?");
                           if (shouldDelete) {
-                            navigate("/purchases/vendors");
+                            await handleDeleteVendor();
                           }
                         }}
                       >
@@ -3750,7 +3494,7 @@ export default function VendorDetail() {
                                     await vendorsAPI.update(id, updatedVendor);
                                     setVendor(updatedVendor);
                                     toast.success('Currency updated successfully');
-                                  } catch (error) {
+                                  } catch (error: any) {
                                     toast.error('Failed to update vendor: ' + (error.message || 'Unknown error'));
                                   }
                                 }
@@ -3849,7 +3593,7 @@ export default function VendorDetail() {
                                     await vendorsAPI.update(id, updatedVendor);
                                     setVendor(updatedVendor);
                                     toast.success('Language updated successfully');
-                                  } catch (error) {
+                                  } catch (error: any) {
                                     toast.error('Failed to update vendor: ' + (error.message || 'Unknown error'));
                                   }
                                 }
@@ -3998,7 +3742,7 @@ export default function VendorDetail() {
                                             }
                                             setOpenContactDropdown(null);
                                             toast.success('Contact person deleted successfully');
-                                          } catch (error) {
+                                          } catch (error: any) {
                                             toast.error('Failed to delete contact person: ' + (error.message || 'Unknown error'));
                                           }
                                         }
@@ -4068,7 +3812,7 @@ export default function VendorDetail() {
                                 setVendor(mappedVendor);
                               }
                               toast.success('Vendor portal enabled successfully');
-                            } catch (error) {
+                            } catch (error: any) {
                               toast.error('Failed to enable portal: ' + (error.message || 'Unknown error'));
                             }
                           }
@@ -4360,7 +4104,7 @@ export default function VendorDetail() {
                 placeholder="Add a comment..."
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
-                rows="6"
+                rows={6}
               />
               <button
                 className="px-4 py-2 text-white rounded-md text-sm font-medium cursor-pointer transition-all hover:opacity-90"
@@ -4577,7 +4321,7 @@ export default function VendorDetail() {
                           ))
                         ) : (
                           <tr>
-                            <td colSpan="6" className="py-8 px-4 text-center text-sm text-gray-500">
+                            <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
                               There are no Bills - <button
                                 className="text-teal-700 no-underline font-medium hover:underline cursor-pointer"
                                 onClick={() => navigate("/purchases/bills/new", { state: { vendorId: vendor?.id, vendorName: vendor?.name } })}
@@ -4695,7 +4439,7 @@ export default function VendorDetail() {
                           ))
                         ) : (
                           <tr>
-                            <td colSpan="6" className="py-8 px-4 text-center text-sm text-gray-500">
+                            <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
                               There are no payments made - <button className="text-teal-700 no-underline font-medium hover:underline cursor-pointer" onClick={() => navigate("/purchases/payments-made/new", { state: { vendorId: vendor?.id, vendorName: vendor?.name } })}>Add New</button>
                             </td>
                           </tr>
@@ -4782,7 +4526,7 @@ export default function VendorDetail() {
                           ))
                         ) : (
                           <tr>
-                            <td colSpan="6" className="py-8 px-4 text-center text-sm text-gray-500">
+                            <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
                               There are no Expenses - <button className="text-teal-700 no-underline font-medium hover:underline cursor-pointer" onClick={() => navigate("/purchases/expenses/new", { state: { vendorId: vendor?.id, vendorName: vendor?.name } })}>Add New</button>
                             </td>
                           </tr>
@@ -4868,7 +4612,7 @@ export default function VendorDetail() {
                           ))
                         ) : (
                           <tr>
-                            <td colSpan="6" className="py-8 px-4 text-center text-sm text-gray-500">
+                            <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
                               There are no Purchase Orders - <button className="text-teal-700 no-underline font-medium hover:underline cursor-pointer" onClick={() => navigate("/purchases/purchase-orders/new", { state: { vendorId: vendor?.id, vendorName: vendor?.name } })}>Add New</button>
                             </td>
                           </tr>
@@ -4948,7 +4692,7 @@ export default function VendorDetail() {
                           ))
                         ) : (
                           <tr>
-                            <td colSpan="6" className="py-8 px-4 text-center text-sm text-gray-500">
+                            <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
                               There are no Vendor Credits - <button className="text-teal-700 no-underline font-medium hover:underline cursor-pointer" onClick={() => navigate("/purchases/vendor-credits/new", { state: { vendorId: vendor?.id, vendorName: vendor?.name } })}>Add New</button>
                             </td>
                           </tr>
@@ -5025,7 +4769,7 @@ export default function VendorDetail() {
                           ))
                         ) : (
                           <tr>
-                            <td colSpan="6" className="py-8 px-4 text-center text-sm text-gray-500">
+                            <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
                               There are no Recurring Bills - <button className="text-teal-700 no-underline font-medium hover:underline cursor-pointer" onClick={() => navigate("/purchases/recurring-bills/new", { state: { vendorId: vendor?.id, vendorName: vendor?.name } })}>Add New</button>
                             </td>
                           </tr>
@@ -5103,7 +4847,7 @@ export default function VendorDetail() {
                           ))
                         ) : (
                           <tr>
-                            <td colSpan="6" className="py-8 px-4 text-center text-sm text-gray-500">
+                            <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
                               There are no Recurring Expenses - <button className="text-teal-700 no-underline font-medium hover:underline cursor-pointer" onClick={() => navigate("/purchases/recurring-expenses/new", { state: { vendorId: vendor?.id, vendorName: vendor?.name } })}>Add New</button>
                             </td>
                           </tr>
@@ -5181,7 +4925,7 @@ export default function VendorDetail() {
                           ))
                         ) : (
                           <tr>
-                            <td colSpan="6" className="py-8 px-4 text-center text-sm text-gray-500">
+                            <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
                               There are no Journals - <button className="text-teal-700 no-underline font-medium hover:underline cursor-pointer" onClick={() => navigate("/accountant/journals/new", { state: { vendorId: vendor?.id, vendorName: vendor?.name } })}>Add New</button>
                             </td>
                           </tr>
@@ -5257,7 +5001,7 @@ export default function VendorDetail() {
                           ))
                         ) : (
                           <tr>
-                            <td colSpan="4" className="py-8 px-4 text-center text-sm text-gray-500">
+                            <td colSpan={4} className="py-8 px-4 text-center text-sm text-gray-500">
                               There are no Projects - <button className="text-teal-700 no-underline font-medium hover:underline cursor-pointer" onClick={() => navigate("/projects/new", { state: { vendorId: vendor?.id, vendorName: vendor?.name } })}>Add New</button>
                             </td>
                           </tr>
@@ -5335,7 +5079,7 @@ export default function VendorDetail() {
                           ))
                         ) : (
                           <tr>
-                            <td colSpan="5" className="py-8 px-4 text-center text-sm text-gray-500">
+                            <td colSpan={5} className="py-8 px-4 text-center text-sm text-gray-500">
                               There are no Purchase Receipts - <button className="text-teal-700 no-underline font-medium hover:underline cursor-pointer" onClick={() => navigate("/purchases/purchase-receipts/new", { state: { vendorId: vendor?.id, vendorName: vendor?.name } })}>Add New</button>
                             </td>
                           </tr>
@@ -6853,7 +6597,7 @@ export default function VendorDetail() {
                             department: ""
                           });
                           toast.success('Contact person updated successfully');
-                        } catch (error) {
+                        } catch (error: any) {
                           toast.error('Failed to update contact person: ' + (error.message || 'Unknown error'));
                         }
                       }
@@ -7288,7 +7032,7 @@ export default function VendorDetail() {
                           setIsEditOpeningBalanceModalOpen(false);
                           setOpeningBalance("0");
                           toast.success('Opening balance updated successfully');
-                        } catch (error) {
+                        } catch (error: any) {
                           toast.error('Failed to update opening balance: ' + (error.message || 'Unknown error'));
                         }
                       }

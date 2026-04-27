@@ -300,7 +300,7 @@ export default function Vendor() {
 
   useEffect(() => {
     setCustomViews(getVendorCustomViews());
-  }, [location.pathname]);
+  }, []);
 
   // Get display text for header based on selected view
   const getDisplayText = () => {
@@ -319,10 +319,9 @@ export default function Vendor() {
 
   const handleNewVendor = () => navigate("/purchases/vendors/new");
 
-  // Load vendors from API on component mount and when location changes
   useEffect(() => {
     loadVendors({ showLoader: vendors.length === 0 });
-  }, [location.pathname]);
+  }, []);
 
   // Fail-safe for isRefreshing
   useEffect(() => {
@@ -469,22 +468,6 @@ export default function Vendor() {
 
   const filteredVendors = getSortedVendors(getFilteredVendors());
 
-  useEffect(() => {
-    const handleVendorRefresh = () => {
-      loadVendors({ showLoader: false });
-    };
-
-    window.addEventListener("vendorSaved", handleVendorRefresh);
-    window.addEventListener("focus", handleVendorRefresh);
-    window.addEventListener("storage", handleVendorRefresh);
-
-    return () => {
-      window.removeEventListener("vendorSaved", handleVendorRefresh);
-      window.removeEventListener("focus", handleVendorRefresh);
-      window.removeEventListener("storage", handleVendorRefresh);
-    };
-  }, []);
-
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
@@ -586,7 +569,7 @@ export default function Vendor() {
       borderLeft: "none",
       borderRight: "none",
       boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
-      paddingLeft: "12px",
+      paddingLeft: 0,
     },
     header: {
       padding: "16px 24px",
@@ -749,10 +732,12 @@ export default function Vendor() {
       textAlign: "left",
     },
     selectionCell: {
-      width: "72px",
-      minWidth: "72px",
-      paddingLeft: "24px",
-      paddingRight: "12px",
+      width: "64px",
+      minWidth: "64px",
+      maxWidth: "64px",
+      padding: "12px 14px",
+      textAlign: "left",
+      verticalAlign: "middle",
     },
     thContent: {
       display: "flex",
@@ -762,12 +747,13 @@ export default function Vendor() {
     },
     selectionHeaderContent: {
       position: "relative",
+      width: "100%",
       minHeight: "24px",
       justifyContent: "flex-start",
     },
     selectionHeaderIconButton: {
       position: "absolute",
-      left: "-18px",
+      left: "-10px",
       top: "50%",
       transform: "translateY(-50%)",
       border: "none",
@@ -780,7 +766,7 @@ export default function Vendor() {
       cursor: "pointer",
     },
     selectionHeaderCheckbox: {
-      marginLeft: "0",
+      marginLeft: "6px",
     },
     thText: {
       fontSize: "12px",
@@ -809,6 +795,8 @@ export default function Vendor() {
     selectionCellContent: {
       display: "flex",
       alignItems: "center",
+      justifyContent: "flex-start",
+      width: "100%",
       minHeight: "24px",
     },
     tdEmpty: {
@@ -823,6 +811,28 @@ export default function Vendor() {
       cursor: "pointer",
       display: "block",
       margin: 0,
+    },
+    checkboxColumn: {
+      width: "64px",
+      minWidth: "64px",
+      maxWidth: "64px",
+      padding: "12px 14px",
+      textAlign: "left",
+      verticalAlign: "middle",
+    },
+    checkboxHeaderContent: {
+      position: "relative",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "flex-start",
+      width: "100%",
+    },
+    checkboxCellContent: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "flex-start",
+      width: "100%",
+      minHeight: "24px",
     },
     vendorLink: {
       color: purchasesTheme.secondary,

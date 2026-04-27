@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
+import { toast } from "react-toastify";
 import { vendorsAPI } from "../../services/api";
 import {
   ChevronDown,
@@ -109,6 +110,21 @@ export default function Vendor() {
   };
 
   const handleNewVendor = () => navigate("/purchases/vendors/new");
+
+  const navigateToVendorDetail = (vendor: any) => {
+    const vendorId = vendor.id || (vendor._id ? String(vendor._id) : null);
+
+    if (vendorId) {
+      console.log('Navigating to vendor:', vendor.name, 'with ID:', vendorId);
+      navigate(`/purchases/vendors/${String(vendorId)}`, {
+        state: { vendor }
+      });
+      return;
+    }
+
+    console.error('Vendor has no ID:', vendor);
+    alert(`Error: Vendor "${vendor.name || 'Unknown'}" has no ID. Please refresh the page.`);
+  };
 
   // Load vendors from API
   const loadVendors = async () => {
@@ -491,6 +507,13 @@ export default function Vendor() {
       alignItems: "center",
       gap: "8px",
     },
+    firstColumnHeader: {
+      display: "flex",
+      alignItems: "center",
+      gap: "14px",
+      paddingLeft: "16px",
+      paddingRight: "14px",
+    },
     thText: {
       fontSize: "12px",
       fontWeight: "600",
@@ -514,6 +537,16 @@ export default function Vendor() {
     td: {
       padding: "12px 16px",
       fontSize: "14px",
+    },
+    firstColumnCell: {
+      padding: "12px 22px 12px 32px",
+      width: "88px",
+    },
+    rowCheckboxWrap: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "flex-start",
+      marginLeft: "34px",
     },
     tdEmpty: {
       padding: "40px 16px",
@@ -795,7 +828,7 @@ export default function Vendor() {
 
   const handleDeleteSelected = () => {
     if (selectedVendors.length === 0) {
-      alert("Please select at least one vendor to delete.");
+      toast.error("Please select at least one vendor to delete.");
       return;
     }
     setShowDeleteModal(true);
@@ -1702,7 +1735,7 @@ export default function Vendor() {
           <thead style={styles.thead}>
             <tr>
               <th style={styles.th}>
-                <div style={styles.thContent}>
+                <div style={styles.firstColumnHeader}>
                   <button style={styles.iconButton}>
                     <Filter size={16} />
                   </button>
@@ -1775,17 +1808,7 @@ export default function Vendor() {
                   onClick={(e) => {
                     // Don't navigate if clicking on checkbox or its container
                     if (!e.target.closest('input[type="checkbox"]') && !e.target.closest('td:first-child')) {
-                      // Always use the mapped id field (which is the MongoDB _id as string)
-                      const vendorId = vendor.id || (vendor._id ? String(vendor._id) : null);
-
-                      // Navigate to vendor - backend can handle all ID formats
-                      if (vendorId) {
-                        console.log('Navigating to vendor:', vendor.name, 'with ID:', vendorId);
-                        navigate(`/purchases/vendors/${String(vendorId)}`);
-                      } else {
-                        console.error('Vendor has no ID:', vendor);
-                        alert(`Error: Vendor "${vendor.name || 'Unknown'}" has no ID. Please refresh the page.`);
-                      }
+                      navigateToVendorDetail(vendor);
                     }
                   }}
                   onMouseEnter={(e) => {
@@ -1799,16 +1822,18 @@ export default function Vendor() {
                   }}
                 >
                   <td
-                    style={styles.td}
+                    style={{ ...styles.td, ...styles.firstColumnCell }}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <input
-                      type="checkbox"
-                      checked={selectedVendors.includes(vendor.id)}
-                      onChange={() => handleCheckboxChange(vendor.id)}
-                      style={styles.checkbox}
-                      onClick={(e) => e.stopPropagation()}
-                    />
+                    <div style={styles.rowCheckboxWrap}>
+                      <input
+                        type="checkbox"
+                        checked={selectedVendors.includes(vendor.id)}
+                        onChange={() => handleCheckboxChange(vendor.id)}
+                        style={styles.checkbox}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
                   </td>
 
                   <td style={styles.td}>
@@ -1816,17 +1841,7 @@ export default function Vendor() {
                       style={styles.vendorLink}
                       onClick={(e) => {
                         e.stopPropagation();
-                        // Always use the mapped id field (which is the MongoDB _id as string)
-                        const vendorId = vendor.id || (vendor._id ? String(vendor._id) : null);
-
-                        // Navigate to vendor - backend can handle all ID formats
-                        if (vendorId) {
-                          console.log('Navigating to vendor:', vendor.name, 'with ID:', vendorId);
-                          navigate(`/purchases/vendors/${String(vendorId)}`);
-                        } else {
-                          console.error('Vendor has invalid ID format:', vendorId, vendor);
-                          alert(`Error: Vendor "${vendor.name || 'Unknown'}" has an invalid ID format. Please refresh the page.`);
-                        }
+                        navigateToVendorDetail(vendor);
                       }}
                     >
                       {vendor.name}
@@ -2183,17 +2198,26 @@ export default function Vendor() {
       <DeleteConfirmationModal
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
-        onConfirm={() => {
-          const count = selectedVendors.length;
-          const updatedVendors = vendors.filter((v: any) => !selectedVendors.includes(v.id));
-          setVendors(updatedVendors);
-          localStorage.setItem("vendors", JSON.stringify(updatedVendors));
+        onConfirm={async () => {
+          const idsToDelete = selectedVendors
+            .map((vendorId: any) => String(vendorId || "").trim())
+            .filter(Boolean);
 
-          // Show success notification
-          setNotification(`The selected vendor${count > 1 ? "s have" : " has"} been deleted.` as any);
-          setTimeout(() => setNotification(null), 3000);
+          if (idsToDelete.length === 0) {
+            setShowDeleteModal(false);
+            return;
+          }
 
-          setSelectedVendors([]);
+          try {
+            await vendorsAPI.bulkDelete(idsToDelete);
+            await loadVendors();
+            setSelectedVendors([]);
+            setShowDeleteModal(false);
+            toast.success(`Vendor${idsToDelete.length > 1 ? "s" : ""} deleted successfully.`);
+            window.dispatchEvent(new Event("vendorSaved"));
+          } catch (error: any) {
+            toast.error(error?.message || "Failed to delete selected vendors.");
+          }
         }}
         entityName="vendor(s)"
         count={selectedVendors.length}

@@ -65,6 +65,75 @@ const toObjectId = (value: string): mongoose.Types.ObjectId | null => {
   return new mongoose.Types.ObjectId(normalized);
 };
 
+const normalizeDuplicateText = (value: unknown): string => {
+  return String(value || "").trim().toLowerCase();
+};
+
+const normalizePhoneForDuplicateCheck = (value: unknown): string => {
+  return String(value || "").replace(/[^\d+]/g, "").trim().toLowerCase();
+};
+
+const buildVendorDuplicateConditions = (vendorData: any): any[] => {
+  const conditions: any[] = [];
+  const displayName = normalizeDuplicateText(vendorData.displayName || vendorData.name);
+  const companyName = normalizeDuplicateText(vendorData.companyName);
+  const email = normalizeDuplicateText(vendorData.email);
+  const workPhone = normalizePhoneForDuplicateCheck(vendorData.workPhone);
+  const mobile = normalizePhoneForDuplicateCheck(vendorData.mobile);
+
+  if (email) {
+    conditions.push({ email: { $regex: `^${escapeRegex(email)}$`, $options: "i" } });
+  }
+
+  if (displayName) {
+    conditions.push({ displayName: { $regex: `^${escapeRegex(displayName)}$`, $options: "i" } });
+    conditions.push({ name: { $regex: `^${escapeRegex(displayName)}$`, $options: "i" } });
+  }
+
+  if (companyName) {
+    conditions.push({ companyName: { $regex: `^${escapeRegex(companyName)}$`, $options: "i" } });
+  }
+
+  if (workPhone) {
+    conditions.push({ workPhone: { $regex: escapeRegex(workPhone).replace(/\+/g, "\\+").replace(/\d+/g, "\\d[\\d\\s-]*"), $options: "i" } });
+  }
+
+  if (mobile) {
+    conditions.push({ mobile: { $regex: escapeRegex(mobile).replace(/\+/g, "\\+").replace(/\d+/g, "\\d[\\d\\s-]*"), $options: "i" } });
+  }
+
+  return conditions;
+};
+
+const findDuplicateVendor = async (
+  organizationId: string,
+  vendorData: any,
+  excludeVendorId?: string
+): Promise<any | null> => {
+  const duplicateConditions = buildVendorDuplicateConditions(vendorData);
+  if (!duplicateConditions.length) return null;
+
+  const organizationFilter = buildOrganizationFilter(String(organizationId));
+  const query: any = {
+    ...organizationFilter,
+    $or: duplicateConditions,
+  };
+
+  if (excludeVendorId) {
+    const normalizedId = String(excludeVendorId).trim();
+    query.$and = [
+      {
+        $nor: [
+          ...(mongoose.Types.ObjectId.isValid(normalizedId) ? [{ _id: new mongoose.Types.ObjectId(normalizedId) }] : []),
+          { id: normalizedId },
+        ],
+      },
+    ];
+  }
+
+  return Vendor.findOne(query).lean();
+};
+
 const BILL_LIST_SELECT = [
   "_id",
   "billNumber",
@@ -390,6 +459,19 @@ export const createVendor = async (req: AuthRequest, res: Response): Promise<voi
         }));
     }
 
+    const duplicateVendor = await findDuplicateVendor(String(req.user.organizationId), vendorData);
+    if (duplicateVendor) {
+      res.status(409).json({
+        success: false,
+        message: "A vendor with the same name, email, or phone already exists",
+        data: {
+          duplicateVendorId: String(duplicateVendor._id || duplicateVendor.id || ""),
+          duplicateVendorName: duplicateVendor.displayName || duplicateVendor.name || duplicateVendor.companyName || "Vendor",
+        },
+      });
+      return;
+    }
+
     const vendor = await Vendor.create(vendorData);
     res.status(201).json({ success: true, message: 'Vendor created successfully', data: vendor });
   } catch (error: any) {
@@ -530,6 +612,19 @@ export const updateVendor = async (req: AuthRequest, res: Response): Promise<voi
           department: String(person.department || "").trim(),
           skypeName: String(person.skypeName || "").trim(),
         }));
+    }
+
+    const duplicateVendor = await findDuplicateVendor(String(req.user.organizationId), updateData, String(existingVendor._id || existingVendor.id || ""));
+    if (duplicateVendor) {
+      res.status(409).json({
+        success: false,
+        message: "A vendor with the same name, email, or phone already exists",
+        data: {
+          duplicateVendorId: String(duplicateVendor._id || duplicateVendor.id || ""),
+          duplicateVendorName: duplicateVendor.displayName || duplicateVendor.name || duplicateVendor.companyName || "Vendor",
+        },
+      });
+      return;
     }
 
     let vendor = null;

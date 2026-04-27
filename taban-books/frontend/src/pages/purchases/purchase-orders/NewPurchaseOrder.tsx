@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { startTransition, useState, useRef, useEffect } from "react";
 import { useNavigate, useLocation, useParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import {
@@ -2103,15 +2103,28 @@ export default function NewPurchaseOrder() {
       }
 
       if (response && (response.code === 0 || response.success)) {
+        const savedPurchaseOrder = {
+          ...(response.data || {}),
+          id: response?.data?._id || response?.data?.id,
+        };
+
         // Trigger custom event for same-tab updates
         window.dispatchEvent(new Event("purchaseOrdersUpdated"));
 
         // If Save and Send was clicked, navigate to email page
-        if (status === "issued" && response.data?._id) {
-          navigate(`/purchases/purchase-orders/${response.data._id}/email`);
+        if (status === "issued" && savedPurchaseOrder?._id) {
+          startTransition(() => {
+            navigate(`/purchases/purchase-orders/${savedPurchaseOrder._id}/email`, {
+              state: { purchaseOrder: savedPurchaseOrder },
+            });
+          });
         } else {
-          // Otherwise go back to the list
-          navigate("/purchases/purchase-orders");
+          // Otherwise go back to the list with the freshly saved order preloaded.
+          startTransition(() => {
+            navigate("/purchases/purchase-orders", {
+              state: { purchaseOrders: savedPurchaseOrder?.id ? [savedPurchaseOrder] : [] },
+            });
+          });
         }
       } else {
         alert(response?.message || "Failed to create purchase order");

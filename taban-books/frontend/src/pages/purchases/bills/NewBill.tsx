@@ -2211,6 +2211,7 @@ export default function NewBill() {
 
       if (response && (response.code === 0 || response.success)) {
         window.dispatchEvent(new Event("billsUpdated"));
+        window.dispatchEvent(new Event("vendorSaved"));
         if (isEdit && editBillId) {
           navigate(`/purchases/bills/${editBillId}`);
         } else {

@@ -741,7 +741,56 @@ export default function PurchaseOrders() {
       borderRadius: "4px",
       animation: "pulse 1.5s ease-in-out infinite",
     },
+    emptyState: {
+      flex: 1,
+      minHeight: "calc(100vh - 150px)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "40px 24px 80px",
+      borderTop: "1px solid #e5e7eb",
+      backgroundColor: "#ffffff",
+    },
+    emptyStateContent: {
+      maxWidth: "720px",
+      width: "100%",
+      textAlign: "center",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      gap: "14px",
+    },
+    emptyStateTitle: {
+      fontSize: "24px",
+      fontWeight: "500",
+      color: "#111827",
+      margin: 0,
+    },
+    emptyStateText: {
+      fontSize: "15px",
+      color: "#6b7280",
+      margin: 0,
+    },
+    emptyStateButton: {
+      marginTop: "10px",
+      padding: "12px 24px",
+      minWidth: "255px",
+      borderRadius: "6px",
+      border: "none",
+      backgroundColor: "#156372",
+      color: "#ffffff",
+      fontSize: "14px",
+      fontWeight: "600",
+      cursor: "pointer",
+      textTransform: "uppercase",
+    },
   };
+
+  const isDefaultEmptyState =
+    !isRefreshing &&
+    purchaseOrders.length === 0 &&
+    filteredPurchaseOrders.length === 0 &&
+    selectedOrders.length === 0;
 
   return (
     <div style={styles.container}>
@@ -795,18 +844,36 @@ export default function PurchaseOrders() {
           />
         )}
 
-        <PurchaseOrdersTable
-          displayCurrencySymbol={displayCurrencySymbol}
-          isRefreshing={isRefreshing}
-          onOpenCustomizeColumns={() => setShowCustomizeColumnsModal(true)}
-          onOpenSearch={() => setShowSearchModal(true)}
-          orders={sortedPurchaseOrders}
-          selectedOrders={selectedOrders}
-          setSelectedOrders={setSelectedOrders}
-          styles={styles}
-          visibleOrderIds={filteredPurchaseOrders.map((purchaseOrder) => purchaseOrder.id)}
-          visibleColumns={visibleColumns}
-        />
+        {isDefaultEmptyState ? (
+          <div style={styles.emptyState}>
+            <div style={styles.emptyStateContent}>
+              <h2 style={styles.emptyStateTitle}>Start Managing Your Purchase Activities!</h2>
+              <p style={styles.emptyStateText}>
+                Create, customize, and send professional Purchase Orders to your vendors.
+              </p>
+              <button
+                type="button"
+                style={styles.emptyStateButton}
+                onClick={() => navigate("/purchases/purchase-orders/new")}
+              >
+                Create New Purchase Order
+              </button>
+            </div>
+          </div>
+        ) : (
+          <PurchaseOrdersTable
+            displayCurrencySymbol={displayCurrencySymbol}
+            isRefreshing={isRefreshing}
+            onOpenCustomizeColumns={() => setShowCustomizeColumnsModal(true)}
+            onOpenSearch={() => setShowSearchModal(true)}
+            orders={sortedPurchaseOrders}
+            selectedOrders={selectedOrders}
+            setSelectedOrders={setSelectedOrders}
+            styles={styles}
+            visibleOrderIds={filteredPurchaseOrders.map((purchaseOrder) => purchaseOrder.id)}
+            visibleColumns={visibleColumns}
+          />
+        )}
 
         <PurchaseOrdersCustomizeColumnsModal
           open={showCustomizeColumnsModal}
