@@ -238,6 +238,12 @@ export default function VendorDetail() {
   // Note: We allow both MongoDB ObjectIds and legacy timestamp IDs
   // The backend will handle both formats
   const [vendors, setVendors] = useState<any[]>([]);
+  function formatCurrency(amount: any, currency?: string) {
+    const resolvedCode = String(currency || baseCurrencyCode || "USD").split(" - ")[0].trim();
+    return `${resolvedCode}${parseFloat(amount || 0).toFixed(2)}`;
+  }
+  const getVendorLookupId = (vendorRecord?: any) =>
+    String(vendorRecord?._id || vendorRecord?.id || id || "").trim();
   const [activeTab, setActiveTab] = useState("overview");
   const [comments, setComments] = useState<any[]>([]);
   const [commentText, setCommentText] = useState("");
@@ -245,6 +251,7 @@ export default function VendorDetail() {
   const [isTransactionNavDropdownOpen, setIsTransactionNavDropdownOpen] = useState(false);
   const [bills, setBills] = useState<any[]>([]);
   const [isTransactionsLoading, setIsTransactionsLoading] = useState(false);
+  const [hasTransactionsHydrated, setHasTransactionsHydrated] = useState(false);
   const [isInvoiceViewDropdownOpen, setIsInvoiceViewDropdownOpen] = useState(false);
   const invoiceViewDropdownRef = useRef<HTMLDivElement>(null);
   const [expandedSections, setExpandedSections] = useState({
@@ -430,6 +437,7 @@ export default function VendorDetail() {
   const attachmentsDropdownRef = useRef<HTMLDivElement>(null);
   const [attachments, setAttachments] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const vendorTransactionsStorageKey = "vendor-detail-transactions-cache";
   const vendorTransactionsCacheRef = useRef<Record<string, {
     bills: any[];
     paymentsMade: any[];
@@ -442,6 +450,45 @@ export default function VendorDetail() {
     projects: any[];
     purchaseReceipts: any[];
   }>>({});
+
+  const readVendorTransactionsCache = () => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = window.sessionStorage.getItem(vendorTransactionsStorageKey);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const writeVendorTransactionsCache = (nextCache: Record<string, any>) => {
+    if (typeof window === "undefined") return;
+    try {
+      window.sessionStorage.setItem(vendorTransactionsStorageKey, JSON.stringify(nextCache));
+    } catch {
+    }
+  };
+
+  const applyVendorTransactions = (transactions: any) => {
+    setBills(transactions?.bills || []);
+    setPaymentsMade(transactions?.paymentsMade || []);
+    setVendorCredits(transactions?.vendorCredits || []);
+    setExpenses(transactions?.expenses || []);
+    setPurchaseOrders(transactions?.purchaseOrders || []);
+    setRecurringBills(transactions?.recurringBills || []);
+    setRecurringExpenses(transactions?.recurringExpenses || []);
+    setJournals(transactions?.journals || []);
+    setProjects(transactions?.projects || []);
+    setPurchaseReceipts(transactions?.purchaseReceipts || []);
+  };
+
+  const renderTransactionsLoadingRow = (colSpan: number, label: string) => (
+    <tr>
+      <td colSpan={colSpan} className="py-8 px-4 text-center text-sm text-blue-700 bg-blue-50/40">
+        Loading {label}...
+      </td>
+    </tr>
+  );
 
   // Upload dropdown state
   const [isUploadDropdownOpen, setIsUploadDropdownOpen] = useState(false);
@@ -971,17 +1018,9 @@ export default function VendorDetail() {
   // Load all transactions for this vendor from API
   useEffect(() => {
     if (!vendor) {
-      setBills([]);
-      setPaymentsMade([]);
-      setVendorCredits([]);
-      setExpenses([]);
-      setPurchaseOrders([]);
-      setRecurringBills([]);
-      setRecurringExpenses([]);
-      setJournals([]);
-      setProjects([]);
-      setPurchaseReceipts([]);
+      applyVendorTransactions({});
       setIsTransactionsLoading(false);
+      setHasTransactionsHydrated(false);
       return;
     }
 
@@ -990,25 +1029,23 @@ export default function VendorDetail() {
     const displayName = vendor?.displayName || "";
     const companyName = vendor?.companyName || "";
     const cacheKey = String(vendorId);
+    const persistedCache = readVendorTransactionsCache();
+    if (!vendorTransactionsCacheRef.current[cacheKey] && persistedCache?.[cacheKey]) {
+      vendorTransactionsCacheRef.current[cacheKey] = persistedCache[cacheKey];
+    }
+
     const cachedTransactions = vendorTransactionsCacheRef.current[cacheKey];
 
     if (cachedTransactions) {
       setIsTransactionsLoading(false);
-      setBills(cachedTransactions.bills);
-      setPaymentsMade(cachedTransactions.paymentsMade);
-      setVendorCredits(cachedTransactions.vendorCredits);
-      setExpenses(cachedTransactions.expenses);
-      setPurchaseOrders(cachedTransactions.purchaseOrders);
-      setRecurringBills(cachedTransactions.recurringBills);
-      setRecurringExpenses(cachedTransactions.recurringExpenses);
-      setJournals(cachedTransactions.journals);
-      setProjects(cachedTransactions.projects);
-      setPurchaseReceipts(cachedTransactions.purchaseReceipts);
+      applyVendorTransactions(cachedTransactions);
+      setHasTransactionsHydrated(true);
       return;
     }
 
     const loadVendorTransactions = async () => {
       setIsTransactionsLoading(true);
+      setHasTransactionsHydrated(false);
       try {
         const nextTransactions = {
           bills: [] as any[],
@@ -1154,9 +1191,14 @@ export default function VendorDetail() {
         }
 
         vendorTransactionsCacheRef.current[cacheKey] = nextTransactions;
+        writeVendorTransactionsCache({
+          ...readVendorTransactionsCache(),
+          [cacheKey]: nextTransactions,
+        });
       } catch (error: any) {
       } finally {
         setIsTransactionsLoading(false);
+        setHasTransactionsHydrated(true);
       }
     };
 
@@ -1170,6 +1212,11 @@ export default function VendorDetail() {
       const cacheKey = String(vendor?._id || vendor?.id || "").trim();
       if (cacheKey) {
         delete vendorTransactionsCacheRef.current[cacheKey];
+        const persistedCache = readVendorTransactionsCache();
+        if (persistedCache?.[cacheKey]) {
+          delete persistedCache[cacheKey];
+          writeVendorTransactionsCache(persistedCache);
+        }
       }
 
       setVendor((prev) => (prev ? { ...prev } : prev));
@@ -1294,7 +1341,7 @@ export default function VendorDetail() {
 
       // Let the backend handle all ID formats (ObjectId, timestamp IDs, etc.)
       // The backend has robust lookup logic to find vendors regardless of ID format
-      const vendorId = String(id).trim();
+      const vendorId = getVendorLookupId(preloadedVendor);
 
       try {
         const response = await vendorsAPI.getById(vendorId);
@@ -1348,7 +1395,8 @@ export default function VendorDetail() {
 
     // Show preloaded list-row data immediately when available, then refresh in background.
     const hasMatchingPreloadedVendor =
-      preloadedVendor && String(preloadedVendor.id || preloadedVendor._id || "") === String(id || "");
+      preloadedVendor &&
+      [String(preloadedVendor._id || "").trim(), String(preloadedVendor.id || "").trim()].includes(String(id || "").trim());
 
     if (hasMatchingPreloadedVendor) {
       const mappedPreloadedVendor = mapVendorForDetail(preloadedVendor, id);
@@ -1364,19 +1412,11 @@ export default function VendorDetail() {
       setVendor(null);
       setComments([]);
       setAttachments([]);
+      applyVendorTransactions({});
+      setStatementTransactions([]);
+      setHasTransactionsHydrated(false);
     }
     setMails([]);
-    setBills([]);
-    setPaymentsMade([]);
-    setVendorCredits([]);
-    setExpenses([]);
-    setPurchaseOrders([]);
-    setRecurringBills([]);
-    setRecurringExpenses([]);
-    setJournals([]);
-    setProjects([]);
-    setPurchaseReceipts([]);
-    setStatementTransactions([]);
     setSelectedTransactionType(null);
     setBillCurrentPage(1);
     setBillSearchTerm("");
@@ -1735,6 +1775,13 @@ export default function VendorDetail() {
     } else {
       setSelectedVendors(vendors.map(v => v.id));
     }
+  };
+
+  const toggleTransactionSection = (section: keyof typeof expandedTransactions) => {
+    setExpandedTransactions((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
   };
 
   const handlePrintvendorStatements = () => {
@@ -2464,11 +2511,6 @@ export default function VendorDetail() {
   const purchasesTabLabel = "Transactions";
   const goToPurchasesText = "Go to transactions";
 
-  const formatCurrency = (amount, currency?: string) => {
-    const resolvedCode = String(currency || baseCurrencyCode || "USD").split(" - ")[0].trim();
-    return `${resolvedCode}${parseFloat(amount || 0).toFixed(2)}`;
-  };
-
   const handleAddComment = async () => {
     const trimmedComment = commentText.trim();
     if (!trimmedComment) return;
@@ -2925,9 +2967,9 @@ export default function VendorDetail() {
           {sidebarVendorRows.map((vend) => (
             <div
               key={vend.id}
-              className={`flex items-center gap-3 py-3 pr-3 pl-5 cursor-pointer border-b border-gray-100 hover:bg-gray-50 ${vend.id === id ? "border-l-4" : ""}`}
-              style={vend.id === id ? { background: '#f0fdfa', borderLeftColor: purchasesTheme.secondary } : selectedVendors.includes(vend.id) ? { background: '#ccfbf1' } : {}}
-              onClick={() => navigate(`/purchases/vendors/${vend.id}`, {
+              className={`flex items-center gap-3 py-3 pr-3 pl-5 cursor-pointer border-b border-gray-100 hover:bg-gray-50 ${getVendorLookupId(vend) === String(id || "").trim() ? "border-l-4" : ""}`}
+              style={getVendorLookupId(vend) === String(id || "").trim() ? { background: '#f0fdfa', borderLeftColor: purchasesTheme.secondary } : selectedVendors.includes(vend.id) ? { background: '#ccfbf1' } : {}}
+              onClick={() => navigate(`/purchases/vendors/${getVendorLookupId(vend)}`, {
                 state: { vendor: vend }
               })}
             >
@@ -4319,6 +4361,8 @@ export default function VendorDetail() {
                               </td>
                             </tr>
                           ))
+                        ) : !hasTransactionsHydrated ? (
+                          renderTransactionsLoadingRow(6, "bills")
                         ) : (
                           <tr>
                             <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
@@ -4437,6 +4481,8 @@ export default function VendorDetail() {
                               <td className="py-3 px-4 text-gray-900">{formatCurrency(payment.amountPaid || payment.amount || 0, payment.currency || vendor?.currency || baseCurrencyCode)}</td>
                             </tr>
                           ))
+                        ) : !hasTransactionsHydrated ? (
+                          renderTransactionsLoadingRow(6, "bill payments")
                         ) : (
                           <tr>
                             <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
@@ -4524,6 +4570,8 @@ export default function VendorDetail() {
                               </td>
                             </tr>
                           ))
+                        ) : !hasTransactionsHydrated ? (
+                          renderTransactionsLoadingRow(6, "expenses")
                         ) : (
                           <tr>
                             <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
@@ -4610,6 +4658,8 @@ export default function VendorDetail() {
                               </td>
                             </tr>
                           ))
+                        ) : !hasTransactionsHydrated ? (
+                          renderTransactionsLoadingRow(6, "purchase orders")
                         ) : (
                           <tr>
                             <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
@@ -4690,6 +4740,8 @@ export default function VendorDetail() {
                               </td>
                             </tr>
                           ))
+                        ) : !hasTransactionsHydrated ? (
+                          renderTransactionsLoadingRow(6, "vendor credits")
                         ) : (
                           <tr>
                             <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
@@ -4767,6 +4819,8 @@ export default function VendorDetail() {
                               </td>
                             </tr>
                           ))
+                        ) : !hasTransactionsHydrated ? (
+                          renderTransactionsLoadingRow(6, "recurring bills")
                         ) : (
                           <tr>
                             <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
@@ -4845,6 +4899,8 @@ export default function VendorDetail() {
                               </td>
                             </tr>
                           ))
+                        ) : !hasTransactionsHydrated ? (
+                          renderTransactionsLoadingRow(6, "recurring expenses")
                         ) : (
                           <tr>
                             <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
@@ -4923,6 +4979,8 @@ export default function VendorDetail() {
                               </td>
                             </tr>
                           ))
+                        ) : !hasTransactionsHydrated ? (
+                          renderTransactionsLoadingRow(6, "journals")
                         ) : (
                           <tr>
                             <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
@@ -4999,6 +5057,8 @@ export default function VendorDetail() {
                               <td className="py-3 px-4 text-gray-900">{formatCurrency(project.actualCost || 0, vendor?.currency)}</td>
                             </tr>
                           ))
+                        ) : !hasTransactionsHydrated ? (
+                          renderTransactionsLoadingRow(4, "projects")
                         ) : (
                           <tr>
                             <td colSpan={4} className="py-8 px-4 text-center text-sm text-gray-500">
@@ -5077,6 +5137,8 @@ export default function VendorDetail() {
                               </td>
                             </tr>
                           ))
+                        ) : !hasTransactionsHydrated ? (
+                          renderTransactionsLoadingRow(5, "purchase receipts")
                         ) : (
                           <tr>
                             <td colSpan={5} className="py-8 px-4 text-center text-sm text-gray-500">

@@ -1115,6 +1115,31 @@ export default function Bills() {
     };
   })();
 
+  const getBillsListStatusDisplay = (bill: any) => {
+    const baseStatus = getBillStatusDisplay(bill);
+    const balance = Number(bill.balance ?? bill.balanceDue ?? bill.total ?? bill.amount ?? 0);
+    const overdueDays = calculateOverdueDays(bill.dueDate);
+
+    if (balance > 0 && overdueDays > 0) {
+      return {
+        text: `OVERDUE BY ${overdueDays} DAY${overdueDays === 1 ? "" : "S"}`,
+        className: "text-[#ff5a3c]",
+      };
+    }
+
+    if (baseStatus.text === "PAID") {
+      return {
+        text: "PAID",
+        className: "text-[#18a957]",
+      };
+    }
+
+    return {
+      text: baseStatus.text,
+      className: "text-[#2962ff]",
+    };
+  };
+
   // Calendar helper functions
   const getDaysInMonth = (month, year) => {
     return new Date(year, month + 1, 0).getDate();
@@ -1255,7 +1280,7 @@ export default function Bills() {
               {/* All Bills dropdown with underline */}
               <div className="relative inline-block" ref={billsViewDropdownRef}>
                 <button
-                  className="text-sm font-medium bg-transparent border-none cursor-pointer flex items-center gap-1 pb-1"
+                  className="text-[15px] font-medium bg-transparent border-none cursor-pointer flex items-center gap-1 pb-1"
                   aria-label="Bill view filter"
                   type="button"
                   onClick={() => setShowBillsViewDropdown((prev) => !prev)}
@@ -1299,7 +1324,7 @@ export default function Bills() {
               <div style={{ position: "relative" }}>
                 <button
                   className={`p-2 rounded-md cursor-pointer flex items-center justify-center transition-colors ${viewMode === "list"
-                    ? "bg-gray-100 text-gray-900 border-2 border-[#156372]"
+                    ? "bg-[#f3f4f6] text-gray-900 border border-[#d1d5db]"
                     : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-50"
                     }`}
                   onClick={() => setViewMode("list")}
@@ -1308,7 +1333,7 @@ export default function Bills() {
                   style={{
                     padding: "8px",
                     borderRadius: "6px",
-                    border: viewMode === "list" ? "2px solid #156372" : "1px solid #d1d5db",
+                    border: "1px solid #d1d5db",
                     backgroundColor: viewMode === "list" ? "#f3f4f6" : "#ffffff",
                     cursor: "pointer",
                     display: "flex",
@@ -1356,7 +1381,7 @@ export default function Bills() {
               <div style={{ position: "relative" }}>
                 <button
                   className={`p-2 rounded-md cursor-pointer flex items-center justify-center transition-colors ${viewMode === "grid"
-                    ? "bg-gray-100 text-gray-900 border-2 border-[#156372]"
+                    ? "bg-[#f3f4f6] text-gray-900 border border-[#d1d5db]"
                     : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-50"
                     }`}
                   onClick={() => setViewMode("grid")}
@@ -1365,7 +1390,7 @@ export default function Bills() {
                   style={{
                     padding: "8px",
                     borderRadius: "6px",
-                    border: viewMode === "grid" ? "2px solid #156372" : "1px solid #d1d5db",
+                    border: "1px solid #d1d5db",
                     backgroundColor: viewMode === "grid" ? "#f3f4f6" : "#ffffff",
                     cursor: "pointer",
                     display: "flex",
@@ -1412,7 +1437,7 @@ export default function Bills() {
               </div>
               <button
                 className="px-4 py-2 text-sm font-medium text-white border-none rounded-md cursor-pointer flex items-center gap-2 transition-all hover:opacity-90"
-                style={{ background: purchasesTheme.primary }}
+                style={{ background: "#22c55e" }}
                 onClick={() => navigate("/purchases/bills/new")}
               >
                 <Plus size={16} />
@@ -2153,10 +2178,10 @@ export default function Bills() {
           )}
 
           <div className="px-4 pb-4">
-            <div className="rounded-[16px] border border-[#edf0f5] bg-[#fbfbfe] px-4 py-4 shadow-[0_1px_0_rgba(15,23,42,0.02)]">
+            <div className="rounded-[16px] border border-[#e8edf5] bg-white px-4 py-4 shadow-[0_1px_0_rgba(15,23,42,0.02)]">
               <div className="grid gap-4 md:grid-cols-4 md:divide-x md:divide-[#e5e7eb]">
                 <div className="flex items-center gap-3 md:pr-4">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f3c77d] text-[#8a5d12]">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f7c978] text-[#9a6516]">
                     <ArrowUp size={18} />
                   </span>
                   <div>
@@ -2187,12 +2212,15 @@ export default function Bills() {
               </div>
             </div>
           </div>
-          <table className="w-full border-collapse">
+          <table
+            className="w-full border-collapse"
+            style={{ marginLeft: "-16px", width: "calc(100% + 16px)" }}
+          >
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th
                   style={{
-                    padding: "12px 12px",
+                    padding: "12px 10px 12px 12px",
                     textAlign: "left",
                     width: "72px",
                     borderBottom: "1px solid #e5e7eb",
@@ -2217,14 +2245,15 @@ export default function Bills() {
                   </div>
                 </th>
                 {visibleBillColumns.includes("Date") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>DATE</th>}
+                {visibleBillColumns.includes("Location") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>LOCATION</th>}
                 {visibleBillColumns.includes("Bill#") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>BILL#</th>}
                 {visibleBillColumns.includes("Reference Number") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>REFERENCE NUMBER</th>}
                 {visibleBillColumns.includes("Vendor Name") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>VENDOR NAME</th>}
                 {visibleBillColumns.includes("Customer Name") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>CUSTOMER NAME</th>}
                 {visibleBillColumns.includes("Status") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>STATUS</th>}
                 {visibleBillColumns.includes("Due Date") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>DUE DATE</th>}
-                {visibleBillColumns.includes("Amount") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>AMOUNT</th>}
-                {visibleBillColumns.includes("Balance Due") && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>BALANCE DUE</th>}
+                {visibleBillColumns.includes("Amount") && <th style={{ padding: "12px 16px", textAlign: "right", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>AMOUNT</th>}
+                {visibleBillColumns.includes("Balance Due") && <th style={{ padding: "12px 16px", textAlign: "right", fontSize: "12px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb" }}>BALANCE DUE</th>}
                 <th
                   style={{
                     padding: "12px 16px",
@@ -2262,6 +2291,7 @@ export default function Bills() {
                       <div className="skeleton-checkbox"></div>
                     </td>
                     {visibleBillColumns.includes("Date") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "80px" }}></div></td>}
+                    {visibleBillColumns.includes("Location") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "100px" }}></div></td>}
                     {visibleBillColumns.includes("Bill#") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "90px" }}></div></td>}
                     {visibleBillColumns.includes("Reference Number") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "80px" }}></div></td>}
                     {visibleBillColumns.includes("Vendor Name") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "120px" }}></div></td>}
@@ -2277,14 +2307,13 @@ export default function Bills() {
                 ))
               ) : (
                 sortedBills.map((bill, index) => {
-                  const statusDisplay = getBillStatusDisplay(bill);
                   return (
                     <tr
                       key={bill._id || bill.id || index}
                       className="border-b border-gray-200 cursor-pointer hover:bg-gray-50"
                       onClick={() => navigate(`/purchases/bills/${bill._id || bill.id}`)}
                     >
-                      <td className="py-3 text-sm text-gray-900" style={{ width: "72px", paddingLeft: "34px", paddingRight: "12px" }} onClick={(e) => e.stopPropagation()}>
+                      <td className="py-3 text-sm text-gray-900" style={{ width: "72px", paddingLeft: "6px", paddingRight: "12px" }} onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={selectedItems.includes(bill.id)}
@@ -2293,14 +2322,15 @@ export default function Bills() {
                         />
                       </td>
                       {visibleBillColumns.includes("Date") && <td className="px-4 py-3 text-sm text-gray-900">{formatDate(bill.date)}</td>}
-                      {visibleBillColumns.includes("Bill#") && <td className="px-4 py-3 text-sm font-medium text-sky-700">{bill.billNumber || ""}</td>}
+                      {visibleBillColumns.includes("Location") && <td className="px-4 py-3 text-sm text-gray-900">{bill.locationName || bill.location || bill.locationCode || "Head Office"}</td>}
+                      {visibleBillColumns.includes("Bill#") && <td className="px-4 py-3 text-sm font-medium text-[#2962ff]">{bill.billNumber || ""}</td>}
                       {visibleBillColumns.includes("Reference Number") && <td className="px-4 py-3 text-sm text-gray-900">{bill.referenceNumber || ""}</td>}
                       {visibleBillColumns.includes("Vendor Name") && <td className="px-4 py-3 text-sm text-gray-900">{bill.vendorName || (bill.vendor && (bill.vendor.name || bill.vendor.displayName)) || ""}</td>}
                       {visibleBillColumns.includes("Customer Name") && <td className="px-4 py-3 text-sm text-gray-900">{bill.customerName || bill.customer?.name || ""}</td>}
-                      {visibleBillColumns.includes("Status") && <td className="px-4 py-3 text-sm"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusDisplay.color}`}>{statusDisplay.text}</span></td>}
+                      {visibleBillColumns.includes("Status") && <td className={`px-4 py-3 text-sm font-medium ${getBillsListStatusDisplay(bill).className}`}>{getBillsListStatusDisplay(bill).text}</td>}
                       {visibleBillColumns.includes("Due Date") && <td className="px-4 py-3 text-sm text-gray-900">{formatDate(bill.dueDate)}</td>}
-                      {visibleBillColumns.includes("Amount") && <td className="px-4 py-3 text-sm text-gray-900">{displayCurrencySymbol} {parseFloat(bill.total || 0).toFixed(2)}</td>}
-                      {visibleBillColumns.includes("Balance Due") && <td className="px-4 py-3 text-sm text-gray-900">{displayCurrencySymbol} {parseFloat(bill.balance || 0).toFixed(2)}</td>}
+                      {visibleBillColumns.includes("Amount") && <td className="px-4 py-3 text-sm text-gray-900 text-right">{displayCurrencySymbol}{parseFloat(bill.total || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>}
+                      {visibleBillColumns.includes("Balance Due") && <td className="px-4 py-3 text-sm text-gray-900 text-right">{displayCurrencySymbol}{parseFloat(bill.balance || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>}
                       <td className="px-4 py-3 text-sm text-gray-900">
                         {/* Empty cell to match Search icon header column */}
                       </td>

@@ -87,6 +87,8 @@ export default function PurchaseOrderDetail() {
   });
   const [activeTab, setActiveTab] = useState("all");
   const [selectedView, setSelectedView] = useState("All");
+  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
+  const [bulkActionsOpen, setBulkActionsOpen] = useState(false);
   const [sendEmailOpen, setSendEmailOpen] = useState(false);
   const [vendor, setVendor] = useState(
     initialPurchaseOrder?.vendor && typeof initialPurchaseOrder.vendor === "object"
@@ -107,6 +109,7 @@ export default function PurchaseOrderDetail() {
   const moreMenuRef = useRef(null);
   const pdfPrintMenuRef = useRef(null);
   const dropdownRef = useRef(null);
+  const bulkActionsRef = useRef(null);
   const printContentRef = useRef<HTMLDivElement | null>(null);
 
   const formatDate = (dateString: any) => {
@@ -240,16 +243,19 @@ export default function PurchaseOrderDetail() {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setDropdownOpen(false);
       }
+      if (bulkActionsRef.current && !bulkActionsRef.current.contains(event.target)) {
+        setBulkActionsOpen(false);
+      }
     };
 
-    if (moreMenuOpen || pdfPrintMenuOpen || dropdownOpen) {
+    if (moreMenuOpen || pdfPrintMenuOpen || dropdownOpen || bulkActionsOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [moreMenuOpen, pdfPrintMenuOpen, dropdownOpen]);
+  }, [moreMenuOpen, pdfPrintMenuOpen, dropdownOpen, bulkActionsOpen]);
 
   if (isLoading) {
     return null;
@@ -534,6 +540,91 @@ export default function PurchaseOrderDetail() {
     }
   };
 
+  const selectedSidebarOrders = purchaseOrders.filter((order) =>
+    selectedOrderIds.includes(String(order._id || order.id))
+  );
+
+  const toggleSelectedOrder = (orderId: string) => {
+    setSelectedOrderIds((current) =>
+      current.includes(orderId)
+        ? current.filter((idValue) => idValue !== orderId)
+        : [...current, orderId]
+    );
+  };
+
+  const clearSelectedOrders = () => {
+    setSelectedOrderIds([]);
+    setBulkActionsOpen(false);
+  };
+
+  const updateSelectedOrdersStatus = async (status: string) => {
+    if (!selectedOrderIds.length) return;
+
+    await Promise.all(
+      selectedOrderIds.map((orderId) => purchaseOrdersAPI.update(orderId, { status }))
+    );
+
+    await loadData();
+    clearSelectedOrders();
+    window.dispatchEvent(new Event("purchaseOrdersUpdated"));
+  };
+
+  const handleBulkDeleteOrders = async () => {
+    if (!selectedOrderIds.length) return;
+
+    await Promise.all(selectedOrderIds.map((orderId) => purchaseOrdersAPI.delete(orderId)));
+    await loadData();
+    clearSelectedOrders();
+    window.dispatchEvent(new Event("purchaseOrdersUpdated"));
+  };
+
+  const handleBulkConvertToBill = () => {
+    if (selectedSidebarOrders.length !== 1) {
+      alert("Please select only one purchase order to convert to bill.");
+      return;
+    }
+
+    navigate("/purchases/bills/new", {
+      state: {
+        fromPurchaseOrder: true,
+        purchaseOrder: selectedSidebarOrders[0],
+      },
+    });
+  };
+
+  const handleBulkSendEmails = () => {
+    if (selectedSidebarOrders.length !== 1) {
+      alert("Please select only one purchase order to send email.");
+      return;
+    }
+
+    setPurchaseOrder(selectedSidebarOrders[0]);
+    setSendEmailOpen(true);
+    setBulkActionsOpen(false);
+  };
+
+  const handleBulkExportPdf = () => {
+    if (selectedSidebarOrders.length !== 1) {
+      alert("Please select only one purchase order to export as PDF.");
+      return;
+    }
+
+    setPurchaseOrder(selectedSidebarOrders[0]);
+    setBulkActionsOpen(false);
+    setTimeout(() => handleDownloadPDF(), 0);
+  };
+
+  const handleBulkPrint = () => {
+    if (selectedSidebarOrders.length !== 1) {
+      alert("Please select only one purchase order to print.");
+      return;
+    }
+
+    setPurchaseOrder(selectedSidebarOrders[0]);
+    setBulkActionsOpen(false);
+    setTimeout(() => handlePrint(), 0);
+  };
+
   const toEntityId = (value: any): string => {
     if (!value) return "";
     if (typeof value === "string" || typeof value === "number") return String(value);
@@ -701,63 +792,111 @@ export default function PurchaseOrderDetail() {
         <div className="no-print w-64 border-r border-gray-200 flex flex-col">
           {/* Sidebar Header */}
           <div className="p-4 border-b border-gray-200">
-            <div className="flex items-center justify-between mb-3">
-              <div className="relative" ref={dropdownRef}>
-                <button
-                  onClick={() => setDropdownOpen(!dropdownOpen)}
-                  className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-gray-900 hover:text-gray-700 whitespace-nowrap"
-                >
-                  {getPurchaseOrdersDisplayText(selectedView)}
-                  {dropdownOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </button>
+            {selectedOrderIds.length === 0 ? (
+              <div className="flex items-center justify-between mb-3">
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    onClick={() => setDropdownOpen(!dropdownOpen)}
+                    className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-gray-900 hover:text-gray-700 whitespace-nowrap"
+                  >
+                    {getPurchaseOrdersDisplayText(selectedView)}
+                    {dropdownOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </button>
 
-                {dropdownOpen && (
-                  <div className="absolute left-0 top-full z-20 mt-2 max-h-[420px] w-[230px] overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                    {PURCHASE_ORDER_VIEWS.map((view) => (
+                  {dropdownOpen && (
+                    <div className="absolute left-0 top-full z-20 mt-2 max-h-[420px] w-[230px] overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                      {PURCHASE_ORDER_VIEWS.map((view) => (
+                        <button
+                          key={view}
+                          type="button"
+                          onClick={() => {
+                            setSelectedView(view);
+                            setDropdownOpen(false);
+                          }}
+                          className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm ${
+                            selectedView === view
+                              ? "border-l-2 border-l-[#156372] bg-[#eff6ff] font-medium text-gray-900"
+                              : "text-gray-700 hover:bg-gray-50"
+                          }`}
+                        >
+                          <span>{view}</span>
+                          <span className="text-gray-300">☆</span>
+                        </button>
+                      ))}
+                      <div className="my-1 border-t border-gray-100" />
                       <button
-                        key={view}
                         type="button"
-                        onClick={() => {
-                          setSelectedView(view);
-                          setDropdownOpen(false);
-                        }}
-                        className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm ${
-                          selectedView === view
-                            ? "border-l-2 border-l-[#156372] bg-[#eff6ff] font-medium text-gray-900"
-                            : "text-gray-700 hover:bg-gray-50"
-                        }`}
+                        onClick={() => setDropdownOpen(false)}
+                        className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
                       >
-                        <span>{view}</span>
-                        <span className="text-gray-300">☆</span>
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#eff6ff] text-[#2563eb]">
+                          <Plus size={12} />
+                        </span>
+                        <span>New Custom View</span>
                       </button>
-                    ))}
-                    <div className="my-1 border-t border-gray-100" />
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => navigate("/purchases/purchase-orders/new")}
+                    className="p-1.5 bg-[#156372] text-white rounded hover:bg-[#0D4A52]"
+                  >
+                    <Plus size={16} />
+                  </button>
+                  <button className="p-1.5 hover:bg-gray-100 rounded">
+                    <MoreVertical size={16} />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="mb-3 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm">
+                <div className="flex items-center gap-3" ref={bulkActionsRef}>
+                  <input type="checkbox" className="h-4 w-4 rounded border border-gray-300" />
+                  <div className="relative">
                     <button
                       type="button"
-                      onClick={() => setDropdownOpen(false)}
-                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                      onClick={() => setBulkActionsOpen((current) => !current)}
+                      className="flex items-center gap-2 rounded-md border border-[#d6c8bf] bg-white px-3 py-2 text-sm text-gray-900"
                     >
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#eff6ff] text-[#2563eb]">
-                        <Plus size={12} />
-                      </span>
-                      <span>New Custom View</span>
+                      <span>Bulk Actions</span>
+                      <ChevronDown size={14} />
                     </button>
-                  </div>
-                )}
-              </div>
 
-              <div className="flex gap-1">
-                <button
-                  onClick={() => navigate("/purchases/purchase-orders/new")}
-                  className="p-1.5 bg-[#156372] text-white rounded hover:bg-[#0D4A52]"
-                >
-                  <Plus size={16} />
-                </button>
-                <button className="p-1.5 hover:bg-gray-100 rounded">
-                  <MoreVertical size={16} />
-                </button>
+                    {bulkActionsOpen && (
+                      <div className="absolute left-0 top-full z-30 mt-2 w-[230px] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
+                        <button onClick={() => setBulkActionsOpen(false)} className="block w-full bg-[#3b82f6] px-4 py-3 text-left text-sm font-medium text-white">Bulk Update</button>
+                        <button onClick={handleBulkExportPdf} className="block w-full px-4 py-3 text-left text-sm text-gray-800 hover:bg-gray-50">Export as PDF</button>
+                        <button onClick={handleBulkPrint} className="block w-full px-4 py-3 text-left text-sm text-gray-800 hover:bg-gray-50">Print</button>
+                        <button onClick={handleBulkSendEmails} className="block w-full px-4 py-3 text-left text-sm text-gray-800 hover:bg-gray-50">Send Emails</button>
+                        <div className="border-t border-gray-100" />
+                        <button onClick={handleBulkConvertToBill} className="block w-full px-4 py-3 text-left text-sm text-gray-800 hover:bg-gray-50">Convert to Bill</button>
+                        <button onClick={() => void updateSelectedOrdersStatus("ISSUED")} className="block w-full px-4 py-3 text-left text-sm text-gray-800 hover:bg-gray-50">Mark as Issued</button>
+                        <button onClick={() => void updateSelectedOrdersStatus("RECEIVED")} className="block w-full px-4 py-3 text-left text-sm text-gray-800 hover:bg-gray-50">Mark as Received</button>
+                        <button onClick={() => void updateSelectedOrdersStatus("ISSUED")} className="block w-full px-4 py-3 text-left text-sm text-gray-800 hover:bg-gray-50">Mark as Unreceived</button>
+                        <button onClick={() => void updateSelectedOrdersStatus("CANCELLED")} className="block w-full px-4 py-3 text-left text-sm text-gray-800 hover:bg-gray-50">Bulk Cancel Items</button>
+                        <button onClick={() => void updateSelectedOrdersStatus("ISSUED")} className="block w-full px-4 py-3 text-left text-sm text-gray-800 hover:bg-gray-50">Bulk reopen canceled items</button>
+                        <button onClick={() => void handleBulkDeleteOrders()} className="block w-full px-4 py-3 text-left text-sm text-gray-800 hover:bg-gray-50">Delete</button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="h-6 w-px bg-gray-200" />
+                  <div className="flex h-8 min-w-8 items-center justify-center rounded-full bg-[#e8f0ff] px-3 text-sm text-[#3b82f6]">
+                    {selectedOrderIds.length}
+                  </div>
+                  <span className="text-sm text-gray-900">Selected</span>
+                  <button
+                    type="button"
+                    onClick={clearSelectedOrders}
+                    className="ml-auto text-red-500 hover:text-red-600"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Purchase Orders List */}
@@ -766,13 +905,23 @@ export default function PurchaseOrderDetail() {
               <div
                 key={order._id || order.id}
                 onClick={() => navigate(`/purchases/purchase-orders/${order._id || order.id}`)}
-                className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${String(order._id || order.id) === String(id) ? "bg-[#f1f3ff]" : ""
-                  }`}
+                className="p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50"
+                style={
+                  String(order._id || order.id) === String(id)
+                    ? {
+                        backgroundColor: "#f1f3ff",
+                        marginLeft: 0,
+                        boxShadow: "inset 0 0 0 9999px #f1f3ff",
+                      }
+                    : undefined
+                }
               >
                 <div className="flex items-start gap-3">
                   <div className="pt-1">
                     <input
                       type="checkbox"
+                      checked={selectedOrderIds.includes(String(order._id || order.id))}
+                      onChange={() => toggleSelectedOrder(String(order._id || order.id))}
                       onClick={(event) => event.stopPropagation()}
                       className="h-4 w-4 rounded border border-gray-300 cursor-pointer"
                     />
