@@ -475,9 +475,36 @@ export default function Bills() {
     setUploadMenuOpen(false);
   };
 
+  const parseLocalDate = (value) => {
+    if (!value) return null;
+    if (value instanceof Date) {
+      const cloned = new Date(value.getFullYear(), value.getMonth(), value.getDate());
+      return Number.isNaN(cloned.getTime()) ? null : cloned;
+    }
+
+    const raw = String(value).trim();
+    if (!raw) return null;
+
+    const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const [, year, month, day] = isoMatch;
+      return new Date(Number(year), Number(month) - 1, Number(day));
+    }
+
+    const slashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (slashMatch) {
+      const [, day, month, year] = slashMatch;
+      return new Date(Number(year), Number(month) - 1, Number(day));
+    }
+
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  };
+
   const formatDate = (dateString) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
+    const date = parseLocalDate(dateString);
+    if (!date) return "";
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     return `${date.getDate().toString().padStart(2, "0")} ${months[date.getMonth()]} ${date.getFullYear()}`;
   };
@@ -485,10 +512,10 @@ export default function Bills() {
   // Calculate overdue days
   const calculateOverdueDays = (dueDate) => {
     if (!dueDate) return 0;
-    const due = new Date(dueDate);
+    const due = parseLocalDate(dueDate);
+    if (!due) return 0;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    due.setHours(0, 0, 0, 0);
     const diffTime = today - due;
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
     return diffDays > 0 ? diffDays : 0;
@@ -1052,8 +1079,8 @@ export default function Bills() {
 
       switch (sortBy) {
         case "date":
-          aValue = a.date ? new Date(a.date).getTime() : 0;
-          bValue = b.date ? new Date(b.date).getTime() : 0;
+          aValue = a.date ? (parseLocalDate(a.date)?.getTime() ?? 0) : 0;
+          bValue = b.date ? (parseLocalDate(b.date)?.getTime() ?? 0) : 0;
           break;
         case "billNumber":
           aValue = (a.billNumber || "").toLowerCase();
@@ -1068,8 +1095,8 @@ export default function Bills() {
           bValue = parseFloat(b.total || 0);
           break;
         case "dueDate":
-          aValue = a.dueDate ? new Date(a.dueDate).getTime() : 0;
-          bValue = b.dueDate ? new Date(b.dueDate).getTime() : 0;
+          aValue = a.dueDate ? (parseLocalDate(a.dueDate)?.getTime() ?? 0) : 0;
+          bValue = b.dueDate ? (parseLocalDate(b.dueDate)?.getTime() ?? 0) : 0;
           break;
         case "status":
           aValue = (a.status || "").toLowerCase();
@@ -1138,24 +1165,21 @@ export default function Bills() {
     today.setHours(0, 0, 0, 0);
 
     const dueToday = getBillSummaryAmount((bill: any) => {
-      const dueDate = new Date(bill.dueDate);
-      if (Number.isNaN(dueDate.getTime())) return false;
-      dueDate.setHours(0, 0, 0, 0);
+      const dueDate = parseLocalDate(bill.dueDate);
+      if (!dueDate) return false;
       return dueDate.getTime() === today.getTime() && Number(bill.balance ?? bill.balanceDue ?? bill.total ?? bill.amount ?? 0) > 0;
     });
 
     const dueWithin30Days = getBillSummaryAmount((bill: any) => {
-      const dueDate = new Date(bill.dueDate);
-      if (Number.isNaN(dueDate.getTime())) return false;
-      dueDate.setHours(0, 0, 0, 0);
+      const dueDate = parseLocalDate(bill.dueDate);
+      if (!dueDate) return false;
       const diffDays = Math.round((dueDate.getTime() - today.getTime()) / 86400000);
       return diffDays > 0 && diffDays <= 30 && Number(bill.balance ?? bill.balanceDue ?? bill.total ?? bill.amount ?? 0) > 0;
     });
 
     const overdueBills = getBillSummaryAmount((bill: any) => {
-      const dueDate = new Date(bill.dueDate);
-      if (Number.isNaN(dueDate.getTime())) return false;
-      dueDate.setHours(0, 0, 0, 0);
+      const dueDate = parseLocalDate(bill.dueDate);
+      if (!dueDate) return false;
       return dueDate.getTime() < today.getTime() && Number(bill.balance ?? bill.balanceDue ?? bill.total ?? bill.amount ?? 0) > 0;
     });
 

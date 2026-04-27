@@ -12,6 +12,8 @@ interface Payment {
   id: string | number;
   paymentNumber: string;
   vendorName: string;
+  location?: string;
+  locationName?: string;
   reference?: string;
   billNumber?: string;
   status: string;
@@ -654,39 +656,43 @@ export default function PaymentsMade() {
     },
     tableWrapper: {
       overflowX: "auto",
+      width: "calc(100% + 16px)",
+      marginLeft: "-16px",
     },
     table: {
       width: "100%",
+      minWidth: "1500px",
       borderCollapse: "collapse",
       backgroundColor: "#ffffff",
     },
     tableHeader: {
-      backgroundColor: "#f9fafb",
-      borderBottom: "1px solid #e5e7eb",
+      backgroundColor: "#f8fafc",
+      borderBottom: "1px solid #dbe4ef",
     },
     tableHeaderCell: {
-      padding: "12px 16px",
+      padding: "14px 18px",
       textAlign: "left",
       fontSize: "12px",
       fontWeight: "600",
-      color: "#4b5563",
+      color: "#64748b",
       textTransform: "uppercase",
       whiteSpace: "nowrap",
-      borderBottom: "2px solid #f3f4f6",
+      borderBottom: "1px solid #dbe4ef",
     },
     tableHeaderCellWithCheckbox: {
-      padding: "12px 16px",
+      padding: "14px 18px",
       textAlign: "left",
       fontSize: "12px",
       fontWeight: "600",
-      color: "#4b5563",
+      color: "#64748b",
       textTransform: "uppercase",
-      borderBottom: "2px solid #f3f4f6",
-      width: "72px",
+      borderBottom: "1px solid #dbe4ef",
+      width: "86px",
     },
     tableHeaderCheckboxWrapper: {
       display: "flex",
       alignItems: "center",
+      gap: "8px",
     },
     tableHeaderAmount: {
       display: "flex",
@@ -695,15 +701,28 @@ export default function PaymentsMade() {
       gap: "8px",
     },
     tableRow: {
-      borderBottom: "1px solid #f3f4f6",
+      borderBottom: "1px solid #e2e8f0",
       cursor: "pointer",
       transition: "background-color 0.15s ease",
     },
     tableCell: {
-      padding: "14px 16px",
+      padding: "15px 18px",
       fontSize: "14px",
       color: "#374151",
       whiteSpace: "nowrap",
+    },
+    firstColumnCell: {
+      width: "86px",
+      padding: "15px 18px",
+    },
+    rowCheckboxWrap: {
+      display: "flex",
+      alignItems: "center",
+      gap: 0,
+    },
+    rowCheckboxSpacer: {
+      width: "24px",
+      flexShrink: 0 as const,
     },
     tableCheckbox: {
       width: "16px",
@@ -713,34 +732,34 @@ export default function PaymentsMade() {
       borderRadius: "4px",
     },
     paymentNumberLink: {
-      color: "#156372",
+      color: "#2563eb",
       textDecoration: "none",
       cursor: "pointer",
       fontWeight: "500",
     },
     statusBadge: {
-      padding: "4px 10px",
-      fontSize: "11px",
-      fontWeight: "600",
-      backgroundColor: "#def7ec",
-      color: "#03543f",
-      borderRadius: "9999px",
-      display: "inline-flex",
-      alignItems: "center",
+      fontSize: "14px",
+      fontWeight: "500",
+      color: "#16a34a",
+      backgroundColor: "transparent",
+      padding: 0,
+      borderRadius: 0,
+      display: "inline",
       textTransform: "uppercase",
-      letterSpacing: "0.025em",
+      letterSpacing: 0,
     },
     statusBadgeDraft: {
-      backgroundColor: "#f3f4f6",
-      color: "#374151",
+      backgroundColor: "transparent",
+      color: "#64748b",
     },
     statusBadgeVoid: {
-      backgroundColor: "#fde2e2",
-      color: "#9b1c1c",
+      backgroundColor: "transparent",
+      color: "#ef4444",
     },
     tableAmount: {
-      fontWeight: "600",
+      fontWeight: "500",
       textAlign: "right",
+      color: "#111827",
     },
   };
 
@@ -1145,7 +1164,6 @@ export default function PaymentsMade() {
                         display: "flex", 
                         alignItems: "center", 
                         cursor: "pointer",
-                        marginRight: "8px"
                       }}
                     >
                       <SlidersHorizontal size={16} style={{ color: "#156372" }} />
@@ -1220,6 +1238,7 @@ export default function PaymentsMade() {
                     <ArrowUpDown size={14} style={{ color: "#9ca3af" }} />
                   </div>
                 </th>
+                <th style={styles.tableHeaderCell}>LOCATION</th>
                 <th style={styles.tableHeaderCell}>PAYMENT #</th>
                 <th style={styles.tableHeaderCell}>REFERENCE#</th>
                 <th style={styles.tableHeaderCell}>VENDOR NAME</th>
@@ -1257,13 +1276,17 @@ export default function PaymentsMade() {
                 // Skeleton loading rows
                 Array.from({ length: 5 }).map((_, index) => (
                   <tr key={`skeleton-${index}`} style={styles.tableRow}>
-                    <td style={styles.tableCell}>
-                      <div style={{ display: "flex", alignItems: "center", paddingLeft: "24px" }}>
+                    <td style={{ ...styles.tableCell, ...styles.firstColumnCell }}>
+                      <div style={styles.rowCheckboxWrap}>
+                        <div style={styles.rowCheckboxSpacer}></div>
                         <div style={skeletonStyles.skeletonCheckbox}></div>
                       </div>
                     </td>
                     <td style={styles.tableCell}>
                       <div style={{ ...skeletonStyles.skeletonCell, width: "80px" }}></div>
+                    </td>
+                    <td style={styles.tableCell}>
+                      <div style={{ ...skeletonStyles.skeletonCell, width: "100px" }}></div>
                     </td>
                     <td style={styles.tableCell}>
                       <div style={{ ...skeletonStyles.skeletonCell, width: "90px" }}></div>
@@ -1309,8 +1332,9 @@ export default function PaymentsMade() {
                       e.currentTarget.style.backgroundColor = "transparent";
                     }}
                   >
-                    <td style={styles.tableCell} onClick={(e) => e.stopPropagation()}>
-                      <div style={{ display: "flex", alignItems: "center", paddingLeft: "24px" }}>
+                    <td style={{ ...styles.tableCell, ...styles.firstColumnCell }} onClick={(e) => e.stopPropagation()}>
+                      <div style={styles.rowCheckboxWrap}>
+                        <div style={styles.rowCheckboxSpacer}></div>
                         <input
                           type="checkbox"
                           checked={selectedPayments.includes(payment.id)}
@@ -1320,6 +1344,7 @@ export default function PaymentsMade() {
                       </div>
                     </td>
                     <td style={styles.tableCell}>{formatDate(payment.date)}</td>
+                    <td style={styles.tableCell}>{payment.locationName || payment.location || "Head Office"}</td>
                     <td style={styles.tableCell}>
                       <span
                         style={styles.paymentNumberLink}
