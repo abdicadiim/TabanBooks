@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { MoreHorizontal, MessageSquare, X, Edit, Mail, FileText, Banknote, ChevronDown, ChevronRight, Search, Star, Download, Printer, Trash2, ArrowUpDown, Upload, Settings, RefreshCw, RotateCcw, HelpCircle, Bold, Italic, Underline, Strikethrough, AlignLeft, AlignCenter, AlignRight, Link as LinkIcon, Image as ImageIcon, Copy, Ban, AlertTriangle } from "lucide-react";
+import { debitNotesAPI } from "../../../services/api";
 import { deleteRetainerInvoice, getCustomers, getRetainerInvoiceById, getRetainerInvoices, RetainerInvoice, updateRetainerInvoice, saveRetainerInvoice } from "../salesModel";
 import { useOrganizationBranding } from "../../../hooks/useOrganizationBranding";
 import { toast } from "react-hot-toast";
@@ -700,6 +701,18 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
     : Array.isArray((invoice as any)?.payments)
     ? (invoice as any).payments
     : [];
+  const currentRetainerAvailableForApply = Math.max(
+    0,
+    roundMoney(
+      toFiniteNumber(
+        (invoice as any)?.retainerAvailableAmount ??
+          (invoice as any)?.availableAmount ??
+          (invoice as any)?.unusedAmount ??
+          (invoice as any)?.unusedBalance,
+        paymentMadeAmount > 0 && balanceDue <= 0 ? paymentMadeAmount : 0
+      )
+    )
+  );
   const paymentsReceivedCount = paymentRecords.length > 0 ? paymentRecords.length : showPaymentsSummary ? 1 : 0;
   const paymentTableRows = useMemo(() => {
     const resolveField = (source: any, keys: string[]) => {
@@ -877,6 +890,32 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
     setIsApplyRetainersModalOpen(true);
   };
 
+  const handleOpenApplyCurrentRetainerModal = () => {
+    if (!invoice) return;
+    if (currentRetainerAvailableForApply <= 0) {
+      toast("No remaining retainer balance to apply.");
+      return;
+    }
+    const retainerId = String((invoice as any)?.id || (invoice as any)?._id || id || "").trim();
+    const retainerNumber = String((invoice as any)?.invoiceNumber || (invoice as any)?.retainerInvoiceNumber || retainerId || "");
+    setSelectedPaymentRow({
+      id: retainerId,
+      paymentId: retainerId,
+      paymentNumber: retainerNumber,
+      amountReceived: currentRetainerAvailableForApply,
+      amountUsedForPayments: 0,
+      appliedAmount: 0,
+      balance: currentRetainerAvailableForApply,
+      balanceAmount: currentRetainerAvailableForApply,
+      remainingBalance: currentRetainerAvailableForApply,
+      availableAmount: currentRetainerAvailableForApply,
+      unusedAmount: currentRetainerAvailableForApply,
+      unusedBalance: currentRetainerAvailableForApply,
+      raw: invoice,
+    });
+    setIsApplyRetainersModalOpen(true);
+  };
+
   const handleApplyRetainersSave = async (allocations: { invoiceId: string; amount: number; date: string }[]) => {
     if (!invoice || !selectedPaymentRow) return;
 
@@ -919,13 +958,27 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
       const newAppliedInvoiceRows: any[] = [];
 
       for (const allocation of validAllocations) {
-        const targetInvoice = await getInvoiceById(allocation.invoiceId);
-        if (!targetInvoice) continue;
+        let targetDocument: any = null;
+        let targetDocumentType: "invoice" | "debit_note" = "invoice";
 
-        const targetInvoiceId = String((targetInvoice as any)?.id || (targetInvoice as any)?._id || allocation.invoiceId).trim();
-        if (!targetInvoiceId || targetInvoiceId === currentInvoiceId) continue;
+        try {
+          targetDocument = await getInvoiceById(allocation.invoiceId);
+          targetDocumentType = "invoice";
+        } catch {
+          try {
+            targetDocument = await debitNotesAPI.getById(allocation.invoiceId);
+            targetDocumentType = "debit_note";
+          } catch {
+            targetDocument = null;
+          }
+        }
 
-        const currentBalance = roundMoney(getInvoiceBalanceForApply(targetInvoice));
+        if (!targetDocument) continue;
+
+        const targetDocumentId = String((targetDocument as any)?.id || (targetDocument as any)?._id || allocation.invoiceId).trim();
+        if (!targetDocumentId || targetDocumentId === currentInvoiceId) continue;
+
+        const currentBalance = roundMoney(getInvoiceBalanceForApply(targetDocument));
         if (currentBalance <= 0) continue;
 
         const applyAmount = roundMoney(Math.min(allocation.amount, currentBalance));
@@ -933,19 +986,19 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
 
         const currentRetainersApplied = roundMoney(
           toFiniteNumber(
-            (targetInvoice as any)?.retainerAppliedAmount ??
-              (targetInvoice as any)?.retainersApplied ??
-              (targetInvoice as any)?.retainerAmountApplied ??
-              (targetInvoice as any)?.retainerAppliedTotal,
+            (targetDocument as any)?.retainerAppliedAmount ??
+              (targetDocument as any)?.retainersApplied ??
+              (targetDocument as any)?.retainerAmountApplied ??
+              (targetDocument as any)?.retainerAppliedTotal,
             0
           )
         );
         const nextRetainersApplied = roundMoney(currentRetainersApplied + applyAmount);
         const nextBalance = roundMoney(Math.max(0, currentBalance - applyAmount));
-        const nextStatus = getNextInvoiceStatusForApply(targetInvoice, nextBalance, nextRetainersApplied);
+        const nextStatus = getNextInvoiceStatusForApply(targetDocument, nextBalance, nextRetainersApplied);
 
-        const existingTargetApplications = Array.isArray((targetInvoice as any)?.retainerApplications)
-          ? [...(targetInvoice as any).retainerApplications]
+        const existingTargetApplications = Array.isArray((targetDocument as any)?.retainerApplications)
+          ? [...(targetDocument as any).retainerApplications]
           : [];
 
         const applicationEntry = {
@@ -957,7 +1010,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
           appliedAt: allocation.date,
         };
 
-        await updateRetainerInvoice(targetInvoiceId, {
+        const nextDocumentPayload = {
           retainerAppliedAmount: nextRetainersApplied,
           retainersApplied: nextRetainersApplied,
           retainerAmountApplied: nextRetainersApplied,
@@ -967,19 +1020,26 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
           amountDue: nextBalance,
           status: nextStatus,
           retainerApplications: [...existingTargetApplications, applicationEntry],
-        } as any);
+        } as any;
+
+        if (targetDocumentType === "debit_note") {
+          await debitNotesAPI.update(targetDocumentId, nextDocumentPayload);
+        } else {
+          await updateRetainerInvoice(targetDocumentId, nextDocumentPayload);
+        }
 
         newRetainerApplications.push({
-          invoiceId: targetInvoiceId,
-          invoiceNumber: String((targetInvoice as any)?.invoiceNumber || targetInvoiceId),
+          invoiceId: targetDocumentId,
+          invoiceNumber: String((targetDocument as any)?.invoiceNumber || (targetDocument as any)?.debitNoteNumber || targetDocumentId),
           amount: applyAmount,
           appliedAt: allocation.date,
           paymentId,
           paymentNumber,
         });
         newAppliedInvoiceRows.push({
-          invoiceId: targetInvoiceId,
-          invoiceNumber: String((targetInvoice as any)?.invoiceNumber || targetInvoiceId),
+          invoiceId: targetDocumentId,
+          invoiceNumber: String((targetDocument as any)?.invoiceNumber || (targetDocument as any)?.debitNoteNumber || targetDocumentId),
+          documentType: targetDocumentType,
           amountApplied: applyAmount,
           date: allocation.date,
           paymentId,
@@ -988,7 +1048,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
       }
 
       if (!newRetainerApplications.length) {
-        toast("No eligible invoices found for this payment.");
+        toast("No eligible invoices or debit notes found for this payment.");
         return;
       }
 
@@ -2060,6 +2120,18 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
               <div className="h-5 w-px bg-[#d9dde7]" />
             </>
           )}
+          {isFullyPaidStatus && !isVoidStatus && (
+            <>
+              <button
+                type="button"
+                onClick={handleOpenApplyCurrentRetainerModal}
+                className="inline-flex items-center gap-1 text-[#475569] hover:text-[#0f172a]"
+              >
+                <Banknote size={14} /> Apply to Invoices
+              </button>
+              <div className="h-5 w-px bg-[#d9dde7]" />
+            </>
+          )}
           <button
             onClick={() => {
               void downloadCurrentInvoicePdf();
@@ -2225,17 +2297,6 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
                                     <td className="px-3 py-2">{currencyPrefix}{formatMoney(row.balance)}</td>
                                     <td className="px-3 py-2 text-right">
                                       <div className="inline-flex items-center gap-2">
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setOpenPaymentMenuId(null);
-                                            handleOpenApplyRetainersModal(row);
-                                          }}
-                                          disabled={isApplyingRetainers || getPaymentAvailableAmount(row) <= 0}
-                                          className="px-2.5 py-1 rounded border border-[#d1d5db] text-[12px] text-[#374151] hover:bg-[#f8fafc] disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                          Apply to Invoices
-                                        </button>
                                         <div className="relative" data-retainer-payment-menu="true">
                                           <button
                                             type="button"

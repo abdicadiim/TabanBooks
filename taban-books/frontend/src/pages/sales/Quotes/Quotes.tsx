@@ -7,6 +7,7 @@ import PaginationFooter from "../../../components/table/PaginationFooter";
 import { useQueryClient } from "@tanstack/react-query";
 import { deleteQuotes, updateQuote, getCustomers, getProjects, getSalespersons, getCustomViews, deleteCustomView } from "../salesModel";
 import { invalidateQuoteQueries, useQuotesListQuery } from "./quoteQueries";
+import { quotesAPI } from "../../../services/api";
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import {
@@ -28,14 +29,12 @@ import {
   Search,
   Filter,
   X,
-  Printer,
   FileDown,
   Trash2,
   ArrowUpDown,
   Download,
   Settings,
   RefreshCw,
-  Database,
   Eye,
   SlidersHorizontal,
   GripVertical,
@@ -162,6 +161,12 @@ export default function Quotes() {
   const filteredCustomViews = customViews.filter(view =>
     (view.name || view.viewName || "").toLowerCase().includes(viewSearchQuery.toLowerCase())
   );
+
+  const handleSelectView = (viewName: string) => {
+    setSelectedView(viewName);
+    setIsDropdownOpen(false);
+    setViewSearchQuery("");
+  };
 
   const isViewSelected = (viewName: string) => selectedView === viewName;
 
@@ -437,6 +442,21 @@ export default function Quotes() {
       setQuotes(quotesListQuery.data);
     }
   }, [quotesListQuery.data]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const body = document.body;
+    if (isBulkUpdateModalOpen) {
+      body.classList.add("quotes-bulk-modal-open");
+    } else {
+      body.classList.remove("quotes-bulk-modal-open");
+    }
+
+    return () => {
+      body.classList.remove("quotes-bulk-modal-open");
+    };
+  }, [isBulkUpdateModalOpen]);
 
   const startColumnResizing = (key: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -1061,7 +1081,7 @@ export default function Quotes() {
   const getStatusColor = (status: string | undefined | null) => {
     const s = (status || '').toLowerCase();
     const statusColors: Record<string, string> = {
-      draft: '#6B7280', sent: '#3B82F6', open: '#10B981', approved: '#059669', accepted: '#059669', declined: '#EF4444', rejected: '#EF4444', expired: '#F59E0B', converted: '#8B5CF6', invoiced: '#059669'
+      draft: '#6B7280', sent: '#3B82F6', open: '#10B981', pending_approval: '#8B5CF6', approved: '#059669', accepted: '#059669', declined: '#EF4444', rejected: '#EF4444', expired: '#F59E0B', converted: '#8B5CF6', invoiced: '#059669'
     };
     return statusColors[s as keyof typeof statusColors] || '#6B7280';
   };
@@ -1069,7 +1089,7 @@ export default function Quotes() {
   const getStatusText = (status: string | undefined | null) => {
     const s = (status || '').toLowerCase();
     const statusTexts: Record<string, string> = {
-      draft: 'Draft', sent: 'Sent', open: 'Open', approved: 'Approved', accepted: 'Accepted', declined: 'Declined', rejected: 'Declined', expired: 'Expired', converted: 'Invoiced', invoiced: 'Invoiced'
+      draft: 'Draft', sent: 'Sent', open: 'Open', pending_approval: 'Pending Approval', approved: 'Approved', accepted: 'Accepted', declined: 'Declined', rejected: 'Declined', expired: 'Expired', converted: 'Invoiced', invoiced: 'Invoiced'
     };
     return statusTexts[s as keyof typeof statusTexts] || status || "";
   };
@@ -1081,7 +1101,7 @@ export default function Quotes() {
   const getStatusClass = (status: string | undefined | null) => {
     const s = (status || '').toLowerCase();
     const statusClasses: Record<string, string> = {
-      draft: 'bg-slate-100 text-slate-600 border-slate-200', sent: 'bg-blue-50 text-blue-600 border-blue-100', open: 'bg-[#156372]/10 text-[#156372] border-[#156372]/20', approved: 'bg-emerald-50 text-emerald-600 border-emerald-100', accepted: 'bg-emerald-50 text-emerald-600 border-emerald-100', declined: 'bg-red-50 text-red-600 border-red-100', rejected: 'bg-red-50 text-red-600 border-red-100', expired: 'bg-amber-50 text-amber-600 border-amber-100', converted: 'bg-indigo-50 text-indigo-600 border-indigo-100', invoiced: 'bg-emerald-50 text-emerald-600 border-emerald-100'
+      draft: 'bg-slate-100 text-slate-600 border-slate-200', sent: 'bg-blue-50 text-blue-600 border-blue-100', open: 'bg-[#156372]/10 text-[#156372] border-[#156372]/20', pending_approval: 'bg-violet-50 text-violet-700 border-violet-100', approved: 'bg-emerald-50 text-emerald-600 border-emerald-100', accepted: 'bg-emerald-50 text-emerald-600 border-emerald-100', declined: 'bg-red-50 text-red-600 border-red-100', rejected: 'bg-red-50 text-red-600 border-red-100', expired: 'bg-amber-50 text-amber-600 border-amber-100', converted: 'bg-indigo-50 text-indigo-600 border-indigo-100', invoiced: 'bg-emerald-50 text-emerald-600 border-emerald-100'
     };
     return statusClasses[s as keyof typeof statusClasses] || 'bg-slate-100 text-slate-600 border-slate-200';
   };
@@ -1089,6 +1109,9 @@ export default function Quotes() {
   const handleClearSelection = () => {
     setSelectedQuotes([]);
   };
+
+  const selectedQuotesCount = selectedQuotes.length;
+  const isBulkActionsVisible = selectedQuotesCount > 0;
 
   const handleCreateNewQuote = () => {
     navigate("/sales/quotes/new");
@@ -1162,13 +1185,16 @@ export default function Quotes() {
       }
 
       try {
-        await Promise.all(selectedQuotes.map(quoteId => updateQuote(quoteId, { status: "sent" })));
+        const response = await quotesAPI.bulkMarkAsSent(selectedQuotes);
+        if (!response?.success) {
+          throw new Error(response?.message || response?.error || "Failed to mark quotes as sent");
+        }
         await invalidateQuoteQueries(queryClient);
         setSelectedQuotes([]);
         toast.success(`Marked ${selectedCount} quote${selectedCount === 1 ? "" : "s"} as sent.`);
       } catch (error) {
         console.error("Error marking quotes as sent:", error);
-        toast.error("Failed to mark quotes as sent. Please try again.");
+        toast.error(error instanceof Error ? error.message : "Failed to mark quotes as sent. Please try again.");
       }
     })();
   };
@@ -2048,12 +2074,137 @@ export default function Quotes() {
     <div className="flex flex-col h-full min-h-0 w-full bg-white font-sans text-gray-800 antialiased relative overflow-hidden">
       {/* Top Header Section */}
       <div className="flex-none bg-white border-b border-[#eef1f6] px-4 py-3 z-10">
-        <div className="flex items-center justify-between gap-4">
+        {isBulkActionsVisible && (
+          <div className="mb-3 flex items-center justify-between gap-4 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm">
+            <div className="flex items-center gap-2 min-w-0">
+              <button
+                type="button"
+                onClick={handleBulkUpdate}
+                className="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Bulk Update
+              </button>
+
+              <div className="flex items-center overflow-hidden rounded-md border border-gray-200 bg-white">
+                <button
+                  type="button"
+                  onClick={handleExportPDF}
+                  className="inline-flex items-center justify-center px-3 py-2 text-gray-600 hover:bg-gray-50 transition-colors"
+                  title="Export PDF"
+                >
+                  <FileDown size={16} />
+                </button>
+              </div>
+
+              <div className="mx-1 h-8 w-px bg-gray-200" />
+
+              <button
+                type="button"
+                onClick={handleBulkMarkAsSent}
+                className="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Mark As Sent
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkDelete}
+                className="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Delete
+              </button>
+
+              <div className="mx-1 h-8 w-px bg-gray-200" />
+
+              <div className="inline-flex items-center gap-2 rounded-full bg-[#eef3ff] px-2.5 py-1 text-sm text-[#0f52d1]">
+                <span className="min-w-[18px] text-center font-semibold">{selectedQuotesCount}</span>
+              </div>
+              <span className="text-sm font-medium text-gray-700">Selected</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleClearSelection}
+              className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-red-600 transition-colors"
+              title="Clear selection"
+            >
+              <span>Esc</span>
+              <X size={16} />
+            </button>
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-4" style={{ display: isBulkActionsVisible ? "none" : "flex" }}>
           <div className="flex items-center gap-4 flex-1 min-w-0">
-            <h1 className="text-xl font-bold text-gray-900 truncate flex items-center gap-2">
-              <Database className="text-[#156372]" size={20} />
-              {selectedView}
-            </h1>
+            <div className="relative" ref={dropdownRef}>
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-[#f8fafc] px-3 py-1.5 text-xl font-bold text-gray-900 shadow-sm transition-colors hover:bg-gray-50"
+                onClick={() => setIsDropdownOpen((open) => !open)}
+              >
+                <span className="truncate max-w-[260px]">{selectedView}</span>
+                {isDropdownOpen ? <ChevronUp size={18} className="text-[#156372]" /> : <ChevronDown size={18} className="text-[#156372]" />}
+              </button>
+
+              {isDropdownOpen && (
+                <div
+                  ref={viewDropdownMenuRef}
+                  className="absolute left-0 top-full z-[1002] mt-2 w-[280px] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl"
+                >
+                  <div className="border-b border-gray-200 p-2.5">
+                    <div className="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2">
+                      <Search size={16} className="text-gray-400" />
+                      <input
+                        type="text"
+                        value={viewSearchQuery}
+                        onChange={(e) => setViewSearchQuery(e.target.value)}
+                        placeholder="Search in quotes"
+                        className="w-full border-0 bg-transparent text-sm text-gray-700 outline-none placeholder:text-gray-400"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+
+                  <div className="max-h-[320px] overflow-y-auto py-1">
+                    {filteredDefaultViews.map((view) => (
+                      <button
+                        key={view}
+                        type="button"
+                        className={`flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors hover:bg-gray-50 ${isViewSelected(view) ? "bg-[#eef8f7] text-[#0D4A52] font-medium" : "text-gray-700"}`}
+                        onClick={() => handleSelectView(view)}
+                      >
+                        <span>{view}</span>
+                        {isViewSelected(view) ? <span className="text-[#0D4A52]">•</span> : null}
+                      </button>
+                    ))}
+
+                    {filteredCustomViews.length > 0 && (
+                      <>
+                        <div className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                          Custom Views
+                        </div>
+                        {filteredCustomViews.map((view) => {
+                          const viewName = view.name || view.viewName || "";
+                          return (
+                            <button
+                              key={view.id || viewName}
+                              type="button"
+                              className={`flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors hover:bg-gray-50 ${isViewSelected(viewName) ? "bg-[#eef8f7] text-[#0D4A52] font-medium" : "text-gray-700"}`}
+                              onClick={() => handleSelectView(viewName)}
+                            >
+                              <span className="truncate">{viewName}</span>
+                              {isViewSelected(viewName) ? <span className="text-[#0D4A52]">•</span> : null}
+                            </button>
+                          );
+                        })}
+                      </>
+                    )}
+
+                    {filteredDefaultViews.length === 0 && filteredCustomViews.length === 0 && (
+                      <div className="px-4 py-6 text-center text-sm text-gray-500">No views found</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -3207,26 +3358,29 @@ export default function Quotes() {
       {/* Bulk Update Modal */}
       {
         isBulkUpdateModalOpen && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-50 flex items-start justify-center pt-4 overflow-y-auto px-4 py-6" onClick={handleCancelBulkUpdate}>
-            <div className="bg-white rounded-lg shadow-xl max-w-[760px] w-full mx-4 overflow-visible" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-900">Bulk Update Quotes</h2>
+          <div className="fixed inset-0 bg-black/45 backdrop-blur-[2px] z-[3000] flex items-start justify-center pt-6 overflow-y-auto px-4 py-6" onClick={handleCancelBulkUpdate}>
+            <div className="w-full max-w-[620px] mx-4 overflow-hidden rounded-2xl bg-white shadow-2xl border border-white/60" onClick={(e) => e.stopPropagation()}>
+              <div
+                className="flex items-center justify-between px-6 py-4 text-white"
+                style={{ background: "linear-gradient(90deg, #0f5f6c 0%, #156372 55%, #1f7a87 100%)" }}
+              >
+                <h2 className="text-lg font-semibold">Bulk Update Quotes</h2>
                 <button
-                  className="p-1 text-gray-500 hover:text-gray-700 cursor-pointer"
+                  className="p-1 text-white/80 hover:text-white cursor-pointer"
                   onClick={handleCancelBulkUpdate}
                 >
                   <X size={20} />
                 </button>
               </div>
 
-              <div className="p-6">
+              <div className="px-6 py-5 bg-gradient-to-b from-[#f7fcfd] to-white">
                 <p className="text-sm text-gray-600 mb-6">
                   Choose a field from the dropdown and update with new information.
                 </p>
 
-                <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-4 mb-6 items-start">
+                <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-4 mb-6 items-start overflow-visible relative z-[10010]">
                   {/* Custom Field Dropdown */}
-                  <div className="relative w-full" ref={bulkFieldDropdownRef}>
+                  <div className="relative z-[10020] w-full" ref={bulkFieldDropdownRef}>
                     <div
                       className={`flex items-center justify-between px-4 py-2 border border-gray-300 rounded-md bg-white cursor-pointer hover:bg-gray-50 ${isBulkFieldDropdownOpen ? 'open' : ''}`}
                       onClick={() => setIsBulkFieldDropdownOpen(!isBulkFieldDropdownOpen)}
@@ -3242,7 +3396,7 @@ export default function Quotes() {
                     </div>
 
                     {isBulkFieldDropdownOpen && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-[9999] overflow-visible">
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-[10030] overflow-visible">
                         <div className="flex items-center gap-2 p-3 border-b border-gray-200">
                           <Search size={16} />
                           <input
@@ -3285,7 +3439,7 @@ export default function Quotes() {
                 </p>
               </div>
 
-              <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
+              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#e5eef0] bg-[#f8fbfc]">
                 <button
                   className="px-4 py-2 rounded-md text-sm font-medium bg-[#156372] text-white hover:bg-blue-700 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
                   onClick={handleBulkUpdateSubmit}
@@ -3489,9 +3643,6 @@ export default function Quotes() {
                   </button>
                   <button className="p-2 text-gray-400 hover:text-white cursor-pointer" title="Rotate">
                     <RefreshCw size={16} />
-                  </button>
-                  <button className="p-2 text-gray-400 hover:text-white cursor-pointer" title="Print" onClick={handlePrintFromPreview}>
-                    <Printer size={16} />
                   </button>
                 </div>
               </div>

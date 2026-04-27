@@ -2267,6 +2267,19 @@ export const updateQuote = async (quoteId: string, quoteData: Partial<Quote>): P
       apiData.customer = customerId;
     }
 
+    if (quoteData.salespersonId !== undefined || quoteData.salesperson !== undefined) {
+      const salespersonRef = quoteData.salespersonId || quoteData.salesperson;
+      const salespersonId = typeof salespersonRef === 'object' && salespersonRef ? (salespersonRef._id || salespersonRef.id) : salespersonRef;
+      const normalizedSalespersonId = String(salespersonId || "").trim();
+      if (normalizedSalespersonId) {
+        apiData.salespersonId = normalizedSalespersonId;
+        apiData.salesperson = normalizedSalespersonId;
+      } else {
+        delete apiData.salespersonId;
+        delete apiData.salesperson;
+      }
+    }
+
     if (Array.isArray(quoteData.items)) {
       apiData.items = quoteData.items.map((item: any) => ({
         ...item,

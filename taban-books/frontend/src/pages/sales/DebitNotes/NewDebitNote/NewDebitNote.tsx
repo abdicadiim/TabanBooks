@@ -1320,8 +1320,35 @@ export default function NewDebitNote() {
     const loadDebitNote = async () => {
       setIsLoadingDebitNote(true);
       try {
-        const response = await debitNotesAPI.getById(debitNoteId);
-        const note = (response as any)?.data || response;
+        let note: any = null;
+        try {
+          const response = await debitNotesAPI.getById(debitNoteId);
+          note = (response as any)?.data || response;
+        } catch (error: any) {
+          const status = error?.status || error?.response?.status;
+          const message = String(error?.message || error?.response?.data?.message || "").toLowerCase();
+          const shouldTryInvoiceFallback = status === 404 || message.includes("not found");
+          if (shouldTryInvoiceFallback) {
+            const invoiceFallbackId = String(invoiceId || debitNoteId || "").trim();
+            if (invoiceFallbackId) {
+              try {
+                const linkedResponse = await debitNotesAPI.getByInvoice(invoiceFallbackId);
+                const linkedRows = Array.isArray((linkedResponse as any)?.data)
+                  ? (linkedResponse as any).data
+                  : Array.isArray(linkedResponse)
+                    ? linkedResponse
+                    : [];
+                note = linkedRows[0] || null;
+              } catch {
+                note = null;
+              }
+            }
+          }
+          if (!note) {
+            throw error;
+          }
+        }
+
         if (!note) {
           toast.error("Debit note not found.");
           navigate("/sales/invoices");

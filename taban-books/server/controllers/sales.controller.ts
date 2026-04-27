@@ -3174,7 +3174,13 @@ const createInvoiceJournalEntry = async (
     const groupedRevenueCredits = new Map<string, number>();
     const lineItems = Array.isArray(invoice.items) ? invoice.items : [];
     for (const item of lineItems) {
-      const amount = Number(item?.amount || 0);
+      const quantity = Number(item?.quantity || 0);
+      const unitPrice = Number(item?.unitPrice ?? item?.rate ?? item?.price ?? 0);
+      const amount = Number(
+        item?.amount ??
+        item?.total ??
+        (Number.isFinite(quantity) && Number.isFinite(unitPrice) ? quantity * unitPrice : 0)
+      );
       if (!Number.isFinite(amount) || amount <= 0) continue;
 
       let itemAccountId = await resolveAccountIdFromReference(
@@ -3221,7 +3227,10 @@ const createInvoiceJournalEntry = async (
     // 4) AR debit must match sum of revenue credits + tax credits (balanced journal).
     const arDebitAmount = Number((totalRevenueCredits + taxAmount).toFixed(2));
     if (!Number.isFinite(arDebitAmount) || arDebitAmount <= 0) {
-      throw new Error("Invoice journal amount is invalid (zero or negative).");
+      console.warn(
+        `[INVOICES] Skipping journal entry for ${invoice.invoiceNumber}: invalid journal amount (${arDebitAmount}).`,
+      );
+      return null;
     }
 
     const journalNumber = `JE-INV-${invoice.invoiceNumber}-${Date.now()}`;
@@ -3696,11 +3705,50 @@ export const createInvoice = async (req: AuthRequest, res: Response): Promise<vo
       return;
     }
 
+    const normalizedItems = Array.isArray(req.body.items)
+      ? req.body.items.map((item: any) => {
+        const quantity = Number(item?.quantity ?? 0) || 0;
+        const unitPrice = Number(item?.unitPrice ?? item?.rate ?? item?.price ?? 0) || 0;
+        const total = Number(
+          item?.total ??
+          item?.amount ??
+          (quantity * unitPrice)
+        ) || 0;
+        const taxRate = Number(item?.taxRate ?? item?.tax_percentage ?? item?.tax ?? 0) || 0;
+        const taxAmount = Number(
+          item?.taxAmount ??
+          item?.tax_amount ??
+          (taxRate > 0 ? (total * taxRate) / 100 : 0)
+        ) || 0;
+
+        return {
+          ...item,
+          quantity,
+          unitPrice,
+          taxRate,
+          taxAmount,
+          total,
+        };
+      })
+      : [];
+
+    const computedSubtotal = normalizedItems.reduce((sum: number, item: any) => sum + Number(item.total || 0), 0);
+    const computedTax = normalizedItems.reduce((sum: number, item: any) => sum + Number(item.taxAmount || 0), 0);
+    const providedTotal = Number(req.body.total);
+    const invoiceTotal = Number.isFinite(providedTotal) && providedTotal > 0
+      ? providedTotal
+      : Number((computedSubtotal + computedTax + Number(req.body.shippingCharges || req.body.shipping_charge || 0) + Number(req.body.adjustment || 0)).toFixed(2));
+
     const invoiceData: any = {
       ...req.body,
+      items: normalizedItems,
+      subtotal: Number.isFinite(Number(req.body.subtotal ?? req.body.subTotal)) ? Number(req.body.subtotal ?? req.body.subTotal) : computedSubtotal,
+      subTotal: Number.isFinite(Number(req.body.subTotal ?? req.body.subtotal)) ? Number(req.body.subTotal ?? req.body.subtotal) : computedSubtotal,
+      tax: Number.isFinite(Number(req.body.tax)) ? Number(req.body.tax) : computedTax,
+      total: invoiceTotal,
       organization: req.user.organizationId,
       status: status,
-      balance: Number(req.body.total || 0) - Number(req.body.paidAmount || 0),
+      balance: invoiceTotal - Number(req.body.paidAmount || 0),
       journalEntryCreated: false,
     };
 
@@ -5750,8 +5798,10 @@ export const updateQuote = async (req: AuthRequest, res: Response): Promise<void
       return;
     }
 
-    // Check if quote is accepted and if editing is allowed
-    if (quote.status === 'accepted') {
+    // Check if quote is accepted and if editing is allowed.
+    // Status-only workflow updates (sent/declined/etc.) should still be allowed.
+    const editableKeys = Object.keys(updateData || {}).filter((key) => !["status", "acceptedDate", "declinedDate", "approvalLevel", "activityLogs"].includes(key));
+    if (quote.status === 'accepted' && editableKeys.length > 0) {
       const organization = await Organization.findById(req.user.organizationId);
       const allowEditing = organization?.settings?.quoteSettings?.allowEditingAcceptedQuotes;
 
@@ -7682,9 +7732,21 @@ export const getAllDebitNotes = async (req: AuthRequest, res: Response): Promise
       return;
     }
 
-    const debitNotes = await DebitNote.find({
+    const invoiceId = (req.params as { invoiceId?: string })?.invoiceId;
+    const query: any = {
       organization: req.user.organizationId
-    })
+    };
+
+    if (invoiceId) {
+      query.invoice = invoiceId;
+    }
+
+    const urlInvoiceId = typeof req.query?.invoiceId === "string" ? req.query.invoiceId : "";
+    if (urlInvoiceId) {
+      query.invoice = urlInvoiceId;
+    }
+
+    const debitNotes = await DebitNote.find(query)
       .populate('customer', 'displayName name companyName email')
       .populate('invoice', 'invoiceNumber total')
       .populate('items.item', 'name sku')

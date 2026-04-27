@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -72,7 +72,7 @@ const QuoteDetail = () => {
   const [showMoreDropdown, setShowMoreDropdown] = useState(false);
   const [showConvertDropdown, setShowConvertDropdown] = useState(false);
   const [showSidebarMoreDropdown, setShowSidebarMoreDropdown] = useState(false);
-  const [showPdfView, setShowPdfView] = useState(false);
+  const [showPdfView, setShowPdfView] = useState(true);
   const [isCloningQuote, setIsCloningQuote] = useState(false);
   const [selectedQuotes, setSelectedQuotes] = useState<string[]>([]);
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
@@ -122,15 +122,28 @@ const QuoteDetail = () => {
   }, [statusSuccessMessage]);
 
   // Keep scrolling inside this view's own panels, not the browser window.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevHtmlOverflowY = document.documentElement.style.overflowY;
+    const prevHtmlHeight = document.documentElement.style.height;
     const prevBodyOverflow = document.body.style.overflow;
+    const prevBodyOverflowY = document.body.style.overflowY;
+    const prevBodyHeight = document.body.style.height;
     document.documentElement.style.overflow = "hidden";
+    document.documentElement.style.overflowY = "hidden";
+    document.documentElement.style.height = "100vh";
     document.body.style.overflow = "hidden";
+    document.body.style.overflowY = "hidden";
+    document.body.style.height = "100vh";
+    window.scrollTo(0, 0);
 
     return () => {
       document.documentElement.style.overflow = prevHtmlOverflow;
+      document.documentElement.style.overflowY = prevHtmlOverflowY;
+      document.documentElement.style.height = prevHtmlHeight;
       document.body.style.overflow = prevBodyOverflow;
+      document.body.style.overflowY = prevBodyOverflowY;
+      document.body.style.height = prevBodyHeight;
     };
   }, []);
 
@@ -405,15 +418,10 @@ const QuoteDetail = () => {
 
     if (quoteId) {
       localStorage.setItem(`quote_activity_logs_${quoteId}`, JSON.stringify(nextLogs));
-      try {
-        await updateQuote(quoteId, { activityLogs: nextLogs } as any);
-      } catch (error) {
-        console.error("Error persisting activity logs:", error);
-      }
     }
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (preloadedQuote) {
       setQuote(preloadedQuote);
     }
@@ -1049,9 +1057,22 @@ const QuoteDetail = () => {
     field.label.toLowerCase().includes(bulkFieldSearch.toLowerCase())
   );
 
-  // Navigate to quote
-  const handleQuoteClick = (id: string) => {
-    navigate(`/sales/quotes/${id}`);
+  // Navigate to quote with the data we already have so the detail view renders immediately.
+  const handleQuoteClick = (quoteOrId: any) => {
+    const nextQuoteId = String(quoteOrId?.id || quoteOrId?._id || quoteOrId || "").trim();
+    if (!nextQuoteId) return;
+
+    const nextQuote =
+      typeof quoteOrId === "object" && quoteOrId
+        ? quoteOrId
+        : allQuotes.find((row: any) => String(row?.id || row?._id || row?.quoteId || "") === nextQuoteId) || null;
+
+    navigate(`/sales/quotes/${nextQuoteId}`, {
+      state: {
+        preloadedQuote: nextQuote,
+        preloadedQuotes: allQuotes,
+      },
+    });
   };
 
   // Create new quote
@@ -1292,6 +1313,7 @@ const QuoteDetail = () => {
     const statusMap = {
       draft: { label: "Draft", className: "text-yellow-800" },
       approved: { label: "Approved", className: "text-emerald-700" },
+      pending_approval: { label: "Pending Approval", className: "text-violet-700" },
       sent: { label: "Sent", className: "text-blue-800" },
       open: { label: "Open", className: "text-[#0D4A52]" },
       accepted: { label: "Accepted", className: "text-[#0D4A52]" },
@@ -2184,6 +2206,8 @@ const QuoteDetail = () => {
     if (isCloningQuote) return;
 
     setIsCloningQuote(true);
+    const originalQuote = quote;
+    const originalAllQuotes = Array.isArray(allQuotes) ? [...allQuotes] : [];
     try {
       const sourceQuoteNumber = String(quote.quoteNumber || "").trim();
       const prefixMatch = sourceQuoteNumber.match(/^([^\d]*\D-?)/);
@@ -2290,6 +2314,23 @@ const QuoteDetail = () => {
         status: "draft"
       };
 
+      const tempQuoteId = `clone-${Date.now()}`;
+      const optimisticQuote: any = {
+        ...quote,
+        ...clonedPayload,
+        id: tempQuoteId,
+        _id: tempQuoteId,
+        quoteNumber: nextQuoteNumber,
+        status: "draft",
+      };
+
+      setQuote(optimisticQuote);
+      setAllQuotes((prev: any[]) => {
+        const base = Array.isArray(prev) && prev.length > 0 ? prev : originalAllQuotes;
+        return [optimisticQuote, ...base.filter((row: any) => String(row?._id || row?.id) !== String(quoteId))];
+      });
+
+      const saveToastId = toast.loading(`Cloning quote as ${nextQuoteNumber}...`);
       const duplicatedQuote: any = await saveQuote(clonedPayload);
       const duplicatedQuoteId = duplicatedQuote?._id || duplicatedQuote?.id;
       if (!duplicatedQuoteId) {
@@ -2301,10 +2342,23 @@ const QuoteDetail = () => {
         `Quote was duplicated as ${nextQuoteNumber}.`,
         "success"
       );
-      toast.success(`Quote duplicated as ${nextQuoteNumber}`);
-      navigate(`/sales/quotes/${duplicatedQuoteId}`);
+      toast.success(`Quote duplicated as ${nextQuoteNumber}`, { id: saveToastId });
+      setQuote(duplicatedQuote);
+      setAllQuotes((prev: any[]) =>
+        Array.isArray(prev)
+          ? prev.map((row: any) => (String(row?._id || row?.id) === tempQuoteId ? duplicatedQuote : row))
+          : prev
+      );
+      navigate(`/sales/quotes/${duplicatedQuoteId}`, {
+        state: {
+          preloadedQuote: duplicatedQuote,
+          preloadedQuotes: Array.isArray(allQuotes) ? [duplicatedQuote, ...allQuotes] : [duplicatedQuote],
+        },
+      });
     } catch (error) {
       console.error("Error duplicating quote:", error);
+      setQuote(originalQuote);
+      setAllQuotes(originalAllQuotes);
       toast.error("Failed to duplicate quote. Please try again.");
     } finally {
       setIsCloningQuote(false);
@@ -2349,22 +2403,20 @@ const QuoteDetail = () => {
 
     try {
       if (quoteId) {
-        await updateQuote(quoteId, { status: 'accepted' });
-        await appendActivityLog("Status Updated", "Quote status changed to accepted.", "success");
-        const updatedQuote = await getQuoteById(quoteId);
-        if (updatedQuote) {
-          setQuote(updatedQuote);
-        }
+        const updatedQuote = await updateQuote(quoteId, {
+          status: 'accepted',
+          acceptedDate: new Date().toISOString(),
+        });
+        setQuote((prev: any) => ({ ...(prev || {}), ...(updatedQuote || {}), status: "accepted" }));
+        setAllQuotes((prev: any[]) =>
+          Array.isArray(prev)
+            ? prev.map((row: any) => (String(row?._id || row?.id) === String(quoteId) ? { ...row, ...(updatedQuote || {}), status: "accepted" } : row))
+            : prev
+        );
+        void appendActivityLog("Status Updated", "Quote status changed to accepted.", "success");
       }
-      // Reload all quotes
-      try {
-        const quotes = await getQuotes();
-        setAllQuotes(quotes);
-        toast.success("Quote marked as accepted.");
-        setStatusSuccessMessage("Quote status has been changed to accepted.");
-      } catch (error) {
-        console.error("Error reloading quotes:", error);
-      }
+      toast.success("Quote marked as accepted.");
+      setStatusSuccessMessage("Quote status has been changed to accepted.");
     } catch (error) {
       console.error("Error marking quote as accepted:", error);
       toast.error("Failed to mark quote as accepted. Please try again.");
@@ -2377,21 +2429,19 @@ const QuoteDetail = () => {
 
     try {
       if (quoteId) {
-        await updateQuote(quoteId, { status: 'declined' });
-        await appendActivityLog("Status Updated", "Quote status changed to declined.", "warning");
-        const updatedQuote = await getQuoteById(quoteId);
-        if (updatedQuote) {
-          setQuote(updatedQuote);
-        }
+        const updatedQuote = await updateQuote(quoteId, {
+          status: 'declined',
+          declinedDate: new Date().toISOString(),
+        });
+        setQuote((prev: any) => ({ ...(prev || {}), ...(updatedQuote || {}), status: "declined" }));
+        setAllQuotes((prev: any[]) =>
+          Array.isArray(prev)
+            ? prev.map((row: any) => (String(row?._id || row?.id) === String(quoteId) ? { ...row, ...(updatedQuote || {}), status: "declined" } : row))
+            : prev
+        );
+        void appendActivityLog("Status Updated", "Quote status changed to declined.", "warning");
       }
-      // Reload all quotes
-      try {
-        const quotes = await getQuotes();
-        setAllQuotes(quotes);
-        toast.success("Quote marked as declined.");
-      } catch (error) {
-        console.error("Error reloading quotes:", error);
-      }
+      toast.success("Quote marked as declined.");
     } catch (error) {
       console.error("Error marking quote as declined:", error);
       toast.error("Failed to mark quote as declined. Please try again.");
@@ -2457,18 +2507,17 @@ const QuoteDetail = () => {
 
     try {
       if (quoteId) {
-        await updateQuote(quoteId, { status: "approved" });
-        await appendActivityLog("Status Updated", "Quote submitted for approval.", "success");
-        const updatedQuote = await getQuoteById(quoteId);
-        if (updatedQuote) {
-          setQuote(updatedQuote);
-        }
-      }
-      try {
-        const quotes = await getQuotes();
-        setAllQuotes(quotes);
-      } catch (error) {
-        console.error("Error reloading quotes:", error);
+        const updatedQuote = await updateQuote(quoteId, {
+          status: "pending_approval",
+          approvalLevel: 1,
+        });
+        setQuote((prev: any) => ({ ...(prev || {}), ...(updatedQuote || {}), status: "pending_approval", approvalLevel: 1 }));
+        setAllQuotes((prev: any[]) =>
+          Array.isArray(prev)
+            ? prev.map((row: any) => (String(row?._id || row?.id) === String(quoteId) ? { ...row, ...(updatedQuote || {}), status: "pending_approval", approvalLevel: 1 } : row))
+            : prev
+        );
+        void appendActivityLog("Status Updated", "Quote submitted for approval.", "info");
       }
       toast.success("Quote submitted for approval.");
     } catch (error) {
@@ -2807,7 +2856,19 @@ const QuoteDetail = () => {
   };
 
   if (!quote && loading) {
-    return null;
+    return (
+      <div className="w-full h-screen bg-gray-50 flex items-center justify-center">
+        <div className="rounded-xl border border-gray-200 bg-white px-6 py-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="h-4 w-4 rounded-full border-2 border-[#156372] border-t-transparent animate-spin" />
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Loading quote...</p>
+              <p className="text-sm text-gray-500">Fetching the latest quote data.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!quote) {
@@ -2843,6 +2904,9 @@ const QuoteDetail = () => {
   const statusRibbonConfig = (() => {
     if (isSentStatus) {
       return { label: "SENT", color: "#2F80FF" };
+    }
+    if (quoteStatus === "pending_approval") {
+      return { label: "PENDING APPROVAL", color: "#8B5CF6" };
     }
     if (isApprovedStatus) {
       return { label: "APPROVED", color: "#4CB8D9" };
@@ -3012,14 +3076,6 @@ const QuoteDetail = () => {
                 )}
               </div>
               <div className="flex items-center gap-2 ml-2">
-                <div className="inline-flex items-center overflow-hidden rounded-md border border-[#156372] shadow-sm">
-                  <button className="px-3 py-2 text-white bg-[#0D4A52] hover:bg-[#156372] cursor-pointer" onClick={handleCreateNewQuote}>
-                    <Plus size={16} />
-                  </button>
-                  <button className="px-2.5 py-2 text-white bg-[#0D4A52] border-l border-[#156372] hover:bg-[#156372] cursor-pointer" onClick={handleCreateNewQuote}>
-                    <ChevronDown size={14} />
-                  </button>
-                </div>
                 <div className="relative">
                   <button
                     className="p-2 text-gray-600 hover:bg-gray-100 rounded-md cursor-pointer border border-gray-200"
@@ -3070,7 +3126,7 @@ const QuoteDetail = () => {
                 />
                 <div
                   className="flex-1 min-w-0"
-                  onClick={() => handleQuoteClick(q.id)}
+                  onClick={() => handleQuoteClick(q)}
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-medium text-gray-900 truncate">{q.customerName || "Unknown Customer"}</span>
@@ -3160,7 +3216,7 @@ const QuoteDetail = () => {
                       className={`flex items-center gap-3 p-3 cursor-pointer border-b border-gray-100 hover:bg-gray-50 ${q.id === quoteId ? 'bg-slate-100' : ''
                         } ${selectedQuotes.includes(q.id) ? 'bg-gray-100' : ''}`}
                       onClick={() => {
-                        handleQuoteClick(q.id);
+                        handleQuoteClick(q);
                         setShowMobileSidebar(false);
                       }}
                     >

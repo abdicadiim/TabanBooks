@@ -19,6 +19,12 @@ import {
 } from "lucide-react";
 import { useAppBootstrap } from "../../context/AppBootstrapContext";
 import { preloadCustomersIndexData } from "../../pages/sales/Customers/customerRouteLoaders";
+import { preloadCustomersRoutes } from "../../pages/sales/Customers/customerRouteLoaders";
+import { fetchQuotesList, quoteQueryKeys } from "../../pages/sales/Quotes/quoteQueries";
+import { fetchInvoicesList, invoiceQueryKeys } from "../../pages/sales/Invoices/invoiceQueries";
+import { fetchRetainerInvoices, retainerInvoiceQueryKeys } from "../../pages/sales/RetainerInvoice/retainerInvoiceQueries";
+import { fetchSalesReceiptsList, salesReceiptsQueryKeys } from "../../pages/sales/SalesReceipts/salesReceiptsQueries";
+import { fetchCreditNotesList, creditNoteQueryKeys } from "../../pages/sales/CreditNotes/creditNoteQueries";
 
 const normalizeHex = (input: string | undefined, fallback: string) => {
   const value = String(input || "").trim();
@@ -225,6 +231,119 @@ export default function Sidebar() {
 
   const handleCustomersPrefetch = () => {
     void preloadCustomersIndexData(queryClient);
+    void preloadCustomersRoutes();
+  };
+
+  const prefetchSalesSection = (to?: string) => {
+    const route = String(to || "").toLowerCase();
+
+    if (route === "/sales/customers") {
+      handleCustomersPrefetch();
+      return;
+    }
+
+    if (route === "/sales/quotes") {
+      void import("../../pages/sales/Quotes/QuotesRoutes");
+      void import("../../pages/sales/Quotes/QuoteQueryWarmup");
+      void queryClient.prefetchQuery({
+        queryKey: quoteQueryKeys.list(),
+        queryFn: fetchQuotesList,
+      });
+      return;
+    }
+
+    if (route === "/sales/invoices") {
+      void import("../../pages/sales/Invoices/InvoicesRoutes");
+      void queryClient.prefetchQuery({
+        queryKey: invoiceQueryKeys.list({
+          page: 1,
+          limit: 10,
+          search: "",
+          sort: "Date",
+          order: "desc",
+        }),
+        queryFn: () => fetchInvoicesList({
+          page: 1,
+          limit: 10,
+          search: "",
+          sort: "Date",
+          order: "desc",
+        }),
+      });
+      return;
+    }
+
+    if (route === "/sales/retainer-invoices") {
+      void import("../../pages/sales/RetainerInvoice/RetainerInvoiceRoutes");
+      void queryClient.prefetchQuery({
+        queryKey: retainerInvoiceQueryKeys.list(),
+        queryFn: fetchRetainerInvoices,
+      });
+      return;
+    }
+
+    if (route === "/sales/sales-receipts") {
+      void import("../../pages/sales/SalesReceipts/SalesReceiptsRoutes");
+      void queryClient.prefetchQuery({
+        queryKey: salesReceiptsQueryKeys.list({
+          page: 1,
+          limit: 50,
+          sortBy: "Date",
+          sortOrder: "desc",
+        }),
+        queryFn: () => fetchSalesReceiptsList({
+          page: 1,
+          limit: 50,
+          sortBy: "Date",
+          sortOrder: "desc",
+        }),
+      });
+      return;
+    }
+
+    if (route === "/sales/credit-notes") {
+      void import("../../pages/sales/CreditNotes/CreditNotesRoutes");
+      void queryClient.prefetchQuery({
+        queryKey: creditNoteQueryKeys.lists(),
+        queryFn: fetchCreditNotesList,
+      });
+      return;
+    }
+
+    if (route === "/sales/sales-orders") {
+      void import("../../pages/sales/SalesOrder/SalesOrderList");
+      return;
+    }
+
+    if (route === "/sales/recurring-invoices") {
+      void import("../../pages/sales/RecurringInvoices/RecurringInvoicesRoutes");
+      return;
+    }
+
+    if (route === "/sales/payments-received") {
+      void import("../../pages/sales/PaymentsReceived/PaymentsReceivedRoutes");
+      void queryClient.prefetchQuery({
+        queryKey: ["payments-received", "list"],
+        queryFn: async () => {
+          const { getPayments } = await import("../../pages/sales/salesModel");
+          const response = await getPayments();
+          return Array.isArray(response) ? response : [];
+        },
+      });
+    }
+  };
+
+  const prefetchSalesGroup = () => {
+    void import("../../pages/sales/SalesRoutes");
+    prefetchSalesSection("/sales/customers");
+    prefetchSalesSection("/sales/quotes");
+    prefetchSalesSection("/sales/invoices");
+    prefetchSalesSection("/sales/retainer-invoices");
+    prefetchSalesSection("/sales/sales-orders");
+    prefetchSalesSection("/sales/sales-receipts");
+    prefetchSalesSection("/sales/recurring-invoices");
+    prefetchSalesSection("/sales/credit-notes");
+    prefetchSalesSection("/sales/payments-received");
   };
 
   const isModuleEnabled = (moduleKey?: string) => {
@@ -289,6 +408,15 @@ export default function Sidebar() {
       });
     };
 
+    const handleParentHover = (event: React.SyntheticEvent<HTMLButtonElement>) => {
+      if (item.label === "Sales") {
+        prefetchSalesGroup();
+      }
+      if (isCollapsed) {
+        openFlyout(event);
+      }
+    };
+
     if (!hasChildren) {
       return (
         <NavLink
@@ -318,9 +446,9 @@ export default function Sidebar() {
         <button
           type="button"
           onClick={isCollapsed ? undefined : () => setOpenSection((current) => (current === item.label ? null : item.label))}
-          onMouseEnter={isCollapsed ? openFlyout : undefined}
+          onMouseEnter={handleParentHover}
           onMouseLeave={isCollapsed ? closeFlyoutSoon : undefined}
-          onFocus={isCollapsed ? openFlyout : undefined}
+          onFocus={handleParentHover}
           aria-label={item.label}
           title={isCollapsed ? item.label : undefined}
           aria-expanded={!isCollapsed ? isOpen : undefined}
@@ -354,13 +482,12 @@ export default function Sidebar() {
           <div className={`ml-4 space-y-1 border-l pl-4 ${isLightAppearance ? "border-slate-200" : "border-white/10"}`}>
             {item.children.map((child) => {
               const isActiveChild = isRouteMatch(location.pathname, child.to);
-              const shouldPrefetchCustomers = child.to === "/sales/customers";
               return (
                 <NavLink
                   key={child.to}
                   to={child.to}
-                  onMouseEnter={shouldPrefetchCustomers ? handleCustomersPrefetch : undefined}
-                  onFocus={shouldPrefetchCustomers ? handleCustomersPrefetch : undefined}
+                  onMouseEnter={() => prefetchSalesSection(child.to)}
+                  onFocus={() => prefetchSalesSection(child.to)}
                   className={[
                     "flex items-center rounded-[12px] px-3 py-2 text-[13px] font-medium transition-all",
                     isActiveChild ? childActiveClass : childBaseClass,
@@ -401,13 +528,12 @@ export default function Sidebar() {
         <div className="space-y-1 p-2.5">
           {item.children.map((child) => {
             const isActiveChild = isRouteMatch(location.pathname, child.to);
-            const shouldPrefetchCustomers = child.to === "/sales/customers";
             return (
               <NavLink
                 key={child.to}
                 to={child.to}
-                onMouseEnter={shouldPrefetchCustomers ? handleCustomersPrefetch : undefined}
-                onFocus={shouldPrefetchCustomers ? handleCustomersPrefetch : undefined}
+                onMouseEnter={() => prefetchSalesSection(child.to)}
+                onFocus={() => prefetchSalesSection(child.to)}
                 className={[
                   "flex items-center rounded-[12px] px-3 py-2 text-[13px] font-semibold transition-all",
                   isActiveChild ? childActiveClass : childBaseClass,

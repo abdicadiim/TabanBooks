@@ -540,293 +540,375 @@ export default function CustomersPageContent({ controller }: { controller: any }
       }
 
       {/* Table Container */}
-      {/* Mobile Card View (Mockup Style) */}
-      <div className="block sm:hidden bg-white overflow-hidden mb-8">
-        <div className="divide-y divide-gray-100">
-          {showCustomerSkeletons ? Array(2).fill(0).map((_, index) => (
-            <div key={`mobile-skeleton-${index}`} className="flex items-center gap-3 p-4 animate-pulse">
-              <div className="w-12 h-12 rounded-full bg-gray-200 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="h-4 bg-gray-200 rounded w-3/5 mb-2" />
-                <div className="h-3 bg-gray-100 rounded w-2/5" />
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <div className="h-3 bg-gray-200 rounded w-16" />
-                <div className="h-2 bg-gray-100 rounded w-12" />
-              </div>
-            </div>
-          )) : displayedCustomers.map((customer: any, index: number) => {
-            const receivables = parseFloat(customer.receivables || 0);
-            const unusedCredits = parseFloat(customer.unusedCredits || 0);
-            const isInactiveCustomer = customer.status?.toLowerCase() === "inactive" || customer.isInactive === true;
-            const initials = (customer.name || customer.displayName || 'C')
-              .split(' ')
-              .map((n: string) => n[0])
-              .join('')
-              .substring(0, 2)
-              .toUpperCase();
-
-            return (
-              <div
-                key={`${customer.id}-${index}`}
-                onPointerDown={() => {
-                  void preloadCustomerDetailRoute();
-                }}
-                onClick={() => {
-                  navigateToCustomerDetail(customer);
-                }}
-                className="flex items-center gap-3 p-4 active:bg-slate-50 transition-colors"
-              >
-                {/* Avatar with Status */}
-                <div className="relative flex-shrink-0">
-                  {customer.imageUrl ? (
-                    <img src={customer.imageUrl} alt="" className="w-12 h-12 rounded-full object-cover border border-gray-100 shadow-sm" />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-[#156372] flex items-center justify-center text-white text-sm font-bold shadow-sm">
-                      {initials}
-                    </div>
-                  )}
-                  <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${customer.status?.toLowerCase() === 'active' || !customer.status ? 'bg-green-500' : 'bg-gray-400'}`} />
-                </div>
-
-                {/* Name and Company Section */}
-                <div className="flex-1 min-w-0">
-                  <div className={`${isInactiveCustomer ? "text-slate-400" : "text-slate-900"} font-bold truncate text-[15px]`}>
-                    {customer.name || customer.displayName || 'Customer'}
-                  </div>
-                  <div className="text-slate-400 text-xs truncate">
-                    {customer.companyName || 'No Company'}
-                  </div>
-                </div>
-
-                {/* Financial Metric Section */}
-                <div className="flex items-center gap-3">
-                  {unusedCredits > 0 ? (
-                    <div className="flex items-center gap-3">
-                      <div className="flex flex-col items-end">
-                        <div className="text-gray-400 font-medium text-[12px] leading-tight">{formatCurrency(receivables)}</div>
-                        <div className="text-gray-400 font-bold text-[8px] uppercase tracking-wider">RECEIVABLES</div>
-                      </div>
-                      <div className="flex flex-col items-end">
-                        <div className="text-[#10b981] font-bold text-[14px] leading-tight">{formatCurrency(unusedCredits)}</div>
-                        <div className="text-[#10b981] font-bold text-[8px] uppercase tracking-wider whitespace-nowrap">UNUSED CREDITS</div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-end">
-                      <div className="text-slate-900 font-bold text-[14px] leading-tight">{formatCurrency(receivables)}</div>
-                      <div className="text-[#156372] font-bold text-[8px] uppercase tracking-wider">RECEIVABLES</div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Right Arrow */}
-                <ChevronRight size={18} className="text-slate-300 ml-1 flex-shrink-0" />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="flex-1 min-h-0 overflow-auto bg-white custom-scrollbar">
-        {/* Table */}
-        <table
-          className="w-full text-left border-collapse text-[13px] table-fixed"
-          style={{ minWidth: `${tableMinWidth}px` }}
-        >
-          <thead className="bg-[#f6f7fb] sticky top-0 z-20 border-b border-[#e6e9f2]">
-            <tr className="text-[10px] font-semibold text-[#7b8494] uppercase tracking-wider">
-              {/* Settings Dropdown Column */}
-              <th className="px-4 py-3 w-16 min-w-[64px]">
-                <div className="flex items-center gap-2 relative">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsCustomizeModalOpen(true);
-                    }}
-                    className="h-6 w-6 flex items-center justify-center rounded border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
-                    title="Manage columns"
-                    aria-label="Manage columns"
-                  >
-                    <SlidersHorizontal size={13} style={{ color: "#1b5e6a" }} />
-                  </button>
-                  <div className="h-5 w-px bg-gray-200" />
-                  <input
-                    type="checkbox"
-                    checked={selectedCustomers.size === displayedCustomers.length && displayedCustomers.length > 0}
-                    onChange={handleSelectAll}
-                    style={{ accentColor: "#1b5e6a" }}
-                    className="w-4 h-4 rounded border-gray-300 cursor-pointer focus:ring-0"
-                  />
-                </div>
-              </th>
-
-                  {tableVisibleColumns.map((col: any) => (
-                    <th
-                  key={col.key}
-                  className={`px-4 py-3 relative group/header cursor-pointer select-none ${col.key !== 'name' && col.key !== 'receivables_bcy' && col.key !== 'companyName' ? 'hidden md:table-cell' : ''}`}
-                  style={{ width: col.width }}
-                  onClick={() => col.key === 'name' ? handleSort('name') : undefined}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1">
-                      <span className="truncate">{col.label}</span>
-                      {col.key === 'name' && (
-                        sortConfig.key === "name" ? (
-                          sortConfig.direction === "asc" ?
-                            <ChevronUp size={12} className="text-[#156372]" /> :
-                            <ChevronDown size={12} className="text-[#156372]" />
-                        ) : (
-                          <ArrowUpDown size={10} className="text-gray-400 opacity-0 group-hover/header:opacity-100 transition-opacity" />
-                        )
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Column resize handle */}
-                  <div
-                    role="separator"
-                    aria-orientation="vertical"
-                    onMouseDown={(e) => startResizing(col.key, e)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="absolute right-0 top-0 h-full w-3 cursor-col-resize opacity-0 group-hover/header:opacity-100 transition-opacity"
-                    title="Drag to resize"
-                  >
-                    <div className="absolute left-1/2 top-0 -translate-x-1/2 h-full w-px bg-[#7b8494]/60" />
+      {showCustomerSkeletons ? (
+        <div className="flex-1 min-h-0 overflow-auto bg-white custom-scrollbar">
+          <table
+            className="w-full text-left border-collapse text-[13px] table-fixed"
+            style={{ minWidth: `${tableMinWidth}px` }}
+          >
+            <thead className="bg-[#f6f7fb] sticky top-0 z-20 border-b border-[#e6e9f2]">
+              <tr className="text-[10px] font-semibold text-[#7b8494] uppercase tracking-wider">
+                <th className="px-4 py-3 w-16 min-w-[64px]">
+                  <div className="flex items-center gap-2 relative">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsCustomizeModalOpen(true);
+                      }}
+                      className="h-6 w-6 flex items-center justify-center rounded border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                      title="Manage columns"
+                      aria-label="Manage columns"
+                    >
+                      <SlidersHorizontal size={13} style={{ color: "#1b5e6a" }} />
+                    </button>
+                    <div className="h-5 w-px bg-gray-200" />
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      readOnly
+                      style={{ accentColor: "#1b5e6a" }}
+                      className="w-4 h-4 rounded border-gray-300 cursor-pointer focus:ring-0"
+                    />
                   </div>
                 </th>
-              ))}
 
-              <th className="px-4 py-3 w-12 sticky right-0 bg-[#f6f7fb]">
-                <div className="flex items-center justify-center">
-                  <Search
-                    size={14}
-                    className="text-gray-300 cursor-pointer transition-colors hover:opacity-80"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openSearchModalForCurrentContext();
-                    }}
-                  />
-                </div>
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {showCustomerSkeletons ? (
-              Array(2).fill(0).map((_, i) => (
-                <tr key={i} className="animate-pulse border-b border-gray-50">
-                  <td className="px-4 py-3 w-16">
-                    <div className="h-4 w-4 bg-gray-100 rounded mx-auto" />
+                {tableVisibleColumns.map((col: any) => (
+                  <th
+                    key={col.key}
+                    className={`px-4 py-3 relative select-none ${col.key !== 'name' && col.key !== 'receivables_bcy' && col.key !== 'companyName' ? 'hidden md:table-cell' : ''}`}
+                    style={{ width: col.width }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="truncate">{col.label}</span>
+                    </div>
+                  </th>
+                ))}
+
+                <th className="px-4 py-3 w-12 sticky right-0 bg-[#f6f7fb]">
+                  <div className="flex items-center justify-center">
+                    <Search
+                      size={14}
+                      className="text-gray-300 cursor-pointer transition-colors hover:opacity-80"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openSearchModalForCurrentContext();
+                      }}
+                    />
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {Array(8).fill(0).map((_, index) => (
+                <tr key={`customer-row-skeleton-${index}`} className="h-[50px] border-b border-[#eef1f6] animate-pulse">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="h-6 w-6 shrink-0 rounded bg-gray-100" aria-hidden />
+                      <span className="h-5 w-px shrink-0 bg-transparent" aria-hidden />
+                      <div className="w-4 h-4 rounded bg-gray-100" />
+                    </div>
                   </td>
-                  {tableVisibleColumns.map((col: any, idx: number) => (
-                    <td key={idx} className="px-4 py-3" style={{ width: col.width }}>
-                      <div className={`h-4 bg-gray-100 rounded ${idx === 0 ? 'w-3/4' : 'w-1/2'}`} />
-                    </td>
-                  ))}
+                  {tableVisibleColumns.map((col: any) => {
+                    const widthClass =
+                      col.key === "name"
+                        ? "w-3/4"
+                        : col.key === "companyName"
+                        ? "w-4/5"
+                        : col.key === "workPhone"
+                        ? "w-24"
+                        : col.key === "receivables" || col.key === "receivables_bcy"
+                        ? "w-20"
+                        : col.key === "unusedCredits" || col.key === "unused_credits_bcy"
+                        ? "w-20"
+                        : "w-1/2";
+
+                    return (
+                      <td
+                        key={col.key}
+                        className={`px-4 py-3 ${col.key !== 'name' && col.key !== 'receivables_bcy' && col.key !== 'companyName' ? 'hidden md:table-cell' : ''}`}
+                        style={{ width: col.width }}
+                      >
+                        <div className={`h-4 rounded bg-gray-100 ${widthClass}`} />
+                      </td>
+                    );
+                  })}
                   <td className="px-4 py-3 w-12 sticky right-0 bg-white" />
                 </tr>
-              ))
-            ) : (
-              displayedCustomers.map((customer: any, index: number) => {
-                const isSelected = selectedCustomers.has(customer.id);
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : displayedCustomers.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">No customers found, yet</h2>
+          <p className="text-gray-600 mb-6 max-w-md">
+            Customers will appear here once they are created or match your selected filter.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Mobile Card View (Mockup Style) */}
+          <div className="block sm:hidden bg-white overflow-hidden mb-8">
+            <div className="divide-y divide-gray-100">
+              {displayedCustomers.map((customer: any, index: number) => {
+                const receivables = parseFloat(customer.receivables || 0);
+                const unusedCredits = parseFloat(customer.unusedCredits || 0);
                 const isInactiveCustomer = customer.status?.toLowerCase() === "inactive" || customer.isInactive === true;
+                const initials = (customer.name || customer.displayName || 'C')
+                  .split(' ')
+                  .map((n: string) => n[0])
+                  .join('')
+                  .substring(0, 2)
+                  .toUpperCase();
+
                 return (
-                  <tr
+                  <div
                     key={`${customer.id}-${index}`}
-                    onMouseEnter={() => {
-                      setHoveredRowId(customer.id);
-                    }}
                     onPointerDown={() => {
                       void preloadCustomerDetailRoute();
                     }}
-                    onMouseLeave={() => {
-                      if (openReceivablesDropdownId !== customer.id) {
-                        setHoveredRowId(null);
-                      }
-                    }}
-                    onClick={(e) => {
-                      const target = e.target as HTMLElement;
-                      if (target.closest('input[type="checkbox"]') ||
-                        target.closest('button') ||
-                        target.closest('[data-receivables-button]')) {
-                        return;
-                      }
+                    onClick={() => {
                       navigateToCustomerDetail(customer);
                     }}
-                    className="text-[13px] group transition-all hover:bg-[#f8fafc] cursor-pointer h-[50px] border-b border-[#eef1f6]"
-                    style={isSelected ? { backgroundColor: "#1b5e6a1A" } : {}}
+                    className="flex items-center gap-3 p-4 active:bg-slate-50 transition-colors"
                   >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="h-6 w-6 shrink-0" aria-hidden />
-                        <span className="h-5 w-px shrink-0 bg-transparent" aria-hidden />
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleSelectCustomer(customer.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="w-4 h-4 rounded border-gray-300 cursor-pointer focus:ring-0"
-                          style={{ accentColor: "#1b5e6a" }}
-                        />
-                      </div>
-                    </td>
-
-                    {tableVisibleColumns.map((col: any) => (
-                      <td
-                        key={col.key}
-                        className={`px-4 py-3 truncate ${col.key !== 'name' && col.key !== 'receivables_bcy' && col.key !== 'companyName' ? 'hidden sm:table-cell' : ''}`}
-                        style={{ width: col.width, maxWidth: col.width }}
-                      >
-                        {col.key === 'name' ? (
-                          <div className="flex items-center gap-2">
-                            <div className="flex flex-col min-w-0">
-                              <span className="text-[#1b5e6a] font-medium truncate">
-                                {customer.name || customer.displayName || 'Customer'}
-                              </span>
-                              <span className="text-[11px] text-gray-400 truncate md:hidden">{customer.email || 'No email provided'}</span>
-                            </div>
-                          </div>
-                        ) : col.key === 'receivables' || col.key === 'receivables_bcy' ? (
-                          <span className="text-[13px] text-gray-700 font-medium">{formatCurrency(customer.receivables || customer.receivables_bcy)}</span>
-                        ) : col.key === 'unusedCredits' || col.key === 'unused_credits_bcy' ? (
-                          <span className="text-[13px] text-gray-700">{formatCurrency(customer.unusedCredits || customer.unused_credits_bcy)}</span>
-                        ) : (
-                          <span className="text-[13px] text-gray-700">{getCustomerFieldValue(customer, col.key)}</span>
-                        )}
-                      </td>
-                    ))}
-
-                    <td className="px-4 py-3 sticky right-0 bg-white/95 backdrop-blur-sm group-hover:bg-[#f8fafc] transition-colors">
-                      {(hoveredRowId === customer.id || openReceivablesDropdownId === customer.id) && (
-                        <div className="flex justify-center">
-                          <button
-                            data-receivables-button
-                            data-customer-id={customer.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const button = e.currentTarget;
-                              const rect = button.getBoundingClientRect();
-                              setReceivablesDropdownPosition({
-                                top: rect.bottom + 4,
-                                left: rect.right - 120
-                              });
-                              setOpenReceivablesDropdownId(openReceivablesDropdownId === customer.id ? null : customer.id);
-                            }}
-                            className="flex items-center justify-center w-6 h-6 bg-white border border-gray-200 rounded-full cursor-pointer transition-all hover:bg-gray-50"
-                          >
-                            <ChevronDown size={14} className="text-slate-500" />
-                          </button>
+                    {/* Avatar with Status */}
+                    <div className="relative flex-shrink-0">
+                      {customer.imageUrl ? (
+                        <img src={customer.imageUrl} alt="" className="w-12 h-12 rounded-full object-cover border border-gray-100 shadow-sm" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-[#156372] flex items-center justify-center text-white text-sm font-bold shadow-sm">
+                          {initials}
                         </div>
                       )}
-                    </td>
-                  </tr>
+                      <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${customer.status?.toLowerCase() === 'active' || !customer.status ? 'bg-green-500' : 'bg-gray-400'}`} />
+                    </div>
+
+                    {/* Name and Company Section */}
+                    <div className="flex-1 min-w-0">
+                      <div className={`${isInactiveCustomer ? "text-slate-400" : "text-slate-900"} font-bold truncate text-[15px]`}>
+                        {customer.name || customer.displayName || 'Customer'}
+                      </div>
+                      <div className="text-slate-400 text-xs truncate">
+                        {customer.companyName || 'No Company'}
+                      </div>
+                    </div>
+
+                    {/* Financial Metric Section */}
+                    <div className="flex items-center gap-3">
+                      {unusedCredits > 0 ? (
+                        <div className="flex items-center gap-3">
+                          <div className="flex flex-col items-end">
+                            <div className="text-gray-400 font-medium text-[12px] leading-tight">{formatCurrency(receivables)}</div>
+                            <div className="text-gray-400 font-bold text-[8px] uppercase tracking-wider">RECEIVABLES</div>
+                          </div>
+                          <div className="flex flex-col items-end">
+                            <div className="text-[#10b981] font-bold text-[14px] leading-tight">{formatCurrency(unusedCredits)}</div>
+                            <div className="text-[#10b981] font-bold text-[8px] uppercase tracking-wider whitespace-nowrap">UNUSED CREDITS</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-end">
+                          <div className="text-slate-900 font-bold text-[14px] leading-tight">{formatCurrency(receivables)}</div>
+                          <div className="text-[#156372] font-bold text-[8px] uppercase tracking-wider">RECEIVABLES</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right Arrow */}
+                    <ChevronRight size={18} className="text-slate-300 ml-1 flex-shrink-0" />
+                  </div>
                 );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+              })}
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-auto bg-white custom-scrollbar">
+            {/* Table */}
+            <table
+              className="w-full text-left border-collapse text-[13px] table-fixed"
+              style={{ minWidth: `${tableMinWidth}px` }}
+            >
+              <thead className="bg-[#f6f7fb] sticky top-0 z-20 border-b border-[#e6e9f2]">
+                <tr className="text-[10px] font-semibold text-[#7b8494] uppercase tracking-wider">
+                  {/* Settings Dropdown Column */}
+                  <th className="px-4 py-3 w-16 min-w-[64px]">
+                    <div className="flex items-center gap-2 relative">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsCustomizeModalOpen(true);
+                        }}
+                        className="h-6 w-6 flex items-center justify-center rounded border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                        title="Manage columns"
+                        aria-label="Manage columns"
+                      >
+                        <SlidersHorizontal size={13} style={{ color: "#1b5e6a" }} />
+                      </button>
+                      <div className="h-5 w-px bg-gray-200" />
+                      <input
+                        type="checkbox"
+                        checked={selectedCustomers.size === displayedCustomers.length && displayedCustomers.length > 0}
+                        onChange={handleSelectAll}
+                        style={{ accentColor: "#1b5e6a" }}
+                        className="w-4 h-4 rounded border-gray-300 cursor-pointer focus:ring-0"
+                      />
+                    </div>
+                  </th>
+
+                  {tableVisibleColumns.map((col: any) => (
+                    <th
+                      key={col.key}
+                      className={`px-4 py-3 relative group/header cursor-pointer select-none ${col.key !== 'name' && col.key !== 'receivables_bcy' && col.key !== 'companyName' ? 'hidden md:table-cell' : ''}`}
+                      style={{ width: col.width }}
+                      onClick={() => col.key === 'name' ? handleSort('name') : undefined}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1">
+                          <span className="truncate">{col.label}</span>
+                          {col.key === 'name' && (
+                            sortConfig.key === "name" ? (
+                              sortConfig.direction === "asc" ?
+                                <ChevronUp size={12} className="text-[#156372]" /> :
+                                <ChevronDown size={12} className="text-[#156372]" />
+                            ) : (
+                              <ArrowUpDown size={10} className="text-gray-400 opacity-0 group-hover/header:opacity-100 transition-opacity" />
+                            )
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Column resize handle */}
+                      <div
+                        role="separator"
+                        aria-orientation="vertical"
+                        onMouseDown={(e) => startResizing(col.key, e)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute right-0 top-0 h-full w-3 cursor-col-resize opacity-0 group-hover/header:opacity-100 transition-opacity"
+                        title="Drag to resize"
+                      >
+                        <div className="absolute left-1/2 top-0 -translate-x-1/2 h-full w-px bg-[#7b8494]/60" />
+                      </div>
+                    </th>
+                  ))}
+
+                  <th className="px-4 py-3 w-12 sticky right-0 bg-[#f6f7fb]">
+                    <div className="flex items-center justify-center">
+                      <Search
+                        size={14}
+                        className="text-gray-300 cursor-pointer transition-colors hover:opacity-80"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openSearchModalForCurrentContext();
+                        }}
+                      />
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {displayedCustomers.map((customer: any, index: number) => {
+                  const isSelected = selectedCustomers.has(customer.id);
+                  const isInactiveCustomer = customer.status?.toLowerCase() === "inactive" || customer.isInactive === true;
+                  return (
+                    <tr
+                      key={`${customer.id}-${index}`}
+                      onMouseEnter={() => {
+                        setHoveredRowId(customer.id);
+                      }}
+                      onPointerDown={() => {
+                        void preloadCustomerDetailRoute();
+                      }}
+                      onMouseLeave={() => {
+                        if (openReceivablesDropdownId !== customer.id) {
+                          setHoveredRowId(null);
+                        }
+                      }}
+                      onClick={(e) => {
+                        const target = e.target as HTMLElement;
+                        if (target.closest('input[type="checkbox"]') ||
+                          target.closest('button') ||
+                          target.closest('[data-receivables-button]')) {
+                          return;
+                        }
+                        navigateToCustomerDetail(customer);
+                      }}
+                      className="text-[13px] group transition-all hover:bg-[#f8fafc] cursor-pointer h-[50px] border-b border-[#eef1f6]"
+                      style={isSelected ? { backgroundColor: "#1b5e6a1A" } : {}}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="h-6 w-6 shrink-0" aria-hidden />
+                          <span className="h-5 w-px shrink-0 bg-transparent" aria-hidden />
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleSelectCustomer(customer.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 rounded border-gray-300 cursor-pointer focus:ring-0"
+                            style={{ accentColor: "#1b5e6a" }}
+                          />
+                        </div>
+                      </td>
+
+                      {tableVisibleColumns.map((col: any) => (
+                        <td
+                          key={col.key}
+                          className={`px-4 py-3 truncate ${col.key !== 'name' && col.key !== 'receivables_bcy' && col.key !== 'companyName' ? 'hidden sm:table-cell' : ''}`}
+                          style={{ width: col.width, maxWidth: col.width }}
+                        >
+                          {col.key === 'name' ? (
+                            <div className="flex items-center gap-2">
+                              <div className="flex flex-col min-w-0">
+                                <span className="text-[#1b5e6a] font-medium truncate">
+                                  {customer.name || customer.displayName || 'Customer'}
+                                </span>
+                                <span className="text-[11px] text-gray-400 truncate md:hidden">{customer.email || 'No email provided'}</span>
+                              </div>
+                            </div>
+                          ) : col.key === 'receivables' || col.key === 'receivables_bcy' ? (
+                            <span className="text-[13px] text-gray-700 font-medium">{formatCurrency(customer.receivables || customer.receivables_bcy)}</span>
+                          ) : col.key === 'unusedCredits' || col.key === 'unused_credits_bcy' ? (
+                            <span className="text-[13px] text-gray-700">{formatCurrency(customer.unusedCredits || customer.unused_credits_bcy)}</span>
+                          ) : (
+                            <span className="text-[13px] text-gray-700">{getCustomerFieldValue(customer, col.key)}</span>
+                          )}
+                        </td>
+                      ))}
+
+                      <td className="px-4 py-3 sticky right-0 bg-white/95 backdrop-blur-sm group-hover:bg-[#f8fafc] transition-colors">
+                        {(hoveredRowId === customer.id || openReceivablesDropdownId === customer.id) && (
+                          <div className="flex justify-center">
+                            <button
+                              data-receivables-button
+                              data-customer-id={customer.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const button = e.currentTarget;
+                                const rect = button.getBoundingClientRect();
+                                setReceivablesDropdownPosition({
+                                  top: rect.bottom + 4,
+                                  left: rect.right - 120
+                                });
+                                setOpenReceivablesDropdownId(openReceivablesDropdownId === customer.id ? null : customer.id);
+                              }}
+                              className="flex items-center justify-center w-6 h-6 bg-white border border-gray-200 rounded-full cursor-pointer transition-all hover:bg-gray-50"
+                            >
+                              <ChevronDown size={14} className="text-slate-500" />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
       <PaginationFooter
         totalItems={totalItems || displayedCustomers.length}
         currentPage={currentPage}

@@ -187,6 +187,7 @@ export default function InvoiceDetail() { // Start of component
   const [customerRetainerAvailable, setCustomerRetainerAvailable] = useState<number>(0);
   const [customerRetainerInvoices, setCustomerRetainerInvoices] = useState<any[]>([]);
   const [customerCreditsAvailable, setCustomerCreditsAvailable] = useState<number>(0);
+  const [customerCreditNotes, setCustomerCreditNotes] = useState<any[]>([]);
   const [isApplyRetainerOpen, setIsApplyRetainerOpen] = useState(false);
   const [retainerApplyValues, setRetainerApplyValues] = useState<Record<string, number>>({});
   const [isApplyingRetainer, setIsApplyingRetainer] = useState(false);
@@ -235,6 +236,17 @@ export default function InvoiceDetail() { // Start of component
   // Owner email data
   // Owner email data
   const [ownerEmail, setOwnerEmail] = useState<any>(null);
+
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, []);
 
   // Rich Text Editor State
   const [fontSize, setFontSize] = useState("16");
@@ -731,11 +743,13 @@ export default function InvoiceDetail() { // Start of component
           const available = toNumSafe(row?.balance ?? row?.unusedAmount ?? row?.availableAmount, 0);
           return sum + (available > 0 ? available : 0);
         }, 0);
+        setCustomerCreditNotes(creditRows);
         setCustomerCreditsAvailable(Math.max(0, totalCredits));
       } else {
         setCustomerRetainerInvoices([]);
         setCustomerRetainerAvailable(0);
         setCustomerCreditsAvailable(0);
+        setCustomerCreditNotes([]);
       }
 
       const allTaxes = await taxesPromise;
@@ -1399,14 +1413,16 @@ export default function InvoiceDetail() { // Start of component
     }
 
     try {
-      if (typeof invoicesAPI.sendEmail !== 'function') {
+      const sendApi = isDebitNoteDocument ? debitNotesAPI : invoicesAPI;
+
+      if (typeof sendApi.sendEmail !== 'function') {
         // Fallback if API method is not yet available in hot reload context (should rarely happen)
-        console.warn("invoicesAPI.sendEmail is not defined yet");
+        console.warn(`${isDebitNoteDocument ? "debitNotesAPI" : "invoicesAPI"}.sendEmail is not defined yet`);
         toast("System update in progress. Please refresh the page and try again.");
         return;
       }
 
-      await invoicesAPI.sendEmail(id, {
+      await sendApi.sendEmail(id, {
         to: emailData.to,
         cc: emailData.cc,
         bcc: emailData.bcc,
@@ -1417,9 +1433,9 @@ export default function InvoiceDetail() { // Start of component
 
       console.log("Sending email:", emailData);
       setIsSendEmailModalOpen(false);
-      toast("Email sent successfully!");
+      toast(isDebitNoteDocument ? "Debit note email sent successfully!" : "Invoice email sent successfully!");
 
-      const resolvePostSendStatus = (dueDateValue: any) => {
+      const resolveInvoicePostSendStatus = (dueDateValue: any) => {
         if (!dueDateValue) return "unpaid";
         const dueDate = new Date(dueDateValue);
         if (Number.isNaN(dueDate.getTime())) return "unpaid";
@@ -1428,10 +1444,21 @@ export default function InvoiceDetail() { // Start of component
         dueDate.setHours(0, 0, 0, 0);
         return dueDate.getTime() < today.getTime() ? "overdue" : "unpaid";
       };
+      const resolveDebitNotePostSendStatus = (dueDateValue: any) => {
+        if (!dueDateValue) return "due";
+        const dueDate = new Date(dueDateValue);
+        if (Number.isNaN(dueDate.getTime())) return "due";
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        dueDate.setHours(0, 0, 0, 0);
+        return dueDate.getTime() < today.getTime() ? "overdue" : "due";
+      };
 
       // Update local invoice status if it was draft
       if (invoice && (invoice as any).status === 'draft') {
-        const nextStatus = resolvePostSendStatus(invoice.dueDate);
+        const nextStatus = isDebitNoteDocument
+          ? resolveDebitNotePostSendStatus(invoice.dueDate)
+          : resolveInvoicePostSendStatus(invoice.dueDate);
         setInvoice((prev: any) => {
           if (!prev) return null;
           return { ...prev, status: nextStatus };
@@ -1514,7 +1541,7 @@ export default function InvoiceDetail() { // Start of component
     // TODO: Implement actual email sending
     console.log("Sending email:", emailData);
     setIsSendEmailModalOpen(false);
-    toast("Email sent successfully!");
+        toast(isDebitNoteDocument ? "Debit note email sent successfully!" : "Invoice email sent successfully!");
     setEmailData({
       to: "",
       cc: "",
@@ -3668,7 +3695,7 @@ export default function InvoiceDetail() { // Start of component
                 className="inline-flex items-center gap-1.5 px-2 py-1 rounded hover:bg-gray-100 cursor-pointer"
               >
                 <Mail size={13} />
-                Send
+                {isDebitNoteDocument ? "Send Debit Note" : "Send"}
               </button>
 
               <button
@@ -3690,14 +3717,29 @@ export default function InvoiceDetail() { // Start of component
               </button>
 
               {debitNote && (
-                <button
-                  onClick={() => navigate(`/sales/debit-notes/${debitNote.id || debitNote._id}`)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-[#fff7ed] border border-[#ffedd5] text-[#9a3412] hover:bg-[#ffedd5] font-medium text-[13px] transition-colors shadow-sm"
+                <div
+                  className="flex flex-col gap-1 rounded-md border border-[#ffedd5] bg-[#fff7ed] px-3 py-2 text-[12px] text-[#7c2d12]"
                   title={`View Debit Note: ${debitNote.debitNoteNumber || debitNote.invoiceNumber || ""}`}
                 >
-                  <FileText size={13} className="text-[#c2410c]" />
-                  <span>Debit Note: {debitNote.debitNoteNumber || debitNote.invoiceNumber || "View"}</span>
-                </button>
+                  <div className="flex items-center gap-2">
+                    <FileText size={13} className="text-[#c2410c]" />
+                    <span className="font-medium">
+                      Debit Note: {debitNote.debitNoteNumber || debitNote.invoiceNumber || "View"}
+                    </span>
+                    <button
+                      onClick={() => navigate(`/sales/debit-notes/${debitNote.id || debitNote._id}`)}
+                      className="ml-2 rounded-md border border-[#fdba74] bg-white px-2 py-0.5 font-medium text-[#9a3412] hover:bg-[#fff7ed]"
+                    >
+                      Open
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[#92400e]">
+                    <span>Date: {formatDate(debitNote.debitNoteDate || debitNote.date || debitNote.createdAt)}</span>
+                    <span>Amount: {formatCurrency(toNumSafe(debitNote.total ?? debitNote.amount ?? 0, 0), debitNote.currency || invoice.currency)}</span>
+                    <span>Balance: {formatCurrency(toNumSafe(debitNote.balance ?? 0, 0), debitNote.currency || invoice.currency)}</span>
+                    <span>Status: {String(debitNote.status || "-")}</span>
+                  </div>
+                </div>
               )}
               {debitNote && <div className="h-5 w-px bg-gray-300 mx-1" />}
 
@@ -3818,13 +3860,26 @@ export default function InvoiceDetail() { // Start of component
               </div>
 
               {debitNote && (
-                <button
-                  onClick={() => navigate(`/sales/debit-notes/${debitNote.id || debitNote._id}`)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-[#fff7ed] border border-[#ffedd5] text-[#9a3412] hover:bg-[#ffedd5] font-medium text-sm transition-colors"
-                >
-                  <FileText size={14} />
-                  View Debit Note
-                </button>
+                <div className="flex flex-col gap-1 rounded-md border border-[#ffedd5] bg-[#fff7ed] px-3 py-2 text-[12px] text-[#7c2d12]">
+                  <div className="flex items-center gap-2">
+                    <FileText size={14} className="text-[#c2410c]" />
+                    <span className="font-medium">
+                      Debit Note {debitNote.debitNoteNumber || debitNote.invoiceNumber || debitNote.id || "-"}
+                    </span>
+                    <button
+                      onClick={() => navigate(`/sales/debit-notes/${debitNote.id || debitNote._id}`)}
+                      className="ml-2 rounded-md border border-[#fdba74] bg-white px-2 py-0.5 font-medium text-[#9a3412] hover:bg-[#fff7ed]"
+                    >
+                      Open
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[#92400e]">
+                    <span>Date: {formatDate(debitNote.debitNoteDate || debitNote.date || debitNote.createdAt)}</span>
+                    <span>Amount: {formatCurrency(toNumSafe(debitNote.total ?? debitNote.amount ?? 0, 0), debitNote.currency || invoice.currency)}</span>
+                    <span>Balance: {formatCurrency(toNumSafe(debitNote.balance ?? 0, 0), debitNote.currency || invoice.currency)}</span>
+                    <span>Status: {String(debitNote.status || "-")}</span>
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -4054,93 +4109,96 @@ export default function InvoiceDetail() { // Start of component
           {/* Debit Note Header Card */}
           {isDebitNoteView && (
             <div className="mx-6 mt-4 rounded border border-gray-200 bg-white">
-              <div className="px-5 py-4 border-b border-gray-200">
-                <div className="space-y-3 text-[14px] text-gray-900">
-                  {customerCreditsAvailable > 0 && (
-                    <div className="flex items-center gap-2">
-                      <FileText size={16} className="text-gray-700" />
-                      <span>
-                        Credits Available:{" "}
-                        <span className="font-semibold">
-                          {formatCurrency(customerCreditsAvailable, invoice.currency)}
-                        </span>{" "}
-                        <button
-                          type="button"
-                          className="text-[#3b82f6] hover:underline"
-                          onClick={() => void handleOpenApplyCredits("credit")}
-                        >
-                          Apply Now
-                        </button>
-                      </span>
-                    </div>
-                  )}
-                  {customerRetainerAvailable > 0 && (
-                    <div className="flex items-center gap-2">
-                      <Repeat size={16} className="text-gray-700" />
-                      <span>
-                        Retainer Available:{" "}
-                        <span className="font-semibold">
-                          {formatAmountWithCurrency(customerRetainerAvailable)}
-                        </span>{" "}
-                        <button
-                          type="button"
-                          className="text-[#3b82f6] hover:underline"
-                          onClick={handleOpenApplyRetainer}
-                        >
-                          Apply Now
-                        </button>
-                      </span>
-                    </div>
-                  )}
-                  {(associatedInvoiceRow as any) && (
-                    <div className="flex items-center gap-2">
-                      <FileText size={16} className="text-gray-700" />
-                      <span>
-                        Associated Invoice:{" "}
-                        <button
-                          type="button"
-                          className="text-[#3b82f6] hover:underline"
-                          onClick={() => {
-                            const invId = String(
-                              (associatedInvoiceRow as any)?.id ||
-                              (associatedInvoiceRow as any)?._id ||
-                              (invoice as any)?.associatedInvoiceId ||
-                              (invoice as any)?.invoiceId ||
-                              ""
-                            );
-                            if (invId) navigate(`/sales/invoices/${invId}`);
-                          }}
-                        >
-                          {String(
-                            (associatedInvoiceRow as any)?.invoiceNumber ||
-                            (invoice as any)?.associatedInvoiceNumber ||
-                            (invoice as any)?.invoiceNumber ||
-                            "-"
-                          )}
-                        </button>
-                      </span>
-                    </div>
-                  )}
-                </div>
+              <div className="px-5 py-4 border-b border-gray-200 space-y-3 text-[14px] text-gray-900">
+                {customerCreditsAvailable > 0 && (
+                  <div className="flex items-center gap-2">
+                    <FileText size={16} className="text-gray-700" />
+                    <span>
+                      Credits Available:{" "}
+                      <span className="font-semibold">
+                        {formatCurrency(customerCreditsAvailable, invoice.currency)}
+                      </span>{" "}
+                      <button
+                        type="button"
+                        className="text-[#3b82f6] hover:underline"
+                        onClick={() => void handleOpenApplyCredits("credit")}
+                      >
+                        Apply Now
+                      </button>
+                    </span>
+                  </div>
+                )}
+                {customerRetainerAvailable > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Repeat size={16} className="text-gray-700" />
+                    <span>
+                      Retainer Available:{" "}
+                      <span className="font-semibold">
+                        {formatAmountWithCurrency(customerRetainerAvailable)}
+                      </span>{" "}
+                      <button
+                        type="button"
+                        className="text-[#3b82f6] hover:underline"
+                        onClick={handleOpenApplyRetainer}
+                      >
+                        Apply Now
+                      </button>
+                    </span>
+                  </div>
+                )}
+                {(associatedInvoiceRow as any) && (
+                  <div className="flex items-center gap-2">
+                    <FileText size={16} className="text-gray-700" />
+                    <span>
+                      Associated Invoice:{" "}
+                      <button
+                        type="button"
+                        className="text-[#3b82f6] hover:underline"
+                        onClick={() => {
+                          const invId = String(
+                            (associatedInvoiceRow as any)?.id ||
+                            (associatedInvoiceRow as any)?._id ||
+                            (invoice as any)?.associatedInvoiceId ||
+                            (invoice as any)?.invoiceId ||
+                            ""
+                          );
+                          if (invId) navigate(`/sales/invoices/${invId}`);
+                        }}
+                      >
+                        {String(
+                          (associatedInvoiceRow as any)?.invoiceNumber ||
+                          (invoice as any)?.associatedInvoiceNumber ||
+                          (invoice as any)?.invoiceNumber ||
+                          "-"
+                        )}
+                      </button>
+                    </span>
+                  </div>
+                )}
               </div>
-              <div className="px-5 py-4 flex items-center gap-3">
+              <div className="px-5 py-4 flex items-center gap-3 border-b border-gray-200">
                 <Sparkles size={16} className="text-[#7c72ff]" />
                 <span className="text-sm text-gray-800">
-                  <span className="font-semibold">WHAT&apos;S NEXT?</span> Send this Debit Note to your customer or mark it as Sent.
+                  <span className="font-semibold">WHAT&apos;S NEXT?</span> Debit Note has been sent. Record payment for it as soon as you receive payment.
+                  <button
+                    type="button"
+                    className="ml-2 text-[#3b82f6] hover:underline"
+                    onClick={() => window.open("/help", "_blank")}
+                  >
+                    Learn More
+                  </button>
                 </span>
                 <button
-                  onClick={handleSendInvoice}
-                  className="px-3 py-1.5 rounded-md text-sm text-white"
+                  onClick={handleRecordPayment}
+                  className="ml-auto px-3 py-1.5 rounded-md text-sm text-white"
                   style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
                 >
-                  Send Debit Note
+                  Record Payment
                 </button>
-                <button
-                  onClick={handleMarkAsSent}
-                  className="px-3 py-1.5 rounded-md bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium cursor-pointer hover:bg-gray-50"
-                >
-                  Mark As Sent
-                </button>
+              </div>
+              <div className="px-5 py-3 bg-[#f8fafc] text-sm text-gray-700">
+                Get paid faster by setting up online payment gateways.{" "}
+                <button className="text-[#3b82f6] hover:underline">Set Up Now</button>
               </div>
             </div>
           )}
@@ -4166,10 +4224,94 @@ export default function InvoiceDetail() { // Start of component
                     </span>
                   </div>
                 )}
+                {customerCreditNotes.length > 0 && (
+                  <div className="flex items-start gap-2">
+                    <FileText size={15} className="mt-0.5 text-gray-700" />
+                    <div className="flex-1">
+                      <div className="text-[13px] text-gray-700">Credit Notes:</div>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {customerCreditNotes.slice(0, 4).map((note: any) => {
+                          const noteId = String(note?.id || note?._id || "").trim();
+                          const noteNumber = String(note?.creditNoteNumber || note?.number || note?.invoiceNumber || noteId || "Credit Note").trim();
+                          const noteBalance = toNumSafe(note?.balance ?? note?.unusedAmount ?? note?.availableAmount ?? note?.total ?? note?.amount, 0);
+                          return (
+                            <button
+                              key={noteId || noteNumber}
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-full border border-[#dbe4ff] bg-[#f8fbff] px-3 py-1 text-[12px] text-[#2563eb] hover:bg-[#edf4ff]"
+                              onClick={() => {
+                                if (noteId) navigate(`/sales/credit-notes/${noteId}`);
+                              }}
+                            >
+                              <span>{noteNumber}</span>
+                              <span className="text-[#6b7280]">({formatCurrency(noteBalance, note?.currency || invoice.currency)})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {customerRetainerInvoices.length > 0 && (
+                  <div className="flex items-start gap-2">
+                    <Repeat size={15} className="mt-0.5 text-gray-700" />
+                    <div className="flex-1">
+                      <div className="text-[13px] text-gray-700">Retainer Invoices:</div>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {customerRetainerInvoices.slice(0, 4).map((row: any) => {
+                          const rowId = String(row?.id || row?._id || "").trim();
+                          const rowNumber = String(row?.invoiceNumber || row?.retainerInvoiceNumber || rowId || "Retainer").trim();
+                          const rowAmount = toNumSafe(getRetainerAvailableAmount(row), 0);
+                          return (
+                            <button
+                              key={rowId || rowNumber}
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-full border border-[#dbe4ff] bg-[#f8fbff] px-3 py-1 text-[12px] text-[#2563eb] hover:bg-[#edf4ff]"
+                              onClick={() => {
+                                if (rowId) navigate(`/sales/retainer-invoices/${rowId}`);
+                              }}
+                            >
+                              <span>{rowNumber}</span>
+                              <span className="text-[#6b7280]">({formatAmountWithCurrency(rowAmount)})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="px-5 py-3 bg-[#f8fafc] border-t border-gray-200 text-sm text-gray-700">
                 Get paid faster by setting up online payment gateways.{" "}
                 <button className="text-[#3b82f6] hover:underline">Set Up Now</button>
+              </div>
+            </div>
+          )}
+
+          {!isDebitNoteView && debitNote && (
+            <div className="mx-6 mt-4 rounded border border-gray-200 bg-white">
+              <div className="px-5 py-4 space-y-3 text-[14px] text-gray-900">
+                <div className="flex items-center gap-2">
+                  <FileText size={15} className="text-gray-700" />
+                  <span>
+                    Debit Note:{" "}
+                    <span className="font-semibold">
+                      {debitNote.debitNoteNumber || debitNote.invoiceNumber || debitNote.id || "-"}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    className="text-[#3b82f6] hover:underline"
+                    onClick={() => navigate(`/sales/debit-notes/${debitNote.id || debitNote._id}`)}
+                  >
+                    Open
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-gray-700">
+                  <span>Date: {formatDate(debitNote.debitNoteDate || debitNote.date || debitNote.createdAt)}</span>
+                  <span>Amount: {formatCurrency(toNumSafe(debitNote.total ?? debitNote.amount ?? 0, 0), debitNote.currency || invoice.currency)}</span>
+                  <span>Status: {String(debitNote.status || "-")}</span>
+                </div>
               </div>
             </div>
           )}
@@ -5761,25 +5903,25 @@ export default function InvoiceDetail() { // Start of component
                 {/* Template Preview Card */}
                 <div className="mb-6">
                   <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
-                    {/* Invoice Preview */}
-                    <div className="bg-gray-50 rounded border border-gray-200 p-4 mb-3" style={{ minHeight: "200px" }}>
-                      {/* Preview Content */}
-                      <div className="text-xs">
-                        {/* Logo and Header */}
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="w-8 h-8 rounded flex items-center justify-center text-white font-bold text-sm" style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}>
-                            Z
-                          </div>
-                          <div className="text-right">
-                            <div className="font-bold text-gray-900">INVOICE</div>
-                          </div>
-                        </div>
-                        {/* Invoice Details Preview */}
-                        <div className="space-y-1 text-gray-600">
-                          <div className="flex justify-between">
-                            <span>Invoice #:</span>
-                            <span>INV-001</span>
-                          </div>
+                        {/* Invoice Preview */}
+                        <div className="bg-gray-50 rounded border border-gray-200 p-4 mb-3" style={{ minHeight: "200px" }}>
+                          {/* Preview Content */}
+                          <div className="text-xs">
+                            {/* Logo and Header */}
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="w-8 h-8 rounded flex items-center justify-center text-white font-bold text-sm" style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}>
+                                Z
+                              </div>
+                              <div className="text-right">
+                            <div className="font-bold text-gray-900">{isDebitNoteDocument ? "DEBIT NOTE" : "INVOICE"}</div>
+                              </div>
+                            </div>
+                            {/* Invoice Details Preview */}
+                            <div className="space-y-1 text-gray-600">
+                              <div className="flex justify-between">
+                            <span>{isDebitNoteDocument ? "Debit Note #:" : "Invoice #:"}</span>
+                            <span>{isDebitNoteDocument ? "CDN-000001" : "INV-001"}</span>
+                              </div>
                           <div className="flex justify-between">
                             <span>Date:</span>
                             <span>01/01/2024</span>
