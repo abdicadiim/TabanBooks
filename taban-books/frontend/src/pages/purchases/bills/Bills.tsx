@@ -2359,33 +2359,7 @@ export default function Bills() {
               </tr>
             </thead>
             <tbody className="bg-white">
-              {isRefreshing ? (
-                // Skeleton loading rows
-                Array.from({ length: 5 }).map((_, index) => (
-                  <tr key={`skeleton-${index}`} className="border-b border-gray-200">
-                    <td className="py-3 text-sm text-gray-900" style={{ width: "72px", paddingLeft: "12px", paddingRight: "12px" }}>
-                      <div className="flex items-center gap-2 whitespace-nowrap">
-                        <span style={{ width: "20px", display: "inline-block", flexShrink: 0 }} />
-                        <div className="skeleton-checkbox"></div>
-                      </div>
-                    </td>
-                    {visibleBillColumns.includes("Date") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "80px" }}></div></td>}
-                    {visibleBillColumns.includes("Location") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "100px" }}></div></td>}
-                    {visibleBillColumns.includes("Bill#") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "90px" }}></div></td>}
-                    {visibleBillColumns.includes("Reference Number") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "80px" }}></div></td>}
-                    {visibleBillColumns.includes("Vendor Name") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "120px" }}></div></td>}
-                    {visibleBillColumns.includes("Customer Name") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "120px" }}></div></td>}
-                    {visibleBillColumns.includes("Status") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "70px" }}></div></td>}
-                    {visibleBillColumns.includes("Due Date") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "80px" }}></div></td>}
-                    {visibleBillColumns.includes("Amount") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "70px" }}></div></td>}
-                    {visibleBillColumns.includes("Balance Due") && <td className="px-4 py-3 text-sm text-gray-900"><div className="skeleton-cell" style={{ width: "70px" }}></div></td>}
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      {/* Empty cell to match Search icon header column */}
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                sortedBills.map((bill, index) => {
+              {sortedBills.map((bill, index) => {
                   return (
                     <tr
                       key={bill._id || bill.id || index}
@@ -2418,8 +2392,7 @@ export default function Bills() {
                       </td>
                     </tr>
                   );
-                })
-              )}
+                })}
               {!isRefreshing && sortedBills.length === 0 && (
                 <tr>
                   <td colSpan={1 + visibleBillColumns.filter(Boolean).length} style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>

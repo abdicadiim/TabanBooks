@@ -30,7 +30,7 @@ export default function VendorCredits() {
   const [organizationInfo, setOrganizationInfo] = useState<any>(null);
   const [selectedCredits, setSelectedCredits] = useState<any[]>([]);
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showSearchFormModal, setShowSearchFormModal] = useState(false);
   const [searchModalData, setSearchModalData] = useState({
@@ -1375,12 +1375,7 @@ export default function VendorCredits() {
 
       {/* Main Content */}
       <div style={{ padding: "0", backgroundColor: "#fff", minHeight: "calc(100vh - 120px)" }}>
-        {isRefreshing ? (
-          <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
-            <RefreshCw className="animate-spin" size={32} style={{ margin: "0 auto 12px" }} />
-            <p>Loading vendor credits...</p>
-          </div>
-        ) : vendorCredits.length === 0 ? (
+        {filteredCredits.length === 0 ? (
           <div style={styles.emptyStateContainer}>
             <div style={styles.emptyStateImageWrapper}>
               {/* Pattern Background */}
@@ -1445,14 +1440,7 @@ export default function VendorCredits() {
                 </tr>
               </thead>
               <tbody>
-                {filteredCredits.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} style={{ padding: "40px 16px", textAlign: "center", fontSize: "13px", color: "#6b7280", borderBottom: "1px solid #e5e7eb" }}>
-                      No vendor credits found
-                    </td>
-                  </tr>
-                ) : (
-                  filteredCredits.map((credit: any) => {
+                {filteredCredits.map((credit: any) => {
                     const isSelected = selectedCredits.includes(credit.id || credit._id);
                     const status = (credit.status || "DRAFT").toUpperCase();
                     
@@ -1498,8 +1486,7 @@ export default function VendorCredits() {
                         <td style={{ padding: "12px 16px", fontSize: "13px", color: "#374151", textAlign: "right" }}>{formatCurrency(credit.balance || credit.amount, credit.currency)}</td>
                       </tr>
                     );
-                  })
-                )}
+                  })}
               </tbody>
             </table>
           </div>

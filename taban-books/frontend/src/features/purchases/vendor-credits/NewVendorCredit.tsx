@@ -3,21 +3,28 @@ import { useNavigate, useLocation, useParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import {
   Search,
+  Copy,
   Edit3,
   Upload as UploadIcon,
   ChevronDown,
   ChevronUp,
   X,
   Plus,
+  Minus,
   Info,
   ShoppingBag,
   Pencil,
   AlertTriangle,
   FileText,
+  Grid3x3,
+  Percent,
   Settings,
   Clock,
   RotateCw,
   Image as ImageIcon,
+  Briefcase,
+  Globe,
+  Tag,
   MoreVertical,
   GripVertical,
   Check,
@@ -110,6 +117,7 @@ export default function NewVendorCredit() {
   const [warehouseSearch, setWarehouseSearch] = useState("");
   const [warehouseDropdownOpen, setWarehouseDropdownOpen] = useState(false);
   const [taxLevelOpen, setTaxLevelOpen] = useState(false);
+  const [taxLevelSearch, setTaxLevelSearch] = useState("");
   const [taxDropdownOpen, setTaxDropdownOpen] = useState<Record<string, boolean>>({});
   const [accountDropdownOpen, setAccountDropdownOpen] = useState<Record<string, boolean>>({});
   const [accountSearch, setAccountSearch] = useState<Record<string, string>>({});
@@ -168,32 +176,6 @@ export default function NewVendorCredit() {
     : taxMode === "inclusive"
       ? ["Tax Inclusive"]
       : ["Tax Exclusive", "Tax Inclusive", "Out of Scope"];
-
-  // Handle click outside to close dropdowns
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      // Close account dropdowns
-      setAccountDropdownOpen({});
-      // Close tax dropdowns
-      setTaxDropdownOpen({});
-      // Close item dropdowns
-      setItemDropdownOpen({});
-      // Close AP dropdown
-      setAccountsPayableOpen(false);
-      // Close Discount dropdown
-      setDiscountDropdownOpen(false);
-      // Close New Vendor dropdown
-      setVendorDropdownOpen(false);
-      // Close Tax Preference dropdown
-      setTaxPreferenceOpen(false);
-      // Close Discount Level dropdown
-      setTaxLevelOpen(false);
-    };
-
-    // Use 'click' instead of 'mousedown' to allow component onClick handlers to fire first
-    document.addEventListener("click", handleClickOutside);
-    return () => document.removeEventListener("click", handleClickOutside);
-  }, []);
 
   // Load vendors from API
   useEffect(() => {
@@ -2014,66 +1996,132 @@ export default function NewVendorCredit() {
             <div style={{ width: "1px", height: "16px", backgroundColor: "#e5e7eb" }}></div>
 
             {/* Tax Level Dropdown */}
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", position: "relative" }}>
+            <div
+              style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", position: "relative" }}
+              ref={taxLevelRef}
+            >
               <div 
                 style={{ 
                   display: "flex", 
                   alignItems: "center", 
-                  gap: "8px", 
+                  gap: "8px",
+                  minHeight: "28px",
+                  padding: "0 4px",
                   cursor: "pointer",
                   color: "#374151",
                   fontWeight: "500",
                 }}
-                onClick={() => setTaxLevelOpen(!taxLevelOpen)}
+                onClick={() => {
+                  setTaxLevelOpen(!taxLevelOpen);
+                  if (taxLevelOpen) {
+                    setTaxLevelSearch("");
+                  }
+                }}
               >
-                <Percent size={14} style={{ color: "#6b7280" }} />
-                <span>{formData.taxLevel === "At Item Level" ? "At Line Item Level" : (formData.taxLevel || "At Transaction Level")}</span>
-                <ChevronDown size={14} style={{ color: "#6b7280" }} />
+                <Percent size={14} style={{ color: "#6b7280", strokeWidth: 1.8 }} />
+                <span style={{ fontSize: "13px", color: "#374151" }}>
+                  {formData.taxLevel === "At Item Level" ? "At Line Item Level" : (formData.taxLevel || "At Transaction Level")}
+                </span>
+                <ChevronDown
+                  size={15}
+                  style={{
+                    color: "#6b7280",
+                    transform: taxLevelOpen ? "rotate(180deg)" : "none",
+                    transition: "transform 0.2s ease"
+                  }}
+                />
               </div>
-              {taxLevelOpen && (
-                <div style={{ position: "absolute", top: "100%", left: 0, width: "220px", backgroundColor: "white", border: "1px solid #e5e7eb", borderRadius: "8px", marginTop: "4px", boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)", zIndex: 1000, overflow: "hidden" }}>
-                  <div style={{ padding: "8px", borderBottom: "1px solid #f3f4f6" }}>
-                    <div style={{ position: "relative" }}>
-                      <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
-                      <input 
-                        style={{ width: "100%", padding: "6px 8px 6px 30px", fontSize: "12px", border: "1px solid #d1d5db", borderRadius: "4px", outline: "none", boxSizing: "border-box" }}
-                        placeholder="Search"
-                        autoFocus
-                      />
-                    </div>
-                  </div>
-                  <div style={{ padding: "8px 12px 4px", fontSize: "12px", fontWeight: "600", color: "#4b5563" }}>Discount Type</div>
-                  {["At Transaction Level", "At Line Item Level"].map(opt => {
-                    // Map "At Line Item Level" to "At Item Level" for internal state compatibility if needed, but we can just use the UI string
-                    const internalVal = opt === "At Line Item Level" ? "At Item Level" : opt;
-                    const isSelected = formData.taxLevel === internalVal || formData.taxLevel === opt;
-                    return (
-                      <div 
-                        key={opt} 
-                        style={{ 
-                          padding: "8px 12px", 
-                          cursor: "pointer", 
-                          fontSize: "13px", 
-                          display: "flex", 
-                          alignItems: "center", 
-                          justifyContent: "space-between", 
-                          backgroundColor: isSelected ? "#3b82f6" : "white", 
-                          color: isSelected ? "white" : "#374151", 
-                          margin: "0 8px 4px 8px", 
-                          borderRadius: "4px" 
-                        }} 
-                        onClick={() => { 
-                          setFormData({ ...formData, taxLevel: internalVal }); 
-                          setTaxLevelOpen(false); 
-                        }}
-                      >
-                        <span>{opt}</span>
-                        {isSelected && <Check size={14} color="white" />}
+              {taxLevelOpen &&
+                taxLevelRef.current &&
+                createPortal(
+                  <div
+                    style={{
+                      position: "fixed",
+                      top: taxLevelRef.current.getBoundingClientRect().bottom + 8,
+                      left: taxLevelRef.current.getBoundingClientRect().left - 8,
+                      width: "194px",
+                      backgroundColor: "white",
+                      border: "1px solid #e6ebf2",
+                      borderRadius: "10px",
+                      boxShadow: "0 10px 26px rgba(15, 23, 42, 0.16)",
+                      zIndex: 9999,
+                      overflow: "hidden"
+                    }}
+                  >
+                    <div style={{ padding: "9px 9px 6px" }}>
+                      <div style={{ position: "relative" }}>
+                        <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
+                        <input 
+                          className="zoho-input"
+                          style={{
+                            width: "100%",
+                            height: "34px",
+                            padding: "7px 10px 7px 30px",
+                            fontSize: "12px",
+                            color: "#6b7280",
+                            border: "1px solid #3b82f6",
+                            borderRadius: "7px",
+                            outline: "none",
+                            boxSizing: "border-box"
+                          }}
+                          placeholder="Search"
+                          value={taxLevelSearch}
+                          onChange={(e) => setTaxLevelSearch(e.target.value)}
+                          autoFocus
+                        />
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    </div>
+                    <div style={{ padding: "6px 12px 5px", fontSize: "12px", fontWeight: "700", color: "#4b5563" }}>
+                      Discount Type
+                    </div>
+                    {["At Transaction Level", "At Line Item Level"]
+                      .filter((opt) => opt.toLowerCase().includes(taxLevelSearch.toLowerCase()))
+                      .map((opt) => {
+                        const internalVal = opt === "At Line Item Level" ? "At Item Level" : opt;
+                        const isSelected = formData.taxLevel === internalVal || formData.taxLevel === opt;
+                        return (
+                          <div 
+                            key={opt}
+                            style={{
+                              padding: "10px 12px",
+                              cursor: "pointer",
+                              fontSize: "13px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              backgroundColor: isSelected ? "#3b82f6" : "white",
+                              color: isSelected ? "white" : "#4b5563",
+                              margin: "0 7px 6px",
+                              borderRadius: "7px",
+                              fontWeight: isSelected ? "600" : "500"
+                            }}
+                            onClick={() => {
+                              setFormData({ ...formData, taxLevel: internalVal });
+                              setTaxLevelOpen(false);
+                              setTaxLevelSearch("");
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isSelected) e.currentTarget.style.backgroundColor = "#f8fafc";
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSelected) e.currentTarget.style.backgroundColor = "white";
+                            }}
+                          >
+                            <span>{opt}</span>
+                            {isSelected && <Check size={14} color="white" />}
+                          </div>
+                        );
+                      })}
+                    {!["At Transaction Level", "At Line Item Level"].some((opt) =>
+                      opt.toLowerCase().includes(taxLevelSearch.toLowerCase())
+                    ) && (
+                      <div style={{ padding: "8px 12px 12px", fontSize: "12px", color: "#9ca3af" }}>
+                        No matching options
+                      </div>
+                    )}
+                  </div>,
+                  document.body
+                )}
             </div>
           </div>
 

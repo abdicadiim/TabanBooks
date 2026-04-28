@@ -52,7 +52,7 @@ export default function RecurringBills() {
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [notification, setNotification] = useState(null);
-  const [isRefreshing, setIsRefreshing] = useState(recurringBills.length === 0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [showExportSubmenu, setShowExportSubmenu] = useState(false);
   const [showExportRecurringBillsModal, setShowExportRecurringBillsModal] = useState(false);
   const [showExportCurrentViewModal, setShowExportCurrentViewModal] = useState(false);
@@ -1496,7 +1496,7 @@ export default function RecurringBills() {
 
       {/* Main Content */}
       <div style={styles.tableContainer}>
-        {recurringBills.length === 0 && !isRefreshing ? (
+        {recurringBills.length === 0 ? (
           <div style={styles.advancedEmptyState}>
             <div style={styles.emptyStateHeading}>Create. Set. Repeat.</div>
             <div style={styles.emptyStateSubheading}>
@@ -1636,38 +1636,7 @@ export default function RecurringBills() {
               </tr>
             </thead>
             <tbody>
-              {isRefreshing && recurringBills.length === 0 ? (
-                // Skeleton loading rows
-                Array.from({ length: 5 }).map((_, index) => (
-                  <tr key={`skeleton-${index}`} style={styles.tableRow}>
-                    <td style={styles.tableCell}>
-                      <div style={styles.skeletonCheckbox}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "120px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "100px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "90px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "90px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "70px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                filteredBills.map((bill) => (
+              {filteredBills.map((bill) => (
                   <tr
                     key={bill.id}
                     style={{
@@ -1740,8 +1709,7 @@ export default function RecurringBills() {
                       {displayCurrencySymbol} {parseFloat(bill.amount || 0).toFixed(2)}
                     </td>
                   </tr>
-                ))
-              )}
+                ))}
               {filteredBills.length === 0 && recurringBills.length > 0 && !isRefreshing && (
                 <tr>
                   <td colSpan="9" style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>

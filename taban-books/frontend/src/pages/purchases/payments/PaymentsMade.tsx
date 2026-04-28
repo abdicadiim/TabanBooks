@@ -24,6 +24,10 @@ interface Payment {
   unusedAmount?: number;
 }
 
+let cachedPayments: Payment[] = [];
+let lastFetchTime = 0;
+const CACHE_DURATION = 60000;
+
 export default function PaymentsMade() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -34,11 +38,11 @@ export default function PaymentsMade() {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [selectedView, setSelectedView] = useState("All Payments");
   const [showCustomViewModal, setShowCustomViewModal] = useState(false);
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const [payments, setPayments] = useState<Payment[]>(cachedPayments);
   const [selectedPayments, setSelectedPayments] = useState<(string | number)[]>([]);
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(cachedPayments.length > 0);
   const [exportSubmenuOpen, setExportSubmenuOpen] = useState(false);
   const [importSubmenuOpen, setImportSubmenuOpen] = useState(false);
   const [sortBySubmenuOpen, setSortBySubmenuOpen] = useState(false);
@@ -100,14 +104,29 @@ export default function PaymentsMade() {
   const preferencesDropdownRef = useRef<HTMLDivElement>(null);
 
   // Load payments from API
-  const loadPayments = async () => {
+  const loadPayments = async (force = false) => {
+    const now = Date.now();
+    const shouldRefresh = force || (now - lastFetchTime > CACHE_DURATION) || cachedPayments.length === 0;
+
+    if (!shouldRefresh && cachedPayments.length > 0) {
+      setPayments(cachedPayments);
+      setHasLoadedOnce(true);
+      return;
+    }
+
     try {
-      setIsRefreshing(true);
+      if (cachedPayments.length === 0) {
+        setIsRefreshing(true);
+      }
       const response = await paymentsMadeAPI.getAll();
       if (response && response.success && response.data) {
         setPayments(response.data);
+        cachedPayments = response.data;
+        lastFetchTime = now;
       } else {
         setPayments([]);
+        cachedPayments = [];
+        lastFetchTime = now;
       }
     } catch (error) {
       console.error("Error loading payments:", error);
@@ -119,7 +138,7 @@ export default function PaymentsMade() {
   };
 
   const handleRefresh = () => {
-    loadPayments();
+    loadPayments(true);
     setSelectedPayments([]);
   };
 
@@ -804,22 +823,6 @@ export default function PaymentsMade() {
     }
   };
 
-  const skeletonStyles = {
-    skeletonCell: {
-      height: "16px",
-      backgroundColor: "#e5e7eb",
-      borderRadius: "4px",
-      animation: "pulse 1.5s ease-in-out infinite",
-    },
-    skeletonCheckbox: {
-      width: "16px",
-      height: "16px",
-      backgroundColor: "#e5e7eb",
-      borderRadius: "4px",
-      animation: "pulse 1.5s ease-in-out infinite",
-    },
-  };
-
   return (
     <div style={styles.container}>
       {/* CSS Animations */}
@@ -1272,50 +1275,7 @@ export default function PaymentsMade() {
               </tr>
             </thead>
             <tbody>
-              {isRefreshing || !hasLoadedOnce ? (
-                // Skeleton loading rows
-                Array.from({ length: 5 }).map((_, index) => (
-                  <tr key={`skeleton-${index}`} style={styles.tableRow}>
-                    <td style={{ ...styles.tableCell, ...styles.firstColumnCell }}>
-                      <div style={styles.rowCheckboxWrap}>
-                        <div style={styles.rowCheckboxSpacer}></div>
-                        <div style={skeletonStyles.skeletonCheckbox}></div>
-                      </div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "100px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "90px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "70px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "120px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "70px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "60px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...skeletonStyles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                filteredPayments.map((payment) => (
+              {filteredPayments.map((payment) => (
                   <tr
                     key={payment.id}
                     style={styles.tableRow}
@@ -1383,8 +1343,7 @@ export default function PaymentsMade() {
                       {parseFloat(payment.unusedAmount?.toString() || "0").toFixed(2)}
                     </td>
                   </tr>
-                ))
-              )}
+                ))}
               {filteredPayments.length === 0 && hasLoadedOnce && !isRefreshing && (
                 <tr>
                   <td colSpan="10" style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>

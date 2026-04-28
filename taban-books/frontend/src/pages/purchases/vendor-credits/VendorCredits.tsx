@@ -31,7 +31,7 @@ export default function VendorCredits() {
   const [organizationInfo, setOrganizationInfo] = useState<any>(null);
   const [selectedCredits, setSelectedCredits] = useState<any[]>([]);
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showSearchFormModal, setShowSearchFormModal] = useState(false);
   const [searchModalData, setSearchModalData] = useState({
@@ -1451,7 +1451,7 @@ export default function VendorCredits() {
 
       {/* Main Content */}
 <div style={styles.tableContainer}>
-        {vendorCredits.length === 0 && !isRefreshing ? (
+        {filteredCredits.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 px-4 text-center max-w-2xl mx-auto animate-in fade-in duration-700">
             <div className="mb-8 relative group cursor-pointer" onClick={() => console.log("Video tutorial clicked")}>
               <div className="relative overflow-hidden rounded-xl shadow-xl border-4 border-white bg-white">
@@ -1545,38 +1545,7 @@ export default function VendorCredits() {
               </tr>
             </thead>
             <tbody>
-              {isRefreshing ? (
-                // Skeleton loading rows
-                Array.from({ length: 5 }).map((_, index) => (
-                  <tr key={`skeleton-${index}`} style={styles.tableRow}>
-                    <td style={styles.tableCell}>
-                      <div style={styles.skeletonCheckbox}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "100px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "120px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "70px" }}></div>
-                    </td>
-                    <td style={{ ...styles.tableCell, textAlign: "right" }}>
-                      <div style={{ ...styles.skeletonCell, width: "80px", marginLeft: "auto" }}></div>
-                    </td>
-                    <td style={{ ...styles.tableCell, textAlign: "right" }}>
-                      <div style={{ ...styles.skeletonCell, width: "80px", marginLeft: "auto" }}></div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                filteredCredits.map((credit: any) => (
+              {filteredCredits.map((credit: any) => (
                   <tr
                     key={credit.id}
                     style={{
@@ -1651,15 +1620,7 @@ export default function VendorCredits() {
                       {formatCurrency(credit.balance, credit.currency)}
                     </td>
                   </tr>
-                ))
-              )}
-              {filteredCredits.length === 0 && !isRefreshing && (
-                <tr>
-                  <td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>
-                    No vendor credits found
-                  </td>
-                </tr>
-              )}
+                ))}
             </tbody>
           </table>
         </div>
