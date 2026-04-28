@@ -55,6 +55,7 @@ export default function Header() {
   const isPurchaseOrdersListPage = /^\/purchases(?:\/purchase-orders)?\/?$/.test(
     location.pathname
   );
+  const desktopShellGapClass = "md:[--shell-gap:24px]";
   const actionButtonClass = () =>
     `grid h-10 w-10 place-items-center rounded-lg bg-[#0f5f6c] text-white shadow-sm transition-colors hover:bg-[#0f5f6c] hover:text-white`;
 
@@ -277,10 +278,10 @@ export default function Header() {
 
   return (
     <header
-      className={`fixed top-3 left-3 right-3 z-[1000] h-[68px] overflow-visible rounded-[20px] px-4 backdrop-blur-md ${
+      className={`fixed top-4 left-4 right-4 z-[1000] h-[68px] overflow-visible rounded-[20px] px-4 backdrop-blur-md ${desktopShellGapClass} ${
         isPurchaseOrdersListPage
-          ? "md:left-[var(--sidebar-width)]"
-          : "md:left-[var(--sidebar-width)]"
+          ? "md:left-[calc(var(--sidebar-width)+var(--shell-gap))]"
+          : "md:left-[calc(var(--sidebar-width)+var(--shell-gap))]"
       } ${
         isLightAppearance
           ? "border border-slate-200 shadow-[0_16px_34px_rgba(15,23,42,0.08)]"

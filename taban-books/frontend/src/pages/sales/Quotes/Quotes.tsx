@@ -2073,7 +2073,7 @@ export default function Quotes() {
   return (
     <div className="flex flex-col h-full min-h-0 w-full bg-white font-sans text-gray-800 antialiased relative overflow-hidden">
       {/* Top Header Section */}
-      <div className="flex-none bg-white border-b border-[#eef1f6] px-4 py-3 z-10">
+      <div className="flex-none bg-white border-b border-[#eef1f6] px-4 pt-8 pb-4 z-10">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 flex-1 min-w-0">
             <div className="relative" ref={dropdownRef}>

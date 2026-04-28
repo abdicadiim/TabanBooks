@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +9,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, "");
-  const rawApiBaseUrl = env.VITE_API_BASE_URL || process.env.VITE_API_BASE_URL || "http://127.0.0.1:5001";
+  const rawApiBaseUrl = env.VITE_API_BASE_URL || process.env.VITE_API_BASE_URL || "http://127.0.0.1:5000";
   // Normalize localhost to IPv4 loopback to avoid intermittent Node DNS localhost resolution issues in proxy.
   const apiBaseUrl = rawApiBaseUrl.replace("http://localhost:", "http://127.0.0.1:");
   const frontendUrl = env.VITE_FRONTEND_URL || process.env.VITE_FRONTEND_URL || "http://localhost:5175";

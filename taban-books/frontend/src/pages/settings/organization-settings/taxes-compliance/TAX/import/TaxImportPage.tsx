@@ -164,7 +164,10 @@ export default function TaxImportPage() {
             })).filter(t => t.name && t.rate !== undefined);
 
             const token = localStorage.getItem("token");
-            const response = await fetch(`${process.env.VITE_API_URL || "http://localhost:5000/api"}/settings/taxes/bulk`, {
+            const apiBaseUrl = (import.meta as any).env?.VITE_API_BASE_URL
+              ? `${(import.meta as any).env.VITE_API_BASE_URL}/api`
+              : "/api";
+            const response = await fetch(`${apiBaseUrl}/settings/taxes/bulk`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

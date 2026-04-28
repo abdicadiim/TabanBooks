@@ -625,7 +625,7 @@ export default function Sidebar() {
         }
       `}</style>
       <aside
-        className={`fixed left-3 top-3 bottom-3 z-[70] hidden overflow-visible rounded-[22px] md:flex md:flex-col transition-[width] duration-200 ${shellBorder}`}
+        className={`fixed left-4 top-4 bottom-4 z-[70] hidden overflow-visible rounded-[22px] md:flex md:flex-col transition-[width] duration-200 ${shellBorder}`}
         style={{
           width: isCollapsed ? "96px" : "246px",
           background: shellBackground,
