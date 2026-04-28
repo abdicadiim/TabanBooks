@@ -3860,6 +3860,73 @@ const QuoteDetail = () => {
                           </div>
                         </div>
 
+                  const fmt = (val: number) => {
+                    const s = Number(val || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    const symbol = quote.currency || "SOS";
+                    return total.currencyPosition === "after" ? `${s} ${symbol}` : `${symbol} ${s}`;
+                  };
+
+                  return (
+                    <div
+                      className="w-full max-w-[920px] mx-auto border border-[#d1d5db] shadow-sm overflow-hidden print-content"
+                      data-print-content
+                      style={{ 
+                        width: "210mm", 
+                        maxWidth: "210mm", 
+                        minHeight: "297mm", 
+                        position: "relative",
+                        backgroundColor: config.general?.backgroundColor || "#ffffff",
+                        color: config.general?.fontColor || "#000000",
+                        fontFamily: config.general?.fontFamily || "Helvetica, Arial, sans-serif",
+                        fontSize: `${config.general?.fontSize || 9}pt`,
+                        display: "flex",
+                        flexDirection: "column"
+                      }}
+                    >
+                      {/* Header Bar */}
+                      {(hf.headerBgColor || hf.bgImage) && (
+                        <div style={{ backgroundColor: hf.headerBgColor || "transparent", height: "40px", flexShrink: 0, width: "100%", position: "relative" }}>
+                          {hf.bgImage && <img src={hf.bgImage} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />}
+                        </div>
+                      )}
+
+                      <div style={{ 
+                        padding: `${(hf.headerBgColor || hf.bgImage) ? "0.2in" : (config.general?.margins?.top || 0.7) + "in"} ${config.general?.margins?.right || 0.4}in ${(hf.footerBgColor || hf.footerBgImage || hf.showPageNumber !== false) ? "0.2in" : (config.general?.margins?.bottom || 0.7) + "in"} ${config.general?.margins?.left || 0.55}in`,
+                        flex: 1,
+                        display: "flex",
+                        flexDirection: "column"
+                      }}>
+                        {/* Status Ribbon (Internal Preview Only) */}
+                        <div style={{
+                          position: "absolute",
+                          top: "0",
+                          left: "0",
+                          width: "200px",
+                          height: "200px",
+                          overflow: "hidden",
+                          zIndex: 10,
+                          pointerEvents: "none"
+                        }}>
+                          <div style={{
+                            position: "absolute",
+                            top: "40px",
+                            left: "-60px",
+                            width: "200px",
+                            height: "30px",
+                            backgroundColor: statusRibbonConfig.color,
+                            color: "white",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "14px",
+                            fontWeight: "600",
+                            transform: "rotate(-45deg)",
+                            boxShadow: "0 2px 4px rgba(0,0,0,0.2)"
+                          }}>
+                            {statusRibbonConfig.label}
+                          </div>
+                        </div>
+
                         {/* Header with Company Info */}
                         {(() => {
                           const details = config.transactionDetails || {};
@@ -3892,7 +3959,13 @@ const QuoteDetail = () => {
                                         {organizationProfile.address.state ? `, ${organizationProfile.address.state}` : ""}
                                         <br />
                                       </>
-{organizationProfile?.address?.country && <>{organizationProfile.address.country}<br /></>}
+                                    )}
+                                    {organizationProfile?.address?.country && (
+                                      <>
+                                        {organizationProfile.address.country}
+                                        <br />
+                                      </>
+                                    )}
                                     {ownerEmail?.email || organizationProfile?.email || ""}
                                   </div>
                                 )}
