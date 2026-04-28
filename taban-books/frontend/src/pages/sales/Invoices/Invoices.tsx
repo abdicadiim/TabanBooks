@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { toast } from "react-hot-toast";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   ChevronUp,
@@ -46,7 +47,7 @@ import { useCurrency } from "../../../hooks/useCurrency";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import * as XLSX from "xlsx";
-import { useInvoicesListQuery } from "./invoiceQueries";
+import { useInvoicesListQuery, invoiceQueryKeys } from "./invoiceQueries";
 import PaginationFooter from "../../../components/table/PaginationFooter";
 const preloadCustomersRoutes = async () => undefined;
 const preloadCustomerDetailRoute = async () => undefined;
@@ -207,9 +208,42 @@ const extractApiRows = (response: any): any[] => {
   return [];
 };
 
+const normalizeInvoiceRowId = (row: any) =>
+  String(row?.id || row?._id || row?.invoiceNumber || row?.number || "").trim();
+
+const getInvoiceRowTypeKey = (row: any) => {
+  const source = String(row?.__source || row?.source || row?.documentSource || "").toLowerCase();
+  if (source === "debit" || source === "debit_note") return "debit";
+  if (source === "retainer") return "retainer";
+  if (source === "invoice") return "invoice";
+  const rawType = String(
+    row?.invoiceType ||
+    row?.type ||
+    row?.documentType ||
+    row?.module ||
+    row?.source ||
+    ""
+  ).toLowerCase();
+  if (row?.debitNote || row?.isDebitNote || row?.is_debit_note || rawType.includes("debit")) return "debit";
+  if (row?.isRetainerInvoice || row?.isRetainer || row?.retainer || rawType.includes("retainer")) return "retainer";
+  return "invoice";
+};
+
+const tagInvoiceSource = (row: any, source: "invoice" | "debit" | "retainer") => ({
+  ...row,
+  __source: source,
+});
+
+const getInvoiceRowDedupKey = (row: any) => {
+  const rowType = getInvoiceRowTypeKey(row);
+  const rowId = normalizeInvoiceRowId(row) || `${String(row?.invoiceNumber || row?.number || "row")}`;
+  return `${rowType}:${rowId}`;
+};
+
 // Skeleton Loader Component - logic inline in table body
 export default function Invoices() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { formatMoney } = useCurrency();
   const [searchParams] = useSearchParams();
   const [isInvoiceDropdownOpen, setIsInvoiceDropdownOpen] = useState(false);
@@ -314,6 +348,8 @@ export default function Invoices() {
         (normalizedStatus === "partially_paid" && isPartiallyPaid) ||
         (normalizedStatus === "overdue" && isOverdueByDate) ||
         (normalizedStatus === "paid" && isPaid) ||
+        (normalizedStatus === "expired" && rowStatus === "expired") ||
+        (normalizedStatus === "exported" && rowStatus === "exported") ||
         (normalizedStatus === "void" && rowStatus === "void") ||
         (normalizedStatus === "write_off" && rowStatus === "write_off") ||
         (normalizedStatus === "pending_approval" && rowStatus === "pending_approval") ||
@@ -470,7 +506,7 @@ export default function Invoices() {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const bulkUpdateValueDropdownRef = useRef(null);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(true);
   const [showInvoiceInsights, setShowInvoiceInsights] = useState(false);
   const [showSummaryRefresh, setShowSummaryRefresh] = useState(false);
   const [isSummaryRefreshing, setIsSummaryRefreshing] = useState(false);
@@ -675,7 +711,7 @@ export default function Invoices() {
   const [viewFilterParams, setViewFilterParams] = useState<Record<string, string>>({});
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const invoiceListQuery = useInvoicesListQuery({
+  const invoiceListParams = useMemo(() => ({
     page: 1,
     limit: FULL_INVOICE_LIST_LIMIT,
     search: searchQuery,
@@ -683,69 +719,55 @@ export default function Invoices() {
     order: sortConfig.direction,
     status: selectedStatus !== "All" ? selectedStatus.toLowerCase() : undefined,
     ...viewFilterParams,
-  });
+  }), [searchQuery, selectedStatus, sortConfig.direction, sortConfig.key, viewFilterParams]);
+  const invoiceListQuery = useInvoicesListQuery(invoiceListParams);
+
+  const loadAllInvoiceDocuments = async () => {
+    const [invoiceResponse, debitNotesResponse] = await Promise.all([
+      invoicesAPI.getAll({ page: 1, limit: FULL_INVOICE_LIST_LIMIT, _ts: Date.now() }),
+      debitNotesAPI.getAll({ page: 1, limit: FULL_INVOICE_LIST_LIMIT, _ts: Date.now() }),
+    ]);
+
+    const invoiceRows = stripRetainerInvoices(extractApiRows(invoiceResponse)).map((row: any) => tagInvoiceSource(row, "invoice"));
+    const debitNotesRows = extractApiRows(debitNotesResponse)
+      .map(normalizeDebitNoteRecord)
+      .map((row: any) => tagInvoiceSource(row, "debit"));
+
+    return Array.from(
+      new Map(
+        [...invoiceRows, ...debitNotesRows].map((row: any) => [getInvoiceRowDedupKey(row), row])
+      ).values()
+    );
+  };
 
   useEffect(() => {
     setSearchQuery(searchParams.get("search") || "");
   }, [searchParams]);
 
   useEffect(() => {
+    const cached = queryClient.getQueryData<any>(invoiceQueryKeys.list(invoiceListParams));
+    const cachedRows = Array.isArray(cached?.data) ? cached.data : [];
+    if (cachedRows.length > 0) {
+      setInvoices((prev) => (prev.length > 0 ? prev : cachedRows));
+    }
+  }, [invoiceListParams, queryClient]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const applyInvoiceRows = async () => {
-      if (!invoiceListQuery.data) return;
-
       const normalizedView = normalizeInvoiceViewLabel(selectedView);
-      const shouldUseDirectMergedFetch =
-        normalizedView === "all" ||
-        normalizedView === "draft" ||
-        normalizedView === "debit note";
-
-      const mergeRows = async (invoiceRowsRaw: any[], debitNotesRowsRaw: any[]) => {
-        const invoiceRows = stripRetainerInvoices(
-          invoiceRowsRaw.filter((row: any) => matchesInvoiceView(row, selectedView, selectedStatus))
-        );
-        const normalizedDebitNotes = debitNotesRowsRaw
-          .map(normalizeDebitNoteRecord)
-          .filter((note: any) => matchesInvoiceView(note, selectedView, selectedStatus));
-
-        const mergedRows = [...invoiceRows, ...normalizedDebitNotes];
-        const dedupedRows = Array.from(
-          new Map(
-            mergedRows.map((row: any) => {
-              const rowId = String(row?.id || row?._id || row?.invoiceNumber || row?.number || "").trim();
-              return [rowId || `${String(row?.invoiceNumber || row?.number || "row")}`, row];
-            })
-          ).values()
-        );
-
-        console.debug("[InvoicesList] merged rows", {
-          selectedView,
-          selectedStatus,
-          invoiceRows: invoiceRows.length,
-          debitNoteRows: normalizedDebitNotes.length,
-          mergedRows: mergedRows.length,
-          dedupedRows: dedupedRows.length,
-        });
-
-        return dedupedRows;
-      };
+      const isAllSelection = normalizedView === "all" && selectedStatus === "All";
+      const shouldUseDirectMergedFetch = isAllSelection || normalizedView === "all invoices";
 
       if (shouldUseDirectMergedFetch) {
         try {
-          const [invoiceResponse, debitNotesResponse] = await Promise.all([
-            invoicesAPI.getAll({ page: 1, limit: FULL_INVOICE_LIST_LIMIT, _ts: Date.now() }),
-            debitNotesAPI.getAll({ page: 1, limit: FULL_INVOICE_LIST_LIMIT, _ts: Date.now() }),
-          ]);
-          const invoiceRows = extractApiRows(invoiceResponse);
-          const debitNotesRows = extractApiRows(debitNotesResponse);
+          const mergedRows = await loadAllInvoiceDocuments();
           console.debug("[InvoicesList] direct merged fetch", {
             selectedView,
             selectedStatus,
-            invoiceCount: invoiceRows.length,
-            debitNoteCount: debitNotesRows.length,
+            mergedCount: mergedRows.length,
           });
-          const mergedRows = await mergeRows(invoiceRows, debitNotesRows);
           if (!cancelled) {
             setInvoices(mergedRows);
           }
@@ -755,11 +777,16 @@ export default function Invoices() {
         }
       }
 
+      if (!invoiceListQuery.data) return;
+
       const queryRows = Array.isArray(invoiceListQuery.data.data) ? invoiceListQuery.data.data : [];
       const baseInvoiceRows = stripRetainerInvoices(
-        queryRows.filter((invoice: any) => matchesInvoiceView(invoice, selectedView, selectedStatus))
-      );
+        isAllSelection
+          ? queryRows
+          : queryRows.filter((invoice: any) => matchesInvoiceView(invoice, selectedView, selectedStatus))
+      ).map((row: any) => tagInvoiceSource(row, "invoice"));
       const shouldIncludeDebitNotes =
+        isAllSelection ||
         normalizedView === "all" ||
         normalizedView === "all invoices" ||
         normalizedView === "draft" ||
@@ -794,7 +821,8 @@ export default function Invoices() {
             });
             const normalizedDebitNotes = debitNotesRows
               .map(normalizeDebitNoteRecord)
-              .filter((note: any) => matchesInvoiceView(note, selectedView, selectedStatus));
+              .map((row: any) => tagInvoiceSource(row, "debit"))
+              .filter((note: any) => (isAllSelection ? true : matchesInvoiceView(note, selectedView, selectedStatus)));
             mergedRows = [...mergedRows, ...normalizedDebitNotes];
           } catch (error) {
             console.error("Invoice debit-note fetch failed:", error);
@@ -803,10 +831,7 @@ export default function Invoices() {
 
         const dedupedRows = Array.from(
           new Map(
-            mergedRows.map((row: any) => {
-              const rowId = String(row?.id || row?._id || row?.invoiceNumber || row?.number || "").trim();
-              return [rowId || `${String(row?.invoiceNumber || row?.number || "row")}`, row];
-            })
+            mergedRows.map((row: any) => [getInvoiceRowDedupKey(row), row])
           ).values()
         );
 
@@ -816,15 +841,17 @@ export default function Invoices() {
         return;
       }
 
-      // Fallback: fetch directly from API when query layer resolves to empty.
+        // Fallback: fetch directly from API when query layer resolves to empty.
       try {
         const response: any = await invoicesAPI.getAll({ page: 1, limit: FULL_INVOICE_LIST_LIMIT, _ts: Date.now() });
         const directRows = extractApiRows(response);
         console.debug("[InvoicesList] invoice fallback rows", directRows.length);
 
         let normalizedRows = stripRetainerInvoices(
-          directRows.filter((invoice: any) => matchesInvoiceView(invoice, selectedView, selectedStatus))
-        );
+          isAllSelection
+            ? directRows
+            : directRows.filter((invoice: any) => matchesInvoiceView(invoice, selectedView, selectedStatus))
+        ).map((row: any) => tagInvoiceSource(row, "invoice"));
 
         if (shouldIncludeDebitNotes) {
           try {
@@ -833,7 +860,8 @@ export default function Invoices() {
             console.debug("[InvoicesList] debit note fallback rows", debitNotesRows.length);
             const normalizedDebitNotes = debitNotesRows
               .map(normalizeDebitNoteRecord)
-              .filter((note: any) => matchesInvoiceView(note, selectedView, selectedStatus));
+              .map((row: any) => tagInvoiceSource(row, "debit"))
+              .filter((note: any) => (isAllSelection ? true : matchesInvoiceView(note, selectedView, selectedStatus)));
             normalizedRows = [...normalizedRows, ...normalizedDebitNotes];
           } catch (error) {
             console.error("Invoice debit-note fallback fetch failed:", error);
@@ -841,7 +869,7 @@ export default function Invoices() {
         }
 
         if (!cancelled) {
-          setInvoices(Array.from(new Map(normalizedRows.map((row: any) => [String(row?.id || row?._id || row?.invoiceNumber || row?.number || ""), row])).values()));
+          setInvoices(Array.from(new Map(normalizedRows.map((row: any) => [getInvoiceRowDedupKey(row), row])).values()));
         }
       } catch (error) {
         console.error("Invoice list fallback fetch failed:", error);
@@ -859,8 +887,9 @@ export default function Invoices() {
   }, [invoiceListQuery.data, selectedView, selectedStatus]);
 
   useEffect(() => {
-    setIsRefreshing(invoiceListQuery.isFetching);
-  }, [invoiceListQuery.isFetching]);
+    const hasRows = Array.isArray(invoices) && invoices.length > 0;
+    setIsRefreshing(!hasRows && (invoiceListQuery.isFetching || !invoiceListQuery.data));
+  }, [invoiceListQuery.isFetching, invoiceListQuery.data, invoices.length]);
 
   // Share Modal States
   const [showShareModal, setShowShareModal] = useState(false);
@@ -895,7 +924,9 @@ export default function Invoices() {
         "customer_viewed": "Customer Viewed",
         "approved": "Approved",
         "pending_approval": "Pending Approval",
-        "locked": "Locked"
+        "locked": "Locked",
+        "expired": "Expired",
+        "exported": "Exported"
       };
       const mappedStatus = statusMap[statusFromUrl] || statusFromUrl;
       setSelectedStatus(mappedStatus);
@@ -2353,7 +2384,7 @@ export default function Invoices() {
   const sortedInvoices = useMemo(() => {
     if (!Array.isArray(invoices)) return [];
 
-    const uniqueInvoices = Array.from(new Map(invoices.map(invoice => [invoice.id, invoice])).values());
+    const uniqueInvoices = Array.from(new Map(invoices.map(invoice => [getInvoiceRowDedupKey(invoice), invoice])).values());
     return uniqueInvoices.sort((a, b) => {
       let aValue, bValue;
 
@@ -3051,7 +3082,7 @@ export default function Invoices() {
         </div>
 
       <div className="flex-1 min-h-0 overflow-hidden">
-        {!hasInvoices && !isRefreshing ? (
+        {!hasInvoices && !isRefreshing && Boolean(invoiceListQuery.data) ? (
           <div className="flex h-full items-center justify-center overflow-auto py-16 text-center">
             <div className="max-w-md px-6">
               <h2 className="text-2xl font-semibold text-gray-900">No invoices yet</h2>

@@ -90,9 +90,13 @@ const CreditNotePreview: React.FC<CreditNotePreviewProps> = ({
       className="w-full max-w-full mx-auto bg-white border border-[#d1d5db] shadow-sm overflow-hidden relative rounded-none"
       style={{ width: "210mm", minHeight: "297mm" }}
     >
-      {(creditNote.status === "open" || creditNote.status === "draft") && (
-        <div className="absolute top-8 -left-12 w-48 text-center py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-xs font-bold uppercase tracking-wider transform -rotate-45 shadow-lg z-10">
-          {creditNote.status}
+      {creditNote.status === "draft" && (
+        <div className="absolute top-0 left-0 w-36 h-36 overflow-hidden z-10">
+          <div className="absolute top-6 -left-8 w-48 h-9 transform -rotate-45 origin-center flex items-center justify-center shadow-sm bg-[#a4b4b4]">
+            <span className="text-white font-bold text-[13px] uppercase tracking-wider">
+              Draft
+            </span>
+          </div>
         </div>
       )}
 

@@ -83,6 +83,27 @@ const buildNextRetainerInvoiceNumber = async (
   return `${prefix}${String(nextNumber).padStart(RETAINER_NUMBER_DIGITS, "0")}`;
 };
 
+const normalizeDebitNoteItems = (rows: any[] = []) =>
+  (Array.isArray(rows) ? rows : []).map((row: any) => {
+    const quantity = Number(row?.quantity ?? row?.qty ?? 1) || 1;
+    const unitPrice = Number(row?.unitPrice ?? row?.rate ?? row?.price ?? 0) || 0;
+    const taxRate = Number(row?.taxRate ?? row?.taxPercent ?? 0) || 0;
+    const taxAmount = Number(row?.taxAmount ?? row?.tax ?? 0) || 0;
+    const computedTotal = (unitPrice * quantity) + taxAmount;
+    const total = row?.total !== undefined && row?.total !== null && row?.total !== ""
+      ? Number(row.total) || 0
+      : Number(row?.amount ?? computedTotal) || 0;
+
+    return {
+      ...row,
+      quantity,
+      unitPrice,
+      taxRate,
+      taxAmount,
+      total,
+    };
+  });
+
 
 
 interface CustomerQuery {
@@ -3528,22 +3549,109 @@ const createCreditNoteJournalEntry = async (
   userId?: string
 ): Promise<mongoose.Types.ObjectId | null> => {
   try {
-    // 1. Debit Account (Sales Returns / Sales Income)
-    let salesAccountId = await findAccountByName(orgId, 'Sales Returns');
-    if (!salesAccountId) salesAccountId = await findAccountByName(orgId, 'Sales Income');
-    if (!salesAccountId) salesAccountId = await findAccountByName(orgId, 'Sales');
+    const lineItems = Array.isArray(creditNote.items) ? creditNote.items : [];
+    const groupedDebits = new Map<string, { accountId: string; accountName: string; amount: number }>();
 
-    // 2. Credit Account (Accounts Receivable)
-    let arAccountId = await findAccountByName(orgId, 'Accounts Receivable');
-    // Try to resolve account documents (so we can set proper accountName values)
-    let salesAccountDoc: any = null;
-    let arAccountDoc: any = null;
-    try {
-      if (salesAccountId) salesAccountDoc = await ChartOfAccount.findById(salesAccountId).lean();
-      if (arAccountId) arAccountDoc = await ChartOfAccount.findById(arAccountId).lean();
-    } catch (docErr) {
-      // ignore and continue with fallbacks
+    // 1) Debit the selected item accounts so the journal reflects the create-page selection.
+    for (const item of lineItems) {
+      const quantity = Number(item?.quantity || 0);
+      const unitPrice = Number(item?.unitPrice ?? item?.rate ?? 0);
+      const amount = Number(
+        item?.total ??
+        item?.amount ??
+        (Number.isFinite(quantity) && Number.isFinite(unitPrice) ? quantity * unitPrice : 0)
+      );
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+
+      const selectedAccountName = String(item?.account || "").trim();
+      let accountId =
+        (selectedAccountName ? await findAccountByName(orgId, selectedAccountName) : null) ||
+        await findAccountByName(orgId, 'Sales Returns') ||
+        await findAccountByName(orgId, 'Sales Income') ||
+        await findAccountByName(orgId, 'Sales') ||
+        await findAccountByName(orgId, 'Income');
+
+      if (!accountId) {
+        throw new Error(
+          `No account found for credit note item "${String(item?.name || item?.description || "").trim() || "line item"}".`,
+        );
+      }
+
+      const accountDoc = await ChartOfAccount.findById(accountId).lean();
+      const resolvedName = String(accountDoc?.name || accountDoc?.accountName || selectedAccountName || "Sales Returns").trim();
+      const key = String(accountId);
+      const previous = groupedDebits.get(key);
+      groupedDebits.set(key, {
+        accountId,
+        accountName: resolvedName,
+        amount: Number(((previous?.amount || 0) + amount).toFixed(2)),
+      });
     }
+
+    const debitLines = Array.from(groupedDebits.values()).map((entry) => ({
+      account: entry.accountId,
+      accountName: entry.accountName,
+      description: `Credit Note ${creditNote.creditNoteNumber}`,
+      debit: Number(entry.amount.toFixed(2)),
+      credit: 0,
+    }));
+
+    const totalDebitAmount = debitLines.reduce((sum, line) => sum + Number(line.debit || 0), 0);
+
+    // 2) If tax exists on the credit note, reverse it against Sales Tax Payable / Tax Payable.
+    const taxAmount = Number(creditNote.tax || creditNote.totalTax || 0) || 0;
+    let taxAccountId: string | null = null;
+    let taxAccountName = 'Sales Tax Payable';
+    if (taxAmount > 0) {
+      taxAccountId =
+        (await findAccountByName(orgId, "Sales Tax Payable")) ||
+        (await findAccountByName(orgId, "Tax Payable"));
+      if (!taxAccountId) {
+        throw new Error(
+          "Tax amount exists on credit note, but no Sales Tax Payable / Tax Payable account was found.",
+        );
+      }
+      const taxAccountDoc = await ChartOfAccount.findById(taxAccountId).lean();
+      taxAccountName = String(taxAccountDoc?.name || taxAccountDoc?.accountName || taxAccountName).trim();
+    }
+
+    // 3) Credit the Accounts Receivable control account with the full credit note amount.
+    let arAccountId = await findAccountByName(orgId, 'Accounts Receivable');
+    if (!arAccountId) {
+      throw new Error('Accounts Receivable account was not found in Chart of Accounts for this organization.');
+    }
+    const arAccountDoc = await ChartOfAccount.findById(arAccountId).lean();
+
+    const totalCreditAmount = Number((creditNote.total || 0).toFixed(2));
+    const journalLines: any[] = [...debitLines];
+    if (taxAccountId && taxAmount > 0) {
+      journalLines.push({
+        account: taxAccountId,
+        accountName: taxAccountName,
+        description: `Sales Tax - Credit Note ${creditNote.creditNoteNumber}`,
+        debit: Number(taxAmount.toFixed(2)),
+        credit: 0,
+      });
+    }
+
+    journalLines.push({
+      account: arAccountId,
+      accountName: String(arAccountDoc?.name || arAccountDoc?.accountName || 'Accounts Receivable').trim(),
+      description: `Credit Note ${creditNote.creditNoteNumber}`,
+      debit: 0,
+      credit: totalCreditAmount,
+    });
+
+    const journalDebitTotal = journalLines.reduce((sum, line) => sum + Number(line.debit || 0), 0);
+    const journalCreditTotal = journalLines.reduce((sum, line) => sum + Number(line.credit || 0), 0);
+    const imbalance = Number((journalDebitTotal - journalCreditTotal).toFixed(2));
+
+    if (Math.abs(imbalance) >= 0.01) {
+      throw new Error(
+        `Credit note journal is not balanced for ${creditNote.creditNoteNumber}: debit=${journalDebitTotal.toFixed(2)}, credit=${journalCreditTotal.toFixed(2)}.`
+      );
+    }
+
     const journalNumber = `JE-CN-${creditNote.creditNoteNumber}-${Date.now()}`;
     const journalEntry = await JournalEntry.create({
       organization: orgId,
@@ -3556,22 +3664,7 @@ const createCreditNoteJournalEntry = async (
       postedAt: new Date(),
       sourceId: creditNote._id,
       sourceType: 'credit_note',
-      lines: [
-        {
-          account: salesAccountId || 'Sales Returns',
-          accountName: (salesAccountDoc && salesAccountDoc.accountName) ? salesAccountDoc.accountName : 'Sales Returns',
-          description: `Credit Note ${creditNote.creditNoteNumber}`,
-          debit: creditNote.total || 0,
-          credit: 0,
-        },
-        {
-          account: arAccountId || 'Accounts Receivable',
-          accountName: (arAccountDoc && arAccountDoc.accountName) ? arAccountDoc.accountName : 'Accounts Receivable',
-          description: `Credit Note ${creditNote.creditNoteNumber}`,
-          debit: 0,
-          credit: creditNote.total || 0,
-        },
-      ],
+      lines: journalLines,
     });
 
     // Update Chart of Account balances
@@ -7853,7 +7946,7 @@ export const createDebitNote = async (req: AuthRequest, res: Response): Promise<
       invoice,
       date: date ? new Date(date) : new Date(),
       reason,
-      items,
+      items: normalizeDebitNoteItems(items),
       subtotal,
       tax,
       discount,
@@ -7898,7 +7991,10 @@ export const updateDebitNote = async (req: AuthRequest, res: Response): Promise<
     }
 
     const { id } = req.params;
-    const updateData = req.body;
+    const updateData = {
+      ...req.body,
+      items: normalizeDebitNoteItems(req.body?.items),
+    };
 
     const debitNote = await DebitNote.findById(id);
     if (!debitNote) {
@@ -8333,6 +8429,14 @@ export const createCreditNote = async (req: AuthRequest, res: Response): Promise
       invoice,
       date,
       referenceNumber,
+      customerName,
+      accountsReceivable,
+      salesperson,
+      subject,
+      warehouseLocation,
+      priceList,
+      customerNotes,
+      termsAndConditions,
       reason,
       items,
       subtotal,
@@ -8352,7 +8456,8 @@ export const createCreditNote = async (req: AuthRequest, res: Response): Promise
       placeOfSupply,
       isInclusiveTax,
       attachedFiles = [],
-      comments = []
+      comments = [],
+      documents = [],
     } = req.body;
 
     if (!customer || !items || items.length === 0) {
@@ -8387,9 +8492,17 @@ export const createCreditNote = async (req: AuthRequest, res: Response): Promise
       organization: req.user.organizationId,
       creditNoteNumber,
       customer,
+      customerName,
       invoice,
       date,
       referenceNumber,
+      accountsReceivable,
+      salesperson,
+      subject,
+      warehouseLocation,
+      priceList,
+      customerNotes,
+      termsAndConditions,
       reason,
       items,
       subtotal,
@@ -8409,7 +8522,7 @@ export const createCreditNote = async (req: AuthRequest, res: Response): Promise
       placeOfSupply,
       isInclusiveTax,
       balance: total, // Initialize balance with total
-      attachedFiles: normalizeCreditNoteAttachedFiles(attachedFiles),
+      attachedFiles: normalizeCreditNoteAttachedFiles(attachedFiles.length > 0 ? attachedFiles : documents),
       comments: normalizeCreditNoteComments(comments)
     });
 
@@ -8594,6 +8707,10 @@ export const updateCreditNote = async (req: AuthRequest, res: Response): Promise
 
     if (updateData.attachedFiles !== undefined) {
       updateData.attachedFiles = normalizeCreditNoteAttachedFiles(updateData.attachedFiles);
+    }
+    if (updateData.documents !== undefined) {
+      updateData.attachedFiles = normalizeCreditNoteAttachedFiles(updateData.documents);
+      delete updateData.documents;
     }
     if (updateData.comments !== undefined) {
       updateData.comments = normalizeCreditNoteComments(updateData.comments);
@@ -10514,6 +10631,100 @@ export const sendInvoiceEmail = async (req: AuthRequest, res: Response): Promise
   } catch (error: any) {
     console.error('[INVOICE EMAIL] Error sending email:', error);
     res.status(500).json({ success: false, message: 'Error sending email', error: error.message });
+  }
+};
+
+// Email credit note
+export const sendCreditNoteEmail = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user?.organizationId) {
+      res.status(401).json({ success: false, message: "Unauthorized" });
+      return;
+    }
+
+    const { id } = req.params;
+    const { to, cc, bcc, subject, body, from, attachments, attachSystemPDF } = req.body;
+
+    if (!to) {
+      res.status(400).json({ success: false, message: "Recipient email is required" });
+      return;
+    }
+
+    const creditNote: any = await CreditNote.findById(id).populate("customer", "displayName name companyName email");
+    if (!creditNote) {
+      res.status(404).json({ success: false, message: "Credit note not found" });
+      return;
+    }
+
+    if (creditNote.organization.toString() !== req.user.organizationId.toString()) {
+      res.status(403).json({ success: false, message: "Access denied" });
+      return;
+    }
+
+    console.log(`[CREDIT NOTE EMAIL] Sending credit note ${creditNote.creditNoteNumber} to ${to}`);
+
+    const organization = await Organization.findById(req.user.organizationId).select("settings name");
+    const organizationSettings: any = organization?.settings || {};
+    const pdfEnabledInSettings = organizationSettings?.pdfSettings?.attachPDFInvoice !== false;
+    const encryptPdfEnabled = organizationSettings?.pdfSettings?.encryptPDF === true;
+    const shouldAttachSystemPdf = typeof attachSystemPDF === "boolean" ? attachSystemPDF : pdfEnabledInSettings;
+
+    const normalizedAttachments = Array.isArray(attachments)
+      ? attachments
+          .filter((a: any) => a && a.filename && (a.path || a.content))
+          .map((attachment: any) => {
+            const normalized = { ...attachment };
+            if (typeof normalized.content === "string") {
+              const contentStr = String(normalized.content || "").trim();
+              const isDataUri = /^data:.*;base64,/i.test(contentStr);
+              const isExplicitBase64 = String(normalized.encoding || "").toLowerCase() === "base64";
+              if (isDataUri || isExplicitBase64) {
+                const base64Content = isDataUri ? contentStr.split(",")[1] || "" : contentStr;
+                normalized.content = Buffer.from(base64Content, "base64");
+                delete normalized.encoding;
+              }
+            }
+            return normalized;
+          })
+      : [];
+
+    if (shouldAttachSystemPdf) {
+      const fileName = `${creditNote.creditNoteNumber || "credit-note"}${encryptPdfEnabled ? "-protected" : ""}.pdf`;
+      const lines = [
+        `${organization?.name || "Taban"} Credit Note`,
+        `Credit Note Number: ${creditNote.creditNoteNumber || "-"}`,
+        `Credit Note Date: ${creditNote.creditNoteDate ? new Date(creditNote.creditNoteDate).toLocaleDateString("en-GB") : creditNote.date ? new Date(creditNote.date).toLocaleDateString("en-GB") : "-"}`,
+        `Total: ${creditNote.currency || ""} ${Number(creditNote.total || creditNote.amount || 0).toFixed(2)}`,
+        `Credits Remaining: ${creditNote.currency || ""} ${Number(creditNote.balance ?? creditNote.total ?? creditNote.amount ?? 0).toFixed(2)}`,
+        `PDF Protection: ${encryptPdfEnabled ? "Enabled" : "Disabled"}`,
+      ];
+      normalizedAttachments.push({
+        filename: fileName,
+        content: buildSimplePdf(lines),
+        contentType: "application/pdf",
+      });
+    }
+
+    await sendEmail({
+      to,
+      cc,
+      bcc,
+      subject,
+      html: body,
+      from,
+      attachments: normalizedAttachments,
+      organizationId: req.user.organizationId
+    });
+
+    if ((creditNote as any).status === "draft") {
+      (creditNote as any).status = "sent";
+      await creditNote.save();
+    }
+
+    res.json({ success: true, message: "Email sent successfully" });
+  } catch (error: any) {
+    console.error("[CREDIT NOTE EMAIL] Error sending email:", error);
+    res.status(500).json({ success: false, message: "Error sending email", error: error.message });
   }
 };
 

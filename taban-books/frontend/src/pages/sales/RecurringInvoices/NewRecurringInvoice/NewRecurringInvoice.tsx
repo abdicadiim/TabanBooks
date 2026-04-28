@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -388,6 +388,7 @@ export default function NewRecurringInvoice() {
   const [isManageSalespersonsOpen, setIsManageSalespersonsOpen] = useState<boolean>(false);
   const [manageSalespersonSearch, setManageSalespersonSearch] = useState<string>("");
   const [openItemDropdowns, setOpenItemDropdowns] = useState<Record<string, boolean>>({});
+  const [itemDropdownReady, setItemDropdownReady] = useState<Record<string, boolean>>({});
   const [itemSearches, setItemSearches] = useState<Record<string, string>>({});
   const [selectedItemIds, setSelectedItemIds] = useState<Record<string, string | number>>({});
   const itemDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -1700,12 +1701,23 @@ export default function NewRecurringInvoice() {
     }));
   };
 
+  const searchableItems = useMemo(
+    () =>
+      items.map((item) => ({
+        ...item,
+        __searchName: String(item.name || "").toLowerCase(),
+        __searchSku: String(item.sku || "").toLowerCase()
+      })),
+    [items]
+  );
+
   const getFilteredItems = (itemId: string | number) => {
     const key = String(itemId);
     const search = itemSearches[key] || "";
-    return items.filter(item =>
-      (item.name || "").toLowerCase().includes(search.toLowerCase()) ||
-      (item.sku || "").toLowerCase().includes(search.toLowerCase())
+    const normalizedSearch = search.toLowerCase().trim();
+    return searchableItems.filter(item =>
+      item.__searchName.includes(normalizedSearch) ||
+      item.__searchSku.includes(normalizedSearch)
     );
   };
 
@@ -1885,7 +1897,17 @@ export default function NewRecurringInvoice() {
       return calculateTotals({ ...prev, items: updatedItems } as FormDataType);
     });
     setOpenItemDropdowns(prev => ({ ...prev, [key]: false }));
+    setItemDropdownReady(prev => ({ ...prev, [key]: false }));
     setItemSearches(prev => ({ ...prev, [key]: "" }));
+  };
+
+  const openItemDropdown = (itemId: string | number) => {
+    const key = String(itemId);
+    setOpenItemDropdowns(prev => ({ ...prev, [key]: true }));
+    setItemDropdownReady(prev => ({ ...prev, [key]: false }));
+    window.requestAnimationFrame(() => {
+      setItemDropdownReady(prev => ({ ...prev, [key]: true }));
+    });
   };
 
   const toggleItemDropdown = (itemId: number | string) => {
@@ -1894,6 +1916,7 @@ export default function NewRecurringInvoice() {
       ...prev,
       [key]: !prev[key]
     }));
+    setItemDropdownReady(prev => ({ ...prev, [key]: false }));
     if (!itemDropdownRefs.current[key]) {
       itemDropdownRefs.current[key] = null;
     }
@@ -3055,10 +3078,11 @@ export default function NewRecurringInvoice() {
                                   onChange={(e) => {
                                     handleItemChange(item.id, 'itemDetails', e.target.value);
                                     setItemSearches(prev => ({ ...prev, [String(item.id)]: e.target.value }));
-                                    setOpenItemDropdowns(prev => ({ ...prev, [String(item.id)]: true }));
+                                    openItemDropdown(item.id);
                                   }}
-                                  onFocus={() => setOpenItemDropdowns(prev => ({ ...prev, [String(item.id)]: true }))}
-                                  onClick={() => setOpenItemDropdowns(prev => ({ ...prev, [String(item.id)]: true }))}
+                                  onFocus={() => openItemDropdown(item.id)}
+                                  onMouseDown={() => openItemDropdown(item.id)}
+                                  onClick={() => openItemDropdown(item.id)}
                                 className="w-full bg-transparent border-0 border-b border-transparent focus:border-[#156372] outline-none text-sm text-gray-900 transition-all duration-200 ease-out hover:-translate-y-0.5 placeholder-gray-400"
                                 />
                               </div>
@@ -3070,24 +3094,32 @@ export default function NewRecurringInvoice() {
 
                               {openItemDropdowns[String(item.id)] && (
                                 <div className={`${animatedDropdownClass} z-[9999]`}>
-                                  {getFilteredItems(item.id).map(productItem => (
-                                    <div
-                                      key={productItem.id}
-                                      className={`p-3 cursor-pointer hover:bg-gray-50 flex items-center justify-between ${selectedItemIds[String(item.id)] === productItem.id ? "bg-[rgba(21,99,114,0.1)]" : ""}`}
-                                      onClick={() => handleItemSelect(item.id, productItem)}
-                                    >
-                                      <div className="flex-1">
-                                        <div className="font-medium text-gray-900">{productItem.name}</div>
-                                        <div className="text-xs text-gray-500 mt-1">
-                                          SKU: {productItem.sku} Rate: {formData.currency}{Number(productItem?.rate || 0).toFixed(2)}
+                                  {itemDropdownReady[String(item.id)] ? (
+                                    getFilteredItems(item.id).slice(0, 40).map(productItem => (
+                                      <div
+                                        key={productItem.id}
+                                        className={`p-3 cursor-pointer hover:bg-gray-50 flex items-center justify-between ${selectedItemIds[String(item.id)] === productItem.id ? "bg-[rgba(21,99,114,0.1)]" : ""}`}
+                                        onClick={() => handleItemSelect(item.id, productItem)}
+                                      >
+                                        <div className="flex-1">
+                                          <div className="font-medium text-gray-900">{productItem.name}</div>
+                                          <div className="text-xs text-gray-500 mt-1">
+                                            SKU: {productItem.sku} Rate: {formData.currency}{Number(productItem?.rate || 0).toFixed(2)}
+                                          </div>
                                         </div>
                                       </div>
+                                    ))
+                                  ) : (
+                                    <div className="flex items-center gap-2 px-4 py-3 text-sm text-gray-500">
+                                      <Loader2 size={14} className="animate-spin" />
+                                      Loading items...
                                     </div>
-                                  ))}
+                                  )}
                                   <button
                                     className="flex items-center gap-2 px-4 py-3 border-t border-gray-200 bg-gray-50 text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-100 w-full"
                                     onClick={() => {
                                       setOpenItemDropdowns(prev => ({ ...prev, [String(item.id)]: false }));
+                                      setItemDropdownReady(prev => ({ ...prev, [String(item.id)]: false }));
                                       navigate("/items", { state: { showNewItem: true, returnTo: window.location.pathname } });
                                     }}
                                   >

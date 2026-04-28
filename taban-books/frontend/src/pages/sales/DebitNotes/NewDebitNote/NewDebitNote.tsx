@@ -26,7 +26,8 @@ import {
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { customersAPI, debitNotesAPI, invoicesAPI, projectsAPI, reportingTagsAPI, salespersonsAPI, transactionNumberSeriesAPI } from "../../../../services/api";
-import { getTaxes, saveInvoice, buildTaxOptionGroups, isTaxActive, taxLabel, readTaxesLocal, TAXES_STORAGE_EVENT } from "../../salesModel";
+import { getCustomers, getTaxes, saveInvoice, buildTaxOptionGroups, isTaxActive, taxLabel, readTaxesLocal, TAXES_STORAGE_EVENT } from "../../salesModel";
+import { useCurrency } from "../../../../hooks/useCurrency";
 import { usePaymentTermsDropdown, defaultPaymentTerms, PaymentTerm } from "../../../../hooks/usePaymentTermsDropdown";
 import { PaymentTermsDropdown } from "../../../../components/PaymentTermsDropdown";
 import { ConfigurePaymentTermsModal } from "../../../../components/ConfigurePaymentTermsModal";
@@ -361,10 +362,85 @@ const isUnpaidInvoice = (invoice: any): boolean => {
   return ["unpaid", "partially paid", "partially_paid", "open", "overdue", "sent"].includes(status);
 };
 
+const extractApiRows = (response: any): any[] => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.items)) return response.items;
+  if (Array.isArray(response?.data?.data)) return response.data.data;
+  if (Array.isArray(response?.data?.items)) return response.data.items;
+  if (Array.isArray(response?.payload?.data)) return response.payload.data;
+  return [];
+};
+
+const isDebitNoteRecord = (row: any): boolean => {
+  const type = String(row?.invoiceType || row?.type || row?.documentType || row?.kind || "").toLowerCase().trim();
+  const documentNumber = String(row?.debitNoteNumber || row?.invoiceNumber || row?.number || "").trim().toUpperCase();
+  return Boolean(
+    row?.debitNote ||
+    row?.isDebitNote ||
+    row?.isDebit ||
+    documentNumber.startsWith("CDN-") ||
+    type === "debit note" ||
+    type === "debit-note" ||
+    type === "debit_note" ||
+    type === "debitnote" ||
+    type.includes("debit note") ||
+    type.includes("debit-note")
+  );
+};
+
+const getInvoiceOptionNumber = (row: any, index: number) =>
+  String(row?.invoiceNumber || row?.number || row?.invoiceNo || row?.invoice || row?.id || row?._id || "").trim() ||
+  `INV-${index + 1}`;
+
+const normalizeInvoiceOptionRow = (row: any, index: number) => ({
+  ...row,
+  id: row?.id || row?._id || row?.invoiceId || row?.invoice?._id || row?.invoice?.id || `${getInvoiceOptionNumber(row, index)}-${index}`,
+  _id: row?._id || row?.id || row?.invoiceId,
+  invoiceNumber: String(row?.invoiceNumber || row?.number || row?.invoiceNo || row?.invoice || "").trim() || getInvoiceOptionNumber(row, index),
+  number: String(row?.number || row?.invoiceNumber || row?.invoiceNo || row?.invoice || "").trim() || getInvoiceOptionNumber(row, index),
+  customerId:
+    String(
+      row?.customerId ||
+      (typeof row?.customer === "string" ? row.customer : row?.customer?._id || row?.customer?.id || "")
+    ).trim(),
+  customerName: row?.customerName || row?.customer?.name || row?.customer?.displayName || row?.customer?.companyName || "",
+  date: row?.date || row?.invoiceDate || row?.createdAt || row?.updatedAt || "",
+  invoiceDate: row?.invoiceDate || row?.date || row?.createdAt || row?.updatedAt || "",
+});
+
+const normalizeInvoiceOptionRows = (rows: any[]) =>
+  rows
+    .filter((row) => row && !isDebitNoteRecord(row))
+    .map((row, index) => normalizeInvoiceOptionRow(row, index))
+    .filter((row) => Boolean(String(row?.invoiceNumber || row?.number || row?.id || row?._id || "").trim()));
+
+const getInvoiceCustomerId = (invoice: any) =>
+  String(
+    invoice?.customerId ||
+    (typeof invoice?.customer === "string" ? invoice.customer : invoice?.customer?._id || invoice?.customer?.id || "")
+  ).trim();
+
+const getInvoiceCustomerName = (invoice: any) =>
+  String(invoice?.customerName || invoice?.customer?.name || invoice?.customer?.displayName || invoice?.customer?.companyName || "").trim().toLowerCase();
+
+const matchesCustomerInvoice = (invoice: any, customer: CustomerOption) => {
+  const customerId = getCustomerId(customer);
+  const customerName = getCustomerPrimaryName(customer).toLowerCase();
+  const invoiceCustomerId = getInvoiceCustomerId(invoice);
+  const invoiceCustomerName = getInvoiceCustomerName(invoice);
+  if (customerId && invoiceCustomerId && customerId === invoiceCustomerId) return true;
+  if (customerName && invoiceCustomerName && customerName === invoiceCustomerName) return true;
+  return false;
+};
+
 export default function NewDebitNote() {
   const navigate = useNavigate();
   const location = useLocation();
   const { id: debitNoteId } = useParams();
+  const { baseCurrency, baseCurrencyCode } = useCurrency();
+  const resolvedBaseCurrencyCode = baseCurrency?.code || baseCurrencyCode || "";
+  const resolvedBaseCurrencySymbol = baseCurrency?.symbol || "";
   const isEditMode = Boolean(debitNoteId);
   const invoiceId = new URLSearchParams(location.search).get("invoiceId") || "";
   const clonedDataFromState = location.state?.clonedData || null;
@@ -396,29 +472,31 @@ export default function NewDebitNote() {
     discountType: "percent",
     shippingCharges: 0,
     adjustment: 0,
-    currency: "AMD",
+    currency: "",
   });
 
   const [items, setItems] = useState<DebitNoteItem[]>([
     { id: Date.now(), description: "", rate: 0, baseRate: 0, tax: "", amount: 0 },
   ]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [isCustomersLoading, setIsCustomersLoading] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerOption | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   const [reasonSearch, setReasonSearch] = useState("");
   const [isReasonDropdownOpen, setIsReasonDropdownOpen] = useState(false);
   const [invoiceOptions, setInvoiceOptions] = useState<any[]>([]);
+  const [allInvoiceRows, setAllInvoiceRows] = useState<any[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState("");
   const [isInvoiceDropdownOpen, setIsInvoiceDropdownOpen] = useState(false);
   const [invoiceSearch, setInvoiceSearch] = useState("");
+  const [isInvoiceOptionsLoading, setIsInvoiceOptionsLoading] = useState(false);
   const [isCustomerPanelOpen, setIsCustomerPanelOpen] = useState(false);
   const [customerPanelTab, setCustomerPanelTab] = useState<"details" | "invoices" | "activity">("details");
   const [isCustomerContactPersonsOpen, setIsCustomerContactPersonsOpen] = useState(true);
   const [isCustomerAddressOpen, setIsCustomerAddressOpen] = useState(true);
   const [activeHeaderReportingTagKey, setActiveHeaderReportingTagKey] = useState<string | null>(null);
   const [isTaxModeDropdownOpen, setIsTaxModeDropdownOpen] = useState(false);
-  const [isPriceListDropdownOpen, setIsPriceListDropdownOpen] = useState(false);
   const [locationOptions, setLocationOptions] = useState<string[]>(["Head Office"]);
   const [salespersons, setSalespersons] = useState<any[]>([]);
   const [selectedSalesperson, setSelectedSalesperson] = useState<any>(null);
@@ -464,12 +542,12 @@ export default function NewDebitNote() {
   const attachmentCountDropdownRef = useRef<HTMLDivElement | null>(null);
   const invoiceDropdownRef = useRef<HTMLDivElement | null>(null);
   const locationDropdownRef = useRef<HTMLDivElement | null>(null);
+  const invoiceLoadRequestRef = useRef(0);
   const taxDropdownRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const additionalInfoMenuRef = useRef<HTMLDivElement | null>(null);
   const additionalInfoReportingRef = useRef<HTMLDivElement | null>(null);
   const headerReportingTagDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const taxModeDropdownRef = useRef<HTMLDivElement | null>(null);
-  const priceListDropdownRef = useRef<HTMLDivElement | null>(null);
   const customerDropdownRef = useRef<HTMLDivElement | null>(null);
 
   const [saveLoading, setSaveLoading] = useState<string | null>(null);
@@ -545,7 +623,7 @@ export default function NewDebitNote() {
       discountType: String(cloned.discountType || prev.discountType || "percent"),
       shippingCharges: Number(cloned.shippingCharges ?? cloned.shipping ?? prev.shippingCharges ?? 0) || 0,
       adjustment: Number(cloned.adjustment ?? prev.adjustment ?? 0) || 0,
-      currency: String(cloned.currency || prev.currency || "AMD"),
+      currency: String(cloned.currency || prev.currency || resolvedBaseCurrencyCode || ""),
     }));
 
     if (mappedItems.length > 0) {
@@ -622,7 +700,7 @@ export default function NewDebitNote() {
 
   const createDebitNoteWithNumberRetry = async (payload: any) => {
     try {
-      return await saveInvoice(payload as any);
+      return await debitNotesAPI.create(payload as any);
     } catch (error: any) {
       if (!isEditMode && isDuplicateDebitNoteNumberError(error)) {
         const freshNumber = await fetchNextDebitNoteNumber({ reserve: true });
@@ -636,7 +714,7 @@ export default function NewDebitNote() {
             ...prev,
             debitNoteNumber: freshNumber,
           }));
-          return await saveInvoice(retryPayload as any);
+          return await debitNotesAPI.create(retryPayload as any);
         }
       }
       throw error;
@@ -671,9 +749,7 @@ export default function NewDebitNote() {
         loadedDebitNote?.associatedInvoiceNumber ||
         ""
       ).trim();
-      const statusValue = status === "draft"
-        ? "draft"
-        : resolveDebitNoteSendStatus(formData.dueDate);
+      const statusValue = status === "draft" ? "draft" : "sent";
       const payload = {
         invoiceNumber: formData.debitNoteNumber,
         debitNoteNumber: formData.debitNoteNumber,
@@ -700,19 +776,26 @@ export default function NewDebitNote() {
         currency: resolvedCurrency,
         status: statusValue,
         debitNote: true,
-        items: items.map(item => ({
+        items: items.map((item) => {
+          const lineTotal = Number(item.amount || item.rate || 0) || 0;
+          const lineTaxRate = parseTaxRate(item.tax);
+          return {
           name: item.description,
           description: item.description,
           quantity: 1,
           unitPrice: item.rate,
           rate: item.rate,
           tax: item.tax,
-          amount: item.amount,
+          amount: lineTotal,
+          taxRate: lineTaxRate,
+          taxAmount: 0,
+          total: lineTotal,
           account: itemAccountSelections[item.id] || "",
           projectId: itemProjectSelections[item.id] || "",
           projectName: itemProjectSelections[item.id] || "",
           discountAccount: itemDiscountSelections[item.id] || "",
-        })),
+          };
+        }),
       };
 
       const saved = isEditMode && debitNoteId
@@ -1075,7 +1158,14 @@ export default function NewDebitNote() {
     customerDetails?.availableCredits ??
     0
   ) || 0;
-  const resolvedCurrency = getCustomerCurrency(customerDetails || selectedCustomer || {}) || formData.currency || "AMD";
+  const resolvedCurrency = getCustomerCurrency(customerDetails || selectedCustomer || {}) || formData.currency || resolvedBaseCurrencyCode || "";
+
+  useEffect(() => {
+    if (isEditMode || debitNoteId || clonedDataFromState) return;
+    if (!formData.currency && resolvedBaseCurrencyCode) {
+      setField("currency", resolvedBaseCurrencyCode);
+    }
+  }, [clonedDataFromState, debitNoteId, formData.currency, isEditMode, resolvedBaseCurrencyCode]);
 
   useEffect(() => {
     const nextCurrency = getCustomerCurrency(customerDetails || selectedCustomer || {});
@@ -1140,11 +1230,10 @@ export default function NewDebitNote() {
 
   useEffect(() => {
     const loadCustomers = async () => {
+      setIsCustomersLoading(true);
       try {
-        const response = await customersAPI.getAll();
-        const raw = (Array.isArray(response) ? response : response?.data) || [];
-        const rows = Array.isArray(raw) ? raw : [];
-        const activeRows = rows.filter((customer: any) => {
+        const rows = await getCustomers({ limit: 1000 });
+        const activeRows = (Array.isArray(rows) ? rows : []).filter((customer: any) => {
           const status = String(customer?.status || "").toLowerCase();
           if (status === "inactive") return false;
           if (customer?.isActive === false) return false;
@@ -1154,6 +1243,8 @@ export default function NewDebitNote() {
         setCustomers(activeRows);
       } catch {
         setCustomers([]);
+      } finally {
+        setIsCustomersLoading(false);
       }
     };
     const loadSalespersons = async () => {
@@ -1242,6 +1333,29 @@ export default function NewDebitNote() {
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const preloadInvoices = async () => {
+      try {
+        const response = await invoicesAPI.getAll({ page: 1, limit: 10000, _ts: Date.now() });
+        const rows = normalizeInvoiceOptionRows(extractApiRows(response));
+        if (!cancelled) {
+          setAllInvoiceRows(rows);
+        }
+      } catch {
+        if (!cancelled) {
+          setAllInvoiceRows([]);
+        }
+      }
+    };
+
+    void preloadInvoices();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -1455,7 +1569,7 @@ export default function NewDebitNote() {
           }, {})
         );
 
-        setSelectedCustomer({
+        const customerRecord = {
           id: customerId,
           _id: customerId,
           customerId,
@@ -1464,15 +1578,25 @@ export default function NewDebitNote() {
           companyName: customerName,
           email: String(note?.customerEmail || note?.email || ""),
           currency,
-        });
+        };
+        setSelectedCustomer(customerRecord);
 
-        let invoiceRows: any[] = [];
+        const cachedInvoiceRows = normalizeInvoiceOptionRows(
+          allInvoiceRows.filter((invoice) => matchesCustomerInvoice(invoice, customerRecord))
+        );
+        if (cachedInvoiceRows.length > 0) {
+          setInvoiceOptions(cachedInvoiceRows);
+        }
+
+        let invoiceRows: any[] = cachedInvoiceRows;
         if (customerId) {
           try {
             const response = await invoicesAPI.getByCustomer(customerId);
-            invoiceRows = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
+            invoiceRows = normalizeInvoiceOptionRows(extractApiRows(response)).filter((invoice) =>
+              matchesCustomerInvoice(invoice, customerRecord)
+            );
           } catch {
-            invoiceRows = [];
+            invoiceRows = cachedInvoiceRows;
           }
         }
         setInvoiceOptions(invoiceRows);
@@ -1551,9 +1675,6 @@ export default function NewDebitNote() {
       if (taxModeDropdownRef.current && !taxModeDropdownRef.current.contains(target)) {
         setIsTaxModeDropdownOpen(false);
       }
-      if (priceListDropdownRef.current && !priceListDropdownRef.current.contains(target)) {
-        setIsPriceListDropdownOpen(false);
-      }
       if (invoiceDropdownRef.current && !invoiceDropdownRef.current.contains(target)) {
         setIsInvoiceDropdownOpen(false);
       }
@@ -1587,14 +1708,32 @@ export default function NewDebitNote() {
     setInvoiceSearch("");
     setIsCustomerDropdownOpen(false);
     setCustomerSearch("");
+    setIsInvoiceOptionsLoading(Boolean(customerId));
+
+    const cachedRows = normalizeInvoiceOptionRows(
+      allInvoiceRows.filter((invoice) => matchesCustomerInvoice(invoice, customer))
+    );
+    if (cachedRows.length > 0) {
+      setInvoiceOptions(cachedRows);
+    } else {
+      setInvoiceOptions([]);
+    }
 
     if (customerId) {
+      const requestId = Date.now();
+      invoiceLoadRequestRef.current = requestId;
       try {
         const response = await invoicesAPI.getByCustomer(customerId);
-        const rows = Array.isArray(response?.data) ? response.data : [];
-        setInvoiceOptions(rows);
+        const rows = normalizeInvoiceOptionRows(extractApiRows(response)).filter((invoice) => matchesCustomerInvoice(invoice, customer));
+        if (invoiceLoadRequestRef.current === requestId) {
+          setInvoiceOptions(rows);
+        }
       } catch {
         // Fallback to customer-embedded invoice references when invoice API fails.
+      } finally {
+        if (invoiceLoadRequestRef.current === requestId) {
+          setIsInvoiceOptionsLoading(false);
+        }
       }
       return;
     }
@@ -1602,11 +1741,15 @@ export default function NewDebitNote() {
     const embeddedInvoices = Array.isArray(customer?.invoices)
       ? customer.invoices
       : Array.isArray(customer?.invoiceNumbers)
-        ? customer.invoiceNumbers
-        : Array.isArray(customer?.invoiceRefs)
+      ? customer.invoiceNumbers
+      : Array.isArray(customer?.invoiceRefs)
           ? customer.invoiceRefs
           : [];
-    setInvoiceOptions(embeddedInvoices.map(inv => typeof inv === 'string' ? { invoiceNumber: inv } : inv));
+    const normalizedEmbeddedInvoices = normalizeInvoiceOptionRows(
+      embeddedInvoices.map((inv) => (typeof inv === "string" ? { invoiceNumber: inv } : inv))
+    );
+    setInvoiceOptions(normalizedEmbeddedInvoices);
+    setIsInvoiceOptionsLoading(false);
   };
 
   useEffect(() => {
@@ -1773,11 +1916,11 @@ export default function NewDebitNote() {
       <div className={`space-y-7 bg-gray-50 px-4 py-5 pb-56 ${isCustomerPanelOpen ? "lg:pr-[430px]" : ""}`}>
         <section className="max-w-[1510px] rounded-md bg-white p-4">
           <div className="grid grid-cols-1 gap-4">
-            <div className="grid grid-cols-[150px_minmax(0,1fr)_auto] items-start gap-3">
-              <label className="pt-2 text-[13px] text-[#ef4444]">Customer Name*</label>
-              <div className="w-full max-w-[520px] space-y-2 justify-self-stretch">
-                <div className="flex w-full items-center justify-end gap-2">
-                  <div className="relative w-full max-w-[470px]" ref={customerDropdownRef}>
+            <div className="grid grid-cols-[150px_minmax(0,1fr)_auto] items-center gap-3">
+              <label className="text-[13px] text-[#ef4444]">Customer Name*</label>
+              <div className="w-full max-w-[320px] space-y-2">
+                <div className="flex w-full items-center gap-2">
+                  <div className="relative w-full" ref={customerDropdownRef}>
                     <div className="flex">
                       <button
                         type="button"
@@ -1813,7 +1956,9 @@ export default function NewDebitNote() {
                         </div>
                         <div className="max-h-[220px] overflow-y-auto p-1.5">
                           {filteredCustomers.length === 0 ? (
-                            <div className="px-3 py-4 text-sm text-slate-500">No customers found.</div>
+                            <div className="px-3 py-4 text-sm text-slate-500">
+                              {isCustomersLoading ? "Loading customers..." : "No customers found."}
+                            </div>
                           ) : (
                             filteredCustomers.map((customer, index) => {
                               const isSelected =
@@ -1976,7 +2121,9 @@ export default function NewDebitNote() {
                       </div>
                       <div className="max-h-52 overflow-y-auto p-1.5">
                         {filteredInvoiceOptions.length === 0 ? (
-                          <div className="px-3 py-4 text-sm text-slate-500">No invoices found.</div>
+                          <div className="px-3 py-4 text-sm text-slate-500">
+                            {isInvoiceOptionsLoading ? "Loading invoices..." : "No invoices found."}
+                          </div>
                         ) : (
                           filteredInvoiceOptions.map(({ number }, index) => {
                             const isSelected = number === selectedInvoice;
@@ -2454,64 +2601,6 @@ export default function NewDebitNote() {
               ) : null}
             </div>
 
-            <div className="relative" ref={priceListDropdownRef}>
-              <button
-                type="button"
-                className="flex h-9 w-[128px] items-center justify-between rounded border border-gray-300 bg-white px-3 text-sm text-slate-700 focus:border-[#156372] focus:outline-none"
-                onClick={() => {
-                  setIsTaxModeDropdownOpen(false);
-                  setIsPriceListDropdownOpen((prev) => !prev);
-                }}
-              >
-                <span className={formData.priceList && formData.priceList !== "Select Price List" ? "truncate text-slate-900" : "truncate text-slate-400"}>
-                  {formData.priceList || "Select Price List"}
-                </span>
-                <ChevronDown
-                  size={14}
-                  className={`text-slate-400 transition-transform ${isPriceListDropdownOpen ? "rotate-180" : ""}`}
-                />
-              </button>
-              {isPriceListDropdownOpen ? (
-                <div className="absolute left-0 top-full z-50 mt-1 w-[220px] overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg">
-                  <div className="max-h-60 overflow-y-auto p-1.5">
-                    <button
-                      type="button"
-                      className={`block w-full truncate rounded-md px-4 py-2 text-left text-sm transition-colors ${
-                        !formData.priceList || formData.priceList === "Select Price List"
-                          ? "bg-slate-100 text-slate-900 ring-1 ring-slate-200"
-                          : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
-                      }`}
-                      onClick={() => {
-                        setField("priceList", "Select Price List");
-                        setIsPriceListDropdownOpen(false);
-                      }}
-                    >
-                      Select Price List
-                    </button>
-                    {catalogPriceLists.map((priceList) => {
-                      const isSelected = formData.priceList === priceList.name;
-                      return (
-                        <button
-                          key={priceList.id}
-                          type="button"
-                          className={`block w-full truncate rounded-md px-4 py-2 text-left text-sm transition-colors ${
-                            isSelected
-                              ? "bg-slate-100 text-slate-900 ring-1 ring-slate-200"
-                              : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
-                          }`}
-                          onClick={() => {
-                            setField("priceList", priceList.name);
-                            setIsPriceListDropdownOpen(false);
-                          }}
-                        >
-                          {priceList.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-            </div>
           </div>
           <div className="max-w-[1000px] overflow-visible rounded-xl border border-slate-200 bg-white relative z-20">
             <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
@@ -3072,7 +3161,7 @@ export default function NewDebitNote() {
                 <span>{Number(formData.adjustment || 0).toFixed(2)}</span>
               </div>
               <div className="flex items-center justify-between border-t border-slate-200 pt-4 text-[22px] font-semibold">
-                <span>Total ({resolvedCurrency})</span>
+                <span>{resolvedBaseCurrencySymbol ? `Total (${resolvedBaseCurrencySymbol})` : "Total"}</span>
                 <span>{total.toFixed(2)}</span>
               </div>
             </div>

@@ -6,6 +6,7 @@ import { currenciesAPI, bankAccountsAPI, chartOfAccountsAPI, refundsAPI, creditN
 import ApplyToInvoices from "./ApplyToInvoices";
 import CreditNoteCommentsPanel from "./CreditNoteCommentsPanel";
 import CreditNotePreview from "./CreditNotePreview";
+import { findCachedCreditNoteById, readCachedCreditNotes } from "../creditNoteQueries";
 import { downloadCreditNotesPdf } from "../creditNotePdf";
 import {
   X, Edit, Send, FileText, MoreVertical,
@@ -40,8 +41,8 @@ interface CreditNoteItem {
 export default function CreditNoteDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [creditNote, setCreditNote] = useState<CreditNote | null>(null);
-  const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
+  const [creditNote, setCreditNote] = useState<CreditNote | null>(() => (id ? findCachedCreditNoteById(id) : null));
+  const [creditNotes, setCreditNotes] = useState<CreditNote[]>(() => readCachedCreditNotes());
   const [baseCurrency, setBaseCurrency] = useState("USD");
   const [invoicesLookup, setInvoicesLookup] = useState<Record<string, any>>({});
   const [isCreditAppliedInvoicesOpen, setIsCreditAppliedInvoicesOpen] = useState(false);
@@ -101,6 +102,7 @@ export default function CreditNoteDetail() {
   const [isChooseTemplateModalOpen, setIsChooseTemplateModalOpen] = useState(false);
   const [isOrganizationAddressModalOpen, setIsOrganizationAddressModalOpen] = useState(false);
   const [isTermsAndConditionsModalOpen, setIsTermsAndConditionsModalOpen] = useState(false);
+  const [isApplyToInvoicesOpen, setIsApplyToInvoicesOpen] = useState(false);
   const [templateSearch, setTemplateSearch] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("Standard Template");
   const [organizationData, setOrganizationData] = useState({
@@ -147,12 +149,90 @@ export default function CreditNoteDetail() {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const customizeDropdownRef = useRef<HTMLDivElement>(null);
   const organizationAddressFileInputRef = useRef<HTMLInputElement>(null);
+  const isAnyModalOpen =
+    isSendEmailModalOpen ||
+    isScheduleEmailModalOpen ||
+    showAttachmentsModal ||
+    showImageViewer ||
+    isChooseTemplateModalOpen ||
+    isOrganizationAddressModalOpen ||
+    isTermsAndConditionsModalOpen ||
+    isRefundModalOpen ||
+    isApplyToInvoicesOpen;
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const body = document.body;
+    if (isAnyModalOpen) {
+      body.classList.add("credit-notes-modal-open");
+    } else {
+      body.classList.remove("credit-notes-modal-open");
+    }
+
+    return () => {
+      body.classList.remove("credit-notes-modal-open");
+    };
+  }, [isAnyModalOpen]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyOverscroll = document.body.style.overscrollBehavior;
+
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overscrollBehavior = "none";
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overscrollBehavior = previousBodyOverscroll;
+    };
+  }, []);
+
+  const currencySymbolMap: Record<string, string> = {
+    USD: "$",
+    EUR: "€",
+    GBP: "£",
+    KES: "KSh",
+    AMD: "֏",
+    INR: "₹",
+    JPY: "¥",
+    CAD: "$",
+    AUD: "$",
+    ZAR: "R",
+    NGN: "₦",
+    BGN: "лв",
+    SOS: "SOS",
+    AED: "د.إ"
+  };
+
+  const resolveCurrencySymbol = (currency: any) => {
+    const raw = String(currency || "").trim();
+    if (!raw) return "";
+    const code = raw.split(" - ")[0].trim().toUpperCase();
+    return currencySymbolMap[code] || raw;
+  };
+
+  useEffect(() => {
+    if (!id) return;
+    const cachedNote = findCachedCreditNoteById(id);
+    if (cachedNote) {
+      setCreditNote(cachedNote as CreditNote);
+    }
+  }, [id]);
 
   useEffect(() => {
     const fetchCreditNoteData = async () => {
       try {
         if (!id) return;
-        const creditNoteData = await getCreditNoteById(id);
+        const [creditNoteData, notes] = await Promise.all([
+          getCreditNoteById(id),
+          getCreditNotes(),
+        ]);
         if (creditNoteData) {
           let resolvedCreditNote = creditNoteData as any;
           const currentCustomerName = String(
@@ -194,8 +274,7 @@ export default function CreditNoteDetail() {
         } else {
           navigate("/sales/credit-notes");
         }
-        const notes = await getCreditNotes();
-        setCreditNotes(notes);
+        setCreditNotes(Array.isArray(notes) ? notes : []);
       } catch (error) {
         console.error("Error loading credit note:", error);
       }
@@ -266,7 +345,9 @@ export default function CreditNoteDetail() {
       try {
         const response = await currenciesAPI.getBaseCurrency();
         if (response && response.success && response.data) {
-          setBaseCurrency(response.data.code || "USD");
+          setBaseCurrency(
+            String(response.data.symbol || response.data.code || "USD").trim()
+          );
         }
       } catch (error) {
         console.error("Error fetching base currency:", error);
@@ -363,7 +444,8 @@ export default function CreditNoteDetail() {
   }, [isMoreMenuOpen, isAllCreditNotesDropdownOpen, isSendDropdownOpen, isPdfDropdownOpen, isCustomizeDropdownOpen, isRefundModalOpen, isPaymentModeDropdownOpen, isFromAccountDropdownOpen, isRefundDatePickerOpen]);
 
   const formatCurrency = (amount: any, currency = baseCurrency) => {
-    return `${currency}${parseFloat(amount || 0).toLocaleString('en-US', {
+    const symbol = resolveCurrencySymbol(currency);
+    return `${symbol}${parseFloat(amount || 0).toLocaleString('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     })}`;
@@ -515,8 +597,6 @@ Best regards`,
     toast("SMS functionality will be implemented soon.");
   };
 
-  const [isApplyToInvoicesOpen, setIsApplyToInvoicesOpen] = useState(false);
-
   const handleApplyToInvoices = () => {
     setIsApplyToInvoicesOpen(true);
   };
@@ -552,6 +632,119 @@ Best regards`,
         new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
     );
   }, [creditNote, invoicesLookup]);
+
+  const creditNoteJournal = useMemo(() => {
+    return (creditNote as any)?.journalEntry || null;
+  }, [creditNote]);
+
+  const creditNoteJournalRows = useMemo(() => {
+    const journalSource = Array.isArray((creditNoteJournal as any)?.lines)
+      ? (creditNoteJournal as any).lines
+      : Array.isArray((creditNoteJournal as any)?.entries)
+        ? (creditNoteJournal as any).entries
+        : [];
+
+    const lineItems = Array.isArray((creditNote as any)?.items) ? (creditNote as any).items : [];
+    const location = String((creditNote as any)?.warehouseLocation || "Head Office").trim();
+
+    const derivedRows = (() => {
+      if (!lineItems.length) return [];
+
+      const groupedAccounts = new Map<string, { account: string; debit: number }>();
+      let totalTax = 0;
+
+      for (const item of lineItems) {
+        const quantity = toNumber(item?.quantity);
+        const unitPrice = toNumber(item?.unitPrice ?? item?.rate);
+        const lineAmount = toNumber(item?.total ?? item?.amount ?? (quantity * unitPrice));
+        const selectedAccount = String(item?.account || "").trim();
+        if (lineAmount > 0) {
+          const accountLabel = selectedAccount || "Sales Returns";
+          const previous = groupedAccounts.get(accountLabel);
+          groupedAccounts.set(accountLabel, {
+            account: accountLabel,
+            debit: toNumber(previous?.debit) + lineAmount
+          });
+        }
+        totalTax += toNumber(item?.taxAmount);
+      }
+
+      const rows = Array.from(groupedAccounts.values()).map((entry) => ({
+        rowKey: `item-${entry.account}`,
+        account: entry.account,
+        location,
+        debit: Number(entry.debit.toFixed(2)),
+        credit: 0
+      }));
+
+      if (totalTax > 0) {
+        rows.push({
+          rowKey: "tax-payable",
+          account: "Sales Tax Payable",
+          location,
+          debit: Number(totalTax.toFixed(2)),
+          credit: 0
+        });
+      }
+
+      const totalCredit = toNumber((creditNote as any)?.total);
+      if (totalCredit > 0) {
+        rows.push({
+          rowKey: "accounts-receivable",
+          account: String((creditNote as any)?.accountsReceivable || "Accounts Receivable").trim(),
+          location,
+          debit: 0,
+          credit: Number(totalCredit.toFixed(2))
+        });
+      }
+
+      return rows.filter((row: any) => row.debit > 0 || row.credit > 0);
+    })();
+
+    if (derivedRows.length > 0) {
+      return derivedRows;
+    }
+
+    return journalSource
+      .map((line: any, index: number) => {
+        const debit = toNumber(line?.debit ?? line?.debitAmount ?? 0);
+        const credit = toNumber(line?.credit ?? line?.creditAmount ?? 0);
+
+        return {
+          rowKey: `${String(line?.account || line?.accountName || "journal")}-${index}`,
+          account:
+            String(
+              line?.accountName ||
+              line?.account?.name ||
+              line?.account ||
+              line?.description ||
+              "Account"
+            ).trim(),
+          location: String(
+            line?.locationName ||
+            line?.location ||
+            line?.locationId ||
+            (creditNote as any)?.warehouseLocation ||
+            "Head Office"
+          ).trim(),
+          debit,
+          credit
+        };
+      })
+      .filter((row: any) => row.debit > 0 || row.credit > 0);
+  }, [creditNote, creditNoteJournal]);
+
+  const creditNoteJournalTotals = useMemo(() => {
+    return creditNoteJournalRows.reduce(
+      (totals: any, row: any) => ({
+        debit: totals.debit + toNumber(row.debit),
+        credit: totals.credit + toNumber(row.credit)
+      }),
+      { debit: 0, credit: 0 }
+    );
+  }, [creditNoteJournalRows]);
+
+  const hasAppliedDocuments = creditAppliedInvoicesRows.length > 0;
 
   const handleSaveAllocations = async (allocations: any[]) => {
     try {
@@ -844,12 +1037,42 @@ Best regards`,
     }
   };
 
-  const handleClone = () => {
+const handleClone = () => {
     setIsMoreMenuOpen(false);
     if (creditNote) {
       navigate("/sales/credit-notes/new", {
         state: { clonedData: creditNote }
       });
+    }
+  };
+
+  const handleConvertToOpen = async () => {
+    setIsMoreMenuOpen(false);
+    if (!id || !creditNote) return;
+    const previousCreditNote = creditNote;
+    setCreditNote((prev) => prev ? { ...prev, status: "open" as any } : prev);
+    try {
+      await creditNotesAPI.update(id, { status: "open" });
+      toast("Credit note converted to Open.");
+    } catch (error: any) {
+      console.error("Error converting credit note:", error);
+      setCreditNote(previousCreditNote);
+      toast("Failed to convert credit note: " + (error.message || "Please try again."));
+    }
+  };
+
+  const handleVoid = async () => {
+    setIsMoreMenuOpen(false);
+    if (!id || !creditNote) return;
+    if (!window.confirm("Are you sure you want to void this credit note? This action cannot be undone.")) return;
+    try {
+      await creditNotesAPI.update(id, { status: "void" });
+      const updatedNote = await getCreditNoteById(id);
+      if (updatedNote) setCreditNote(updatedNote);
+      toast("Credit note voided.");
+    } catch (error: any) {
+      console.error("Error voiding credit note:", error);
+      toast("Failed to void credit note: " + (error.message || "Please try again."));
     }
   };
 
@@ -1003,16 +1226,6 @@ Best regards`,
     filter.toLowerCase().includes(filterSearch.toLowerCase())
   );
 
-  if (!creditNote) {
-    return (
-      <div className="w-full min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="p-10 text-center">
-          <div className="text-lg text-gray-600">Loading...</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="w-full h-[calc(100vh-4rem)] min-h-0 flex bg-[#f8fafc] overflow-hidden">
       {/* Left Sidebar */}
@@ -1130,8 +1343,7 @@ Best regards`,
               <div className="text-[14px] text-gray-500">
                 Location: <span className="text-[#1d4ed8]">{(creditNote as any)?.location || "Head Office"}</span>
               </div>
-              <h1 className="text-[32px] leading-none font-semibold text-gray-900">{creditNote.creditNoteNumber || creditNote.id}</h1>
-            </div>
+               <h1 className="text-[32px] leading-none font-semibold text-gray-900">{creditNote?.creditNoteNumber || creditNote?.id}</h1>            </div>
             <div className="flex items-center gap-3">
               <div className="relative">
                 <button
@@ -1244,192 +1456,276 @@ Best regards`,
                 <MoreVertical size={18} />
               </button>
               {isMoreMenuOpen && (
-                <div className="absolute top-full right-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 min-w-[150px] overflow-hidden">
-                  <div className="p-3 cursor-pointer text-sm transition-colors" style={{ color: "#dc2626" }} onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(220, 38, 38, 0.1)"} onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"} onClick={handleDelete}>Delete</div>
-                  <div className="p-3 cursor-pointer text-sm text-gray-700 transition-colors" style={{ "--hover-bg": "rgba(21, 99, 114, 0.1)" } as any} onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"} onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"} onClick={handleClone}>Clone</div>
-                </div>
+                <div className="absolute top-full right-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 min-w-[180px] overflow-hidden">
+  <div
+    className="p-3 cursor-pointer text-sm text-gray-700 transition-colors"
+    onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"}
+    onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"}
+    onClick={handleClone}
+  >Clone</div>
+  {String((creditNote as any)?.status || "").toLowerCase() === "draft" && (
+    <div
+      className="p-3 cursor-pointer text-sm text-gray-700 transition-colors"
+      onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"}
+      onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"}
+      onClick={handleConvertToOpen}
+    >Convert to Open</div>
+  )}
+  {canApplyToInvoices && (
+    <div
+      className="p-3 cursor-pointer text-sm text-gray-700 transition-colors"
+      onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"}
+      onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"}
+      onClick={() => { setIsMoreMenuOpen(false); handleApplyToInvoices(); }}
+    >Apply to Invoices</div>
+  )}
+  <div
+    className="p-3 cursor-pointer text-sm text-gray-700 transition-colors"
+    onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"}
+    onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"}
+    onClick={handleVoid}
+  >Void</div>
+  <div
+    className="p-3 cursor-pointer text-sm text-gray-700 transition-colors"
+    onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"}
+    onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"}
+    onClick={() => { setIsMoreMenuOpen(false); navigate(`/sales/credit-notes/${id}/journal`); }}
+  >View Journal</div>
+  <div
+    className="p-3 cursor-pointer text-sm transition-colors"
+    style={{ color: "#dc2626" }}
+    onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(220, 38, 38, 0.1)"}
+    onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"}
+    onClick={handleDelete}
+  >Delete</div>
+</div>
               )}
             </div>
           </div>
         </div>
 
-        {/* Credit Note Document */}
-        <div className="flex-1 overflow-y-auto p-3 bg-gray-50">
-          <div className="w-full max-w-[1280px] mx-auto mb-3 border border-gray-200 rounded-md bg-white overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setIsCreditAppliedInvoicesOpen((prev) => !prev)}
-              className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50"
-            >
-              <div className="text-sm font-semibold text-gray-800">
-                Credit Applied Invoices <span className="text-[#3b82f6] ml-1">{creditAppliedInvoicesRows.length}</span>
-              </div>
-              <ChevronDown
-                size={16}
-                className={`text-gray-500 transition-transform ${isCreditAppliedInvoicesOpen ? "rotate-180" : ""}`}
-              />
-            </button>
+{/* Draft Banner */}
+{creditNote && String((creditNote as any)?.status || "").toLowerCase() === "draft" && (
+  <div className="bg-white border-b border-gray-200 px-6 py-3 flex-shrink-0">
+    <div className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-3">
+      <div className="flex items-center gap-2 text-sm text-gray-700">
+        <span className="text-[#156372]">✦</span>
+        <span className="font-semibold">WHAT'S NEXT?</span>
+        <span>Go ahead and email this credit note to your customer or simply convert it to open.</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleSendEmail}
+          className="px-4 py-2 text-white text-sm font-semibold rounded-lg transition-colors"
+          style={{ backgroundColor: "#156372" }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#0D4A52")}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#156372")}
+        >
+          Send Credit Note
+        </button>
+        <button
+          onClick={handleConvertToOpen}
+          className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          Convert to Open
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
-            {isCreditAppliedInvoicesOpen && (
-              <div className="border-t border-gray-200">
-                <table className="w-full">
-                  <thead className="bg-[#f6f7fb]">
-                    <tr className="text-xs font-semibold text-[#697386]">
-                      <th className="text-left px-5 py-3">Date</th>
-                      <th className="text-left px-5 py-3">Invoice Number</th>
-                      <th className="text-left px-5 py-3">Amount Credited</th>
-                      <th className="text-right px-5 py-3" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {creditAppliedInvoicesRows.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="px-5 py-6 text-sm text-gray-500 text-center">
-                          No invoices have credits applied from this credit note.
-                        </td>
-                      </tr>
-                    ) : (
-                      creditAppliedInvoicesRows.map((row: any) => (
-                        <tr key={row.rowKey} className="border-t border-gray-100 text-sm">
-                          <td className="px-5 py-3 text-gray-800">{formatDate(row.date)}</td>
-                          <td className="px-5 py-3">
-                            <button
-                              type="button"
-                              className="text-[#3b82f6] hover:underline"
-                              onClick={() => row.invoiceId && navigate(`/sales/invoices/${row.invoiceId}`)}
-                            >
-                              {row.invoiceNumber}
-                            </button>
-                          </td>
-                          <td className="px-5 py-3 text-gray-900">
-                            {formatCurrency(row.amount, (creditNote as any)?.currency || baseCurrency)}
-                          </td>
-                          <td className="px-5 py-3 text-right">
-                            <button
-                              type="button"
-                              className="text-gray-500 hover:text-red-600"
-                              onClick={() => handleRemoveAppliedInvoice(row)}
-                              title="Remove Applied Credit"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+{/* Credit Note Document */}
+<div className="flex-1 overflow-y-auto p-3 bg-gray-50">
+  {creditNote ? (
+    <>
+      <div className="w-full max-w-[1280px] mx-auto mb-3 border border-gray-200 rounded-md bg-white overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setIsCreditAppliedInvoicesOpen((prev) => !prev)}
+          className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50"
+        >
+          <div className="text-sm font-semibold text-gray-800">
+            Credit Applied Invoices <span className="text-[#3b82f6] ml-1">{creditAppliedInvoicesRows.length}</span>
           </div>
-
-          <div className="w-full max-w-[920px] mx-auto relative">
-            <CreditNotePreview
-              creditNote={creditNote}
-              organizationProfile={organizationProfile}
-              baseCurrency={baseCurrency}
-            />
+          <ChevronDown
+            size={16}
+            className={`text-gray-500 transition-transform ${isCreditAppliedInvoicesOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+        {isCreditAppliedInvoicesOpen && (
+          <div className="border-t border-gray-200">
+            <table className="w-full">
+              <thead className="bg-[#f6f7fb]">
+                <tr className="text-xs font-semibold text-[#697386]">
+                  <th className="text-left px-5 py-3">Date</th>
+                  <th className="text-left px-5 py-3">Invoice Number</th>
+                  <th className="text-left px-5 py-3">Amount Credited</th>
+                  <th className="text-right px-5 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {creditAppliedInvoicesRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-5 py-6 text-sm text-gray-500 text-center">
+                      No invoices have credits applied from this credit note.
+                    </td>
+                  </tr>
+                ) : (
+                  creditAppliedInvoicesRows.map((row: any) => (
+                    <tr key={row.rowKey} className="border-t border-gray-100 text-sm">
+                      <td className="px-5 py-3 text-gray-800">{formatDate(row.date)}</td>
+                      <td className="px-5 py-3">
+                        <button
+                          type="button"
+                          className="text-[#3b82f6] hover:underline"
+                          onClick={() => row.invoiceId && navigate(`/sales/invoices/${row.invoiceId}`)}
+                        >
+                          {row.invoiceNumber}
+                        </button>
+                      </td>
+                      <td className="px-5 py-3 text-gray-900">
+                        {formatCurrency(row.amount, (creditNote as any)?.currency || baseCurrency)}
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        <button
+                          type="button"
+                          className="text-gray-500 hover:text-red-600"
+                          onClick={() => handleRemoveAppliedInvoice(row)}
+                          title="Remove Applied Credit"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      <div className="w-full max-w-[920px] mx-auto relative">
+        <CreditNotePreview
+          creditNote={creditNote}
+          organizationProfile={organizationProfile}
+          baseCurrency={baseCurrency}
+        />
+      </div>
+      {hasAppliedDocuments && (
+        <div className="w-full max-w-[1280px] mx-auto mt-4 mb-4 border border-gray-200 rounded-md bg-white overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-200">
+            <div className="text-sm font-semibold text-gray-800">Journal</div>
+          </div>
+          <div className="px-4 py-3 bg-white">
+            <div className="flex items-center gap-2 text-xs text-gray-600">
+              <span>Amount is displayed in your base currency</span>
+              <span className="inline-flex items-center rounded bg-[#7cb342] px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                {resolveCurrencySymbol(baseCurrency)}
+              </span>
+            </div>
+          </div>
+          <div className="border-t border-gray-200">
+            <div className="px-4 py-4">
+              <div className="text-base font-semibold text-gray-900 mb-4">Credit Note</div>
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="text-xs uppercase tracking-wide text-gray-500 border-b border-gray-100">
+                    <th className="text-left font-semibold py-2 pr-4">Account</th>
+                    <th className="text-left font-semibold py-2 pr-4">Location</th>
+                    <th className="text-right font-semibold py-2 pr-4">Debit</th>
+                    <th className="text-right font-semibold py-2">Credit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {creditNoteJournalRows.map((row: any) => (
+                    <tr key={row.rowKey} className="border-b border-gray-50 last:border-b-0">
+                      <td className="py-2 pr-4 text-sm text-gray-900">{row.account || "--"}</td>
+                      <td className="py-2 pr-4 text-sm text-gray-900">{row.location || "--"}</td>
+                      <td className="py-2 pr-4 text-sm text-gray-900 text-right">
+                        {formatCurrency(row.debit, baseCurrency)}
+                      </td>
+                      <td className="py-2 text-sm text-gray-900 text-right">
+                        {formatCurrency(row.credit, baseCurrency)}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="border-t border-gray-200 font-semibold">
+                    <td className="py-3 pr-4 text-sm text-gray-900">Total</td>
+                    <td className="py-3 pr-4" />
+                    <td className="py-3 pr-4 text-sm text-gray-900 text-right">
+                      {formatCurrency(creditNoteJournalTotals.debit, baseCurrency)}
+                    </td>
+                    <td className="py-3 text-sm text-gray-900 text-right">
+                      {formatCurrency(creditNoteJournalTotals.credit, baseCurrency)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
+      )}
+    </>
+  ) : (
+    <div className="w-full h-full flex flex-col gap-3">
+      <div className="w-full max-w-[1280px] mx-auto border border-gray-200 rounded-md bg-white overflow-hidden animate-pulse">
+        <div className="h-12 bg-gray-100" />
+      </div>
+      <div className="w-full max-w-[920px] mx-auto bg-white border border-gray-200 rounded-md p-8 animate-pulse">
+        <div className="h-8 w-48 bg-gray-200 rounded mb-6" />
+        <div className="grid grid-cols-2 gap-6">
+          <div className="space-y-3">
+            <div className="h-4 w-24 bg-gray-200 rounded" />
+            <div className="h-6 w-40 bg-gray-100 rounded" />
+            <div className="h-4 w-32 bg-gray-200 rounded" />
+          </div>
+          <div className="space-y-3">
+            <div className="h-4 w-24 bg-gray-200 rounded ml-auto" />
+            <div className="h-6 w-32 bg-gray-100 rounded ml-auto" />
+          </div>
+        </div>
+      </div>
+    </div>
+  )}
+</div>
 
-        {/* Send Email Modal */}
+{/* Send Email Modal */}
         {isSendEmailModalOpen && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                setIsSendEmailModalOpen(false);
-              }
-            }}
-          >
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) setIsSendEmailModalOpen(false); }}>
             <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4" ref={sendEmailModalRef} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-gray-200">
                 <h2 className="text-xl font-semibold text-gray-900">Send Email</h2>
-                <button
-                  className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
-                  onClick={() => setIsSendEmailModalOpen(false)}
-                >
-                  <X size={20} />
-                </button>
+                <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors" onClick={() => setIsSendEmailModalOpen(false)}><X size={20} /></button>
               </div>
               <div className="p-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    To<span className="text-red-500 ml-1">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
-                    value={emailData.to}
-                    onChange={(e) => setEmailData(prev => ({ ...prev, to: e.target.value }))}
-                    placeholder="Enter email address"
-                    required
-                  />
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">To<span className="text-red-500 ml-1">*</span></label>
+                  <input type="email" className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all" value={emailData.to} onChange={(e) => setEmailData(prev => ({ ...prev, to: e.target.value }))} placeholder="Enter email address" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">CC</label>
-                  <input
-                    type="email"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
-                    value={emailData.cc}
-                    onChange={(e) => setEmailData(prev => ({ ...prev, cc: e.target.value }))}
-                    placeholder="Enter CC email addresses (comma separated)"
-                  />
+                  <input type="email" className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all" value={emailData.cc} onChange={(e) => setEmailData(prev => ({ ...prev, cc: e.target.value }))} placeholder="Enter CC email addresses" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">BCC</label>
-                  <input
-                    type="email"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
-                    value={emailData.bcc}
-                    onChange={(e) => setEmailData(prev => ({ ...prev, bcc: e.target.value }))}
-                    placeholder="Enter BCC email addresses (comma separated)"
-                  />
+                  <input type="email" className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all" value={emailData.bcc} onChange={(e) => setEmailData(prev => ({ ...prev, bcc: e.target.value }))} placeholder="Enter BCC email addresses" />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Subject<span className="text-red-500 ml-1">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
-                    value={emailData.subject}
-                    onChange={(e) => setEmailData(prev => ({ ...prev, subject: e.target.value }))}
-                    placeholder="Enter email subject"
-                    required
-                  />
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Subject<span className="text-red-500 ml-1">*</span></label>
+                  <input type="text" className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all" value={emailData.subject} onChange={(e) => setEmailData(prev => ({ ...prev, subject: e.target.value }))} placeholder="Enter email subject" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Message</label>
-                  <textarea
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] resize-none transition-all"
-                    value={emailData.message}
-                    onChange={(e) => setEmailData(prev => ({ ...prev, message: e.target.value }))}
-                    placeholder="Enter email message"
-                    rows={8}
-                  />
+                  <textarea className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] resize-none transition-all" value={emailData.message} onChange={(e) => setEmailData(prev => ({ ...prev, message: e.target.value }))} placeholder="Enter email message" rows={8} />
                 </div>
                 <div className="flex items-center gap-2 p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(21, 99, 114, 0.1)", color: "#156372" }}>
                   <FileText size={16} />
-                  <span>Credit Note {creditNote.creditNoteNumber || creditNote.id} will be attached as PDF</span>
+                  <span>Credit Note {creditNote?.creditNoteNumber || creditNote?.id} will be attached as PDF</span>
                 </div>
               </div>
               <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
-                <button
-                  className="px-6 py-2 text-white rounded-lg text-sm font-semibold transition-colors"
-                  style={{ backgroundColor: "#156372" }}
-                  onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#0D4A52"}
-                  onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#156372"}
-                  onClick={handleSendEmailSubmit}
-                >
-                  Send
-                </button>
-                <button
-                  className="px-6 py-2 bg-white border-2 border-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors"
-                  onClick={() => setIsSendEmailModalOpen(false)}
-                >
-                  Cancel
-                </button>
+                <button className="px-6 py-2 text-white rounded-lg text-sm font-semibold transition-colors" style={{ backgroundColor: "#156372" }} onMouseEnter={(e: React.MouseEvent) => (e.currentTarget as HTMLElement).style.backgroundColor = "#0D4A52"} onMouseLeave={(e: React.MouseEvent) => (e.currentTarget as HTMLElement).style.backgroundColor = "#156372"} onClick={handleSendEmailSubmit}>Send</button>
+                <button className="px-6 py-2 bg-white border-2 border-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors" onClick={() => setIsSendEmailModalOpen(false)}>Cancel</button>
               </div>
             </div>
           </div>
@@ -1437,128 +1733,51 @@ Best regards`,
 
         {/* Schedule Email Modal */}
         {isScheduleEmailModalOpen && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                setIsScheduleEmailModalOpen(false);
-              }
-            }}
-          >
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) setIsScheduleEmailModalOpen(false); }}>
             <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4" ref={scheduleEmailModalRef} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-gray-200">
                 <h2 className="text-xl font-semibold text-gray-900">Schedule Email</h2>
-                <button
-                  className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
-                  onClick={() => setIsScheduleEmailModalOpen(false)}
-                >
-                  <X size={20} />
-                </button>
+                <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors" onClick={() => setIsScheduleEmailModalOpen(false)}><X size={20} /></button>
               </div>
               <div className="p-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    To<span className="text-red-500 ml-1">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
-                    value={scheduleData.to}
-                    onChange={(e) => setScheduleData(prev => ({ ...prev, to: e.target.value }))}
-                    placeholder="Enter email address"
-                    required
-                  />
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">To<span className="text-red-500 ml-1">*</span></label>
+                  <input type="email" className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all" value={scheduleData.to} onChange={(e) => setScheduleData(prev => ({ ...prev, to: e.target.value }))} placeholder="Enter email address" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">CC</label>
-                  <input
-                    type="email"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
-                    value={scheduleData.cc}
-                    onChange={(e) => setScheduleData(prev => ({ ...prev, cc: e.target.value }))}
-                    placeholder="Enter CC email addresses (comma separated)"
-                  />
+                  <input type="email" className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all" value={scheduleData.cc} onChange={(e) => setScheduleData(prev => ({ ...prev, cc: e.target.value }))} placeholder="Enter CC email addresses" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">BCC</label>
-                  <input
-                    type="email"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
-                    value={scheduleData.bcc}
-                    onChange={(e) => setScheduleData(prev => ({ ...prev, bcc: e.target.value }))}
-                    placeholder="Enter BCC email addresses (comma separated)"
-                  />
+                  <input type="email" className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all" value={scheduleData.bcc} onChange={(e) => setScheduleData(prev => ({ ...prev, bcc: e.target.value }))} placeholder="Enter BCC email addresses" />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Subject<span className="text-red-500 ml-1">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
-                    value={scheduleData.subject}
-                    onChange={(e) => setScheduleData(prev => ({ ...prev, subject: e.target.value }))}
-                    placeholder="Enter email subject"
-                    required
-                  />
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Subject<span className="text-red-500 ml-1">*</span></label>
+                  <input type="text" className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all" value={scheduleData.subject} onChange={(e) => setScheduleData(prev => ({ ...prev, subject: e.target.value }))} placeholder="Enter email subject" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Message</label>
-                  <textarea
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] resize-none transition-all"
-                    value={scheduleData.message}
-                    onChange={(e) => setScheduleData(prev => ({ ...prev, message: e.target.value }))}
-                    placeholder="Enter email message"
-                    rows={8}
-                  />
+                  <textarea className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] resize-none transition-all" value={scheduleData.message} onChange={(e) => setScheduleData(prev => ({ ...prev, message: e.target.value }))} placeholder="Enter email message" rows={8} />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Date<span className="text-red-500 ml-1">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
-                      value={scheduleData.date}
-                      onChange={(e) => setScheduleData(prev => ({ ...prev, date: e.target.value }))}
-                      required
-                    />
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Date<span className="text-red-500 ml-1">*</span></label>
+                    <input type="date" className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all" value={scheduleData.date} onChange={(e) => setScheduleData(prev => ({ ...prev, date: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Time<span className="text-red-500 ml-1">*</span>
-                    </label>
-                    <input
-                      type="time"
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all"
-                      value={scheduleData.time}
-                      onChange={(e) => setScheduleData(prev => ({ ...prev, time: e.target.value }))}
-                      required
-                    />
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Time<span className="text-red-500 ml-1">*</span></label>
+                    <input type="time" className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] transition-all" value={scheduleData.time} onChange={(e) => setScheduleData(prev => ({ ...prev, time: e.target.value }))} />
                   </div>
                 </div>
                 <div className="flex items-center gap-2 p-3 rounded-lg text-sm" style={{ backgroundColor: "rgba(21, 99, 114, 0.1)", color: "#156372" }}>
                   <FileText size={16} />
-                  <span>Credit Note {creditNote.creditNoteNumber || creditNote.id} will be attached as PDF</span>
+                  <span>Credit Note {creditNote?.creditNoteNumber || creditNote?.id} will be attached as PDF</span>
                 </div>
               </div>
               <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
-                <button
-                  className="px-6 py-2 text-white rounded-lg text-sm font-semibold transition-colors"
-                  style={{ backgroundColor: "#156372" }}
-                  onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#0D4A52"}
-                  onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#156372"}
-                  onClick={handleScheduleEmailSubmit}
-                >
-                  Schedule
-                </button>
-                <button
-                  className="px-6 py-2 bg-white border-2 border-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors"
-                  onClick={() => setIsScheduleEmailModalOpen(false)}
-                >
-                  Cancel
-                </button>
+                <button className="px-6 py-2 text-white rounded-lg text-sm font-semibold transition-colors" style={{ backgroundColor: "#156372" }} onMouseEnter={(e: React.MouseEvent) => (e.currentTarget as HTMLElement).style.backgroundColor = "#0D4A52"} onMouseLeave={(e: React.MouseEvent) => (e.currentTarget as HTMLElement).style.backgroundColor = "#156372"} onClick={handleScheduleEmailSubmit}>Schedule</button>
+                <button className="px-6 py-2 bg-white border-2 border-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors" onClick={() => setIsScheduleEmailModalOpen(false)}>Cancel</button>
               </div>
             </div>
           </div>
@@ -1566,145 +1785,54 @@ Best regards`,
 
         {/* Attachments Modal */}
         {showAttachmentsModal && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                setShowAttachmentsModal(false);
-              }
-            }}
-          >
-            <div
-              className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header */}
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) setShowAttachmentsModal(false); }}>
+            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-gray-200">
                 <h2 className="text-xl font-semibold text-gray-900">Attachments</h2>
-                <button
-                  className="p-1 border rounded transition-colors"
-                  style={{ borderColor: "#156372", color: "#dc2626" }}
-                  onMouseEnter={(e) => {
-                    (e.target as HTMLElement).style.borderColor = "#0D4A52";
-                    (e.target as HTMLElement).style.backgroundColor = "rgba(220, 38, 38, 0.1)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.target as HTMLElement).style.borderColor = "#156372";
-                    (e.target as HTMLElement).style.backgroundColor = "transparent";
-                  }}
-                  onClick={() => setShowAttachmentsModal(false)}
-                >
-                  <X size={20} />
-                </button>
+                <button className="p-1 border rounded transition-colors" style={{ borderColor: "#156372", color: "#dc2626" }} onClick={() => setShowAttachmentsModal(false)}><X size={20} /></button>
               </div>
-
-              {/* Content */}
               <div className="flex-1 overflow-y-auto p-6">
                 {creditNoteAttachments.length === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-gray-600 mb-4">No Files Attached</p>
-                    <div
-                      className={`border-2 border-dashed rounded-lg p-8 cursor-pointer transition-colors ${isDragging ? '' : 'border-gray-300'
-                        }`}
-                      style={isDragging ? { borderColor: "#156372", backgroundColor: "rgba(21, 99, 114, 0.1)" } : {}}
-                      onDrop={handleDrop}
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onClick={() => attachmentsFileInputRef.current?.click()}
-                    >
+                    <div className={`border-2 border-dashed rounded-lg p-8 cursor-pointer transition-colors ${isDragging ? "" : "border-gray-300"}`} style={isDragging ? { borderColor: "#156372", backgroundColor: "rgba(21, 99, 114, 0.1)" } : {}} onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onClick={() => attachmentsFileInputRef.current?.click()}>
                       <div className="flex flex-col items-center gap-2">
-                        <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
-                          <FileUp size={24} className="text-gray-400" />
-                        </div>
-                        <div className="flex items-center gap-1 text-sm text-gray-700">
-                          <span>Upload your</span>
-                          <span className="font-medium" style={{ color: "#156372" }}>Files</span>
-                          <ChevronDown size={14} />
-                        </div>
+                        <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center"><FileUp size={24} className="text-gray-400" /></div>
+                        <div className="flex items-center gap-1 text-sm text-gray-700"><span>Upload your</span><span className="font-medium" style={{ color: "#156372" }}>Files</span></div>
                       </div>
                     </div>
-                    <p className="text-xs text-gray-500 mt-4">
-                      You can upload a maximum of 5 files, 10MB each.
-                    </p>
+                    <p className="text-xs text-gray-500 mt-4">You can upload a maximum of 5 files, 10MB each.</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {(creditNoteAttachments as any[]).map((attachment: any) => {
-                      const isImage = attachment.type && attachment.type.startsWith('image/');
+                    {creditNoteAttachments.map((attachment: any) => {
+                      const isImage = attachment.type && attachment.type.startsWith("image/");
                       return (
-                        <div
-                          key={attachment.id}
-                          className="p-3 rounded-lg bg-gray-50 border border-gray-200 flex items-center gap-3 cursor-pointer hover:bg-gray-100"
-                          onClick={() => handleFileClick(attachment)}
-                        >
+                        <div key={attachment.id} className="p-3 rounded-lg bg-gray-50 border border-gray-200 flex items-center gap-3 cursor-pointer hover:bg-gray-100" onClick={() => handleFileClick(attachment)}>
                           {isImage && attachment.preview ? (
-                            <img
-                              src={typeof attachment.preview === 'string' ? attachment.preview : undefined}
-                              alt={attachment.name}
-                              className="w-12 h-12 object-cover rounded"
-                            />
+                            <img src={typeof attachment.preview === "string" ? attachment.preview : undefined} alt={attachment.name} className="w-12 h-12 object-cover rounded" />
                           ) : (
-                            <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center">
-                              <FileText size={20} className="text-gray-500" />
-                            </div>
+                            <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center"><FileText size={20} className="text-gray-500" /></div>
                           )}
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm text-gray-900 font-medium truncate">
-                              {attachment.name}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {(attachment.size / 1024).toFixed(2)} KB
-                            </div>
+                            <div className="text-sm text-gray-900 font-medium truncate">{attachment.name}</div>
+                            <div className="text-xs text-gray-500">{(attachment.size / 1024).toFixed(2)} KB</div>
                           </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveAttachment(attachment.id);
-                            }}
-                            className="p-1 hover:bg-red-100 rounded text-red-600"
-                          >
-                            <X size={16} />
-                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleRemoveAttachment(attachment.id); }} className="p-1 hover:bg-red-100 rounded text-red-600"><X size={16} /></button>
                         </div>
                       );
                     })}
                     {creditNoteAttachments.length < 5 && (
-                      <div
-                        className={`border-2 border-dashed rounded-lg p-6 cursor-pointer transition-colors ${isDragging ? '' : 'border-gray-300'
-                          }`}
-                        style={isDragging ? { borderColor: "#156372", backgroundColor: "rgba(21, 99, 114, 0.1)" } : {}}
-                        onDrop={handleDrop}
-                        onDragOver={handleDragOver}
-                        onDragLeave={handleDragLeave}
-                        onClick={() => attachmentsFileInputRef.current?.click()}
-                      >
+                      <div className={`border-2 border-dashed rounded-lg p-6 cursor-pointer transition-colors ${isDragging ? "" : "border-gray-300"}`} style={isDragging ? { borderColor: "#156372", backgroundColor: "rgba(21, 99, 114, 0.1)" } : {}} onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onClick={() => attachmentsFileInputRef.current?.click()}>
                         <div className="flex flex-col items-center gap-2">
-                          <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                            <FileUp size={20} className="text-gray-400" />
-                          </div>
-                          <div className="flex items-center gap-1 text-sm text-gray-700">
-                            <span>Upload your</span>
-                            <span className="font-medium" style={{ color: "#156372" }}>Files</span>
-                            <ChevronDown size={12} />
-                          </div>
+                          <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center"><FileUp size={20} className="text-gray-400" /></div>
+                          <div className="flex items-center gap-1 text-sm text-gray-700"><span>Upload your</span><span className="font-medium" style={{ color: "#156372" }}>Files</span></div>
                         </div>
                       </div>
                     )}
                   </div>
                 )}
-                <input
-                  ref={attachmentsFileInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files || []);
-                    if (files.length > 0) {
-                      handleFileUpload(files);
-                    }
-                    e.target.value = '';
-                  }}
-                />
+                <input ref={attachmentsFileInputRef} type="file" multiple className="hidden" onChange={(e) => { const files = Array.from(e.target.files || []); if (files.length > 0) handleFileUpload(files); e.target.value = ""; }} />
               </div>
             </div>
           </div>
@@ -1712,28 +1840,10 @@ Best regards`,
 
         {/* Image Viewer Modal */}
         {showImageViewer && selectedImage && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-75 z-[60] flex items-center justify-center"
-            onClick={() => {
-              setShowImageViewer(false);
-              setSelectedImage(null);
-            }}
-          >
+          <div className="fixed inset-0 bg-black bg-opacity-75 z-[60] flex items-center justify-center" onClick={() => { setShowImageViewer(false); setSelectedImage(null); }}>
             <div className="max-w-4xl max-h-[90vh] p-4" onClick={(e) => e.stopPropagation()}>
-              <button
-                className="absolute top-4 right-4 p-2 bg-white rounded-full hover:bg-gray-100 text-gray-900"
-                onClick={() => {
-                  setShowImageViewer(false);
-                  setSelectedImage(null);
-                }}
-              >
-                <X size={24} />
-              </button>
-              <img
-                src={selectedImage}
-                alt="Preview"
-                className="max-w-full max-h-[90vh] object-contain rounded-lg"
-              />
+              <button className="absolute top-4 right-4 p-2 bg-white rounded-full hover:bg-gray-100 text-gray-900" onClick={() => { setShowImageViewer(false); setSelectedImage(null); }}><X size={24} /></button>
+              <img src={selectedImage} alt="Preview" className="max-w-full max-h-[90vh] object-contain rounded-lg" />
             </div>
           </div>
         )}
@@ -1747,538 +1857,60 @@ Best regards`,
           updateCreditNote={updateCreditNote}
         />
 
-        {/* Choose Template Modal */}
-        {isChooseTemplateModalOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-            <div
-              className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Modal Header */}
-              <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                <h2 className="text-xl font-bold text-gray-900">Choose Template</h2>
-                <button
-                  className="p-2 text-white rounded transition-colors"
-                  style={{ backgroundColor: "#dc2626" }}
-                  onMouseEnter={(e) => (e.target as HTMLElement).style.backgroundColor = "#b91c1c"}
-                  onMouseLeave={(e) => (e.target as HTMLElement).style.backgroundColor = "#dc2626"}
-                  onClick={() => setIsChooseTemplateModalOpen(false)}
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              {/* Modal Body */}
-              <div className="flex-1 overflow-y-auto p-6">
-                {/* Search Bar */}
-                <div className="mb-6">
-                  <div className="relative">
-                    <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                    <input
-                      type="text"
-                      value={templateSearch}
-                      onChange={(e) => setTemplateSearch(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Search templates..."
-                    />
-                  </div>
-                </div>
-
-                {/* Template Options */}
-                <div className="space-y-3">
-                  {[
-                    "Standard Template",
-                    "Professional Template",
-                    "Modern Template",
-                    "Classic Template",
-                    "Minimal Template"
-                  ]
-                    .filter(template => template.toLowerCase().includes(templateSearch.toLowerCase()))
-                    .map((template) => (
-                      <div
-                        key={template}
-                        className={`p-4 border rounded-lg cursor-pointer transition-colors ${selectedTemplate === template
-                          ? ""
-                          : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                          }`}
-                        style={selectedTemplate === template ? { borderColor: "#156372", backgroundColor: "rgba(21, 99, 114, 0.1)" } : {}}
-                        onClick={() => setSelectedTemplate(template)}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="font-medium text-gray-900">{template}</div>
-                            <div className="text-sm text-gray-500 mt-1">
-                              {template === "Standard Template" && "Clean and professional layout"}
-                              {template === "Professional Template" && "Detailed business layout"}
-                              {template === "Modern Template" && "Contemporary design"}
-                              {template === "Classic Template" && "Traditional business style"}
-                              {template === "Minimal Template" && "Simple and clean"}
-                            </div>
-                          </div>
-                          {selectedTemplate === template && (
-                            <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: "#156372" }}>
-                              <div className="w-2 h-2 bg-white rounded-full"></div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-
-              {/* Modal Footer */}
-              <div className="flex items-center gap-3 p-6 border-t border-gray-200">
-                <button
-                  className="px-4 py-2 text-white rounded-md text-sm font-medium transition-colors"
-                  style={{ backgroundColor: "#156372" }}
-                  onMouseEnter={(e: React.MouseEvent) => ((e.target as HTMLElement).style.backgroundColor = "#0D4A52")}
-                  onMouseLeave={(e: React.MouseEvent) => ((e.target as HTMLElement).style.backgroundColor = "#156372")}
-                  onClick={() => {
-                    console.log("Selected template:", selectedTemplate);
-                    setIsChooseTemplateModalOpen(false);
-                  }}
-                >
-                  Apply Template
-                </button>
-                <button
-                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
-                  onClick={() => setIsChooseTemplateModalOpen(false)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Organization Address Modal */}
-        {isOrganizationAddressModalOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-            <div
-              className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Modal Header */}
-              <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                <h2 className="text-xl font-bold text-gray-900">Organization Address</h2>
-                <button
-                  className="p-2 text-white rounded transition-colors"
-                  style={{ backgroundColor: "#dc2626" }}
-                  onMouseEnter={(e) => (e.target as HTMLElement).style.backgroundColor = "#b91c1c"}
-                  onMouseLeave={(e) => (e.target as HTMLElement).style.backgroundColor = "#dc2626"}
-                  onClick={() => setIsOrganizationAddressModalOpen(false)}
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              {/* Modal Body */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {/* Logo Upload Section */}
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Logo</h3>
-                  <div className="flex items-center gap-4">
-                    {logoPreview ? (
-                      <div className="relative">
-                        <img
-                          src={typeof logoPreview === 'string' ? logoPreview : undefined}
-                          alt="Logo Preview"
-                          className="w-20 h-20 object-cover rounded border border-gray-300"
-                        />
-                        <button
-                          className="absolute -top-2 -right-2 p-1 text-white rounded-full transition-colors"
-                          style={{ backgroundColor: "#dc2626" }}
-                          onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#b91c1c"}
-                          onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#dc2626"}
-                          onClick={() => {
-                            setLogoPreview(null);
-                            setLogoFile(null);
-                          }}
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="w-20 h-20 border-2 border-dashed border-gray-300 rounded flex items-center justify-center">
-                        <Upload size={24} className="text-gray-400" />
-                      </div>
-                    )}
-                    <div>
-                      <input
-                        type="file"
-                        ref={organizationAddressFileInputRef}
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            setLogoFile(file);
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              setLogoPreview(reader.result);
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                        className="hidden"
-                      />
-                      <button
-                        className="px-4 py-2 text-white rounded-md text-sm font-medium transition-colors"
-                        style={{ backgroundColor: "#156372" }}
-                        onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#0D4A52"}
-                        onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#156372"}
-                        onClick={() => organizationAddressFileInputRef.current?.click()}
-                      >
-                        Upload Logo
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Address Fields */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 1</label>
-                    <input
-                      type="text"
-                      value={organizationData.street1}
-                      onChange={(e) => setOrganizationData({ ...organizationData, street1: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Laleex"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 2</label>
-                    <input
-                      type="text"
-                      value={organizationData.street2}
-                      onChange={(e) => setOrganizationData({ ...organizationData, street2: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Laleex"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-                    <input
-                      type="text"
-                      value={organizationData.city}
-                      onChange={(e) => setOrganizationData({ ...organizationData, city: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="mogadishu"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Zip Code</label>
-                    <input
-                      type="text"
-                      value={organizationData.zipCode}
-                      onChange={(e) => setOrganizationData({ ...organizationData, zipCode: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="22223"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">State/Province</label>
-                    <input
-                      type="text"
-                      value={organizationData.stateProvince}
-                      onChange={(e) => setOrganizationData({ ...organizationData, stateProvince: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Nairobi"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                    <input
-                      type="text"
-                      value={organizationData.phone}
-                      onChange={(e) => setOrganizationData({ ...organizationData, phone: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder=""
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Fax Number</label>
-                    <input
-                      type="text"
-                      value={organizationData.faxNumber}
-                      onChange={(e) => setOrganizationData({ ...organizationData, faxNumber: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder=""
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Website URL</label>
-                    <input
-                      type="text"
-                      value={organizationData.websiteUrl}
-                      onChange={(e) => setOrganizationData({ ...organizationData, websiteUrl: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder=""
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Modal Footer */}
-              <div className="flex items-center gap-3 p-6 border-t border-gray-200">
-                <button
-                  className="px-4 py-2 text-white rounded-md text-sm font-medium transition-colors"
-                  style={{ backgroundColor: "#156372" }}
-                  onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget as HTMLElement).style.backgroundColor = "#0D4A52"}
-                  onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget as HTMLElement).style.backgroundColor = "#156372"}
-                  onClick={async () => {
-                    try {
-                      const payload = {
-                        addressLine1: organizationData.street1,
-                        addressLine2: organizationData.street2,
-                        city: organizationData.city,
-                        zipCode: organizationData.zipCode,
-                        state: organizationData.stateProvince,
-                        phone: organizationData.phone,
-                        fax: organizationData.faxNumber,
-                        website: organizationData.websiteUrl,
-                        industry: organizationData.industry,
-                        logo: logoPreview // In a real app, you might upload the file first
-                      };
-                      const res = await settingsAPI.updateOrganizationProfile(payload);
-                      if (res && res.success) {
-                        setOrganizationProfile(res.data || { ...organizationProfile, ...payload });
-                        toast("Organization profile updated successfully!");
-                        setIsOrganizationAddressModalOpen(false);
-                      } else {
-                        toast("Failed to update organization profile: " + (res.message || "Unknown error"));
-                      }
-                    } catch (error: any) {
-                      console.error("Error saving organization address:", error);
-                      toast("Error saving organization address: " + error.message);
-                    }
-                  }}
-                >
-                  Save
-                </button>
-                <button
-                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
-                  onClick={() => setIsOrganizationAddressModalOpen(false)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Terms & Conditions Modal */}
-        {isTermsAndConditionsModalOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-            <div
-              className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Modal Header */}
-              <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                <h2 className="text-xl font-bold text-gray-900">Update Terms & Conditions</h2>
-                <button
-                  className="p-2 text-white rounded transition-colors"
-                  style={{ backgroundColor: "#dc2626" }}
-                  onMouseEnter={(e) => (e.target as HTMLElement).style.backgroundColor = "#b91c1c"}
-                  onMouseLeave={(e) => (e.target as HTMLElement).style.backgroundColor = "#dc2626"}
-                  onClick={() => setIsTermsAndConditionsModalOpen(false)}
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              {/* Modal Body */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {/* Notes Section */}
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900 mb-2">Notes</h3>
-                  <textarea
-                    value={termsData.notes}
-                    onChange={(e) => setTermsData({ ...termsData, notes: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[100px]"
-                    placeholder="Enter notes..."
-                  />
-                  <label className="flex items-center gap-2 mt-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={termsData.useNotesForAllCreditNotes}
-                      onChange={(e) => setTermsData({ ...termsData, useNotesForAllCreditNotes: e.target.checked })}
-                      className="w-4 h-4 border-gray-300 rounded focus:ring-[#156372]"
-                      style={{ accentColor: "#156372" }}
-                    />
-                    <span className="text-sm text-gray-700">Use this in future for all credit notes of all customers.</span>
-                  </label>
-                </div>
-
-                {/* Terms & Conditions Section */}
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900 mb-2">Terms & Conditions</h3>
-                  <textarea
-                    value={termsData.termsAndConditions}
-                    onChange={(e) => setTermsData({ ...termsData, termsAndConditions: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[200px]"
-                    placeholder="Enter terms and conditions..."
-                  />
-                  <label className="flex items-center gap-2 mt-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={termsData.useTermsForAllCreditNotes}
-                      onChange={(e) => setTermsData({ ...termsData, useTermsForAllCreditNotes: e.target.checked })}
-                      className="w-4 h-4 border-gray-300 rounded focus:ring-[#156372]"
-                      style={{ accentColor: "#156372" }}
-                    />
-                    <span className="text-sm text-gray-700">Use this in future for all credit notes of all customers.</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Modal Footer */}
-              <div className="flex items-center gap-3 p-6 border-t border-gray-200">
-                <button
-                  className="px-4 py-2 text-white rounded-md text-sm font-medium transition-colors"
-                  style={{ backgroundColor: "#156372" }}
-                  onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#0D4A52"}
-                  onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "#156372"}
-                  onClick={() => {
-                    console.log("Saving terms and conditions:", termsData);
-                    setIsTermsAndConditionsModalOpen(false);
-                  }}
-                >
-                  Save
-                </button>
-                <button
-                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
-                  onClick={() => setIsTermsAndConditionsModalOpen(false)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Refund Modal */}
         {isRefundModalOpen && creditNote && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center" onClick={(e) => {
-            if (e.target === e.currentTarget) handleRefundCancel();
-          }}>
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) handleRefundCancel(); }}>
             <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" ref={refundModalRef} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white">
                 <h2 className="text-xl font-semibold text-gray-900">Refund ({creditNote.creditNoteNumber || creditNote.id})</h2>
-                <button
-                  className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
-                  onClick={handleRefundCancel}
-                >
-                  <X size={20} />
-                </button>
+                <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors" onClick={handleRefundCancel}><X size={20} /></button>
               </div>
-
               <div className="p-6 space-y-6">
-                {/* Customer and Credit Note Information */}
                 <div className="flex items-center gap-6">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: "rgba(21, 99, 114, 0.1)" }}
-                    >
-                      <User size={20} style={{ color: "#156372" }} />
-                    </div>
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(21, 99, 114, 0.1)" }}><User size={20} style={{ color: "#156372" }} /></div>
                     <div>
                       <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Customer Name</div>
-                      <div className="text-base font-semibold text-gray-900">{creditNote.customerName || creditNote.customer || "-"}</div>
+                      <div className="text-base font-semibold text-gray-900">{creditNote.customerName || String(creditNote.customer || "-")}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: "rgba(21, 99, 114, 0.1)" }}
-                    >
-                      <FileText size={20} style={{ color: "#156372" }} />
-                    </div>
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(21, 99, 114, 0.1)" }}><FileText size={20} style={{ color: "#156372" }} /></div>
                     <div>
                       <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Credit Note Number</div>
                       <div className="text-base font-semibold text-gray-900">{creditNote.creditNoteNumber || creditNote.id}</div>
                     </div>
                   </div>
                 </div>
-
-                {/* Amount Field */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Amount<span className="text-red-500 ml-1">*</span>
-                  </label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Amount<span className="text-red-500 ml-1">*</span></label>
                   <div className="relative">
                     <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-sm text-gray-500">{creditNote.currency || "USD"}</div>
-                    <input
-                      type="number"
-                      value={refundData.amount}
-                      onChange={(e) => setRefundData({ ...refundData, amount: e.target.value })}
-                      placeholder="0.00"
-                      step="0.01"
-                      min="0"
-                      max={creditNote.balance || creditNote.total || creditNote.amount || 0}
-                      className="w-full pl-16 pr-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 transition-all"
-                      style={{ "--tw-ring-color": "#156372" } as React.CSSProperties}
-                      onFocus={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#156372"; }}
-                      onBlur={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#d1d5db"; }}
-                    />
+                    <input type="number" value={refundData.amount} onChange={(e) => setRefundData({ ...refundData, amount: e.target.value })} placeholder="0.00" step="0.01" min="0" className="w-full pl-16 pr-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 transition-all" onFocus={(e) => { e.target.style.borderColor = "#156372"; }} onBlur={(e) => { e.target.style.borderColor = "#d1d5db"; }} />
                   </div>
-                  <div className="mt-2 text-xs text-gray-500">
-                    Balance : {formatCurrency(creditNote.balance || creditNote.total || creditNote.amount || 0, creditNote.currency)}
-                  </div>
+                  <div className="mt-2 text-xs text-gray-500">Balance : {formatCurrency(creditNote.balance || creditNote.total || creditNote.amount || 0, creditNote.currency)}</div>
                 </div>
-
-                {/* Refunded On */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Refunded On<span className="text-red-500 ml-1">*</span>
-                  </label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Refunded On<span className="text-red-500 ml-1">*</span></label>
                   <div className="relative" ref={refundDatePickerRef}>
-                    <input
-                      type="text"
-                      value={refundData.refundedOn}
-                      readOnly
-                      onClick={() => setIsRefundDatePickerOpen(!isRefundDatePickerOpen)}
-                      placeholder="Select date"
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:outline-none focus:ring-2 transition-all pr-10 cursor-pointer"
-                      style={{ "--tw-ring-color": "#156372" } as React.CSSProperties}
-                      onFocus={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#156372"; }}
-                      onBlur={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#d1d5db"; }}
-                    />
-                    <Calendar
-                      size={18}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 cursor-pointer"
-                      onClick={() => setIsRefundDatePickerOpen(!isRefundDatePickerOpen)}
-                    />
+                    <input type="text" value={refundData.refundedOn} readOnly onClick={() => setIsRefundDatePickerOpen(!isRefundDatePickerOpen)} placeholder="Select date" className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:outline-none pr-10 cursor-pointer" />
+                    <Calendar size={18} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 cursor-pointer" onClick={() => setIsRefundDatePickerOpen(!isRefundDatePickerOpen)} />
                     {isRefundDatePickerOpen && (
                       <div className="absolute top-full left-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 w-72">
                         <div className="p-4">
                           <div className="flex items-center justify-between mb-4">
-                            <button onClick={() => navigateRefundMonth("prev")} className="p-1 hover:bg-gray-100 rounded text-gray-600">
-                              <ChevronLeft size={16} />
-                            </button>
+                            <button onClick={() => navigateRefundMonth("prev")} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ChevronLeft size={16} /></button>
                             <span className="font-semibold text-gray-900">{months[refundDateCalendar.getMonth()]} {refundDateCalendar.getFullYear()}</span>
-                            <button onClick={() => navigateRefundMonth("next")} className="p-1 hover:bg-gray-100 rounded text-gray-600">
-                              <ChevronRight size={16} />
-                            </button>
+                            <button onClick={() => navigateRefundMonth("next")} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ChevronRight size={16} /></button>
                           </div>
                           <div className="grid grid-cols-7 gap-1 mb-2">
                             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
-                              <div key={day} className={`text-xs font-semibold text-center py-2 ${day === "Sun" || day === "Fri" ? "text-gray-400" : "text-gray-600"
-                                }`}>
-                                {day}
-                              </div>
+                              <div key={day} className="text-xs font-semibold text-center py-2 text-gray-600">{day}</div>
                             ))}
                           </div>
                           <div className="grid grid-cols-7 gap-1">
                             {getDaysInMonth(refundDateCalendar).map((day, idx) => (
-                              <button
-                                key={idx}
-                                className={`text-sm py-2 rounded hover:bg-gray-100 ${day.month !== "current" ? "text-gray-300" : "text-gray-900"
-                                  }`}
-                                onClick={() => handleRefundDateSelect(day.fullDate)}
-                              >
-                                {day.date}
-                              </button>
+                              <button key={idx} className={`text-sm py-2 rounded hover:bg-gray-100 ${day.month !== "current" ? "text-gray-300" : "text-gray-900"}`} onClick={() => handleRefundDateSelect(day.fullDate)}>{day.date}</button>
                             ))}
                           </div>
                         </div>
@@ -2286,143 +1918,50 @@ Best regards`,
                     )}
                   </div>
                 </div>
-
-                {/* Payment Mode */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Payment Mode</label>
                   <div className="relative" ref={paymentModeDropdownRef}>
-                    <input
-                      type="text"
-                      value={refundData.paymentMode}
-                      readOnly
-                      onClick={() => setIsPaymentModeDropdownOpen(!isPaymentModeDropdownOpen)}
-                      placeholder="Select payment mode"
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:outline-none focus:ring-2 transition-all pr-10 cursor-pointer"
-                      style={{ "--tw-ring-color": "#156372" } as React.CSSProperties}
-                      onFocus={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#156372"; }}
-                      onBlur={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#d1d5db"; }}
-                    />
-                    <ChevronDownIcon
-                      size={18}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 cursor-pointer"
-                      onClick={() => setIsPaymentModeDropdownOpen(!isPaymentModeDropdownOpen)}
-                    />
+                    <input type="text" value={refundData.paymentMode} readOnly onClick={() => setIsPaymentModeDropdownOpen(!isPaymentModeDropdownOpen)} placeholder="Select payment mode" className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:outline-none pr-10 cursor-pointer" />
+                    <ChevronDownIcon size={18} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 cursor-pointer" onClick={() => setIsPaymentModeDropdownOpen(!isPaymentModeDropdownOpen)} />
                     {isPaymentModeDropdownOpen && (
                       <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
                         {paymentModeOptions.map((mode) => (
-                          <div
-                            key={mode}
-                            className="p-3 cursor-pointer text-sm text-gray-700 transition-colors"
-                            style={{ "--hover-bg": "rgba(21, 99, 114, 0.1)" } as React.CSSProperties}
-                            onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"}
-                            onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"}
-                            onClick={() => {
-                              setRefundData({ ...refundData, paymentMode: mode });
-                              setIsPaymentModeDropdownOpen(false);
-                            }}
-                          >
-                            {mode}
-                          </div>
+                          <div key={mode} className="p-3 cursor-pointer text-sm text-gray-700 transition-colors" onMouseEnter={(e: React.MouseEvent) => (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"} onMouseLeave={(e: React.MouseEvent) => (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"} onClick={() => { setRefundData({ ...refundData, paymentMode: mode }); setIsPaymentModeDropdownOpen(false); }}>{mode}</div>
                         ))}
                       </div>
                     )}
                   </div>
                 </div>
-
-                {/* Reference Number */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Reference#</label>
-                  <input
-                    type="text"
-                    value={refundData.referenceNumber}
-                    onChange={(e) => setRefundData({ ...refundData, referenceNumber: e.target.value })}
-                    placeholder="Enter reference number"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 transition-all"
-                    style={{ "--tw-ring-color": "#156372" } as React.CSSProperties}
-                    onFocus={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#156372"; }}
-                    onBlur={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#d1d5db"; }}
-                  />
+                  <input type="text" value={refundData.referenceNumber} onChange={(e) => setRefundData({ ...refundData, referenceNumber: e.target.value })} placeholder="Enter reference number" className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 transition-all" onFocus={(e) => { e.target.style.borderColor = "#156372"; }} onBlur={(e) => { e.target.style.borderColor = "#d1d5db"; }} />
                 </div>
-
-                {/* From Account */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    From Account<span className="text-red-500 ml-1">*</span>
-                  </label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">From Account<span className="text-red-500 ml-1">*</span></label>
                   <div className="relative" ref={fromAccountDropdownRef}>
-                    <input
-                      type="text"
-                      value={refundData.fromAccount}
-                      readOnly
-                      onClick={() => setIsFromAccountDropdownOpen(!isFromAccountDropdownOpen)}
-                      placeholder="Select account"
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:outline-none focus:ring-2 transition-all pr-10 cursor-pointer"
-                      style={{ "--tw-ring-color": "#156372" } as React.CSSProperties}
-                      onFocus={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#156372"; }}
-                      onBlur={(e: React.FocusEvent<HTMLInputElement>) => { (e.target as HTMLElement).style.borderColor = "#d1d5db"; }}
-                    />
-                    <ChevronDownIcon
-                      size={18}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 cursor-pointer"
-                      onClick={() => setIsFromAccountDropdownOpen(!isFromAccountDropdownOpen)}
-                    />
+                    <input type="text" value={refundData.fromAccount} readOnly onClick={() => setIsFromAccountDropdownOpen(!isFromAccountDropdownOpen)} placeholder="Select account" className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:outline-none pr-10 cursor-pointer" />
+                    <ChevronDownIcon size={18} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 cursor-pointer" onClick={() => setIsFromAccountDropdownOpen(!isFromAccountDropdownOpen)} />
                     {isFromAccountDropdownOpen && (
                       <div className="absolute bottom-full left-0 right-0 mb-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-[70] max-h-60 overflow-y-auto">
                         {bankAccounts.map((account, index) => {
                           const accountId = getAccountId(account);
                           const accountName = getAccountDisplayName(account);
                           return (
-                            <div
-                              key={accountId || `refund-account-${index}`}
-                              className="p-3 cursor-pointer text-sm text-gray-700 transition-colors"
-                              onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"}
-                              onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"}
-                              onClick={() => {
-                                setRefundData({ ...refundData, fromAccount: accountName, fromAccountId: accountId });
-                                setIsFromAccountDropdownOpen(false);
-                              }}
-                            >
-                              {accountName}
-                            </div>
+                            <div key={accountId || `refund-account-${index}`} className="p-3 cursor-pointer text-sm text-gray-700 transition-colors" onMouseEnter={(e: React.MouseEvent) => (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"} onMouseLeave={(e: React.MouseEvent) => (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"} onClick={() => { setRefundData({ ...refundData, fromAccount: accountName, fromAccountId: accountId }); setIsFromAccountDropdownOpen(false); }}>{accountName}</div>
                           );
                         })}
                       </div>
                     )}
                   </div>
                 </div>
-
-                {/* Description */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
-                  <textarea
-                    value={refundData.description}
-                    onChange={(e) => setRefundData({ ...refundData, description: e.target.value })}
-                    placeholder="Enter description"
-                    rows={4}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 transition-all resize-none"
-                    style={{ "--tw-ring-color": "#156372" } as React.CSSProperties}
-                    onFocus={(e: React.FocusEvent<HTMLTextAreaElement>) => { (e.target as HTMLElement).style.borderColor = "#156372"; }}
-                    onBlur={(e: React.FocusEvent<HTMLTextAreaElement>) => { (e.target as HTMLElement).style.borderColor = "#d1d5db"; }}
-                  />
+                  <textarea value={refundData.description} onChange={(e) => setRefundData({ ...refundData, description: e.target.value })} placeholder="Enter description" rows={4} className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 transition-all resize-none" onFocus={(e) => { e.target.style.borderColor = "#156372"; }} onBlur={(e) => { e.target.style.borderColor = "#d1d5db"; }} />
                 </div>
               </div>
-
               <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50 sticky bottom-0">
-                <button
-                  className="px-6 py-2 bg-white border-2 border-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors"
-                  onClick={handleRefundCancel}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="px-6 py-2 text-white border-none rounded-lg text-sm font-semibold transition-all"
-                  style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                  onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget as HTMLElement).style.opacity = "0.9"}
-                  onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget as HTMLElement).style.opacity = "1"}
-                  onClick={handleRefundSave}
-                >
-                  Save
-                </button>
+                <button className="px-6 py-2 bg-white border-2 border-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors" onClick={handleRefundCancel}>Cancel</button>
+                <button className="px-6 py-2 text-white border-none rounded-lg text-sm font-semibold transition-all" style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }} onMouseEnter={(e: React.MouseEvent) => (e.currentTarget as HTMLElement).style.opacity = "0.9"} onMouseLeave={(e: React.MouseEvent) => (e.currentTarget as HTMLElement).style.opacity = "1"} onClick={handleRefundSave}>Save</button>
               </div>
             </div>
           </div>
@@ -2441,6 +1980,4 @@ Best regards`,
     </div>
   );
 }
-
-
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { recurringInvoicesAPI, quotesAPI, invoicesAPI, retainerInvoicesAPI, customersAPI, taxesAPI, itemsAPI, salespersonsAPI, salesReceiptsAPI, paymentsReceivedAPI, creditNotesAPI, projectsAPI, settingsAPI, plansAPI, reportingTagsAPI } from "../../services/api";
+import { recurringInvoicesAPI, quotesAPI, invoicesAPI, debitNotesAPI, retainerInvoicesAPI, customersAPI, taxesAPI, itemsAPI, salespersonsAPI, salesReceiptsAPI, paymentsReceivedAPI, creditNotesAPI, projectsAPI, settingsAPI, plansAPI, reportingTagsAPI } from "../../services/api";
 
 
 const STORAGE_KEY = "taban_books_customers";
@@ -613,14 +613,21 @@ export const getInvoiceById = async (invoiceId: string): Promise<Invoice | null>
 
 export const saveInvoice = async (invoiceData: Partial<Invoice>): Promise<Invoice> => {
   try {
-    const response = await invoicesAPI.create(invoiceData);
+    const isDebitNotePayload = Boolean(
+      (invoiceData as any)?.debitNote ||
+      (invoiceData as any)?.debitNoteNumber ||
+      String((invoiceData as any)?.invoiceType || (invoiceData as any)?.type || "").toLowerCase().includes("debit")
+    );
+    const response = isDebitNotePayload
+      ? await debitNotesAPI.create(invoiceData)
+      : await invoicesAPI.create(invoiceData);
     if (response && response.success && response.data) {
       const saved = response.data;
       return { ...saved, id: saved._id || saved.id };
     }
     const message =
-      String(response?.message || response?.data?.message || response?.error || "Failed to create invoice").trim();
-    const error: any = new Error(message || "Failed to create invoice");
+      String(response?.message || response?.data?.message || response?.error || "Failed to create document").trim();
+    const error: any = new Error(message || "Failed to create document");
     if (response && typeof response.status === "number") {
       error.status = response.status;
     }
@@ -631,7 +638,7 @@ export const saveInvoice = async (invoiceData: Partial<Invoice>): Promise<Invoic
   } catch (error) {
     const status = Number((error as any)?.status || (error as any)?.response?.status || 0);
     if (status !== 409) {
-      console.error("Error saving invoice to API:", error);
+      console.error("Error saving document to API:", error);
     }
     throw error;
   }
@@ -1336,11 +1343,14 @@ export interface CreditNote {
   reason?: string;
   referenceNumber?: string;
   currency?: string;
+  accountsReceivable?: string;
+  salesperson?: any;
   subject?: string;
   customerNotes?: string;
   termsAndConditions?: string;
+  warehouseLocation?: string;
+  priceList?: string;
   companyName?: string;
-  salesperson?: any;
   salespersonId?: string;
   customerId?: string;
   attachedFiles?: AttachedFile[];
@@ -1360,8 +1370,41 @@ export interface CreditNote {
   taxes?: any[]; // For tax breakdown
 }
 
-// Credit Notes Storage
-const CREDIT_NOTES_STORAGE_KEY = "taban_books_credit_notes";
+const CREDIT_NOTES_CACHE_KEY = "taban_books_credit_notes_v1";
+
+const readCachedCreditNotes = (): CreditNote[] => {
+  try {
+    const raw = localStorage.getItem(CREDIT_NOTES_CACHE_KEY);
+    if (!raw) return [];
+
+    const parsed = JSON.parse(raw);
+    const rows = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.data) ? parsed.data : [];
+    return rows
+      .map((item: any) => ({
+        ...item,
+        id: item?._id || item?.id,
+        customerName:
+          item?.customerName ||
+          item?.customer?.displayName ||
+          item?.customer?.companyName ||
+          item?.customer?.name ||
+          (typeof item?.customer === "string" ? item.customer : ""),
+        referenceNumber: normalizeCreditNoteReference(item),
+      }))
+      .filter((item: CreditNote) => Boolean(item.id));
+  } catch {
+    return [];
+  }
+};
+
+const writeCachedCreditNotes = (rows: CreditNote[]): void => {
+  try {
+    localStorage.setItem(CREDIT_NOTES_CACHE_KEY, JSON.stringify(Array.isArray(rows) ? rows : []));
+  } catch {
+    // Ignore storage issues and continue with live data.
+  }
+};
+
 const normalizeCreditNoteReference = (note: any): string =>
   String(
     note?.referenceNumber ??
@@ -1376,17 +1419,19 @@ export const getCreditNotes = async (): Promise<CreditNote[]> => {
   try {
     const response = await creditNotesAPI.getAll();
     if (response && response.success && response.data) {
-      return response.data.map((item: any) => ({
+      const rows = response.data.map((item: any) => ({
         ...item,
         id: item._id || item.id,
         customerName: item.customerName || item.customer?.displayName || item.customer?.companyName || item.customer?.name || (typeof item.customer === 'string' ? item.customer : ""),
         referenceNumber: normalizeCreditNoteReference(item)
       }));
+      writeCachedCreditNotes(rows);
+      return rows;
     }
-    return [];
+    return readCachedCreditNotes();
   } catch (error) {
     console.error("Error fetching credit notes from API:", error);
-    return [];
+    return readCachedCreditNotes();
   }
 };
 
@@ -1463,6 +1508,18 @@ export const saveCreditNote = async (creditNoteData: Partial<CreditNote>): Promi
 
     const response = await creditNotesAPI.create(apiData);
     if (response && response.success && response.data) {
+      const nextRow: CreditNote = {
+        ...response.data,
+        id: response.data._id || response.data.id,
+        customerName:
+          response.data.customerName ||
+          response.data.customer?.displayName ||
+          response.data.customer?.companyName ||
+          response.data.customer?.name ||
+          (typeof response.data.customer === "string" ? response.data.customer : ""),
+        referenceNumber: normalizeCreditNoteReference(response.data),
+      };
+      writeCachedCreditNotes([...readCachedCreditNotes(), nextRow]);
       return response.data;
     }
     throw new Error('Failed to save credit note');
@@ -1524,6 +1581,24 @@ export const updateCreditNote = async (creditNoteId: string, creditNoteData: Par
 
     const response = await creditNotesAPI.update(creditNoteId, apiData);
     if (response && response.success && response.data) {
+      const nextRows = readCachedCreditNotes().map((row) =>
+        String(row.id) === String(creditNoteId)
+          ? {
+              ...row,
+              ...response.data,
+              id: response.data._id || response.data.id || row.id,
+              customerName:
+                response.data.customerName ||
+                response.data.customer?.displayName ||
+                response.data.customer?.companyName ||
+                response.data.customer?.name ||
+                row.customerName ||
+                (typeof response.data.customer === "string" ? response.data.customer : ""),
+              referenceNumber: normalizeCreditNoteReference(response.data),
+            }
+          : row,
+      );
+      writeCachedCreditNotes(nextRows);
       return response.data;
     }
     throw new Error('Failed to update credit note');
@@ -1537,6 +1612,7 @@ export const deleteCreditNote = async (creditNoteId: string): Promise<CreditNote
   try {
     const response = await creditNotesAPI.delete(creditNoteId);
     if (response && response.success) {
+      writeCachedCreditNotes(readCachedCreditNotes().filter((row) => String(row.id) !== String(creditNoteId)));
       return await getCreditNotes();
     }
     throw new Error('Failed to delete credit note');

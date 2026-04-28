@@ -14,6 +14,12 @@
     pointer-events: none;
     user-select: none;
   }
+
+  body.credit-notes-modal-open header,
+  body.credit-notes-modal-open aside {
+    pointer-events: none;
+    user-select: none;
+  }
 }
 
 @layer utilities {

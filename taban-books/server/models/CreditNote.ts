@@ -39,6 +39,7 @@ export interface ICreditNoteItem {
   item?: mongoose.Types.ObjectId;
   name?: string;
   description?: string;
+  account?: string;
   quantity: number;
   unitPrice: number;
   unit?: string;
@@ -48,6 +49,11 @@ export interface ICreditNoteItem {
   taxAmount?: number;
   total: number;
   hsnOrSac?: string;
+  reportingTags?: Array<{
+    tagId?: string;
+    value?: string;
+    name?: string;
+  }>;
 }
 
 export interface ICreditNote extends Document {
@@ -57,6 +63,14 @@ export interface ICreditNote extends Document {
   invoice?: mongoose.Types.ObjectId;
   date: Date;
   referenceNumber?: string;
+  customerName?: string;
+  accountsReceivable?: string;
+  salesperson?: string;
+  subject?: string;
+  warehouseLocation?: string;
+  priceList?: string;
+  customerNotes?: string;
+  termsAndConditions?: string;
   items: ICreditNoteItem[];
   subtotal?: number;
   tax?: number;
@@ -91,6 +105,10 @@ const creditNoteItemSchema = new Schema<ICreditNoteItem>({
   },
   name: String,
   description: String,
+  account: {
+    type: String,
+    default: "",
+  },
   quantity: {
     type: Number,
     required: true,
@@ -123,6 +141,16 @@ const creditNoteItemSchema = new Schema<ICreditNoteItem>({
     required: true,
   },
   hsnOrSac: String,
+  reportingTags: {
+    type: [
+      {
+        tagId: { type: String, default: "" },
+        value: { type: String, default: "" },
+        name: { type: String, default: "" },
+      },
+    ],
+    default: [],
+  },
 });
 
 const creditAllocationSchema = new Schema<ICreditAllocation>({
@@ -190,6 +218,14 @@ const creditNoteSchema = new Schema<ICreditNote>(
       default: Date.now,
     },
     referenceNumber: String,
+    customerName: String,
+    accountsReceivable: String,
+    salesperson: String,
+    subject: String,
+    warehouseLocation: String,
+    priceList: String,
+    customerNotes: String,
+    termsAndConditions: String,
     items: [creditNoteItemSchema],
     subtotal: {
       type: Number,

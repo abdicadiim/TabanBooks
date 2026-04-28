@@ -1026,6 +1026,7 @@ export const creditNotesAPI = {
   create: (data: any) => apiRequest('/credit-notes', { method: 'POST', body: data }),
   update: (id: any, data: any) => apiRequest(`/credit-notes/${id}`, { method: 'PUT', body: data }),
   delete: (id: any) => apiRequest(`/credit-notes/${id}`, { method: 'DELETE' }),
+  sendEmail: (id: any, data: any) => apiRequest(`/credit-notes/${id}/email`, { method: 'POST', body: data }),
   getByInvoice: (invoiceId: any, params: any = {}) => {
     const queryString = new URLSearchParams(params).toString();
     return apiRequest(`/credit-notes?invoiceId=${invoiceId}${queryString ? `&${queryString}` : ''}`);

@@ -197,6 +197,27 @@ export default function CreditNotes() {
   const viewDropdownRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const bulkUpdateFieldDropdownRef = useRef<HTMLDivElement>(null);
+  const isAnyModalOpen =
+    isBulkUpdateModalOpen ||
+    isDeleteModalOpen ||
+    isFieldCustomizationOpen ||
+    isCustomizeColumnsOpen ||
+    showSearchModal;
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const body = document.body;
+    if (isAnyModalOpen) {
+      body.classList.add("credit-notes-modal-open");
+    } else {
+      body.classList.remove("credit-notes-modal-open");
+    }
+
+    return () => {
+      body.classList.remove("credit-notes-modal-open");
+    };
+  }, [isAnyModalOpen]);
 
   const getCreditNoteReferenceNumber = (note: any) =>
     String(
@@ -208,6 +229,77 @@ export default function CreditNotes() {
       ""
     ).trim();
 
+  const getCreditNoteLocation = (note: any) => {
+    const location = note?.location ?? note?.locationName ?? note?.branchName ?? note?.warehouseName ?? note?.branch ?? note?.office;
+    if (!location) return "";
+    if (typeof location === "string") return location.trim();
+    return String(location?.name || location?.title || location?.label || location?.displayName || "").trim();
+  };
+
+  const getCreditNoteInvoiceIds = (note: any) => {
+    const allocationSource = [
+      note?.allocations,
+      note?.appliedInvoices,
+      note?.invoiceAllocations,
+    ];
+
+    const ids = new Set<string>();
+
+    const pickDocumentNumber = (doc: any, fallbackId = "") => {
+      if (!doc) return String(fallbackId || "").trim();
+
+      const candidates = [
+        doc?.invoiceNumber,
+        doc?.debitNoteNumber,
+        doc?.creditNoteNumber,
+        doc?.number,
+        doc?.documentNumber,
+        doc?.docNumber,
+        doc?.referenceNumber,
+        doc?.reference,
+      ];
+
+      const picked = candidates.find((value) => String(value || "").trim());
+      return String(picked || fallbackId || "").trim();
+    };
+
+    allocationSource.forEach((source) => {
+      if (!Array.isArray(source)) return;
+      source.forEach((entry: any) => {
+        const invoice = entry?.invoice;
+        const debitNote = entry?.debitNote || entry?.debitnote || entry?.debit_note;
+        const candidateList = [
+          pickDocumentNumber(invoice, entry?.invoiceId || invoice?._id || invoice?.id || ""),
+          pickDocumentNumber(debitNote, entry?.debitNoteId || debitNote?._id || debitNote?.id || "")
+        ].filter(Boolean);
+        candidateList.forEach((candidate) => ids.add(candidate));
+      });
+    });
+
+    [
+      pickDocumentNumber(note?.invoice, note?.invoiceId || ""),
+      pickDocumentNumber(note?.debitNote, note?.debitNoteId || ""),
+      String(note?.invoiceNumber || note?.debitNoteNumber || note?.documentNumber || note?.docNumber || "").trim()
+    ].filter(Boolean).forEach((candidate) => ids.add(candidate));
+
+    return Array.from(ids).join(", ");
+  };
+
+  const getCreditNoteSalesperson = (note: any) => {
+    const salesperson = note?.salesperson ?? note?.salesPerson ?? note?.salespersonId;
+    if (!salesperson) return "";
+    if (typeof salesperson === "string") return salesperson.trim();
+    return String(
+      salesperson?.displayName ||
+      salesperson?.name ||
+      salesperson?.fullName ||
+      salesperson?.salespersonName ||
+      salesperson?.salesPersonName ||
+      salesperson?.label ||
+      ""
+    ).trim();
+  };
+
   const getCreditNoteFieldValue = React.useCallback(
     (note: CreditNote, fieldName: string) => {
     const fieldMap: Record<string, any> = {
@@ -215,7 +307,7 @@ export default function CreditNotes() {
       "Credit Note#": note.creditNoteNumber || note.id || "",
       "Reference Number": getCreditNoteReferenceNumber(note),
       "Customer Name": note.customerName || note.customer || "",
-      "Invoice#": note.invoiceNumber || "",
+      "Invoice#": getCreditNoteInvoiceIds(note),
       "Status": note.status || "open",
       "Amount": note.total || note.amount || 0,
       "Balance": note.balance || note.total || note.amount || 0
@@ -708,7 +800,7 @@ export default function CreditNotes() {
     setFilteredCreditNotes(sorted);
   };
 
-  const handleImport = (importOption) => {
+  const handleImport = (importOption: string) => {
     setIsMoreMenuOpen(false);
     if (importOption === "Import Credit Notes") {
       navigate("/sales/credit-notes/import");
@@ -719,10 +811,10 @@ export default function CreditNotes() {
     }
   };
 
-  const handleExport = (exportOption) => {
+  const handleExport = (exportOption: string) => {
     setIsMoreMenuOpen(false);
 
-    let dataToExport = [];
+    let dataToExport: CreditNote[] = [];
     let filename = "";
 
     if (exportOption === "Export Credit Notes") {
@@ -760,7 +852,7 @@ export default function CreditNotes() {
         note.creditNoteNumber || note.id,
         getCreditNoteReferenceNumber(note),
         note.customerName || note.customer || "",
-        note.invoiceNumber || "",
+        getCreditNoteInvoiceIds(note) || note.invoiceNumber || "",
         (note.status || "open").toUpperCase(),
         formatCurrency(note.total || note.amount || 0, note.currency),
         formatCurrency(note.balance || note.total || note.amount || 0, note.currency)
@@ -1483,7 +1575,7 @@ export default function CreditNotes() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {Array(5).fill(0).map((_, index) => (
+                    {Array(8).fill(0).map((_, index) => (
                       <tr key={`skeleton-${index}`} className="animate-pulse border-b border-gray-50">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
@@ -1621,7 +1713,7 @@ export default function CreditNotes() {
                           </div>
                         </td>
                         {isColumnVisible("date") && <td className="px-4 py-3 text-[13px] text-slate-600">{formatDate(note.creditNoteDate || note.date)}</td>}
-                        {isColumnVisible("location") && <td className="px-4 py-3 text-[13px] text-slate-600">{note.location || "-"}</td>}
+                        {isColumnVisible("location") && <td className="px-4 py-3 text-[13px] text-slate-600">{getCreditNoteLocation(note) || "-"}</td>}
                         {isColumnVisible("creditNoteNumber") && <td className="px-4 py-3">
                           <span
                             className="text-[13px] font-medium text-[#156372] hover:underline cursor-pointer"
@@ -1635,7 +1727,7 @@ export default function CreditNotes() {
                         </td>}
                         {isColumnVisible("referenceNumber") && <td className="px-4 py-3 text-[13px] text-slate-600">{getCreditNoteReferenceNumber(note)}</td>}
                         {isColumnVisible("customerName") && <td className="px-4 py-3 text-[13px] text-slate-600">{getCreditNoteCustomerName(note)}</td>}
-                        {isColumnVisible("invoiceNumber") && <td className="px-4 py-3 text-[13px] text-slate-600">{note.invoiceNumber || ""}</td>}
+                        {isColumnVisible("invoiceNumber") && <td className="px-4 py-3 text-[13px] text-slate-600">{getCreditNoteInvoiceIds(note) || note.invoiceNumber || "-"}</td>}
                         {isColumnVisible("status") && <td className="px-4 py-3">
                           <span
                             className={`text-[11px] font-semibold ${(note.status || "open").toLowerCase() === "open"
@@ -1652,7 +1744,7 @@ export default function CreditNotes() {
                         </td>}
                         {isColumnVisible("amount") && <td className="px-4 py-3 text-[13px] text-slate-600 font-semibold">{formatCurrency(note.total || note.amount || 0, note.currency)}</td>}
                         {isColumnVisible("balance") && <td className="px-4 py-3 text-[13px] text-slate-600">{formatCurrency(note.balance || note.total || note.amount || 0, note.currency)}</td>}
-                        {isColumnVisible("salesPerson") && <td className="px-4 py-3 text-[13px] text-slate-600">{note.salesPerson || note.salesperson || note.salesPersonName || "-"}</td>}
+                        {isColumnVisible("salesPerson") && <td className="px-4 py-3 text-[13px] text-slate-600">{getCreditNoteSalesperson(note) || "-"}</td>}
                         <td className="px-4 py-3"></td>
                       </tr>
                     );

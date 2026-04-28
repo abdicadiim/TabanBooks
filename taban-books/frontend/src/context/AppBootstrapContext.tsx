@@ -167,7 +167,7 @@ export function AppBootstrapProvider({ children }: { children: React.ReactNode }
     () => initialBootstrapSnapshot?.baseCurrency || readStoredBaseCurrency(),
   );
   const [loading, setLoading] = useState(Boolean(getToken()) && !initialBootstrapSnapshot);
-  const BOOTSTRAP_LOADER_MIN_DURATION_MS = 2500;
+  const BOOTSTRAP_LOADER_MIN_DURATION_MS = 700;
 
   const updateBootstrapCache = (
     nextBranding: BootstrapBranding,

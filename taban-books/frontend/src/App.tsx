@@ -9,6 +9,9 @@ import { AppBootstrapProvider, useAppBootstrap } from "./context/AppBootstrapCon
 import { SettingsProvider } from "./lib/settings/SettingsContext";
 import "react-toastify/dist/ReactToastify.css";
 import FullScreenLoader from "./components/FullScreenLoader";
+import RetainerInvoiceQueryWarmup from "./pages/sales/RetainerInvoice/RetainerInvoiceQueryWarmup";
+import InvoiceQueryWarmup from "./pages/sales/Invoices/InvoiceQueryWarmup";
+import CreditNotesQueryWarmup from "./pages/sales/CreditNotes/CreditNotesQueryWarmup";
 
 const DEFAULT_TITLE = "Taban Books";
 const queryClient = new QueryClient();
@@ -80,6 +83,9 @@ function AppContent() {
     <>
       <AppBrandingSync />
       <QueryClientProvider client={queryClient}>
+        <RetainerInvoiceQueryWarmup />
+        <InvoiceQueryWarmup />
+        <CreditNotesQueryWarmup />
         <SettingsProvider>
           <AppRoutes />
         </SettingsProvider>

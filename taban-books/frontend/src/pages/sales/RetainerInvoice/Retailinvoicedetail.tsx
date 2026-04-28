@@ -40,6 +40,12 @@ type RetainerComment = {
   underline?: boolean;
 };
 
+type RetainerDetailLocationState = {
+  preloadedRetainerInvoice?: RetainerInvoice | null;
+  preloadedRetainerRows?: RetainerInvoice[] | null;
+  refreshTick?: number;
+} | null;
+
 const VIEW_OPTIONS: Array<{ key: string; label: string }> = [
   { key: "all", label: "All" },
   { key: "draft", label: "Draft" },
@@ -245,6 +251,19 @@ export default function Retailinvoicedetail() {
   const navigate = useNavigate();
   const location = useLocation();
   const { accentColor } = useOrganizationBranding();
+  const locationState = location.state as RetainerDetailLocationState;
+  const preloadedRetainerInvoice = locationState?.preloadedRetainerInvoice || null;
+  const preloadedRetainerRows = locationState?.preloadedRetainerRows || null;
+  const initialRetainerRows = Array.isArray(preloadedRetainerRows)
+    ? preloadedRetainerRows
+        .map(mapRetainerListRow)
+        .sort((a, b) => {
+          const aTime = new Date(a.date).getTime();
+          const bTime = new Date(b.date).getTime();
+          if (Number.isFinite(aTime) && Number.isFinite(bTime)) return bTime - aTime;
+          return b.invoiceNumber.localeCompare(a.invoiceNumber);
+        })
+    : [];
   const ensureRetainerListAllView = () => {
     try {
       localStorage.setItem(RETAINER_SELECTED_VIEW_STORAGE_KEY, "all");
@@ -253,9 +272,11 @@ export default function Retailinvoicedetail() {
     }
   };
 
-  const [loading, setLoading] = useState(true);
-  const [invoice, setInvoice] = useState<RetainerInvoice | null>(null);
-  const [retainers, setRetainers] = useState<RetainerListRow[]>([]);
+  const [loading, setLoading] = useState(() => !preloadedRetainerInvoice);
+  const [invoice, setInvoice] = useState<RetainerInvoice | null>(() =>
+    preloadedRetainerInvoice ? ({ ...preloadedRetainerInvoice } as RetainerInvoice) : null
+  );
+  const [retainers, setRetainers] = useState<RetainerListRow[]>(() => initialRetainerRows);
   const [reloadTick, setReloadTick] = useState(0);
   const [selectedView, setSelectedView] = useState(() => localStorage.getItem(RETAINER_SELECTED_VIEW_STORAGE_KEY) || "all");
   const [viewSearchTerm, setViewSearchTerm] = useState("");
@@ -316,7 +337,7 @@ export default function Retailinvoicedetail() {
     let cancelled = false;
 
     const load = async () => {
-      if (!cancelled) setLoading(true);
+      if (!cancelled && !preloadedRetainerInvoice) setLoading(true);
       try {
         const [rawCurrentInvoice, retainerRowsRaw, customers] = await Promise.all([
           id ? getRetainerInvoiceById(id) : Promise.resolve(null),
@@ -340,6 +361,27 @@ export default function Retailinvoicedetail() {
         const currentId = getInvoiceId(rawCurrentInvoice);
         const currentIsRetainer = rawCurrentInvoice ? isRetainerInvoice(rawCurrentInvoice) : false;
         const fallbackRow = retainerRows.find((row) => row.id === requestedId) || retainerRows[0];
+
+        if (preloadedRetainerInvoice && getInvoiceId(preloadedRetainerInvoice) === requestedId) {
+          const customerId = getInvoiceCustomerId(preloadedRetainerInvoice);
+          const matchedCustomer = customerId
+            ? (Array.isArray(customers) ? customers : []).find(
+                (c: any) => String(c?._id || c?.id || "").trim() === customerId
+              )
+            : null;
+          const matchedCustomerName = String(
+            matchedCustomer?.displayName ||
+              matchedCustomer?.name ||
+              matchedCustomer?.companyName ||
+              ""
+          ).trim();
+
+          setInvoice({
+            ...preloadedRetainerInvoice,
+            customerName: matchedCustomerName || getCustomerDisplayName(preloadedRetainerInvoice),
+          } as RetainerInvoice);
+          return;
+        }
 
         if (rawCurrentInvoice && currentId && currentIsRetainer) {
           const customerId = getInvoiceCustomerId(rawCurrentInvoice);
@@ -439,10 +481,10 @@ export default function Retailinvoicedetail() {
   }, []);
 
   useEffect(() => {
-    if (location.state && typeof (location.state as any).refreshTick === "number") {
+    if (locationState && typeof locationState.refreshTick === "number") {
       setReloadTick((v) => v + 1);
     }
-  }, [location.state]);
+  }, [locationState]);
 
   useEffect(() => {
     const docs = Array.isArray((invoice as any)?.attachedFiles)

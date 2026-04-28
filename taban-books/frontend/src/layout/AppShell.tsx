@@ -13,6 +13,7 @@ export default function AppShell() {
   );
   const isVendorsListPage = location.pathname === "/purchases/vendors";
   const isQuoteDetailPage = /^\/sales\/quotes\/[^/]+\/?$/.test(location.pathname);
+  const isCreditNoteDetailPage = /^\/sales\/credit-notes\/[^/]+\/?$/.test(location.pathname);
 
   if (isEmbedded) {
     return (
@@ -29,7 +30,7 @@ export default function AppShell() {
 
       <main
         className={`h-full min-h-0 box-border overflow-x-hidden pt-[92px] scroll-pt-[92px] pb-4 pl-0 ${
-          isQuoteDetailPage ? "overflow-hidden" : "overflow-y-auto"
+          isQuoteDetailPage || isCreditNoteDetailPage ? "overflow-hidden" : "overflow-y-auto"
         } ${
           isPurchaseOrdersListPage
             ? "pr-0 md:pl-[var(--sidebar-width)]"

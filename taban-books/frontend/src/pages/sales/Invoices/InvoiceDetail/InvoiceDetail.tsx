@@ -91,16 +91,114 @@ const normalizeInvoiceItems = (sourceInvoice: any) => {
   });
 };
 
+const findLinkedDebitNote = (rows: any[] = [], invoiceLike: any, invoiceId: string) => {
+  const targetInvoiceId = String(invoiceId || invoiceLike?.id || invoiceLike?._id || "").trim();
+  const targetInvoiceNumber = String(invoiceLike?.invoiceNumber || invoiceLike?.number || "").trim();
+
+  return (
+    (Array.isArray(rows) ? rows : []).find((row: any) => {
+      if (!row) return false;
+
+      const rawType = String(row?.invoiceType || row?.type || row?.documentType || row?.module || row?.source || "")
+        .toLowerCase()
+        .trim();
+      const rawNumber = String(row?.invoiceNumber || row?.number || "").toUpperCase();
+      const isDebit = Boolean(
+        row?.debitNote ||
+          row?.isDebitNote ||
+          row?.is_debit_note ||
+          rawType.includes("debit") ||
+          /^CDN[-\d]/.test(rawNumber)
+      );
+      if (!isDebit) return false;
+
+      const associatedInvoiceId = String(
+        row?.associatedInvoiceId ||
+          row?.invoiceId ||
+          row?.sourceInvoiceId ||
+          row?.relatedInvoiceId ||
+          row?.linkedInvoiceId ||
+          ""
+      ).trim();
+      const associatedInvoiceNumber = String(
+        row?.associatedInvoiceNumber ||
+          row?.sourceInvoiceNumber ||
+          row?.relatedInvoiceNumber ||
+          row?.linkedInvoiceNumber ||
+          ""
+      ).trim();
+      const rowId = String(row?.id || row?._id || "").trim();
+
+      return Boolean(
+        (targetInvoiceId && (associatedInvoiceId === targetInvoiceId || rowId === targetInvoiceId)) ||
+          (targetInvoiceNumber &&
+            (associatedInvoiceNumber === targetInvoiceNumber ||
+              String(row?.invoiceNumber || row?.number || "").trim() === targetInvoiceNumber))
+      );
+    }) || null
+  );
+};
+
+const InvoiceDetailSkeleton = () => (
+  <div className="flex h-full min-h-[calc(100vh-120px)] bg-white">
+    <div className="w-[300px] border-r border-gray-200 bg-white flex flex-col">
+      <div className="h-14 px-4 border-b border-gray-200 flex items-center justify-between">
+        <div className="h-5 w-20 rounded bg-gray-100 animate-pulse" />
+        <div className="h-8 w-8 rounded-md bg-gray-100 animate-pulse" />
+      </div>
+      <div className="flex-1 overflow-hidden p-3 space-y-3">
+        {Array.from({ length: 8 }).map((_, index) => (
+          <div key={index} className="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
+            <div className="h-3 w-24 rounded bg-gray-100 animate-pulse" />
+            <div className="mt-3 h-4 w-32 rounded bg-gray-100 animate-pulse" />
+            <div className="mt-2 h-3 w-20 rounded bg-gray-100 animate-pulse" />
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div className="flex-1 bg-gray-50 p-4">
+      <div className="mx-auto max-w-[1280px] rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+        <div className="border-b border-gray-200 px-6 py-4">
+          <div className="h-4 w-32 rounded bg-gray-100 animate-pulse" />
+          <div className="mt-3 h-7 w-56 rounded bg-gray-100 animate-pulse" />
+        </div>
+        <div className="border-b border-gray-200 px-6 py-3 flex items-center gap-3">
+          <div className="h-8 w-16 rounded bg-gray-100 animate-pulse" />
+          <div className="h-8 w-16 rounded bg-gray-100 animate-pulse" />
+          <div className="h-8 w-16 rounded bg-gray-100 animate-pulse" />
+          <div className="h-8 w-20 rounded bg-gray-100 animate-pulse" />
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="h-5 w-48 rounded bg-gray-100 animate-pulse" />
+          <div className="h-64 rounded-lg border border-gray-100 bg-gray-50 animate-pulse" />
+          <div className="h-40 rounded-lg border border-gray-100 bg-gray-50 animate-pulse" />
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
 
 
 export default function InvoiceDetail() { // Start of component
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const preloadedInvoice = (location.state as any)?.preloadedInvoice || null;
+  const locationState = location.state as {
+    preloadedInvoice?: Invoice | null;
+    preloadedInvoices?: Invoice[] | null;
+    openEmailModal?: boolean;
+  } | null;
+  const preloadedInvoice = locationState?.preloadedInvoice || null;
+  const preloadedInvoices = locationState?.preloadedInvoices || null;
   const isDebitNoteView = location.pathname.includes("/sales/debit-notes/");
-  const [invoice, setInvoice] = useState<Invoice | null>(null);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoice, setInvoice] = useState<Invoice | null>(() =>
+    preloadedInvoice ? ({ ...preloadedInvoice } as Invoice) : null
+  );
+  const [invoices, setInvoices] = useState<Invoice[]>(() =>
+    Array.isArray(preloadedInvoices) ? [...(preloadedInvoices as Invoice[])] : []
+  );
   const [baseCurrency, setBaseCurrency] = useState("USD");
   const [payments, setPayments] = useState<any[]>([]);
   const [selectedItems, setSelectedItems] = useState<Set<any>>(new Set());
@@ -663,6 +761,17 @@ export default function InvoiceDetail() { // Start of component
         }
       }
 
+      if (!isDebitNoteView && currentInvoice) {
+        const preloadedDebitNote = findLinkedDebitNote(
+          Array.isArray(preloadedInvoices) ? preloadedInvoices : [],
+          currentInvoice,
+          String(id || "")
+        );
+        if (preloadedDebitNote) {
+          setDebitNote(preloadedDebitNote);
+        }
+      }
+
       // Get payments for this invoice quickly
       const paymentsRaw = await paymentsPromise;
       const associatedInvoiceId = String((currentInvoice as any)?.associatedInvoiceId || (currentInvoice as any)?.invoiceId || "");
@@ -837,7 +946,7 @@ export default function InvoiceDetail() { // Start of component
 
       // Fetch Debit Note linked to invoice (skip when already in debit-note page)
       try {
-        if (id && !isDebitNoteView) {
+        if (id && !isDebitNoteView && !debitNote) {
           const linkedResponse = await debitNotesAPI.getByInvoice(id);
           if (linkedResponse && linkedResponse.success && linkedResponse.data && linkedResponse.data.length > 0) {
             setDebitNote(linkedResponse.data[0]);
@@ -3276,7 +3385,7 @@ export default function InvoiceDetail() { // Start of component
   );
 
   if (!invoice) {
-    return <div>Loading...</div>;
+    return <InvoiceDetailSkeleton />;
   }
 
   const invoiceTotalsMeta = getInvoiceTotalsMeta(invoice);
@@ -3604,33 +3713,44 @@ export default function InvoiceDetail() { // Start of component
             </div>
           </div>
           <div className="flex-1 overflow-y-auto">
-            {invoices.map((inv) => (
-              <div
-                key={inv.id}
-                onClick={() => navigate(`/sales/invoices/${inv.id}`)}
-                className={`flex items-center gap-3 p-3 cursor-pointer border-b border-gray-100 hover:bg-gray-50 ${inv.id === id ? "bg-blue-50 border-l-4 border-l-blue-600" : ""
-                  }`}
-              >
-                <Square size={14} className="text-gray-400 cursor-pointer" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 truncate mb-1">{inv.customerName || (typeof inv.customer === 'string' ? inv.customer : inv.customer?.displayName || inv.customer?.name || "-")}</div>
-                  <div className="text-sm font-medium text-gray-900 mb-1">{formatCurrency(getInvoiceDisplayTotal(inv), inv.currency)}</div>
-                  <div className="flex items-center gap-1 text-xs text-gray-600 mb-1">
-                    <span>{inv.invoiceNumber || inv.id}</span>
-                    <span>{formatDate(inv.invoiceDate || inv.date)}</span>
-                    {inv.orderNumber && <span>{inv.orderNumber}</span>}
+            {invoices.map((inv, index) => {
+              const rowKey = String(
+                inv?.id ||
+                inv?._id ||
+                inv?.invoiceNumber ||
+                inv?.number ||
+                `invoice-${index}`
+              ).trim() || `invoice-${index}`;
+              const rowId = String(inv?.id || inv?._id || "").trim();
+              const isActive = Boolean(id && (rowId === String(id).trim() || rowKey === String(id).trim()));
+
+              return (
+                <div
+                  key={`${rowKey}-${index}`}
+                  onClick={() => navigate(`/sales/invoices/${rowId || rowKey}`)}
+                  className={`flex items-center gap-3 p-3 cursor-pointer border-b border-gray-100 hover:bg-gray-50 ${isActive ? "bg-blue-50 border-l-4 border-l-blue-600" : ""}`}
+                >
+                  <Square size={14} className="text-gray-400 cursor-pointer" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 truncate mb-1">{inv.customerName || (typeof inv.customer === 'string' ? inv.customer : inv.customer?.displayName || inv.customer?.name || "-")}</div>
+                    <div className="text-sm font-medium text-gray-900 mb-1">{formatCurrency(getInvoiceDisplayTotal(inv), inv.currency)}</div>
+                    <div className="flex items-center gap-1 text-xs text-gray-600 mb-1">
+                      <span>{inv.invoiceNumber || rowKey}</span>
+                      <span>{formatDate(inv.invoiceDate || inv.date)}</span>
+                      {inv.orderNumber && <span>{inv.orderNumber}</span>}
+                    </div>
+                    {(() => {
+                      const statusDisplay = getSidebarStatusDisplay(inv);
+                      return (
+                        <div className={`text-xs font-medium px-2 py-0.5 rounded-full inline-block ${statusDisplay.color}`}>
+                          {statusDisplay.text}
+                        </div>
+                      );
+                    })()}
                   </div>
-                  {(() => {
-                    const statusDisplay = getSidebarStatusDisplay(inv);
-                    return (
-                      <div className={`text-xs font-medium px-2 py-0.5 rounded-full inline-block ${statusDisplay.color}`}>
-                        {statusDisplay.text}
-                      </div>
-                    );
-                  })()}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -3695,7 +3815,7 @@ export default function InvoiceDetail() { // Start of component
                 className="inline-flex items-center gap-1.5 px-2 py-1 rounded hover:bg-gray-100 cursor-pointer"
               >
                 <Mail size={13} />
-                {isDebitNoteDocument ? "Send Debit Note" : "Send"}
+                {isDebitNoteDocument ? "Send Debit" : "Send"}
               </button>
 
               <button
@@ -3715,33 +3835,6 @@ export default function InvoiceDetail() { // Start of component
                 <FileText size={13} className={isDownloadingPdf ? "animate-pulse" : ""} />
                 {isDownloadingPdf ? "Downloading..." : "PDF"}
               </button>
-
-              {debitNote && (
-                <div
-                  className="flex flex-col gap-1 rounded-md border border-[#ffedd5] bg-[#fff7ed] px-3 py-2 text-[12px] text-[#7c2d12]"
-                  title={`View Debit Note: ${debitNote.debitNoteNumber || debitNote.invoiceNumber || ""}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <FileText size={13} className="text-[#c2410c]" />
-                    <span className="font-medium">
-                      Debit Note: {debitNote.debitNoteNumber || debitNote.invoiceNumber || "View"}
-                    </span>
-                    <button
-                      onClick={() => navigate(`/sales/debit-notes/${debitNote.id || debitNote._id}`)}
-                      className="ml-2 rounded-md border border-[#fdba74] bg-white px-2 py-0.5 font-medium text-[#9a3412] hover:bg-[#fff7ed]"
-                    >
-                      Open
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[#92400e]">
-                    <span>Date: {formatDate(debitNote.debitNoteDate || debitNote.date || debitNote.createdAt)}</span>
-                    <span>Amount: {formatCurrency(toNumSafe(debitNote.total ?? debitNote.amount ?? 0, 0), debitNote.currency || invoice.currency)}</span>
-                    <span>Balance: {formatCurrency(toNumSafe(debitNote.balance ?? 0, 0), debitNote.currency || invoice.currency)}</span>
-                    <span>Status: {String(debitNote.status || "-")}</span>
-                  </div>
-                </div>
-              )}
-              {debitNote && <div className="h-5 w-px bg-gray-300 mx-1" />}
 
               {invoice && canRecordPayment && (
                 <button
@@ -3859,28 +3952,6 @@ export default function InvoiceDetail() { // Start of component
                 )}
               </div>
 
-              {debitNote && (
-                <div className="flex flex-col gap-1 rounded-md border border-[#ffedd5] bg-[#fff7ed] px-3 py-2 text-[12px] text-[#7c2d12]">
-                  <div className="flex items-center gap-2">
-                    <FileText size={14} className="text-[#c2410c]" />
-                    <span className="font-medium">
-                      Debit Note {debitNote.debitNoteNumber || debitNote.invoiceNumber || debitNote.id || "-"}
-                    </span>
-                    <button
-                      onClick={() => navigate(`/sales/debit-notes/${debitNote.id || debitNote._id}`)}
-                      className="ml-2 rounded-md border border-[#fdba74] bg-white px-2 py-0.5 font-medium text-[#9a3412] hover:bg-[#fff7ed]"
-                    >
-                      Open
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[#92400e]">
-                    <span>Date: {formatDate(debitNote.debitNoteDate || debitNote.date || debitNote.createdAt)}</span>
-                    <span>Amount: {formatCurrency(toNumSafe(debitNote.total ?? debitNote.amount ?? 0, 0), debitNote.currency || invoice.currency)}</span>
-                    <span>Balance: {formatCurrency(toNumSafe(debitNote.balance ?? 0, 0), debitNote.currency || invoice.currency)}</span>
-                    <span>Status: {String(debitNote.status || "-")}</span>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
@@ -4106,49 +4177,30 @@ export default function InvoiceDetail() { // Start of component
             </div>
           )}
 
-          {/* Debit Note Header Card */}
-          {isDebitNoteView && (
+          {isDebitNoteView && (customerCreditsAvailable > 0 || customerRetainerAvailable > 0 || associatedInvoiceRow || (invoice as any)?.associatedInvoiceId || (invoice as any)?.invoiceId) && (
             <div className="mx-6 mt-4 rounded border border-gray-200 bg-white">
-              <div className="px-5 py-4 border-b border-gray-200 space-y-3 text-[14px] text-gray-900">
+              <div className="px-5 py-4 space-y-3 text-[14px] text-gray-900">
                 {customerCreditsAvailable > 0 && (
                   <div className="flex items-center gap-2">
-                    <FileText size={16} className="text-gray-700" />
+                    <FileText size={15} className="text-gray-700" />
                     <span>
-                      Credits Available:{" "}
-                      <span className="font-semibold">
-                        {formatCurrency(customerCreditsAvailable, invoice.currency)}
-                      </span>{" "}
-                      <button
-                        type="button"
-                        className="text-[#3b82f6] hover:underline"
-                        onClick={() => void handleOpenApplyCredits("credit")}
-                      >
-                        Apply Now
-                      </button>
+                      Credits Available: <span className="font-semibold">{formatCurrency(customerCreditsAvailable, invoice.currency)}</span>{" "}
+                      <button type="button" className="text-[#3b82f6] hover:underline" onClick={() => void handleOpenApplyCredits("credit")}>Apply Now</button>
                     </span>
                   </div>
                 )}
                 {customerRetainerAvailable > 0 && (
                   <div className="flex items-center gap-2">
-                    <Repeat size={16} className="text-gray-700" />
+                    <Repeat size={15} className="text-gray-700" />
                     <span>
-                      Retainer Available:{" "}
-                      <span className="font-semibold">
-                        {formatAmountWithCurrency(customerRetainerAvailable)}
-                      </span>{" "}
-                      <button
-                        type="button"
-                        className="text-[#3b82f6] hover:underline"
-                        onClick={handleOpenApplyRetainer}
-                      >
-                        Apply Now
-                      </button>
+                      Retainer Available: <span className="font-semibold">{formatAmountWithCurrency(customerRetainerAvailable)}</span>{" "}
+                      <button type="button" className="text-[#3b82f6] hover:underline" onClick={handleOpenApplyRetainer}>Apply Now</button>
                     </span>
                   </div>
                 )}
-                {(associatedInvoiceRow as any) && (
+                {(associatedInvoiceRow || (invoice as any)?.associatedInvoiceId || (invoice as any)?.invoiceId) && (
                   <div className="flex items-center gap-2">
-                    <FileText size={16} className="text-gray-700" />
+                    <FileText size={15} className="text-gray-700" />
                     <span>
                       Associated Invoice:{" "}
                       <button
@@ -4161,44 +4213,46 @@ export default function InvoiceDetail() { // Start of component
                             (invoice as any)?.associatedInvoiceId ||
                             (invoice as any)?.invoiceId ||
                             ""
-                          );
+                          ).trim();
                           if (invId) navigate(`/sales/invoices/${invId}`);
                         }}
                       >
-                        {String(
-                          (associatedInvoiceRow as any)?.invoiceNumber ||
+                        {(associatedInvoiceRow as any)?.invoiceNumber ||
                           (invoice as any)?.associatedInvoiceNumber ||
                           (invoice as any)?.invoiceNumber ||
-                          "-"
-                        )}
+                          "-"}
                       </button>
                     </span>
                   </div>
                 )}
-              </div>
-              <div className="px-5 py-4 flex items-center gap-3 border-b border-gray-200">
-                <Sparkles size={16} className="text-[#7c72ff]" />
-                <span className="text-sm text-gray-800">
-                  <span className="font-semibold">WHAT&apos;S NEXT?</span> Debit Note has been sent. Record payment for it as soon as you receive payment.
-                  <button
-                    type="button"
-                    className="ml-2 text-[#3b82f6] hover:underline"
-                    onClick={() => window.open("/help", "_blank")}
-                  >
-                    Learn More
-                  </button>
-                </span>
-                <button
-                  onClick={handleRecordPayment}
-                  className="ml-auto px-3 py-1.5 rounded-md text-sm text-white"
-                  style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                >
-                  Record Payment
-                </button>
-              </div>
-              <div className="px-5 py-3 bg-[#f8fafc] text-sm text-gray-700">
-                Get paid faster by setting up online payment gateways.{" "}
-                <button className="text-[#3b82f6] hover:underline">Set Up Now</button>
+                {customerRetainerInvoices.length > 0 && (
+                  <div className="flex items-start gap-2">
+                    <Repeat size={15} className="mt-0.5 text-gray-700" />
+                    <div className="flex-1">
+                      <div className="text-[13px] text-gray-700">Retainer Invoices:</div>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {customerRetainerInvoices.slice(0, 4).map((row: any) => {
+                          const rowId = String(row?.id || row?._id || "").trim();
+                          const rowNumber = String(row?.invoiceNumber || row?.retainerInvoiceNumber || rowId || "Retainer").trim();
+                          const rowAmount = toNumSafe(getRetainerAvailableAmount(row), 0);
+                          return (
+                            <button
+                              key={rowId || rowNumber}
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-full border border-[#dbe4ff] bg-[#f8fbff] px-3 py-1 text-[12px] text-[#2563eb] hover:bg-[#edf4ff]"
+                              onClick={() => {
+                                if (rowId) navigate(`/sales/retainer-invoices/${rowId}`);
+                              }}
+                            >
+                              <span>{rowNumber}</span>
+                              <span className="text-[#6b7280]">({formatAmountWithCurrency(rowAmount)})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -4222,34 +4276,6 @@ export default function InvoiceDetail() { // Start of component
                       Retainer Available: <span className="font-semibold">{formatAmountWithCurrency(customerRetainerAvailable)}</span>{" "}
                       <button type="button" className="text-[#3b82f6] hover:underline" onClick={handleOpenApplyRetainer}>Apply Now</button>
                     </span>
-                  </div>
-                )}
-                {customerCreditNotes.length > 0 && (
-                  <div className="flex items-start gap-2">
-                    <FileText size={15} className="mt-0.5 text-gray-700" />
-                    <div className="flex-1">
-                      <div className="text-[13px] text-gray-700">Credit Notes:</div>
-                      <div className="mt-1 flex flex-wrap gap-2">
-                        {customerCreditNotes.slice(0, 4).map((note: any) => {
-                          const noteId = String(note?.id || note?._id || "").trim();
-                          const noteNumber = String(note?.creditNoteNumber || note?.number || note?.invoiceNumber || noteId || "Credit Note").trim();
-                          const noteBalance = toNumSafe(note?.balance ?? note?.unusedAmount ?? note?.availableAmount ?? note?.total ?? note?.amount, 0);
-                          return (
-                            <button
-                              key={noteId || noteNumber}
-                              type="button"
-                              className="inline-flex items-center gap-1 rounded-full border border-[#dbe4ff] bg-[#f8fbff] px-3 py-1 text-[12px] text-[#2563eb] hover:bg-[#edf4ff]"
-                              onClick={() => {
-                                if (noteId) navigate(`/sales/credit-notes/${noteId}`);
-                              }}
-                            >
-                              <span>{noteNumber}</span>
-                              <span className="text-[#6b7280]">({formatCurrency(noteBalance, note?.currency || invoice.currency)})</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
                   </div>
                 )}
                 {customerRetainerInvoices.length > 0 && (
@@ -4288,34 +4314,6 @@ export default function InvoiceDetail() { // Start of component
             </div>
           )}
 
-          {!isDebitNoteView && debitNote && (
-            <div className="mx-6 mt-4 rounded border border-gray-200 bg-white">
-              <div className="px-5 py-4 space-y-3 text-[14px] text-gray-900">
-                <div className="flex items-center gap-2">
-                  <FileText size={15} className="text-gray-700" />
-                  <span>
-                    Debit Note:{" "}
-                    <span className="font-semibold">
-                      {debitNote.debitNoteNumber || debitNote.invoiceNumber || debitNote.id || "-"}
-                    </span>
-                  </span>
-                  <button
-                    type="button"
-                    className="text-[#3b82f6] hover:underline"
-                    onClick={() => navigate(`/sales/debit-notes/${debitNote.id || debitNote._id}`)}
-                  >
-                    Open
-                  </button>
-                </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-gray-700">
-                  <span>Date: {formatDate(debitNote.debitNoteDate || debitNote.date || debitNote.createdAt)}</span>
-                  <span>Amount: {formatCurrency(toNumSafe(debitNote.total ?? debitNote.amount ?? 0, 0), debitNote.currency || invoice.currency)}</span>
-                  <span>Status: {String(debitNote.status || "-")}</span>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* What's Next Section */}
           {showWhatsNext && (
             <div className="flex items-center gap-4 p-4 bg-blue-50 border border-blue-200 rounded-lg mx-6 mt-4 flex-shrink-0">
@@ -4338,7 +4336,7 @@ export default function InvoiceDetail() { // Start of component
                       onMouseEnter={(e) => e.currentTarget.style.opacity = "0.9"}
                       onMouseLeave={(e) => e.currentTarget.style.opacity = "1"}
                     >
-                      {isDebitNoteDocument ? "Send Debit Note" : "Send Invoice"}
+                      {isDebitNoteDocument ? "Send Debit" : "Send Invoice"}
                     </button>
                     <button
                       onClick={handleMarkAsSent}
@@ -4649,6 +4647,117 @@ export default function InvoiceDetail() { // Start of component
                   PDF Template: 'Standard Template' <button className="text-blue-600 hover:text-blue-700 underline ml-1">Change</button>
                 </div>
               </div>
+
+              {isDebitNoteView && (associatedInvoiceRow || (invoice as any)?.associatedInvoiceId || (invoice as any)?.invoiceId) && (
+                <div className="mt-8">
+                  <div className="text-[18px] font-medium text-gray-900 mb-3">Invoice</div>
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-gray-200 text-[13px] text-[#64748b]">
+                        <th className="py-2 font-medium">Date</th>
+                        <th className="py-2 font-medium">Invoice Number</th>
+                        <th className="py-2 font-medium text-right">Invoice Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b border-gray-100">
+                        <td className="py-3 text-[13px] text-gray-800">
+                          {formatDateShort(
+                            (associatedInvoiceRow as any)?.invoiceDate ||
+                            (associatedInvoiceRow as any)?.date ||
+                            (invoice as any)?.invoiceDate ||
+                            (invoice as any)?.date
+                          )}
+                        </td>
+                        <td className="py-3 text-[13px] text-[#2563eb]">
+                          {(associatedInvoiceRow as any)?.invoiceNumber ||
+                            (invoice as any)?.associatedInvoiceNumber ||
+                            (invoice as any)?.invoiceNumber ||
+                            "-"}
+                        </td>
+                        <td className="py-3 text-[13px] text-gray-900 text-right">
+                          {formatCurrency(
+                            toNumSafe(
+                              (associatedInvoiceRow as any)?.total ??
+                              (associatedInvoiceRow as any)?.amount ??
+                              (associatedInvoiceRow as any)?.balance ??
+                              (invoice as any)?.associatedInvoiceAmount ??
+                              (invoice as any)?.total ??
+                              0,
+                              0
+                            ),
+                            (associatedInvoiceRow as any)?.currency || invoice.currency
+                          )}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {isDebitNoteView && (
+                <div className="mt-8" data-journal-section>
+                  <div className="text-[18px] font-medium text-gray-900 mb-3">Journal</div>
+                  <div className="text-[12px] text-gray-500 mb-2">
+                    Amount is displayed in your base currency{" "}
+                    <span className="inline-flex items-center rounded bg-lime-700 px-1.5 py-0.5 text-[11px] font-semibold text-white">
+                      {baseCurrency}
+                    </span>
+                  </div>
+                  <div className="text-[16px] font-semibold text-gray-900 mb-2">Debit Note</div>
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-[#f8fafc] text-[13px] text-[#64748b]">
+                        <th className="py-2 px-2 font-medium text-left">Account</th>
+                        <th className="py-2 px-2 font-medium text-left">Location</th>
+                        <th className="py-2 px-2 font-medium text-right">Debit</th>
+                        <th className="py-2 px-2 font-medium text-right">Credit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b border-gray-100">
+                        <td className="py-2 px-2 text-[13px] text-gray-900">Accounts Receivable</td>
+                        <td className="py-2 px-2 text-[13px] text-gray-900">{String((invoice as any)?.location || "Head Office")}</td>
+                        <td className="py-2 px-2 text-[13px] text-gray-900 text-right">
+                          {formatCurrency(invoiceTotalsMeta.total, baseCurrency)}
+                        </td>
+                        <td className="py-2 px-2 text-[13px] text-gray-900 text-right">0.00</td>
+                      </tr>
+                      <tr className="border-b border-gray-100">
+                        <td className="py-2 px-2 text-[13px] text-gray-900">Sales</td>
+                        <td className="py-2 px-2 text-[13px] text-gray-900">{String((invoice as any)?.location || "Head Office")}</td>
+                        <td className="py-2 px-2 text-[13px] text-gray-900 text-right">0.00</td>
+                        <td className="py-2 px-2 text-[13px] text-gray-900 text-right">
+                          {formatCurrency(invoiceTotalsMeta.total, baseCurrency)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 px-2 text-[13px] font-semibold text-gray-900"></td>
+                        <td className="py-2 px-2 text-[13px] font-semibold text-gray-900"></td>
+                        <td className="py-2 px-2 text-[13px] font-semibold text-gray-900 text-right">
+                          {formatCurrency(invoiceTotalsMeta.total, baseCurrency)}
+                        </td>
+                        <td className="py-2 px-2 text-[13px] font-semibold text-gray-900 text-right">
+                          {formatCurrency(invoiceTotalsMeta.total, baseCurrency)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {!isDebitNoteView && (
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleViewJournal}
+                    className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+                  >
+                    <BookOpen size={14} />
+                    View Journal
+                  </button>
+                </div>
+              )}
             </div>
           </div>
           </div>

@@ -32,7 +32,6 @@ import {
   Mail
 } from "lucide-react";
 import {
-  getCustomers,
   getTaxes,
   saveCreditNote,
   updateCreditNote,
@@ -48,8 +47,10 @@ import {
   taxLabel
 } from "../../salesModel";
 import { getAllDocuments } from "../../../../utils/documentStorage";
-import { customersAPI, salespersonsAPI, itemsAPI, taxesAPI, currenciesAPI, creditNotesAPI, reportingTagsAPI, locationsAPI, transactionNumberSeriesAPI } from "../../../../services/api";
+import { getCachedListResponse } from "../../../../services/swrListCache";
+import { customersAPI, salespersonsAPI, itemsAPI, taxesAPI, currenciesAPI, creditNotesAPI, reportingTagsAPI, locationsAPI, transactionNumberSeriesAPI, chartOfAccountsAPI } from "../../../../services/api";
 import { getToken } from "../../../../services/auth";
+import { getChartAccountsFromResponse, getAccountOptionLabel } from "../../../purchases/shared/accountOptions";
 
 const accountCategories = {
   "Other Current Asset": [
@@ -114,6 +115,7 @@ const accountCategories = {
 
 const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const CUSTOMER_LIST_CACHE_ENDPOINT = "/customers?page=1&limit=1000&search=";
 
 interface CreditNoteDocument {
   id: number;
@@ -308,6 +310,7 @@ export default function NewCreditNote() {
   const [taxOptions, setTaxOptions] = useState<Tax[]>([]);
   const [salespersons, setSalespersons] = useState<any[]>([]);
   const [availableItems, setAvailableItems] = useState<any[]>([]);
+  const [chartAccounts, setChartAccounts] = useState<any[]>([]);
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -355,6 +358,8 @@ export default function NewCreditNote() {
 
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [dateCalendar, setDateCalendar] = useState(new Date(2025, 11, 29));
+  const [isAccountsReceivableDropdownOpen, setIsAccountsReceivableDropdownOpen] = useState(false);
+  const [accountsReceivableSearch, setAccountsReceivableSearch] = useState("");
 
   const [openItemDropdowns, setOpenItemDropdowns] = useState<Record<string | number, boolean>>({});
   const [openAccountDropdowns, setOpenAccountDropdowns] = useState<Record<string | number, boolean>>({});
@@ -393,6 +398,8 @@ export default function NewCreditNote() {
   const customerDropdownRef = useRef<HTMLDivElement>(null);
   const salespersonDropdownRef = useRef<HTMLDivElement>(null);
   const datePickerRef = useRef<HTMLDivElement>(null);
+  const accountsReceivableDropdownRef = useRef<HTMLDivElement>(null);
+  const warehouseDropdownRef = useRef<HTMLDivElement>(null);
   const itemDropdownRefs = useRef<Record<string | number, HTMLDivElement | null>>({});
   const accountDropdownRefs = useRef<Record<string | number, HTMLDivElement | null>>({});
   const taxDropdownRefs = useRef<Record<string | number, HTMLDivElement | null>>({});
@@ -481,6 +488,14 @@ export default function NewCreditNote() {
     setCustomerSearchPage(1);
   };
 
+  // Automatically search customers in the modal when criteria/term changes or when opened
+  useEffect(() => {
+    if (customerSearchModalOpen) {
+      handleCustomerSearch();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerSearchTerm, customerSearchCriteria, customerSearchModalOpen, customers]);
+
   // Pagination calculations
   const customerResultsPerPage = 10;
   const customerStartIndex = (customerSearchPage - 1) * customerResultsPerPage;
@@ -497,13 +512,12 @@ export default function NewCreditNote() {
 
         // Load customers from backend
         try {
-          const customersResponse = await customersAPI.getAll();
-          if (customersResponse && customersResponse.success && customersResponse.data) {
-            const normalizedCustomers = customersResponse.data.map((c: any) => ({
-              ...c,
-              id: c._id || c.id,
-              name: c.displayName || c.companyName || `${c.firstName || ''} ${c.lastName || ''}`.trim() || "Unknown"
-            }));
+          const customersResponse = await getCachedListResponse(
+            CUSTOMER_LIST_CACHE_ENDPOINT,
+            async () => buildCustomerCachePayload(await customersAPI.getAll({ page: 1, limit: 1000, search: "" })),
+          );
+          if (customersResponse && ((customersResponse as any).items || (customersResponse as any).data)) {
+            const normalizedCustomers = (((customersResponse as any).items || (customersResponse as any).data || []) as any[]).map(normalizeCustomer);
             loadedCustomers = normalizedCustomers;
             setCustomers(normalizedCustomers);
           }
@@ -521,6 +535,22 @@ export default function NewCreditNote() {
           }
         } catch (error) {
           console.error('Error loading salespersons:', error);
+        }
+
+        // Load chart of accounts for account dropdowns
+        try {
+          const chartAccountsResponse = await chartOfAccountsAPI.getAccounts({ limit: 1000 });
+          const normalizedChartAccounts = getChartAccountsFromResponse(chartAccountsResponse)
+            .map((account: any) => ({
+              ...account,
+              id: account?._id || account?.id,
+              label: getAccountOptionLabel(account),
+            }))
+            .filter((account: any) => Boolean(account.label));
+          setChartAccounts(normalizedChartAccounts);
+        } catch (error) {
+          console.error("Error loading chart of accounts:", error);
+          setChartAccounts([]);
         }
 
         // Load taxes from backend
@@ -804,6 +834,12 @@ export default function NewCreditNote() {
                 termsAndConditions: (existing as any).termsAndConditions || (existing as any).terms || "",
                 documents: mappedDocuments
               }));
+              if ((existing as any).warehouseLocation) {
+                setWarehouseLocation(String((existing as any).warehouseLocation));
+              }
+              if ((existing as any).priceList) {
+                setPriceList(String((existing as any).priceList));
+              }
 
               const customerId = String(
                 (typeof existing.customer === "object" ? (existing.customer as any)?._id || (existing.customer as any)?.id : existing.customer) ||
@@ -923,10 +959,14 @@ export default function NewCreditNote() {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
+      const target = event.target as Node;
       if (customerDropdownRef.current && !customerDropdownRef.current.contains(target)) setIsCustomerDropdownOpen(false);
       if (salespersonDropdownRef.current && !salespersonDropdownRef.current.contains(target)) setIsSalespersonDropdownOpen(false);
       if (datePickerRef.current && !datePickerRef.current.contains(target)) setIsDatePickerOpen(false);
+      if (accountsReceivableDropdownRef.current && !accountsReceivableDropdownRef.current.contains(target)) {
+        setIsAccountsReceivableDropdownOpen(false);
+      }
+      if (warehouseDropdownRef.current && !warehouseDropdownRef.current.contains(target)) setIsWarehouseDropdownOpen(false);
       if (uploadDropdownRef.current && !uploadDropdownRef.current.contains(target)) setIsUploadDropdownOpen(false);
       Object.entries(accountDropdownRefs.current).forEach(([key, ref]) => {
         if (ref && !ref.contains(target)) {
@@ -951,7 +991,17 @@ export default function NewCreditNote() {
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [openItemDropdowns]);
+  }, [
+    openItemDropdowns,
+    openAccountDropdowns,
+    openTaxDropdowns,
+    isCustomerDropdownOpen,
+    isSalespersonDropdownOpen,
+    isDatePickerOpen,
+    isAccountsReceivableDropdownOpen,
+    isWarehouseDropdownOpen,
+    isUploadDropdownOpen
+  ]);
 
   useEffect(() => {
     const fetchDocuments = async () => {
@@ -1097,8 +1147,52 @@ export default function NewCreditNote() {
     setIsSalespersonDropdownOpen(false);
     setIsWarehouseDropdownOpen(false);
     setIsPriceListDropdownOpen(false);
+    setIsAccountsReceivableDropdownOpen(false);
     setIsBulkActionsOpen(false);
   };
+
+  const chartAccountOptions = useMemo(() => {
+    return (Array.isArray(chartAccounts) ? chartAccounts : [])
+      .map((account: any) => {
+        const label = getAccountOptionLabel(account);
+        return {
+          ...account,
+          id: account?._id || account?.id,
+          label,
+          searchText: [
+            label,
+            account?.accountType,
+            account?.type,
+            account?.accountCode,
+            account?.code
+          ]
+            .map((value) => String(value || "").trim().toLowerCase())
+            .filter(Boolean)
+            .join(" ")
+        };
+      })
+      .filter((account: any) => Boolean(account.label))
+      .sort((a: any, b: any) => a.label.localeCompare(b.label));
+  }, [chartAccounts]);
+
+  const groupedChartAccountOptions = useMemo(() => {
+    const groups = new Map<string, any[]>();
+    chartAccountOptions.forEach((account: any) => {
+      const groupLabel = String(account?.accountType || account?.type || "Other Accounts").trim() || "Other Accounts";
+      if (!groups.has(groupLabel)) groups.set(groupLabel, []);
+      groups.get(groupLabel)!.push(account);
+    });
+    return Array.from(groups.entries())
+      .map(([label, accounts]) => ({ label, accounts }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [chartAccountOptions]);
+
+  const filteredAccountsReceivableOptions = useMemo(() => {
+    const exactMatches = chartAccountOptions.filter((account: any) =>
+      String(account.label || "").trim().toLowerCase() === "accounts receivable"
+    );
+    return exactMatches;
+  }, [accountsReceivableSearch, chartAccountOptions]);
 
   const getEntityId = (entity: any): string => {
     const raw = entity?._id || entity?.id;
@@ -1141,9 +1235,36 @@ export default function NewCreditNote() {
     name: salesperson?.name || ""
   });
 
+  const buildCustomerCachePayload = (response: any) => {
+    const rows = Array.isArray(response?.items)
+      ? response.items
+      : Array.isArray(response?.data)
+        ? response.data
+        : [];
+
+    return {
+      items: rows,
+      pagination: response?.pagination || {
+        total: rows.length,
+        page: 1,
+        limit: 1000,
+        pages: Math.max(1, Math.ceil(rows.length / 1000)),
+      },
+      total: Number(response?.total ?? response?.pagination?.total ?? rows.length ?? 0) || 0,
+      page: Number(response?.page ?? response?.pagination?.page ?? 1) || 1,
+      limit: Number(response?.limit ?? response?.pagination?.limit ?? 1000) || 1000,
+      totalPages: Number(response?.totalPages ?? response?.pagination?.pages ?? Math.max(1, Math.ceil(rows.length / 1000))) || 1,
+      version_id: response?.version_id,
+      last_updated: response?.last_updated,
+    };
+  };
+
   const reloadCustomersForCreditNote = async () => {
-    const customersResponse = await customersAPI.getAll();
-    const normalizedCustomers = ((customersResponse?.data || []) as any[]).map(normalizeCustomer);
+    const customersResponse = await getCachedListResponse(
+      CUSTOMER_LIST_CACHE_ENDPOINT,
+      async () => buildCustomerCachePayload(await customersAPI.getAll({ page: 1, limit: 1000, search: "" })),
+    );
+    const normalizedCustomers = (((customersResponse as any)?.items || (customersResponse as any)?.data || []) as any[]).map(normalizeCustomer);
     setCustomers(normalizedCustomers);
     return normalizedCustomers;
   };
@@ -1717,7 +1838,16 @@ export default function NewCreditNote() {
       const data = {
         creditNoteNumber: effectiveCreditNoteNumber || formData.creditNoteNumber,
         customer: selectedCustomer?._id || selectedCustomer?.id || (formData as any).customer,
+        customerName: formData.customerName || selectedCustomer?.displayName || selectedCustomer?.name || "",
         date: formData.creditNoteDate ? new Date(formData.creditNoteDate.split('/').reverse().join('-')) : new Date(),
+        accountsReceivable: formData.accountsReceivable || "",
+        salesperson: formData.salesperson || "",
+        subject: formData.subject || "",
+        warehouseLocation: warehouseLocation || "",
+        priceList: priceList || "",
+        customerNotes: formData.customerNotes || "",
+        termsAndConditions: formData.termsAndConditions || "",
+        terms: formData.termsAndConditions || "",
         reason: (formData as any).reason || "",
         items: formData.items
           .filter(item => item.itemId)
@@ -1732,11 +1862,13 @@ export default function NewCreditNote() {
               item: item.itemId,
               name: item.itemDetails,
               description: item.itemDetails,
+              account: item.account || "",
               quantity: quantity,
               unitPrice: rate,
               taxRate: taxRate,
               taxAmount: taxAmount,
-              total: item.amount
+              total: item.amount,
+              reportingTags: Array.isArray(item.reportingTags) ? item.reportingTags : []
             };
           }),
         subtotal: formData.subTotal || 0,
@@ -1748,7 +1880,19 @@ export default function NewCreditNote() {
         total: formData.total || 0,
         currency: formData.currency || "USD",
         status: status,
-        notes: formData.customerNotes || ""
+        notes: formData.customerNotes || "",
+        attachedFiles: formData.documents.map((doc) => ({
+          id: String((doc as any).id || Date.now()),
+          name: String(doc.name || "Attachment"),
+          size: Number((doc as any).size || 0) || 0,
+          type: String((doc as any).type || ""),
+          mimeType: String((doc as any).mimeType || ""),
+          preview: String((doc as any).preview || ""),
+          url: String((doc as any).url || ""),
+          documentId: String((doc as any).documentId || ""),
+          uploadedAt: new Date(),
+          uploadedBy: "User"
+        }))
       };
 
       if (isEditMode) {
@@ -1899,7 +2043,7 @@ export default function NewCreditNote() {
                   </div>
                   <button
                     type="button"
-                    className="w-10 bg-[#3b82f6] text-white rounded-r hover:bg-[#2563eb] flex items-center justify-center border border-[#3b82f6]"
+                    className="w-10 text-white rounded-r flex items-center justify-center border" style={{ backgroundColor: "#156372", borderColor: "#156372" }} onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#0D4A52")} onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#156372")}
                     onClick={(e) => {
                       e.stopPropagation();
                       setCustomerSearchModalOpen(true);
@@ -2073,6 +2217,66 @@ export default function NewCreditNote() {
               </div>
             </div>
 
+            {/* Accounts Receivable */}
+            <div className="flex items-center pt-4 border-t border-gray-100">
+              <label className="w-48 text-sm font-medium text-gray-700 flex items-center gap-1">
+                Accounts Receivable <Info size={14} className="text-gray-400" />
+              </label>
+              <div className="flex-1 max-w-xs relative" ref={accountsReceivableDropdownRef}>
+                <div
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm text-gray-700 flex justify-between items-center bg-white cursor-pointer"
+                  onClick={() => {
+                    if (isAccountsReceivableDropdownOpen) {
+                      setIsAccountsReceivableDropdownOpen(false);
+                    } else {
+                      closeAllDropdownMenus();
+                      setIsAccountsReceivableDropdownOpen(true);
+                    }
+                  }}
+                >
+                  <span className={formData.accountsReceivable ? "text-gray-900" : "text-gray-400"}>
+                    {formData.accountsReceivable || "Select account"}
+                  </span>
+                  <ChevronDown size={14} className="text-gray-400" />
+                </div>
+                {isAccountsReceivableDropdownOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg z-50 flex flex-col">
+                    <div className="flex items-center gap-2 p-2 border-b border-gray-200 sticky top-0 bg-white">
+                      <Search size={14} className="text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Search"
+                        value={accountsReceivableSearch}
+                        onChange={(e) => setAccountsReceivableSearch(e.target.value)}
+                        className="flex-1 text-sm focus:outline-none"
+                        autoFocus
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                    <div className="max-h-60 overflow-y-auto">
+                      {filteredAccountsReceivableOptions.length > 0 ? (
+                        filteredAccountsReceivableOptions.map((account: any) => (
+                          <div
+                            key={String(account.id || account._id || account.label)}
+                            className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer truncate"
+                            onClick={() => {
+                              closeAllDropdownMenus();
+                              setFormData(prev => ({ ...prev, accountsReceivable: account.label }));
+                              setAccountsReceivableSearch("");
+                            }}
+                          >
+                            {account.label}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="px-4 py-2 text-sm text-gray-500 italic">No accounts found</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Salesperson */}
             <div className="flex items-center pt-4 border-t border-gray-100">
               <label className="w-48 text-sm font-medium text-gray-700">Salesperson</label>
@@ -2159,7 +2363,7 @@ export default function NewCreditNote() {
             {/* Item Table Section */}
             <div className="pt-10">
               <div className="mb-4 flex flex-wrap items-center gap-6 text-sm text-gray-600">
-                <label className="flex items-center gap-3">
+                <label className="flex items-center gap-3" ref={warehouseDropdownRef}>
                   <span className="text-gray-600">Warehouse Location</span>
                   <div className="relative">
                     <button
@@ -2209,64 +2413,6 @@ export default function NewCreditNote() {
                                 {loc}
                               </button>
                             ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </label>
-                <label className="flex items-center gap-3">
-                  <span className="text-gray-600">Select Price List</span>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      className="h-9 min-w-[180px] border-b-2 border-gray-200 bg-transparent text-left text-sm text-gray-700 focus:border-[#156372] focus:outline-none flex items-center justify-between"
-                      onClick={() => {
-                        if (isPriceListDropdownOpen) {
-                          setIsPriceListDropdownOpen(false);
-                        } else {
-                          closeAllDropdownMenus();
-                          setIsPriceListDropdownOpen(true);
-                        }
-                      }}
-                    >
-                      <span>{priceList || "Select Price List"}</span>
-                      <ChevronDown size={14} className={`text-gray-400 transition-transform ${isPriceListDropdownOpen ? "rotate-180" : ""}`} />
-                    </button>
-                    {isPriceListDropdownOpen && (
-                      <div className="absolute left-0 top-full mt-2 w-[220px] rounded-md border border-gray-200 bg-white shadow-lg z-[200]">
-                        <div className="p-2 border-b border-gray-100">
-                          <div className="relative">
-                            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input
-                              type="text"
-                              value={priceListSearch}
-                              onChange={(e) => setPriceListSearch(e.target.value)}
-                              placeholder="Search"
-                              className="h-8 w-full rounded-md border border-gray-200 pl-8 pr-2 text-xs outline-none focus:border-[#156372]"
-                            />
-                          </div>
-                        </div>
-                        <div className="max-h-[200px] overflow-y-auto">
-                          {availablePriceLists
-                            .filter((pl) => pl.toLowerCase().includes(priceListSearch.toLowerCase()))
-                            .map((pl) => (
-                              <button
-                                key={pl}
-                                type="button"
-                                className={`w-full px-3 py-2 text-left text-sm ${priceList === pl ? "bg-slate-100 text-gray-900" : "text-gray-700 hover:bg-gray-50"}`}
-                                onClick={() => {
-                                  closeAllDropdownMenus();
-                                  setPriceList(pl);
-                                  setPriceListSearch("");
-                                  (document.activeElement as HTMLElement | null)?.blur?.();
-                                }}
-                              >
-                                {pl}
-                              </button>
-                            ))}
-                          {availablePriceLists.length === 0 && (
-                            <div className="px-3 py-2 text-xs text-gray-500">No price lists found</div>
-                          )}
                         </div>
                       </div>
                     )}
@@ -2540,31 +2686,41 @@ export default function NewCreditNote() {
                                   </div>
                                 </div>
                                 <div className="max-h-[260px] overflow-y-auto py-1">
-                                  {Object.entries(accountCategories)
-                                    .map(([category, accounts]) => {
+                                  {(groupedChartAccountOptions.length > 0 ? groupedChartAccountOptions : Object.entries(accountCategories).map(([category, accounts]) => ({
+                                    label: category,
+                                    accounts: accounts.map((account) => ({
+                                      id: account,
+                                      label: account,
+                                      searchText: `${account} ${category}`.toLowerCase(),
+                                    }))
+                                  })))
+                                    .map(({ label: category, accounts }) => {
                                       const search = (accountSearches[item.id] || "").trim().toLowerCase();
-                                      const filteredAccounts = accounts.filter((account) =>
-                                        !search || account.toLowerCase().includes(search) || category.toLowerCase().includes(search)
+                                      const filteredAccounts = accounts.filter((account: any) =>
+                                        !search || String(account.searchText || account.label || "").includes(search)
                                       );
                                       if (filteredAccounts.length === 0) return null;
                                       return (
                                         <div key={category}>
                                           <div className="px-4 py-2 text-sm font-semibold text-gray-800">{category}</div>
-                                          {filteredAccounts.map((account) => (
-                                            <button
-                                              key={account}
-                                              type="button"
-                                              className={`block w-full px-4 py-2 text-left text-sm ${item.account === account ? "bg-[#4285f4] text-white" : "text-gray-700 hover:bg-gray-50"}`}
-                                              onClick={() => {
-                                                closeAllDropdownMenus();
-                                                handleItemChange(item.id, "account", account);
-                                                setOpenAccountDropdowns(prev => ({ ...prev, [item.id]: false }));
-                                                setAccountSearches(prev => ({ ...prev, [item.id]: "" }));
-                                              }}
-                                            >
-                                              {account}
-                                            </button>
-                                          ))}
+                                          {filteredAccounts.map((account: any) => {
+                                            const accountLabel = String(account.label || "").trim();
+                                            return (
+                                              <button
+                                                key={String(account.id || accountLabel)}
+                                                type="button"
+                                                className={`block w-full px-4 py-2 text-left text-sm ${item.account === accountLabel ? "bg-[#4285f4] text-white" : "text-gray-700 hover:bg-gray-50"}`}
+                                                onClick={() => {
+                                                  closeAllDropdownMenus();
+                                                  handleItemChange(item.id, "account", accountLabel);
+                                                  setOpenAccountDropdowns(prev => ({ ...prev, [item.id]: false }));
+                                                  setAccountSearches(prev => ({ ...prev, [item.id]: "" }));
+                                                }}
+                                              >
+                                                {accountLabel}
+                                              </button>
+                                            );
+                                          })}
                                         </div>
                                       );
                                     })}
@@ -4617,4 +4773,6 @@ export default function NewCreditNote() {
     </div >
   );
 }
+
+
 

@@ -204,7 +204,7 @@ const ApplyToInvoices: React.FC<ApplyToInvoicesProps> = ({ isOpen, onClose, cred
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
+        <div className="fixed inset-0 z-[2500] overflow-y-auto">
             <div className="flex min-h-full items-start justify-center px-4 pt-8 pb-6 text-center sm:px-6 lg:px-8">
                 <div className="fixed inset-0 transition-opacity" aria-hidden="true">
                     <div className="absolute inset-0 bg-gray-500 opacity-75" onClick={onClose}></div>

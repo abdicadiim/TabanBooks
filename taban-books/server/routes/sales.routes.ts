@@ -183,6 +183,7 @@ router.get("/credit-notes/next-number", salesController.getNextCreditNoteNumber)
 router.get("/credit-notes", salesController.getAllCreditNotes);
 router.get("/credit-notes/:id", salesController.getCreditNoteById);
 router.post("/credit-notes", salesController.createCreditNote);
+router.post("/credit-notes/:id/email", salesController.sendCreditNoteEmail);
 router.put("/credit-notes/:id", salesController.updateCreditNote);
 router.patch("/credit-notes/:id", salesController.updateCreditNote);
 router.delete("/credit-notes/:id", salesController.deleteCreditNote);

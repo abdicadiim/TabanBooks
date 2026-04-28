@@ -15,7 +15,8 @@ import {
   Image as ImageIcon,
   Paperclip,
   FileText,
-  HelpCircle
+  HelpCircle,
+  Loader2
 } from "lucide-react";
 import { getCreditNoteById } from "../../salesModel";
 import { creditNotesAPI, senderEmailsAPI, customersAPI } from "../../../services/api";
@@ -612,8 +613,12 @@ ${organizationName}`,
           <button
             className="px-4 py-2 bg-[#156372] text-white rounded-md text-sm font-medium cursor-pointer hover:bg-[#0f4e5a]"
             onClick={handleSend}
+            disabled={isSending}
           >
-            Send
+            <span className="inline-flex items-center gap-2">
+              {isSending ? <Loader2 size={16} className="animate-spin" /> : null}
+              {isSending ? "Sending..." : "Send"}
+            </span>
           </button>
         </div>
       </div>

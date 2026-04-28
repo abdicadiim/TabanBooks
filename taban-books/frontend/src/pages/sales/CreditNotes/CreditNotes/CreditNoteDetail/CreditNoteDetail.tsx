@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-toastify";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { getCreditNoteById, getCreditNotes, deleteCreditNote, saveCreditNote, CreditNote, AttachedFile, updateCreditNote } from "../../salesModel";
-import { currenciesAPI, bankAccountsAPI, chartOfAccountsAPI, refundsAPI, creditNotesAPI, invoicesAPI, settingsAPI, customersAPI } from "../../../services/api";
+import { currenciesAPI, bankAccountsAPI, chartOfAccountsAPI, refundsAPI, creditNotesAPI, debitNotesAPI, invoicesAPI, settingsAPI, customersAPI } from "../../../services/api";
 import CreditNoteDeleteModal from "../CreditNoteDeleteModal";
 import ApplyToInvoices from "./ApplyToInvoices";
 import CreditNoteCommentsPanel from "./CreditNoteCommentsPanel";
@@ -14,7 +14,8 @@ import {
   ChevronDown, ChevronUp, ChevronRight, ChevronLeft, Plus, Filter,
   ArrowUpDown, CheckSquare, Square, Search, Star, Mail, MessageSquare, Calendar,
   HelpCircle, Bell, Monitor, MessageCircle, ArrowRight, Volume2, Paperclip, FileUp, Bold, Italic, Underline,
-  Settings, Upload, User, ChevronDown as ChevronDownIcon, CheckCircle, Trash2, ExternalLink, Loader2, AlertTriangle
+  Settings, Upload, User, ChevronDown as ChevronDownIcon, CheckCircle, Trash2, ExternalLink, Loader2, AlertTriangle,
+  Sparkles, Copy, BookOpen, RotateCcw
 } from "lucide-react";
 
 const statusFilters = [
@@ -49,6 +50,7 @@ export default function CreditNoteDetail() {
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
   const [baseCurrency, setBaseCurrency] = useState("USD");
   const [invoicesLookup, setInvoicesLookup] = useState<Record<string, any>>({});
+  const [debitNotesLookup, setDebitNotesLookup] = useState<Record<string, any>>({});
   const [isCreditAppliedInvoicesOpen, setIsCreditAppliedInvoicesOpen] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isSendDropdownOpen, setIsSendDropdownOpen] = useState(false);
@@ -334,11 +336,21 @@ export default function CreditNoteDetail() {
         }
 
         if (chartAccRes && chartAccRes.success && Array.isArray(chartAccRes.data)) {
-          const relevantCoa = chartAccRes.data.filter((acc: any) =>
-            acc.name.toLowerCase().includes('cash') ||
-            acc.name.toLowerCase().includes('petty') ||
-            acc.name.toLowerCase().includes('undeposited')
-          );
+          const relevantCoa = chartAccRes.data.filter((acc: any) => {
+            const accountName = String(
+              acc?.name ||
+              acc?.accountName ||
+              acc?.title ||
+              acc?.label ||
+              ""
+            ).toLowerCase();
+
+            return (
+              accountName.includes("cash") ||
+              accountName.includes("petty") ||
+              accountName.includes("undeposited")
+            );
+          });
           combinedAccounts = [...combinedAccounts, ...relevantCoa];
         }
 
@@ -404,7 +416,23 @@ export default function CreditNoteDetail() {
         console.error("Failed to load invoices lookup for credit note applications:", error);
       }
     };
+
+    const fetchDebitNotesLookup = async () => {
+      try {
+        const res = await debitNotesAPI.getAll({ limit: 2000 });
+        const rows = Array.isArray((res as any)?.data) ? (res as any).data : [];
+        const map: Record<string, any> = {};
+        rows.forEach((row: any) => {
+          const rowId = String(row?.id || row?._id || row?.debitNoteId || "").trim();
+          if (rowId) map[rowId] = row;
+        });
+        setDebitNotesLookup(map);
+      } catch (error) {
+        console.error("Failed to load debit notes lookup for credit note applications:", error);
+      }
+    };
     fetchInvoicesLookup();
+    fetchDebitNotesLookup();
   }, [id, navigate]);
 
   // Initialize refund data when modal opens
@@ -554,11 +582,63 @@ export default function CreditNoteDetail() {
 
   const remainingCreditBalance = toNumber((creditNote as any)?.balance ?? (creditNote as any)?.total ?? 0);
   const creditNoteStatus = String((creditNote as any)?.status || "").toLowerCase();
+  const isDraftCreditNote = creditNoteStatus === "draft";
   const canApplyToInvoices = Boolean(creditNote) && remainingCreditBalance > 0 && creditNoteStatus !== "closed";
+
+  const getCreditNoteJournalId = () => {
+    const candidate = (creditNote as any)?.journalEntry;
+    if (!candidate) return "";
+    if (typeof candidate === "string") return candidate.trim();
+    return String(candidate?._id || candidate?.id || candidate?.journalId || "").trim();
+  };
 
   const handleSendEmail = () => {
     setIsSendDropdownOpen(false);
     navigate(`/sales/credit-notes/${id}/email`);
+  };
+
+  const handleConvertToOpen = async () => {
+    if (!creditNote?.id) return;
+    setIsMoreMenuOpen(false);
+    try {
+      const updatedNote = await creditNotesAPI.update(creditNote.id, { status: "open" });
+      if (updatedNote) {
+        setCreditNote((prev) => mergeCreditNoteLike(prev || creditNote, { ...updatedNote, status: "open" }) as CreditNote);
+      } else {
+        setCreditNote((prev) => prev ? ({ ...prev, status: "open" } as CreditNote) : prev);
+      }
+      toast.success("Credit note converted to Open.");
+    } catch (error: any) {
+      console.error("Failed to convert draft credit note to open:", error);
+      toast(error?.message || "Failed to convert credit note to Open.");
+    }
+  };
+
+  const handleVoidCreditNote = async () => {
+    if (!creditNote?.id) return;
+    try {
+      const updatedNote = await creditNotesAPI.update(creditNote.id, { status: "void" });
+      if (updatedNote) {
+        setCreditNote((prev) => mergeCreditNoteLike(prev || creditNote, { ...updatedNote, status: "void" }) as CreditNote);
+      } else {
+        setCreditNote((prev) => prev ? ({ ...prev, status: "void" } as CreditNote) : prev);
+      }
+      setIsMoreMenuOpen(false);
+      toast.success("Credit note marked as Void.");
+    } catch (error: any) {
+      console.error("Failed to void credit note:", error);
+      toast(error?.message || "Failed to void credit note.");
+    }
+  };
+
+  const handleViewJournal = () => {
+    setIsMoreMenuOpen(false);
+    const journalId = getCreditNoteJournalId();
+    if (journalId) {
+      navigate(`/accountant/manual-journals/${journalId}`);
+      return;
+    }
+    navigate("/accountant/manual-journals");
   };
 
   const handleScheduleEmail = () => {
@@ -680,16 +760,33 @@ Best regards`,
     const source = (creditNote as any)?.allocations || (creditNote as any)?.appliedInvoices || [];
     const rows = (Array.isArray(source) ? source : [])
       .map((row: any, index: number) => {
-        const invoiceId = String(row?.invoiceId || row?.id || "").trim();
-        const linked = invoiceId ? invoicesLookup[invoiceId] : null;
+        const documentType = String(row?.documentType || row?.type || row?.kind || row?.module || row?.source || "").toLowerCase().trim();
+        const isDebitNote = documentType.includes("debit") || Boolean(row?.debitNote || row?.debitnote || row?.debit_note || row?.debitNoteId);
+        const invoiceId = String(row?.invoiceId || (!isDebitNote ? row?.id : "") || "").trim();
+        const debitNoteId = String(row?.debitNoteId || (isDebitNote ? row?.id : "") || "").trim();
+        const linkedInvoice = invoiceId ? invoicesLookup[invoiceId] : null;
+        const linkedDebitNote = debitNoteId ? debitNotesLookup[debitNoteId] : null;
         const invoiceNumber =
-          String(row?.invoiceNumber || row?.number || linked?.invoiceNumber || linked?.number || "").trim() || "-";
+          String(
+            row?.invoiceNumber ||
+            row?.debitNoteNumber ||
+            row?.documentNumber ||
+            row?.docNumber ||
+            row?.number ||
+            linkedInvoice?.invoiceNumber ||
+            linkedInvoice?.number ||
+            linkedDebitNote?.debitNoteNumber ||
+            linkedDebitNote?.invoiceNumber ||
+            linkedDebitNote?.number ||
+            ""
+          ).trim() || "-";
         const amount = Number(row?.amount || row?.appliedAmount || 0) || 0;
         const date = String(row?.date || row?.appliedDate || row?.createdAt || "").trim();
         return {
-          rowKey: `${invoiceId || "row"}-${index}`,
+          rowKey: `${invoiceId || debitNoteId || "row"}-${index}`,
           index,
           invoiceId,
+          debitNoteId,
           invoiceNumber,
           amount,
           date
@@ -701,7 +798,7 @@ Best regards`,
       (a: any, b: any) =>
         new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
     );
-  }, [creditNote, invoicesLookup]);
+  }, [creditNote, invoicesLookup, debitNotesLookup]);
 
   const handleSaveAllocations = async (allocations: any[]) => {
     try {
@@ -1681,7 +1778,7 @@ Best regards`,
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors border-r border-gray-200 pr-4"
               >
                 <FileText size={16} />
-                PDF
+                PDF/Print
                 <ChevronDown size={14} />
               </button>
               {isPdfDropdownOpen && (
@@ -1693,7 +1790,7 @@ Best regards`,
                 </div>
               )}
             </div>
-            {canApplyToInvoices && (
+            {!isDraftCreditNote && canApplyToInvoices && (
               <button
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors border-r border-gray-200 pr-4"
                 onClick={handleApplyToInvoices}
@@ -1702,6 +1799,13 @@ Best regards`,
                 Apply to Invoices
               </button>
             )}
+            <button
+              onClick={handleRefund}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors border-r border-gray-200 pr-4"
+            >
+              <RotateCcw size={16} />
+              Refund
+            </button>
             <div className="relative" ref={moreMenuRef}>
               <button
                 onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
@@ -1711,8 +1815,32 @@ Best regards`,
               </button>
               {isMoreMenuOpen && (
                 <div className="absolute top-full right-0 mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-xl z-50 min-w-[150px] overflow-hidden">
-                  <div className="p-3 cursor-pointer text-sm transition-colors" style={{ color: "#dc2626" }} onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(220, 38, 38, 0.1)"} onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"} onClick={handleDelete}>Delete</div>
-                  <div className="p-3 cursor-pointer text-sm text-gray-700 transition-colors" style={{ "--hover-bg": "rgba(21, 99, 114, 0.1)" } as any} onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"} onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"} onClick={handleClone}>Clone</div>
+                  <div className="p-3 cursor-pointer text-sm text-gray-700 transition-colors flex items-center gap-2" style={{ "--hover-bg": "rgba(21, 99, 114, 0.1)" } as any} onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"} onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"} onClick={handleClone}>
+                    <Copy size={14} />
+                    Clone
+                  </div>
+                  {isDraftCreditNote ? (
+                    <div className="p-3 cursor-pointer text-sm text-gray-700 transition-colors flex items-center gap-2" onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"} onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"} onClick={handleConvertToOpen}>
+                      <CheckCircle size={14} />
+                      Convert to Open
+                    </div>
+                  ) : null}
+                  <div className="p-3 cursor-pointer text-sm text-gray-700 transition-colors flex items-center gap-2" onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"} onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"} onClick={() => { setIsMoreMenuOpen(false); handleApplyToInvoices(); }}>
+                    <ArrowRight size={14} />
+                    Apply to Invoices
+                  </div>
+                  <div className="p-3 cursor-pointer text-sm text-gray-700 transition-colors flex items-center gap-2" onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"} onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"} onClick={handleVoidCreditNote}>
+                    <X size={14} />
+                    Void
+                  </div>
+                  <div className="p-3 cursor-pointer text-sm text-gray-700 transition-colors flex items-center gap-2" onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"} onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"} onClick={handleViewJournal}>
+                    <BookOpen size={14} />
+                    View Journal
+                  </div>
+                  <div className="p-3 cursor-pointer text-sm transition-colors flex items-center gap-2" style={{ color: "#dc2626" }} onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(220, 38, 38, 0.1)"} onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"} onClick={handleDelete}>
+                    <Trash2 size={14} />
+                    Delete
+                  </div>
                 </div>
               )}
             </div>
@@ -1721,6 +1849,38 @@ Best regards`,
 
         {/* Credit Note Document */}
         <div className="flex-1 overflow-y-auto p-3 bg-gray-50">
+          {isDraftCreditNote && (
+            <div className="w-full max-w-[1280px] mx-auto mb-3">
+              <div className="rounded-md border border-slate-200 bg-white px-5 py-4 shadow-sm">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+                  <div className="flex items-start gap-3 text-[14px] text-slate-700">
+                    <Sparkles size={18} className="mt-0.5 shrink-0 text-[#8b5cf6]" />
+                    <div>
+                      <span className="font-semibold text-slate-900">WHAT'S NEXT?</span>{" "}
+                      Go ahead and email this credit note to your customer or simply convert it to open.
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 md:ml-auto">
+                    <button
+                      type="button"
+                      onClick={handleSendEmail}
+                      className="rounded-md bg-[#22c55e] px-3 py-1.5 text-[13px] font-semibold text-white shadow-sm hover:bg-[#16a34a]"
+                    >
+                      Send Credit Note
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConvertToOpen}
+                      className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Convert to Open
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {creditAppliedInvoicesRows.length > 0 && (
             <div className="w-full max-w-[1280px] mx-auto mb-3 border border-gray-200 rounded-md bg-white overflow-hidden">
               <button
@@ -1756,7 +1916,15 @@ Best regards`,
                             <button
                               type="button"
                               className="text-[#3b82f6] hover:underline"
-                              onClick={() => row.invoiceId && navigate(`/sales/invoices/${row.invoiceId}`)}
+                              onClick={() => {
+                                if (row.debitNoteId) {
+                                  navigate(`/sales/debit-notes/${row.debitNoteId}`);
+                                  return;
+                                }
+                                if (row.invoiceId) {
+                                  navigate(`/sales/invoices/${row.invoiceId}`);
+                                }
+                              }}
                             >
                               {row.invoiceNumber}
                             </button>

@@ -59,7 +59,23 @@ type RetainerRow = {
   updatedAtTs: number;
   statusKey: string;
   drawStatusKey: string;
-  sourceInvoice: RetainerInvoiceRecord;
+  sourceInvoice: RetainerSourceInvoice;
+};
+
+type RetainerSourceInvoice = RetainerInvoiceRecord & {
+  invoiceNumber?: string;
+  invoiceDate?: string;
+  date?: string;
+  dueDate?: string;
+  items?: any[];
+  customerAddress?: any;
+  billingAddress?: any;
+  shippingChargeTax?: string;
+  customer?: any;
+  balance?: number;
+  balanceDue?: number;
+  total?: number;
+  amount?: number;
 };
 
 type RetainerColumnKey =
@@ -306,7 +322,7 @@ const createDefaultAdvancedSearchState = (filterView = "all"): AdvancedSearchSta
 
 const normalizeValue = (value: any) => String(value || "").trim().toLowerCase();
 
-const invoiceDescriptionText = (invoice: Invoice) => {
+const invoiceDescriptionText = (invoice: RetainerSourceInvoice) => {
   const itemDescriptions = Array.isArray(invoice.items)
     ? invoice.items
         .flatMap((item: any) => [
@@ -321,7 +337,7 @@ const invoiceDescriptionText = (invoice: Invoice) => {
   return normalizeValue(itemDescriptions.join(" "));
 };
 
-const invoiceTaxText = (invoice: Invoice) => {
+const invoiceTaxText = (invoice: RetainerSourceInvoice) => {
   const itemTaxes = Array.isArray(invoice.items)
     ? invoice.items
         .flatMap((item: any) => [
@@ -337,7 +353,7 @@ const invoiceTaxText = (invoice: Invoice) => {
   return normalizeValue([invoice.shippingChargeTax, ...itemTaxes].join(" "));
 };
 
-const invoiceBillingAddressText = (invoice: Invoice, field: string) => {
+const invoiceBillingAddressText = (invoice: RetainerSourceInvoice, field: string) => {
   const address = (invoice as any).customerAddress || (invoice as any).billingAddress || {};
 
   switch (field) {
@@ -416,7 +432,7 @@ const findMatchingCustomerRow = (rows: any[], row: RetainerRow) => {
   });
 };
 
-const mapInvoiceToRetainer = (invoice: RetainerInvoice): RetainerRow => {
+const mapInvoiceToRetainer = (invoice: RetainerSourceInvoice): RetainerRow => {
   const normalizeKey = (value: any) =>
     String(value || "")
       .toLowerCase()
@@ -1078,7 +1094,7 @@ export default function RetainerInvoice() {
         })
         : [{ id: 1, description: String(row.reference || row.invoiceNumber || "-"), amount: Number(row.amount || 0) }];
 
-      const itemSubtotal = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+      const itemSubtotal = items.reduce((sum: number, item: { amount?: number }) => sum + (Number(item.amount) || 0), 0);
       const subtotal = Number(invoice.subtotal ?? invoice.subTotal ?? itemSubtotal) || itemSubtotal;
       const total = Number(invoice.total ?? invoice.amount ?? row.amount ?? subtotal) || subtotal;
       const taxFromPayload = Number(invoice.taxTotal ?? invoice.tax ?? invoice.totalTax);
@@ -1092,7 +1108,7 @@ export default function RetainerInvoice() {
 
       const itemRowsMarkup = items
         .map(
-          (item) => `
+          (item: { id: number; description: string; amount: number }) => `
             <tr>
               <td>${escapeHtml(item.id)}</td>
               <td>${escapeHtml(item.description)}</td>
@@ -1806,7 +1822,14 @@ export default function RetainerInvoice() {
                       key={row.id}
                       className={`group transition-all hover:bg-[#f8fafc] cursor-pointer ${isSelected ? "bg-[#156372]/5" : ""
                         }`}
-                      onClick={() => navigate(`/sales/retainer-invoices/${row.id}`)}
+                      onClick={() =>
+                        navigate(`/sales/retainer-invoices/${row.id}`, {
+                          state: {
+                            preloadedRetainerInvoice: row.sourceInvoice,
+                            preloadedRetainerRows: rows.map((item) => item.sourceInvoice),
+                          },
+                        })
+                      }
                     >
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-2">

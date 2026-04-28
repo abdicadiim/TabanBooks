@@ -52,7 +52,7 @@ export default function CreditNotesCustomizeColumnsModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-3"
+      className="fixed inset-0 z-[2200] flex items-start justify-center bg-black/40 p-4 pt-3"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
