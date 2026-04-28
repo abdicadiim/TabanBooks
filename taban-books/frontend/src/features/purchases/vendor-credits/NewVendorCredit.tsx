@@ -34,6 +34,35 @@ import {
 import { useCurrency } from "../../../hooks/useCurrency";
 import { API_BASE_URL, getToken } from "../../../services/auth";
 import { filterActiveRecords } from "../shared/activeFilters";
+import { accountantAPI, itemsAPI, locationsAPI, taxesAPI, vendorsAPI } from "../../../services/api";
+import toast from "react-hot-toast";
+
+const ACCOUNT_TYPE_OPTIONS = [
+  "Asset",
+  "Other Asset",
+  "Other Current Asset",
+  "Fixed Asset",
+  "Intangible Asset",
+  "Non Current Asset",
+  "Liability",
+  "Other Current Liability",
+  "Non Current Liability",
+  "Other Liability",
+  "Equity",
+  "Income",
+  "Other Income",
+  "Expense",
+  "Cost Of Goods Sold",
+  "Other Expense",
+];
+
+const FIXED_ASSET_TYPE_OPTIONS = [
+  "Other Asset",
+  "Other Current Asset",
+  "Fixed Asset",
+  "Intangible Asset",
+  "Non Current Asset",
+];
 
 export default function NewVendorCredit() {
   const navigate = useNavigate();
@@ -68,7 +97,7 @@ export default function NewVendorCredit() {
   const [itemRows, setItemRows] = useState([
     {
       itemDetails: "",
-      account: "Cost of Goods Sold",
+      account: "",
       quantity: "1.00",
       rate: "0.00",
       discount: "0 %-",
@@ -118,12 +147,14 @@ export default function NewVendorCredit() {
   const [warehouseDropdownOpen, setWarehouseDropdownOpen] = useState(false);
   const [taxLevelOpen, setTaxLevelOpen] = useState(false);
   const [taxLevelSearch, setTaxLevelSearch] = useState("");
+  const [taxLevelMenuStyle, setTaxLevelMenuStyle] = useState<{ left: number; top: number; width: number } | null>(null);
   const [taxDropdownOpen, setTaxDropdownOpen] = useState<Record<string, boolean>>({});
   const [accountDropdownOpen, setAccountDropdownOpen] = useState<Record<string, boolean>>({});
   const [accountSearch, setAccountSearch] = useState<Record<string, string>>({});
   const [rowMenuOpen, setRowMenuOpen] = useState<Record<string, boolean>>({});
   const [showNewVendorModal, setShowNewVendorModal] = useState(false);
   const [showNewItemModal, setShowNewItemModal] = useState(false);
+  const [showNewAccountModal, setShowNewAccountModal] = useState(false);
   const [showBulkItemsModal, setShowBulkItemsModal] = useState(false);
   const [showNumberingModal, setShowNumberingModal] = useState(false);
   const [showItemWarning, setShowItemWarning] = useState(false);
@@ -141,6 +172,23 @@ export default function NewVendorCredit() {
   const [tagDropdownOpen, setTagDropdownOpen] = useState<Record<string, boolean>>({});
   const [tagSearch, setTagSearch] = useState<Record<string, string>>({});
   const [availableTags, setAvailableTags] = useState<any[]>([]);
+  const [newAccountRowIndex, setNewAccountRowIndex] = useState<number | null>(null);
+  const [newAccountData, setNewAccountData] = useState({
+    accountType: "Fixed Asset",
+    accountName: "",
+    isSubAccount: false,
+    parentAccount: "",
+    accountCode: "",
+    description: "",
+    createItemAsFixedAsset: true,
+    fixedAssetType: "",
+  });
+  const [accountTypeDropdownOpen, setAccountTypeDropdownOpen] = useState(false);
+  const [parentAccountDropdownOpen, setParentAccountDropdownOpen] = useState(false);
+  const [fixedAssetTypeDropdownOpen, setFixedAssetTypeDropdownOpen] = useState(false);
+  const [newAccountSearch, setNewAccountSearch] = useState("");
+  const [parentAccountSearch, setParentAccountSearch] = useState("");
+  const [fixedAssetTypeSearch, setFixedAssetTypeSearch] = useState("");
   // END RESTORED STATES
 
   const itemRefs = useRef<Record<string, any>>({});
@@ -159,6 +207,9 @@ export default function NewVendorCredit() {
   const locationRef = useRef<HTMLDivElement>(null);
   const discountRef = useRef<HTMLDivElement>(null);
   const tagsRef = useRef<Record<string, any>>({});
+  const accountTypeDropdownRef = useRef<HTMLDivElement>(null);
+  const parentAccountDropdownRef = useRef<HTMLDivElement>(null);
+  const fixedAssetTypeDropdownRef = useRef<HTMLDivElement>(null);
 
   // Load vendors from localStorage
   const [taxes, setTaxes] = useState<any[]>([]);
@@ -216,6 +267,56 @@ export default function NewVendorCredit() {
     };
     loadLocations();
   }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (accountTypeDropdownRef.current && !accountTypeDropdownRef.current.contains(event.target as Node)) {
+        setAccountTypeDropdownOpen(false);
+        setNewAccountSearch("");
+      }
+      if (parentAccountDropdownRef.current && !parentAccountDropdownRef.current.contains(event.target as Node)) {
+        setParentAccountDropdownOpen(false);
+        setParentAccountSearch("");
+      }
+      if (fixedAssetTypeDropdownRef.current && !fixedAssetTypeDropdownRef.current.contains(event.target as Node)) {
+        setFixedAssetTypeDropdownOpen(false);
+        setFixedAssetTypeSearch("");
+      }
+    };
+
+    if (showNewAccountModal) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showNewAccountModal]);
+
+  useEffect(() => {
+    if (!taxLevelOpen || !taxLevelRef.current) return;
+
+    const updatePosition = () => {
+      if (!taxLevelRef.current) return;
+      const rect = taxLevelRef.current.getBoundingClientRect();
+      setTaxLevelMenuStyle({
+        left: rect.left - 8,
+        top: rect.bottom + 8,
+        width: 194,
+      });
+    };
+
+    updatePosition();
+
+    const handleScrollOrResize = () => updatePosition();
+    window.addEventListener("resize", handleScrollOrResize);
+    window.addEventListener("scroll", handleScrollOrResize, true);
+
+    return () => {
+      window.removeEventListener("resize", handleScrollOrResize);
+      window.removeEventListener("scroll", handleScrollOrResize, true);
+    };
+  }, [taxLevelOpen]);
 
   useEffect(() => {
     if (stateEditCredit) {
@@ -515,7 +616,7 @@ export default function NewVendorCredit() {
   const insertNewRowBelow = (index: number) => {
     const emptyRow = {
       itemDetails: "",
-      account: "Cost of Goods Sold",
+      account: "",
       quantity: "1.00",
       rate: "0.00",
       discount: "0 %-",
@@ -568,8 +669,8 @@ export default function NewVendorCredit() {
     (newItems[index] as any).stockQuantity = item.stockQuantity || 0;
     (newItems[index] as any).unit = item.unit || "";
     (newItems[index] as any).trackInventory = item.trackInventory || false;
-    // Default account to "Cost of Goods Sold" as requested by user
-    newItems[index].account = "Cost of Goods Sold";
+    // Leave account unselected so the user chooses from the grouped account list
+    newItems[index].account = "";
     // Set rate from item if available
     if (item.costPrice) {
       newItems[index].rate = item.costPrice;
@@ -644,10 +745,94 @@ export default function NewVendorCredit() {
     setBulkItemQuantities({ ...bulkItemQuantities, [itemId]: parseFloat(quantity) || 1 });
   };
 
+  const filteredAccountTypeOptions = ACCOUNT_TYPE_OPTIONS.filter((type) =>
+    type.toLowerCase().includes(newAccountSearch.toLowerCase())
+  );
+
+  const filteredParentAccounts = accounts.filter((account: any) => {
+    const typeMatches = !newAccountData.accountType || account.type === newAccountData.accountType;
+    const nameMatches = account.name?.toLowerCase().includes(parentAccountSearch.toLowerCase());
+    return typeMatches && nameMatches;
+  });
+
+  const filteredFixedAssetTypeOptions = FIXED_ASSET_TYPE_OPTIONS.filter((type) =>
+    type.toLowerCase().includes(fixedAssetTypeSearch.toLowerCase())
+  );
+
+  const resetNewAccountModal = () => {
+    setShowNewAccountModal(false);
+    setNewAccountRowIndex(null);
+    setAccountTypeDropdownOpen(false);
+    setParentAccountDropdownOpen(false);
+    setFixedAssetTypeDropdownOpen(false);
+    setNewAccountSearch("");
+    setParentAccountSearch("");
+    setFixedAssetTypeSearch("");
+    setNewAccountData({
+      accountType: "Fixed Asset",
+      accountName: "",
+      isSubAccount: false,
+      parentAccount: "",
+      accountCode: "",
+      description: "",
+      createItemAsFixedAsset: true,
+      fixedAssetType: "",
+    });
+  };
+
+  const handleCreateAccount = async () => {
+    if (!newAccountData.accountType || !newAccountData.accountName.trim()) {
+      toast.error("Please fill in all required account fields");
+      return;
+    }
+
+    try {
+      const payload: any = {
+        name: newAccountData.accountName.trim(),
+        type: newAccountData.accountType,
+        code: newAccountData.accountCode.trim(),
+        description: newAccountData.description.trim(),
+        is_active: true,
+      };
+
+      if (newAccountData.isSubAccount && newAccountData.parentAccount) {
+        const parentAccount = accounts.find((account: any) => account.name === newAccountData.parentAccount);
+        if (parentAccount?.id) {
+          payload.parentAccount = parentAccount.id;
+        }
+      }
+
+      if (newAccountData.accountType === "Fixed Asset" && newAccountData.createItemAsFixedAsset && newAccountData.fixedAssetType) {
+        payload.fixedAssetType = newAccountData.fixedAssetType;
+      }
+
+      const response = await accountantAPI.createAccount(payload);
+      if (response && (response.code === 0 || response.success)) {
+        toast.success("Account created successfully");
+        const refreshedAccounts = await accountantAPI.getAccounts();
+        if (refreshedAccounts && (refreshedAccounts.code === 0 || refreshedAccounts.success)) {
+          const loadedAccounts = filterActiveRecords((refreshedAccounts.data || []) as any[]) as any[];
+          setAccounts(loadedAccounts);
+        }
+
+        if (newAccountRowIndex !== null) {
+          handleItemChange(newAccountRowIndex, "account", newAccountData.accountName.trim());
+        }
+
+        resetNewAccountModal();
+      } else {
+        toast.error("Failed to create account");
+      }
+    } catch (error: any) {
+      console.error("Error creating account:", error);
+      toast.error(error?.message || "Failed to create account");
+    }
+  };
+
   const handleAddBulkItems = () => {
     const newRows = selectedBulkItems.map(item => ({
       itemDetails: item.name,
-      account: item.purchaseAccount || "Cost of Goods Sold",
+      account: item.purchaseAccount || "",
       quantity: (bulkItemQuantities[item.id] || 1).toFixed(2),
       rate: (parseFloat(item.costPrice) || 0.0).toFixed(2),
       discount: "0 %-",
@@ -2032,14 +2217,14 @@ export default function NewVendorCredit() {
                 />
               </div>
               {taxLevelOpen &&
-                taxLevelRef.current &&
+                taxLevelMenuStyle &&
                 createPortal(
                   <div
                     style={{
                       position: "fixed",
-                      top: taxLevelRef.current.getBoundingClientRect().bottom + 8,
-                      left: taxLevelRef.current.getBoundingClientRect().left - 8,
-                      width: "194px",
+                      top: taxLevelMenuStyle.top,
+                      left: taxLevelMenuStyle.left,
+                      width: `${taxLevelMenuStyle.width}px`,
                       backgroundColor: "white",
                       border: "1px solid #e6ebf2",
                       borderRadius: "10px",
@@ -2262,7 +2447,7 @@ export default function NewVendorCredit() {
                               alignItems: "center", 
                               gap: "4px", 
                               fontSize: "11px", 
-                              color: "#6b7280", 
+                              color: item.project ? "#ef4444" : "#6b7280", 
                               cursor: "pointer",
                               padding: "2px 6px",
                               backgroundColor: "#f9fafb",
@@ -2271,7 +2456,7 @@ export default function NewVendorCredit() {
                               whiteSpace: "nowrap"
                             }}>
                               <Briefcase size={11} />
-                              <span>Select a project</span>
+                              <span>{item.project || "Select a project"}</span>
                               <ChevronDown size={11} />
                             </div>
                             <div 
@@ -2470,7 +2655,7 @@ export default function NewVendorCredit() {
                                 <input 
                                   className="zoho-input"
                                   style={{ width: "100%", padding: "6px 8px 6px 32px", fontSize: "13px", borderRadius: "4px", border: "1px solid #e5e7eb", outline: "none" }}
-                                  placeholder=""
+                                  placeholder="Search"
                                   value={accountSearch[index] || ""}
                                   onChange={(e) => setAccountSearch(prev => ({ ...prev, [index]: e.target.value }))}
                                   autoFocus
@@ -2538,6 +2723,11 @@ export default function NewVendorCredit() {
                                 backgroundColor: "#fff",
                                 position: "sticky",
                                 bottom: 0
+                              }}
+                              onClick={() => {
+                                setNewAccountRowIndex(index);
+                                setShowNewAccountModal(true);
+                                setAccountDropdownOpen(prev => ({ ...prev, [index]: false }));
                               }}
                               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f9fafb"}
                               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#fff"}
@@ -2888,6 +3078,271 @@ export default function NewVendorCredit() {
           vendors={vendors}
           styles={styles}
         />
+      )}
+
+      {showNewAccountModal && createPortal(
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(17, 24, 39, 0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 12000,
+            padding: "24px",
+          }}
+          onClick={resetNewAccountModal}
+        >
+          <div
+            style={{
+              backgroundColor: "#ffffff",
+              borderRadius: "10px",
+              width: "100%",
+              maxWidth: "840px",
+              maxHeight: "90vh",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "0 20px 40px rgba(15, 23, 42, 0.18)",
+              overflow: "hidden",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 600, color: "#111827" }}>Create Account</h2>
+              <button
+                type="button"
+                onClick={resetNewAccountModal}
+                style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", padding: "4px" }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 340px", minHeight: 0 }}>
+              <div style={{ padding: "20px", overflowY: "auto" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "16px 16px", alignItems: "start" }}>
+                  <label style={{ color: "#ef4444", fontSize: "14px", lineHeight: "40px" }}>Account Type*</label>
+                  <div style={{ position: "relative" }} ref={accountTypeDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setAccountTypeDropdownOpen((prev) => !prev)}
+                      style={{ width: "100%", height: "40px", border: "1px solid #d1d5db", borderRadius: "8px", background: "#fff", padding: "0 12px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "14px", color: "#374151", cursor: "pointer" }}
+                    >
+                      <span>{newAccountData.accountType}</span>
+                      {accountTypeDropdownOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </button>
+                    {accountTypeDropdownOpen && (
+                      <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: "6px", background: "#fff", border: "1px solid #d1d5db", borderRadius: "8px", boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)", zIndex: 20, maxHeight: "280px", overflow: "hidden" }}>
+                        <div style={{ padding: "10px" }}>
+                          <div style={{ position: "relative" }}>
+                            <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
+                            <input
+                              value={newAccountSearch}
+                              onChange={(e) => setNewAccountSearch(e.target.value)}
+                              placeholder="Search"
+                              style={{ width: "100%", height: "34px", border: "1px solid #3b82f6", borderRadius: "7px", padding: "0 10px 0 30px", outline: "none", fontSize: "13px" }}
+                            />
+                          </div>
+                        </div>
+                        <div style={{ maxHeight: "220px", overflowY: "auto", paddingBottom: "8px" }}>
+                          {filteredAccountTypeOptions.map((type) => (
+                            <div
+                              key={type}
+                              onClick={() => {
+                                setNewAccountData((prev) => ({ ...prev, accountType: type, parentAccount: "", fixedAssetType: "" }));
+                                setAccountTypeDropdownOpen(false);
+                                setNewAccountSearch("");
+                              }}
+                              style={{ padding: "10px 14px", cursor: "pointer", fontSize: "14px", backgroundColor: newAccountData.accountType === type ? "#3b82f6" : "#fff", color: newAccountData.accountType === type ? "#fff" : "#374151", fontWeight: newAccountData.accountType === type ? 600 : 400 }}
+                            >
+                              {type}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <label style={{ color: "#ef4444", fontSize: "14px", lineHeight: "40px" }}>Account Name*</label>
+                  <input
+                    value={newAccountData.accountName}
+                    onChange={(e) => setNewAccountData((prev) => ({ ...prev, accountName: e.target.value }))}
+                    style={{ width: "100%", height: "40px", border: "1px solid #d1d5db", borderRadius: "8px", padding: "0 12px", fontSize: "14px", outline: "none" }}
+                  />
+
+                  <div></div>
+                  <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", color: "#4b5563", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={newAccountData.isSubAccount}
+                      onChange={(e) => setNewAccountData((prev) => ({ ...prev, isSubAccount: e.target.checked, parentAccount: "" }))}
+                    />
+                    Make this a sub-account
+                  </label>
+
+                  {newAccountData.isSubAccount && (
+                    <>
+                      <label style={{ color: "#ef4444", fontSize: "14px", lineHeight: "40px" }}>Parent Account*</label>
+                      <div style={{ position: "relative" }} ref={parentAccountDropdownRef}>
+                        <button
+                          type="button"
+                          onClick={() => setParentAccountDropdownOpen((prev) => !prev)}
+                          style={{ width: "100%", height: "40px", border: "1px solid #d1d5db", borderRadius: "8px", background: "#fff", padding: "0 12px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "14px", color: newAccountData.parentAccount ? "#374151" : "#9ca3af", cursor: "pointer" }}
+                        >
+                          <span>{newAccountData.parentAccount || "Select an account"}</span>
+                          {parentAccountDropdownOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </button>
+                        {parentAccountDropdownOpen && (
+                          <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: "6px", background: "#fff", border: "1px solid #d1d5db", borderRadius: "8px", boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)", zIndex: 20, maxHeight: "280px", overflow: "hidden" }}>
+                            <div style={{ padding: "10px" }}>
+                              <div style={{ position: "relative" }}>
+                                <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
+                                <input
+                                  value={parentAccountSearch}
+                                  onChange={(e) => setParentAccountSearch(e.target.value)}
+                                  placeholder="Search"
+                                  style={{ width: "100%", height: "34px", border: "1px solid #3b82f6", borderRadius: "7px", padding: "0 10px 0 30px", outline: "none", fontSize: "13px" }}
+                                />
+                              </div>
+                            </div>
+                            <div style={{ maxHeight: "220px", overflowY: "auto", paddingBottom: "8px" }}>
+                              {filteredParentAccounts.length > 0 ? filteredParentAccounts.map((account: any) => (
+                                <div
+                                  key={account.id || account._id || account.name}
+                                  onClick={() => {
+                                    setNewAccountData((prev) => ({ ...prev, parentAccount: account.name }));
+                                    setParentAccountDropdownOpen(false);
+                                    setParentAccountSearch("");
+                                  }}
+                                  style={{ padding: "10px 14px", cursor: "pointer", fontSize: "14px", backgroundColor: newAccountData.parentAccount === account.name ? "#3b82f6" : "#fff", color: newAccountData.parentAccount === account.name ? "#fff" : "#374151", fontWeight: newAccountData.parentAccount === account.name ? 600 : 400 }}
+                                >
+                                  {account.name}
+                                </div>
+                              )) : (
+                                <div style={{ padding: "10px 14px", fontSize: "13px", color: "#9ca3af" }}>No matching accounts found</div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  <label style={{ color: "#ef4444", fontSize: "14px", lineHeight: "40px" }}>Account Code*</label>
+                  <input
+                    value={newAccountData.accountCode}
+                    onChange={(e) => setNewAccountData((prev) => ({ ...prev, accountCode: e.target.value }))}
+                    style={{ width: "180px", height: "34px", border: "1px solid #d1d5db", borderRadius: "8px", padding: "0 12px", fontSize: "14px", outline: "none" }}
+                  />
+
+                  <label style={{ color: "#4b5563", fontSize: "14px", lineHeight: "24px" }}>Create Item as Fixed Asset</label>
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "14px", color: "#4b5563", cursor: "pointer", paddingTop: "2px" }}>
+                    <input
+                      type="checkbox"
+                      checked={newAccountData.createItemAsFixedAsset}
+                      onChange={(e) => setNewAccountData((prev) => ({ ...prev, createItemAsFixedAsset: e.target.checked }))}
+                    />
+                    When this account is associated with a line item in a transaction, create the item as a fixed asset.
+                  </label>
+
+                  {newAccountData.accountType === "Fixed Asset" && newAccountData.createItemAsFixedAsset && (
+                    <>
+                      <label style={{ color: "#ef4444", fontSize: "14px", lineHeight: "40px" }}>Fixed Asset Type*</label>
+                      <div style={{ position: "relative" }} ref={fixedAssetTypeDropdownRef}>
+                        <button
+                          type="button"
+                          onClick={() => setFixedAssetTypeDropdownOpen((prev) => !prev)}
+                          style={{ width: "100%", height: "40px", border: "1px solid #d1d5db", borderRadius: "8px", background: "#fff", padding: "0 12px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "14px", color: newAccountData.fixedAssetType ? "#374151" : "#9ca3af", cursor: "pointer" }}
+                        >
+                          <span>{newAccountData.fixedAssetType || "Select the Fixed Asset Type"}</span>
+                          {fixedAssetTypeDropdownOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </button>
+                        {fixedAssetTypeDropdownOpen && (
+                          <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: "6px", background: "#fff", border: "1px solid #d1d5db", borderRadius: "8px", boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)", zIndex: 20, maxHeight: "260px", overflow: "hidden" }}>
+                            <div style={{ padding: "10px" }}>
+                              <div style={{ position: "relative" }}>
+                                <Search size={14} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
+                                <input
+                                  value={fixedAssetTypeSearch}
+                                  onChange={(e) => setFixedAssetTypeSearch(e.target.value)}
+                                  placeholder="Search"
+                                  style={{ width: "100%", height: "34px", border: "1px solid #3b82f6", borderRadius: "7px", padding: "0 10px 0 30px", outline: "none", fontSize: "13px" }}
+                                />
+                              </div>
+                            </div>
+                            <div style={{ maxHeight: "200px", overflowY: "auto", paddingBottom: "8px" }}>
+                              <div style={{ padding: "0 14px 6px", fontSize: "14px", fontWeight: 600, color: "#4b5563" }}>Asset</div>
+                              {filteredFixedAssetTypeOptions.length > 0 ? filteredFixedAssetTypeOptions.map((type) => (
+                                <div
+                                  key={type}
+                                  onClick={() => {
+                                    setNewAccountData((prev) => ({ ...prev, fixedAssetType: type }));
+                                    setFixedAssetTypeDropdownOpen(false);
+                                    setFixedAssetTypeSearch("");
+                                  }}
+                                  style={{ padding: "10px 14px", cursor: "pointer", fontSize: "14px", backgroundColor: newAccountData.fixedAssetType === type ? "#3b82f6" : "#fff", color: newAccountData.fixedAssetType === type ? "#fff" : "#374151", fontWeight: newAccountData.fixedAssetType === type ? 600 : 400 }}
+                                >
+                                  {type}
+                                </div>
+                              )) : (
+                                <div style={{ padding: "10px 14px", fontSize: "13px", color: "#9ca3af" }}>No results found</div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  <label style={{ color: "#4b5563", fontSize: "14px", lineHeight: "40px" }}>Description</label>
+                  <textarea
+                    value={newAccountData.description}
+                    onChange={(e) => setNewAccountData((prev) => ({ ...prev, description: e.target.value }))}
+                    maxLength={500}
+                    placeholder="Max. 500 characters"
+                    style={{ width: "100%", minHeight: "72px", border: "1px solid #d1d5db", borderRadius: "8px", padding: "10px 12px", fontSize: "14px", outline: "none", resize: "vertical" }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ background: "#1f2743", color: "#fff", padding: "20px", fontSize: "14px" }}>
+                <div style={{ fontWeight: 700, marginBottom: "10px" }}>{newAccountData.accountType || "Account"}</div>
+                {newAccountData.accountType === "Asset" || newAccountData.accountType === "Fixed Asset" ? (
+                  <div style={{ lineHeight: 1.6 }}>
+                    <div>Any long term investment or an asset that cannot be converted into cash easily like:</div>
+                    <ul style={{ margin: "8px 0 0", paddingLeft: "18px" }}>
+                      <li>Land and Buildings</li>
+                      <li>Plant, Machinery and Equipment</li>
+                      <li>Computers</li>
+                      <li>Furniture</li>
+                    </ul>
+                  </div>
+                ) : (
+                  <div style={{ lineHeight: 1.6 }}>Select an account type to see more information.</div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ padding: "16px 20px", borderTop: "1px solid #e5e7eb", display: "flex", gap: "10px" }}>
+              <button
+                type="button"
+                onClick={handleCreateAccount}
+                style={{ padding: "10px 16px", border: "none", borderRadius: "8px", background: "#10b981", color: "#fff", fontSize: "14px", fontWeight: 600, cursor: "pointer" }}
+              >
+                Save and Select
+              </button>
+              <button
+                type="button"
+                onClick={resetNewAccountModal}
+                style={{ padding: "10px 16px", border: "1px solid #d1d5db", borderRadius: "8px", background: "#fff", color: "#374151", fontSize: "14px", fontWeight: 500, cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {showBulkItemsModal && (

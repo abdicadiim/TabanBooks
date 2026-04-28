@@ -34,7 +34,7 @@ import DatePicker from "../../../components/DatePicker";
 import { LocationSelectDropdown, LocationOption } from "../../../components/LocationSelectDropdown";
 import { defaultPaymentTerms, PaymentTerm } from "../../../hooks/usePaymentTermsDropdown";
 import { API_BASE_URL, getToken } from "../../../services/auth";
-import { purchaseOrdersAPI, vendorsAPI, customersAPI, taxesAPI, itemsAPI, locationsAPI, projectsAPI, reportingTagsAPI } from "../../../services/api";
+import { purchaseOrdersAPI, vendorsAPI, customersAPI, taxesAPI, itemsAPI, locationsAPI, projectsAPI, reportingTagsAPI, transactionNumberSeriesAPI } from "../../../services/api";
 import { filterActiveRecords } from "../shared/activeFilters";
 import {
   isReportingTagActive,
@@ -375,6 +375,9 @@ export default function NewPurchaseOrder() {
   const [poNumberingMode, setPoNumberingMode] = useState("auto"); // "auto" or "manual"
   const [poPrefix, setPoPrefix] = useState("PO-");
   const [poNextNumber, setPoNextNumber] = useState("00002");
+  const [poSeriesId, setPoSeriesId] = useState("");
+  const [poSeriesStartingNumber, setPoSeriesStartingNumber] = useState("00001");
+  const [poPreferencesSaving, setPoPreferencesSaving] = useState(false);
   const [bulkActionsOpen, setBulkActionsOpen] = useState(false);
   const bulkActionsRef = useRef<HTMLDivElement>(null);
   const [itemMenuOpen, setItemMenuOpen] = useState<number | null>(null); // Track which item's menu is open
@@ -804,10 +807,50 @@ export default function NewPurchaseOrder() {
     });
   }, [showTransactionDiscount, taxMode, taxOptions]);
 
+  const loadPurchaseOrderNumberingPreferences = async () => {
+    try {
+      const response = await transactionNumberSeriesAPI.getAll({ module: "Purchase Order" });
+      const rows = Array.isArray(response?.data) ? response.data : [];
+      const defaultSeries =
+        rows.find((row: any) => row?.isDefault) ||
+        rows.find((row: any) => String(row?.module || "").trim().toLowerCase() === "purchase order");
+
+      if (!defaultSeries) {
+        setPoSeriesId("");
+        setPoPrefix("PO-");
+        setPoSeriesStartingNumber("00001");
+        setPoNextNumber("00001");
+        return null;
+      }
+
+      const seriesId = String(defaultSeries?._id || defaultSeries?.id || "").trim();
+      const prefix = String(defaultSeries?.prefix || "PO-");
+      const startingNumber = String(defaultSeries?.startingNumber || "00001");
+      const currentNumber = Math.max(0, parseInt(String(defaultSeries?.currentNumber ?? 0), 10) || 0);
+      const nextNumber = String(currentNumber + 1).padStart(startingNumber.length || 5, "0");
+
+      setPoSeriesId(seriesId);
+      setPoPrefix(prefix);
+      setPoSeriesStartingNumber(startingNumber);
+      setPoNextNumber(nextNumber);
+      return {
+        id: seriesId,
+        prefix,
+        startingNumber,
+        currentNumber,
+        nextNumber,
+      };
+    } catch (error) {
+      console.error("Error loading purchase order numbering preferences:", error);
+      return null;
+    }
+  };
+
   // Load next purchase order number from database
   useEffect(() => {
     const loadNextPONumber = async () => {
       try {
+        await loadPurchaseOrderNumberingPreferences();
         const response = await purchaseOrdersAPI.getNextNumber();
 
         if (response && response.success && response.data && !isEdit) {
@@ -829,7 +872,7 @@ export default function NewPurchaseOrder() {
       }
     };
     loadNextPONumber();
-  }, []);
+  }, [isEdit]);
 
   // Load customers from API
   useEffect(() => {
@@ -1997,6 +2040,68 @@ export default function NewPurchaseOrder() {
     }
 
     return "";
+  };
+
+  const persistPurchaseOrderNumberingPreferences = async () => {
+    const nextNumberValue = Math.max(1, parseInt(String(poNextNumber || "").replace(/\D/g, ""), 10) || 1);
+    const nextNumberText = String(nextNumberValue).padStart(
+      Math.max(String(poNextNumber || "").trim().length || 0, poSeriesStartingNumber.length || 5, 5),
+      "0",
+    );
+    const nextCurrentNumber = Math.max(0, nextNumberValue - 1);
+    const startingNumber =
+      nextCurrentNumber > 0
+        ? String(nextCurrentNumber).padStart(nextNumberText.length, "0")
+        : "".padStart(nextNumberText.length, "0");
+
+    if (poNumberingMode === "manual") {
+      setFormData((prev) => ({
+        ...prev,
+        purchaseOrderNumber: String(prev.purchaseOrderNumber || "").trim(),
+      }));
+      setPoConfigModalOpen(false);
+      return;
+    }
+
+    setPoPreferencesSaving(true);
+    try {
+      const payload = {
+        module: "Purchase Order",
+        prefix: poPrefix,
+        startingNumber,
+        currentNumber: nextCurrentNumber,
+        isDefault: true,
+        isActive: true,
+      };
+
+      if (poSeriesId) {
+        await transactionNumberSeriesAPI.update(poSeriesId, payload);
+      } else {
+        const created = await transactionNumberSeriesAPI.create(payload);
+        const createdId = String(created?.data?._id || created?.data?.id || "").trim();
+        if (createdId) {
+          setPoSeriesId(createdId);
+        }
+      }
+
+      setPoSeriesStartingNumber(startingNumber);
+      setPoNextNumber(nextNumberText);
+      setFormData((prev) => ({
+        ...prev,
+        purchaseOrderNumber: `${poPrefix}${nextNumberText}`,
+      }));
+
+      if (!isEdit) {
+        await fetchLatestPurchaseOrderNumber();
+      }
+
+      setPoConfigModalOpen(false);
+    } catch (error: any) {
+      console.error("Failed to save purchase order numbering preferences:", error);
+      alert(error?.message || "Failed to save purchase order numbering preferences.");
+    } finally {
+      setPoPreferencesSaving(false);
+    }
   };
 
   const createPurchaseOrderWithNumberRetry = async (purchaseOrderData: any) => {
@@ -3953,19 +4058,11 @@ export default function NewPurchaseOrder() {
             <div className="p-6 border-t border-gray-200 flex gap-3 justify-end">
               <button
                 type="button"
-                onClick={() => {
-                  // Update the purchase order number based on settings
-                  if (poNumberingMode === "auto") {
-                    setFormData((prev) => ({
-                      ...prev,
-                      purchaseOrderNumber: `${poPrefix}${poNextNumber}`,
-                    }));
-                  }
-                  setPoConfigModalOpen(false);
-                }}
+                onClick={persistPurchaseOrderNumberingPreferences}
+                disabled={poPreferencesSaving}
                 className="cursor-pointer transition-all bg-[#156372] text-white px-6 py-2 rounded-lg border-[#0D4A52] border-b-[4px] hover:brightness-110 hover:-translate-y-[1px] hover:border-b-[6px] active:border-b-[2px] active:brightness-90 active:translate-y-[2px] text-sm font-medium"
               >
-                Save
+                {poPreferencesSaving ? "Saving..." : "Save"}
               </button>
               <button
                 type="button"

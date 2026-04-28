@@ -187,7 +187,7 @@ export default function NewVendorModal({ isOpen, onClose, onCreated }: NewVendor
         }
     };
 
-    const generateDisplayNameOptions = (data: any) => {
+    function generateDisplayNameOptions(data: any) {
         const { firstName, lastName, companyName } = data;
         const options = [];
 
@@ -209,7 +209,7 @@ export default function NewVendorModal({ isOpen, onClose, onCreated }: NewVendor
         }
 
         return options.length > 0 ? options : [""];
-    };
+    }
 
     const handleFileUpload = (files: FileList) => {
         const newDocuments = Array.from(files).map((file) => ({

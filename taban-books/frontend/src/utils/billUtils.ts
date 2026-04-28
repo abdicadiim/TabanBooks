@@ -13,6 +13,7 @@ export const getBillStatusDisplay = (bill: any) => {
     }
 
     if (status === "paid") return { text: "PAID", color: "text-green-700 bg-green-100" };
+    if (status === "partially paid") return { text: "PARTIALLY PAID", color: "text-amber-700 bg-amber-100" };
     if (status === "draft") return { text: "DRAFT", color: "text-slate-600 bg-slate-100 border border-slate-200" };
     if (status === "void" || status === "cancelled") return { text: status.toUpperCase(), color: "text-slate-700 bg-slate-100" };
     if (balance > 0) return { text: "OPEN", color: "text-blue-700 bg-blue-100" };

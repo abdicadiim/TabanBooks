@@ -73,6 +73,80 @@ const normalizePhoneForDuplicateCheck = (value: unknown): string => {
   return String(value || "").replace(/[^\d+]/g, "").trim().toLowerCase();
 };
 
+const roundMoney = (value: number): number => {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.round(numeric * 100) / 100;
+};
+
+const deriveBillPaymentStatus = (bill: any, balance: number, settledAmount: number): string => {
+  const currentStatus = String(bill?.status || "").toLowerCase();
+  if (currentStatus === "draft" || currentStatus === "void" || currentStatus === "cancelled") {
+    return currentStatus;
+  }
+  const total = roundMoney(Number(bill?.total || 0));
+  if (balance <= 0 && total > 0) {
+    return "paid";
+  }
+  if (settledAmount > 0 && balance > 0) {
+    return "partially paid";
+  }
+  return "open";
+};
+
+const hydrateBillBalancesAndStatuses = async (organizationId: string, bills: any[]) => {
+  if (!Array.isArray(bills) || bills.length === 0) {
+    return [];
+  }
+
+  const billIds = bills
+    .map((bill: any) => String(bill?._id || bill?.id || "").trim())
+    .filter(Boolean)
+    .filter((id: string) => mongoose.Types.ObjectId.isValid(id))
+    .map((id: string) => new mongoose.Types.ObjectId(id));
+
+  const paidByBillRows = billIds.length > 0
+    ? await PaymentMade.aggregate([
+        {
+          $match: {
+            ...buildOrganizationFilter(organizationId),
+            "allocations.bill": { $in: billIds },
+          },
+        },
+        { $unwind: "$allocations" },
+        { $match: { "allocations.bill": { $in: billIds } } },
+        {
+          $group: {
+            _id: "$allocations.bill",
+            totalPaid: { $sum: { $ifNull: ["$allocations.amount", 0] } },
+          },
+        },
+      ])
+    : [];
+
+  const paidByBillMap = new Map(
+    paidByBillRows.map((row: any) => [String(row._id), roundMoney(Number(row.totalPaid || 0))])
+  );
+
+  return bills.map((bill: any) => {
+    const billId = String(bill?._id || bill?.id || "").trim();
+    const totalPaid = paidByBillMap.get(billId) ?? roundMoney(Number(bill?.paidAmount || 0));
+    const vendorCreditsApplied = roundMoney(Number(bill?.vendorCreditsApplied || 0));
+    const total = roundMoney(Number(bill?.total || 0));
+    const settledAmount = roundMoney(totalPaid + vendorCreditsApplied);
+    const computedBalance = roundMoney(Math.max(0, total - settledAmount));
+
+    return {
+      ...bill,
+      paidAmount: totalPaid,
+      vendorCreditsApplied,
+      balance: computedBalance,
+      balanceDue: computedBalance,
+      status: deriveBillPaymentStatus(bill, computedBalance, settledAmount),
+    };
+  });
+};
+
 const buildVendorDuplicateConditions = (vendorData: any): any[] => {
   const conditions: any[] = [];
   const displayName = normalizeDuplicateText(vendorData.displayName || vendorData.name);
@@ -1403,16 +1477,12 @@ export const getBills = async (req: AuthRequest, res: Response): Promise<void> =
     });
 
     const normalizeStartedAt = Date.now();
-    const normalizedBills = (bills as any[]).map((bill: any) => {
-      const paidAmount = Number(bill?.paidAmount || 0);
-      const vendorCreditsApplied = Number(bill?.vendorCreditsApplied || 0);
-      const computedBalance = Math.max(0, Number(bill?.balance ?? (Number(bill?.total || 0) - paidAmount - vendorCreditsApplied)));
+    const hydratedBills = await hydrateBillBalancesAndStatuses(req.user.organizationId, bills as any[]);
+    const normalizedBills = hydratedBills.map((bill: any) => {
       const vendorDoc = vendorMap.get(String(bill?.vendor || "").trim());
       return {
         ...bill,
         vendor: vendorDoc || bill?.vendor,
-        balance: computedBalance,
-        balanceDue: computedBalance,
       };
     });
     recordRequestTiming(req, "bills.normalize-response", normalizeStartedAt, {
@@ -1480,16 +1550,12 @@ export const getBill = async (req: AuthRequest, res: Response): Promise<void> =>
       return;
     }
 
-    const paidAmount = Number((bill as any)?.paidAmount || 0);
-    const vendorCreditsApplied = Number((bill as any)?.vendorCreditsApplied || 0);
-    const computedBalance = Math.max(0, Number((bill as any)?.balance ?? (Number((bill as any)?.total || 0) - paidAmount - vendorCreditsApplied)));
+    const [hydratedBill] = await hydrateBillBalancesAndStatuses(req.user.organizationId, [bill as any]);
 
     res.json({
       success: true,
       data: {
-        ...(bill as any),
-        balance: computedBalance,
-        balanceDue: computedBalance,
+        ...(hydratedBill || (bill as any)),
       }
     });
   } catch (error: any) {

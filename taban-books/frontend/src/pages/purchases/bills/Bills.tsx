@@ -376,9 +376,7 @@ export default function Bills() {
   };
 
   useEffect(() => {
-    if (bills.length === 0) {
-      loadBills(1, itemsPerPage, selectedView, "Bills:initial-load");
-    }
+    loadBills(1, itemsPerPage, selectedView, "Bills:initial-load");
 
     // Listen for updates
     const handleBillsUpdate = () => {
@@ -1196,17 +1194,17 @@ export default function Bills() {
     const balance = Number(bill.balance ?? bill.balanceDue ?? bill.total ?? bill.amount ?? 0);
     const overdueDays = calculateOverdueDays(bill.dueDate);
 
+    if (baseStatus.text === "PAID" || balance <= 0) {
+      return {
+        text: "PAID",
+        className: "text-[#18a957]",
+      };
+    }
+
     if (balance > 0 && overdueDays > 0) {
       return {
         text: `OVERDUE BY ${overdueDays} DAY${overdueDays === 1 ? "" : "S"}`,
         className: "text-[#ff5a3c]",
-      };
-    }
-
-    if (baseStatus.text === "PAID") {
-      return {
-        text: "PAID",
-        className: "text-[#18a957]",
       };
     }
 

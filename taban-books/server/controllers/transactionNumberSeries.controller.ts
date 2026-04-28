@@ -76,7 +76,7 @@ export const getTransactionNumberSeriesById = async (req: Request, res: Response
  */
 export const createTransactionNumberSeries = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { module, prefix, startingNumber, isDefault } = req.body;
+    const { module, prefix, startingNumber, currentNumber, isDefault } = req.body;
 
     if (!module || !startingNumber) {
       res.status(400).json({
@@ -97,12 +97,18 @@ export const createTransactionNumberSeries = async (req: Request, res: Response)
       );
     }
 
+    const parsedStartingNumber = parseInt(String(startingNumber), 10);
+    const parsedCurrentNumber = currentNumber !== undefined ? Number(currentNumber) : NaN;
+    const normalizedCurrentNumber = Number.isFinite(parsedCurrentNumber)
+      ? Math.max(0, parsedCurrentNumber)
+      : (Number.isFinite(parsedStartingNumber) ? Math.max(0, parsedStartingNumber) : 0);
+
     const series = await TransactionNumberSeries.create({
       organization: (req as any).user.organizationId,
       module,
       prefix: prefix || "",
       startingNumber,
-      currentNumber: parseInt(startingNumber) || 1,
+      currentNumber: normalizedCurrentNumber,
       isDefault: isDefault || false,
     });
 
@@ -160,10 +166,14 @@ export const updateTransactionNumberSeries = async (req: Request, res: Response)
       series.startingNumber = startingNumber;
       // Only set currentNumber to startingNumber if not explicitly provided
       if (currentNumber === undefined) {
-        series.currentNumber = parseInt(startingNumber) || 1;
+        const parsedStartingNumber = parseInt(String(startingNumber), 10);
+        series.currentNumber = Number.isFinite(parsedStartingNumber) ? Math.max(0, parsedStartingNumber) : 0;
       }
     }
-    if (currentNumber !== undefined) series.currentNumber = currentNumber;
+    if (currentNumber !== undefined) {
+      const parsedCurrentNumber = Number(currentNumber);
+      series.currentNumber = Number.isFinite(parsedCurrentNumber) ? Math.max(0, parsedCurrentNumber) : series.currentNumber;
+    }
     if (isDefault !== undefined) series.isDefault = isDefault;
     if (isActive !== undefined) series.isActive = isActive;
 
