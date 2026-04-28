@@ -26,6 +26,21 @@ const readCachedVendorCredits = () => {
   }
 };
 
+const extractVendorCreditsRows = (response: any): any[] => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.data?.data)) return response.data.data;
+  return [];
+};
+
+const normalizeVendorCreditView = (value: any): string => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized || normalized === "all" || normalized === "all vendor credits") {
+    return "all";
+  }
+  return normalized;
+};
+
 export default function VendorCredits() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -79,8 +94,9 @@ export default function VendorCredits() {
     if (!quiet) setIsRefreshing(true);
     try {
       const response = await vendorCreditsAPI.getAll();
-      if (response && response.data) {
-        setVendorCredits(response.data);
+      const rows = extractVendorCreditsRows(response);
+      if (rows.length > 0) {
+        setVendorCredits(rows);
       } else {
         setVendorCredits([]);
       }
@@ -362,14 +378,15 @@ export default function VendorCredits() {
   // Filter and sort vendor credits (memoized)
   const filteredCredits = useMemo(() => {
     const normalizeStatus = (value: any) => String(value || "").trim().toLowerCase();
+    const normalizedView = normalizeVendorCreditView(selectedView);
     const filtered = vendorCredits.filter((credit: any) => {
       const creditStatus = normalizeStatus(credit.status);
-      if (selectedView === "All") return true;
-      if (selectedView === "Draft") return creditStatus === "draft";
-      if (selectedView === "Open") return creditStatus === "open";
-      if (selectedView === "Closed") return creditStatus === "closed";
-      if (selectedView === "Void") return creditStatus === "void";
-      if (selectedView === "Pending Approval") return creditStatus === "pending approval";
+      if (normalizedView === "all") return true;
+      if (normalizedView === "draft") return creditStatus === "draft";
+      if (normalizedView === "open") return creditStatus === "open";
+      if (normalizedView === "closed") return creditStatus === "closed";
+      if (normalizedView === "void") return creditStatus === "void";
+      if (normalizedView === "pending approval") return creditStatus === "pending approval";
       return true;
     });
 
@@ -468,8 +485,7 @@ export default function VendorCredits() {
       backgroundColor: "#ffffff",
     },
     header: {
-      padding: "18px 0 20px 12px",
-      borderBottom: "1px solid #e5e7eb",
+      padding: "18px 0 8px 20px",
       backgroundColor: "#ffffff",
     },
     headerContent: {
@@ -531,7 +547,7 @@ export default function VendorCredits() {
     },
     newButton: {
       padding: "9px 18px",
-      backgroundColor: "#22c55e",
+      backgroundColor: "#156372",
       color: "#ffffff",
       fontSize: "13px",
       fontWeight: "600",
@@ -753,7 +769,7 @@ export default function VendorCredits() {
       textDecoration: "none",
     },
     tableContainer: {
-      padding: "26px 0 0",
+      padding: "8px 0 0",
     },
     tableWrapper: {
       overflowX: "auto",
@@ -1557,7 +1573,7 @@ export default function VendorCredits() {
                     <SlidersHorizontal size={14} />
                   </button>
                 </th>
-                <th style={{ ...styles.tableHeaderCell, width: "44px", paddingLeft: "8px", paddingRight: "8px" }}>
+                <th style={{ ...styles.tableHeaderCell, width: "44px", paddingLeft: "8px", paddingRight: "8px", textAlign: "center" }}>
                   <input
                     type="checkbox"
                     checked={selectedCredits.length === filteredCredits.length && filteredCredits.length > 0}
@@ -1628,8 +1644,8 @@ export default function VendorCredits() {
                       }
                     }}
                   >
-                    <td style={{ ...styles.tableCell, width: "44px", paddingLeft: "12px", paddingRight: "8px" }} />
-                    <td style={styles.tableCell} onClick={(e) => e.stopPropagation()}>
+                    <td style={{ ...styles.tableCell, width: "44px", paddingLeft: "8px", paddingRight: "8px" }} />
+                    <td style={{ ...styles.tableCell, width: "44px", paddingLeft: "8px", paddingRight: "8px", textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={selectedCredits.includes(credit.id)}
