@@ -25,6 +25,21 @@ const readCachedVendorCredits = () => {
   }
 };
 
+const extractVendorCreditsRows = (response: any): any[] => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.data?.data)) return response.data.data;
+  return [];
+};
+
+const normalizeVendorCreditView = (value: any): string => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized || normalized === "all" || normalized === "all vendor credits") {
+    return "all";
+  }
+  return normalized;
+};
+
 export default function VendorCredits() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -78,8 +93,9 @@ export default function VendorCredits() {
     if (!quiet) setIsRefreshing(true);
     try {
       const response = await vendorCreditsAPI.getAll();
-      if (response && response.data) {
-        setVendorCredits(response.data);
+      const rows = extractVendorCreditsRows(response);
+      if (rows.length > 0) {
+        setVendorCredits(rows);
       } else {
         setVendorCredits([]);
       }
@@ -357,14 +373,15 @@ export default function VendorCredits() {
   // Filter and sort vendor credits (memoized)
   const filteredCredits = useMemo(() => {
     const normalizeStatus = (value: any) => String(value || "").trim().toLowerCase();
+    const normalizedView = normalizeVendorCreditView(selectedView);
     const filtered = vendorCredits.filter((credit) => {
       const creditStatus = normalizeStatus(credit.status);
-      if (selectedView === "All") return true;
-      if (selectedView === "Draft") return creditStatus === "draft";
-      if (selectedView === "Open") return creditStatus === "open";
-      if (selectedView === "Closed") return creditStatus === "closed";
-      if (selectedView === "Void") return creditStatus === "void";
-      if (selectedView === "Pending Approval") return creditStatus === "pending approval";
+      if (normalizedView === "all") return true;
+      if (normalizedView === "draft") return creditStatus === "draft";
+      if (normalizedView === "open") return creditStatus === "open";
+      if (normalizedView === "closed") return creditStatus === "closed";
+      if (normalizedView === "void") return creditStatus === "void";
+      if (normalizedView === "pending approval") return creditStatus === "pending approval";
       return true;
     });
 
@@ -463,8 +480,7 @@ export default function VendorCredits() {
       backgroundColor: "#ffffff",
     },
     header: {
-      padding: "20px 0 20px 12px",
-      borderBottom: "1px solid #e5e7eb",
+      padding: "20px 0 8px 20px",
       backgroundColor: "#ffffff",
       position: "sticky" as const,
       top: 0,
@@ -1460,7 +1476,7 @@ export default function VendorCredits() {
                       <SlidersHorizontal size={14} />
                     </button>
                   </th>
-                  <th style={{ padding: "14px 8px", width: "44px" }}>
+                  <th style={{ padding: "14px 8px", width: "44px", textAlign: "center" }}>
                     <input 
                       type="checkbox" 
                       checked={selectedCredits.length === filteredCredits.length && filteredCredits.length > 0}
@@ -1510,7 +1526,7 @@ export default function VendorCredits() {
                         }}
                       >
                         <td style={{ padding: "14px 12px 14px 12px" }} />
-                        <td onClick={(e) => e.stopPropagation()} style={{ padding: "14px 8px" }}>
+                        <td onClick={(e) => e.stopPropagation()} style={{ padding: "14px 8px", width: "44px", textAlign: "center" }}>
                           <input 
                             type="checkbox"
                             checked={isSelected}
