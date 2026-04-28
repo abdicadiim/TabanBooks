@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
   Edit,
   MoreVertical,
@@ -23,8 +23,17 @@ import { downloadVendorCreditsPaperPdf } from "./vendorCreditPdf";
 export default function VendorCreditDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [vendorCredit, setVendorCredit] = useState<any>(null);
-  const [vendorCredits, setVendorCredits] = useState([]);
+  const location = useLocation();
+  const preloadedVendorCredit = location.state?.vendorCredit || null;
+  const preloadedVendorCredits = Array.isArray(location.state?.vendorCredits) ? location.state.vendorCredits : [];
+  const [vendorCredit, setVendorCredit] = useState<any>(() => {
+    if (!preloadedVendorCredit) return null;
+    return {
+      ...preloadedVendorCredit,
+      id: preloadedVendorCredit.id || preloadedVendorCredit._id,
+    };
+  });
+  const [vendorCredits, setVendorCredits] = useState<any[]>(() => preloadedVendorCredits);
   const [vendor, setVendor] = useState(null);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [pdfMenuOpen, setPdfMenuOpen] = useState(false);
@@ -40,8 +49,8 @@ export default function VendorCreditDetail() {
   const [commentDraft, setCommentDraft] = useState("");
   const [isSavingComment, setIsSavingComment] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const isInitialLoad = useRef(true);
+  const [isLoading, setIsLoading] = useState(() => !preloadedVendorCredit);
+  const isInitialLoad = useRef(!preloadedVendorCredit);
   const moreMenuRef = useRef(null);
   const pdfMenuRef = useRef(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -78,7 +87,7 @@ export default function VendorCreditDetail() {
   };
 
   const fetchData = async (forceSidebar = false) => {
-    if (isInitialLoad.current) setIsLoading(true);
+    if (isInitialLoad.current && !vendorCredit) setIsLoading(true);
     try {
       const fetchSidebar = forceSidebar || isInitialLoad.current;
 
@@ -1513,7 +1522,14 @@ export default function VendorCreditDetail() {
               ...styles.creditItem,
               ...(id === (credit.id || credit._id) ? styles.creditItemActive : {}),
             }}
-            onClick={() => navigate(`/purchases/vendor-credits/${credit.id || credit._id}`)}
+            onClick={() =>
+              navigate(`/purchases/vendor-credits/${credit.id || credit._id}`, {
+                state: {
+                  vendorCredit: credit,
+                  vendorCredits,
+                },
+              })
+            }
           >
             <input type="checkbox" style={styles.creditItemCheckbox} onClick={(e) => e.stopPropagation()} />
             <div style={styles.creditItemContent}>

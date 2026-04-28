@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { createPortal } from "react-dom";
-import { ChevronDown, ChevronUp, Plus, MoreVertical, Play, Star, X, ArrowUpDown, Search, Trash2, Download, Upload, Settings, RefreshCw, ChevronRight, CreditCard, GripVertical, User, Users, Lock, Check, FileText, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Eye, EyeOff, Info } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, MoreVertical, Play, Star, X, ArrowUpDown, Search, Trash2, Download, Upload, Settings, RefreshCw, ChevronRight, CreditCard, GripVertical, User, Users, Lock, Check, FileText, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Eye, EyeOff, Info, SlidersHorizontal } from "lucide-react";
 import BulkUpdateModal from "../shared/BulkUpdateModal";
 import SearchItemsModal from "../shared/SearchItemsModal";
 import ExportVendorCredits from "./ExportVendorCredits";
@@ -468,7 +468,7 @@ export default function VendorCredits() {
       backgroundColor: "#ffffff",
     },
     header: {
-      padding: "16px 24px",
+      padding: "18px 24px 20px",
       borderBottom: "1px solid #e5e7eb",
       backgroundColor: "#ffffff",
     },
@@ -489,15 +489,15 @@ export default function VendorCredits() {
       display: "inline-block",
     },
     headerTitle: {
-      fontSize: "20px",
+      fontSize: "17px",
       fontWeight: "700",
-      color: "#111827",
+      color: "#1f2937",
       background: "none",
       border: "none",
       cursor: "pointer",
       display: "flex",
       alignItems: "center",
-      gap: "4px",
+      gap: "6px",
       padding: 0,
     },
     dropdown: {
@@ -530,22 +530,23 @@ export default function VendorCredits() {
       gap: "8px",
     },
     newButton: {
-      padding: "8px 16px",
-      backgroundColor: "#156372",
+      padding: "9px 18px",
+      backgroundColor: "#22c55e",
       color: "#ffffff",
-      fontSize: "14px",
-      fontWeight: "500",
+      fontSize: "13px",
+      fontWeight: "600",
       borderRadius: "6px",
       border: "none",
       cursor: "pointer",
       display: "flex",
       alignItems: "center",
-      gap: "4px",
+      gap: "6px",
       transition: "background-color 0.2s",
+      boxShadow: "none",
     },
     moreButton: {
       padding: "8px",
-      color: "#111827",
+      color: "#4b5563",
       backgroundColor: "#ffffff",
       border: "1px solid #d1d5db",
       borderRadius: "6px",
@@ -553,8 +554,8 @@ export default function VendorCredits() {
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      width: "36px",
-      height: "36px",
+      width: "34px",
+      height: "34px",
     },
     moreDropdown: {
       position: "absolute",
@@ -752,12 +753,13 @@ export default function VendorCredits() {
       textDecoration: "none",
     },
     tableContainer: {
-      padding: "24px",
+      padding: "26px 24px 0",
     },
     tableWrapper: {
       overflowX: "auto",
       border: "1px solid #e5e7eb",
-      borderRadius: "6px",
+      borderRadius: "8px",
+      backgroundColor: "#ffffff",
     },
     table: {
       width: "100%",
@@ -765,39 +767,43 @@ export default function VendorCredits() {
       backgroundColor: "#ffffff",
     },
     tableHeader: {
-      backgroundColor: "#f9fafb",
+      backgroundColor: "#ffffff",
       borderBottom: "1px solid #e5e7eb",
     },
     tableHeaderCell: {
-      padding: "12px",
+      padding: "14px 14px",
       textAlign: "left",
-      fontSize: "12px",
+      fontSize: "11px",
       fontWeight: "600",
-      color: "#6b7280",
+      color: "#677489",
       textTransform: "uppercase",
       whiteSpace: "nowrap",
+      letterSpacing: "0.02em",
     },
     tableRow: {
       borderBottom: "1px solid #e5e7eb",
       cursor: "pointer",
     },
     tableCell: {
-      padding: "12px",
-      fontSize: "14px",
-      color: "#111827",
+      padding: "14px 14px",
+      fontSize: "13px",
+      color: "#1f2937",
       whiteSpace: "nowrap",
+      lineHeight: 1.35,
     },
     tableCheckbox: {
-      width: "16px",
-      height: "16px",
+      width: "17px",
+      height: "17px",
       cursor: "pointer",
+      accentColor: "#2563eb",
     },
     statusBadge: {
-      padding: "4px 8px",
-      borderRadius: "4px",
-      fontSize: "12px",
+      padding: 0,
+      borderRadius: 0,
+      fontSize: "13px",
       fontWeight: "500",
       display: "inline-block",
+      background: "transparent",
     },
     skeletonCell: {
       height: "16px",
@@ -1534,7 +1540,24 @@ export default function VendorCredits() {
             <table style={styles.table}>
             <thead style={styles.tableHeader}>
               <tr>
-                <th style={styles.tableHeaderCell}>
+                <th style={{ ...styles.tableHeaderCell, width: "44px", paddingLeft: "12px", paddingRight: "8px" }}>
+                  <button
+                    type="button"
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      padding: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#3b82f6",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <SlidersHorizontal size={14} />
+                  </button>
+                </th>
+                <th style={{ ...styles.tableHeaderCell, width: "44px", paddingLeft: "8px", paddingRight: "8px" }}>
                   <input
                     type="checkbox"
                     checked={selectedCredits.length === filteredCredits.length && filteredCredits.length > 0}
@@ -1548,6 +1571,7 @@ export default function VendorCredits() {
                     <ArrowUpDown size={14} style={{ color: "#9ca3af" }} />
                   </div>
                 </th>
+                <th style={styles.tableHeaderCell}>LOCATION</th>
                 <th style={styles.tableHeaderCell}>CREDIT NOTE#</th>
                 <th style={styles.tableHeaderCell}>REFERENCE NUMBER</th>
                 <th style={styles.tableHeaderCell}>VENDOR NAME</th>
@@ -1585,7 +1609,12 @@ export default function VendorCredits() {
                     onClick={(e) => {
                       // Don't navigate if clicking on checkbox or if items are selected
                       if ((e.target as any).type !== "checkbox" && selectedCredits.length === 0) {
-                        navigate(`/purchases/vendor-credits/${credit.id}`);
+                        navigate(`/purchases/vendor-credits/${credit.id}`, {
+                          state: {
+                            vendorCredit: credit,
+                            vendorCredits: filteredCredits,
+                          },
+                        });
                       }
                     }}
                     onMouseEnter={(e) => {
@@ -1599,6 +1628,7 @@ export default function VendorCredits() {
                       }
                     }}
                   >
+                    <td style={{ ...styles.tableCell, width: "44px", paddingLeft: "12px", paddingRight: "8px" }} />
                     <td style={styles.tableCell} onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
@@ -1608,16 +1638,23 @@ export default function VendorCredits() {
                       />
                     </td>
                     <td style={styles.tableCell}>{formatDate(credit.date)}</td>
+                    <td style={styles.tableCell}>{credit.locationName || credit.location || credit.warehouseLocation || "Head Office"}</td>
                     <td style={styles.tableCell}>
                       <span
                         style={{
-                          color: "#156372",
+                          color: "#2563eb",
                           cursor: "pointer",
                           textDecoration: "none",
+                          fontWeight: 500,
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate(`/purchases/vendor-credits/${credit.id}`);
+                          navigate(`/purchases/vendor-credits/${credit.id}`, {
+                            state: {
+                              vendorCredit: credit,
+                              vendorCredits: filteredCredits,
+                            },
+                          });
                         }}
                       >
                         {credit.creditNote}
@@ -1629,15 +1666,13 @@ export default function VendorCredits() {
                       <span
                         style={{
                           ...styles.statusBadge,
-                          ...(credit.status === "Open"
-                            ? { backgroundColor: "#dbeafe", color: "#1e40af" }
-                            : credit.status === "Draft"
-                              ? { backgroundColor: "#f3f4f6", color: "#374151" }
-                              : credit.status === "Closed"
-                                ? { backgroundColor: "#dcfce7", color: "#166534" }
-                                : credit.status === "Void"
-                                  ? { backgroundColor: "#fee2e2", color: "#991b1b" }
-                                  : { backgroundColor: "#fef3c7", color: "#92400e" }),
+                          ...(String(credit.status || "").toLowerCase() === "open"
+                            ? { color: "#2563eb" }
+                            : String(credit.status || "").toLowerCase() === "closed"
+                              ? { color: "#10b981" }
+                              : String(credit.status || "").toLowerCase() === "void"
+                                ? { color: "#ef4444" }
+                                : { color: "#6b7280" }),
                         }}
                       >
                         {credit.status ? credit.status.toUpperCase() : "DRAFT"}
@@ -1685,7 +1720,12 @@ export default function VendorCredits() {
         onClose={() => setShowSearchModal(false)}
         items={vendorCredits}
         onItemSelect={(item: any) => {
-          navigate(`/purchases/vendor-credits/${item.id}`);
+          navigate(`/purchases/vendor-credits/${item.id}`, {
+            state: {
+              vendorCredit: item,
+              vendorCredits: filteredCredits,
+            },
+          });
         }}
         searchFields={["creditNote", "vendorName", "referenceNumber"]}
         placeholder="Search vendor credits by note, vendor, or reference..."

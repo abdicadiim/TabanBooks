@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { createPortal } from "react-dom";
-import { ChevronDown, ChevronUp, Plus, MoreVertical, Play, Star, X, ArrowUpDown, Search, Trash2, Download, Upload, Settings, RefreshCw, ChevronRight, CreditCard, GripVertical, User, Users, Lock, Check, FileText, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Eye, EyeOff, Info } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, MoreVertical, Play, Star, X, ArrowUpDown, Search, Trash2, Download, Upload, Settings, RefreshCw, ChevronRight, CreditCard, GripVertical, User, Users, Lock, Check, FileText, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Eye, EyeOff, Info, SlidersHorizontal } from "lucide-react";
 import BulkUpdateModal from "../shared/BulkUpdateModal";
 import SearchItemsModal from "../shared/SearchItemsModal";
 import ExportVendorCredits from "./ExportVendorCredits";
@@ -1448,25 +1448,34 @@ export default function VendorCredits() {
             </button>
           </div>
         ) : (
-          <div style={{ width: "100%", overflowX: "auto" }}>
+          <div style={{ width: "100%", overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: "8px", backgroundColor: "#fff" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #e5e7eb", backgroundColor: "#fff" }}>
-                  <th style={{ padding: "12px 16px", width: "40px" }}>
+                  <th style={{ padding: "14px 12px 14px 12px", width: "44px" }}>
+                    <button
+                      type="button"
+                      style={{ border: "none", background: "transparent", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#3b82f6", cursor: "pointer" }}
+                    >
+                      <SlidersHorizontal size={14} />
+                    </button>
+                  </th>
+                  <th style={{ padding: "14px 8px", width: "44px" }}>
                     <input 
                       type="checkbox" 
                       checked={selectedCredits.length === filteredCredits.length && filteredCredits.length > 0}
                       onChange={handleSelectAll}
-                      style={{ width: "14px", height: "14px", cursor: "pointer" }}
+                      style={{ width: "17px", height: "17px", cursor: "pointer", accentColor: "#2563eb" }}
                     />
                   </th>
-                  <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", color: "#6b7280", fontWeight: "600", textTransform: "uppercase" }}>DATE <ArrowUpDown size={12} style={{ display: "inline", marginLeft: "4px", verticalAlign: "middle", cursor: "pointer" }}/></th>
-                  <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", color: "#6b7280", fontWeight: "600", textTransform: "uppercase" }}>CREDIT NOTE#</th>
-                  <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", color: "#6b7280", fontWeight: "600", textTransform: "uppercase" }}>REFERENCE NUMBER</th>
-                  <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", color: "#6b7280", fontWeight: "600", textTransform: "uppercase" }}>VENDOR NAME</th>
-                  <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", color: "#6b7280", fontWeight: "600", textTransform: "uppercase" }}>STATUS</th>
-                  <th style={{ padding: "12px 16px", textAlign: "right", fontSize: "11px", color: "#6b7280", fontWeight: "600", textTransform: "uppercase" }}>AMOUNT</th>
-                  <th style={{ padding: "12px 16px", textAlign: "right", fontSize: "11px", color: "#6b7280", fontWeight: "600", textTransform: "uppercase" }}>BALANCE <Search size={12} style={{ display: "inline", marginLeft: "4px", verticalAlign: "middle", cursor: "pointer" }}/></th>
+                  <th style={{ padding: "14px", textAlign: "left", fontSize: "11px", color: "#677489", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.02em" }}>DATE <ArrowUpDown size={12} style={{ display: "inline", marginLeft: "4px", verticalAlign: "middle", cursor: "pointer", color: "#9ca3af" }}/></th>
+                  <th style={{ padding: "14px", textAlign: "left", fontSize: "11px", color: "#677489", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.02em" }}>LOCATION</th>
+                  <th style={{ padding: "14px", textAlign: "left", fontSize: "11px", color: "#677489", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.02em" }}>CREDIT NOTE#</th>
+                  <th style={{ padding: "14px", textAlign: "left", fontSize: "11px", color: "#677489", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.02em" }}>REFERENCE NUMBER</th>
+                  <th style={{ padding: "14px", textAlign: "left", fontSize: "11px", color: "#677489", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.02em" }}>VENDOR NAME</th>
+                  <th style={{ padding: "14px", textAlign: "left", fontSize: "11px", color: "#677489", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.02em" }}>STATUS</th>
+                  <th style={{ padding: "14px", textAlign: "right", fontSize: "11px", color: "#677489", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.02em" }}>AMOUNT</th>
+                  <th style={{ padding: "14px", textAlign: "right", fontSize: "11px", color: "#677489", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.02em" }}>BALANCE <Search size={12} style={{ display: "inline", marginLeft: "4px", verticalAlign: "middle", cursor: "pointer", color: "#9ca3af" }}/></th>
                 </tr>
               </thead>
               <tbody>
@@ -1485,7 +1494,12 @@ export default function VendorCredits() {
                         }}
                         onClick={() => {
                           if (selectedCredits.length === 0) {
-                            navigate(`/purchases/vendor-credits/${credit.id || credit._id}`);
+                            navigate(`/purchases/vendor-credits/${credit.id || credit._id}`, {
+                              state: {
+                                vendorCredit: credit,
+                                vendorCredits: filteredCredits,
+                              },
+                            });
                           }
                         }}
                         onMouseEnter={(e) => {
@@ -1495,25 +1509,27 @@ export default function VendorCredits() {
                           if (!isSelected) e.currentTarget.style.backgroundColor = "#fff";
                         }}
                       >
-                        <td onClick={(e) => e.stopPropagation()} style={{ padding: "12px 16px" }}>
+                        <td style={{ padding: "14px 12px 14px 12px" }} />
+                        <td onClick={(e) => e.stopPropagation()} style={{ padding: "14px 8px" }}>
                           <input 
                             type="checkbox"
                             checked={isSelected}
                             onChange={(e) => handleSelectItem(credit.id || credit._id, e)}
-                            style={{ width: "14px", height: "14px", cursor: "pointer" }}
+                            style={{ width: "17px", height: "17px", cursor: "pointer", accentColor: "#2563eb" }}
                           />
                         </td>
-                        <td style={{ padding: "12px 16px", fontSize: "13px", color: "#374151" }}>{formatDate(credit.date)}</td>
-                        <td style={{ padding: "12px 16px", fontSize: "13px", color: "#3b82f6" }}>{credit.creditNote || credit.vendorCreditNumber || credit.id}</td>
-                        <td style={{ padding: "12px 16px", fontSize: "13px", color: "#374151" }}>{credit.referenceNumber || ""}</td>
-                        <td style={{ padding: "12px 16px", fontSize: "13px", color: "#374151" }}>{credit.vendorName || "Unknown Vendor"}</td>
-                        <td style={{ padding: "12px 16px", fontSize: "13px" }}>
-                          <span style={{ color: status === "CLOSED" || status === "APPLIED" ? "#10b981" : status === "OPEN" ? "#3b82f6" : status === "VOID" ? "#ef4444" : "#64748b" }}>
+                        <td style={{ padding: "14px", fontSize: "13px", color: "#1f2937" }}>{formatDate(credit.date)}</td>
+                        <td style={{ padding: "14px", fontSize: "13px", color: "#1f2937" }}>{credit.locationName || credit.location || credit.warehouseLocation || "Head Office"}</td>
+                        <td style={{ padding: "14px", fontSize: "13px", color: "#2563eb", fontWeight: 500 }}>{credit.creditNote || credit.vendorCreditNumber || credit.id}</td>
+                        <td style={{ padding: "14px", fontSize: "13px", color: "#1f2937" }}>{credit.referenceNumber || ""}</td>
+                        <td style={{ padding: "14px", fontSize: "13px", color: "#1f2937" }}>{credit.vendorName || "Unknown Vendor"}</td>
+                        <td style={{ padding: "14px", fontSize: "13px" }}>
+                          <span style={{ color: status === "CLOSED" || status === "APPLIED" ? "#10b981" : status === "OPEN" ? "#2563eb" : status === "VOID" ? "#ef4444" : "#64748b", fontWeight: 500 }}>
                             {status}
                           </span>
                         </td>
-                        <td style={{ padding: "12px 16px", fontSize: "13px", color: "#374151", textAlign: "right" }}>{formatCurrency(credit.amount, credit.currency)}</td>
-                        <td style={{ padding: "12px 16px", fontSize: "13px", color: "#374151", textAlign: "right" }}>{formatCurrency(credit.balance || credit.amount, credit.currency)}</td>
+                        <td style={{ padding: "14px", fontSize: "13px", color: "#1f2937", textAlign: "right" }}>{formatCurrency(credit.amount, credit.currency)}</td>
+                        <td style={{ padding: "14px", fontSize: "13px", color: "#1f2937", textAlign: "right" }}>{formatCurrency(credit.balance || credit.amount, credit.currency)}</td>
                       </tr>
                     );
                   })}
@@ -1551,7 +1567,12 @@ export default function VendorCredits() {
         onClose={() => setShowSearchModal(false)}
         items={vendorCredits}
         onItemSelect={(item) => {
-          navigate(`/purchases/vendor-credits/${item.id}`);
+          navigate(`/purchases/vendor-credits/${item.id}`, {
+            state: {
+              vendorCredit: item,
+              vendorCredits: filteredCredits,
+            },
+          });
         }}
         searchFields={["creditNote", "vendorName", "referenceNumber"]}
         placeholder="Search vendor credits by note, vendor, or reference..."
