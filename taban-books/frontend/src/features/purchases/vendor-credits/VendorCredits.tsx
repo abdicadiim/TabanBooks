@@ -9,6 +9,22 @@ import { settingsAPI, vendorCreditsAPI } from "../../../services/api";
 import toast from "react-hot-toast";
 import { downloadVendorCreditsPaperPdf } from "./vendorCreditPdf";
 
+const VENDOR_CREDITS_LIST_CACHE_KEY = "vendor-credits-list-cache";
+
+const readCachedVendorCredits = () => {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const raw = window.sessionStorage.getItem(VENDOR_CREDITS_LIST_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error("Failed to parse cached vendor credits:", error);
+    return [];
+  }
+};
+
 export default function VendorCredits() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -26,7 +42,8 @@ export default function VendorCredits() {
   const exportSubmenuRef = useRef(null);
   const [selectedView, setSelectedView] = useState("All");
   const [showCustomViewModal, setShowCustomViewModal] = useState(false);
-  const [vendorCredits, setVendorCredits] = useState<any[]>([]);
+  const [vendorCredits, setVendorCredits] = useState<any[]>(() => readCachedVendorCredits());
+  const [hasLoadedInitialCredits, setHasLoadedInitialCredits] = useState(() => readCachedVendorCredits().length > 0);
   const [organizationInfo, setOrganizationInfo] = useState<any>(null);
   const [selectedCredits, setSelectedCredits] = useState<any[]>([]);
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
@@ -71,6 +88,7 @@ export default function VendorCredits() {
       toast.error("Failed to load vendor credits");
       setVendorCredits([]);
     } finally {
+      setHasLoadedInitialCredits(true);
       setIsRefreshing(false);
     }
   };
@@ -95,6 +113,16 @@ export default function VendorCredits() {
     loadVendorCredits();
     loadOrganizationInfo();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      window.sessionStorage.setItem(VENDOR_CREDITS_LIST_CACHE_KEY, JSON.stringify(vendorCredits));
+    } catch (error) {
+      console.error("Failed to cache vendor credits:", error);
+    }
+  }, [vendorCredits]);
 
   // Handle Esc key to clear selection
   useEffect(() => {
@@ -328,13 +356,15 @@ export default function VendorCredits() {
 
   // Filter and sort vendor credits (memoized)
   const filteredCredits = useMemo(() => {
+    const normalizeStatus = (value: any) => String(value || "").trim().toLowerCase();
     const filtered = vendorCredits.filter((credit) => {
+      const creditStatus = normalizeStatus(credit.status);
       if (selectedView === "All") return true;
-      if (selectedView === "Draft") return credit.status === "Draft";
-      if (selectedView === "Open") return credit.status === "Open";
-      if (selectedView === "Closed") return credit.status === "Closed";
-      if (selectedView === "Void") return credit.status === "Void";
-      if (selectedView === "Pending Approval") return credit.status === "Pending Approval";
+      if (selectedView === "Draft") return creditStatus === "draft";
+      if (selectedView === "Open") return creditStatus === "open";
+      if (selectedView === "Closed") return creditStatus === "closed";
+      if (selectedView === "Void") return creditStatus === "void";
+      if (selectedView === "Pending Approval") return creditStatus === "pending approval";
       return true;
     });
 
@@ -1375,7 +1405,7 @@ export default function VendorCredits() {
 
       {/* Main Content */}
       <div style={{ padding: "0", backgroundColor: "#fff", minHeight: "calc(100vh - 120px)" }}>
-        {filteredCredits.length === 0 ? (
+        {!hasLoadedInitialCredits ? null : filteredCredits.length === 0 ? (
           <div style={styles.emptyStateContainer}>
             <div style={styles.emptyStateImageWrapper}>
               {/* Pattern Background */}

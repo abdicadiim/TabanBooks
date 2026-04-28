@@ -35,6 +35,7 @@ import { useCurrency } from "../../../hooks/useCurrency";
 import { API_BASE_URL, getToken } from "../../../services/auth";
 import { filterActiveRecords } from "../shared/activeFilters";
 import { accountantAPI, itemsAPI, locationsAPI, taxesAPI, vendorsAPI, vendorCreditsAPI } from "../../../services/api";
+import { writeCachedListResponse } from "../../../services/swrListCache";
 import toast from "react-hot-toast";
 
 const ACCOUNT_TYPE_OPTIONS = [
@@ -70,6 +71,7 @@ export default function NewVendorCredit() {
   const { id: routeCreditId } = useParams();
   const {
     editCredit: stateEditCredit,
+    cloneCredit: stateCloneCredit,
     isEdit: stateIsEdit,
     sourceBill,
     billId: sourceBillId,
@@ -78,6 +80,7 @@ export default function NewVendorCredit() {
     vendorName: sourceVendorName,
   } = location.state || {};
   const [editCredit, setEditCredit] = useState<any>(stateEditCredit || null);
+  const [cloneCredit, setCloneCredit] = useState<any>(stateCloneCredit || null);
   const isEdit = !!(stateIsEdit || routeCreditId);
   const [enabledSettings, setEnabledSettings] = useState<any>(null);
   const [formData, setFormData] = useState({
@@ -213,6 +216,42 @@ export default function NewVendorCredit() {
   const addNewRowRef = useRef<HTMLDivElement>(null);
   const warehouseRef = useRef<HTMLDivElement>(null);
   const locationRef = useRef<HTMLDivElement>(null);
+
+  const syncItemCachesAfterVendorCreditSave = async (rows: any[], nextStatus: string) => {
+    const normalizedStatus = String(nextStatus || "").toLowerCase().trim();
+    if (normalizedStatus === "draft" || normalizedStatus === "cancelled" || normalizedStatus === "void") {
+      return;
+    }
+
+    const quantityByItemId = new Map<string, number>();
+    rows.forEach((row: any) => {
+      const rawItemId = row?.item || row?.itemId || row?._id || row?.id;
+      const itemId = String(rawItemId || "").trim();
+      const quantity = Number(row?.quantity || 0);
+      if (!itemId || !Number.isFinite(quantity) || quantity <= 0) return;
+      quantityByItemId.set(itemId, (quantityByItemId.get(itemId) || 0) + quantity);
+    });
+
+    if (!quantityByItemId.size) return;
+
+    const updatedItems = items.map((shopItem: any) => {
+      const shopItemId = String(shopItem?.id || shopItem?._id || "").trim();
+      const reduction = quantityByItemId.get(shopItemId);
+      if (!reduction) return shopItem;
+
+      const currentStock = Number(shopItem?.stockQuantity ?? shopItem?.stockOnHand ?? 0) || 0;
+      const nextStock = Math.max(0, currentStock - reduction);
+
+      return {
+        ...shopItem,
+        stockQuantity: nextStock,
+        stockOnHand: nextStock,
+      };
+    });
+
+    setItems(updatedItems);
+    await writeCachedListResponse("/items", { data: updatedItems });
+  };
   const discountRef = useRef<HTMLDivElement>(null);
   const tagsRef = useRef<Record<string, any>>({});
   const accountTypeDropdownRef = useRef<HTMLDivElement>(null);
@@ -348,6 +387,15 @@ export default function NewVendorCredit() {
   }, [stateEditCredit, isEdit, routeCreditId]);
 
   useEffect(() => {
+    if (stateCloneCredit) {
+      setCloneCredit(stateCloneCredit);
+      return;
+    }
+    if (isEdit) return;
+    setCloneCredit(null);
+  }, [stateCloneCredit, isEdit]);
+
+  useEffect(() => {
     if (!isEdit || !editCredit) return;
 
     const vendorObj = typeof editCredit.vendor === "object" ? editCredit.vendor : null;
@@ -402,6 +450,70 @@ export default function NewVendorCredit() {
       setItemRows(mappedItems);
     }
   }, [isEdit, editCredit]);
+
+  useEffect(() => {
+    if (isEdit || !cloneCredit) return;
+
+    const vendorObj = typeof cloneCredit.vendor === "object" ? cloneCredit.vendor : null;
+    const vendorId =
+      vendorObj?._id ||
+      vendorObj?.id ||
+      cloneCredit.vendor ||
+      cloneCredit.vendor_id ||
+      "";
+    const vendorName =
+      cloneCredit.vendorName ||
+      vendorObj?.displayName ||
+      vendorObj?.name ||
+      "";
+
+    setSelectedVendor((prev: any) => prev || { _id: vendorId, id: vendorId, name: vendorName, displayName: vendorName });
+    setFormData((prev) => ({
+      ...prev,
+      vendorName,
+      creditNote: prev.creditNote || "",
+      orderNumber: cloneCredit.orderNumber || cloneCredit.referenceNumber || "",
+      vendorCreditDate: cloneCredit.date ? new Date(cloneCredit.date).toISOString().split("T")[0] : prev.vendorCreditDate,
+      subject: cloneCredit.subject || "",
+      accountsPayable: cloneCredit.accountsPayable || prev.accountsPayable,
+      taxExclusive: cloneCredit.taxPreference || prev.taxExclusive,
+      taxLevel: cloneCredit.taxLevel || prev.taxLevel,
+      discount: Number(cloneCredit.discount || 0),
+      discountType: cloneCredit.discountType || prev.discountType,
+      adjustment: Number(cloneCredit.adjustment || 0),
+      notes: cloneCredit.notes || "",
+      currency: cloneCredit.currency || prev.currency,
+      location: cloneCredit.location || prev.location,
+      warehouseLocation: cloneCredit.warehouseLocation || prev.warehouseLocation,
+    }));
+
+    const mappedItems = (cloneCredit.items || []).map((item: any) => ({
+      itemDetails: item.name || item.item?.name || item.itemDetails || "",
+      item: item.item?._id || item.item?.id || item.item || item.itemId || "",
+      name: item.name || item.item?.name || "",
+      description: item.description || "",
+      account: item.account || item.account_id || "",
+      quantity: Number(item.quantity || 1),
+      rate: Number(item.rate ?? item.unitPrice ?? 0),
+      discount: "0 %-",
+      tax: item.tax || "",
+      amount: Number(item.amount ?? item.total ?? 0),
+      taxRate: Number(item.taxRate || 0),
+      taxAmount: Number(item.taxAmount || 0),
+      purchaseDiscount: "",
+      project: item.project || "",
+      reportingTag: item.reportingTag || "",
+      sku: item.sku || item.item?.sku || "",
+      stockQuantity: Number(item.item?.stockQuantity || item.stockQuantity || 0),
+      unit: item.item?.unit || item.unit || "",
+      trackInventory: Boolean(item.item?.trackInventory ?? item.trackInventory),
+      showAdditionalInfo: true,
+    }));
+
+    if (mappedItems.length > 0) {
+      setItemRows(mappedItems);
+    }
+  }, [isEdit, cloneCredit]);
 
   useEffect(() => {
     if (isEdit || !sourceBill) return;
@@ -1135,13 +1247,18 @@ export default function NewVendorCredit() {
         orderNumber: formData.orderNumber,
         date: formData.vendorCreditDate,
         items: itemRows.map((row: any) => ({
+          item: row.item || row.itemId || undefined,
+          itemId: row.item || row.itemId || undefined,
+          name: row.name || row.itemDetails,
           itemDetails: row.itemDetails,
+          description: row.description || "",
           quantity: row.quantity,
           rate: row.rate,
           tax: row.tax,
           amount: row.amount,
           account: row.account,
           sku: row.sku,
+          unit: row.unit || "",
         })),
         subtotal: calculateSubTotal(),
         discount: showTransactionDiscount ? formData.discount : 0,
@@ -1170,8 +1287,10 @@ export default function NewVendorCredit() {
           ? (status === "Draft" ? "updated as draft" : "updated")
           : (status === "Draft" ? "saved as draft" : "saved");
         toast.success(`Vendor credit ${actionLabel} successfully`);
+        await syncItemCachesAfterVendorCreditSave(itemRows, payload.status);
         // Remove from local storage to keep it clean if user previously had data there
         localStorage.removeItem("vendor_credits");
+        window.sessionStorage.removeItem("vendor-credits-list-cache");
         if (isEdit && creditId) {
           navigate(`/purchases/vendor-credits/${creditId}`);
         } else {

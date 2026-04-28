@@ -45,16 +45,27 @@ export default function VendorCreditDetail() {
   const moreMenuRef = useRef(null);
   const pdfMenuRef = useRef(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const journalSectionRef = useRef<HTMLDivElement | null>(null);
+
+  const parseMoneyValue = (value: any): number => {
+    if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+    const normalized = String(value ?? "")
+      .replace(/[^0-9.-]/g, "")
+      .trim();
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
 
   const getBillOutstandingBalance = (bill: any): number => {
     if (bill?.balance !== undefined && bill?.balance !== null && bill?.balance !== "") {
-      const parsedBalance = Number(bill.balance);
+      const parsedBalance = parseMoneyValue(bill.balance);
       if (Number.isFinite(parsedBalance)) return Math.max(0, parsedBalance);
     }
 
-    const total = Number(bill?.total ?? bill?.amount ?? 0);
-    const paid = Number(bill?.paidAmount ?? 0);
-    return Math.max(0, total - paid);
+    const total = parseMoneyValue(bill?.total ?? bill?.amount ?? 0);
+    const paid = parseMoneyValue(bill?.paidAmount ?? 0);
+    const vendorCreditsApplied = parseMoneyValue(bill?.vendorCreditsApplied ?? 0);
+    return Math.max(0, total - paid - vendorCreditsApplied);
   };
 
   const isBillEligibleForCreditApplication = (bill: any): boolean => {
@@ -153,30 +164,53 @@ export default function VendorCreditDetail() {
     };
   }, [id]);
 
+  const loadEligibleBillsForApplication = async () => {
+    if (!vendorCredit) return [];
+
+    const vendorId = typeof vendorCredit.vendor === "object" ? vendorCredit.vendor._id : vendorCredit.vendor;
+    if (!vendorId) return [];
+
+    const response = await billsAPI.getByVendor(vendorId);
+    const responseBills = Array.isArray(response?.data) ? response.data : [];
+    const vendorBills = responseBills
+      .filter((bill: any) => isBillEligibleForCreditApplication(bill))
+      .map((bill: any) => ({
+        ...bill,
+        balance: getBillOutstandingBalance(bill),
+        locationName: bill?.locationName || bill?.warehouseLocationName || bill?.location || "Head Office",
+      }));
+
+    setBills(vendorBills);
+
+    const initialApplications: Record<string, number> = {};
+    vendorBills.forEach((bill: any) => {
+      initialApplications[bill.id || bill._id] = 0;
+    });
+    setCreditApplications(initialApplications);
+
+    return vendorBills;
+  };
+
+  const handleOpenApplyModal = async () => {
+    try {
+      const vendorBills = await loadEligibleBillsForApplication();
+      if (!vendorBills.length) {
+        toast("There are no open bills for this vendor to apply credits to.");
+        return;
+      }
+      setShowApplyModal(true);
+    } catch (error) {
+      console.error("Error loading bills for credit application:", error);
+      toast.error("Failed to load bills");
+    }
+  };
+
   // Load bills when modal opens
   useEffect(() => {
     const loadBills = async () => {
       if (showApplyModal && vendorCredit) {
         try {
-          const vendorId = typeof vendorCredit.vendor === 'object' ? vendorCredit.vendor._id : vendorCredit.vendor;
-          const response = await billsAPI.getByVendor(vendorId);
-          if (response && response.data) {
-            // Filter only eligible bills with outstanding balances.
-            const vendorBills = response.data
-              .filter((bill: any) => isBillEligibleForCreditApplication(bill))
-              .map((bill: any) => ({
-                ...bill,
-                balance: getBillOutstandingBalance(bill)
-              }));
-            setBills(vendorBills);
-
-            // Initialize credit applications
-            const initialApplications = {};
-            vendorBills.forEach(bill => {
-              initialApplications[bill.id || bill._id] = 0;
-            });
-            setCreditApplications(initialApplications);
-          }
+          await loadEligibleBillsForApplication();
         } catch (error) {
           console.error("Error loading bills for credit application:", error);
           toast.error("Failed to load bills");
@@ -187,12 +221,12 @@ export default function VendorCreditDetail() {
   }, [showApplyModal, vendorCredit]);
 
   const handleCreditChange = (billId: string, value: string) => {
-    const amount = parseFloat(value) || 0;
+    const amount = parseMoneyValue(value);
     const bill = bills.find((b: any) => (b.id || b._id) === billId);
     if (!bill) return;
 
     const balance = getBillOutstandingBalance(bill);
-    const availableTotal = parseFloat(vendorCredit.balance || vendorCredit.amount || 0);
+    const availableTotal = parseMoneyValue(vendorCredit?.balance ?? vendorCredit?.amount ?? 0);
 
     // Current total applied excluding this bill
     const currentApplied = Object.entries(creditApplications)
@@ -210,15 +244,21 @@ export default function VendorCreditDetail() {
   };
 
   const calculateTotalCreditsApplied = () => {
-    return Object.values(creditApplications).reduce((sum, val) => sum + (val as number), 0);
+    return Object.values(creditApplications).reduce((sum, val) => sum + parseMoneyValue(val), 0);
   };
+
+  const creditBalance = parseMoneyValue(vendorCredit?.balance ?? vendorCredit?.amount ?? 0);
+  const creditTotal = parseMoneyValue(vendorCredit?.total ?? vendorCredit?.amount ?? 0);
+  const appliedCreditsAmount = Math.max(0, creditTotal - creditBalance);
+  const normalizedCreditStatus = String(vendorCredit?.status || "").toLowerCase().trim();
+  const hasAppliedBills = appliedCreditsAmount > 0 || normalizedCreditStatus === "closed" || normalizedCreditStatus === "applied";
 
   const handleSaveApplication = async () => {
     const allocations = Object.entries(creditApplications)
       .filter(([_, amount]) => (amount as number) > 0)
       .map(([billId, amount]) => ({
         billId,
-        amount,
+        amount: parseMoneyValue(amount),
         date: appliedDate
       }));
 
@@ -359,6 +399,25 @@ export default function VendorCreditDetail() {
       console.error("Error deleting vendor credit:", error);
       toast.error(error?.message || "Failed to delete vendor credit");
     }
+  };
+
+  const handleCloneVendorCredit = () => {
+    if (!vendorCredit) return;
+    setMoreMenuOpen(false);
+    navigate("/purchases/vendor-credits/new", {
+      state: {
+        cloneCredit: vendorCredit,
+      },
+    });
+  };
+
+  const handleViewJournal = () => {
+    setMoreMenuOpen(false);
+    if (!journalSectionRef.current) return;
+    journalSectionRef.current.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   };
 
   const getVendorCreditId = () => String(vendorCredit?.id || vendorCredit?._id || id || "");
@@ -1363,12 +1422,12 @@ export default function VendorCreditDetail() {
 
   // Calculate total amount to credit
   const totalAmountToCredit = Object.values(creditApplications).reduce((sum: number, amount: any) => {
-    return sum + (parseFloat(amount) || 0);
+    return sum + parseMoneyValue(amount);
   }, 0) as number;
 
   // Calculate remaining credits
-  const availableCredits = parseFloat(vendorCredit?.balance || vendorCredit?.amount || 0);
-  const remainingCredits = availableCredits - (totalAmountToCredit as number);
+  const availableCredits = parseMoneyValue(vendorCredit?.balance ?? vendorCredit?.amount ?? 0);
+  const remainingCredits = Math.max(0, availableCredits - (totalAmountToCredit as number));
 
   // Format date for display
   const formatDateDisplay = (dateString) => {
@@ -1556,27 +1615,40 @@ export default function VendorCreditDetail() {
               </div>
             )}
           </div>
-          <button style={styles.actionButton} onClick={() => setShowApplyModal(true)}>
-            <Link2 size={14} /> Apply to Bills
-          </button>
+          {!hasAppliedBills && (
+            <button style={styles.actionButton} onClick={handleOpenApplyModal}>
+              <Link2 size={14} /> Apply to Bills
+            </button>
+          )}
           <div style={styles.moreDropdownWrapper} ref={moreMenuRef}>
             <button style={{ ...styles.actionButton, padding: "5px" }} onClick={() => setMoreMenuOpen(!moreMenuOpen)}>
               <MoreVertical size={14} />
             </button>
             {moreMenuOpen && (
               <div style={styles.moreDropdown}>
-                <button style={styles.moreDropdownItem} onClick={() => fetchData()}>
-                  <RefreshCw size={14} /> Refresh List
+                <button
+                  style={styles.moreDropdownItem}
+                  onClick={handleCloneVendorCredit}
+                >
+                  Clone
                 </button>
                 <button
                   style={styles.moreDropdownItem}
-                  onClick={() => {
-                    setMoreMenuOpen(false);
-                    handleDeleteVendorCredit();
-                  }}
+                  onClick={handleViewJournal}
                 >
-                  <Trash2 size={14} /> Delete
+                  View Journal
                 </button>
+                {!hasAppliedBills && (
+                  <button
+                    style={styles.moreDropdownItem}
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      handleDeleteVendorCredit();
+                    }}
+                  >
+                    <Trash2 size={14} /> Delete
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -1676,7 +1748,7 @@ export default function VendorCreditDetail() {
               </div>
               <div style={{ ...styles.totalLine, color: "#156372" }}>
                 <span>Credits Applied</span>
-                <span>(-) {(parseFloat(String(vendorCredit.total || 0)) - parseFloat(String(vendorCredit.balance || 0))).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                <span>(-) {appliedCreditsAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
               </div>
               <div style={styles.grandTotalLine}>
                 <span>Total</span>
@@ -1687,14 +1759,14 @@ export default function VendorCreditDetail() {
             {/* Bottom Shaded Box */}
             <div style={styles.shadedBox}>
               <div style={styles.shadedBoxLabel}>Credits Remaining</div>
-              <div style={styles.shadedBoxValue}>{vendorCredit.currency} {parseFloat(vendorCredit.balance || vendorCredit.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+              <div style={styles.shadedBoxValue}>{vendorCredit.currency} {creditBalance.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
             </div>
 
           </div>
           {/* End of Document Card */}
 
           {/* Journal Section - Outside the card */}
-          <div style={(styles as any).journalWrapper}>
+          <div ref={journalSectionRef} style={(styles as any).journalWrapper}>
             <div style={styles.journalSectionStyle}>
               <div style={styles.journalTab}>Journal</div>
               <div style={styles.journalContent}>
@@ -1883,8 +1955,8 @@ export default function VendorCreditDetail() {
                     </div>
                   </div>
                   <div style={styles.availableCredits}>
-                    Available Credits: <span style={{ fontWeight: "700" }}>{vendorCredit.currency} {parseFloat(vendorCredit.balance || vendorCredit.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-                    <span style={{ color: "#6b7280", fontSize: "13px", fontWeight: "400", marginLeft: "4px" }}>({formatDate(new Date().toISOString())})</span>
+                    Available Credits: <span style={{ fontWeight: "700" }}>{vendorCredit.currency} {availableCredits.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                    <span style={{ color: "#6b7280", fontSize: "13px", fontWeight: "400", marginLeft: "4px" }}>({formatDate(vendorCredit.date || new Date().toISOString())})</span>
                   </div>
                 </div>
               </div>
@@ -1894,6 +1966,7 @@ export default function VendorCreditDetail() {
                   <tr>
                     <th style={styles.billsTableHeaderCell}>BILL#</th>
                     <th style={styles.billsTableHeaderCell}>BILL DATE</th>
+                    <th style={styles.billsTableHeaderCell}>LOCATION</th>
                     <th style={styles.billsTableHeaderCell}>BILL AMOUNT</th>
                     <th style={styles.billsTableHeaderCell}>BILL BALANCE</th>
                     <th style={styles.billsTableHeaderCell}>CREDITS APPLIED ON</th>
@@ -1908,7 +1981,8 @@ export default function VendorCreditDetail() {
                       <tr key={idx} style={styles.billsTableRow}>
                         <td style={styles.billsTableCell}>{bill.billNumber}</td>
                         <td style={styles.billsTableCell}>{formatDate(bill.date)}</td>
-                        <td style={styles.billsTableCell}>{vendorCredit.currency} {parseFloat(bill.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
+                        <td style={styles.billsTableCell}>{bill.locationName || "Head Office"}</td>
+                        <td style={styles.billsTableCell}>{vendorCredit.currency} {parseMoneyValue(bill.amount || bill.total || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
                         <td style={styles.billsTableCell}>{vendorCredit.currency} {getBillOutstandingBalance(bill).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
                         <td style={styles.billsTableCell}>
                           {appliedOnDate ? (
@@ -1937,7 +2011,7 @@ export default function VendorCreditDetail() {
                     );
                   }) : (
                     <tr>
-                      <td colSpan={6} style={{ padding: "32px", textAlign: "center", color: "#6b7280" }}>
+                      <td colSpan={7} style={{ padding: "32px", textAlign: "center", color: "#6b7280" }}>
                         No unpaid bills found for this vendor.
                       </td>
                     </tr>

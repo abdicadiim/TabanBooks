@@ -79,6 +79,8 @@ const roundMoney = (value: number): number => {
   return Math.round(numeric * 100) / 100;
 };
 
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 const deriveBillPaymentStatus = (bill: any, balance: number, settledAmount: number): string => {
   const currentStatus = String(bill?.status || "").toLowerCase();
   if (currentStatus === "draft" || currentStatus === "void" || currentStatus === "cancelled") {
@@ -576,10 +578,6 @@ export const createVendor = async (req: AuthRequest, res: Response): Promise<voi
       error: error.message || 'Unknown error',
     });
   }
-};
-
-const escapeRegex = (value: string): string => {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 };
 
 // Update vendor
@@ -1624,6 +1622,94 @@ const collectVendorCreditItemQuantities = (items: any[] = []): Map<string, numbe
   return quantities;
 };
 
+const resolveVendorCreditLineItemReference = async (
+  organizationId: string,
+  line: any,
+  session?: mongoose.ClientSession
+): Promise<mongoose.Types.ObjectId | undefined> => {
+  const explicitItemId =
+    line?.item?._id ||
+    line?.item?.id ||
+    line?.itemId?._id ||
+    line?.itemId?.id ||
+    line?.item ||
+    line?.itemId;
+
+  if (explicitItemId && mongoose.Types.ObjectId.isValid(String(explicitItemId))) {
+    return new mongoose.Types.ObjectId(String(explicitItemId));
+  }
+
+  const skuCandidates = [
+    line?.sku,
+    line?.item?.sku,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  for (const sku of skuCandidates) {
+    const query = Item.findOne({
+      ...buildOrganizationFilter(String(organizationId)),
+      sku,
+    }).select("_id");
+    if (session) query.session(session);
+    const matchedItem = await query;
+    if (matchedItem?._id) {
+      return matchedItem._id;
+    }
+  }
+
+  const nameCandidates = [
+    line?.name,
+    line?.itemDetails,
+    line?.description,
+    line?.item?.name,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  for (const itemName of nameCandidates) {
+    const query = Item.findOne({
+      ...buildOrganizationFilter(String(organizationId)),
+      name: new RegExp(`^${escapeRegex(itemName)}$`, "i"),
+    }).select("_id");
+    if (session) query.session(session);
+    const matchedItem = await query;
+    if (matchedItem?._id) {
+      return matchedItem._id;
+    }
+  }
+
+  return undefined;
+};
+
+const normalizeVendorCreditItemsForPersistence = async (
+  organizationId: string,
+  items: any[] = [],
+  session?: mongoose.ClientSession
+): Promise<any[]> => {
+  return Promise.all(
+    (items || []).map(async (item: any) => {
+      const resolvedItemId = await resolveVendorCreditLineItemReference(organizationId, item, session);
+      const mappedItem: any = {
+        ...item,
+        quantity: Number(item.quantity) || 0,
+        unitPrice: Number(item.rate || item.unitPrice) || 0,
+        total: Number(item.amount || item.total) || 0,
+        taxRate: Number(item.taxRate) || 0,
+        taxAmount: Number(item.taxAmount) || 0,
+      };
+
+      if (resolvedItemId) {
+        mappedItem.item = resolvedItemId;
+      } else if (!mappedItem.item || mappedItem.item === "" || mappedItem.item === "undefined") {
+        delete mappedItem.item;
+      }
+
+      return mappedItem;
+    })
+  );
+};
+
 const buildVendorCreditStockDelta = (
   previousItems: any[] = [],
   previousStatus?: string,
@@ -2606,21 +2692,11 @@ export const createVendorCredit = async (req: AuthRequest, res: Response): Promi
 
     // Ensure numeric fields are numbers and sanitize item
     if (creditData.items) {
-      creditData.items = creditData.items.map((item: any) => {
-        const newItem: any = {
-          ...item,
-          quantity: Number(item.quantity) || 0,
-          unitPrice: Number(item.rate || item.unitPrice) || 0,
-          total: Number(item.amount || item.total) || 0,
-          taxRate: Number(item.taxRate) || 0,
-          taxAmount: Number(item.taxAmount) || 0
-        };
-        // Remove item field if it is empty/invalid to prevent ObjectId cast error
-        if (!newItem.item || newItem.item === "" || newItem.item === "undefined") {
-          delete newItem.item;
-        }
-        return newItem;
-      });
+      creditData.items = await normalizeVendorCreditItemsForPersistence(
+        String(req.user.organizationId),
+        creditData.items,
+        session
+      );
     }
     creditData.subtotal = Number(creditData.subtotal) || 0;
     creditData.total = Number(creditData.total) || 0;
@@ -2822,22 +2898,11 @@ export const updateVendorCredit = async (req: AuthRequest, res: Response): Promi
     }
 
     if (Array.isArray(updateData.items)) {
-      updateData.items = updateData.items.map((item: any) => {
-        const mappedItem: any = {
-          ...item,
-          quantity: Number(item.quantity) || 0,
-          unitPrice: Number(item.rate || item.unitPrice) || 0,
-          total: Number(item.amount || item.total) || 0,
-          taxRate: Number(item.taxRate) || 0,
-          taxAmount: Number(item.taxAmount) || 0
-        };
-
-        if (!mappedItem.item || mappedItem.item === "" || mappedItem.item === "undefined") {
-          delete mappedItem.item;
-        }
-
-        return mappedItem;
-      });
+      updateData.items = await normalizeVendorCreditItemsForPersistence(
+        String(req.user.organizationId),
+        updateData.items,
+        session
+      );
     }
 
     if (updateData.subtotal !== undefined) updateData.subtotal = Number(updateData.subtotal) || 0;
