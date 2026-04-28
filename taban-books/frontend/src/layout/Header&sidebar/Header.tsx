@@ -279,8 +279,8 @@ export default function Header() {
     <header
       className={`fixed top-3 left-3 right-3 z-[1000] h-[68px] overflow-visible rounded-[20px] px-4 backdrop-blur-md ${
         isPurchaseOrdersListPage
-          ? "md:left-[calc(var(--sidebar-width)+12px)]"
-          : "md:left-[calc(var(--sidebar-width)+24px)]"
+          ? "md:left-[var(--sidebar-width)]"
+          : "md:left-[var(--sidebar-width)]"
       } ${
         isLightAppearance
           ? "border border-slate-200 shadow-[0_16px_34px_rgba(15,23,42,0.08)]"

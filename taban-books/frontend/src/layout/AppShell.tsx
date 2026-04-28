@@ -32,10 +32,10 @@ export default function AppShell() {
           isQuoteDetailPage ? "overflow-hidden" : "overflow-y-auto"
         } ${
           isPurchaseOrdersListPage
-            ? "pr-0 md:pl-[calc(var(--sidebar-width)+12px)]"
+            ? "pr-0 md:pl-[var(--sidebar-width)]"
             : isVendorsListPage
-              ? "pr-4 md:pl-[calc(var(--sidebar-width)+10px)]"
-            : "pr-4 md:pl-[calc(var(--sidebar-width)+28px)]"
+              ? "pr-4 md:pl-[var(--sidebar-width)]"
+            : "pr-4 md:pl-[var(--sidebar-width)]"
         }`}
       >
         <Outlet />

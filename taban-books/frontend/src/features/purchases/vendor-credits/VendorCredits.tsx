@@ -463,7 +463,7 @@ export default function VendorCredits() {
       backgroundColor: "#ffffff",
     },
     header: {
-      padding: "20px 24px",
+      padding: "20px 0 20px 12px",
       borderBottom: "1px solid #e5e7eb",
       backgroundColor: "#ffffff",
       position: "sticky" as const,
@@ -1452,7 +1452,7 @@ export default function VendorCredits() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #e5e7eb", backgroundColor: "#fff" }}>
-                  <th style={{ padding: "14px 12px 14px 12px", width: "44px" }}>
+                  <th style={{ padding: "14px 12px 14px 18px", width: "50px" }}>
                     <button
                       type="button"
                       style={{ border: "none", background: "transparent", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#3b82f6", cursor: "pointer" }}

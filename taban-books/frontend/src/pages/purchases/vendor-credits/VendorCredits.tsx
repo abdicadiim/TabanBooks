@@ -468,7 +468,7 @@ export default function VendorCredits() {
       backgroundColor: "#ffffff",
     },
     header: {
-      padding: "18px 24px 20px",
+      padding: "18px 0 20px 12px",
       borderBottom: "1px solid #e5e7eb",
       backgroundColor: "#ffffff",
     },
@@ -753,7 +753,7 @@ export default function VendorCredits() {
       textDecoration: "none",
     },
     tableContainer: {
-      padding: "26px 24px 0",
+      padding: "26px 0 0",
     },
     tableWrapper: {
       overflowX: "auto",
@@ -1540,7 +1540,7 @@ export default function VendorCredits() {
             <table style={styles.table}>
             <thead style={styles.tableHeader}>
               <tr>
-                <th style={{ ...styles.tableHeaderCell, width: "44px", paddingLeft: "12px", paddingRight: "8px" }}>
+                <th style={{ ...styles.tableHeaderCell, width: "50px", paddingLeft: "18px", paddingRight: "8px" }}>
                   <button
                     type="button"
                     style={{
