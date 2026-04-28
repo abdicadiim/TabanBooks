@@ -2074,65 +2074,7 @@ export default function Quotes() {
     <div className="flex flex-col h-full min-h-0 w-full bg-white font-sans text-gray-800 antialiased relative overflow-hidden">
       {/* Top Header Section */}
       <div className="flex-none bg-white border-b border-[#eef1f6] px-4 py-3 z-10">
-        {isBulkActionsVisible && (
-          <div className="mb-3 flex items-center justify-between gap-4 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm">
-            <div className="flex items-center gap-2 min-w-0">
-              <button
-                type="button"
-                onClick={handleBulkUpdate}
-                className="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                Bulk Update
-              </button>
-
-              <div className="flex items-center overflow-hidden rounded-md border border-gray-200 bg-white">
-                <button
-                  type="button"
-                  onClick={handleExportPDF}
-                  className="inline-flex items-center justify-center px-3 py-2 text-gray-600 hover:bg-gray-50 transition-colors"
-                  title="Export PDF"
-                >
-                  <FileDown size={16} />
-                </button>
-              </div>
-
-              <div className="mx-1 h-8 w-px bg-gray-200" />
-
-              <button
-                type="button"
-                onClick={handleBulkMarkAsSent}
-                className="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                Mark As Sent
-              </button>
-              <button
-                type="button"
-                onClick={handleBulkDelete}
-                className="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                Delete
-              </button>
-
-              <div className="mx-1 h-8 w-px bg-gray-200" />
-
-              <div className="inline-flex items-center gap-2 rounded-full bg-[#eef3ff] px-2.5 py-1 text-sm text-[#0f52d1]">
-                <span className="min-w-[18px] text-center font-semibold">{selectedQuotesCount}</span>
-              </div>
-              <span className="text-sm font-medium text-gray-700">Selected</span>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleClearSelection}
-              className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-red-600 transition-colors"
-              title="Clear selection"
-            >
-              <span>Esc</span>
-              <X size={16} />
-            </button>
-          </div>
-        )}
-        <div className="flex items-center justify-between gap-4" style={{ display: isBulkActionsVisible ? "none" : "flex" }}>
+        <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 flex-1 min-w-0">
             <div className="relative" ref={dropdownRef}>
               <button
@@ -2210,7 +2152,6 @@ export default function Quotes() {
           <div className="flex items-center gap-3">
             <button
               onClick={handleCreateNewQuote}
-
               className="inline-flex items-center gap-2 rounded-lg px-4 py-1 bg-[#156372] text-white text-sm font-semibold cursor-pointer hover:brightness-110 transition-all active:brightness-95 border-[#0D4A52] border-b-[3px] shadow-sm"
               style={{ background: 'linear-gradient(90deg, #156372 0%, #0D4A52 100%)' }}
               aria-label="Create new quote"
@@ -2252,7 +2193,7 @@ export default function Quotes() {
           </div>
         </div>
       </div>
-      
+
       {/* Main Content Area */}
       <div className="flex-1 overflow-hidden flex flex-col relative z-0">
         {isRefreshing && (

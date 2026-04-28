@@ -11,7 +11,7 @@ import Quote from "../models/Quote.js";
 import PurchaseOrder from "../models/PurchaseOrder.js";
 import SalesReceipt from "../models/SalesReceipt.js";
 import VendorCredit from "../models/VendorCredit.js";
-import DebitNote from "../models/DebitNote.js";
+import { DebitNote } from "../models/DebitNote.js";
 import RecurringInvoice from "../models/RecurringInvoice.js";
 import RecurringBill from "../models/RecurringBill.js";
 import RetainerInvoice from "../models/RetainerInvoice.js";

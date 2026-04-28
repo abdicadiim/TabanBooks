@@ -18,6 +18,7 @@ const HomeDashboard = lazy(() => import("../pages/home/HomeDashboard"));
 const GettingStartedPage = lazy(() => import("../pages/home/GettingStartedPage"));
 const RecentUpdatesPage = lazy(() => import("../pages/home/RecentUpdatesPage"));
 
+
 const ItemsPage = lazy(() => import("../pages/items/ItemsPage"));
 const NewCustomView = lazy(() => import("../pages/items/NewCustomView"));
 const ImportItems = lazy(() => import("../pages/items/ImportItems"));
@@ -309,6 +310,7 @@ export default function AppRoutes() {
             <Route path="/" element={<RootRouteResolver />} />
             <Route path="/getting-started" element={<GettingStartedPage />} />
             <Route path="/recent-updates" element={<RecentUpdatesPage />} />
+
 
             <Route path="/items/new-custom-view" element={<PermissionRoute anyOf={[{ module: "items", subModule: "item", action: "create" }]}><NewCustomView /></PermissionRoute>} />
             <Route path="/items/import" element={<PermissionRoute anyOf={[{ module: "items", subModule: "item", action: "create" }]}><ImportItems /></PermissionRoute>} />

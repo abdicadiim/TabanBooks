@@ -123,7 +123,7 @@ export default function CustomersPageContent({ controller }: { controller: any }
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white pt-2 font-sans text-gray-800 antialiased">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white font-sans text-gray-800 antialiased">
       {/* Header - Show Bulk Actions Bar when items are selected, otherwise show normal header */}
       {selectedCustomers.size > 0 ? (
         <div className="flex-none flex items-center justify-between px-4 py-1.5 border-b border-gray-100 bg-white z-30">
@@ -213,7 +213,7 @@ export default function CustomersPageContent({ controller }: { controller: any }
         </div>
       ) : (
         /* Normal Page Header */
-        <div className="flex-none flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white z-30">
+        <div className="flex-none flex items-center justify-between px-4 pt-8 pb-4 border-b border-gray-100 bg-white z-30">
           <div className="flex items-center gap-3">
             {/* Title with Dropdown */}
             <div className="relative" ref={dropdownRef}>

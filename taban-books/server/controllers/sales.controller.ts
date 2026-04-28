@@ -31,7 +31,7 @@ import { evaluateCriteria } from "../utils/approvalEvaluator.js";
 import Vendor from "../models/Vendor.js";
 import RecurringInvoice from "../models/RecurringInvoice.js";
 import RetainerInvoice from "../models/RetainerInvoice.js";
-import DebitNote from "../models/DebitNote.js";
+import { DebitNote } from "../models/DebitNote.js";
 import Project from "../models/Project.js";
 import Expense from "../models/Expense.js";
 import RecurringExpense from "../models/RecurringExpense.js";
