@@ -1002,6 +1002,7 @@ export default function BillDetail() {
         billId: getBillId(),
         billNumber: bill.billNumber,
         amount: bill.balanceDue || bill.total || 0,
+        sourceBill: bill,
       },
     });
   };

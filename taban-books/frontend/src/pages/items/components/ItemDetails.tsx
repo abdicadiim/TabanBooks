@@ -96,6 +96,7 @@ export default function ItemDetails({
     const navigate = useNavigate();
     const { symbol: currencySymbol } = useCurrency();
     const { accentColor } = useOrganizationBranding();
+    const itemId = String(item.id || item._id || "").trim();
     const [activeTab, setActiveTab] = useState("overview");
     const [moreDropdownOpen, setMoreDropdownOpen] = useState(false);
     const [showAdjustStock, setShowAdjustStock] = useState(false);
@@ -124,9 +125,9 @@ export default function ItemDetails({
 
     const resolvedStockOnHand =
         summaryStockOnHand ??
-        toFiniteNumber(item.openingStock) ??
         toFiniteNumber(item.stockOnHand) ??
         toFiniteNumber(item.stockQuantity) ??
+        toFiniteNumber(item.openingStock) ??
         0;
 
     const committedStock = toFiniteNumber(inventorySummary?.committedStock) ?? 0;
@@ -246,6 +247,34 @@ export default function ItemDetails({
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
+
+    useEffect(() => {
+        const hydrateItemDetails = async () => {
+            if (!itemId) return;
+            try {
+                const response = await itemsAPI.getById(itemId);
+                const latestItem = response?.data || response;
+                if (!latestItem || typeof latestItem !== "object") return;
+
+                const normalizedItem = {
+                    ...latestItem,
+                    id: latestItem.id || latestItem._id || itemId,
+                    _id: latestItem._id || latestItem.id || itemId,
+                };
+
+                setItems((prev) =>
+                    prev.map((existing) => {
+                        const existingId = String(existing.id || existing._id || "").trim();
+                        return existingId === itemId ? { ...existing, ...normalizedItem } : existing;
+                    })
+                );
+            } catch (error) {
+                console.warn("Failed to hydrate item detail record", error);
+            }
+        };
+
+        void hydrateItemDetails();
+    }, [itemId, setItems]);
 
     useEffect(() => {
         if (activeTab === "transactions") {

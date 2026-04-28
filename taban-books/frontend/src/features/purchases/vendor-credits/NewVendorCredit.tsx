@@ -34,7 +34,7 @@ import {
 import { useCurrency } from "../../../hooks/useCurrency";
 import { API_BASE_URL, getToken } from "../../../services/auth";
 import { filterActiveRecords } from "../shared/activeFilters";
-import { accountantAPI, itemsAPI, locationsAPI, taxesAPI, vendorsAPI } from "../../../services/api";
+import { accountantAPI, itemsAPI, locationsAPI, taxesAPI, vendorsAPI, vendorCreditsAPI } from "../../../services/api";
 import toast from "react-hot-toast";
 
 const ACCOUNT_TYPE_OPTIONS = [
@@ -68,7 +68,15 @@ export default function NewVendorCredit() {
   const navigate = useNavigate();
   const location = useLocation();
   const { id: routeCreditId } = useParams();
-  const { editCredit: stateEditCredit, isEdit: stateIsEdit } = location.state || {};
+  const {
+    editCredit: stateEditCredit,
+    isEdit: stateIsEdit,
+    sourceBill,
+    billId: sourceBillId,
+    billNumber: sourceBillNumber,
+    vendorId: sourceVendorId,
+    vendorName: sourceVendorName,
+  } = location.state || {};
   const [editCredit, setEditCredit] = useState<any>(stateEditCredit || null);
   const isEdit = !!(stateIsEdit || routeCreditId);
   const [enabledSettings, setEnabledSettings] = useState<any>(null);
@@ -394,6 +402,114 @@ export default function NewVendorCredit() {
       setItemRows(mappedItems);
     }
   }, [isEdit, editCredit]);
+
+  useEffect(() => {
+    if (isEdit || !sourceBill) return;
+
+    const vendorId =
+      sourceVendorId ||
+      sourceBill?.vendorId ||
+      sourceBill?.vendor_id ||
+      sourceBill?.vendor?._id ||
+      sourceBill?.vendor?.id ||
+      sourceBill?.vendor ||
+      "";
+    const vendorName =
+      sourceVendorName ||
+      sourceBill?.vendorName ||
+      sourceBill?.vendor?.displayName ||
+      sourceBill?.vendor?.name ||
+      "";
+    const billNumber =
+      sourceBillNumber ||
+      sourceBill?.billNumber ||
+      sourceBill?.bill_number ||
+      "";
+    const billDateRaw =
+      sourceBill?.date ||
+      sourceBill?.billDate ||
+      sourceBill?.createdAt ||
+      new Date().toISOString();
+    const normalizedBillDate = new Date(billDateRaw).toISOString().split("T")[0];
+    const locationName =
+      sourceBill?.locationName ||
+      sourceBill?.location ||
+      sourceBill?.warehouseLocationName ||
+      sourceBill?.warehouseLocation ||
+      formData.location ||
+      "Head Office";
+    const poNumber =
+      sourceBill?.orderNumber ||
+      sourceBill?.purchaseOrderNumber ||
+      sourceBill?.purchase_order_number ||
+      "";
+
+    if (vendorName) {
+      setFormData((prev) => ({
+        ...prev,
+        vendorName,
+        orderNumber: poNumber || prev.orderNumber || billNumber,
+        vendorCreditDate: normalizedBillDate || prev.vendorCreditDate,
+        location: locationName,
+        warehouseLocation: locationName,
+      }));
+    }
+
+    if (vendorId || vendorName) {
+      setSelectedVendor((prev: any) => prev || {
+        _id: vendorId,
+        id: vendorId,
+        name: vendorName,
+        displayName: vendorName,
+      });
+    }
+
+    const mappedBillItems = Array.isArray(sourceBill?.items)
+      ? sourceBill.items
+          .map((item: any) => {
+            const rawItemId = item?.item?._id || item?.item?.id || item?.itemId || item?.item || "";
+            const itemName =
+              item?.name ||
+              item?.item?.name ||
+              item?.itemDetails ||
+              item?.description ||
+              "";
+            const quantity = Number(item?.quantity || 0);
+            const rate = Number(item?.rate ?? item?.unitPrice ?? 0);
+            const amount = Number(item?.amount ?? item?.total ?? quantity * rate);
+
+            if (!itemName || quantity <= 0) return null;
+
+            return {
+              itemDetails: itemName,
+              item: rawItemId,
+              name: item?.name || item?.item?.name || itemName,
+              description: item?.description || "",
+              account: item?.account || item?.account_id || "",
+              quantity: String(quantity),
+              rate: String(rate),
+              discount: "0 %-",
+              tax: item?.tax || "",
+              amount: amount.toFixed(2),
+              taxRate: Number(item?.taxRate || 0),
+              taxAmount: Number(item?.taxAmount || 0),
+              purchaseDiscount: "",
+              project: "",
+              reportingTag: "",
+              showAdditionalInfo: true,
+              sku: item?.sku || item?.item?.sku || "",
+              stockQuantity: Number(item?.item?.stockQuantity || item?.stockQuantity || 0),
+              unit: item?.item?.unit || item?.unit || "",
+              trackInventory: Boolean(item?.item?.trackInventory ?? item?.trackInventory),
+            };
+          })
+          .filter(Boolean)
+      : [];
+
+    if (mappedBillItems.length > 0) {
+      setItemRows(mappedBillItems as any);
+    }
+  }, [isEdit, sourceBill, sourceBillId, sourceBillNumber, sourceVendorId, sourceVendorName]);
 
   useEffect(() => {
     const loadGeneralSettings = async () => {
@@ -1013,6 +1129,7 @@ export default function NewVendorCredit() {
       // Prepare vendor credit data for API
       const payload = {
         vendor: vendorId,
+        bill: sourceBillId || sourceBill?._id || sourceBill?.id || undefined,
         vendorName: formData.vendorName,
         creditNote: formData.creditNote,
         orderNumber: formData.orderNumber,
