@@ -7,6 +7,7 @@ import SearchItemsModal from "../shared/SearchItemsModal";
 import ExportVendorCredits from "./ExportVendorCredits";
 import { settingsAPI, vendorCreditsAPI } from "../../../services/api";
 import toast from "react-hot-toast";
+import { toast as notify } from "react-toastify";
 import { downloadVendorCreditsPaperPdf } from "./vendorCreditPdf";
 import emptyIllustration from "../../../assets/vendor_credits_empty.png";
 
@@ -52,6 +53,18 @@ export default function VendorCredits() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
+  const [showCustomizeColumnsModal, setShowCustomizeColumnsModal] = useState(false);
+  const [columnSearch, setColumnSearch] = useState("");
+  const [visibleColumns, setVisibleColumns] = useState<string[]>([
+    "date",
+    "location",
+    "creditNote",
+    "referenceNumber",
+    "vendorName",
+    "status",
+    "amount",
+    "balance",
+  ]);
   const [sortSubmenuOpen, setSortSubmenuOpen] = useState(false);
   const [importSubmenuOpen, setImportSubmenuOpen] = useState(false);
   const [exportSubmenuOpen, setExportSubmenuOpen] = useState(false);
@@ -176,23 +189,90 @@ export default function VendorCredits() {
     }
   };
 
-  const handleDeleteSelected = async () => {
-    if (window.confirm(`Are you sure you want to delete ${selectedCredits.length} vendor credit(s)?`)) {
-      try {
-        await vendorCreditsAPI.bulkDelete(selectedCredits);
-        toast.success("Vendor credit(s) deleted successfully");
-        loadVendorCredits();
-        setSelectedCredits([]);
-      } catch (error: any) {
-        console.error("Error deleting vendor credits:", error);
-        toast.error(error.message || "Failed to delete vendor credits");
-      }
+  const deleteSelectedVendorCredits = async () => {
+    try {
+      await vendorCreditsAPI.bulkDelete(selectedCredits);
+      toast.success("Vendor credit(s) deleted successfully");
+      await loadVendorCredits();
+      setSelectedCredits([]);
+    } catch (error: any) {
+      console.error("Error deleting vendor credits:", error);
+      toast.error(error.message || "Failed to delete vendor credits");
     }
+  };
+
+  const handleDeleteSelected = () => {
+    const selectedCount = selectedCredits.length;
+    if (!selectedCount) return;
+
+    const toastId = `vendor-credit-delete-${selectedCount}-${selectedCredits.join("-")}`;
+
+    notify.dismiss(toastId);
+    notify(
+      ({ closeToast }) => (
+        <div style={{ minWidth: 280 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "#1f2937", marginBottom: 8 }}>
+            Delete vendor credit
+          </div>
+          <div style={{ fontSize: 13, color: "#4b5563", lineHeight: 1.5, marginBottom: 14 }}>
+            Are you sure you want to delete {selectedCount} vendor credit(s)?
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => {
+                closeToast?.();
+                notify.dismiss(toastId);
+              }}
+              style={{
+                border: "1px solid #d0d7e2",
+                background: "#ffffff",
+                color: "#334155",
+                borderRadius: 8,
+                padding: "8px 14px",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                closeToast?.();
+                notify.dismiss(toastId);
+                await deleteSelectedVendorCredits();
+              }}
+              style={{
+                border: "1px solid #156372",
+                background: "#156372",
+                color: "#ffffff",
+                borderRadius: 8,
+                padding: "8px 14px",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      ),
+      {
+        toastId,
+        autoClose: false,
+        closeButton: false,
+        draggable: false,
+        position: "top-center",
+      }
+    );
   };
 
   const handleBulkUpdate = () => {
     if (selectedCredits.length === 0) {
-      alert("Please select at least one vendor credit to update.");
+      notify.info("Please select at least one vendor credit to update.");
       return;
     }
     setShowBulkUpdateModal(true);
@@ -302,6 +382,37 @@ export default function VendorCredits() {
 
   const handleClearSelection = () => {
     setSelectedCredits([]);
+  };
+
+  const columnOptions = useMemo(
+    () => [
+      { key: "date", label: "Date", locked: true },
+      { key: "location", label: "Location" },
+      { key: "creditNote", label: "Credit Note#" },
+      { key: "referenceNumber", label: "Reference Number" },
+      { key: "vendorName", label: "Vendor Name" },
+      { key: "status", label: "Status" },
+      { key: "amount", label: "Amount" },
+      { key: "balance", label: "Balance" },
+      { key: "billNumber", label: "Bill#" },
+      { key: "locationCode", label: "Location Code" },
+    ],
+    []
+  );
+
+  const filteredColumnOptions = useMemo(() => {
+    const query = columnSearch.trim().toLowerCase();
+    if (!query) return columnOptions;
+    return columnOptions.filter((column) => column.label.toLowerCase().includes(query));
+  }, [columnOptions, columnSearch]);
+
+  const isColumnVisible = (key: string) => visibleColumns.includes(key);
+
+  const toggleColumnVisibility = (key: string, locked?: boolean) => {
+    if (locked) return;
+    setVisibleColumns((prev) =>
+      prev.includes(key) ? prev.filter((columnKey) => columnKey !== key) : [...prev, key]
+    );
   };
 
   // Format date
@@ -1619,6 +1730,10 @@ export default function VendorCredits() {
                         <button
                           type="button"
                           style={styles.columnsMenuItem}
+                          onClick={() => {
+                            setColumnsMenuOpen(false);
+                            setShowCustomizeColumnsModal(true);
+                          }}
                           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f8fafc")}
                           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                         >
@@ -1646,19 +1761,19 @@ export default function VendorCredits() {
                     style={styles.tableCheckbox}
                   />
                 </th>
-                <th style={styles.tableHeaderCell}>
+                {isColumnVisible("date") && <th style={styles.tableHeaderCell}>
                   <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                     DATE
                     <ArrowUpDown size={14} style={{ color: "#9ca3af" }} />
                   </div>
-                </th>
-                <th style={styles.tableHeaderCell}>LOCATION</th>
-                <th style={styles.tableHeaderCell}>CREDIT NOTE#</th>
-                <th style={styles.tableHeaderCell}>REFERENCE NUMBER</th>
-                <th style={styles.tableHeaderCell}>VENDOR NAME</th>
-                <th style={styles.tableHeaderCell}>STATUS</th>
-                <th style={{ ...styles.tableHeaderCell, textAlign: "right" }}>AMOUNT</th>
-                <th style={{ ...styles.tableHeaderCell, textAlign: "right" }}>
+                </th>}
+                {isColumnVisible("location") && <th style={styles.tableHeaderCell}>LOCATION</th>}
+                {isColumnVisible("creditNote") && <th style={styles.tableHeaderCell}>CREDIT NOTE#</th>}
+                {isColumnVisible("referenceNumber") && <th style={styles.tableHeaderCell}>REFERENCE NUMBER</th>}
+                {isColumnVisible("vendorName") && <th style={styles.tableHeaderCell}>VENDOR NAME</th>}
+                {isColumnVisible("status") && <th style={styles.tableHeaderCell}>STATUS</th>}
+                {isColumnVisible("amount") && <th style={{ ...styles.tableHeaderCell, textAlign: "right" }}>AMOUNT</th>}
+                {isColumnVisible("balance") && <th style={{ ...styles.tableHeaderCell, textAlign: "right" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "4px", justifyContent: "flex-end" }}>
                     BALANCE
                     <button
@@ -1676,7 +1791,9 @@ export default function VendorCredits() {
                       <Search size={14} />
                     </button>
                   </div>
-                </th>
+                </th>}
+                {isColumnVisible("billNumber") && <th style={styles.tableHeaderCell}>BILL#</th>}
+                {isColumnVisible("locationCode") && <th style={styles.tableHeaderCell}>LOCATION CODE</th>}
               </tr>
             </thead>
             <tbody>
@@ -1718,9 +1835,9 @@ export default function VendorCredits() {
                         style={styles.tableCheckbox}
                       />
                     </td>
-                    <td style={styles.tableCell}>{formatDate(credit.date)}</td>
-                    <td style={styles.tableCell}>{credit.locationName || credit.location || credit.warehouseLocation || "Head Office"}</td>
-                    <td style={styles.tableCell}>
+                    {isColumnVisible("date") && <td style={styles.tableCell}>{formatDate(credit.date)}</td>}
+                    {isColumnVisible("location") && <td style={styles.tableCell}>{credit.locationName || credit.location || credit.warehouseLocation || "Head Office"}</td>}
+                    {isColumnVisible("creditNote") && <td style={styles.tableCell}>
                       <span
                         style={{
                           color: "#2563eb",
@@ -1740,10 +1857,10 @@ export default function VendorCredits() {
                       >
                         {credit.creditNote}
                       </span>
-                    </td>
-                    <td style={styles.tableCell}>{credit.referenceNumber || "-"}</td>
-                    <td style={styles.tableCell}>{credit.vendorName}</td>
-                    <td style={styles.tableCell}>
+                    </td>}
+                    {isColumnVisible("referenceNumber") && <td style={styles.tableCell}>{credit.referenceNumber || "-"}</td>}
+                    {isColumnVisible("vendorName") && <td style={styles.tableCell}>{credit.vendorName}</td>}
+                    {isColumnVisible("status") && <td style={styles.tableCell}>
                       <span
                         style={{
                           ...styles.statusBadge,
@@ -1758,13 +1875,15 @@ export default function VendorCredits() {
                       >
                         {credit.status ? credit.status.toUpperCase() : "DRAFT"}
                       </span>
-                    </td>
-                    <td style={{ ...styles.tableCell, textAlign: "right" }}>
+                    </td>}
+                    {isColumnVisible("amount") && <td style={{ ...styles.tableCell, textAlign: "right" }}>
                       {formatCurrency(credit.amount, credit.currency)}
-                    </td>
-                    <td style={{ ...styles.tableCell, textAlign: "right" }}>
+                    </td>}
+                    {isColumnVisible("balance") && <td style={{ ...styles.tableCell, textAlign: "right" }}>
                       {formatCurrency(credit.balance, credit.currency)}
-                    </td>
+                    </td>}
+                    {isColumnVisible("billNumber") && <td style={styles.tableCell}>{credit.billNumber || credit.bill?.billNumber || "-"}</td>}
+                    {isColumnVisible("locationCode") && <td style={styles.tableCell}>{credit.locationCode || credit.location?.code || "-"}</td>}
                   </tr>
                 ))}
             </tbody>
@@ -1772,6 +1891,154 @@ export default function VendorCredits() {
         </div>
 )}
     </div>
+
+      {showCustomizeColumnsModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.45)",
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "center",
+            paddingTop: "12px",
+            zIndex: 2000,
+          }}
+          onClick={() => setShowCustomizeColumnsModal(false)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "500px",
+              backgroundColor: "#ffffff",
+              borderRadius: "0 0 10px 10px",
+              boxShadow: "0 20px 40px rgba(15, 23, 42, 0.22)",
+              overflow: "hidden",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "14px 18px",
+                borderBottom: "1px solid #e5e7eb",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "16px", fontWeight: 500, color: "#1f2937" }}>
+                <SlidersHorizontal size={16} style={{ color: "#374151" }} />
+                Customize Columns
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                <span style={{ fontSize: "13px", color: "#374151" }}>{visibleColumns.length} of {columnOptions.length} Selected</span>
+                <button
+                  type="button"
+                  onClick={() => setShowCustomizeColumnsModal(false)}
+                  style={{
+                    border: "1px solid #3b82f6",
+                    background: "#fff",
+                    color: "#ef4444",
+                    borderRadius: "6px",
+                    width: "26px",
+                    height: "26px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                  }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            <div style={{ padding: "14px 18px 0 18px" }}>
+              <div style={{ position: "relative" }}>
+                <Search size={18} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#6b7280" }} />
+                <input
+                  value={columnSearch}
+                  onChange={(e) => setColumnSearch(e.target.value)}
+                  placeholder="Search"
+                  style={{
+                    width: "100%",
+                    height: "36px",
+                    borderRadius: "8px",
+                    border: "1px solid #cbd5e1",
+                    padding: "0 12px 0 38px",
+                    fontSize: "14px",
+                    outline: "none",
+                  }}
+                />
+              </div>
+            </div>
+            <div style={{ padding: "10px 18px 0 18px", maxHeight: "390px", overflowY: "auto" }}>
+              {filteredColumnOptions.map((column) => {
+                const checked = isColumnVisible(column.key);
+                return (
+                  <div
+                    key={column.key}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      backgroundColor: "#f8fafc",
+                      borderRadius: "4px",
+                      padding: "10px 8px",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "#374151", fontSize: "14px" }}>
+                      <GripVertical size={14} style={{ color: "#64748b" }} />
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={column.locked}
+                        onChange={() => toggleColumnVisibility(column.key, column.locked)}
+                        style={{ width: "15px", height: "15px", accentColor: "#3b82f6", cursor: column.locked ? "not-allowed" : "pointer" }}
+                      />
+                      <span>{column.label}</span>
+                    </div>
+                    {column.locked ? <Lock size={14} style={{ color: "#9ca3af" }} /> : <Star size={14} style={{ color: "#cbd5e1" }} />}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", gap: "10px", padding: "18px", borderTop: "1px solid #e5e7eb" }}>
+              <button
+                type="button"
+                onClick={() => setShowCustomizeColumnsModal(false)}
+                style={{
+                  padding: "8px 18px",
+                  backgroundColor: "#156372",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "6px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCustomizeColumnsModal(false)}
+                style={{
+                  padding: "8px 18px",
+                  backgroundColor: "#fff",
+                  color: "#374151",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "6px",
+                  fontSize: "14px",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* New Custom View Modal */}
       {showCustomViewModal && (
