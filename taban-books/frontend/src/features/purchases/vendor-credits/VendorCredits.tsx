@@ -34,7 +34,12 @@ const extractVendorCreditsRows = (response: any): any[] => {
 
 const normalizeVendorCreditView = (value: any): string => {
   const normalized = String(value || "").trim().toLowerCase();
-  if (!normalized || normalized === "all" || normalized === "all vendor credits") {
+  if (
+    !normalized ||
+    normalized === "all" ||
+    normalized === "all vendor credits" ||
+    normalized.includes("all vendor credit")
+  ) {
     return "all";
   }
   return normalized;
@@ -45,6 +50,7 @@ export default function VendorCredits() {
   const location = useLocation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
   const [sortSubmenuOpen, setSortSubmenuOpen] = useState(false);
   const [importSubmenuOpen, setImportSubmenuOpen] = useState(false);
   const [exportSubmenuOpen, setExportSubmenuOpen] = useState(false);
@@ -88,6 +94,7 @@ export default function VendorCredits() {
   const [exportModalType, setExportModalType] = useState<any>(null); // 'vendor-credits', 'applied', 'current-view', 'refunds'
   const dropdownRef = useRef(null);
   const moreMenuRef = useRef(null);
+  const columnsMenuRef = useRef(null);
 
   const loadVendorCredits = async (quiet = false) => {
     if (!quiet) setIsRefreshing(true);
@@ -374,9 +381,11 @@ export default function VendorCredits() {
   const filteredCredits = useMemo(() => {
     const normalizeStatus = (value: any) => String(value || "").trim().toLowerCase();
     const normalizedView = normalizeVendorCreditView(selectedView);
+    if (normalizedView === "all") {
+      return getSortedCredits(vendorCredits);
+    }
     const filtered = vendorCredits.filter((credit) => {
       const creditStatus = normalizeStatus(credit.status);
-      if (normalizedView === "all") return true;
       if (normalizedView === "draft") return creditStatus === "draft";
       if (normalizedView === "open") return creditStatus === "open";
       if (normalizedView === "closed") return creditStatus === "closed";
@@ -461,9 +470,12 @@ export default function VendorCredits() {
       if (moreMenuRef.current && !moreMenuRef.current.contains(event.target)) {
         setMoreMenuOpen(false);
       }
+      if (columnsMenuRef.current && !columnsMenuRef.current.contains(event.target)) {
+        setColumnsMenuOpen(false);
+      }
     };
 
-    if (dropdownOpen || moreMenuOpen) {
+    if (dropdownOpen || moreMenuOpen || columnsMenuOpen) {
       setTimeout(() => {
         document.addEventListener("mousedown", handleClickOutside);
       }, 0);
@@ -472,7 +484,7 @@ export default function VendorCredits() {
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [dropdownOpen, moreMenuOpen]);
+  }, [dropdownOpen, moreMenuOpen, columnsMenuOpen]);
 
   const styles: any = {
     container: {
@@ -605,6 +617,43 @@ export default function VendorCredits() {
     moreDropdownWrapper: {
       position: "relative",
       display: "inline-block",
+    },
+    columnsMenuButton: {
+      border: "none",
+      background: "transparent",
+      padding: 0,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      color: "#3b82f6",
+      cursor: "pointer",
+      width: "18px",
+      height: "18px",
+    },
+    columnsMenuDropdown: {
+      position: "absolute",
+      top: "calc(100% + 8px)",
+      left: 0,
+      backgroundColor: "#ffffff",
+      borderRadius: "10px",
+      boxShadow: "0 10px 30px rgba(15, 23, 42, 0.12)",
+      border: "1px solid #e5e7eb",
+      minWidth: "210px",
+      zIndex: 120,
+      padding: "6px 0",
+    },
+    columnsMenuItem: {
+      display: "flex",
+      alignItems: "center",
+      gap: "10px",
+      width: "100%",
+      padding: "12px 16px",
+      fontSize: "14px",
+      color: "#374151",
+      background: "transparent",
+      border: "none",
+      textAlign: "left",
+      cursor: "pointer",
     },
     // Premium Empty State (Zoho Style)
     emptyStateContainer: {
@@ -1468,13 +1517,38 @@ export default function VendorCredits() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #e5e7eb", backgroundColor: "#fff" }}>
-                  <th style={{ padding: "14px 12px 14px 18px", width: "50px" }}>
-                    <button
-                      type="button"
-                      style={{ border: "none", background: "transparent", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#3b82f6", cursor: "pointer" }}
-                    >
-                      <SlidersHorizontal size={14} />
-                    </button>
+                  <th style={{ padding: "14px 12px 14px 18px", width: "50px", position: "relative" }}>
+                    <div ref={columnsMenuRef} style={{ position: "relative", display: "inline-block" }}>
+                      <button
+                        type="button"
+                        style={styles.columnsMenuButton}
+                        onClick={() => setColumnsMenuOpen((prev) => !prev)}
+                      >
+                        <SlidersHorizontal size={14} />
+                      </button>
+                      {columnsMenuOpen && (
+                        <div style={styles.columnsMenuDropdown}>
+                          <button
+                            type="button"
+                            style={styles.columnsMenuItem}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f8fafc")}
+                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                          >
+                            <SlidersHorizontal size={15} style={{ color: "#3b82f6" }} />
+                            Customize Columns
+                          </button>
+                          <button
+                            type="button"
+                            style={styles.columnsMenuItem}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f8fafc")}
+                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                          >
+                            <Copy size={15} style={{ color: "#94a3b8" }} />
+                            Clip Text
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </th>
                   <th style={{ padding: "14px 8px", width: "44px", textAlign: "center" }}>
                     <input 
