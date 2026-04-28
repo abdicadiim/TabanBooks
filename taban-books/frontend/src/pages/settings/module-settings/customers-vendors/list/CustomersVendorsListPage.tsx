@@ -6,9 +6,8 @@ import toast from "react-hot-toast";
 
 export default function CustomersVendorsPage() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState("general");
+  const activeTab = "general";
   const [customFields, setCustomFields] = useState([]);
   const customFieldsUsage = customFields.length;
   const maxCustomFields = 59;
@@ -71,7 +70,6 @@ export default function CustomersVendorsPage() {
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        setLoading(true);
         const token = getToken();
         if (!token) {
           toast.error("Please login to access settings");
@@ -111,8 +109,6 @@ export default function CustomersVendorsPage() {
       } catch (error) {
         console.error('Error loading customers & vendors settings:', error);
         toast.error("Failed to load settings");
-      } finally {
-        setLoading(false);
       }
     };
 
@@ -192,79 +188,25 @@ export default function CustomersVendorsPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showNewButtonDropdown, showNewRelatedListDropdown]);
 
-  if (loading) {
-    return (
-      <div className="flex h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-      </div>
-    );
-  }
-
   return (
     <div className="p-6 max-w-4xl">
       <h1 className="text-2xl font-semibold text-gray-900 mb-6">Customers and Vendors</h1>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-gray-200 mb-6">
-        <button
-          onClick={() => setActiveTab("general")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "general"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          General
-        </button>
-        <button
-          onClick={() => setActiveTab("field-customization")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "field-customization"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Field Customization
-        </button>
-        <button
-          onClick={() => setActiveTab("custom-buttons")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "custom-buttons"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Custom Buttons
-        </button>
-        <button
-          onClick={() => setActiveTab("related-lists")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "related-lists"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Related Lists
-        </button>
-      </div>
-
-      {/* General Tab Content */}
-      {activeTab === "general" && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-8">
-          {/* Allow duplicates */}
-          <div>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={allowDuplicates}
-                onChange={(e) => setAllowDuplicates(e.target.checked)}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <span className="text-sm text-gray-700">
-                Allow duplicates for customer and vendor display name.
-              </span>
-            </label>
-          </div>
+      <div className="space-y-8 px-0 py-0">
+        {/* Allow duplicates */}
+        <div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={allowDuplicates}
+              onChange={(e) => setAllowDuplicates(e.target.checked)}
+              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            />
+            <span className="text-sm text-gray-700">
+              Allow duplicates for customer and vendor display name.
+            </span>
+          </label>
+        </div>
 
           {/* Customer & Vendor Numbers */}
           <div className="border-t border-gray-200 pt-6">
@@ -587,18 +529,20 @@ export default function CustomersVendorsPage() {
           </div>
 
           {/* Save Button */}
-          <div className="flex items-center justify-start pt-6 border-t border-gray-200">
-            <button 
+          <div
+            className="fixed bottom-0 z-30 px-6 py-4"
+            style={{ left: "16rem", right: 0 }}
+          >
+            <button
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#156372] px-4 py-2 text-sm font-medium text-white hover:bg-[#0f4a56] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               {saving ? "Saving..." : "Save"}
             </button>
           </div>
-        </div>
-      )}
+      </div>
 
       {/* Field Customization Tab Content */}
       {activeTab === "field-customization" && (

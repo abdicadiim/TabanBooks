@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { Search, X, Building2, Users, Receipt, Settings as SettingsIcon, Palette, Zap, CreditCard, ShoppingCart, ShoppingBag, Puzzle, RefreshCw, Plug, Code, ChevronDown, ChevronRight } from "lucide-react";
+import { Search, X, Building2, Users, Receipt, Settings as SettingsIcon, Palette, Zap, CreditCard, ShoppingCart, ShoppingBag, Puzzle, RefreshCw, Plug, Code, ChevronDown, ChevronRight, Megaphone } from "lucide-react";
 import { useSettings } from "../../lib/settings/SettingsContext";
 import { useAppBootstrap } from "../../context/AppBootstrapContext";
 
@@ -85,11 +85,20 @@ const moduleSettings = [
     title: "General",
     path: "/settings/customers-vendors",
     items: [
-      { label: "Customers", path: "/settings/customers-vendors" },
-      { label: "Products", path: "/settings/items" },
+      { label: "Customers and Vendors", path: "/settings/customers-vendors" },
+      { label: "Items", path: "/settings/items" },
+      { label: "Accountant", path: "/settings/accountant" },
       { label: "Tasks", path: "/settings/tasks" },
-      { label: "Projects", path: "/settings/projects" },
       { label: "Timesheet", path: "/settings/timesheet" },
+    ],
+  },
+  {
+    icon: ShoppingCart,
+    color: "red",
+    title: "Inventory",
+    path: "/settings/inventory-adjustments",
+    items: [
+      { label: "Inventory Adjustments", path: "/settings/inventory-adjustments" },
     ],
   },
   {
@@ -102,32 +111,21 @@ const moduleSettings = [
     ],
   },
   {
-    icon: ShoppingCart,
+    icon: Megaphone,
     color: "green",
     title: "Sales",
     path: "/settings/quotes",
     items: [
       { label: "Quotes", path: "/settings/quotes" },
       { label: "Retainer Invoices", path: "/settings/retainer-invoices" },
+      { label: "Sales Orders", path: "/settings/sales-orders" },
       { label: "Invoices", path: "/settings/invoices" },
+      { label: "Recurring Invoices", path: "/settings/recurring-invoices" },
       { label: "Sales Receipts", path: "/settings/sales-receipts" },
       { label: "Payments Received", path: "/settings/payments-received" },
       { label: "Credit Notes", path: "/settings/credit-notes" },
       { label: "Delivery Notes", path: "/settings/delivery-notes" },
       { label: "Packing Slips", path: "/settings/packing-slips" },
-    ],
-  },
-  {
-    icon: RefreshCw,
-    color: "green",
-    title: "Subscriptions",
-    path: "/sales/subscriptions",
-    items: [
-      { label: "General", path: "/settings/subscription/general" },
-      { label: "Billing Preferences", path: "/settings/subscription/billing-preferences" },
-      { label: "Advance Billing", path: "/settings/subscription/advance-billing" },
-      { label: "Dunning Management", path: "/settings/subscription/dunning-management" },
-      { label: "Cancellation Preferences", path: "/settings/subscription/cancellation-preferences" },
     ],
   },
   {
@@ -137,17 +135,11 @@ const moduleSettings = [
     path: "/settings/expenses",
     items: [
       { label: "Expenses", path: "/settings/expenses" },
-      { label: "Recurring Expenses", path: "/settings/recurring-expenses" },
-    ],
-  },
-  {
-    icon: Users,
-    color: "green",
-    title: "Customer Portal",
-    path: "/settings/customer-portal",
-    items: [
-      { label: "General", path: "/settings/customer-portal" },
-      { label: "Subscription Management", path: "/settings/customer-portal" },
+      { label: "Purchase Orders", path: "/settings/purchase-orders" },
+      { label: "Bills", path: "/settings/bills" },
+      { label: "Recurring Bills", path: "/settings/recurring-bills" },
+      { label: "Payments Made", path: "/settings/payments-made" },
+      { label: "Vendor Credits", path: "/settings/vendor-credits" },
     ],
   },
   {
@@ -167,7 +159,7 @@ const extensionSettings = [
   {
     icon: Plug,
     color: "green",
-    title: "Integrations & Marketplaces",
+    title: "Integrations & Marketplace",
     path: "/settings/integrations/zoho",
     items: [
       { label: "Zoho Apps", path: "/settings/integrations/zoho" },
@@ -205,7 +197,7 @@ export default function SettingsLayout({
   const { settings } = useSettings();
   const { branding: bootstrapBranding } = useAppBootstrap();
   const [searchQuery, setSearchQuery] = useState("");
-  const [openSectionKey, setOpenSectionKey] = useState<string>("organization");
+  const [openSectionKey, setOpenSectionKey] = useState<string>("");
   const [appearance, setAppearance] = useState(() => bootstrapBranding?.appearance || "dark");
   const [sidebarColors, setSidebarColors] = useState(() => ({
     darkFrom: bootstrapBranding?.sidebarDarkFrom || "#156372",
@@ -300,16 +292,6 @@ export default function SettingsLayout({
     });
   };
 
-  useEffect(() => {
-    const activeSection = [...organizationSettings, ...moduleSettings, ...extensionSettings].find((section) =>
-      sectionIsActive(section)
-    );
-
-    if (activeSection) {
-      setOpenSectionKey(activeSection.title.toLowerCase().replace(/\s+/g, "-"));
-    }
-  }, [location.pathname]);
-
   const renderSection = (section: any, idx: number) => {
     const Icon = section.icon;
     const active = sectionIsActive(section);
@@ -320,7 +302,9 @@ export default function SettingsLayout({
     return (
       <div key={idx} className="mb-1">
         <button
-          onClick={() => setOpenSectionKey(sectionKey)}
+          onClick={() =>
+            setOpenSectionKey((currentKey) => (currentKey === sectionKey ? "" : sectionKey))
+          }
           className={`w-full flex items-center gap-2 px-2 py-2 text-sm font-medium rounded-lg transition ${active
             ? "text-white"
             : isExpanded
@@ -438,7 +422,7 @@ export default function SettingsLayout({
         {/* Main Content */}
         <div className="flex-1 flex min-w-0 flex-col">
           {/* Top Bar */}
-          <div className="bg-white border-b border-gray-200 sticky top-0 z-50">
+          <div className="bg-gray-50 border-b border-gray-200 sticky top-0 z-50">
             <div className="px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <button
@@ -466,7 +450,7 @@ export default function SettingsLayout({
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search settings ( / )"
-                    className="w-full h-10 pl-9 pr-4 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-transparent"
+                    className="w-full h-10 pl-9 pr-4 rounded-lg border border-gray-200 bg-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-transparent"
                     style={{ caretColor: "#334155" }}
                   />
                 </div>

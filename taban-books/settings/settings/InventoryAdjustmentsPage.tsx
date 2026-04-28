@@ -113,7 +113,7 @@ export default function InventoryAdjustmentsPage() {
 
           {/* Save Button */}
           <div className="flex items-center justify-start pt-6 mt-6 border-t border-gray-200">
-            <button className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700">
+            <button className="inline-flex min-h-[38px] items-center rounded-[9px] bg-[#156b7d] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#115766]">
               Save
             </button>
           </div>

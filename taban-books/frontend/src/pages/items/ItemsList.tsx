@@ -33,6 +33,7 @@ import ExportItemsModal from "./components/modals/ExportItemsModal";
 import ExportCurrentViewModal from "./components/modals/ExportCurrentViewModal";
 import AdvancedSearchModal from "../../components/modals/AdvancedSearchModal";
 import PaginationFooter from "../../components/table/PaginationFooter";
+import { Skeleton } from "../../components/Skeleton";
 import { accountantAPI, taxesAPI, vendorsAPI } from "../../services/api";
 import { useCurrency } from "../../hooks/useCurrency";
 import { useOrganizationBranding } from "../../hooks/useOrganizationBranding";
@@ -42,7 +43,7 @@ const TableRowSkeleton = ({ columns }: { columns: any[] }) => (
     {[...Array(8)].map((_, i) => (
       <tr key={i} className="animate-pulse border-b border-gray-50">
         <td className="px-4 py-3 w-16">
-          <div className="h-4 w-4 bg-gray-100 rounded mx-auto" />
+          <Skeleton variant="circular" width={16} height={16} className="mx-auto" />
         </td>
         {columns.map((col, idx) => (
           <td
@@ -50,13 +51,73 @@ const TableRowSkeleton = ({ columns }: { columns: any[] }) => (
             className="px-4 py-3"
             style={{ width: col.width }}
           >
-            <div className={`h-4 bg-gray-100 rounded ${idx === 0 ? 'w-3/4' : 'w-1/2'}`} />
+            <Skeleton
+              height="0.875rem"
+              width={idx === 0 ? "78%" : idx % 3 === 0 ? "62%" : "48%"}
+              variant="rectangular"
+              className="rounded"
+            />
           </td>
         ))}
-        <td className="px-4 py-3 w-12 sticky right-0 bg-white" />
+        <td className="px-4 py-3 w-12 sticky right-0 bg-white">
+          <Skeleton variant="circular" width={14} height={14} className="mx-auto" />
+        </td>
       </tr>
     ))}
   </>
+);
+
+const ItemsListSkeleton = ({ columns }: { columns: any[] }) => (
+  <div className="flex flex-col h-full bg-white">
+    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+      <div className="flex items-center gap-3">
+        <Skeleton variant="rectangular" width={160} height={32} className="rounded-md" />
+        <Skeleton variant="rectangular" width={220} height={14} className="rounded-md" />
+      </div>
+      <Skeleton variant="rectangular" width={96} height={36} className="rounded-md" />
+    </div>
+
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
+      <Skeleton variant="rectangular" width={120} height={12} className="rounded-md" />
+      <Skeleton variant="rectangular" width={100} height={12} className="rounded-md" />
+      <Skeleton variant="rectangular" width={110} height={12} className="rounded-md" />
+      <div className="ml-auto">
+        <Skeleton variant="rectangular" width={190} height={32} className="rounded-md" />
+      </div>
+    </div>
+
+    <div className="flex-1 overflow-x-auto bg-white min-h-0">
+      <table className="w-full text-left border-collapse">
+        <thead className="bg-white sticky top-0 z-10 border-b border-gray-200">
+          <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+            <th className="px-4 py-3 w-[78px] min-w-[78px]">
+              <Skeleton variant="rectangular" width={44} height={14} className="rounded-md" />
+            </th>
+            {columns.map((col, idx) => (
+              <th
+                key={col.key}
+                className={`px-4 py-3 ${col.key !== "name" && col.key !== "rate" ? "hidden md:table-cell" : ""}`}
+                style={{ width: col.width }}
+              >
+                <Skeleton
+                  variant="rectangular"
+                  width={idx === 0 ? 84 : idx % 2 === 0 ? 92 : 68}
+                  height={12}
+                  className="rounded-md"
+                />
+              </th>
+            ))}
+            <th className="px-4 py-3 w-12 sticky right-0 bg-white">
+              <Skeleton variant="circular" width={14} height={14} className="mx-auto" />
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          <TableRowSkeleton columns={columns} />
+        </tbody>
+      </table>
+    </div>
+  </div>
 );
 
 const ItemsList = ({
@@ -328,6 +389,7 @@ const ItemsList = ({
     ...viewOptions.filter(view => favoriteViews.includes(getFilterKey(view))),
     ...viewOptions.filter(view => !favoriteViews.includes(getFilterKey(view))),
   ];
+  const showSkeleton = Boolean(isLoading && items.length === 0);
 
 
 
@@ -809,8 +871,11 @@ const ItemsList = ({
         </div>
       )}
 
-      <div className="flex-1 overflow-x-auto bg-white min-h-0">
-        <table className="w-full text-left border-collapse">
+      {showSkeleton ? (
+        <ItemsListSkeleton columns={visibleColumns} />
+      ) : (
+        <div className="flex-1 overflow-x-auto bg-white min-h-0">
+          <table className="w-full text-left border-collapse">
           <thead className="bg-white sticky top-0 z-10 border-b border-gray-200 shadow-sm">
             <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
               <th className="px-4 py-3 w-[78px] min-w-[78px]">
@@ -879,8 +944,8 @@ const ItemsList = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {isLoading ? (
-              <TableRowSkeleton columns={visibleColumns} />
+            {showSkeleton ? (
+              <ItemsListSkeleton columns={visibleColumns} />
             ) : (
               paginatedItems.map(item => {
                 const id = item.id || item._id;
@@ -966,20 +1031,23 @@ const ItemsList = ({
               })
             )}
           </tbody>
-        </table>
-      </div>
-      <PaginationFooter
-        totalItems={filteredItems.length}
-        currentPage={safeCurrentPage}
-        pageSize={itemsPerPage}
-        pageSizeOptions={[6, 12, 24, 48]}
-        itemLabel="items"
-        onPageChange={setCurrentPage}
-        onPageSizeChange={(nextPageSize) => {
-          setItemsPerPage(nextPageSize);
-          setCurrentPage(1);
-        }}
-      />
+          </table>
+        </div>
+      )}
+      {!showSkeleton && (
+        <PaginationFooter
+          totalItems={filteredItems.length}
+          currentPage={safeCurrentPage}
+          pageSize={itemsPerPage}
+          pageSizeOptions={[6, 12, 24, 48]}
+          itemLabel="items"
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(nextPageSize) => {
+            setItemsPerPage(nextPageSize);
+            setCurrentPage(1);
+          }}
+        />
+      )}
       {isCustomizeModalOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl w-[500px] max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">

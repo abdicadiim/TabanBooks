@@ -50,7 +50,7 @@ export default function PurchaseOrdersPage() {
           onClick={() => setActiveTab("general")}
           className={`px-4 py-2 text-sm font-medium transition ${
             activeTab === "general"
-              ? "text-blue-600 border-b-2 border-blue-600"
+              ? "text-[#156372] border-b-2 border-[#156372]"
               : "text-gray-600 hover:text-gray-900"
           }`}
         >
@@ -60,92 +60,52 @@ export default function PurchaseOrdersPage() {
           onClick={() => setActiveTab("approvals")}
           className={`px-4 py-2 text-sm font-medium transition ${
             activeTab === "approvals"
-              ? "text-blue-600 border-b-2 border-blue-600"
+              ? "text-[#156372] border-b-2 border-[#156372]"
               : "text-gray-600 hover:text-gray-900"
           }`}
         >
           Approvals
         </button>
-        <button
-          onClick={() => setActiveTab("field-customization")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "field-customization"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Field Customization
-        </button>
-        <button
-          onClick={() => setActiveTab("validation-rules")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "validation-rules"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Validation Rules
-        </button>
-        <button
-          onClick={() => setActiveTab("custom-buttons")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "custom-buttons"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Custom Buttons
-        </button>
-        <button
-          onClick={() => setActiveTab("related-lists")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "related-lists"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Related Lists
-        </button>
       </div>
 
       {/* General Tab Content */}
       {activeTab === "general" && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-8">
+        <div className="p-6 space-y-8">
           {/* When do you want your Purchase Orders to be closed? */}
           <div>
             <h3 className="text-sm font-semibold text-gray-900 mb-4">When do you want your Purchase Orders to be closed?</h3>
             <div className="space-y-3">
               <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="radio"
-                  name="closeWhen"
-                  value="when-receive-recorded"
-                  checked={closeWhenOption === "when-receive-recorded"}
-                  onChange={(e) => setCloseWhenOption(e.target.value)}
-                  className="mt-1 h-4 w-4"
-                />
+              <input
+                type="radio"
+                name="closeWhen"
+                value="when-receive-recorded"
+                checked={closeWhenOption === "when-receive-recorded"}
+                onChange={(e) => setCloseWhenOption(e.target.value)}
+                className="mt-1 h-4 w-4 text-[#156372] focus:ring-[#156372]"
+              />
                 <span className="text-sm text-gray-700">When a Purchase Receive is recorded</span>
               </label>
               <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="radio"
-                  name="closeWhen"
-                  value="when-bill-created"
-                  checked={closeWhenOption === "when-bill-created"}
-                  onChange={(e) => setCloseWhenOption(e.target.value)}
-                  className="mt-1 h-4 w-4"
-                />
+              <input
+                type="radio"
+                name="closeWhen"
+                value="when-bill-created"
+                checked={closeWhenOption === "when-bill-created"}
+                onChange={(e) => setCloseWhenOption(e.target.value)}
+                className="mt-1 h-4 w-4 text-[#156372] focus:ring-[#156372]"
+              />
                 <span className="text-sm text-gray-700">When a Bill is created</span>
               </label>
               <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="radio"
-                  name="closeWhen"
-                  value="when-receives-and-bills"
-                  checked={closeWhenOption === "when-receives-and-bills"}
-                  onChange={(e) => setCloseWhenOption(e.target.value)}
-                  className="mt-1 h-4 w-4"
-                />
+              <input
+                type="radio"
+                name="closeWhen"
+                value="when-receives-and-bills"
+                checked={closeWhenOption === "when-receives-and-bills"}
+                onChange={(e) => setCloseWhenOption(e.target.value)}
+                className="mt-1 h-4 w-4 text-[#156372] focus:ring-[#156372]"
+              />
                 <span className="text-sm text-gray-700">When Receives and Bills are recorded</span>
               </label>
             </div>
@@ -158,7 +118,7 @@ export default function PurchaseOrdersPage() {
               value={termsConditions}
               onChange={(e) => setTermsConditions(e.target.value)}
               rows={6}
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#156372] resize-none"
               placeholder="Enter terms and conditions"
             />
           </div>
@@ -170,14 +130,14 @@ export default function PurchaseOrdersPage() {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={6}
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#156372] resize-none"
               placeholder="Enter notes"
             />
           </div>
 
           {/* Save Button */}
           <div className="flex items-center justify-start pt-6 border-t border-gray-200">
-            <button className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700">
+            <button className="px-4 py-2 text-sm font-medium text-white bg-[#156372] rounded-lg hover:bg-[#0f4a56]">
               Save
             </button>
           </div>
@@ -331,7 +291,7 @@ export default function PurchaseOrdersPage() {
       )}
 
       {/* Field Customization Tab Content */}
-      {activeTab === "field-customization" && (
+      {false && (
         <div>
           <div className="flex items-center justify-between mb-6">
             <div className="text-sm text-gray-600">
@@ -395,7 +355,7 @@ export default function PurchaseOrdersPage() {
       )}
 
       {/* Validation Rules Tab Content */}
-      {activeTab === "validation-rules" && (
+      {false && (
         <div>
           <div className="flex items-center justify-end mb-6">
             <button className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 flex items-center gap-2">
@@ -467,7 +427,7 @@ export default function PurchaseOrdersPage() {
       )}
 
       {/* Custom Buttons Tab Content */}
-      {activeTab === "custom-buttons" && (
+      {false && (
         <div>
           <div className="flex items-center justify-between mb-6">
             <div></div>
@@ -541,7 +501,7 @@ export default function PurchaseOrdersPage() {
       )}
 
       {/* Related Lists Tab Content */}
-      {activeTab === "related-lists" && (
+      {false && (
         <div>
           <div className="flex items-center justify-end mb-6">
             <button

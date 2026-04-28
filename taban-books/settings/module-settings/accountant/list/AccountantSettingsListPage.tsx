@@ -278,7 +278,7 @@ export default function AccountantPage() {
           onClick={() => setActiveTab("general")}
           className={`px-4 py-2 text-sm font-medium transition ${
             activeTab === "general"
-              ? "text-blue-600 border-b-2 border-blue-600"
+              ? "text-gray-900 font-semibold border-b-2 border-gray-300"
               : "text-gray-600 hover:text-gray-900"
           }`}
         >
@@ -288,7 +288,7 @@ export default function AccountantPage() {
           onClick={() => setActiveTab("default-account-tracking")}
           className={`px-4 py-2 text-sm font-medium transition ${
             activeTab === "default-account-tracking"
-              ? "text-blue-600 border-b-2 border-blue-600"
+              ? "text-gray-900 font-semibold border-b-2 border-gray-300"
               : "text-gray-600 hover:text-gray-900"
           }`}
         >
@@ -298,47 +298,17 @@ export default function AccountantPage() {
           onClick={() => setActiveTab("journal-approvals")}
           className={`px-4 py-2 text-sm font-medium transition ${
             activeTab === "journal-approvals"
-              ? "text-blue-600 border-b-2 border-blue-600"
+              ? "text-gray-900 font-semibold border-b-2 border-gray-300"
               : "text-gray-600 hover:text-gray-900"
           }`}
         >
           Journal Approvals
         </button>
-        <button
-          onClick={() => setActiveTab("journal-validation-rules")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "journal-validation-rules"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Journal Validation Rules
-        </button>
-        <button
-          onClick={() => setActiveTab("journal-custom-fields")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "journal-custom-fields"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Journal Custom Fields
-        </button>
-        <button
-          onClick={() => setActiveTab("chart-custom-fields")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "chart-custom-fields"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Chart of Accounts Custom Fields
-        </button>
       </div>
 
       {/* General Tab Content */}
       {activeTab === "general" && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-8">
+        <div className="space-y-8">
           {/* Chart of Accounts Section */}
           <div>
             <div className="flex items-center gap-2 mb-4">
@@ -382,7 +352,7 @@ export default function AccountantPage() {
             <div className="space-y-4">
               <label className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition ${
                 currencyTrackingMethod === "same" 
-                  ? "border-blue-500 bg-blue-50" 
+                  ? "border-gray-300 bg-gray-50" 
                   : "border-gray-200 hover:border-gray-300"
               }`}>
                 <input
@@ -428,7 +398,7 @@ export default function AccountantPage() {
 
               <label className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition ${
                 currencyTrackingMethod === "separate" 
-                  ? "border-blue-500 bg-blue-50" 
+                  ? "border-gray-300 bg-gray-50" 
                   : "border-gray-200 hover:border-gray-300"
               }`}>
                 <input
@@ -658,11 +628,14 @@ export default function AccountantPage() {
           </div>
 
           {/* Save Button */}
-          <div className="flex items-center justify-start pt-6 mt-6 border-t border-gray-200">
+          <div
+            className="fixed bottom-0 z-30 px-6 py-4"
+            style={{ left: "16rem", right: 0 }}
+          >
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#156372] px-4 py-2 text-sm font-medium text-white hover:bg-[#0f4a56] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving && <Loader2 className="animate-spin" size={16} />}
               {saving ? "Saving..." : "Save"}
@@ -679,7 +652,7 @@ export default function AccountantPage() {
           <div className="space-y-4">
             <label className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition ${
               approvalType === "no-approval" 
-                ? "border-blue-500 bg-blue-50" 
+                  ? "border-gray-300 bg-gray-50" 
                 : "border-gray-200 hover:border-gray-300"
             }`}>
               <input

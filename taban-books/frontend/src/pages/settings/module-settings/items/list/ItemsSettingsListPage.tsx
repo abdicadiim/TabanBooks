@@ -174,6 +174,8 @@ const RECORD_ROLE_SCOPE_OPTIONS = [
 ];
 
 const RECORD_ACTION_OPTIONS = ["Default", "Edit", "Delete"];
+const generalSectionClass =
+  "rounded-2xl border border-gray-200 bg-white px-5 py-5 shadow-sm sm:px-6";
 
 const createDefaultRecordLockConfiguration = (
   selectedFields: string[] = []
@@ -297,7 +299,6 @@ export default function ItemsPage() {
   const navigate = useNavigate();
   const currentUser = getCurrentUser();
   const [activeTab, setActiveTab] = useState("general");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
   // General tab states
@@ -317,7 +318,7 @@ export default function ItemsPage() {
   const [trackLandedCost, setTrackLandedCost] = useState(false);
   
   // Field Customization tab states
-  const [customFields, setCustomFields] = useState([]);
+  const [customFields, setCustomFields] = useState<any[]>([]);
   const [defaultFields, setDefaultFields] = useState<ItemFieldConfig[]>(DEFAULT_ITEM_FIELDS);
   const [activeFieldActionId, setActiveFieldActionId] = useState<string | null>(null);
   const customFieldsUsage = customFields.length;
@@ -337,17 +338,17 @@ export default function ItemsPage() {
   ]);
   
   // Custom Buttons tab states
-  const [customButtons, setCustomButtons] = useState([]);
+  const [customButtons, setCustomButtons] = useState<any[]>([]);
   const [showNewButtonDropdown, setShowNewButtonDropdown] = useState(false);
   const [locationFilter, setLocationFilter] = useState("All");
-  const newButtonDropdownRef = useRef(null);
+  const newButtonDropdownRef = useRef<HTMLDivElement | null>(null);
   const notifyRecipientDropdownRef = useRef<HTMLDivElement | null>(null);
   const fieldActionDropdownRef = useRef<HTMLDivElement | null>(null);
   
   // Related Lists tab states
-  const [relatedLists, setRelatedLists] = useState([]);
+  const [relatedLists, setRelatedLists] = useState<any[]>([]);
   const [showNewRelatedListDropdown, setShowNewRelatedListDropdown] = useState(false);
-  const newRelatedListDropdownRef = useRef(null);
+  const newRelatedListDropdownRef = useRef<HTMLDivElement | null>(null);
 
   const getPreferredNotificationEmail = (users: OrganizationUser[]) => {
     const currentUserEmail = normalizeEmail(currentUser?.email || "");
@@ -468,7 +469,6 @@ export default function ItemsPage() {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        setLoading(true);
         const token = getToken();
         if (!token) {
           toast.error("Please login to access settings");
@@ -512,8 +512,6 @@ export default function ItemsPage() {
       } catch (error) {
         console.error("Error fetching items settings:", error);
         toast.error("Error loading items settings");
-      } finally {
-        setLoading(false);
       }
     };
 
@@ -707,81 +705,22 @@ export default function ItemsPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showNewButtonDropdown, showNewRelatedListDropdown, showNotifyRecipientDropdown, activeFieldActionId]);
 
-  if (loading) {
-    return (
-      <div className="p-6 max-w-4xl flex items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="animate-spin text-blue-600" size={32} />
-          <p className="text-gray-600">Loading items settings...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="p-6 max-w-4xl">
-      <h1 className="text-2xl font-semibold text-gray-900 mb-6">Items</h1>
+    <div className="min-h-full px-6 py-6 pb-28 xl:px-8">
+      <div className="w-full max-w-6xl">
+        <div className="mb-8 max-w-3xl">
+          <h1 className="text-2xl font-semibold text-gray-900">Items</h1>
+          <p className="mt-2 text-sm leading-6 text-gray-500">
+            Configure how item records behave across inventory, pricing, field access, and
+            related workflows.
+          </p>
+        </div>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-gray-200 mb-6">
-        <button
-          onClick={() => setActiveTab("general")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "general"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          General
-        </button>
-        <button
-          onClick={() => setActiveTab("field-customization")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "field-customization"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Field Customization
-        </button>
-        <button
-          onClick={() => setActiveTab("record-locking")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "record-locking"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Record Locking
-        </button>
-        <button
-          onClick={() => setActiveTab("custom-buttons")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "custom-buttons"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Custom Buttons
-        </button>
-        <button
-          onClick={() => setActiveTab("related-lists")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "related-lists"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Related Lists
-        </button>
-      </div>
-
-      {/* General Tab Content */}
       {activeTab === "general" && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-8">
+      <div className="max-w-5xl space-y-5">
           {/* Set decimal rate for item quantity */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          <section className={generalSectionClass}>
+            <label className="mb-2 block text-sm font-medium text-gray-700">
               Set a decimal rate for your item quantity:
             </label>
             <div className="relative w-32">
@@ -798,10 +737,10 @@ export default function ItemsPage() {
               </select>
               <ChevronDown size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
-          </div>
+          </section>
 
           {/* Duplicate Item Name */}
-          <div className="border-t border-gray-200 pt-6">
+          <section className={generalSectionClass}>
             <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -826,10 +765,10 @@ export default function ItemsPage() {
                 )}
               </div>
             </label>
-          </div>
+          </section>
 
           {/* Enhanced Item Search */}
-          <div className="border-t border-gray-200 pt-6">
+          <section className={generalSectionClass}>
             <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -853,10 +792,10 @@ export default function ItemsPage() {
                 )}
               </div>
             </label>
-          </div>
+          </section>
 
           {/* Price Lists */}
-          <div className="border-t border-gray-200 pt-6">
+          <section className={generalSectionClass}>
             <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -876,10 +815,10 @@ export default function ItemsPage() {
                 </p>
               </div>
             </label>
-          </div>
+          </section>
 
           {/* Inventory */}
-          <div className="border-t border-gray-200 pt-6">
+          <section className={generalSectionClass}>
             <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -1080,14 +1019,19 @@ export default function ItemsPage() {
                 )}
               </div>
             </label>
-          </div>
+          </section>
 
           {/* Save Button */}
-          <div className="flex items-center justify-start pt-6 border-t border-gray-200">
+          <div
+            className="fixed bottom-0 z-30 border-t border-gray-200 bg-white/95 px-6 py-4 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] backdrop-blur supports-[backdrop-filter]:bg-white/80"
+            style={{ left: "16rem", right: 0 }}
+          >
             <button
+              type="button"
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="inline-flex min-h-[38px] items-center gap-2 rounded-[10px] !bg-[#22c55e] px-4 py-2 text-sm font-semibold !text-white shadow-sm transition hover:!bg-[#1fb157] disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ backgroundColor: "#22c55e", color: "#ffffff" }}
             >
               {saving && <Loader2 className="animate-spin" size={16} />}
               {saving ? "Saving..." : "Save"}
@@ -1095,7 +1039,6 @@ export default function ItemsPage() {
           </div>
         </div>
       )}
-
       {/* Record Locking Tab Content */}
       {activeTab === "record-locking" && (
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -1775,6 +1718,7 @@ export default function ItemsPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

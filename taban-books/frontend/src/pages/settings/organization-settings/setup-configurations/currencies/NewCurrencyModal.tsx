@@ -350,7 +350,7 @@ export default function NewCurrencyModal({ onClose, onSave }: NewCurrencyModalPr
               <button
                 type="button"
                 onClick={() => setCurrencyCodeDropdownOpen(!currencyCodeDropdownOpen)}
-                className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-white text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-white text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-black"
               >
                 <span className={currencyCode ? "text-gray-900" : "text-gray-400"}>
                   {currencyCode || "Select"}
@@ -364,7 +364,7 @@ export default function NewCurrencyModal({ onClose, onSave }: NewCurrencyModalPr
               {currencyCodeDropdownOpen && createPortal(
                 <div
                   ref={currencyCodeDropdownRef}
-                  className="fixed overflow-hidden rounded-xl border-2 border-blue-300 bg-white shadow-[0_20px_40px_rgba(0,0,0,0.25)]"
+                  className="fixed overflow-hidden rounded-xl border-2 border-black/20 bg-white shadow-[0_20px_40px_rgba(0,0,0,0.25)]"
                   style={{
                     top: `${currencyCodePosition.top}px`,
                     left: `${currencyCodePosition.left}px`,
@@ -376,7 +376,7 @@ export default function NewCurrencyModal({ onClose, onSave }: NewCurrencyModalPr
                   }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="flex items-center gap-2 border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-blue-50/30 px-3 py-3 flex-shrink-0">
+                  <div className="flex items-center gap-2 border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 px-3 py-3 flex-shrink-0">
                     <Search size={16} className="text-gray-400" />
                     <input
                       autoFocus
@@ -394,7 +394,7 @@ export default function NewCurrencyModal({ onClose, onSave }: NewCurrencyModalPr
                           key={code}
                           type="button"
                           className={`w-full px-4 py-2.5 text-left text-sm font-medium transition
-                            ${isSelected ? "bg-blue-500 text-white" : "text-gray-900 hover:bg-gray-50"}
+                            ${isSelected ? "bg-black text-white" : "text-gray-900 hover:bg-gray-50"}
                           `}
                           onClick={() => {
                             setCurrencyCode(code);
@@ -440,7 +440,7 @@ export default function NewCurrencyModal({ onClose, onSave }: NewCurrencyModalPr
               type="text"
               value={currencySymbol}
               onChange={(e) => setCurrencySymbol(e.target.value)}
-              className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-black"
               placeholder="Enter currency symbol"
             />
           </div>
@@ -454,7 +454,7 @@ export default function NewCurrencyModal({ onClose, onSave }: NewCurrencyModalPr
               type="text"
               value={currencyName}
               onChange={(e) => setCurrencyName(e.target.value)}
-              className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-black"
               placeholder="Enter currency name"
             />
           </div>
@@ -468,7 +468,7 @@ export default function NewCurrencyModal({ onClose, onSave }: NewCurrencyModalPr
               <button
                 type="button"
                 onClick={() => setDecimalPlacesDropdownOpen(!decimalPlacesDropdownOpen)}
-                className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-white text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-white text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-black"
               >
                 <span className={decimalPlaces ? "text-gray-900" : "text-gray-400"}>
                   {decimalPlaces || "Select"}
@@ -482,7 +482,7 @@ export default function NewCurrencyModal({ onClose, onSave }: NewCurrencyModalPr
               {decimalPlacesDropdownOpen && createPortal(
                 <div
                   ref={decimalPlacesDropdownRef}
-                  className="fixed overflow-hidden rounded-xl border-2 border-blue-300 bg-white shadow-[0_20px_40px_rgba(0,0,0,0.25)]"
+                  className="fixed overflow-hidden rounded-xl border-2 border-black/20 bg-white shadow-[0_20px_40px_rgba(0,0,0,0.25)]"
                   style={{
                     top: `${decimalPlacesPosition.top}px`,
                     left: `${decimalPlacesPosition.left}px`,
@@ -494,7 +494,7 @@ export default function NewCurrencyModal({ onClose, onSave }: NewCurrencyModalPr
                   }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="flex items-center gap-2 border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-blue-50/30 px-3 py-3 flex-shrink-0">
+                  <div className="flex items-center gap-2 border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 px-3 py-3 flex-shrink-0">
                     <Search size={16} className="text-gray-400" />
                     <input
                       autoFocus
@@ -512,7 +512,7 @@ export default function NewCurrencyModal({ onClose, onSave }: NewCurrencyModalPr
                           key={opt}
                           type="button"
                           className={`w-full px-4 py-2.5 text-left text-sm font-medium transition
-                            ${isSelected ? "bg-blue-500 text-white" : "text-gray-900 hover:bg-gray-50"}
+                            ${isSelected ? "bg-black text-white" : "text-gray-900 hover:bg-gray-50"}
                           `}
                           onClick={() => {
                             setDecimalPlaces(opt);
@@ -543,7 +543,7 @@ export default function NewCurrencyModal({ onClose, onSave }: NewCurrencyModalPr
               <button
                 type="button"
                 onClick={() => setFormatDropdownOpen(!formatDropdownOpen)}
-                className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-white text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full h-10 px-3 rounded-lg border border-gray-300 bg-white text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-black"
               >
                 <span className={format ? "text-gray-900" : "text-gray-400"}>
                   {format || "Select"}
@@ -557,7 +557,7 @@ export default function NewCurrencyModal({ onClose, onSave }: NewCurrencyModalPr
               {formatDropdownOpen && createPortal(
                 <div
                   ref={formatDropdownRef}
-                  className="fixed overflow-hidden rounded-xl border-2 border-blue-300 bg-white shadow-[0_20px_40px_rgba(0,0,0,0.25)]"
+                  className="fixed overflow-hidden rounded-xl border-2 border-black/20 bg-white shadow-[0_20px_40px_rgba(0,0,0,0.25)]"
                   style={{
                     top: `${formatPosition.top}px`,
                     left: `${formatPosition.left}px`,
@@ -569,7 +569,7 @@ export default function NewCurrencyModal({ onClose, onSave }: NewCurrencyModalPr
                   }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="flex items-center gap-2 border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-blue-50/30 px-3 py-3 flex-shrink-0">
+                  <div className="flex items-center gap-2 border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 px-3 py-3 flex-shrink-0">
                     <Search size={16} className="text-gray-400" />
                     <input
                       autoFocus
@@ -587,7 +587,7 @@ export default function NewCurrencyModal({ onClose, onSave }: NewCurrencyModalPr
                           key={opt}
                           type="button"
                           className={`w-full px-4 py-2.5 text-left text-sm font-medium transition
-                            ${isSelected ? "bg-blue-500 text-white" : "text-gray-900 hover:bg-gray-50"}
+                            ${isSelected ? "bg-black text-white" : "text-gray-900 hover:bg-gray-50"}
                           `}
                           onClick={() => {
                             setFormat(opt);
@@ -617,7 +617,7 @@ export default function NewCurrencyModal({ onClose, onSave }: NewCurrencyModalPr
                 type="checkbox"
                 checked={isBaseCurrency}
                 onChange={(e) => setIsBaseCurrency(e.target.checked)}
-                className="peer h-5 w-5 cursor-pointer appearance-none rounded border border-gray-300 bg-white checked:bg-blue-600 checked:border-blue-600 transition-all"
+                className="peer h-5 w-5 cursor-pointer appearance-none rounded border border-gray-300 bg-white checked:bg-black checked:border-black transition-all"
               />
               <svg
                 className="absolute h-3.5 w-3.5 opacity-0 peer-checked:opacity-100 pointer-events-none top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white stroke-2"

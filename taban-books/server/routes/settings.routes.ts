@@ -26,6 +26,7 @@ import * as approvalRuleController from "../controllers/approvalRule.controller.
 import * as senderEmailController from "../controllers/senderEmail.controller.js";
 import * as emailTemplateController from "../controllers/emailTemplate.controller.js";
 import * as emailNotificationSettingsController from "../controllers/emailNotificationSettings.controller.js";
+import * as pdfTemplateSettingsController from "../controllers/pdfTemplateSettings.controller.js";
 import { protect } from "../middleware/auth.middleware.js";
 
 const router: Router = express.Router();
@@ -219,6 +220,11 @@ router
 router
   .route("/settings/transaction-number-series/:id/next")
   .get(transactionNumberSeriesController.getNextTransactionNumber);
+
+router
+  .route("/settings/pdf-templates")
+  .get(pdfTemplateSettingsController.getPdfTemplateSettings)
+  .put(pdfTemplateSettingsController.updatePdfTemplateSettings);
 
 // Reporting Tags routes
 router

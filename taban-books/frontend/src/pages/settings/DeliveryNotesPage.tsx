@@ -4,7 +4,6 @@ import { Lock, ChevronDown, Plus, GripVertical, X, Edit2 } from "lucide-react";
 
 export default function DeliveryNotesPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("general");
   
   // General tab states - Document Fields
   const [documentFields, setDocumentFields] = useState({
@@ -62,70 +61,13 @@ export default function DeliveryNotesPage() {
     <div className="p-6 max-w-4xl">
       <h1 className="text-2xl font-semibold text-gray-900 mb-6">Delivery Notes</h1>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-gray-200 mb-6">
-        <button
-          onClick={() => setActiveTab("general")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "general"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          General
-        </button>
-        <button
-          onClick={() => setActiveTab("approvals")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "approvals"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Approvals
-        </button>
-        <button
-          onClick={() => setActiveTab("field-customization")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "field-customization"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Field Customization
-        </button>
-        <button
-          onClick={() => setActiveTab("custom-buttons")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "custom-buttons"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Custom Buttons
-        </button>
-        <button
-          onClick={() => setActiveTab("related-lists")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "related-lists"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Related Lists
-        </button>
-      </div>
-
       {/* General Tab Content - Document Fields */}
-      {activeTab === "general" && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-6">Document Fields</h3>
-          
-          <div className="grid grid-cols-2 gap-8">
+      <div className="border-t border-gray-200 pt-4">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-7 max-w-[680px]">
             {/* Left Column */}
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Document Title</label>
+                <label className="block text-sm text-gray-700 mb-2">Document Title</label>
                 <input
                   type="text"
                   value={documentFields.documentTitle.value}
@@ -135,7 +77,7 @@ export default function DeliveryNotesPage() {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Date Field</label>
+                <label className="block text-sm text-gray-700 mb-2">Date Field</label>
                 <input
                   type="text"
                   value={documentFields.dateField.value}
@@ -145,7 +87,7 @@ export default function DeliveryNotesPage() {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <label className="block text-sm text-gray-700 mb-2">Description</label>
                 <input
                   type="text"
                   value={documentFields.description.value}
@@ -154,7 +96,7 @@ export default function DeliveryNotesPage() {
                 />
               </div>
               
-              <div className="border-t border-gray-200 pt-4"></div>
+              <div className="border-t border-gray-200 pt-4" />
               
               <div className="flex items-center gap-3">
                 <input
@@ -163,7 +105,7 @@ export default function DeliveryNotesPage() {
                   onChange={(e) => updateDocumentField("reference", { enabled: e.target.checked })}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-                <label className="flex-1 text-sm font-medium text-gray-700">Reference Field</label>
+                <label className="flex-1 text-sm text-gray-700">Reference Field</label>
                 <input
                   type="text"
                   value={documentFields.reference.value}
@@ -179,7 +121,7 @@ export default function DeliveryNotesPage() {
                   onChange={(e) => updateDocumentField("billTo", { enabled: e.target.checked })}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-                <label className="flex-1 text-sm font-medium text-gray-700">Bill To</label>
+                <label className="flex-1 text-sm text-gray-700">Bill To</label>
                 <input
                   type="text"
                   value={documentFields.billTo.value}
@@ -195,7 +137,7 @@ export default function DeliveryNotesPage() {
                   onChange={(e) => updateDocumentField("deliveryTo", { enabled: e.target.checked })}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-                <label className="flex-1 text-sm font-medium text-gray-700">Delivery To</label>
+                <label className="flex-1 text-sm text-gray-700">Delivery To</label>
                 <input
                   type="text"
                   value={documentFields.deliveryTo.value}
@@ -211,7 +153,7 @@ export default function DeliveryNotesPage() {
                   onChange={(e) => updateDocumentField("customerNotes", { enabled: e.target.checked })}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-                <label className="flex-1 text-sm font-medium text-gray-700">Customer Notes</label>
+                <label className="flex-1 text-sm text-gray-700">Customer Notes</label>
                 <input
                   type="text"
                   value={documentFields.customerNotes.value}
@@ -224,7 +166,7 @@ export default function DeliveryNotesPage() {
             {/* Right Column */}
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Transaction Number</label>
+                <label className="block text-sm text-gray-700 mb-2">Transaction Number</label>
                 <input
                   type="text"
                   value={documentFields.transactionNumber.value}
@@ -234,7 +176,7 @@ export default function DeliveryNotesPage() {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Item</label>
+                <label className="block text-sm text-gray-700 mb-2">Item</label>
                 <input
                   type="text"
                   value={documentFields.item.value}
@@ -244,7 +186,7 @@ export default function DeliveryNotesPage() {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
+                <label className="block text-sm text-gray-700 mb-2">Quantity</label>
                 <input
                   type="text"
                   value={documentFields.quantity.value}
@@ -253,7 +195,7 @@ export default function DeliveryNotesPage() {
                 />
               </div>
               
-              <div className="border-t border-gray-200 pt-4"></div>
+              <div className="border-t border-gray-200 pt-4" />
               
               <div className="flex items-center gap-3">
                 <input
@@ -262,7 +204,7 @@ export default function DeliveryNotesPage() {
                   onChange={(e) => updateDocumentField("signature", { enabled: e.target.checked })}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-                <label className="flex-1 text-sm font-medium text-gray-700">Signature</label>
+                <label className="flex-1 text-sm text-gray-700">Signature</label>
                 <input
                   type="text"
                   value={documentFields.signature.value}
@@ -278,7 +220,7 @@ export default function DeliveryNotesPage() {
                   onChange={(e) => updateDocumentField("balanceDue", { enabled: e.target.checked })}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-                <label className="flex-1 text-sm font-medium text-gray-700">Balance Due</label>
+                <label className="flex-1 text-sm text-gray-700">Balance Due</label>
                 <input
                   type="text"
                   value={documentFields.balanceDue.value}
@@ -290,16 +232,15 @@ export default function DeliveryNotesPage() {
           </div>
           
           {/* Save Button */}
-          <div className="flex items-center justify-start pt-6 mt-6 border-t border-gray-200">
-            <button className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700">
+          <div className="flex items-center justify-start pt-6 mt-6 max-w-[680px] border-t border-gray-200">
+            <button className="px-4 py-2 text-sm font-medium text-white bg-[#156372] rounded-lg hover:bg-[#0f4a56]">
               Save
             </button>
           </div>
-        </div>
-      )}
+      </div>
 
       {/* Approvals Tab Content */}
-      {activeTab === "approvals" && (
+      {false && (
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-6">Approval Type</h3>
           
@@ -445,7 +386,7 @@ export default function DeliveryNotesPage() {
       )}
 
       {/* Field Customization Tab Content */}
-      {activeTab === "field-customization" && (
+      {false && (
         <div>
           <div className="flex items-center justify-between mb-6">
             <div className="text-sm text-gray-600">
@@ -509,7 +450,7 @@ export default function DeliveryNotesPage() {
       )}
 
       {/* Custom Buttons Tab Content */}
-      {activeTab === "custom-buttons" && (
+      {false && (
         <div>
           <div className="flex items-center justify-between mb-6">
             <div></div>
@@ -583,7 +524,7 @@ export default function DeliveryNotesPage() {
       )}
 
       {/* Related Lists Tab Content */}
-      {activeTab === "related-lists" && (
+      {false && (
         <div>
           <div className="flex items-center justify-end mb-6">
             <button

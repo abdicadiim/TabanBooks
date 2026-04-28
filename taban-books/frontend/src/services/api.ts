@@ -1543,8 +1543,10 @@ export const transactionNumberSeriesAPI = {
     return response;
   },
   updateMultiple: async (data: any) => {
-    const allSeriesResponse = await transactionNumberSeriesAPI.getAll();
-    const rows = normalizeTransactionSeriesRows(allSeriesResponse);
+    const cachedRows = readTransactionNumberSeriesCache();
+    const rows = cachedRows.length
+      ? cachedRows
+      : normalizeTransactionSeriesRows(await transactionNumberSeriesAPI.getAll());
     const originalName = String(data?.originalName || data?.seriesName || "").trim().toLowerCase();
     const modules = Array.isArray(data?.modules) ? data.modules : [];
 
@@ -1732,6 +1734,11 @@ export const emailTemplatesAPI = {
   getAll: () => apiRequest('/settings/email-templates'),
   getByKey: (key: string) => apiRequest(`/settings/email-templates/${encodeURIComponent(key)}`),
   upsert: (key: string, data: any) => apiRequest(`/settings/email-templates/${encodeURIComponent(key)}`, { method: 'PUT', body: data }),
+};
+
+export const pdfTemplatesAPI = {
+  get: () => apiRequest('/settings/pdf-templates'),
+  update: (data: any) => apiRequest('/settings/pdf-templates', { method: 'PUT', body: data }),
 };
 
 // ============================================================================

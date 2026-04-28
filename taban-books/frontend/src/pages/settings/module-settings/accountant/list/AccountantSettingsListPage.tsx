@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Info, ChevronDown, ChevronRight, HelpCircle, Plus, Edit2, Loader2 } from "lucide-react";
+import { Info, ChevronDown, ChevronRight, HelpCircle, Plus, Edit2, Loader2, Gem, Shield, CircleDollarSign, Banknote, Search } from "lucide-react";
 import { getToken, API_BASE_URL } from "../../../../../services/auth";
 import toast from "react-hot-toast";
 import { accountantAPI } from "../../../../../services/api";
 
 export default function AccountantPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("general");
+  const [activeTab, setActiveTab] = useState("default-account-tracking");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
@@ -29,17 +29,71 @@ export default function AccountantPage() {
   const [incomeAccounts, setIncomeAccounts] = useState([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   
-  // Default Account Tracking tab states
-  const [expandedAccountTypes, setExpandedAccountTypes] = useState({
-    items: false,
-    customers: false,
-    vendors: false,
+  type DefaultAccountTrackingSectionId = "asset" | "liability" | "income" | "expense";
+
+type DefaultAccountTrackingRow = {
+    account: string;
+    mappedAccount: string;
+  };
+
+  type AccountOption = {
+    value: string;
+    label: string;
+  };
+
+  type DefaultAccountTrackingState = {
+    items: unknown;
+    customers: unknown;
+    vendors: unknown;
+    asset: DefaultAccountTrackingRow[];
+    liability: DefaultAccountTrackingRow[];
+    equity: unknown;
+    income: DefaultAccountTrackingRow[];
+    expense: DefaultAccountTrackingRow[];
+    [key: string]: unknown;
+  };
+
+  const DEFAULT_ACCOUNT_TRACKING_STATE: DefaultAccountTrackingState = {
+    items: {},
+    customers: {},
+    vendors: {},
+    asset: [
+      { account: "Accounts Receivable", mappedAccount: "Accounts Receivable" },
+      { account: "Vendor Advances", mappedAccount: "Prepaid Expenses" },
+    ],
+    liability: [
+      { account: "Accounts Payable", mappedAccount: "Accounts Payable" },
+      { account: "Customer Advances", mappedAccount: "Unearned Revenue" },
+    ],
+    income: [
+      { account: "Sales", mappedAccount: "Sales" },
+      { account: "Other Income", mappedAccount: "Other Income" },
+    ],
+    expense: [
+      { account: "Cost of Goods Sold", mappedAccount: "Cost of Goods Sold" },
+      { account: "Operating Expenses", mappedAccount: "Operating Expenses" },
+    ],
+    equity: {},
+  };
+
+  const DEFAULT_ACCOUNT_TRACKING_SECTIONS: Array<{
+    id: DefaultAccountTrackingSectionId;
+    name: string;
+    icon: React.ElementType;
+  }> = [
+    { id: "asset", name: "Asset", icon: Gem },
+    { id: "liability", name: "Liability", icon: Shield },
+    { id: "income", name: "Income", icon: CircleDollarSign },
+    { id: "expense", name: "Expense", icon: Banknote },
+  ];
+
+  const [expandedAccountTypes, setExpandedAccountTypes] = useState<Record<DefaultAccountTrackingSectionId, boolean>>({
     asset: true,
     liability: false,
-    equity: false,
     income: false,
-    expense: false
+    expense: false,
   });
+  const [defaultAccountTracking, setDefaultAccountTracking] = useState<DefaultAccountTrackingState>(DEFAULT_ACCOUNT_TRACKING_STATE);
   
   // Journal Approvals tab states
   const [approvalType, setApprovalType] = useState("no-approval");
@@ -98,6 +152,179 @@ export default function AccountantPage() {
     }));
   };
 
+  const normalizeDefaultAccountTracking = (value: unknown): DefaultAccountTrackingState => {
+    const source = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+    const normalized: DefaultAccountTrackingState = {
+      ...DEFAULT_ACCOUNT_TRACKING_STATE,
+      ...source,
+    };
+
+    return DEFAULT_ACCOUNT_TRACKING_SECTIONS.reduce((accumulator, section) => {
+      const sectionValue = source[section.id];
+
+      if (Array.isArray(sectionValue) && sectionValue.length > 0) {
+        accumulator[section.id] = sectionValue.map((row: any, index: number) => ({
+          account: String(row?.account || DEFAULT_ACCOUNT_TRACKING_STATE[section.id][index]?.account || `Account ${index + 1}`),
+          mappedAccount: String(
+            row?.mappedAccount ||
+              row?.mapped ||
+              row?.account ||
+              DEFAULT_ACCOUNT_TRACKING_STATE[section.id][index]?.mappedAccount ||
+              ""
+          ),
+        }));
+        return accumulator;
+      }
+
+      accumulator[section.id] = DEFAULT_ACCOUNT_TRACKING_STATE[section.id];
+      return accumulator;
+    }, normalized);
+  };
+
+  const updateDefaultAccountTrackingRow = (
+    sectionId: DefaultAccountTrackingSectionId,
+    index: number,
+    mappedAccount: string
+  ) => {
+    setDefaultAccountTracking((currentTracking) => ({
+      ...currentTracking,
+      [sectionId]: currentTracking[sectionId].map((row, rowIndex) =>
+        rowIndex === index ? { ...row, mappedAccount } : row
+      ),
+    }));
+  };
+
+  const toAccountOptions = (accounts: any[]): AccountOption[] =>
+    accounts.map((account: any) => {
+      const label = String(account.accountName || account.name || "");
+      return {
+        value: label,
+        label: account.accountCode ? `${label} (${account.accountCode})` : label,
+      };
+    });
+
+  function SearchableAccountDropdown({
+    value,
+    onChange,
+    options,
+    placeholder,
+    disabled = false,
+  }: {
+    value: string;
+    onChange: (nextValue: string) => void;
+    options: AccountOption[];
+    placeholder: string;
+    disabled?: boolean;
+  }) {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchValue, setSearchValue] = useState("");
+    const containerRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+        if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+          setIsOpen(false);
+          setSearchValue("");
+        }
+      };
+
+      if (isOpen) {
+        document.addEventListener("mousedown", handleClickOutside);
+      }
+
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [isOpen]);
+
+    useEffect(() => {
+      if (disabled) {
+        setIsOpen(false);
+        setSearchValue("");
+      }
+    }, [disabled]);
+
+    const selectedOption = options.find((option) => option.value === value);
+    const displayValue = selectedOption?.label || value || placeholder;
+    const filteredOptions = options.filter((option) =>
+      option.label.toLowerCase().includes(searchValue.trim().toLowerCase())
+    );
+
+    return (
+      <div className="relative" ref={containerRef}>
+        <button
+          type="button"
+          onClick={() => {
+            if (disabled) {
+              return;
+            }
+            setIsOpen((prev) => !prev);
+            setSearchValue("");
+          }}
+          className="flex h-9 w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 pr-10 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={disabled}
+        >
+          <span className={value ? "truncate text-gray-900" : "truncate text-gray-400"}>{displayValue}</span>
+        </button>
+        <ChevronDown
+          size={16}
+          className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
+        />
+
+        {isOpen && !disabled && (
+          <div className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+            <div className="border-b border-gray-100 p-2">
+              <div className="relative">
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchValue}
+                  onChange={(e) => setSearchValue(e.target.value)}
+                  placeholder="Search"
+                  className="h-9 w-full rounded-md border border-gray-200 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div className="max-h-56 overflow-y-auto">
+              {filteredOptions.length > 0 ? (
+                filteredOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                      onChange(option.value);
+                      setIsOpen(false);
+                      setSearchValue("");
+                    }}
+                    className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm ${
+                      option.value === value ? "bg-blue-50 text-blue-700" : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <span className="truncate">{option.label}</span>
+                    {option.value === value && <span className="text-blue-600">✓</span>}
+                  </button>
+                ))
+              ) : (
+                <div className="px-3 py-4 text-sm text-gray-500">No accounts found.</div>
+              )}
+            </div>
+            <div className="border-t border-gray-100 px-3 py-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onChange("");
+                  setIsOpen(false);
+                  setSearchValue("");
+                }}
+                className="text-sm font-medium text-gray-600 hover:text-gray-900"
+              >
+                Clear all
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // Load settings on mount (optimized - load accounts separately)
   useEffect(() => {
     const loadSettings = async () => {
@@ -130,6 +357,7 @@ export default function AccountantPage() {
             setLossAccount(settings.currencyExchange?.lossAccount || '');
             setExchangeAdjustmentsAccount(settings.exchangeAdjustments?.defaultAccount || 'Exchange Gain or Loss');
             setApprovalType(settings.journalApprovals?.approvalType || 'no-approval');
+            setDefaultAccountTracking(normalizeDefaultAccountTracking(settings.defaultAccountTracking));
             setJournalCustomFields(settings.journalCustomFields || []);
             setChartCustomFields(settings.chartCustomFields || []);
           }
@@ -215,16 +443,7 @@ export default function AccountantPage() {
         journalApprovals: {
           approvalType,
         },
-        defaultAccountTracking: {
-          items: {},
-          customers: {},
-          vendors: {},
-          assets: {},
-          liabilities: {},
-          equity: {},
-          income: {},
-          expense: {},
-        },
+        defaultAccountTracking,
         journalCustomFields,
         chartCustomFields,
       };
@@ -278,7 +497,7 @@ export default function AccountantPage() {
           onClick={() => setActiveTab("general")}
           className={`px-4 py-2 text-sm font-medium transition ${
             activeTab === "general"
-              ? "text-blue-600 border-b-2 border-blue-600"
+              ? "text-gray-900 font-semibold border-b-2 border-gray-300"
               : "text-gray-600 hover:text-gray-900"
           }`}
         >
@@ -288,7 +507,7 @@ export default function AccountantPage() {
           onClick={() => setActiveTab("default-account-tracking")}
           className={`px-4 py-2 text-sm font-medium transition ${
             activeTab === "default-account-tracking"
-              ? "text-blue-600 border-b-2 border-blue-600"
+              ? "text-gray-900 font-semibold border-b-2 border-gray-300"
               : "text-gray-600 hover:text-gray-900"
           }`}
         >
@@ -298,47 +517,17 @@ export default function AccountantPage() {
           onClick={() => setActiveTab("journal-approvals")}
           className={`px-4 py-2 text-sm font-medium transition ${
             activeTab === "journal-approvals"
-              ? "text-blue-600 border-b-2 border-blue-600"
+              ? "text-gray-900 font-semibold border-b-2 border-gray-300"
               : "text-gray-600 hover:text-gray-900"
           }`}
         >
           Journal Approvals
         </button>
-        <button
-          onClick={() => setActiveTab("journal-validation-rules")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "journal-validation-rules"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Journal Validation Rules
-        </button>
-        <button
-          onClick={() => setActiveTab("journal-custom-fields")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "journal-custom-fields"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Journal Custom Fields
-        </button>
-        <button
-          onClick={() => setActiveTab("chart-custom-fields")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "chart-custom-fields"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Chart of Accounts Custom Fields
-        </button>
       </div>
 
       {/* General Tab Content */}
       {activeTab === "general" && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-8">
+        <div className="space-y-8">
           {/* Chart of Accounts Section */}
           <div>
             <div className="flex items-center gap-2 mb-4">
@@ -403,20 +592,13 @@ export default function AccountantPage() {
                   {currencyTrackingMethod === "same" && (
                     <div className="mt-3">
                       <div className="relative w-64">
-                        <select
+                        <SearchableAccountDropdown
                           value={sameAccount}
-                          onChange={(e) => setSameAccount(e.target.value)}
-                          className="w-full h-10 px-3 pr-8 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white"
+                          onChange={setSameAccount}
+                          options={toAccountOptions(expenseAccounts)}
+                          placeholder="Select expense account..."
                           disabled={loadingAccounts}
-                        >
-                          <option value="">Select expense account...</option>
-                          {expenseAccounts.map((account: any) => (
-                            <option key={account._id || account.id} value={account.accountName || account.name}>
-                              {account.accountName || account.name} {account.accountCode ? `(${account.accountCode})` : ''}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                        />
                       </div>
                       {loadingAccounts && (
                         <p className="text-xs text-gray-500 mt-1">Loading accounts...</p>
@@ -451,20 +633,13 @@ export default function AccountantPage() {
                       <div>
                         <label className="block text-xs text-gray-600 mb-1">Gain Account (Income)</label>
                         <div className="relative w-64">
-                          <select
+                          <SearchableAccountDropdown
                             value={gainAccount}
-                            onChange={(e) => setGainAccount(e.target.value)}
-                            className="w-full h-10 px-3 pr-8 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white"
+                            onChange={setGainAccount}
+                            options={toAccountOptions(incomeAccounts)}
+                            placeholder="Select income account..."
                             disabled={loadingAccounts}
-                          >
-                            <option value="">Select income account...</option>
-                            {incomeAccounts.map((account: any) => (
-                              <option key={account._id || account.id} value={account.accountName || account.name}>
-                                {account.accountName || account.name} {account.accountCode ? `(${account.accountCode})` : ''}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronDown size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                          />
                         </div>
                         {loadingAccounts && (
                           <p className="text-xs text-gray-500 mt-1">Loading accounts...</p>
@@ -473,20 +648,13 @@ export default function AccountantPage() {
                       <div>
                         <label className="block text-xs text-gray-600 mb-1">Loss Account (Expense)</label>
                         <div className="relative w-64">
-                          <select
+                          <SearchableAccountDropdown
                             value={lossAccount}
-                            onChange={(e) => setLossAccount(e.target.value)}
-                            className="w-full h-10 px-3 pr-8 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white"
+                            onChange={setLossAccount}
+                            options={toAccountOptions(expenseAccounts)}
+                            placeholder="Select expense account..."
                             disabled={loadingAccounts}
-                          >
-                            <option value="">Select expense account...</option>
-                            {expenseAccounts.map((account: any) => (
-                              <option key={account._id || account.id} value={account.accountName || account.name}>
-                                {account.accountName || account.name} {account.accountCode ? `(${account.accountCode})` : ''}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronDown size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                          />
                         </div>
                         {loadingAccounts && (
                           <p className="text-xs text-gray-500 mt-1">Loading accounts...</p>
@@ -508,20 +676,13 @@ export default function AccountantPage() {
               When transactions are created in foreign currencies, there may be decimal value variations between the debit and credit amounts while the journal entries are being posted. These variations are recorded as adjustments. Select the default account using which these adjustments must be recorded.
             </p>
             <div className="relative w-64">
-              <select
+              <SearchableAccountDropdown
                 value={exchangeAdjustmentsAccount}
-                onChange={(e) => setExchangeAdjustmentsAccount(e.target.value)}
-                className="w-full h-10 px-3 pr-8 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white"
+                onChange={setExchangeAdjustmentsAccount}
+                options={toAccountOptions(expenseAccounts)}
+                placeholder="Select expense account..."
                 disabled={loadingAccounts}
-              >
-                <option value="">Select expense account...</option>
-                {expenseAccounts.map((account: any) => (
-                  <option key={account._id || account.id} value={account.accountName || account.name}>
-                    {account.accountName || account.name} {account.accountCode ? `(${account.accountCode})` : ''}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              />
             </div>
             {loadingAccounts && (
               <p className="text-xs text-gray-500 mt-1">Loading accounts...</p>
@@ -575,94 +736,118 @@ export default function AccountantPage() {
 
       {/* Default Account Tracking Tab Content */}
       {activeTab === "default-account-tracking" && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+        <div className="space-y-4">
+          <div className="mb-2">
+            <h3 className="text-base font-medium text-gray-900">
               Select Default Accounts for Each Account Type
             </h3>
-            <p className="text-sm text-gray-600">
+            <p className="mt-2 text-sm text-gray-500">
               The default accounts you select here will automatically be applied when you create new transactions.
             </p>
           </div>
 
-          <div className="space-y-4">
-            {accountTypes.map((accountType) => (
-              <div key={accountType.id} className="border border-gray-200 rounded-lg overflow-hidden">
-                <button
-                  onClick={() => toggleAccountType(accountType.id)}
-                  className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition"
+          <div className="space-y-3">
+            {DEFAULT_ACCOUNT_TRACKING_SECTIONS.map((section) => {
+              const SectionIcon = section.icon;
+              const isExpanded = expandedAccountTypes[section.id];
+              const rows = defaultAccountTracking[section.id] || [];
+
+              return (
+                <div
+                  key={section.id}
+                  className={`relative overflow-visible rounded-md border transition ${
+                    isExpanded ? "border-gray-300" : "border-gray-200"
+                  }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">{accountType.icon}</span>
-                    <span className="text-sm font-semibold text-gray-900">{accountType.name}</span>
-                  </div>
-                  {expandedAccountTypes[accountType.id] ? (
-                    <ChevronDown size={20} className="text-gray-500" />
-                  ) : (
-                    <ChevronRight size={20} className="text-gray-500" />
-                  )}
-                </button>
-                
-                {expandedAccountTypes[accountType.id] && (
-                  <div className="p-4 border-t border-gray-200">
-                    <table className="w-full">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
-                            ACCOUNTS
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
-                            MAPPED ACCOUNTS
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {getAccountMappings(accountType.id).map((item, index) => (
-                          <tr key={index} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-sm text-gray-900 flex items-center gap-2">
-                              {item.account}
-                              <Info size={14} className="text-gray-400" />
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="relative">
-                                <select 
-                                  className="w-full h-9 px-3 pr-8 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white"
-                                  disabled={loadingAccounts}
-                                >
-                                  <option value={item.mappedAccount}>{item.mappedAccount}</option>
-                                  {allAccounts.map((account: any) => (
-                                    <option key={account._id || account.id} value={account.accountName || account.name}>
-                                      {account.accountName || account.name} {account.accountCode ? `(${account.accountCode})` : ''}
-                                    </option>
-                                  ))}
-                                </select>
-                                <ChevronDown size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                              </div>
-                            </td>
+                  <button
+                    type="button"
+                    onClick={() => toggleAccountType(section.id)}
+                    className={`flex w-full items-center gap-2 px-4 py-2 text-left transition ${
+                      isExpanded ? "bg-white" : "bg-white hover:bg-gray-50"
+                    }`}
+                  >
+                    <ChevronRight
+                      size={16}
+                      className={`text-gray-500 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                    />
+                    <span className={`inline-flex h-6 w-6 items-center justify-center rounded-md border ${
+                      section.id === "asset"
+                        ? "border-pink-200 bg-pink-50 text-pink-500"
+                        : section.id === "liability"
+                          ? "border-violet-200 bg-violet-50 text-violet-500"
+                          : section.id === "income"
+                            ? "border-rose-200 bg-rose-50 text-rose-500"
+                            : "border-orange-200 bg-orange-50 text-orange-500"
+                    }`}>
+                      <SectionIcon size={14} />
+                    </span>
+                    <span className="text-sm font-medium text-gray-900">{section.name}</span>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="border-t border-gray-200 bg-white">
+                      <table className="w-full">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                              ACCOUNTS
+                            </th>
+                            <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                              MAPPED ACCOUNT
+                            </th>
                           </tr>
-                        ))}
-                        <tr>
-                          <td colSpan={2} className="px-4 py-3">
-                            <button className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1">
-                              <Plus size={14} />
-                              Add Account
-                            </button>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            ))}
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {rows.map((row, index) => (
+                            <tr key={`${section.id}-${row.account}-${index}`}>
+                              <td className="px-4 py-3 text-sm text-gray-900">
+                                <div className="flex items-center gap-2">
+                                  <span>{row.account}</span>
+                                  <Info size={14} className="text-gray-400" />
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="relative">
+                                  <SearchableAccountDropdown
+                                    value={row.mappedAccount}
+                                    onChange={(nextValue) =>
+                                      updateDefaultAccountTrackingRow(section.id, index, nextValue)
+                                    }
+                                    options={
+                                      row.mappedAccount && !allAccounts.some((account: any) => {
+                                        const label = account.accountName || account.name || "";
+                                        return label === row.mappedAccount;
+                                      })
+                                        ? [
+                                            ...toAccountOptions(allAccounts),
+                                            { value: row.mappedAccount, label: row.mappedAccount },
+                                          ]
+                                        : toAccountOptions(allAccounts)
+                                    }
+                                    placeholder="Select mapped account..."
+                                    disabled={loadingAccounts}
+                                  />
+                                </div>
+                                {loadingAccounts && (
+                                  <p className="mt-1 text-xs text-gray-500">Loading accounts...</p>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
-          {/* Save Button */}
-          <div className="flex items-center justify-start pt-6 mt-6 border-t border-gray-200">
+          <div className="pt-2">
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving && <Loader2 className="animate-spin" size={16} />}
               {saving ? "Saving..." : "Save"}
@@ -742,11 +927,14 @@ export default function AccountantPage() {
           </div>
 
           {/* Save Button */}
-          <div className="flex items-center justify-start pt-6 mt-6 border-t border-gray-200">
+          <div
+            className="fixed bottom-0 z-30 px-6 py-4"
+            style={{ left: "16rem", right: 0 }}
+          >
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#156372] px-4 py-2 text-sm font-medium text-white hover:bg-[#0f4a56] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving && <Loader2 className="animate-spin" size={16} />}
               {saving ? "Saving..." : "Save"}

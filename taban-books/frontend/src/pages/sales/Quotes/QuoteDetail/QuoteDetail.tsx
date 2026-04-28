@@ -48,11 +48,12 @@ import {
   Send
 } from "lucide-react";
 import { getQuoteById, getQuotes, updateQuote, deleteQuotes, getCustomers, getSalespersons, getProjects, getInvoices, saveInvoice, saveQuote } from "../../salesModel";
-import { currenciesAPI, documentsAPI, senderEmailsAPI, settingsAPI, transactionNumberSeriesAPI } from "../../../../services/api";
+import { currenciesAPI, documentsAPI, senderEmailsAPI, settingsAPI, transactionNumberSeriesAPI, pdfTemplatesAPI } from "../../../../services/api";
 import { toast } from "react-hot-toast";
 import { resolvePrimarySender } from "../../../../utils/emailSenderDisplay";
 import QuoteCommentsPanel from "./QuoteCommentsPanel";
 import { buildSubscriptionDraftFromQuote, buildSubscriptionEditDraft } from "../../subscriptions/subscriptionDraftUtils";
+import { COLOR_THEMES } from "../../../settings/pdfTemplates/constants";
 
 const QuoteDetail = () => {
   const { quoteId } = useParams();
@@ -87,6 +88,8 @@ const QuoteDetail = () => {
   const [allowEditingAcceptedQuotes, setAllowEditingAcceptedQuotes] = useState(false);
   const [quoteAttachments, setQuoteAttachments] = useState<any[]>([]);
   const [comments, setComments] = useState<any[]>([]);
+  const [activePdfTemplate, setActivePdfTemplate] = useState<any>(null);
+  const [activeTheme, setActiveTheme] = useState<any>(COLOR_THEMES[0]);
 
   useEffect(() => {
     const loadQuoteSettings = async () => {
@@ -101,6 +104,24 @@ const QuoteDetail = () => {
     };
 
     loadQuoteSettings();
+
+    const fetchPdfTemplates = async () => {
+      try {
+        const response = await pdfTemplatesAPI.get();
+        if (response?.success && Array.isArray(response.data?.templates)) {
+          const quotesTemplates = response.data.templates.filter((t: any) => t.moduleType === "quotes");
+          const defaultTemplate = quotesTemplates.find((t: any) => t.isDefault) || quotesTemplates[0];
+          if (defaultTemplate) {
+            setActivePdfTemplate(defaultTemplate);
+            const theme = COLOR_THEMES.find((t) => t.id === defaultTemplate.config?.general?.colorTheme) || COLOR_THEMES[0];
+            setActiveTheme(theme);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching PDF templates:", error);
+      }
+    };
+    fetchPdfTemplates();
 
     const fetchBaseCurrency = async () => {
       try {
@@ -1224,6 +1245,30 @@ const QuoteDetail = () => {
     );
   };
 
+
+  const convertNumberToWords = (amount: number) => {
+    const words = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+    const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+    
+    const convert = (n: number): string => {
+      if (n < 20) return words[n];
+      if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? " " + words[n % 10] : "");
+      if (n < 1000) return words[Math.floor(n / 100)] + " Hundred" + (n % 100 !== 0 ? " and " + convert(n % 100) : "");
+      if (n < 1000000) return convert(Math.floor(n / 1000)) + " Thousand" + (n % 1000 !== 0 ? " " + convert(n % 1000) : "");
+      return n.toString();
+    };
+
+    if (amount === 0) return "Zero";
+    const integerPart = Math.floor(amount);
+    const fractionalPart = Math.round((amount - integerPart) * 100);
+    
+    let res = convert(integerPart);
+    if (fractionalPart > 0) {
+      res += " and " + convert(fractionalPart) + " Cents";
+    }
+    return res + " Only";
+  };
+
   function getQuoteTotalsMeta(quoteData: any) {
     const items = Array.isArray(quoteData?.items) ? quoteData.items : [];
     const computedSubTotal = items.reduce((sum: number, item: any) => {
@@ -1305,7 +1350,8 @@ const QuoteDetail = () => {
       discountBase,
       discountLabel,
       taxLabel,
-      total: toNumber(quoteData?.total ?? computedTotal)
+      total: toNumber(quoteData?.total ?? computedTotal),
+      totalInWords: convertNumberToWords(toNumber(quoteData?.total ?? computedTotal))
     };
   }
 
@@ -1328,6 +1374,14 @@ const QuoteDetail = () => {
   };
 
   const handleEdit = () => {
+    const normalizedQuoteStatus = String(quote?.status || "").trim().toLowerCase();
+    const isAcceptedQuote = normalizedQuoteStatus === "accepted";
+
+    if (isAcceptedQuote && !allowEditingAcceptedQuotes) {
+      toast.error("Editing accepted quotes is disabled in quote settings.");
+      return;
+    }
+
     if (quote && typeof window !== "undefined" && quoteId) {
       try {
         localStorage.setItem(`quote_edit_${quoteId}`, JSON.stringify(quote));
@@ -1340,7 +1394,7 @@ const QuoteDetail = () => {
     });
   };
 
-  const handleConvertToInvoice = () => {
+  function handleConvertToInvoice() {
     if (!quote) return;
 
     try {
@@ -1944,7 +1998,7 @@ const QuoteDetail = () => {
   };
 
   // Generate HTML content for a specific quote (used for bulk export)
-  const generateQuoteHTMLForQuote = (quoteData: any) => {
+  function generateQuoteHTMLForQuote(quoteData: any) {
     if (!quoteData) return '';
 
     const itemsHTML = quoteData.items && quoteData.items.length > 0 ? quoteData.items.map((item: any, index: number) => {
@@ -2891,7 +2945,7 @@ const QuoteDetail = () => {
 
   const quoteTotalsMeta = getQuoteTotalsMeta(quote);
   const filteredQuotesList = getFilteredQuotes();
-  const quoteStatus = String(quote?.status || "").toLowerCase();
+  const quoteStatus = String(quote?.status || "").trim().toLowerCase();
   const isInvoicedStatus = quoteStatus === "invoiced" || quoteStatus === "converted";
   const isApprovedStatus = quoteStatus === "approved";
   const isExpiredStatus = quoteStatus === "expired";
@@ -3713,244 +3767,516 @@ const QuoteDetail = () => {
               </button>
             </div>
             <div className="flex items-center gap-1 mt-2 md:mt-0">
-              <button
-                type="button"
-                onClick={() => setShowPdfView(false)}
-                className={`px-4 py-1.5 text-xs rounded-md border ${!showPdfView ? "bg-[#f1f5f9] border-gray-200 text-gray-700" : "bg-white border-gray-200 text-gray-500 hover:text-gray-700"}`}
-              >
-                Details
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowPdfView(true)}
-                className={`px-4 py-1.5 text-xs rounded-md border ${showPdfView ? "bg-white border-gray-300 text-gray-900" : "bg-white border-gray-200 text-gray-500 hover:text-gray-700"}`}
-              >
-                PDF
-              </button>
+              {/* View toggle removed: always showing PDF template */}
             </div>
           </div>
-
           {/* Quote Details Content */}
           {activeTab === "details" && (
             <div className="flex-1 p-2 md:p-3 bg-gray-50 overflow-y-auto">
               {showPdfView ? (
                 /* PDF View - Document Style */
-                <div
-                  className="w-full max-w-[920px] mx-auto bg-white border border-[#d1d5db] shadow-sm overflow-hidden print-content"
-                  data-print-content
-                  style={{ width: "210mm", maxWidth: "210mm", minHeight: "297mm", padding: "64px 40px 24px 40px", position: "relative" }}
-                >
-                  {/* Status Ribbon */}
-                  <div style={{
-                    position: "absolute",
-                    top: "0",
-                    left: "0",
-                    width: "200px",
-                    height: "200px",
-                    overflow: "hidden",
-                    zIndex: 10
-                  }}>
-                    <div style={{
-                      position: "absolute",
-                      top: "40px",
-                      left: "-60px",
-                      width: "200px",
-                      height: "30px",
-                      backgroundColor: statusRibbonConfig.color,
-                      color: "white",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "14px",
-                      fontWeight: "600",
-                      transform: "rotate(-45deg)",
-                      boxShadow: "0 2px 4px rgba(0,0,0,0.2)"
-                    }}>
-                      {statusRibbonConfig.label}
-                    </div>
-                  </div>
+                (() => {
+                  const config = activePdfTemplate?.config || {};
+                  const hf = config.headerFooter || {};
+                  const labels = hf.labels || {};
+                  const txFields = config.transactionDetails?.fields || {};
+                  const totalLabels = config.total?.labels || {};
+                  const table = config.table || {};
+                  
+                   const total = config.total || {};
+                  
+                  const labelFor = (obj: any, key: string, fallback: string) => (typeof obj?.[key] === "string" ? obj[key] : obj?.[key]?.label || fallback);
+                  const isVisible = (obj: any, key: string, fallback = true) => {
+                    if (!obj || obj[key] === undefined) return fallback;
+                    if (typeof obj[key] === "boolean") return obj[key];
+                    if (typeof obj[key]?.visible === "boolean") return obj[key].visible;
+                    return fallback;
+                  };
 
-                  {/* Header with Company Info */}
-                  <div className="flex items-start justify-between mb-6 pb-5" style={{ position: "relative", borderBottom: "1px solid #e5e7eb" }}>
-                    <div style={{ maxWidth: "46%" }}>
-                      <div style={{ fontSize: "16px", fontWeight: "700", color: "#111827", marginBottom: "3px" }}>
-                        {organizationProfile?.name || ""}
-                      </div>
-                      <div style={{ fontSize: "11px", color: "#4b5563", lineHeight: "1.45" }}>
-                        {organizationProfile?.address?.street1 || ""}<br />
-                        {organizationProfile?.address?.street2 || ""}<br />
-                        {organizationProfile?.address?.city ?
-                          `${organizationProfile.address.city}${organizationProfile.address.zipCode ? ' ' + organizationProfile.address.zipCode : ''}${organizationProfile.address.state ? ', ' + organizationProfile.address.state : ''}` :
-                          ""
-                        }<br />
-                        {organizationProfile?.address?.country || ""}<br />
-                        {ownerEmail?.email || organizationProfile?.email || ""}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: "right", marginTop: "2px" }}>
-                      <div style={{ fontSize: "40px", lineHeight: "1", letterSpacing: "1.2px", color: "#111827", fontWeight: "500" }}>
-                        QUOTE
-                      </div>
-                      <div style={{ fontSize: "16px", color: "#111827", fontWeight: "700", marginTop: "6px" }}>
-                        # {quote.quoteNumber || quote.id}
-                      </div>
-                    </div>
-                  </div>
+                  const fmt = (val: number) => {
+                    const s = Number(val || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    const symbol = quote.currency || "SOS";
+                    return total.currencyPosition === "after" ? `${s} ${symbol}` : `${symbol} ${s}`;
+                  };
 
-                  {/* Bill To and Date Row */}
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <div style={{ fontSize: "15px", color: "#111827", marginBottom: "4px", fontWeight: "600" }}>
-                        Bill To
-                      </div>
-                      <div style={{ fontSize: "15px", color: "#2563eb", fontWeight: "600", lineHeight: "1.2" }}>
-                        {quote.customerName || "N/A"}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "22px" }}>
-                      <div style={{ fontSize: "16px", color: "#6b7280", lineHeight: "1" }}>:</div>
-                      <div style={{ fontSize: "13px", color: "#111827", minWidth: "120px", textAlign: "right" }}>
-                        {quote.quoteDate || quote.date ? (() => {
-                        const date = new Date(quote.quoteDate || quote.date);
-                        return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-                      })() : "-"}
-                      </div>
-                    </div>
-                  </div>
+                  return (
+                    <div
+                      className="w-full max-w-[920px] mx-auto border border-[#d1d5db] shadow-sm overflow-hidden print-content"
+                      data-print-content
+                      style={{ 
+                        width: "210mm", 
+                        maxWidth: "210mm", 
+                        minHeight: "297mm", 
+                        position: "relative",
+                        backgroundColor: config.general?.backgroundColor || "#ffffff",
+                        color: config.general?.fontColor || "#000000",
+                        fontFamily: config.general?.fontFamily || "Helvetica, Arial, sans-serif",
+                        fontSize: `${config.general?.fontSize || 9}pt`,
+                        display: "flex",
+                        flexDirection: "column"
+                      }}
+                    >
+                      {/* Header Bar */}
+                      {(hf.headerBgColor || hf.bgImage) && (
+                        <div style={{ backgroundColor: hf.headerBgColor || "transparent", height: "40px", flexShrink: 0, width: "100%", position: "relative" }}>
+                          {hf.bgImage && <img src={hf.bgImage} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />}
+                        </div>
+                      )}
 
-                  {/* Items Table */}
-                  <div className="mb-6">
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead>
-                        <tr style={{ backgroundColor: "#3f3f46" }}>
-                          <th style={{ padding: "9px 12px", textAlign: "center", color: "white", fontSize: "11px", fontWeight: "600", width: "44px" }}>#</th>
-                          <th style={{ padding: "9px 12px", textAlign: "left", color: "white", fontSize: "11px", fontWeight: "600" }}>Item & Description</th>
-                          <th style={{ padding: "9px 12px", textAlign: "right", color: "white", fontSize: "11px", fontWeight: "600", width: "100px" }}>Qty</th>
-                          <th style={{ padding: "9px 12px", textAlign: "right", color: "white", fontSize: "11px", fontWeight: "600", width: "100px" }}>Rate</th>
-                          <th style={{ padding: "9px 12px", textAlign: "right", color: "white", fontSize: "11px", fontWeight: "600", width: "100px" }}>Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {quote.items && quote.items.length > 0 ? (
-                          quote.items.map((item: any, index: number) => (
-                            <tr key={item.id || index} style={{ borderBottom: "1px solid #d1d5db", backgroundColor: index % 2 === 0 ? "#ffffff" : "#fafafa" }}>
-                              <td style={{ padding: "9px 12px", fontSize: "11px", color: "#111827", textAlign: "center", verticalAlign: "top" }}>{index + 1}</td>
-                              <td style={{ padding: "9px 12px", fontSize: "11px", color: "#111827", verticalAlign: "top" }}>
+                      <div style={{ 
+                        padding: `${(hf.headerBgColor || hf.bgImage) ? "0.2in" : (config.general?.margins?.top || 0.7) + "in"} ${config.general?.margins?.right || 0.4}in ${(hf.footerBgColor || hf.footerBgImage || hf.showPageNumber !== false) ? "0.2in" : (config.general?.margins?.bottom || 0.7) + "in"} ${config.general?.margins?.left || 0.55}in`,
+                        flex: 1,
+                        display: "flex",
+                        flexDirection: "column"
+                      }}>
+                        {/* Status Ribbon (Internal Preview Only) */}
+                        <div style={{
+                          position: "absolute",
+                          top: "0",
+                          left: "0",
+                          width: "200px",
+                          height: "200px",
+                          overflow: "hidden",
+                          zIndex: 10,
+                          pointerEvents: "none"
+                        }}>
+                          <div style={{
+                            position: "absolute",
+                            top: "40px",
+                            left: "-60px",
+                            width: "200px",
+                            height: "30px",
+                            backgroundColor: statusRibbonConfig.color,
+                            color: "white",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "14px",
+                            fontWeight: "600",
+                            transform: "rotate(-45deg)",
+                            boxShadow: "0 2px 4px rgba(0,0,0,0.2)"
+                          }}>
+                            {statusRibbonConfig.label}
+                          </div>
+                        </div>
+
+                        {/* Header with Company Info */}
+                        {(() => {
+                          const details = config.transactionDetails || {};
+                          return (
+                            <div className="flex items-start justify-between mb-6 pb-5" style={{ position: "relative", borderBottom: `1px solid ${activeTheme.accent}33` }}>
+                              <div style={{ maxWidth: "46%" }}>
+                                {isVisible(details, "showOrgLogo") && (details.orgLogo || organizationProfile?.logo) && (
+                                  <div className="mb-4 h-12 w-32 overflow-hidden flex items-center justify-center bg-gray-50 rounded border border-gray-100">
+                                    <img src={details.orgLogo || organizationProfile?.logo} alt="Org Logo" className="max-h-full max-w-full object-contain" />
+                                  </div>
+                                )}
+                                {isVisible(details, "showOrgName") && (
+                                  <div style={{ 
+                                    fontSize: `${details.orgNameFontSize || 16}pt`, 
+                                    fontWeight: "700", 
+                                    color: details.orgNameColor || config.general?.labelColor || activeTheme.accent, 
+                                    marginBottom: "3px" 
+                                  }}>
+                                    {organizationProfile?.name || "Organization Name"}
+                                  </div>
+                                )}
+                                {isVisible(details, "showOrgAddress") && (
+                                  <div style={{ fontSize: "11px", color: config.general?.labelColor || "#4b5563", lineHeight: "1.45" }}>
+                                    {organizationProfile?.address?.street1 && <>{organizationProfile.address.street1}<br /></>}
+                                    {organizationProfile?.address?.street2 && <>{organizationProfile.address.street2}<br /></>}
+                                    {(organizationProfile?.address?.city || organizationProfile?.address?.zipCode || organizationProfile?.address?.state) && (
+                                      <>
+                                        {organizationProfile.address.city || ""}
+                                        {organizationProfile.address.zipCode ? ` ${organizationProfile.address.zipCode}` : ""}
+                                        {organizationProfile.address.state ? `, ${organizationProfile.address.state}` : ""}
+                                        <br />
+                                      </>
+{organizationProfile?.address?.country && <>{organizationProfile.address.country}<br /></>}
+                                    {ownerEmail?.email || organizationProfile?.email || ""}
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ textAlign: "right", marginTop: "2px" }}>
+                                {isVisible(hf, "showDocumentTitle") && (
+                                  <div style={{ 
+                                    fontSize: `${hf.titleFontSize || 32}pt`, 
+                                    lineHeight: "1.1", 
+                                    fontWeight: "300", 
+                                    textTransform: "uppercase", 
+                                    letterSpacing: "1px",
+                                    color: hf.titleFontColor || "#111827" 
+                                  }}>
+                                    {isVisible(labels, "docTitle") ? labelFor(labels, "docTitle", "Quote") : "Quote"}
+                                  </div>
+                                )}
+                                <div style={{ fontSize: "14px", fontWeight: "700", color: "#111827", marginTop: "4px" }}>
+                                  {labelFor(labels, "numberField", "#")} {quote.quoteNumber || "17"}
+                                </div>
+                                {(hf.phoneLabel || hf.faxLabel) && (
+                                  <div style={{ fontSize: "11px", color: config.general?.labelColor || "#6b7280", marginTop: "8px" }}>
+                                    {hf.phoneLabel && <div>{hf.phoneLabel}: {organizationProfile?.phone || "000-000-0000"}</div>}
+                                    {hf.faxLabel && <div>{hf.faxLabel}: {organizationProfile?.fax || "000-000-0000"}</div>}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Bill To and Info Grid Row */}
+                        {(() => {
+                          const details = config.transactionDetails || {};
+                          return (
+                            <div style={{ marginBottom: "32px" }}>
+                              <div className="flex justify-between items-baseline" style={{ borderBottom: "1px solid #f3f4f6", paddingBottom: "8px", marginBottom: "12px" }}>
+                                <div style={{ fontSize: "14px", color: "#111827", fontWeight: "600" }}>
+                                  {labelFor(labels, "billToField", "Bill To")}
+                                </div>
+                                <div className="flex items-center gap-4">
+                                  <span style={{ color: "#d1d5db" }}>:</span>
+                                  <div style={{ fontSize: "13px", color: "#111827", fontWeight: "400" }}>
+                                    {quote.quoteDate ? new Date(quote.quoteDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "-"}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex justify-between items-start">
                                 <div>
-                                  <strong style={{ fontWeight: "600" }}>{item.name || item.item?.name || "N/A"}</strong>
-                                  {item.description && (
-                                    <div style={{ fontSize: "10px", color: "#6b7280", marginTop: "2px" }}>
-                                      {item.description}
+                                  <div style={{ 
+                                    fontSize: `${details.custNameFontSize || 14}pt`, 
+                                    color: details.custNameColor || "#2563eb", 
+                                    fontWeight: "600", 
+                                    lineHeight: "1.2",
+                                    marginBottom: "4px"
+                                  }}>{quote.customerName || "N/A"}</div>
+                                  <div style={{ fontSize: "11px", color: "#4b5563", maxWidth: "400px", lineHeight: "1.5" }}>{quote.billingAddress || ""}</div>
+                                </div>
+                                <div className="text-right">
+                                  {isVisible(labels, "expiryDate") && quote.expiryDate && (
+                                    <div className="flex items-center justify-end gap-2 text-[12px] text-gray-500">
+                                      <span>Expiry Date:</span>
+                                      <span className="font-medium text-gray-900">{new Date(quote.expiryDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</span>
+                                    </div>
+                                  )}
+                                  {isVisible(labels, "referenceField") && quote.referenceNumber && (
+                                    <div className="flex items-center justify-end gap-2 text-[12px] text-gray-500 mt-1">
+                                      <span>Reference#:</span>
+                                      <span className="font-medium text-gray-900">{quote.referenceNumber}</span>
                                     </div>
                                   )}
                                 </div>
-                              </td>
-                              <td style={{ padding: "9px 12px", fontSize: "11px", color: "#111827", textAlign: "right", verticalAlign: "top" }}>
-                                <div>{Number(item.quantity || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                                <div style={{ fontSize: "10px", color: "#6b7280", marginTop: "2px" }}>{item.item?.unit || item.unit || "pcs"}</div>
-                              </td>
-                              <td style={{ padding: "9px 12px", fontSize: "11px", color: "#111827", textAlign: "right", verticalAlign: "top" }}>
-                                {Number(item.unitPrice || item.rate || item.price || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </td>
-                              <td style={{ padding: "9px 12px", fontSize: "11px", color: "#111827", textAlign: "right", verticalAlign: "top" }}>
-                                {Number(item.total || item.amount || (item.quantity * (item.unitPrice || item.rate || item.price || 0))).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </td>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                      {/* Items Table */}
+                      <div className="mb-6">
+                        <table style={{ 
+                          width: "100%", 
+                          borderCollapse: "collapse",
+                          border: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
+                        }}>
+                          <thead>
+                            <tr style={{ 
+                              backgroundColor: table.showHeaderBg !== false ? (table.headerBgColor || activeTheme.headerBg || "#3c3d3a") : "transparent",
+                              borderBottom: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
+                            }}>
+                              {isVisible(table.labels, "lineNumber") && (
+                                <th style={{ 
+                                  padding: "9px 12px", 
+                                  textAlign: "center", 
+                                  color: table.headerFontColor || activeTheme.headerText || "white", 
+                                  fontSize: `${table.headerFontSize || 11}pt`, 
+                                  fontWeight: "600", 
+                                  width: `${table.labels?.lineNumber?.width || 5}%`,
+                                  borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
+                                }}>{labelFor(table.labels, "lineNumber", "#")}</th>
+                              )}
+                              {isVisible(table.labels, "item") && (
+                                <th style={{ 
+                                  padding: "9px 12px", 
+                                  textAlign: "left", 
+                                  color: table.headerFontColor || activeTheme.headerText || "white", 
+                                  fontSize: `${table.headerFontSize || 11}pt`, 
+                                  fontWeight: "600",
+                                  width: `${table.labels?.item?.width || 30}%`,
+                                  borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
+                                }}>
+                                  {labelFor(table.labels, "item", "Item")}
+                                </th>
+                              )}
+                              {isVisible(table.labels, "quantity") && (
+                                <th style={{ 
+                                  padding: "9px 12px", 
+                                  textAlign: "right", 
+                                  color: table.headerFontColor || activeTheme.headerText || "white", 
+                                  fontSize: `${table.headerFontSize || 11}pt`, 
+                                  fontWeight: "600", 
+                                  width: `${table.labels?.quantity?.width || 11}%`,
+                                  borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
+                                }}>
+                                  {labelFor(table.labels, "quantity", "Qty")}
+                                </th>
+                              )}
+                              {isVisible(table.labels, "rate") && (
+                                <th style={{ 
+                                  padding: "9px 12px", 
+                                  textAlign: "right", 
+                                  color: table.headerFontColor || activeTheme.headerText || "white", 
+                                  fontSize: `${table.headerFontSize || 11}pt`, 
+                                  fontWeight: "600", 
+                                  width: `${table.labels?.rate?.width || 11}%`,
+                                  borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
+                                }}>
+                                  {labelFor(table.labels, "rate", "Rate")}
+                                </th>
+                              )}
+                              {isVisible(table.labels, "taxPercent") && (
+                                <th style={{ 
+                                  padding: "9px 12px", 
+                                  textAlign: "right", 
+                                  color: table.headerFontColor || activeTheme.headerText || "white", 
+                                  fontSize: `${table.headerFontSize || 11}pt`, 
+                                  fontWeight: "600", 
+                                  width: `${table.labels?.taxPercent?.width || 11}%`,
+                                  borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
+                                }}>
+                                  {labelFor(table.labels, "taxPercent", "VAT %")}
+                                </th>
+                              )}
+                              {isVisible(table.labels, "amount") && (
+                                <th style={{ 
+                                  padding: "9px 12px", 
+                                  textAlign: "right", 
+                                  color: table.headerFontColor || activeTheme.headerText || "white", 
+                                  fontSize: `${table.headerFontSize || 11}pt`, 
+                                  fontWeight: "600", 
+                                  width: `${table.labels?.amount?.width || 15}%`
+                                }}>
+                                  {labelFor(table.labels, "amount", "Amount")}
+                                </th>
+                              )}
                             </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td colSpan={5} style={{ padding: "24px", textAlign: "center", color: "#666", fontSize: "14px" }}>
-                              No items added
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Totals Section */}
-                  <div className="flex justify-end mb-7">
-                    <div style={{ width: "320px", border: "1px solid #e5e7eb", padding: "10px 12px", borderRadius: "8px", backgroundColor: "#fcfcfd" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: "15px", color: "#111827", fontWeight: "600" }}>
-                        <span>Sub Total</span>
-                        <span style={{ color: "#111827", fontWeight: "500" }}>
-                          {Number(quoteTotalsMeta.subTotal || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
+                          </thead>
+                          <tbody>
+                            {quote.items && quote.items.length > 0 ? (
+                              quote.items.map((item: any, index: number) => (
+                                <tr key={item.id || index} style={{ 
+                                  borderBottom: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : `1px solid #d1d5db`, 
+                                  backgroundColor: table.showRowBg !== false ? (index % 2 === 0 ? "transparent" : (table.rowBgColor || `${activeTheme.accent}0a`)) : "transparent"
+                                }}>
+                                  {isVisible(table.labels, "lineNumber") && (
+                                    <td style={{ 
+                                      padding: "9px 12px", 
+                                      fontSize: `${table.rowFontSize || 11}pt`, 
+                                      color: table.rowFontColor || config.general?.fontColor || "#111827", 
+                                      textAlign: "center", 
+                                      verticalAlign: "top",
+                                      borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
+                                    }}>{index + 1}</td>
+                                  )}
+                                  {isVisible(table.labels, "item") && (
+                                    <td style={{ 
+                                      padding: "9px 12px", 
+                                      fontSize: `${table.rowFontSize || 11}pt`, 
+                                      color: table.rowFontColor || config.general?.fontColor || "#111827", 
+                                      verticalAlign: "top",
+                                      borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
+                                    }}>
+                                      <div>
+                                        <strong style={{ fontWeight: "600", color: table.rowFontColor || config.general?.fontColor || "#111827" }}>{item.name || item.item?.name || "N/A"}</strong>
+                                        {isVisible(table.labels, "description") && item.description && (
+                                          <div style={{ 
+                                            fontSize: `${table.descFontSize || 10}pt`, 
+                                            color: table.descFontColor || config.general?.labelColor || "#6b7280", 
+                                            marginTop: "2px" 
+                                          }}>
+                                            {item.description}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </td>
+                                  )}
+                                  {isVisible(table.labels, "quantity") && (
+                                    <td style={{ 
+                                      padding: "9px 12px", 
+                                      fontSize: `${table.rowFontSize || 11}pt`, 
+                                      color: table.rowFontColor || config.general?.fontColor || "#111827", 
+                                      textAlign: "right", 
+                                      verticalAlign: "top",
+                                      borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
+                                    }}>
+                                      <div>{Number(item.quantity || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                      {table.showUnit !== false && (
+                                        <div style={{ fontSize: "10px", color: config.general?.labelColor || "#6b7280", marginTop: "2px" }}>{item.item?.unit || item.unit || "pcs"}</div>
+                                      )}
+                                    </td>
+                                  )}
+                                  {isVisible(table.labels, "rate") && (
+                                    <td style={{ 
+                                      padding: "9px 12px", 
+                                      fontSize: `${table.rowFontSize || 11}pt`, 
+                                      color: table.rowFontColor || config.general?.fontColor || "#111827", 
+                                      textAlign: "right", 
+                                      verticalAlign: "top",
+                                      borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
+                                    }}>
+                                      {Number(item.unitPrice || item.rate || item.price || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </td>
+                                  )}
+                                  {isVisible(table.labels, "taxPercent") && (
+                                    <td style={{ 
+                                      padding: "9px 12px", 
+                                      fontSize: `${table.rowFontSize || 11}pt`, 
+                                      color: table.rowFontColor || config.general?.fontColor || "#111827", 
+                                      textAlign: "right", 
+                                      verticalAlign: "top",
+                                      borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
+                                    }}>
+                                      {item.tax?.rate || 0}%
+                                    </td>
+                                  )}
+                                  {isVisible(table.labels, "amount") && (
+                                    <td style={{ 
+                                      padding: "9px 12px", 
+                                      fontSize: `${table.rowFontSize || 11}pt`, 
+                                      color: table.rowFontColor || config.general?.fontColor || "#111827", 
+                                      textAlign: "right", 
+                                      verticalAlign: "top" 
+                                    }}>
+                                      {Number(item.total || item.amount || (item.quantity * (item.unitPrice || item.rate || item.price || 0))).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </td>
+                                  )}
+                                </tr>
+                              ))
+                            ) : (
+                              <tr>
+                                <td colSpan={6} style={{ padding: "24px", textAlign: "center", color: config.general?.labelColor || "#666", fontSize: "14px" }}>
+                                  No items added
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
                       </div>
-                      {quoteTotalsMeta.discount > 0 && (
-                        <>
-                          <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: "11px", color: "#4b5563" }}>
-                            <span>{quoteTotalsMeta.discountLabel}</span>
-                            <span style={{ color: "#111827", fontWeight: "500" }}>
-                              (-) {formatCurrency(quoteTotalsMeta.discount, quote.currency)}
-                            </span>
+
+                      {/* Totals Section */}
+                      {total.showSection !== false && (
+                        <div className="flex justify-end mb-7">
+                          <div style={{ 
+                            width: "360px", 
+                            backgroundColor: total.showBg !== false ? (total.bgColor || "#ffffff") : "transparent",
+                            padding: "20px", 
+                            borderRadius: "12px",
+                            fontSize: `${total.fontSize || 11}pt`,
+                            color: total.fontColor || "#374151",
+                            border: "1px solid #e5e7eb",
+                            boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                          }}>
+                            {isVisible(total.labels, "subTotal") && (
+                              <div className="flex justify-between py-2 items-center">
+                                <span className="font-semibold text-gray-900">{labelFor(total.labels, "subTotal", "Sub Total")}</span>
+                                <span className="font-medium">{fmt(quoteTotalsMeta.subTotal || 0)}</span>
+                              </div>
+                            )}
+                            
+                            {total.showTaxDetails !== false && (
+                              <div className="flex justify-between py-1.5 items-center text-sm text-gray-500">
+                                <span>{quoteTotalsMeta.taxLabel || "Tax (Included)"}</span>
+                                <span>{fmt(quoteTotalsMeta.taxAmount || 0)}</span>
+                              </div>
+                            )}
+
+                            {isVisible(total.labels, "shipping") && (
+                              <div className="flex justify-between py-1.5 items-center text-sm text-gray-500">
+                                <span>{labelFor(total.labels, "shipping", "Shipping charge")}</span>
+                                <span>{fmt(quote.shippingCharges || 0)}</span>
+                              </div>
+                            )}
+
+                            {isVisible(total.labels, "shippingTax") && (
+                              <div className="flex justify-between py-1.5 items-center text-sm text-gray-500">
+                                <span>{labelFor(total.labels, "shippingTax", "Shipping Tax")}</span>
+                                <span>{fmt(quoteTotalsMeta.shippingTaxAmount || 0)}</span>
+                              </div>
+                            )}
+
+                            {isVisible(total.labels, "adjustment") && (
+                              <div className="flex justify-between py-1.5 items-center text-sm text-gray-500">
+                                <span>{labelFor(total.labels, "adjustment", "Adjustment")}</span>
+                                <span>{fmt(quoteTotalsMeta.adjustment || 0)}</span>
+                              </div>
+                            )}
+
+                            {isVisible(total.labels, "roundOff") && (
+                              <div className="flex justify-between py-1.5 items-center text-sm text-gray-500">
+                                <span>{labelFor(total.labels, "roundOff", "Round Off")}</span>
+                                <span>{fmt(quoteTotalsMeta.roundOff || 0)}</span>
+                              </div>
+                            )}
+
+                            {total.showQuantity && (
+                              <div className="flex justify-between py-1.5 items-center text-sm text-gray-500 border-t border-gray-100 mt-2 pt-2">
+                                <span>Total Quantity</span>
+                                <span>{quote.items?.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                            )}
+
+                            {isVisible(total.labels, "total") && (
+                              <div className="flex justify-between items-center py-3 px-4 mt-4 font-bold rounded-lg" style={{ 
+                                backgroundColor: total.showBalanceBg !== false ? (total.balanceBgColor || "#f9fafb") : "#f9fafb",
+                                fontSize: `${(total.fontSize || 12) + 2}pt`,
+                                color: total.fontColor || "#111827" 
+                              }}>
+                                <span>{labelFor(total.labels, "total", "Total")}</span>
+                                <span>{fmt(quoteTotalsMeta.total || 0)}</span>
+                              </div>
+                            )}
                           </div>
-                          <div style={{ fontSize: "10px", color: "#6b7280", marginTop: "-2px", marginBottom: "6px" }}>
-                            (Applied on {formatCurrency(quoteTotalsMeta.discountBase, quote.currency)})
-                          </div>
-                        </>
+                        </div>
                       )}
-                      <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: "11px", color: "#4b5563" }}>
-                        <span>{quoteTotalsMeta.taxLabel}</span>
-                        <span style={{ color: "#111827", fontWeight: "500" }}>
-                          {formatCurrency(quoteTotalsMeta.taxAmount, quote.currency)}
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: "11px", color: "#4b5563" }}>
-                        <span>Shipping charge</span>
-                        <span style={{ color: "#111827", fontWeight: "500" }}>
-                          {formatCurrency(quoteTotalsMeta.shippingCharges, quote.currency)}
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: "11px", color: "#4b5563" }}>
-                        <span>{quoteTotalsMeta.shippingTaxLabel}</span>
-                        <span style={{ color: "#111827", fontWeight: "500" }}>
-                          {formatCurrency(quoteTotalsMeta.shippingTaxAmount, quote.currency)}
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: "11px", color: "#4b5563" }}>
-                        <span>Adjustment</span>
-                        <span style={{ color: "#111827", fontWeight: "500" }}>
-                          {formatCurrency(quoteTotalsMeta.adjustment, quote.currency)}
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: "11px", color: "#4b5563" }}>
-                        <span>Round Off</span>
-                        <span style={{ color: "#111827", fontWeight: "500" }}>
-                          {formatCurrency(quoteTotalsMeta.roundOff, quote.currency)}
-                        </span>
-                      </div>
-                      <div style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        padding: "10px 12px",
-                        fontSize: "17px",
-                        fontWeight: "700",
-                        marginTop: "8px",
-                        borderRadius: "6px",
-                        backgroundColor: "#f3f4f6",
-                        color: "#111827"
-                      }}>
-                        <span>Total</span>
-                        <span>{formatCurrency(quoteTotalsMeta.total || 0, quote.currency)}</span>
-                      </div>
-                    </div>
-                  </div>
 
-                  {/* Notes Section */}
-                  <div style={{ marginBottom: "28px", borderTop: "1px dashed #d1d5db", paddingTop: "10px" }}>
-                    <div style={{ fontSize: "13px", fontWeight: "700", color: "#111827", marginBottom: "6px", letterSpacing: "0.2px" }}>
-                      Notes
-                    </div>
-                    <div style={{ fontSize: "11px", color: "#4b5563", lineHeight: "1.5" }}>
-                      {quote.customerNotes || "Looking forward for your business."}
+                      {total.showAmountInWords && (
+                        <div className="mb-8" style={{ fontSize: "11px", color: "#6b7280" }}>
+                          <span className="font-semibold" style={{ color: "#374151" }}>Total In Words: </span>
+                          {quoteTotalsMeta.totalInWords || "N/A"}
+                        </div>
+                      )}
+
+                      {/* Notes Section */}
+                      <div style={{ marginBottom: "28px", borderTop: `1px dashed ${activeTheme.accent}33`, paddingTop: "10px" }}>
+                        <div style={{ fontSize: "13px", fontWeight: "700", color: config.general?.labelColor || activeTheme.accent, marginBottom: "6px", letterSpacing: "0.2px" }}>
+                          Notes
+                        </div>
+                        <div style={{ fontSize: "11px", color: config.general?.fontColor || "#4b5563", lineHeight: "1.5" }}>
+                          {quote.customerNotes || "Looking forward for your business."}
+                        </div>
+                      </div>
+
+                      {/* Footer Bar */}
+                      {(hf.footerBgColor || hf.footerBgImage || hf.showPageNumber !== false) && (
+                        <div style={{ backgroundColor: hf.footerBgColor || "transparent", height: "40px", flexShrink: 0, width: "100%", position: "relative", marginTop: "auto" }}>
+                          {hf.footerBgImage && <img src={hf.footerBgImage} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />}
+                          {hf.showPageNumber !== false && (
+                            <div style={{ 
+                              position: "absolute", 
+                              bottom: "10px", 
+                              right: hf.pageNumberPosition === "Right" ? "20px" : "auto",
+                              left: hf.pageNumberPosition === "Left" ? "20px" : "auto",
+                              color: (hf.footerBgColor || hf.footerBgImage) ? "white" : (hf.footerFontColor || "#6C718A"), 
+                              fontSize: "10pt" 
+                            }}>
+                              1
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div style={{ position: "absolute", right: "18px", bottom: "8px", fontSize: "11px", color: "#9ca3af" }}>
-                    1
-                  </div>
-                </div>
-              ) : (
+                );
+              })()
+            ) : (
                 /* Regular Detail View */
                 <div>
                   {/* Quote Header Info */}
@@ -5205,7 +5531,7 @@ const QuoteDetail = () => {
                 <X size={24} />
               </button>
               <img
-                src={selectedImage}
+                src={selectedImage || undefined}
                 alt="Preview"
                 className="max-w-full max-h-[90vh] object-contain rounded-lg"
               />
@@ -5287,12 +5613,7 @@ const QuoteDetail = () => {
                     ? 'bg-gray-300 text-gray-700 hover:bg-gray-400'
                     : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                     }`}
-                  onClick={() => handleAddComment({
-                    text: newComment,
-                    bold: commentBold,
-                    italic: commentItalic,
-                    underline: commentUnderline
-                  })}
+                  onClick={() => handleAddComment()}
                   disabled={!newComment.trim() || isSavingComment}
                 >
                   {isSavingComment ? "Saving..." : "Add Comment"}
@@ -5461,7 +5782,7 @@ const QuoteDetail = () => {
                     {logoPreview ? (
                       <div className="relative">
                         <img
-                          src={logoPreview}
+                          src={logoPreview || undefined}
                           alt="Logo Preview"
                           className="w-20 h-20 object-cover rounded border border-gray-300"
                         />

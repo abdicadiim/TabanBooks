@@ -441,11 +441,14 @@ export default function ItemsPage() {
           </div>
 
           {/* Save Button */}
-          <div className="flex items-center justify-start pt-6 border-t border-gray-200">
+          <div
+            className="fixed bottom-0 z-30 px-6 py-4"
+            style={{ left: "16rem", right: 0 }}
+          >
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#156372] px-4 py-2 text-sm font-medium text-white hover:bg-[#0f4a56] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving && <Loader2 className="animate-spin" size={16} />}
               {saving ? "Saving..." : "Save"}

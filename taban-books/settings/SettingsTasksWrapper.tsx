@@ -2,14 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import SearchableDropdown from "../../components/ui/SearchableDropdown";
 import SettingsLayout from "./SettingsLayout";
 
-type TaskStatus = {
-  name: string;
-  description: string;
-  color: string;
-};
-
 function TasksSettingsPage() {
-  const [activeTab, setActiveTab] = useState<"general" | "status" | "fields">("general");
   const [taskCompletionNotify, setTaskCompletionNotify] = useState(true);
   const [reminderNotify, setReminderNotify] = useState(true);
   const [alertType, setAlertType] = useState("Email");
@@ -29,26 +22,6 @@ function TasksSettingsPage() {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
-  const customStatuses: TaskStatus[] = [
-    {
-      name: "Open",
-      description: "Task has been created and is ready to start.",
-      color: "bg-sky-100 text-sky-700",
-    },
-    {
-      name: "In Progress",
-      description: "Work is actively happening on this task.",
-      color: "bg-amber-100 text-amber-700",
-    },
-    {
-      name: "Completed",
-      description: "Task has been finished and can be closed.",
-      color: "bg-emerald-100 text-emerald-700",
-    },
-  ];
-
-  const customFieldsUsage = 0;
-  const maxCustomFields = 59;
   const alertTypeOptions = [
     { value: "Email", label: "Email" },
     { value: "In-app Notification", label: "In-app Notification" },
@@ -63,47 +36,8 @@ function TasksSettingsPage() {
           <h1 className="text-2xl font-semibold text-gray-900">Tasks</h1>
         </div>
 
-        <div className="border-b border-gray-200 mb-6">
-          <div className="flex flex-wrap items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setActiveTab("general")}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition ${
-                activeTab === "general"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              General Preferences
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("status")}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition ${
-                activeTab === "status"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              Custom Status
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("fields")}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition ${
-                activeTab === "fields"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              Custom Fields
-            </button>
-          </div>
-        </div>
-
-        {activeTab === "general" && (
+        <div className="space-y-8">
           <div className="space-y-8">
-            <div className="space-y-8">
               <div>
                 <div className="flex items-start gap-3">
                   <input
@@ -165,7 +99,7 @@ function TasksSettingsPage() {
 
                   <div>
                     <label className="mb-2 block text-sm font-medium text-gray-700">Remind Before</label>
-                    <div className="flex items-stretch">
+                    <div className="flex max-w-[300px] items-stretch">
                       <input
                         type="number"
                         min="1"
@@ -200,7 +134,7 @@ function TasksSettingsPage() {
                         </button>
 
                         {remindBeforeOpen && (
-                          <div className="absolute right-0 top-full z-50 mt-1 w-32 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+                          <div className="absolute right-0 top-full z-50 mt-1 w-[116px] rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
                             {remindBeforeOptions.map((option) => {
                               const isSelected = remindBeforeUnit === option;
                               return (
@@ -211,13 +145,15 @@ function TasksSettingsPage() {
                                     setRemindBeforeUnit(option);
                                     setRemindBeforeOpen(false);
                                   }}
-                                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition ${
-                                    isSelected ? "bg-gray-100 text-gray-900" : "text-gray-700 hover:bg-gray-50"
+                                className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition ${
+                                    isSelected
+                                      ? "bg-gray-100 text-gray-900"
+                                      : "text-gray-700 hover:bg-gray-50"
                                   }`}
                                 >
                                   <span>{option}</span>
                                   {isSelected && (
-                                    <span className="text-xs font-semibold text-gray-500">✓</span>
+                                    <span className="text-xs font-semibold text-gray-500">&#10003;</span>
                                   )}
                                 </button>
                               );
@@ -233,105 +169,13 @@ function TasksSettingsPage() {
               <div className="pt-2">
                 <button
                   type="button"
-                  className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700"
+                  className="inline-flex items-center rounded-md bg-[#0f5f73] px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-[#0b4f60]"
                 >
                   Save
                 </button>
               </div>
-            </div>
           </div>
-        )}
-
-        {activeTab === "status" && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-600">Custom Status Usage: {customStatuses.length}/20</div>
-              <button
-                type="button"
-                className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700"
-              >
-                + New Custom Status
-              </button>
-            </div>
-
-            <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">
-                      Status Name
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">
-                      Description
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 bg-white">
-                  {customStatuses.map((status) => (
-                    <tr key={status.name} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm font-medium text-gray-900">{status.name}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{status.description}</td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${status.color}`}>
-                          Active
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {activeTab === "fields" && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-600">
-                Custom Fields Usage: {customFieldsUsage}/{maxCustomFields}
-              </div>
-              <button
-                type="button"
-                className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700"
-              >
-                + New Custom Field
-              </button>
-            </div>
-
-            <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">
-                      Field Name
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">
-                      Data Type
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">
-                      Mandatory
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white">
-                  <tr>
-                    <td colSpan={4} className="px-6 py-12 text-center">
-                      <p className="text-sm text-gray-500">
-                        Do you have information that does not go under any existing field? Go ahead and create a custom field.
-                      </p>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

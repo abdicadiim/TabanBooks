@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, MoreVertical, Download, Upload, Check, Trash2 } from "lucide-react";
+import { Plus, MoreVertical, Download, Upload, Check, Trash2, AlertTriangle, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import NewCurrencyModal from "./NewCurrencyModal";
@@ -75,6 +75,76 @@ const getDefaultCurrency = (): Currency => ({
   _raw: {},
 });
 
+type CurrencyDeleteModalProps = {
+  isOpen: boolean;
+  currencyCode: string;
+  onClose: () => void;
+  onConfirm: () => void | Promise<void>;
+  confirmDisabled?: boolean;
+};
+
+const CurrencyDeleteModal = ({
+  isOpen,
+  currencyCode,
+  onClose,
+  onConfirm,
+  confirmDisabled = false,
+}: CurrencyDeleteModalProps) => {
+  if (!isOpen) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[2100] flex items-start justify-center bg-black/40 pt-16"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-lg bg-white shadow-2xl border border-slate-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3">
+          <div className="h-7 w-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-[12px] font-bold">
+            <AlertTriangle size={14} />
+          </div>
+          <h3 className="text-[15px] font-semibold text-slate-800 flex-1">Delete Currency</h3>
+          <button
+            type="button"
+            className="h-7 w-7 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={onClose}
+            aria-label="Close"
+            disabled={confirmDisabled}
+          >
+            <X size={14} />
+          </button>
+        </div>
+        <div className="px-5 py-3 text-[13px] text-slate-600">
+          The selected currency will be deleted and cannot be retrieved later. Are you sure you want to delete{" "}
+          <span className="font-medium text-slate-900">{currencyCode}</span>?
+          <div className="mt-2 text-red-600 font-medium">This action cannot be undone.</div>
+        </div>
+        <div className="flex items-center justify-start gap-2 border-t border-slate-100 px-5 py-3">
+          <button
+            type="button"
+            className="px-4 py-1.5 rounded-md text-white text-[12px] bg-[#156372] hover:bg-[#0f4f5a] disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={onConfirm}
+            disabled={confirmDisabled}
+          >
+            Delete
+          </button>
+          <button
+            type="button"
+            className="px-4 py-1.5 rounded-md border border-slate-300 text-[12px] text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={onClose}
+            disabled={confirmDisabled}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 export default function CurrenciesPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -88,6 +158,9 @@ export default function CurrenciesPage() {
   const [showThreeDotsMenu, setShowThreeDotsMenu] = useState(false);
   const [threeDotsPosition, setThreeDotsPosition] = useState({ top: 0, left: 0, width: 220 });
   const [notification, setNotification] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [pendingDeleteCurrency, setPendingDeleteCurrency] = useState<Currency | null>(null);
+  const [deletingCurrency, setDeletingCurrency] = useState(false);
 
   const threeDotsRef = useRef<HTMLDivElement>(null);
   const threeDotsMenuRef = useRef<HTMLDivElement>(null);
@@ -271,18 +344,26 @@ export default function CurrenciesPage() {
       toast.error("Base currency cannot be deleted.");
       return;
     }
+    setPendingDeleteCurrency(target);
+    setShowDeleteModal(true);
+  };
 
-    if (!window.confirm("Are you sure you want to delete this currency?")) return;
+  const confirmDeleteCurrency = () => {
+    if (!pendingDeleteCurrency) return;
+    const toDelete = pendingDeleteCurrency;
+    setDeletingCurrency(true);
 
     void (async () => {
-      const res = await currenciesAPI.delete(id);
+      const res = await currenciesAPI.delete(toDelete.id);
       if (!res?.success) {
         toast.error(res?.message || "Failed to delete currency");
         return;
       }
+      setShowDeleteModal(false);
+      setPendingDeleteCurrency(null);
       toast.success("Currency deleted successfully");
       await loadCurrencies();
-    })();
+    })().finally(() => setDeletingCurrency(false));
   };
 
   const handleMarkAsBase = (id: string) => {
@@ -343,6 +424,18 @@ export default function CurrenciesPage() {
 
   return (
     <div className="p-6">
+      <CurrencyDeleteModal
+        isOpen={showDeleteModal}
+        currencyCode={pendingDeleteCurrency?.code || ""}
+        onClose={() => {
+          if (deletingCurrency) return;
+          setShowDeleteModal(false);
+          setPendingDeleteCurrency(null);
+        }}
+        onConfirm={confirmDeleteCurrency}
+        confirmDisabled={deletingCurrency}
+      />
+
       {notification && (
         <div
           style={{

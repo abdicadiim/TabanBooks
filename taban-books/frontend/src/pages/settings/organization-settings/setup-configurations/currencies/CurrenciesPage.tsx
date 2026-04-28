@@ -1,11 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, MoreVertical, Download, Upload, Check, Edit2, Trash2 } from "lucide-react";
+import { Plus, MoreVertical, Download, Upload, Trash2, AlertTriangle, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import NewCurrencyModal from "./NewCurrencyModal";
 import EditCurrencyModal from "./EditCurrencyModal";
 import { useNavigate, useLocation } from "react-router-dom";
 import { getToken, API_BASE_URL } from "../../../../../services/auth";
 import { currenciesAPI } from "../../../../../services/api";
+import Skeleton from "../../../../../components/ui/Skeleton";
+import { toast } from "react-toastify";
+
+const MIN_SKELETON_MS = 350;
+
+const generateCurrencyId = () => `curr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
 interface Currency {
   id: string;
@@ -19,6 +25,173 @@ interface Currency {
   _raw: any;
 }
 
+const CurrencyTableSkeleton = ({ showExchangeRateColumns }: { showExchangeRateColumns: boolean }) => {
+  return (
+    <>
+      {Array.from({ length: 4 }).map((_, rowIndex) => (
+        <tr key={rowIndex} className="border-b border-gray-100">
+          <td className="px-6 py-4">
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-4 w-44" />
+              {rowIndex === 0 ? <Skeleton className="h-5 w-24 rounded-full" /> : null}
+            </div>
+          </td>
+          <td className="px-6 py-4">
+            <Skeleton className="h-4 w-16" />
+          </td>
+          {showExchangeRateColumns && (
+            <>
+              <td className="px-6 py-4">
+                <Skeleton className="h-4 w-20" />
+              </td>
+              <td className="px-6 py-4">
+                <Skeleton className="h-4 w-24" />
+              </td>
+            </>
+          )}
+          <td className="px-6 py-4">
+            <div className="flex justify-end">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-8 w-14 rounded-md" />
+                <Skeleton className="h-8 w-16 rounded-md" />
+                <Skeleton className="h-8 w-8 rounded-md" />
+              </div>
+            </div>
+          </td>
+        </tr>
+      ))}
+    </>
+  );
+};
+
+type CurrencyDeleteModalProps = {
+  isOpen: boolean;
+  currencyCode: string;
+  onClose: () => void;
+  onConfirm: () => void | Promise<void>;
+  confirmDisabled?: boolean;
+};
+
+const CurrencyDeleteModal = ({
+  isOpen,
+  currencyCode,
+  onClose,
+  onConfirm,
+  confirmDisabled = false,
+}: CurrencyDeleteModalProps) => {
+  if (!isOpen) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[10000] flex items-start justify-center bg-black/40 pt-20"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[520px] overflow-hidden rounded-xl bg-white shadow-[0_20px_60px_rgba(0,0,0,0.2)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between border-b border-gray-100 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+              <AlertTriangle size={16} />
+            </div>
+            <div className="text-[15px] font-semibold text-slate-800">
+              Delete currency?
+            </div>
+          </div>
+          <button
+            type="button"
+            className="text-gray-400 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={onClose}
+            aria-label="Close"
+            disabled={confirmDisabled}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="px-5 py-4 text-sm text-slate-600">
+          You cannot retrieve this currency once it has been deleted.
+          {currencyCode ? (
+            <>
+              {" "}
+              <span className="font-medium text-slate-800">{currencyCode}</span> will be removed permanently.
+            </>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-3 border-t border-gray-100 px-5 py-4">
+          <button
+            type="button"
+            className="rounded-md bg-[#156372] px-4 py-2 text-sm font-medium text-white hover:bg-[#0f4e59] disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={onConfirm}
+            disabled={confirmDisabled}
+          >
+            Delete
+          </button>
+          <button
+            type="button"
+            className="rounded-md border border-gray-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={onClose}
+            disabled={confirmDisabled}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+const CurrenciesPageSkeleton = ({ showExchangeRateColumns }: { showExchangeRateColumns: boolean }) => {
+  return (
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div className="space-y-2">
+          <Skeleton className="h-7 w-36" />
+          <Skeleton className="h-4 w-20" />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-10 w-32 rounded-lg" />
+          <Skeleton className="h-10 w-48 rounded-lg" />
+          <Skeleton className="h-10 w-10 rounded-lg" />
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <table className="w-full">
+          <thead className="border-b border-gray-200 bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-700">
+                <Skeleton className="h-3 w-20" />
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-700">
+                <Skeleton className="h-3 w-16" />
+              </th>
+              {showExchangeRateColumns && (
+                <>
+                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-700">
+                    <Skeleton className="h-3 w-40" />
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-700">
+                    <Skeleton className="h-3 w-24" />
+                  </th>
+                </>
+              )}
+              <th className="px-6 py-3">
+                <Skeleton className="h-3 w-10" />
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            <CurrencyTableSkeleton showExchangeRateColumns={showExchangeRateColumns} />
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 export default function CurrenciesPage() {
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,17 +200,22 @@ export default function CurrenciesPage() {
   const [showEditCurrencyModal, setShowEditCurrencyModal] = useState(false);
   const [editingCurrency, setEditingCurrency] = useState<Currency | null>(null);
   const [showThreeDotsMenu, setShowThreeDotsMenu] = useState(false);
-  const [notification, setNotification] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [pendingDeleteCurrency, setPendingDeleteCurrency] = useState<Currency | null>(null);
+  const [deletingCurrency, setDeletingCurrency] = useState(false);
   const [threeDotsPosition, setThreeDotsPosition] = useState({ top: 0, left: 0, width: 0 });
   const threeDotsRef = useRef<HTMLDivElement>(null);
   const threeDotsMenuRef = useRef<HTMLDivElement>(null);
+  const loadStartedAtRef = useRef<number>(Date.now());
   const navigate = useNavigate();
   const location = useLocation();
 
   const loadCurrencies = useCallback(async () => {
+    loadStartedAtRef.current = Date.now();
     const token = getToken();
     if (!token) {
-      setLoading(false);
+      const elapsed = Date.now() - loadStartedAtRef.current;
+      window.setTimeout(() => setLoading(false), Math.max(0, MIN_SKELETON_MS - elapsed));
       return;
     }
 
@@ -58,7 +236,7 @@ export default function CurrenciesPage() {
             )[0]
             : null;
         return {
-          id: currency._id,
+          id: String(currency._id || currency.id || generateCurrencyId()),
           code: currency.code,
           name: currency.name,
           symbol: currency.symbol,
@@ -73,7 +251,8 @@ export default function CurrenciesPage() {
     } catch (err) {
       console.error("Error loading currencies:", err);
     } finally {
-      setLoading(false);
+      const elapsed = Date.now() - loadStartedAtRef.current;
+      window.setTimeout(() => setLoading(false), Math.max(0, MIN_SKELETON_MS - elapsed));
     }
   }, []);
 
@@ -139,7 +318,7 @@ export default function CurrenciesPage() {
 
       const currency = data.data;
       const mappedCurrency = {
-        id: currency._id,
+        id: String(currency._id || currency.id || generateCurrencyId()),
         code: currency.code,
         name: currency.name,
         symbol: currency.symbol,
@@ -149,12 +328,18 @@ export default function CurrenciesPage() {
       };
 
       if (newCurrency.isBaseCurrency) {
-        setCurrencies((prev) => prev.map(c => ({ ...c, isBase: false })));
+        setCurrencies((prev) => {
+          const next = [...prev.map(c => ({ ...c, isBase: false })), mappedCurrency as Currency];
+          return next;
+        });
+      } else {
+        setCurrencies((prev) => {
+          const next = [...prev, mappedCurrency as Currency];
+          return next;
+        });
       }
-      setCurrencies((prev) => [...prev, mappedCurrency as Currency]);
       setShowNewCurrencyModal(false);
-      setNotification("Currency created successfully");
-      setTimeout(() => setNotification(null), 3000);
+      toast.success("Currency created successfully");
     } catch (err: any) {
       console.error("Error creating currency:", err);
       alert(err.message || "Failed to create currency");
@@ -192,40 +377,56 @@ export default function CurrenciesPage() {
       }
 
       if (updatedData.isBaseCurrency) {
-        setCurrencies((prev) =>
-          prev.map((c) =>
+        setCurrencies((prev) => {
+          const next = prev.map((c) =>
             editingCurrency && c.id === editingCurrency.id
               ? { ...c, ...updatedData, isBase: true }
               : { ...c, isBase: false }
-          )
-        );
+          );
+          return next;
+        });
       } else {
-        setCurrencies((prev) =>
-          prev.map((c) =>
+        setCurrencies((prev) => {
+          const next = prev.map((c) =>
             editingCurrency && c.id === editingCurrency.id
               ? { ...c, ...updatedData, isBase: updatedData.isBaseCurrency }
               : c
-          )
-        );
+          );
+          return next;
+        });
       }
       setShowEditCurrencyModal(false);
       setEditingCurrency(null);
-      setNotification("Currency updated successfully");
-      setTimeout(() => setNotification(null), 3000);
+      toast.success("Currency updated successfully");
     } catch (err: any) {
       console.error("Error updating currency:", err);
       alert(err.message || "Failed to update currency");
     }
   };
 
-  const handleDeleteCurrency = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this currency?")) return;
+  const handleDeleteCurrency = (currency: Currency) => {
+    if (!currency?.id) {
+      toast.error("Could not identify the selected currency.");
+      return;
+    }
+    if (currency.isBase) {
+      toast.error("Base currency cannot be deleted.");
+      return;
+    }
+    setPendingDeleteCurrency(currency);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteCurrency = async () => {
+    if (!pendingDeleteCurrency) return;
 
     const token = getToken();
     if (!token) return;
 
+    setDeletingCurrency(true);
+
     try {
-      const response = await fetch(`${API_BASE_URL}/settings/currencies/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/settings/currencies/${pendingDeleteCurrency.id}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -237,12 +438,18 @@ export default function CurrenciesPage() {
         throw new Error(data.message || "Failed to delete currency");
       }
 
-      setCurrencies((prev) => prev.filter((c) => c.id !== id));
-      setNotification("Currency deleted successfully");
-      setTimeout(() => setNotification(null), 3000);
+      setCurrencies((prev) => {
+        const next = prev.filter((c) => c.id !== pendingDeleteCurrency.id);
+        return next;
+      });
+      setShowDeleteModal(false);
+      setPendingDeleteCurrency(null);
+      toast.success("Currency deleted successfully");
     } catch (err: any) {
       console.error("Error deleting currency:", err);
       alert(err.message || "Failed to delete currency");
+    } finally {
+      setDeletingCurrency(false);
     }
   };
 
@@ -267,15 +474,15 @@ export default function CurrenciesPage() {
         throw new Error(data.message || "Failed to set base currency");
       }
 
-      setCurrencies((prev) =>
-        prev.map((c) =>
+      setCurrencies((prev) => {
+        const next = prev.map((c) =>
           c.id === id
             ? { ...c, isBase: true }
             : { ...c, isBase: false }
-        )
-      );
-      setNotification("Base currency updated successfully");
-      setTimeout(() => setNotification(null), 3000);
+        );
+        return next;
+      });
+      toast.success("Base currency updated successfully");
     } catch (err: any) {
       console.error("Error setting base currency:", err);
       alert(err.message || "Failed to set base currency");
@@ -345,10 +552,7 @@ export default function CurrenciesPage() {
       }
 
       setExchangeRateFeedsEnabled(newStatus);
-      setNotification(
-        `Exchange rate feeds ${newStatus ? "enabled" : "disabled"} successfully`
-      );
-      setTimeout(() => setNotification(null), 3000);
+      toast.success(`Exchange rate feeds ${newStatus ? "enabled" : "disabled"} successfully`);
     } catch (err: any) {
       console.error("Error toggling exchange rate feeds:", err);
       alert(err.message || "Failed to toggle exchange rate feeds");
@@ -367,52 +571,27 @@ export default function CurrenciesPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const showFullPageSkeleton = loading;
+
+  if (showFullPageSkeleton) {
+    return (
+      <CurrenciesPageSkeleton showExchangeRateColumns={!Boolean(exchangeRateFeedsEnabled)} />
+    );
+  }
+
   return (
     <div className="p-6">
-      {/* Success Notification */}
-      {notification && (
-        <div
-          style={{
-            position: "fixed",
-            top: "20px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            backgroundColor: "#d1fae5",
-            border: "1px solid #10b981",
-            borderRadius: "8px",
-            padding: "12px 16px",
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            zIndex: 10001,
-            boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-          }}
-        >
-          <div
-            style={{
-              width: "24px",
-              height: "24px",
-              borderRadius: "4px",
-              backgroundColor: "#10b981",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <Check size={16} style={{ color: "#ffffff" }} />
-          </div>
-          <span
-            style={{
-              fontSize: "14px",
-              color: "#065f46",
-              fontWeight: "500",
-            }}
-          >
-            {notification}
-          </span>
-        </div>
-      )}
+      <CurrencyDeleteModal
+        isOpen={showDeleteModal}
+        currencyCode={pendingDeleteCurrency?.code || pendingDeleteCurrency?.name || ""}
+        onClose={() => {
+          if (deletingCurrency) return;
+          setShowDeleteModal(false);
+          setPendingDeleteCurrency(null);
+        }}
+        onConfirm={confirmDeleteCurrency}
+        confirmDisabled={deletingCurrency}
+      />
 
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">
@@ -491,11 +670,7 @@ export default function CurrenciesPage() {
           </thead>
           <tbody className="divide-y divide-gray-200">
             {loading ? (
-              <tr>
-                <td colSpan={!Boolean(exchangeRateFeedsEnabled) ? 5 : 3} className="px-6 py-12 text-center text-gray-500">
-                  Loading currencies...
-                </td>
-              </tr>
+              <CurrencyTableSkeleton showExchangeRateColumns={!Boolean(exchangeRateFeedsEnabled)} />
             ) : currencies.length === 0 ? (
               <tr>
                 <td colSpan={!Boolean(exchangeRateFeedsEnabled) ? 5 : 3} className="px-6 py-12 text-center text-gray-500">
@@ -583,7 +758,19 @@ export default function CurrenciesPage() {
                         )}
                         {!currency.isBase && (
                           <button
-                            onClick={() => handleDeleteCurrency(currency.id)}
+                            type="button"
+                            aria-label={`Delete ${currency.code}`}
+                            title={`Delete ${currency.code}`}
+                            onPointerDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleDeleteCurrency(currency);
+                            }}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleDeleteCurrency(currency);
+                            }}
                             className="p-1 hover:bg-red-50 text-red-400 hover:text-red-500 rounded transition"
                           >
                             <Trash2 size={14} />

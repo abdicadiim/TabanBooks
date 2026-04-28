@@ -135,6 +135,8 @@ export interface IOrganization extends Document {
       }>;
     };
     emailTemplates?: Record<string, any>;
+    pdfTemplates?: any[];
+    pdfTemplateExportNames?: Record<string, string>;
     reportLayout?: {
       tableDensity?: string;
       tableDesign?: string;
@@ -404,6 +406,10 @@ const organizationSchema = new Schema<IOrganization>(
         },
       },
       emailTemplates: {
+        type: Schema.Types.Mixed,
+        default: {},
+      },
+      pdfTemplateExportNames: {
         type: Schema.Types.Mixed,
         default: {},
       },

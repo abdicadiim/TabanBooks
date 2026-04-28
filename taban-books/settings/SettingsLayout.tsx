@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { Search, X, Building2, Users, Receipt, Settings as SettingsIcon, Palette, Zap, CreditCard, ShoppingCart, ShoppingBag, Puzzle, RefreshCw, Plug, Code, ChevronDown, ChevronRight } from "lucide-react";
+import { Search, X, Building2, Users, Receipt, Settings as SettingsIcon, Palette, Zap, CreditCard, ShoppingCart, ShoppingBag, Puzzle, RefreshCw, Plug, Code, ChevronDown, ChevronRight, Megaphone } from "lucide-react";
 import { getToken, API_BASE_URL } from "../../services/auth";
 import { useSettings } from "../../lib/settings/SettingsContext";
 
@@ -87,12 +87,20 @@ const moduleSettings = [
     title: "General",
     path: "/settings/module-settings/general",
     items: [
-      { label: "General", path: "/settings/module-settings/general" },
-      { label: "Customers", path: "/settings/customers-vendors" },
-      { label: "Products", path: "/settings/items" },
+      { label: "Customers and Vendors", path: "/settings/customers-vendors" },
+      { label: "Items", path: "/settings/items" },
+      { label: "Accountant", path: "/settings/accountant" },
       { label: "Tasks", path: "/settings/tasks" },
-      { label: "Projects", path: "/settings/projects" },
       { label: "Timesheet", path: "/settings/timesheet" },
+    ],
+  },
+  {
+    icon: ShoppingCart,
+    color: "red",
+    title: "Inventory",
+    path: "/settings/inventory-adjustments",
+    items: [
+      { label: "Inventory Adjustments", path: "/settings/inventory-adjustments" },
     ],
   },
   {
@@ -105,14 +113,16 @@ const moduleSettings = [
     ],
   },
   {
-    icon: ShoppingCart,
+    icon: Megaphone,
     color: "green",
     title: "Sales",
     path: "/settings/quotes",
     items: [
       { label: "Quotes", path: "/settings/quotes" },
       { label: "Retainer Invoices", path: "/settings/retainer-invoices" },
+      { label: "Sales Orders", path: "/sales/sales-orders" },
       { label: "Invoices", path: "/settings/invoices" },
+      { label: "Recurring Invoices", path: "/settings/recurring-invoices" },
       { label: "Sales Receipts", path: "/settings/sales-receipts" },
       { label: "Payments Received", path: "/settings/payments-received" },
       { label: "Credit Notes", path: "/settings/credit-notes" },
@@ -141,6 +151,11 @@ const moduleSettings = [
     items: [
       { label: "Expenses", path: "/settings/expenses" },
       { label: "Recurring Expenses", path: "/settings/recurring-expenses" },
+      { label: "Purchase Orders", path: "/settings/purchase-orders" },
+      { label: "Bills", path: "/settings/bills" },
+      { label: "Recurring Bills", path: "/settings/recurring-bills" },
+      { label: "Payments Made", path: "/settings/payments-made" },
+      { label: "Vendor Credits", path: "/settings/vendor-credits" },
     ],
   },
   {

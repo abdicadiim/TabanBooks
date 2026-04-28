@@ -45,63 +45,34 @@ export default function CreditNotesPage() {
     <div className="p-6 max-w-4xl">
       <h1 className="text-2xl font-semibold text-gray-900 mb-6">Credit Notes</h1>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-gray-200 mb-6">
+      <div className="mb-6 flex items-center gap-1 border-b border-gray-200">
         <button
+          type="button"
           onClick={() => setActiveTab("general")}
           className={`px-4 py-2 text-sm font-medium transition ${
             activeTab === "general"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
+              ? "border-b-2 border-[#156372] text-[#156372]"
+              : "border-b-2 border-transparent text-gray-600 hover:text-gray-900"
           }`}
         >
           General
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab("approvals")}
           className={`px-4 py-2 text-sm font-medium transition ${
             activeTab === "approvals"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
+              ? "border-b-2 border-[#156372] text-[#156372]"
+              : "border-b-2 border-transparent text-gray-600 hover:text-gray-900"
           }`}
         >
           Approvals
-        </button>
-        <button
-          onClick={() => setActiveTab("field-customization")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "field-customization"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Field Customization
-        </button>
-        <button
-          onClick={() => setActiveTab("custom-buttons")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "custom-buttons"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Custom Buttons
-        </button>
-        <button
-          onClick={() => setActiveTab("related-lists")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "related-lists"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Related Lists
         </button>
       </div>
 
       {/* General Tab Content */}
       {activeTab === "general" && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-8">
+      <div className="px-6 py-6 space-y-8">
           {/* Cost Price Preference */}
           <div>
             <h3 className="text-sm font-semibold text-gray-900 mb-4">Cost Price Preference</h3>
@@ -110,12 +81,17 @@ export default function CreditNotesPage() {
                 type="checkbox"
                 checked={allowOverrideCostPrices}
                 onChange={(e) => setAllowOverrideCostPrices(e.target.checked)}
-                className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                className="mt-1 h-4 w-4 border-gray-300 text-[#156372] focus:ring-[#156372] rounded"
               />
-              <div>
-                <span className="text-sm text-gray-700">Allow users to override cost prices in credit notes</span>
-                <p className="text-sm text-gray-600 mt-1">
-                  Enabling this option allows you to manually edit the cost prices in credit notes. The cost prices will not be updated based on recent transactions.
+              <div className="pt-0.5">
+                <span className="text-sm font-semibold text-gray-900">
+                  Allow users to override cost prices in credit notes
+                </span>
+                <p className="mt-1 max-w-4xl text-sm leading-6 text-gray-500">
+                  Mark this option to allow users to manually edit and update the cost price
+                  that is fetched from the recent transaction. Once you override the cost
+                  price, the latest cost price will not be updated based on the recent
+                  transaction.
                 </p>
               </div>
             </label>
@@ -135,7 +111,7 @@ export default function CreditNotesPage() {
                 <button
                   onClick={() => setQrCodeEnabled(!qrCodeEnabled)}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    qrCodeEnabled ? "bg-blue-600" : "bg-gray-300"
+                    qrCodeEnabled ? "bg-[#156372]" : "bg-gray-300"
                   }`}
                 >
                   <span
@@ -155,7 +131,7 @@ export default function CreditNotesPage() {
               value={termsConditions}
               onChange={(e) => setTermsConditions(e.target.value)}
               rows={6}
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#156372] resize-none"
               placeholder="Enter terms and conditions"
             />
           </div>
@@ -167,29 +143,29 @@ export default function CreditNotesPage() {
               value={customerNotes}
               onChange={(e) => setCustomerNotes(e.target.value)}
               rows={6}
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#156372] resize-none"
               placeholder="Enter customer notes"
             />
           </div>
 
           {/* Save Button */}
           <div className="flex items-center justify-start pt-6 border-t border-gray-200">
-            <button className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700">
+            <button className="px-4 py-2 text-sm font-medium text-white bg-[#156372] rounded-lg hover:bg-[#0f4a56]">
               Save
             </button>
           </div>
-        </div>
+      </div>
       )}
 
       {/* Approvals Tab Content */}
       {activeTab === "approvals" && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-6">Approval Type</h3>
-          
-          <div className="space-y-4 mb-8">
-            <label className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition ${
-              approvalType === "no-approval" 
-                ? "border-blue-500 bg-blue-50" 
+        <div className="px-6 py-6">
+          <h3 className="mb-4 text-sm font-semibold text-gray-900">Approval Type</h3>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <label className={`cursor-pointer rounded-xl border p-4 transition ${
+              approvalType === "no-approval"
+                ? "border-[#156372] bg-[#156372]/5"
                 : "border-gray-200 hover:border-gray-300"
             }`}>
               <input
@@ -198,19 +174,19 @@ export default function CreditNotesPage() {
                 value="no-approval"
                 checked={approvalType === "no-approval"}
                 onChange={(e) => setApprovalType(e.target.value)}
-                className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500"
+                className="h-4 w-4 border-gray-300 text-[#156372] focus:ring-[#156372]"
               />
-              <div>
+              <div className="mt-2">
                 <span className="text-sm font-medium text-gray-900">No Approval</span>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="mt-2 text-sm leading-6 text-gray-600">
                   Create Credit Note and perform further actions without approval.
                 </p>
               </div>
             </label>
 
-            <label className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition ${
-              approvalType === "simple-approval" 
-                ? "border-blue-500 bg-blue-50" 
+            <label className={`cursor-pointer rounded-xl border p-4 transition ${
+              approvalType === "simple-approval"
+                ? "border-[#156372] bg-[#156372]/5"
                 : "border-gray-200 hover:border-gray-300"
             }`}>
               <input
@@ -219,19 +195,19 @@ export default function CreditNotesPage() {
                 value="simple-approval"
                 checked={approvalType === "simple-approval"}
                 onChange={(e) => setApprovalType(e.target.value)}
-                className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500"
+                className="h-4 w-4 border-gray-300 text-[#156372] focus:ring-[#156372]"
               />
-              <div>
+              <div className="mt-2">
                 <span className="text-sm font-medium text-gray-900">Simple Approval</span>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="mt-2 text-sm leading-6 text-gray-600">
                   Any user with approve permission can approve the Credit Note.
                 </p>
               </div>
             </label>
 
-            <label className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition ${
-              approvalType === "multi-level-approval" 
-                ? "border-blue-500 bg-blue-50" 
+            <label className={`cursor-pointer rounded-xl border p-4 transition ${
+              approvalType === "multi-level-approval"
+                ? "border-[#156372] bg-[#156372]/5"
                 : "border-gray-200 hover:border-gray-300"
             }`}>
               <input
@@ -240,12 +216,33 @@ export default function CreditNotesPage() {
                 value="multi-level-approval"
                 checked={approvalType === "multi-level-approval"}
                 onChange={(e) => setApprovalType(e.target.value)}
-                className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500"
+                className="h-4 w-4 border-gray-300 text-[#156372] focus:ring-[#156372]"
               />
-              <div>
+              <div className="mt-2">
                 <span className="text-sm font-medium text-gray-900">Multi-Level Approval</span>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="mt-2 text-sm leading-6 text-gray-600">
                   Set many levels of approval. The Credit Note will be approved only when all the approvers approve.
+                </p>
+              </div>
+            </label>
+
+            <label className={`cursor-pointer rounded-xl border p-4 transition ${
+              approvalType === "custom-approval"
+                ? "border-[#156372] bg-[#156372]/5"
+                : "border-gray-200 hover:border-gray-300"
+            }`}>
+              <input
+                type="radio"
+                name="approvalType"
+                value="custom-approval"
+                checked={approvalType === "custom-approval"}
+                onChange={(e) => setApprovalType(e.target.value)}
+                className="h-4 w-4 border-gray-300 text-[#156372] focus:ring-[#156372]"
+              />
+              <div className="mt-2">
+                <span className="text-sm font-medium text-gray-900">Custom Approval</span>
+                <p className="mt-2 text-sm leading-6 text-gray-600">
+                  Create a customized approval flow by adding one or more criteria.
                 </p>
               </div>
             </label>
@@ -302,7 +299,7 @@ export default function CreditNotesPage() {
                   type="checkbox"
                   checked={sendNotifications}
                   onChange={(e) => setSendNotifications(e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  className="h-4 w-4 border-gray-300 text-[#156372] focus:ring-[#156372] rounded"
                 />
                 <span className="text-sm text-gray-700">Send email and in-app notifications when transactions are submitted for approval</span>
               </label>
@@ -311,7 +308,7 @@ export default function CreditNotesPage() {
                   type="checkbox"
                   checked={notifySubmitter}
                   onChange={(e) => setNotifySubmitter(e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  className="h-4 w-4 border-gray-300 text-[#156372] focus:ring-[#156372] rounded"
                 />
                 <span className="text-sm text-gray-700">Notify the submitter when a transaction is approved or rejected</span>
               </label>
@@ -320,7 +317,7 @@ export default function CreditNotesPage() {
 
           {/* Save Button */}
           <div className="flex items-center justify-start pt-6 mt-6 border-t border-gray-200">
-            <button className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700">
+            <button className="px-4 py-2 text-sm font-medium text-white bg-[#22c55e] rounded-lg hover:bg-[#1fb157]">
               Save
             </button>
           </div>
@@ -328,7 +325,7 @@ export default function CreditNotesPage() {
       )}
 
       {/* Field Customization Tab Content */}
-      {activeTab === "field-customization" && (
+      {false && (
         <div>
           <div className="flex items-center justify-between mb-6">
             <div className="text-sm text-gray-600">
@@ -392,7 +389,7 @@ export default function CreditNotesPage() {
       )}
 
       {/* Custom Buttons Tab Content */}
-      {activeTab === "custom-buttons" && (
+      {false && (
         <div>
           <div className="flex items-center justify-between mb-6">
             <div></div>
@@ -466,7 +463,7 @@ export default function CreditNotesPage() {
       )}
 
       {/* Related Lists Tab Content */}
-      {activeTab === "related-lists" && (
+      {false && (
         <div>
           <div className="flex items-center justify-end mb-6">
             <button

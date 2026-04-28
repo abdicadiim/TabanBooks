@@ -95,7 +95,7 @@ export default function TransactionNumberSeriesPage() {
               </button>
               <button
                 onClick={handleNewSeries}
-                className="flex h-9 items-center gap-2 whitespace-nowrap rounded-md bg-[#3b82f6] px-4 text-[12px] font-medium text-white shadow-sm transition-colors hover:bg-blue-600 active:scale-95"
+                className="flex h-9 items-center gap-2 whitespace-nowrap rounded-md bg-[#1e5e6e] px-4 text-[12px] font-medium text-white shadow-sm transition-colors hover:bg-[#164a58] active:scale-95"
               >
                 <Plus size={16} />
                 New Series

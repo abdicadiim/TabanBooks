@@ -2,6 +2,7 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import { X, ChevronRight, Upload, Check, Info, ChevronDown, Search } from "lucide-react";
 import * as XLSX from "xlsx";
+import { API_BASE_URL } from "../../../../../../services/auth";
 
 export default function TaxImportPage() {
     const navigate = useNavigate();
@@ -162,8 +163,8 @@ export default function TaxImportPage() {
                 isValueAddedTax: String(row[mappings.valueAddedTax]).toLowerCase() === "true"
             })).filter(t => t.name && t.rate !== undefined);
 
-            const token = localStorage.getItem("token");
-            const response = await fetch(`${process.env.VITE_API_URL || "http://localhost:5000/api"}/settings/taxes/bulk`, {
+            const token = localStorage.getItem("auth_token");
+            const response = await fetch(`${API_BASE_URL}/settings/taxes/bulk`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

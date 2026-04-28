@@ -4,7 +4,7 @@ import { Lock, ChevronDown, Plus, GripVertical, X, Edit2, Sparkles } from "lucid
 
 export default function BillsPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("approvals");
+  const activeTab = "approvals";
   
   // Approvals tab states
   const [approvalType, setApprovalType] = useState("no-approval");
@@ -44,73 +44,18 @@ export default function BillsPage() {
     <div className="p-6 max-w-4xl">
       <div className="flex items-center gap-3 mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">Bills</h1>
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-[#dcfce7] text-[#15803d]">
           <Sparkles size={12} />
           Introducing BillPay Addon
         </span>
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-gray-200 mb-6">
-        <button
-          onClick={() => setActiveTab("approvals")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "approvals"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Approvals
-        </button>
-        <button
-          onClick={() => setActiveTab("field-customization")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "field-customization"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Field Customization
-        </button>
-        <button
-          onClick={() => setActiveTab("validation-rules")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "validation-rules"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Validation Rules
-        </button>
-        <button
-          onClick={() => setActiveTab("custom-buttons")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "custom-buttons"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Custom Buttons
-        </button>
-        <button
-          onClick={() => setActiveTab("related-lists")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "related-lists"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Related Lists
-        </button>
-      </div>
-
       {/* Approvals Tab Content */}
-      {activeTab === "approvals" && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-6">Approval Type</h3>
-          
-          <div className="space-y-4 mb-8">
-            <label className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition ${
+      <div className="pt-2">
+          <h3 className="mb-4 text-sm font-semibold text-gray-900">Approval Type</h3>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <label className={`cursor-pointer rounded-xl border p-4 transition ${
               approvalType === "no-approval" 
                 ? "border-blue-500 bg-blue-50" 
                 : "border-gray-200 hover:border-gray-300"
@@ -121,17 +66,17 @@ export default function BillsPage() {
                 value="no-approval"
                 checked={approvalType === "no-approval"}
                 onChange={(e) => setApprovalType(e.target.value)}
-                className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500"
+                className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              <div>
+              <div className="mt-2">
                 <span className="text-sm font-medium text-gray-900">No Approval</span>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="mt-2 text-sm leading-6 text-gray-600">
                   Create Bill and perform further actions without approval.
                 </p>
               </div>
             </label>
 
-            <label className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition ${
+            <label className={`cursor-pointer rounded-xl border p-4 transition ${
               approvalType === "simple-approval" 
                 ? "border-blue-500 bg-blue-50" 
                 : "border-gray-200 hover:border-gray-300"
@@ -142,17 +87,17 @@ export default function BillsPage() {
                 value="simple-approval"
                 checked={approvalType === "simple-approval"}
                 onChange={(e) => setApprovalType(e.target.value)}
-                className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500"
+                className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              <div>
+              <div className="mt-2">
                 <span className="text-sm font-medium text-gray-900">Simple Approval</span>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="mt-2 text-sm leading-6 text-gray-600">
                   Any user with approve permission can approve the Bill.
                 </p>
               </div>
             </label>
 
-            <label className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition ${
+            <label className={`cursor-pointer rounded-xl border p-4 transition ${
               approvalType === "multi-level-approval" 
                 ? "border-blue-500 bg-blue-50" 
                 : "border-gray-200 hover:border-gray-300"
@@ -163,12 +108,33 @@ export default function BillsPage() {
                 value="multi-level-approval"
                 checked={approvalType === "multi-level-approval"}
                 onChange={(e) => setApprovalType(e.target.value)}
-                className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500"
+                className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              <div>
+              <div className="mt-2">
                 <span className="text-sm font-medium text-gray-900">Multi-Level Approval</span>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="mt-2 text-sm leading-6 text-gray-600">
                   Set many levels of approval. The Bill will be approved only when all the approvers approve.
+                </p>
+              </div>
+            </label>
+
+            <label className={`cursor-pointer rounded-xl border p-4 transition ${
+              approvalType === "custom-approval"
+                ? "border-blue-500 bg-blue-50"
+                : "border-gray-200 hover:border-gray-300"
+            }`}>
+              <input
+                type="radio"
+                name="approvalType"
+                value="custom-approval"
+                checked={approvalType === "custom-approval"}
+                onChange={(e) => setApprovalType(e.target.value)}
+                className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <div className="mt-2">
+                <span className="text-sm font-medium text-gray-900">Custom Approval</span>
+                <p className="mt-2 text-sm leading-6 text-gray-600">
+                  Create a customized approval flow by adding one or more criteria.
                 </p>
               </div>
             </label>
@@ -176,7 +142,7 @@ export default function BillsPage() {
 
           {/* Multi-Level Approval - Hierarchy */}
           {approvalType === "multi-level-approval" && (
-            <div className="mb-8 border-t border-gray-200 pt-6">
+            <div className="mt-8 border-t border-gray-200 pt-6">
               <h3 className="text-sm font-semibold text-gray-900 mb-4">SET THE APPROVAL HIERARCHY</h3>
               <div className="border border-gray-200 rounded-lg overflow-hidden">
                 <table className="w-full">
@@ -216,39 +182,13 @@ export default function BillsPage() {
             </div>
           )}
 
-          {/* Notification Preferences */}
-          <div className="border-t border-gray-200 pt-6">
-            <h3 className="text-sm font-semibold text-gray-900 mb-4">Notification Preferences</h3>
-            <div className="space-y-3">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={sendNotifications}
-                  onChange={(e) => setSendNotifications(e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <span className="text-sm text-gray-700">Send email and in-app notifications when transactions are submitted for approval</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={notifySubmitter}
-                  onChange={(e) => setNotifySubmitter(e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <span className="text-sm text-gray-700">Notify the submitter when a transaction is approved or rejected</span>
-              </label>
-            </div>
-          </div>
-
           {/* Save Button */}
           <div className="flex items-center justify-start pt-6 mt-6 border-t border-gray-200">
-            <button className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700">
+            <button className="px-4 py-2 text-sm font-medium text-white bg-[#22c55e] rounded-lg hover:bg-[#1fb157]">
               Save
             </button>
           </div>
         </div>
-      )}
 
       {/* Field Customization Tab Content */}
       {activeTab === "field-customization" && (
@@ -306,7 +246,7 @@ export default function BillsPage() {
                         <div className="flex items-center gap-2">
                           <span className={`px-2 py-1 rounded text-xs ${
                             field.status === "Active" 
-                              ? "bg-green-100 text-green-800" 
+                              ? "bg-[#dcfce7] text-[#15803d]" 
                               : "bg-gray-100 text-gray-800"
                           }`}>
                             {field.status}

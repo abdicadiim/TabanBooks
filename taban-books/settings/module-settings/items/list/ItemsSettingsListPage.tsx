@@ -356,7 +356,10 @@ export default function ItemsPage() {
             </label>
           </div>
 
-          <div className="flex items-center justify-start pt-6 border-t border-gray-200">
+          <div
+            className="fixed bottom-0 z-30 px-6 py-4"
+            style={{ left: "16rem", right: 0 }}
+          >
             <button
               onClick={handleSave}
               disabled={saving}

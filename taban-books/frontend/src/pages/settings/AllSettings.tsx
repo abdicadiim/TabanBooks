@@ -152,8 +152,7 @@ const moduleSettings: SettingCard[] = [
       { label: "Customers and Vendors", path: "/settings/customers-vendors" },
       { label: "Items", path: "/settings/items" },
       { label: "Accountant", path: "/settings/accountant" },
-      { label: "Tasks", path: "/tasks" },
-      { label: "Projects", path: "/settings/projects" },
+      { label: "Tasks", path: "/settings/tasks" },
       { label: "Timesheet", path: "/settings/timesheet" },
     ],
   },
@@ -169,8 +168,8 @@ const moduleSettings: SettingCard[] = [
     title: "Sales",
     items: [
       { label: "Quotes", path: "/settings/quotes" },
-      { label: "Retainer Invoices", path: "/sales/retainer-invoices" },
-      { label: "Sales Orders", path: "/sales/sales-orders" },
+      { label: "Retainer Invoices", path: "/settings/retainer-invoices" },
+      { label: "Sales Orders", path: "/settings/sales-orders" },
       { label: "Invoices", path: "/settings/invoices" },
       { label: "Recurring Invoices", path: "/settings/recurring-invoices" },
       { label: "Sales Receipts", path: "/settings/sales-receipts" },
@@ -186,7 +185,6 @@ const moduleSettings: SettingCard[] = [
     title: "Purchases",
     items: [
       { label: "Expenses", path: "/settings/expenses" },
-      { label: "Recurring Expenses", path: "/settings/recurring-expenses" },
       { label: "Purchase Orders", path: "/settings/purchase-orders" },
       { label: "Bills", path: "/settings/bills" },
       { label: "Recurring Bills", path: "/settings/recurring-bills" },

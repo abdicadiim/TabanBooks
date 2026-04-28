@@ -31,7 +31,7 @@ function ItemsPageContent() {
     open: false, itemIds: []
   });
   const [clonedItem, setClonedItem] = useState<any>(null);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const loadSequenceRef = useRef(0);
 
   const { baseCurrency } = useCurrency();
@@ -456,7 +456,7 @@ function ItemsPageContent() {
               onBulkMarkInactive={handleBulkMarkInactive}
               onRefresh={fetchItems}
               baseCurrency={baseCurrency}
-              isLoading={loading || isPending}
+              isLoading={loading}
               canCreate={canCreateItems}
               canEdit={canEditItems}
               canDelete={canDeleteItems}

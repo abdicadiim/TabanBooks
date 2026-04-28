@@ -203,7 +203,6 @@ export default function AllSettings() {
         "Customers",
         "Products",
         "Tasks",
-        "Projects",
         "Timesheet",
       ],
     },

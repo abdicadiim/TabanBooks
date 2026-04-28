@@ -4,7 +4,7 @@ import { Lock, ChevronDown, X } from "lucide-react";
 
 export default function RecurringBillsPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("custom-buttons");
+  const activeTab = "custom-buttons";
   
   // Custom Buttons tab states
   const [customButtons, setCustomButtons] = useState([]);
@@ -16,20 +16,6 @@ export default function RecurringBillsPage() {
   return (
     <div className="p-6 max-w-4xl">
       <h1 className="text-2xl font-semibold text-gray-900 mb-6">Recurring Bills</h1>
-
-      {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-gray-200 mb-6">
-        <button
-          onClick={() => setActiveTab("custom-buttons")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "custom-buttons"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Custom Buttons
-        </button>
-      </div>
 
       {/* Custom Buttons Tab Content */}
       {activeTab === "custom-buttons" && (

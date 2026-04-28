@@ -1,55 +1,57 @@
-import React, { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { Info, ChevronDown } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { ChevronDown } from "lucide-react";
+import toast from "react-hot-toast";
+
+const TIMESHEET_SIDEBAR_SETTINGS_KEY = "timesheet_sidebar_settings";
 
 export default function TimesheetPage() {
-  const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("general");
-  
-  // General tab states
   const [roundOffTime, setRoundOffTime] = useState("dont-round-off");
   const [enableMaxHours, setEnableMaxHours] = useState(true);
   const [maxHours, setMaxHours] = useState("24:00");
   const [trackCosts, setTrackCosts] = useState(false);
-  const [enableApprovals, setEnableApprovals] = useState(false);
-  const [enableCustomerApprovals, setEnableCustomerApprovals] = useState(false);
-  
-  // Field Customization tab states
-  const [customFields, setCustomFields] = useState([]);
-  const customFieldsUsage = customFields.length;
-  const maxCustomFields = 52;
+  const [enableApprovals, setEnableApprovals] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const raw = window.localStorage.getItem(TIMESHEET_SIDEBAR_SETTINGS_KEY);
+      if (!raw) return false;
+      return JSON.parse(raw)?.enableApprovals === true;
+    } catch {
+      return false;
+    }
+  });
+  const [enableCustomerApprovals, setEnableCustomerApprovals] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const raw = window.localStorage.getItem(TIMESHEET_SIDEBAR_SETTINGS_KEY);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      return parsed?.enableApprovals === true && parsed?.enableCustomerApprovals === true;
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (!enableApprovals && enableCustomerApprovals) {
+      setEnableCustomerApprovals(false);
+    }
+  }, [enableApprovals, enableCustomerApprovals]);
+
+  const handleSave = () => {
+    const nextSettings = {
+      enableApprovals,
+      enableCustomerApprovals: enableApprovals && enableCustomerApprovals,
+    };
+    window.localStorage.setItem(TIMESHEET_SIDEBAR_SETTINGS_KEY, JSON.stringify(nextSettings));
+    window.dispatchEvent(new Event("timesheet-sidebar-settings-updated"));
+    toast.success("Timesheet settings saved successfully");
+  };
 
   return (
     <div className="p-6 max-w-4xl">
       <h1 className="text-2xl font-semibold text-gray-900 mb-6">Timesheet</h1>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-gray-200 mb-6">
-        <button
-          onClick={() => setActiveTab("general")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "general"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          General
-        </button>
-        <button
-          onClick={() => setActiveTab("field-customization")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "field-customization"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Field Customization
-        </button>
-      </div>
-
-      {/* General Tab Content */}
-      {activeTab === "general" && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-8">
+      <div className="space-y-8">
           {/* Round Off Time */}
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -150,9 +152,10 @@ export default function TimesheetPage() {
                   type="checkbox"
                   checked={enableCustomerApprovals}
                   onChange={(e) => setEnableCustomerApprovals(e.target.checked)}
+                  disabled={!enableApprovals}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mt-1"
                 />
-                <div>
+                <div className={!enableApprovals ? "opacity-50" : ""}>
                   <span className="text-sm font-medium text-gray-900">
                     Enable Customer Approvals for time entries
                   </span>
@@ -166,81 +169,15 @@ export default function TimesheetPage() {
 
           {/* Save Button */}
           <div className="flex items-center justify-start pt-6 border-t border-gray-200">
-            <button className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700">
+            <button
+              type="button"
+              onClick={handleSave}
+              className="inline-flex items-center rounded-md bg-[#0f5f73] px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-[#0b4f60]"
+            >
               Save
             </button>
           </div>
-        </div>
-      )}
-
-      {/* Field Customization Tab Content */}
-      {activeTab === "field-customization" && (
-        <div>
-          {/* Header with button */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="text-sm text-gray-600">
-              Custom Fields Usage: {customFieldsUsage}/{maxCustomFields}
-            </div>
-            <button
-              onClick={() => navigate("/settings/timesheet/new-field")}
-              className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 flex items-center gap-2"
-            >
-              <span className="text-lg">+</span>
-              New Custom Field
-            </button>
-          </div>
-
-          {/* Table */}
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    FIELD NAME
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    DATA TYPE
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    MANDATORY
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    STATUS
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {customFields.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-6 py-12 text-center">
-                      <p className="text-gray-500 text-sm">
-                        Do you have information that doesn't go under any existing field? Go ahead and create a custom field.
-                      </p>
-                    </td>
-                  </tr>
-                ) : (
-                  customFields.map((field, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm text-gray-900">{field.name}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{field.dataType}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{field.mandatory ? "Yes" : "No"}</td>
-                      <td className="px-6 py-4 text-sm">
-                        <span className={`px-2 py-1 rounded text-xs ${
-                          field.status === "Active" 
-                            ? "bg-green-100 text-green-800" 
-                            : "bg-gray-100 text-gray-800"
-                        }`}>
-                          {field.status || "Active"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -145,6 +145,7 @@ const isRouteMatch = (pathname: string, route?: string): boolean => {
 };
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "taban-books-sidebar-collapsed";
+const TIMESHEET_SIDEBAR_SETTINGS_KEY = "timesheet_sidebar_settings";
 
 export default function Sidebar() {
   const location = useLocation();
@@ -160,6 +161,23 @@ export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+  });
+  const [timesheetSidebarSettings, setTimesheetSidebarSettings] = useState(() => {
+    if (typeof window === "undefined") {
+      return { enableApprovals: false, enableCustomerApprovals: false };
+    }
+
+    try {
+      const raw = window.localStorage.getItem(TIMESHEET_SIDEBAR_SETTINGS_KEY);
+      if (!raw) return { enableApprovals: false, enableCustomerApprovals: false };
+      const parsed = JSON.parse(raw);
+      return {
+        enableApprovals: parsed?.enableApprovals === true,
+        enableCustomerApprovals: parsed?.enableCustomerApprovals === true,
+      };
+    } catch {
+      return { enableApprovals: false, enableCustomerApprovals: false };
+    }
   });
   const flyoutCloseTimer = useRef<number | null>(null);
 
@@ -195,6 +213,41 @@ export default function Sidebar() {
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(isCollapsed));
   }, [isCollapsed]);
+
+  useEffect(() => {
+    const readSettings = () => {
+      try {
+        const raw = window.localStorage.getItem(TIMESHEET_SIDEBAR_SETTINGS_KEY);
+        if (!raw) {
+          setTimesheetSidebarSettings({ enableApprovals: false, enableCustomerApprovals: false });
+          return;
+        }
+
+        const parsed = JSON.parse(raw);
+        setTimesheetSidebarSettings({
+          enableApprovals: parsed?.enableApprovals === true,
+          enableCustomerApprovals: parsed?.enableCustomerApprovals === true,
+        });
+      } catch {
+        setTimesheetSidebarSettings({ enableApprovals: false, enableCustomerApprovals: false });
+      }
+    };
+
+    const handleSidebarSettingsUpdated = () => readSettings();
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === TIMESHEET_SIDEBAR_SETTINGS_KEY) {
+        readSettings();
+      }
+    };
+
+    window.addEventListener("timesheet-sidebar-settings-updated", handleSidebarSettingsUpdated);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      window.removeEventListener("timesheet-sidebar-settings-updated", handleSidebarSettingsUpdated);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
 
   useEffect(() => {
     if (isCollapsed) {
@@ -357,7 +410,17 @@ export default function Sidebar() {
       .map((item) => {
         if (!item.children?.length) return item;
 
-        const children = item.children.filter((child) => isModuleEnabled(child.moduleKey));
+        const children = item.children.filter((child) => {
+          if (item.label === "Time Tracking" && child.to === "/time-tracking/approvals" && !timesheetSidebarSettings.enableApprovals) {
+            return false;
+          }
+
+          if (item.label === "Time Tracking" && child.to === "/time-tracking/customer-approvals" && !timesheetSidebarSettings.enableCustomerApprovals) {
+            return false;
+          }
+
+          return isModuleEnabled(child.moduleKey);
+        });
         if (!children.length) return null;
 
         return {
@@ -366,7 +429,7 @@ export default function Sidebar() {
         };
       })
       .filter(Boolean) as MenuItem[];
-  }, [enabledModules]);
+  }, [enabledModules, timesheetSidebarSettings]);
 
   useEffect(() => {
     if (openSection && !filteredItems.some((item) => item.label === openSection)) {

@@ -1,25 +1,21 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Loader2, Plus, Settings, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { transactionNumberSeriesAPI, locationsAPI } from "../../services/api";
 import { toast } from "react-toastify";
 import NewTransactionNumberSeriesPage from "./NewTransactionNumberSeriesPage";
-import PreventDuplicatesModal from "./PreventDuplicatesModal";
 
 export default function TransactionNumberSeriesPage() {
   const [showNewSeriesPage, setShowNewSeriesPage] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [series, setSeries] = useState<any[]>([]);
   const [selectedSeriesToEdit, setSelectedSeriesToEdit] = useState<any[] | null>(null);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [currentSetting, setCurrentSetting] = useState("all_fiscal_years");
   const [locations, setLocations] = useState<any[]>([]);
   const [activePopoverSeries, setActivePopoverSeries] = useState<string | null>(null);
   const [popoverCoords, setPopoverCoords] = useState<{ top: number; left: number; width: number } | null>(null);
 
   useEffect(() => {
     fetchSeries();
-    fetchSettings();
     fetchLocations();
   }, []);
 
@@ -40,29 +36,6 @@ export default function TransactionNumberSeriesPage() {
       }
     } catch (e) {
       console.error("Error fetching locations:", e);
-    }
-  };
-
-  const fetchSettings = async () => {
-    try {
-      const response = await transactionNumberSeriesAPI.getSettings();
-      if (response && response.success) {
-        setCurrentSetting(response.data.preventDuplicates);
-      }
-    } catch (e) {
-      console.error("Error fetching settings:", e);
-    }
-  };
-
-  const handleSaveSettings = async (selection: string) => {
-    try {
-      await transactionNumberSeriesAPI.updateSettings({ preventDuplicates: selection });
-      setCurrentSetting(selection);
-      setShowSettingsModal(false);
-      toast.success("Settings saved successfully.");
-    } catch (e) {
-      console.error("Error saving settings:", e);
-      alert("Failed to save settings");
     }
   };
 
@@ -99,7 +72,7 @@ export default function TransactionNumberSeriesPage() {
 
   const handleDeleteSeries = async (name: string) => {
     if (!window.confirm(`Are you sure you want to delete the "${name}" series?`)) return;
-    
+
     try {
       const items = groupedSeries[name];
       for (const item of items) {
@@ -133,7 +106,7 @@ export default function TransactionNumberSeriesPage() {
     "Invoice",
     "Sales Order",
     "Quote",
-    "Sales Receipt"
+    "Sales Receipt",
   ];
 
   const resolveModuleSeries = (items: any[], moduleName: string) =>
@@ -220,13 +193,6 @@ export default function TransactionNumberSeriesPage() {
               </h1>
             </div>
             <div className="flex flex-wrap items-center gap-2 md:gap-2.5 lg:justify-end">
-              <button
-                onClick={() => setShowSettingsModal(true)}
-                className="flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium text-[#1e5e6e] hover:underline"
-              >
-                <Settings size={14} className="text-[#1e5e6e]" />
-                Prevent Duplicate Transaction Numbers
-              </button>
               <button
                 onClick={handleNewSeries}
                 className="flex h-8 items-center gap-2 whitespace-nowrap rounded-md bg-[#1e5e6e] px-3 text-[10.5px] font-bold text-white shadow-sm transition-colors hover:bg-[#164a58] active:scale-95"
@@ -338,14 +304,6 @@ export default function TransactionNumberSeriesPage() {
           </div>
         </div>
       </div>
-
-      {showSettingsModal && (
-        <PreventDuplicatesModal
-          onClose={() => setShowSettingsModal(false)}
-          onSave={handleSaveSettings}
-          currentValue={currentSetting}
-        />
-      )}
     </div>
   );
 }

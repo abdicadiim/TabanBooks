@@ -131,6 +131,7 @@ const NewItemsCustomFieldPageWrapper = lazy(() =>
 const SettingsAccountantWrapper = lazy(() =>
   import("../pages/settings/module-settings/accountant/SettingsAccountantWrapper"),
 );
+const SettingsTasksWrapper = lazy(() => import("../pages/settings/SettingsTasksWrapper"));
 const NewAccountantCustomFieldPageWrapper = lazy(() =>
   import("../pages/settings/NewAccountantCustomFieldPageWrapper"),
 );
@@ -157,6 +158,12 @@ const NewInventoryAdjustmentsCustomFieldPageWrapper = lazy(() =>
 );
 const SettingsOnlinePaymentsWrapper = lazy(() => import("../pages/settings/SettingsOnlinePaymentsWrapper"));
 const SettingsQuotesWrapper = lazy(() => import("../pages/settings/SettingsQuotesWrapper"));
+const SettingsRetainerInvoicesWrapper = lazy(() =>
+  import("../pages/settings/SettingsRetainerInvoicesWrapper"),
+);
+const SettingsSalesOrdersWrapper = lazy(() =>
+  import("../pages/settings/SettingsSalesOrdersWrapper"),
+);
 const NewQuotesCustomFieldPageWrapper = lazy(() =>
   import("../pages/settings/NewQuotesCustomFieldPageWrapper"),
 );
@@ -406,6 +413,7 @@ export default function AppRoutes() {
           <Route path="/settings/accountant" element={<SettingsAccountantWrapper />} />
           <Route path="/settings/accountant/journal/new-field" element={<NewAccountantCustomFieldPageWrapper />} />
           <Route path="/settings/accountant/chart/new-field" element={<NewAccountantCustomFieldPageWrapper />} />
+          <Route path="/settings/tasks" element={<SettingsTasksWrapper />} />
           <Route path="/settings/projects" element={<SettingsProjectsWrapper />} />
           <Route path="/settings/projects/new-field" element={<NewProjectsCustomFieldPageWrapper />} />
           <Route path="/settings/projects/new-related-list" element={<NewProjectsRelatedListPageWrapper />} />
@@ -415,6 +423,8 @@ export default function AppRoutes() {
           <Route path="/settings/inventory-adjustments/new-field" element={<NewInventoryAdjustmentsCustomFieldPageWrapper />} />
           <Route path="/settings/online-payments" element={<SettingsOnlinePaymentsWrapper />} />
           <Route path="/settings/quotes" element={<SettingsQuotesWrapper />} />
+          <Route path="/settings/retainer-invoices" element={<SettingsRetainerInvoicesWrapper />} />
+          <Route path="/settings/sales-orders" element={<SettingsSalesOrdersWrapper />} />
           <Route path="/settings/quotes/new-field" element={<NewQuotesCustomFieldPageWrapper />} />
           <Route path="/settings/quotes/new-related-list" element={<NewQuotesRelatedListPageWrapper />} />
           <Route path="/settings/quotes/new-custom-approval" element={<NewCustomApprovalPageWrapper />} />

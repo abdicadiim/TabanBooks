@@ -4,7 +4,6 @@ import { Lock, ChevronDown, X } from "lucide-react";
 
 export default function ExpensesPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("preferences");
   
   // Preferences tab states
   const [associateEmployees, setAssociateEmployees] = useState(false);
@@ -28,78 +27,31 @@ export default function ExpensesPage() {
     <div className="p-6 max-w-4xl">
       <h1 className="text-2xl font-semibold text-gray-900 mb-6">Expenses</h1>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-gray-200 mb-6">
-        <button
-          onClick={() => setActiveTab("preferences")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "preferences"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Preferences
-        </button>
-        <button
-          onClick={() => setActiveTab("field-customization")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "field-customization"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Field Customization
-        </button>
-        <button
-          onClick={() => setActiveTab("custom-buttons")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "custom-buttons"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Custom Buttons
-        </button>
-        <button
-          onClick={() => setActiveTab("related-lists")}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            activeTab === "related-lists"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          Related Lists
-        </button>
+      {/* Preferences Tab Content */}
+      <div className="max-w-[680px] space-y-6">
+        <div className="border-b border-gray-200 pb-4">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={associateEmployees}
+              onChange={(e) => setAssociateEmployees(e.target.checked)}
+              className="mt-1 h-4 w-4 text-[#156372] focus:ring-[#156372] border-gray-300 rounded"
+            />
+            <div>
+              <span className="text-sm text-gray-700">Associate employees to expenses</span>
+            </div>
+          </label>
+        </div>
+
+        <div className="flex items-center justify-start pt-4">
+          <button className="px-4 py-2 text-sm font-medium text-white bg-[#156372] rounded-lg hover:bg-[#0f4a56]">
+            Save
+          </button>
+        </div>
       </div>
 
-      {/* Preferences Tab Content */}
-      {activeTab === "preferences" && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-6">
-          <div>
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={associateEmployees}
-                onChange={(e) => setAssociateEmployees(e.target.checked)}
-                className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <div>
-                <span className="text-sm text-gray-700">Associate employees to expenses</span>
-              </div>
-            </label>
-          </div>
-
-          {/* Save Button */}
-          <div className="flex items-center justify-start pt-6 border-t border-gray-200">
-            <button className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700">
-              Save
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Field Customization Tab Content */}
-      {activeTab === "field-customization" && (
+      {false && (
         <div>
           <div className="flex items-center justify-between mb-6">
             <div className="text-sm text-gray-600">
@@ -161,7 +113,7 @@ export default function ExpensesPage() {
       )}
 
       {/* Custom Buttons Tab Content */}
-      {activeTab === "custom-buttons" && (
+      {false && (
         <div>
           <div className="flex items-center justify-between mb-6">
             <div></div>
@@ -235,7 +187,7 @@ export default function ExpensesPage() {
       )}
 
       {/* Related Lists Tab Content */}
-      {activeTab === "related-lists" && (
+      {false && (
         <div>
           <div className="flex items-center justify-end mb-6">
             <button

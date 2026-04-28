@@ -30,6 +30,8 @@ import {
 import { usePermissions } from "../hooks/usePermissions";
 import { useAppBootstrap } from "../context/AppBootstrapContext";
 
+const TIMESHEET_SIDEBAR_SETTINGS_KEY = "timesheet_sidebar_settings";
+
 const menu = [
   { label: "Home", icon: Home, path: "/" },
   {
@@ -343,6 +345,58 @@ export default function Sidebar() {
   const location = useLocation();
   const collapsedBeforeReportsRef = useRef(false);
   const inReportsRef = useRef(false);
+  const [timesheetSidebarSettings, setTimesheetSidebarSettings] = useState(() => {
+    if (typeof window === "undefined") {
+      return { enableApprovals: false, enableCustomerApprovals: false };
+    }
+
+    try {
+      const raw = window.localStorage.getItem(TIMESHEET_SIDEBAR_SETTINGS_KEY);
+      if (!raw) return { enableApprovals: false, enableCustomerApprovals: false };
+      const parsed = JSON.parse(raw);
+      return {
+        enableApprovals: parsed?.enableApprovals === true,
+        enableCustomerApprovals: parsed?.enableCustomerApprovals === true,
+      };
+    } catch {
+      return { enableApprovals: false, enableCustomerApprovals: false };
+    }
+  });
+
+  useEffect(() => {
+    const readSettings = () => {
+      try {
+        const raw = window.localStorage.getItem(TIMESHEET_SIDEBAR_SETTINGS_KEY);
+        if (!raw) {
+          setTimesheetSidebarSettings({ enableApprovals: false, enableCustomerApprovals: false });
+          return;
+        }
+
+        const parsed = JSON.parse(raw);
+        setTimesheetSidebarSettings({
+          enableApprovals: parsed?.enableApprovals === true,
+          enableCustomerApprovals: parsed?.enableCustomerApprovals === true,
+        });
+      } catch {
+        setTimesheetSidebarSettings({ enableApprovals: false, enableCustomerApprovals: false });
+      }
+    };
+
+    const handleSidebarSettingsUpdated = () => readSettings();
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === TIMESHEET_SIDEBAR_SETTINGS_KEY) {
+        readSettings();
+      }
+    };
+
+    window.addEventListener("timesheet-sidebar-settings-updated", handleSidebarSettingsUpdated);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      window.removeEventListener("timesheet-sidebar-settings-updated", handleSidebarSettingsUpdated);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
 
   const preloadQuotesList = () => {
     if (hasPreloadedQuotesRef.current) return;
@@ -381,6 +435,12 @@ export default function Sidebar() {
     }).map(item => {
       if (item.children) {
         const filteredChildren = item.children.filter((child: any) => {
+          if (item.label === "Time Tracking" && child.path === "/time-tracking/approvals" && !timesheetSidebarSettings.enableApprovals) {
+            return false;
+          }
+          if (item.label === "Time Tracking" && child.path === "/time-tracking/customer-approvals" && !timesheetSidebarSettings.enableCustomerApprovals) {
+            return false;
+          }
           const rules = childPermissionRules[child.path] || [];
           if (!hasAnyPermission(rules)) return false;
           if (child.moduleKey) return enabledModules[child.moduleKey] !== false;
@@ -399,7 +459,7 @@ export default function Sidebar() {
       }
       return item;
     }).filter(Boolean) as any[];
-  }, [enabledModules, permissionsLoading, hasPermission]);
+  }, [enabledModules, permissionsLoading, hasPermission, timesheetSidebarSettings]);
 
   const prevPathRef = useRef(location.pathname);
 
