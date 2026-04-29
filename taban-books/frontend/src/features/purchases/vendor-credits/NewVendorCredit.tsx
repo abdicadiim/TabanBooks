@@ -897,8 +897,13 @@ export default function NewVendorCredit() {
     (newItems[index] as any).stockQuantity = item.stockQuantity || 0;
     (newItems[index] as any).unit = item.unit || "";
     (newItems[index] as any).trackInventory = item.trackInventory || false;
-    // Leave account unselected so the user chooses from the grouped account list
-    newItems[index].account = "";
+    // Auto-fill the purchase account from the selected item, matching the vendor flow.
+    newItems[index].account =
+      item.purchaseAccount ||
+      item.account ||
+      item.accountName ||
+      item.purchase_account ||
+      "";
     // Set rate from item if available
     if (item.costPrice) {
       newItems[index].rate = item.costPrice;
@@ -1194,6 +1199,7 @@ export default function NewVendorCredit() {
 
   const handleSave = async (status: string) => {
     if (saveLoadingState) return;
+    const saveStartedAt = performance.now();
 
     // Validate Items
     const newErrors: Record<string, boolean> = {};
@@ -1282,15 +1288,28 @@ export default function NewVendorCredit() {
         ? await vendorCreditsAPI.update(creditId, payload)
         : await vendorCreditsAPI.create(payload);
 
+      const clientSaveMs = Math.round(performance.now() - saveStartedAt);
+      const serverSaveMs = Number(response?.meta?.responseMs || 0);
+      console.log("[vendor-credit-save-timing]", {
+        mode: isEdit ? "update" : "create",
+        status,
+        clientSaveMs,
+        serverSaveMs,
+      });
+
       if (response.success || response) {
         const actionLabel = isEdit
           ? (status === "Draft" ? "updated as draft" : "updated")
           : (status === "Draft" ? "saved as draft" : "saved");
         toast.success(`Vendor credit ${actionLabel} successfully`);
-        await syncItemCachesAfterVendorCreditSave(itemRows, payload.status);
-        // Remove from local storage to keep it clean if user previously had data there
+
+        // Run non-critical cache work in the background so the save finishes faster.
+        void syncItemCachesAfterVendorCreditSave(itemRows, payload.status).catch((cacheError) => {
+          console.error("Error syncing item caches after vendor credit save:", cacheError);
+        });
         localStorage.removeItem("vendor_credits");
         window.sessionStorage.removeItem("vendor-credits-list-cache");
+
         if (isEdit && creditId) {
           navigate(`/purchases/vendor-credits/${creditId}`);
         } else {
@@ -3290,14 +3309,24 @@ export default function NewVendorCredit() {
             onClick={() => handleSave("Draft")}
             disabled={!!saveLoadingState}
           >
-            {saveLoadingState === "Draft" ? "Saving..." : (isEdit ? "Update as Draft" : "Save as Draft")}
+            {saveLoadingState === "Draft" ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                <RotateCw size={14} style={{ animation: "spin 1s linear infinite" }} />
+                Saving...
+              </span>
+            ) : (isEdit ? "Update as Draft" : "Save as Draft")}
           </button>
           <button
             className="save-btn-hover" style={styles.saveOpenButton}
             onClick={() => handleSave("Open")}
             disabled={!!saveLoadingState}
           >
-            {saveLoadingState === "Open" ? "Saving..." : (isEdit ? "Update as Open" : "Save as Open")}
+            {saveLoadingState === "Open" ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                <RotateCw size={14} style={{ animation: "spin 1s linear infinite" }} />
+                Saving...
+              </span>
+            ) : (isEdit ? "Update as Open" : "Save as Open")}
           </button>
           <button style={styles.cancelButton} onClick={() => navigate("/purchases/vendor-credits")} disabled={!!saveLoadingState}>Cancel</button>
         </div>

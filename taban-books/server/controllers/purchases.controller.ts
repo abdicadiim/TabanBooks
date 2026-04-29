@@ -1755,13 +1755,25 @@ const applyVendorCreditStockDelta = async (
   const settings = await getItemsSettings(String(organizationId));
   if (!settings.enableInventoryTracking) return;
 
-  for (const [itemId, delta] of stockDelta.entries()) {
-    if (!delta || !mongoose.Types.ObjectId.isValid(itemId)) continue;
+  const validEntries = Array.from(stockDelta.entries()).filter(
+    ([itemId, delta]) => !!delta && mongoose.Types.ObjectId.isValid(itemId)
+  );
+  if (!validEntries.length) return;
 
-    const itemQuery = Item.findById(itemId);
-    if (session) itemQuery.session(session);
-    const itemDoc = await itemQuery;
+  const itemIds = validEntries.map(([itemId]) => new mongoose.Types.ObjectId(itemId));
+  const itemQuery = Item.find({
+    _id: { $in: itemIds },
+  }).select("_id name stockQuantity trackInventory");
+  if (session) itemQuery.session(session);
+  const itemDocs = await itemQuery;
 
+  if (!itemDocs.length) return;
+
+  const itemsById = new Map(itemDocs.map((itemDoc: any) => [String(itemDoc._id), itemDoc]));
+  const bulkOperations: any[] = [];
+
+  for (const [itemId, delta] of validEntries) {
+    const itemDoc: any = itemsById.get(String(itemId));
     if (!itemDoc || !itemDoc.trackInventory) continue;
 
     const currentStock = Number(itemDoc.stockQuantity || 0);
@@ -1773,10 +1785,17 @@ const applyVendorCreditStockDelta = async (
       );
     }
 
-    const updateQuery = Item.findByIdAndUpdate(itemId, { $set: { stockQuantity: updatedStock } });
-    if (session) updateQuery.session(session);
-    await updateQuery;
+    bulkOperations.push({
+      updateOne: {
+        filter: { _id: itemDoc._id },
+        update: { $set: { stockQuantity: updatedStock } },
+      }
+    });
   }
+
+  if (!bulkOperations.length) return;
+
+  await Item.bulkWrite(bulkOperations, session ? { session } : undefined);
 };
 
 const createVendorCreditJournalEntry = async (
@@ -2658,6 +2677,7 @@ const normalizeVendorCreditComments = (comments: any): any[] => {
 
 // Create vendor credit
 export const createVendorCredit = async (req: AuthRequest, res: Response): Promise<void> => {
+  const requestStartedAt = Date.now();
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
@@ -2684,28 +2704,38 @@ export const createVendorCredit = async (req: AuthRequest, res: Response): Promi
 
 
 
-    creditData.vendor = await resolveVendorReference(
-      creditData.vendor,
-      req.user.organizationId,
-      session
+    creditData.vendor = await measureRequestStep(
+      req as any,
+      "vendor-credits.resolve-vendor",
+      () => resolveVendorReference(
+        creditData.vendor,
+        req.user!.organizationId,
+        session
+      )
     );
 
     // Ensure numeric fields are numbers and sanitize item
     if (creditData.items) {
-      creditData.items = await normalizeVendorCreditItemsForPersistence(
-        String(req.user.organizationId),
-        creditData.items,
-        session
+      creditData.items = await measureRequestStep(
+        req as any,
+        "vendor-credits.normalize-items",
+        () => normalizeVendorCreditItemsForPersistence(
+          String(req.user!.organizationId),
+          creditData.items,
+          session
+        ),
+        { itemCount: Array.isArray(creditData.items) ? creditData.items.length : 0 }
       );
     }
     creditData.subtotal = Number(creditData.subtotal) || 0;
     creditData.total = Number(creditData.total) || 0;
     creditData.balance = Number(creditData.total) || 0;
 
-    // Log the payload to debug
-    console.log('Creating Vendor Credit Payload:', JSON.stringify(creditData, null, 2));
-
-    const [credit] = await VendorCredit.create([creditData], { session });
+    const [credit] = await measureRequestStep(
+      req as any,
+      "vendor-credits.create-document",
+      () => VendorCredit.create([creditData], { session }).then((docs) => docs as any),
+    );
 
     // Vendor credit is a purchase return: reduce stock when it becomes active.
     const stockDelta = buildVendorCreditStockDelta(
@@ -2714,26 +2744,23 @@ export const createVendorCredit = async (req: AuthRequest, res: Response): Promi
       (credit as any).items || [],
       (credit as any).status
     );
-    await applyVendorCreditStockDelta(req.user.organizationId.toString(), stockDelta, session);
-
-    await session.commitTransaction();
-
-    // Post accounting only for active vendor credits (not draft/cancelled/void).
-    if (isVendorCreditPostingStatus((credit as any).status)) {
-      const vendorCreditJournalId = await createVendorCreditJournalEntry(
-        credit,
-        req.user.organizationId.toString(),
-        req.user.userId
-      );
-      if (!vendorCreditJournalId) {
-        console.warn(`[VENDOR CREDITS] Journal entry not created for ${credit.vendorCreditNumber}`);
-      }
-    }
+    await measureRequestStep(
+      req as any,
+      "vendor-credits.apply-stock-delta",
+      () => applyVendorCreditStockDelta(req.user!.organizationId.toString(), stockDelta, session),
+      { itemCount: stockDelta.size }
+    );
 
     const creditDataForResponse =
       typeof (credit as any)?.toObject === "function"
         ? (credit as any).toObject()
         : credit;
+
+    await measureRequestStep(
+      req as any,
+      "vendor-credits.commit-transaction",
+      () => session.commitTransaction()
+    );
 
     res.status(201).json({
       success: true,
@@ -2743,8 +2770,36 @@ export const createVendorCredit = async (req: AuthRequest, res: Response): Promi
         creditNote: (creditDataForResponse as any)?.vendorCreditNumber || (credit as any)?.vendorCreditNumber,
         referenceNumber: (creditDataForResponse as any)?.orderNumber || (credit as any)?.orderNumber,
         amount: (creditDataForResponse as any)?.total ?? (credit as any)?.total
+      },
+      meta: {
+        responseMs: Date.now() - requestStartedAt,
       }
     });
+
+    logRequestTiming(req as any, {
+      action: "create-vendor-credit",
+      organizationId: String(req.user.organizationId),
+      status: (credit as any)?.status || null,
+      responseMs: Date.now() - requestStartedAt,
+    });
+
+    // Journal work is non-UI-critical. Run it after the response so save feels instant.
+    if (isVendorCreditPostingStatus((credit as any).status)) {
+      setImmediate(async () => {
+        try {
+          const vendorCreditJournalId = await createVendorCreditJournalEntry(
+            credit,
+            req.user!.organizationId.toString(),
+            req.user!.userId
+          );
+          if (!vendorCreditJournalId) {
+            console.warn(`[VENDOR CREDITS] Journal entry not created for ${credit.vendorCreditNumber}`);
+          }
+        } catch (journalError: any) {
+          console.error('[VENDOR CREDITS] Failed to create journal after vendor credit save:', journalError?.message || journalError);
+        }
+      });
+    }
   } catch (error: any) {
     // Check if session has an active transaction to abort
     if (session.inTransaction()) {
@@ -2845,6 +2900,7 @@ export const getVendorCredit = async (req: AuthRequest, res: Response): Promise<
 
 // Update vendor credit
 export const updateVendorCredit = async (req: AuthRequest, res: Response): Promise<void> => {
+  const requestStartedAt = Date.now();
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
@@ -2861,10 +2917,14 @@ export const updateVendorCredit = async (req: AuthRequest, res: Response): Promi
       return;
     }
 
-    const existingCredit = await VendorCredit.findOne({
-      _id: id,
-      organization: req.user.organizationId
-    }).session(session);
+    const existingCredit = await measureRequestStep(
+      req as any,
+      "vendor-credits.load-existing",
+      () => VendorCredit.findOne({
+        _id: id,
+        organization: req.user!.organizationId
+      }).session(session)
+    );
 
     if (!existingCredit) {
       await session.abortTransaction();
@@ -2890,18 +2950,27 @@ export const updateVendorCredit = async (req: AuthRequest, res: Response): Promi
     delete updateData.attachedFiles;
 
     if (updateData.vendor !== undefined) {
-      updateData.vendor = await resolveVendorReference(
-        updateData.vendor,
-        req.user.organizationId,
-        session
+      updateData.vendor = await measureRequestStep(
+        req as any,
+        "vendor-credits.resolve-vendor",
+        () => resolveVendorReference(
+          updateData.vendor,
+          req.user!.organizationId,
+          session
+        )
       );
     }
 
     if (Array.isArray(updateData.items)) {
-      updateData.items = await normalizeVendorCreditItemsForPersistence(
-        String(req.user.organizationId),
-        updateData.items,
-        session
+      updateData.items = await measureRequestStep(
+        req as any,
+        "vendor-credits.normalize-items",
+        () => normalizeVendorCreditItemsForPersistence(
+          String(req.user!.organizationId),
+          updateData.items,
+          session
+        ),
+        { itemCount: updateData.items.length }
       );
     }
 
@@ -2925,10 +2994,14 @@ export const updateVendorCredit = async (req: AuthRequest, res: Response): Promi
     const isMetadataOnlyUpdate =
       updateFieldKeys.length > 0 && updateFieldKeys.every((key) => metadataOnlyFields.has(key));
 
-    const credit = await VendorCredit.findOneAndUpdate(
-      { _id: id, organization: req.user.organizationId },
-      updateData,
-      { new: true, runValidators: true, session }
+    const credit = await measureRequestStep(
+      req as any,
+      "vendor-credits.update-document",
+      () => VendorCredit.findOneAndUpdate(
+        { _id: id, organization: req.user!.organizationId },
+        updateData,
+        { new: true, runValidators: true, session }
+      )
     );
 
     if (!credit) {
@@ -2946,32 +3019,56 @@ export const updateVendorCredit = async (req: AuthRequest, res: Response): Promi
         nextItems,
         nextStatus
       );
-      await applyVendorCreditStockDelta(req.user.organizationId.toString(), stockDelta, session);
+      await measureRequestStep(
+        req as any,
+        "vendor-credits.apply-stock-delta",
+        () => applyVendorCreditStockDelta(req.user!.organizationId.toString(), stockDelta, session),
+        { itemCount: stockDelta.size }
+      );
     }
 
-    await session.commitTransaction();
+    await measureRequestStep(
+      req as any,
+      "vendor-credits.commit-transaction",
+      () => session.commitTransaction()
+    );
 
-    // Rebuild accounting entry so GL reflects current vendor credit data/state.
-    if (!isMetadataOnlyUpdate) {
-      try {
-        await reverseAndDeleteVendorCreditJournals([credit._id], req.user.organizationId.toString());
-
-        if (isVendorCreditPostingStatus(credit.status)) {
-          const vendorCreditJournalId = await createVendorCreditJournalEntry(
-            credit,
-            req.user.organizationId.toString(),
-            req.user.userId
-          );
-          if (!vendorCreditJournalId) {
-            console.warn(`[VENDOR CREDITS] Journal entry not recreated for ${credit.vendorCreditNumber}`);
-          }
-        }
-      } catch (journalError: any) {
-        console.error('[VENDOR CREDITS] Failed to rebuild journal after update:', journalError?.message || journalError);
+    res.json({
+      success: true,
+      data: credit,
+      meta: {
+        responseMs: Date.now() - requestStartedAt,
       }
-    }
+    });
 
-    res.json({ success: true, data: credit });
+    logRequestTiming(req as any, {
+      action: "update-vendor-credit",
+      organizationId: String(req.user.organizationId),
+      status: credit.status || null,
+      responseMs: Date.now() - requestStartedAt,
+    });
+
+    // Rebuild accounting after the response so edits do not block the UI.
+    if (!isMetadataOnlyUpdate) {
+      setImmediate(async () => {
+        try {
+          await reverseAndDeleteVendorCreditJournals([credit._id], req.user!.organizationId.toString());
+
+          if (isVendorCreditPostingStatus(credit.status)) {
+            const vendorCreditJournalId = await createVendorCreditJournalEntry(
+              credit,
+              req.user!.organizationId.toString(),
+              req.user!.userId
+            );
+            if (!vendorCreditJournalId) {
+              console.warn(`[VENDOR CREDITS] Journal entry not recreated for ${credit.vendorCreditNumber}`);
+            }
+          }
+        } catch (journalError: any) {
+          console.error('[VENDOR CREDITS] Failed to rebuild journal after update:', journalError?.message || journalError);
+        }
+      });
+    }
   } catch (error: any) {
     if (session.inTransaction()) {
       try {
