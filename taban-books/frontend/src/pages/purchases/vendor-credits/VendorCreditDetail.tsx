@@ -330,15 +330,46 @@ export default function VendorCreditDetail() {
     }
   };
 
+  const removeCreditsLocally = (idsToDelete: string[]) => {
+    const idSet = new Set(idsToDelete.map(String));
+    return vendorCredits.filter((credit: any) => !idSet.has(String(credit.id || credit._id)));
+  };
+
   const deleteSelectedVendorCredits = async () => {
     if (!selectedCredits.length) return;
+    const idsToDelete = selectedCredits.map(String);
+    const previousVendorCredits = vendorCredits;
+    const remainingCredits = removeCreditsLocally(idsToDelete);
+    const currentCreditId = String(vendorCredit?.id || vendorCredit?._id || id || "");
+    const isCurrentCreditDeleted = idsToDelete.includes(currentCreditId);
+    const nextCredit = remainingCredits[0];
 
     try {
-      const toastId = toast.loading("Deleting vendor credits...");
-      await deleteVendorCreditsMutation.mutateAsync({ ids: selectedCredits.map(String) });
-      toast.success("Vendor credit(s) deleted successfully", { id: toastId });
-      await fetchData(true);
+      setVendorCredits(remainingCredits);
       handleClearSelection();
+      toast.success("Vendor credit(s) deleted successfully");
+      window.dispatchEvent(new Event("vendorCreditsUpdated"));
+      window.dispatchEvent(new Event("storage"));
+
+      if (isCurrentCreditDeleted) {
+        if (nextCredit) {
+          navigate(`/purchases/vendor-credits/${nextCredit.id || nextCredit._id}`, {
+            replace: true,
+            state: {
+              vendorCredit: nextCredit,
+              vendorCredits: remainingCredits,
+            },
+          });
+        } else {
+          navigate("/purchases/vendor-credits", { replace: true });
+        }
+      }
+
+      void deleteVendorCreditsMutation.mutateAsync({ ids: idsToDelete }).catch((error: any) => {
+        console.error("Error deleting vendor credits:", error);
+        setVendorCredits(previousVendorCredits);
+        toast.error(error?.message || "Failed to delete vendor credits");
+      });
     } catch (error: any) {
       console.error("Error deleting vendor credits:", error);
       toast.error(error?.message || "Failed to delete vendor credits");
@@ -696,13 +727,37 @@ export default function VendorCreditDetail() {
     if (!creditId) return;
     if (!window.confirm("Are you sure you want to delete this vendor credit?")) return;
 
+    const normalizedCreditId = String(creditId);
+    const previousVendorCredits = vendorCredits;
+    const previousVendorCredit = vendorCredit;
+    const remainingCredits = removeCreditsLocally([normalizedCreditId]);
+    const nextCredit = remainingCredits[0];
+
     try {
-      const toastId = toast.loading("Deleting vendor credit...");
-      await deleteVendorCreditsMutation.mutateAsync({ ids: [String(creditId)] });
-      toast.success("Vendor credit deleted successfully", { id: toastId });
+      setVendorCredits(remainingCredits);
+      setSelectedCredits((prev) => prev.filter((selectedId: string) => selectedId !== normalizedCreditId));
+      toast.success("Vendor credit deleted successfully");
       window.dispatchEvent(new Event("vendorCreditsUpdated"));
       window.dispatchEvent(new Event("storage"));
-      navigate("/purchases/vendor-credits");
+
+      if (nextCredit) {
+        navigate(`/purchases/vendor-credits/${nextCredit.id || nextCredit._id}`, {
+          replace: true,
+          state: {
+            vendorCredit: nextCredit,
+            vendorCredits: remainingCredits,
+          },
+        });
+      } else {
+        navigate("/purchases/vendor-credits", { replace: true });
+      }
+
+      void deleteVendorCreditsMutation.mutateAsync({ ids: [normalizedCreditId] }).catch((error: any) => {
+        console.error("Error deleting vendor credit:", error);
+        setVendorCredits(previousVendorCredits);
+        setVendorCredit(previousVendorCredit);
+        toast.error(error?.message || "Failed to delete vendor credit");
+      });
     } catch (error: any) {
       console.error("Error deleting vendor credit:", error);
       toast.error(error?.message || "Failed to delete vendor credit");
