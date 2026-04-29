@@ -61,13 +61,42 @@ const purchasesTheme = {
   successHover: '#047857'
 };
 
+const PENDING_VENDOR_STORAGE_KEY = "pending-vendor-save";
+
+const readPendingVendor = () => {
+  try {
+    const cached = sessionStorage.getItem(PENDING_VENDOR_STORAGE_KEY);
+    return cached ? JSON.parse(cached) : null;
+  } catch (error) {
+    return null;
+  }
+};
+
+const mergePendingVendor = (vendorsList) => {
+  const pendingVendor = readPendingVendor();
+  if (!pendingVendor) {
+    return vendorsList;
+  }
+
+  const pendingId = String(pendingVendor?.id || pendingVendor?._id || "").trim();
+  if (!pendingId) {
+    return vendorsList;
+  }
+
+  const filteredVendors = (Array.isArray(vendorsList) ? vendorsList : []).filter(
+    (vendor) => String(vendor?.id || vendor?._id || "").trim() !== pendingId
+  );
+
+  return [pendingVendor, ...filteredVendors];
+};
+
 export default function Vendor() {
   const navigate = useNavigate();
   const location = useLocation();
   const [vendors, setVendors] = useState(() => {
     try {
       const cached = localStorage.getItem("vendors");
-      return cached ? JSON.parse(cached) : [];
+      return mergePendingVendor(cached ? JSON.parse(cached) : []);
     } catch (error) {
       return [];
     }
@@ -276,9 +305,10 @@ export default function Vendor() {
       .replace(/\b\w/g, (char) => char.toUpperCase());
   };
   const persistVendors = (nextVendors) => {
-    setVendors(nextVendors);
+    const mergedVendors = mergePendingVendor(nextVendors);
+    setVendors(mergedVendors);
     try {
-      localStorage.setItem("vendors", JSON.stringify(nextVendors));
+      localStorage.setItem("vendors", JSON.stringify(mergedVendors));
     } catch (storageError) {
     }
   };
