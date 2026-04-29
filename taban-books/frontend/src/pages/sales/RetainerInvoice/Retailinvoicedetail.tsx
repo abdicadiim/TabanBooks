@@ -3,7 +3,8 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { MoreHorizontal, MessageSquare, X, Edit, Mail, FileText, Banknote, ChevronDown, ChevronRight, Search, Star, Download, Printer, Trash2, ArrowUpDown, Upload, Settings, RefreshCw, RotateCcw, HelpCircle, Bold, Italic, Underline, Strikethrough, AlignLeft, AlignCenter, AlignRight, Link as LinkIcon, Image as ImageIcon, Copy, Ban, AlertTriangle } from "lucide-react";
-import { debitNotesAPI } from "../../../services/api";
+import { debitNotesAPI, pdfTemplatesAPI, profileAPI } from "../../../services/api";
+import TransactionPDFDocument from "../../../components/Transactions/TransactionPDFDocument";
 import { deleteRetainerInvoice, getCustomers, getRetainerInvoiceById, getRetainerInvoices, RetainerInvoice, updateRetainerInvoice, saveRetainerInvoice } from "../salesModel";
 import { useOrganizationBranding } from "../../../hooks/useOrganizationBranding";
 import { toast } from "react-hot-toast";
@@ -304,6 +305,8 @@ export default function Retailinvoicedetail() {
   const [draftRecordPaymentLoading, setDraftRecordPaymentLoading] = useState(false);
   const [voidReason, setVoidReason] = useState("");
   const [detailActionLoading, setDetailActionLoading] = useState<"clone" | "void" | "delete" | "sent" | null>(null);
+  const [activePdfTemplate, setActivePdfTemplate] = useState<any>(null);
+  const [organizationProfile, setOrganizationProfile] = useState<any>(null);
   const [deleteRetainerId, setDeleteRetainerId] = useState<string>("");
   const [attachments, setAttachments] = useState<RetainerAttachment[]>([]);
   const [comments, setComments] = useState<RetainerComment[]>([]);
@@ -335,6 +338,30 @@ export default function Retailinvoicedetail() {
 
   useEffect(() => {
     let cancelled = false;
+
+    const fetchTemplateAndProfile = async () => {
+      try {
+        const [templatesRes, profileRes] = await Promise.all([
+          pdfTemplatesAPI.get(),
+          profileAPI.get()
+        ]);
+        
+        if (templatesRes?.success && Array.isArray(templatesRes.data)) {
+          const retainerTemplate = templatesRes.data.find((t: any) => t.moduleType === 'retainer_invoices');
+          if (retainerTemplate) {
+            setActivePdfTemplate(retainerTemplate);
+          }
+        }
+        
+        if (profileRes?.success) {
+          setOrganizationProfile(profileRes.data);
+        }
+      } catch (error) {
+        console.error("Error fetching templates or profile:", error);
+      }
+    };
+    
+    fetchTemplateAndProfile();
 
     const load = async () => {
       if (!cancelled && !preloadedRetainerInvoice) setLoading(true);
@@ -2414,92 +2441,36 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
                 <div className="text-[13px] text-[#556070]">Project Name: {projectName}</div>
               </div>
 
-              <div
-                ref={invoicePaperRef}
-                className="relative bg-white border border-[#d1d5db] shadow-sm w-full max-w-[920px] mx-auto overflow-hidden text-black"
-                style={{ width: "210mm", maxWidth: "210mm", minHeight: "297mm", padding: "64px 40px 24px 40px" }}
-              >
-                <div className="absolute left-0 top-0 w-[84px] h-[84px] overflow-hidden pointer-events-none">
-                  <div className={`absolute left-[-34px] top-[14px] w-[120px] h-[36px] ${ribbonBgClass} -rotate-45 shadow-sm`} />
-                  <div className="absolute left-[8px] top-[29px] -rotate-45 text-white text-[13px] leading-none tracking-wide font-semibold">
-                    {ribbonLabel}
-                  </div>
+              <div className="w-full max-w-4xl mx-auto flex justify-center mb-6">
+                <div className="w-full max-w-[920px]">
+                  <TransactionPDFDocument
+                    data={{
+                      ...invoice,
+                      number: String(invoice.invoiceNumber || invoice.retainerInvoiceNumber || "-"),
+                      date: (invoice as any).invoiceDate || (invoice as any).date || (invoice as any).createdAt,
+                      customerName: getCustomerDisplayName(invoice),
+                      billingAddress: (invoice as any).billingAddress || (typeof (invoice as any).customer === 'object' ? (invoice as any).customer?.billingAddress : ""),
+                      items: items.map((item: any) => ({
+                        ...item,
+                        name: item.description,
+                        description: "",
+                        quantity: 1,
+                        rate: item.amount,
+                        amount: item.amount,
+                        unit: ""
+                      }))
+                    }}
+                    config={activePdfTemplate?.config || {}}
+                    moduleType="retainer_invoices"
+                    organization={organizationProfile}
+                    totalsMeta={{
+                      subTotal: subtotal,
+                      total: total,
+                      paidAmount: paymentMadeAmount,
+                      balance: balanceDue
+                    }}
+                  />
                 </div>
-                <div className="flex justify-between mb-12 mt-5">
-                  <div className="pl-10 pt-8">
-                    <div className="text-[14px] text-slate-700 font-semibold">{String((invoice as any)?.organizationName || "asddc")}</div>
-                    <div className="text-[13px] text-slate-600 mt-1">{String((invoice as any)?.organizationCountry || "Algeria")}</div>
-                    <div className="text-[13px] text-slate-600 mt-0.5">{String((invoice as any)?.organizationEmail || "ladiiif520@gmail.com")}</div>
-                  </div>
-                  <div className="text-right min-w-[360px]">
-                    <div className="text-[44px] leading-[0.95] tracking-[0.02em] text-black">RETAINER INVOICE</div>
-                    <div className="text-[24px] mt-4 text-black">Retainer# <span className="font-semibold">{String((invoice as any)?.invoiceNumber || (invoice as any)?.retainerInvoiceNumber || "-")}</span></div>
-                    <div className="text-[15px] mt-8 text-black">Balance Due</div>
-                    <div className="text-[46px] leading-[1.02] font-semibold text-black mt-1">{currencyPrefix}{formatMoney(balanceDue)}</div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 mb-5 mt-8 items-end">
-                  <div>
-                    <div className="text-[13px] text-slate-600">Bill To</div>
-                    <div className="text-[14px] font-semibold text-black mt-1">{String(getCustomerDisplayName(invoice) || "-")}</div>
-                  </div>
-                  <div className="justify-self-end grid grid-cols-[auto_auto] gap-x-8 text-[13px] text-slate-700">
-                    <span>Retainer Date :</span>
-                    <span>{invoiceDate}</span>
-                    <span>Reference :</span>
-                    <span>{String((invoice as any)?.reference || "-")}</span>
-                  </div>
-                </div>
-
-                <div className="border border-[#d6d9e3]">
-                  <div className="grid grid-cols-[60px_1fr_180px] bg-[#383b3c] text-white text-[13px] font-medium">
-                    <div className="px-4 py-3">#</div>
-                    <div className="px-4 py-3">Description</div>
-                    <div className="px-4 py-3 text-right">Amount</div>
-                  </div>
-                  {items.length === 0 ? (
-                    <div className="px-4 py-4 text-[13px] text-slate-500">No line items</div>
-                  ) : (
-                    items.map((row) => (
-                      <div key={row.id} className="grid grid-cols-[60px_1fr_180px] border-t border-gray-100 text-[13px]">
-                        <div className="px-4 py-3">{row.id}</div>
-                        <div className="px-4 py-3">{row.description}</div>
-                        <div className="px-4 py-3 text-right">{formatMoney(row.amount)}</div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                <div className="mt-10 flex justify-end">
-                  <div className="w-[360px] text-[13px] text-black">
-                    <div className="flex justify-between py-2"><span>Sub Total</span><span>{formatMoney(subtotal)}</span></div>
-                    <div className="flex justify-between py-2 text-red-600"><span>Tax</span><span>{formatMoney(tax)}</span></div>
-                    <div className="flex justify-between py-2.5 font-semibold border-t border-[#e5e7eb] mt-1"><span>Total</span><span>{currencyPrefix}{formatMoney(total)}</span></div>
-                    {paymentMadeAmount > 0 && (
-                      <div className="flex justify-between py-2">
-                        <span>Payment Made</span>
-                        <span className="text-red-600">(-) {formatMoney(paymentMadeAmount)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between py-2.5 mt-3 bg-[#f3f4f6] px-3 font-semibold"><span>Balance Due</span><span>{currencyPrefix}{formatMoney(balanceDue)}</span></div>
-                  </div>
-                </div>
-
-                <div className="mt-12 text-[14px] text-slate-700">Payment Options</div>
-
-                {String((invoice as any)?.notes || "").trim() && (
-                  <div className="mt-6 rounded border border-[#e5e7eb] bg-[#fafbfc] px-3 py-2">
-                    <div className="text-sm font-medium mb-1">Customer Notes</div>
-                    <div className="text-sm text-slate-600">{String((invoice as any).notes)}</div>
-                  </div>
-                )}
-                {String((invoice as any)?.terms || "").trim() && (
-                  <div className="mt-4 rounded border border-[#e5e7eb] bg-[#fafbfc] px-3 py-2">
-                    <div className="text-sm font-medium mb-1">Terms & Conditions</div>
-                    <div className="text-sm text-slate-600">{String((invoice as any).terms)}</div>
-                  </div>
-                )}
               </div>
 
               <div className="max-w-[920px] mx-auto mt-4 text-[14px] text-slate-700 bg-white border border-[#d1d5db] px-4 py-4">

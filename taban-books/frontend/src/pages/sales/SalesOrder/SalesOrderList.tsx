@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, MoreHorizontal, ChevronDown } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import ViewDropdown from './ViewDropdown';
 import ActionDropdown from './ActionDropdown';
 import NewSalesOrder from './newPage/NewSalesOrder'; 
 import { salesOrdersAPI } from './salesOrderApi';
 
 const SalesOrderList: React.FC = () => {
+  const navigate = useNavigate();
   const [showNewOrder, setShowNewOrder] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isActionOpen, setIsActionOpen] = useState(false);
@@ -105,13 +107,23 @@ const SalesOrderList: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white">
                 {salesOrders.map((order) => (
-                  <tr key={order._id} className="hover:bg-gray-50">
+                  <tr 
+                    key={order._id} 
+                    className="hover:bg-gray-50 cursor-pointer"
+                    onClick={() => navigate(`/sales/sales-orders/${order._id || order.id}`)}
+                  >
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">{order.orderNumber}</td>
                     <td className="px-4 py-3 text-sm text-gray-700">{order.customerName || order.customer?.name || "-"}</td>
                     <td className="px-4 py-3 text-sm text-gray-700">
                       {order.date ? new Date(order.date).toLocaleDateString() : "-"}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{order.status || "draft"}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium uppercase ${
+                        order.status === 'draft' ? 'bg-gray-100 text-gray-600' : 'bg-green-100 text-green-700'
+                      }`}>
+                        {order.status || "draft"}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-right text-sm font-medium text-gray-900">
                       {Number(order.total || 0).toFixed(2)}
                     </td>

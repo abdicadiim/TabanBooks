@@ -37,6 +37,7 @@ import { filterActiveRecords } from "../shared/activeFilters";
 import { accountantAPI, itemsAPI, locationsAPI, taxesAPI, vendorsAPI, vendorCreditsAPI } from "../../../services/api";
 import { writeCachedListResponse } from "../../../services/swrListCache";
 import toast from "react-hot-toast";
+import { useSaveVendorCreditMutation } from "./vendorCreditQueries";
 
 const ACCOUNT_TYPE_OPTIONS = [
   "Asset",
@@ -200,6 +201,7 @@ export default function NewVendorCredit() {
   const [newAccountSearch, setNewAccountSearch] = useState("");
   const [parentAccountSearch, setParentAccountSearch] = useState("");
   const [fixedAssetTypeSearch, setFixedAssetTypeSearch] = useState("");
+  const saveVendorCreditMutation = useSaveVendorCreditMutation();
   // END RESTORED STATES
 
   const itemRefs = useRef<Record<string, any>>({});
@@ -1284,9 +1286,32 @@ export default function NewVendorCredit() {
       };
 
       const creditId = routeCreditId || editCredit?._id || editCredit?.id;
-      const response = isEdit && creditId
-        ? await vendorCreditsAPI.update(creditId, payload)
-        : await vendorCreditsAPI.create(payload);
+      const optimisticRecord = {
+        id: creditId || `temp-vendor-credit-${Date.now()}`,
+        _id: creditId || `temp-vendor-credit-${Date.now()}`,
+        vendor: vendorId,
+        vendorName: formData.vendorName,
+        creditNote: formData.creditNote,
+        vendorCreditNumber: formData.creditNote,
+        orderNumber: formData.orderNumber,
+        date: formData.vendorCreditDate,
+        amount: calculateTotal(),
+        total: calculateTotal(),
+        balance: calculateTotal(),
+        status: payload.status,
+        currency: formData.currency,
+        notes: formData.notes,
+      };
+
+      const loadingToastId = toast.loading(
+        isEdit ? "Saving vendor credit..." : "Creating vendor credit..."
+      );
+
+      const response = await saveVendorCreditMutation.mutateAsync({
+        id: creditId ? String(creditId) : undefined,
+        data: payload,
+        optimisticRecord,
+      });
 
       const clientSaveMs = Math.round(performance.now() - saveStartedAt);
       const serverSaveMs = Number(response?.meta?.responseMs || 0);
@@ -1301,7 +1326,7 @@ export default function NewVendorCredit() {
         const actionLabel = isEdit
           ? (status === "Draft" ? "updated as draft" : "updated")
           : (status === "Draft" ? "saved as draft" : "saved");
-        toast.success(`Vendor credit ${actionLabel} successfully`);
+        toast.success(`Vendor credit ${actionLabel} successfully`, { id: loadingToastId });
 
         // Run non-critical cache work in the background so the save finishes faster.
         void syncItemCachesAfterVendorCreditSave(itemRows, payload.status).catch((cacheError) => {
@@ -1318,6 +1343,7 @@ export default function NewVendorCredit() {
       }
     } catch (error: any) {
       console.error("Error saving vendor credit:", error);
+      toast.dismiss();
       toast.error(error.message || "Failed to save vendor credit");
     } finally {
       setSaveLoadingState(null);

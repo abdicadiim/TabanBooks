@@ -22,8 +22,9 @@ import {
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import SendPurchaseOrderEmail from "./SendPurchaseOrderEmail";
-import { purchaseOrdersAPI, settingsAPI, profileAPI, vendorsAPI, billsAPI } from "../../../services/api";
+import { purchaseOrdersAPI, settingsAPI, profileAPI, vendorsAPI, billsAPI, pdfTemplatesAPI, organizationAPI } from "../../../services/api";
 import { useCurrency } from "../../../hooks/useCurrency";
+import TransactionPDFDocument from "../../../components/Transactions/TransactionPDFDocument";
 import { PURCHASE_ORDER_VIEWS } from "./PurchaseOrders.constants";
 import { filterPurchaseOrdersByView, getPurchaseOrdersDisplayText } from "./PurchaseOrders.utils";
 
@@ -98,6 +99,27 @@ export default function PurchaseOrderDetail() {
         : null
   );
   const [showPdfView, setShowPdfView] = useState(true);
+
+  // PDF Template State
+  const [activePdfTemplate, setActivePdfTemplate] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchPdfTemplates = async () => {
+      try {
+        const response = await pdfTemplatesAPI.get();
+        if (response?.success && Array.isArray(response.data?.templates)) {
+          const poTemplates = response.data.templates.filter((t: any) => t.moduleType === "purchase_orders");
+          const defaultTemplate = poTemplates.find((t: any) => t.isDefault) || poTemplates[0];
+          if (defaultTemplate) {
+            setActivePdfTemplate(defaultTemplate);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching PDF templates:", error);
+      }
+    };
+    fetchPdfTemplates();
+  }, []);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [pdfPrintMenuOpen, setPdfPrintMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -1264,290 +1286,34 @@ export default function PurchaseOrderDetail() {
 
           {/* Document Content */}
           <div className="flex-1 overflow-y-auto bg-gray-50 flex justify-center p-6">
-            <div ref={printContentRef} className={`bg-white rounded-lg shadow-sm max-w-4xl w-full relative print-content ${showPdfView ? 'p-12' : 'p-8'}`}>
-
-              {!showPdfView ? (
-                /* Standard View Design (Matches User Provided Image) */
-                <div className="space-y-8">
-                  {/* Header Title Section */}
-                  <div className="mb-6">
-                    <h1 className="text-3xl font-normal text-gray-900 mb-1">
-                      {purchaseOrder.billedStatus === "BILLED" ? "HDA COMFORT BILL" : "PURCHASE ORDER"}
-                    </h1>
-                    <div className="text-sm text-gray-600 mb-4">
-                      Purchase Order# <span className="font-medium text-gray-900">{purchaseOrder.purchaseOrderNumber || "PO-00001"}</span>
-                    </div>
-                    {purchaseOrder.status === "draft" && (
-                      <div className="inline-block px-2 py-0.5 text-xs font-bold bg-[#8e959c] text-white rounded">
-                        DRAFT
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Metadata Section - Two Columns */}
-                  <div className="grid grid-cols-2 gap-12 border-t border-gray-100 pt-8 mt-4">
-                    {/* Left Column: PO Details */}
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4 items-center">
-                        <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Reference#</span>
-                        <span className="text-sm text-gray-900">{purchaseOrder.reference_number || purchaseOrder.referenceNumber || "—"}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4 items-center">
-                        <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Order Date</span>
-                        <span className="text-sm text-gray-900">{formatDate(purchaseOrder.date) || "—"}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4 items-center">
-                        <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Payment Terms</span>
-                        <span className="text-sm text-gray-900">{purchaseOrder.terms || "Due on Receipt"}</span>
-                      </div>
-                    </div>
-
-                    {/* Right Column: Addresses */}
-                    <div className="space-y-6">
-                      <div>
-                        <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Vendor Address</div>
-                        <div className="text-teal-700 font-medium cursor-pointer hover:underline">
-                          {vendor?.name || vendor?.displayName || purchaseOrder.vendorName || "Vendor"}
-                        </div>
-                        <div className="text-sm text-gray-600 mt-1">
-                          {vendor?.address?.city || "—"}
-                          {vendor?.address?.country && `, ${vendor.address.country}`}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Delivery Address</div>
-                        <div className="text-sm text-gray-900 font-medium">{organization?.name || "Your Company"}</div>
-                        <div className="text-sm text-gray-600 mt-1">
-                          {organization?.address?.city || "Aland Islands"}{organization?.address?.country && `, ${organization.address.country}`}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Standard Items Table */}
-                  <div className="mt-10 overflow-hidden">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="bg-gray-50/80 border-y border-gray-100">
-                          <th className="py-2 px-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-12">#</th>
-                          <th className="py-2 px-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Items & Description</th>
-                          <th className="py-2 px-4 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Ordered</th>
-                          <th className="py-2 px-4 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                          <th className="py-2 px-4 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Rate</th>
-                          <th className="py-2 px-4 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {purchaseOrder.items?.map((item, index) => (
-                          <tr key={index}>
-                            <td className="py-5 px-4 text-sm text-gray-500 align-top">{index + 1}</td>
-                            <td className="py-5 px-4 align-top">
-                              <div className="text-sm font-medium text-teal-700 cursor-pointer hover:underline mb-1">
-                                {item.name || "No Name"}
-                              </div>
-                              <div className="text-xs text-gray-400 font-normal">{item.description}</div>
-                            </td>
-                            <td className="py-5 px-4 text-center align-top">
-                              <div className="text-sm font-semibold text-gray-900">{item.quantity || "0"}</div>
-                              <div className="text-[11px] text-gray-400 mt-0.5">{item.unit || "dz"}</div>
-                            </td>
-                            <td className="py-5 px-4 align-top">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm text-gray-900 font-medium">
-                                  {purchaseOrder.billedStatus === "BILLED" ? "1" : "0"}
-                                </span>
-                                <span className="text-sm text-gray-500">Billed</span>
-                              </div>
-                            </td>
-                            <td className="py-5 px-4 text-right text-sm text-gray-600 align-top">
-                              {currency}{parseFloat(item.unitPrice || item.rate || 0).toFixed(2)}
-                            </td>
-                            <td className="py-5 px-4 text-right text-sm text-gray-900 align-top">
-                              {parseFloat(item.total || item.amount || (item.quantity * item.unitPrice) || 0).toFixed(2)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Standard Totals Section */}
-                  <div className="flex justify-end pt-6 border-t border-gray-100">
-                    <div className="w-80 space-y-4">
-                      <div className="flex justify-between items-start">
-                        <div className="space-y-1">
-                          <span className="text-lg font-bold text-gray-900">Sub Total</span>
-                          <div className="text-[11px] text-gray-400">
-                            Total Quantity : {purchaseOrder.items?.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0) || 0}
-                          </div>
-                        </div>
-                        <span className="text-lg font-bold text-gray-900">
-                          {currency}{subTotal.toFixed(2)}
-                        </span>
-                      </div>
-
-                      <div className="flex justify-between items-center">
-                        <span className="text-base text-gray-500">Discount</span>
-                        <span className="text-base text-gray-500">
-                          {currency}{discount.toFixed(2)}
-                        </span>
-                      </div>
-
-                      <div className="flex justify-between items-center pt-4 border-t border-gray-100">
-                        <span className="text-2xl font-bold text-gray-900">Total</span>
-                        <span className="text-2xl font-bold text-gray-900">
-                          {currency}{total.toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                /* PDF View Design (Original Design) */
-                <>
-                  {/* Issued Ribbon */}
-                  {purchaseOrder.status === "sent" && (
-                    <div className="absolute top-8 left-[-40px] bg-[#156372] text-white px-16 py-2 -rotate-45 text-sm font-bold shadow-md z-10">
-                      Issued
-                    </div>
-                  )}
-                  {purchaseOrder.billedStatus === "BILLED" && (
-                    <div className="absolute top-8 left-[-40px] bg-green-600 text-white px-16 py-2 -rotate-45 text-sm font-bold shadow-md z-10">
-                      BILLED
-                    </div>
-                  )}
-
-                  {/* Document Header */}
-                  <div className="mb-8">
-                    <div className="flex justify-between items-start mb-8">
-                      {/* Company Info */}
-                      <div>
-                        <div className="font-semibold text-gray-900 mb-1">{organization?.name || organization?.displayName || "Your Company Name"}</div>
-                        <div className="text-sm text-gray-600">
-                          {organization?.address?.city || organization?.location || "Aland Islands"}
-                          {organization?.address?.country && `, ${organization.address.country}`}
-                        </div>
-                        <div className="text-sm text-gray-600">{organization?.email || "organization@example.com"}</div>
-                      </div>
-
-                      {/* Title */}
-                      <div className="text-right">
-                        <h1 className="text-3xl font-bold text-gray-900 mb-1">
-                          {purchaseOrder.billedStatus === "BILLED" ? "HDA COMFORT BILL" : "PURCHASE ORDER"}
-                        </h1>
-                        <div className="text-sm font-medium text-gray-600">
-                          # {purchaseOrder.purchaseOrderNumber || "PO-00001"}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Vendor and Details */}
-                    <div className="grid grid-cols-2 gap-8">
-                      <div>
-                        <div className="mb-4">
-                          <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Vendor Address</div>
-                          <div className="text-teal-700 font-medium cursor-pointer hover:underline">
-                            {vendor?.name || vendor?.displayName || purchaseOrder.vendorName || "waryaa"}
-                          </div>
-                          <div className="text-sm text-gray-600 mt-1">
-                            {vendor?.address?.street1 && <div>{vendor.address.street1}</div>}
-                            {vendor?.address?.city && (
-                              <div>{vendor.address.city}{vendor.address.country && `, ${vendor.address.country}`}</div>
-                            )}
-                            {vendor?.phone && <div>{vendor.phone}</div>}
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Deliver To</div>
-                          <div className="text-sm text-gray-900 font-medium">{organization?.name || "asc wcs"}</div>
-                          <div className="text-sm text-gray-600">{organization?.address?.city || "Aland Islands"}{organization?.address?.country && `, ${organization.address.country}`}</div>
-                          <div className="text-sm text-gray-600">{organization?.email || "asscvcs685@gmail.com"}</div>
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <div className="mb-2">
-                          <span className="text-sm text-gray-700">Date :</span>
-                          <span className="ml-2 text-sm text-gray-900">
-                            {formatDate(purchaseOrder.date) || formatDate(new Date())}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-sm text-gray-700">Ref# :</span>
-                          <span className="ml-2 text-sm text-gray-900">
-                            {purchaseOrder.reference_number || purchaseOrder.referenceNumber || ""}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Items Table */}
-                  <table className="w-full mb-8">
-                    <thead>
-                      <tr className="bg-gray-800 text-white">
-                        <th className="text-left py-3 px-4 text-sm font-medium">#</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium">Item & Description</th>
-                        <th className="text-right py-3 px-4 text-sm font-medium">Qty</th>
-                        <th className="text-right py-3 px-4 text-sm font-medium">Rate</th>
-                        <th className="text-right py-3 px-4 text-sm font-medium">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {purchaseOrder.items?.map((item, index) => (
-                        <tr key={index} className="border-b border-gray-200">
-                          <td className="py-3 px-4 text-sm text-gray-900">{index + 1}</td>
-                          <td className="py-3 px-4">
-                            <div className="text-sm font-medium text-gray-900">
-                              {(!item.name || item.name === "Unknown Item") ? (item.description || "No Name") : item.name}
-                            </div>
-                            <div className="text-xs text-gray-500">{(item.name && item.name !== "Unknown Item") ? item.description : ""}</div>
-                          </td>
-                          <td className="text-right py-3 px-4 text-sm text-gray-900">
-                            {item.quantity || "0.00"}
-                            <div className="text-xs text-gray-500">{item.unit || ""}</div>
-                          </td>
-                          <td className="text-right py-3 px-4 text-sm text-gray-900">
-                            {parseFloat(item.unitPrice || item.rate || 0).toFixed(2)}
-                          </td>
-                          <td className="text-right py-3 px-4 text-sm text-gray-900">
-                            {parseFloat(item.total || item.amount || 0).toFixed(2)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  {/* Totals */}
-                  <div className="flex justify-end mb-8">
-                    <div className="w-64">
-                      <div className="flex justify-between py-2 border-b border-gray-200">
-                        <span className="text-sm text-gray-700">Sub Total</span>
-                        <span className="text-sm text-gray-900">{subTotal.toFixed(2)}</span>
-                      </div>
-                      {discount > 0 && (
-                        <div className="flex justify-between py-2 border-b border-gray-200">
-                          <span className="text-sm text-gray-700">Discount</span>
-                          <span className="text-sm text-red-600">-{discount.toFixed(2)}</span>
-                        </div>
-                      )}
-                      {tax > 0 && (
-                        <div className="flex justify-between py-2 border-b border-gray-200">
-                          <span className="text-sm text-gray-700">Tax</span>
-                          <span className="text-sm text-gray-900">{tax.toFixed(2)}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between py-3 border-t-2 border-gray-800">
-                        <span className="text-base font-bold text-gray-900">Total</span>
-                        <span className="text-base font-bold text-gray-900">
-                          {currency} {total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
+            <div ref={printContentRef} className="w-full max-w-4xl">
+              <TransactionPDFDocument
+                data={{
+                  ...purchaseOrder,
+                  number: purchaseOrder.purchaseOrderNumber || purchaseOrder.id,
+                  date: purchaseOrder.date,
+                  customerName: purchaseOrder.vendorName || vendor?.name || "Vendor",
+                  billingAddress: vendor?.address?.city || vendor?.address?.country || "—",
+                  items: (purchaseOrder.items || []).map((item: any) => ({
+                    ...item,
+                    name: item.name || item.itemDetails || "—",
+                    description: item.description,
+                    quantity: item.quantity || 0,
+                    rate: item.unitPrice || item.rate || 0,
+                    amount: item.total || item.amount || 0,
+                    unit: item.unit
+                  }))
+                }}
+                config={activePdfTemplate?.config || {}}
+                moduleType="purchase_orders"
+                organization={organization}
+                totalsMeta={{
+                  subTotal: subTotal,
+                  total: total,
+                  paidAmount: 0,
+                  balance: total
+                }}
+              />
             </div>
           </div>
         </div>

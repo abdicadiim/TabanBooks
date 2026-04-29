@@ -1222,78 +1222,121 @@ export default function TemplateEditorModal({
                   }
 
                   if (isPaymentReceipt) {
+                    const ribbonConfig = (() => {
+                      const s = "PAID";
+                      return { label: s, color: "#10B981" };
+                    })();
+
                     return (
                       <>
-                        {/* Payment Receipt Header */}
-                        <div className="mb-8">
-                          <div style={{ fontSize: "16px", fontWeight: "700", color: theme.accent, marginBottom: "3px" }}>
-                            {organization?.name || "Organization Name"}
-                          </div>
-                          <div style={{ fontSize: "11px", color: general.fontColor || "#4b5563", lineHeight: "1.45" }}>
-                            {organization?.address?.city || organization?.address?.country ? (
-                              <>
-                                {[organization.address.city, organization.address.country].filter(Boolean).join(", ")}
-                                <br />
-                              </>
-                            ) : null}
-                            {organization?.email || ""}
+                        {/* Status Ribbon (Internal Preview Only) */}
+                        <div style={{
+                          position: "absolute",
+                          top: "0",
+                          left: "0",
+                          width: "200px",
+                          height: "200px",
+                          overflow: "hidden",
+                          zIndex: 10,
+                          pointerEvents: "none"
+                        }}>
+                          <div style={{
+                            position: "absolute",
+                            top: "25px",
+                            left: "-50px",
+                            width: "200px",
+                            backgroundColor: ribbonConfig.color,
+                            color: "#ffffff",
+                            textAlign: "center",
+                            fontSize: "11px",
+                            fontWeight: "700",
+                            padding: "6px 0",
+                            transform: "rotate(-45deg)",
+                            boxShadow: "0 2px 4px rgba(0,0,0,0.15)",
+                            textTransform: "uppercase",
+                            letterSpacing: "1px"
+                          }}>
+                            {ribbonConfig.label}
                           </div>
                         </div>
 
-                        <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "24px" }}>
-                          <div className="text-center mb-8">
-                            <div style={{ fontSize: "13px", letterSpacing: "0.05em", color: theme.accent, textTransform: "uppercase" }}>
-                              {headerFooter.documentTitle || "PAYMENT RECEIPT"}
+                        {/* 3-Column Header Area */}
+                        <div className="flex justify-between items-start mb-10 pb-8" style={{ borderBottom: `2px solid ${theme.accent}22` }}>
+                          <div style={{ width: "33%" }}>
+                            <div style={{ 
+                              fontSize: "14pt", 
+                              fontWeight: "700", 
+                              color: theme.accent, 
+                              marginBottom: "4px" 
+                            }}>
+                              {organization?.name || "HAYAT"}
                             </div>
-                            <div style={{ height: "1px", backgroundColor: "#e5e7eb", width: "160px", margin: "6px auto 0" }} />
-                          </div>
-
-                          <div className="flex justify-between items-start mb-8">
-                            <div style={{ width: "320px" }}>
-                              <div className="grid grid-cols-[120px_1fr] border-b border-gray-100 py-2">
-                                <span style={{ fontSize: "11px", color: general.labelColor || "#6b7280" }}>Payment Date</span>
-                                <span style={{ fontSize: "11px", fontWeight: "600", color: general.fontColor || "#111827" }}>27 Apr 2026</span>
-                              </div>
-                              <div className="grid grid-cols-[120px_1fr] border-b border-gray-100 py-2">
-                                <span style={{ fontSize: "11px", color: general.labelColor || "#6b7280" }}>Reference Number</span>
-                                <span style={{ fontSize: "11px", fontWeight: "600", color: general.fontColor || "#111827" }}>REF-001</span>
-                              </div>
-                              <div className="grid grid-cols-[120px_1fr] border-b border-gray-100 py-2">
-                                <span style={{ fontSize: "11px", color: general.labelColor || "#6b7280" }}>Payment Mode</span>
-                                <span style={{ fontSize: "11px", fontWeight: "600", color: general.fontColor || "#111827" }}>Cash</span>
-                              </div>
-                            </div>
-                            <div style={{ background: `linear-gradient(to right, ${theme.accent}, ${theme.accent}dd)`, color: "#ffffff", padding: "12px 24px", textAlign: "center", minWidth: "160px" }}>
-                              <div style={{ fontSize: "10px", fontWeight: "500", marginBottom: "4px" }}>Amount Received</div>
-                              <div style={{ fontSize: "18px", fontWeight: "700" }}>SOS 500.00</div>
+                            <div style={{ fontSize: "10pt", color: "#6b7280", lineHeight: "1.5" }}>
+                              {organization?.address?.city || "Somalia"}<br />
+                              {organization?.email || "maxamed9885m@gmail.com"}
                             </div>
                           </div>
 
-                          <div className="mb-10">
-                            <div style={{ fontSize: "11px", color: general.labelColor || "#6b7280", marginBottom: "4px" }}>Received From</div>
-                            <div style={{ fontSize: "13px", fontWeight: "600", color: "#2563eb" }}>Rob & Joe Traders</div>
+                          <div style={{ width: "33%", display: "flex", justifyContent: "center" }}>
+                            <div style={{ padding: "8px", backgroundColor: "#f9fafb", border: "1px solid #f3f4f6", borderRadius: "4px" }}>
+                              <img src={organization?.logo || "/qr-placeholder.png"} alt="QR" style={{ maxHeight: "60px", maxWidth: "120px", objectFit: "contain" }} />
+                            </div>
                           </div>
 
-                          <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "24px" }}>
-                            <div style={{ fontSize: "13px", fontWeight: "600", color: "#111827", marginBottom: "12px" }}>Payment for</div>
-                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
-                              <thead>
-                                <tr style={{ backgroundColor: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                                  <th style={{ padding: "8px 12px", textAlign: "left", color: "#4b5563", fontWeight: "500" }}>Invoice Number</th>
-                                  <th style={{ padding: "8px 12px", textAlign: "left", color: "#4b5563", fontWeight: "500" }}>Invoice Date</th>
-                                  <th style={{ padding: "8px 12px", textAlign: "right", color: "#4b5563", fontWeight: "500" }}>Invoice Amount</th>
-                                  <th style={{ padding: "8px 12px", textAlign: "right", color: "#4b5563", fontWeight: "500" }}>Payment Amount</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                <tr style={{ borderBottom: "1px solid #f3f4f6" }}>
-                                  <td style={{ padding: "10px 12px", color: "#2563eb", fontWeight: "500" }}>INV-00042</td>
-                                  <td style={{ padding: "10px 12px", color: "#374151" }}>27 Apr 2026</td>
-                                  <td style={{ padding: "10px 12px", textAlign: "right", color: "#374151" }}>SOS 500.00</td>
-                                  <td style={{ padding: "10px 12px", textAlign: "right", color: "#374151" }}>SOS 500.00</td>
-                                </tr>
-                              </tbody>
-                            </table>
+                          <div style={{ width: "33%", textAlign: "right" }}>
+                            <div style={{ 
+                              fontSize: "28pt", 
+                              fontWeight: "800", 
+                              color: theme.accent,
+                              textTransform: "uppercase", 
+                              letterSpacing: "1px"
+                            }}>
+                              {headerFooter.documentTitle || "RECEIPT"}
+                            </div>
+                            <div style={{ fontSize: "12pt", fontWeight: "700", color: "#111827", marginTop: "-4px" }}>
+                              Receipt# PR-000042
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between items-start mb-10">
+                          <div style={{ width: "320px" }}>
+                            <div style={{ fontSize: "11px", color: "#6b7280", fontWeight: "600", marginBottom: "6px", textTransform: "uppercase" }}>Received From</div>
+                            <div style={{ fontSize: "16pt", color: "#2563eb", fontWeight: "700" }}>Rob & Joe Traders</div>
+                          </div>
+                          <div style={{ 
+                            backgroundColor: theme.accent || "#ef4444", 
+                            color: "#ffffff", 
+                            padding: "24px", 
+                            borderRadius: "12px",
+                            textAlign: "center",
+                            minWidth: "220px",
+                            boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)"
+                          }}>
+                            <div style={{ fontSize: "11pt", fontWeight: "600", marginBottom: "4px", opacity: 0.9 }}>Amount Received</div>
+                            <div style={{ fontSize: "24pt", fontWeight: "800" }}>SOS 500.00</div>
+                          </div>
+                        </div>
+
+                        <div style={{ borderTop: "1px solid #f3f4f6", paddingTop: "24px" }}>
+                          <div style={{ fontSize: "12pt", fontWeight: "700", color: "#111827", marginBottom: "12px" }}>Payment Details</div>
+                          <div className="grid grid-cols-2 gap-8">
+                            <div className="space-y-3">
+                              <div className="flex justify-between border-b border-gray-100 py-1">
+                                <span style={{ fontSize: "11px", color: "#6b7280" }}>Payment Date</span>
+                                <span style={{ fontSize: "11px", fontWeight: "600" }}>27 Apr 2026</span>
+                              </div>
+                              <div className="flex justify-between border-b border-gray-100 py-1">
+                                <span style={{ fontSize: "11px", color: "#6b7280" }}>Payment Mode</span>
+                                <span style={{ fontSize: "11px", fontWeight: "600" }}>Cash</span>
+                              </div>
+                            </div>
+                            <div className="space-y-3">
+                              <div className="flex justify-between border-b border-gray-100 py-1">
+                                <span style={{ fontSize: "11px", color: "#6b7280" }}>Reference Number</span>
+                                <span style={{ fontSize: "11px", fontWeight: "600" }}>REF-001</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </>
@@ -1338,10 +1381,10 @@ export default function TemplateEditorModal({
 
             {/* Header Area */}
             <div className="flex items-start justify-between mb-10">
-              <div style={{ maxWidth: "46%" }}>
+              <div style={{ width: "33%" }}>
                 {visibleFor(details, "showOrgName") && (
                   <div style={{ 
-                    fontSize: `${details.orgNameFontSize || 18}pt`, 
+                    fontSize: `${details.orgNameFontSize || 14}pt`, 
                     fontWeight: "700", 
                     color: details.orgNameColor || "#111827", 
                     marginBottom: "4px" 
@@ -1354,7 +1397,16 @@ export default function TemplateEditorModal({
                   maxamed9885m@gmail.com
                 </div>
               </div>
-              <div style={{ textAlign: "right" }}>
+              
+              <div style={{ width: "33%", display: "flex", justifyContent: "center" }}>
+                {visibleFor(details, "showOrgLogo") && (details.orgLogo || organization?.logo) && (
+                  <div style={{ padding: "8px", backgroundColor: "#f9fafb", border: "1px solid #f3f4f6", borderRadius: "4px" }}>
+                    <img src={details.orgLogo || organization?.logo} alt="Logo" style={{ maxHeight: "60px", maxWidth: "120px", objectFit: "contain" }} />
+                  </div>
+                )}
+              </div>
+
+              <div style={{ width: "33%", textAlign: "right" }}>
                 <div style={{ 
                   fontSize: `${headerFooter.titleFontSize || 32}pt`, 
                   fontWeight: "300", 
@@ -1365,7 +1417,11 @@ export default function TemplateEditorModal({
                   {labelFor(labels, "docTitle", "QUOTE")}
                 </div>
                 <div style={{ fontSize: "14pt", fontWeight: "700", color: general.fontColor || "#111827", marginTop: "-4px" }}>
-                  # 17
+                  {labelFor(labels, "numberField", "Quotes#")} {labelFor(labels, "numberPrefix", "QU")}-17
+                </div>
+                <div style={{ fontSize: "10px", color: "#6b7280", marginTop: "4px" }}>
+                  Phone: 000-000-0000<br />
+                  Fax: 000-000-0000
                 </div>
               </div>
             </div>
@@ -1392,38 +1448,50 @@ export default function TemplateEditorModal({
 
             {/* Items Table */}
             <div className="mb-8">
-              <table style={{ 
-                width: "100%", 
-                borderCollapse: "collapse"
-              }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ 
-                    backgroundColor: table.showHeaderBg !== false ? (table.headerBgColor || "#374151") : "transparent",
+                    backgroundColor: table.showHeaderBg !== false ? (table.headerBgColor || "#f97316") : "transparent",
                     color: table.headerFontColor || "#ffffff"
                   }}>
-                    <th style={{ padding: "12px 16px", textAlign: "center", fontSize: `${table.headerFontSize || 10}pt`, fontWeight: "600", width: "5%" }}>#</th>
+                    {visibleFor(table.labels, "lineNumber") && (
+                      <th style={{ padding: "12px 16px", textAlign: "center", fontSize: `${table.headerFontSize || 10}pt`, fontWeight: "600", width: "5%" }}>#</th>
+                    )}
                     <th style={{ padding: "12px 16px", textAlign: "left", fontSize: `${table.headerFontSize || 10}pt`, fontWeight: "600", width: "45%" }}>Item & Description</th>
                     <th style={{ padding: "12px 16px", textAlign: "right", fontSize: `${table.headerFontSize || 10}pt`, fontWeight: "600", width: "15%" }}>Qty</th>
                     <th style={{ padding: "12px 16px", textAlign: "right", fontSize: `${table.headerFontSize || 10}pt`, fontWeight: "600", width: "15%" }}>Rate</th>
-                    <th style={{ padding: "12px 16px", textAlign: "right", fontSize: `${table.headerFontSize || 10}pt`, fontWeight: "600", width: "20%" }}>Amount</th>
+                    {visibleFor(table.labels, "taxPercent") && (
+                      <th style={{ padding: "12px 16px", textAlign: "right", fontSize: `${table.headerFontSize || 10}pt`, fontWeight: "600", width: "10%" }}>VAT %</th>
+                    )}
+                    <th style={{ padding: "12px 16px", textAlign: "right", fontSize: `${table.headerFontSize || 10}pt`, fontWeight: "600", width: "10%" }}>Amount</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {previewRows.map((row, idx) => (
+                  {[
+                    { id: 1, name: "Brochure Design", desc: "Brochure Design Single Sided Color", qty: 1, rate: 300, amount: 300 },
+                    { id: 2, name: "Web Design Package - Basic", desc: "Custom themes for your business", qty: 1, rate: 250, amount: 250 },
+                    { id: 3, name: "Print Ad - Basic - Color", desc: "Print Ad 1/2 size Color", qty: 1, rate: 80, amount: 80 }
+                  ].map((row, idx) => (
                     <tr key={row.id} style={{ 
-                      borderBottom: "1px solid #f3f4f6"
+                      backgroundColor: (idx % 2 === 0) ? (table.rowBgColor || "transparent") : (table.altRowBgColor || "transparent"),
+                      borderBottom: `1px solid ${table.borderColor || "#f3f4f6"}`
                     }}>
-                      <td style={{ padding: "12px 16px", textAlign: "center", verticalAlign: "top", color: "#6b7280", fontSize: "10pt" }}>{idx + 1}</td>
+                      {visibleFor(table.labels, "lineNumber") && (
+                        <td style={{ padding: "12px 16px", textAlign: "center", verticalAlign: "top", color: table.rowFontColor || "#111827", fontSize: "10pt" }}>{idx + 1}</td>
+                      )}
                       <td style={{ padding: "12px 16px", verticalAlign: "top" }}>
-                        <div style={{ fontWeight: "600", color: "#111827", fontSize: "10pt" }}>{row.item}</div>
+                        <div style={{ fontWeight: "600", color: table.rowFontColor || "#2563eb", fontSize: "10pt" }}>{row.name}</div>
                         <div style={{ fontSize: "9pt", color: "#6b7280", marginTop: "2px" }}>{row.desc}</div>
                       </td>
-                      <td style={{ padding: "12px 16px", textAlign: "right", verticalAlign: "top", color: "#111827", fontSize: "10pt" }}>
+                      <td style={{ padding: "12px 16px", textAlign: "right", verticalAlign: "top", color: table.rowFontColor || "#111827", fontSize: "10pt" }}>
                         <div>{row.qty.toFixed(2)}</div>
                         <div style={{ fontSize: "8pt", color: "#9ca3af" }}>Unit</div>
                       </td>
-                      <td style={{ padding: "12px 16px", textAlign: "right", verticalAlign: "top", color: "#111827", fontSize: "10pt" }}>{row.rate.toFixed(2)}</td>
-                      <td style={{ padding: "12px 16px", textAlign: "right", verticalAlign: "top", color: "#111827", fontSize: "10pt" }}>{row.amount.toFixed(2)}</td>
+                      <td style={{ padding: "12px 16px", textAlign: "right", verticalAlign: "top", color: table.rowFontColor || "#111827", fontSize: "10pt" }}>{row.rate.toFixed(2)}</td>
+                      {visibleFor(table.labels, "taxPercent") && (
+                        <td style={{ padding: "12px 16px", textAlign: "right", verticalAlign: "top", color: table.rowFontColor || "#111827", fontSize: "10pt" }}>5%</td>
+                      )}
+                      <td style={{ padding: "12px 16px", textAlign: "right", verticalAlign: "top", color: table.rowFontColor || "#111827", fontSize: "10pt" }}>{row.amount.toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1434,33 +1502,27 @@ export default function TemplateEditorModal({
             <div className="flex justify-end mb-10">
               <div style={{ 
                 width: "360px", 
-                backgroundColor: total.showBg !== false ? (total.bgColor || "#ffffff") : "transparent",
+                backgroundColor: total.showBg !== false ? (total.bgColor || "#ef4444") : "transparent",
                 padding: "24px", 
-                borderRadius: "8px",
-                border: `1px solid ${general.borderColor || "#e5e7eb"}`,
-                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+                borderRadius: "12px",
+                boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)"
               }}>
                 <div className="flex justify-between py-2 items-center">
-                  <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.fontColor || "#4b5563" }}>Sub Total</span>
-                  <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.fontColor || "#111827", fontWeight: "500" }}>1,283.00</span>
+                  <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.showBg !== false ? "#ffffff" : (total.fontColor || "#4b5563"), fontWeight: "600" }}>Sub Total</span>
+                  <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.showBg !== false ? "#ffffff" : (total.fontColor || "#111827"), fontWeight: "700" }}>SOS 1,283.00</span>
                 </div>
                 <div className="flex justify-between py-2 items-center">
-                  <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.fontColor || "#4b5563" }}>Tax (0%)</span>
-                  <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.fontColor || "#111827", fontWeight: "500" }}>0.00</span>
+                  <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.showBg !== false ? "#ffffff" : (total.fontColor || "#4b5563"), fontWeight: "600" }}>Tax (Included)</span>
+                  <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.showBg !== false ? "#ffffff" : (total.fontColor || "#111827"), fontWeight: "700" }}>20.97</span>
                 </div>
                 <div className="flex justify-between py-2 items-center">
-                  <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.fontColor || "#4b5563" }}>Shipping charge</span>
-                  <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.fontColor || "#111827", fontWeight: "500" }}>0.00</span>
+                  <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.showBg !== false ? "#ffffff" : (total.fontColor || "#4b5563"), fontWeight: "600" }}>Shipping charge</span>
+                  <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.showBg !== false ? "#ffffff" : (total.fontColor || "#111827"), fontWeight: "700" }}>44.00</span>
                 </div>
-                <div className="flex justify-between py-3 mt-4" style={{ 
-                  backgroundColor: total.showBalanceBg !== false ? (total.balanceBgColor || "#f9fafb") : "transparent", 
-                  borderTop: `1px solid ${general.borderColor || "#f3f4f6"}`,
-                  margin: "12px -24px -24px -24px",
-                  padding: "16px 24px",
-                  borderRadius: "0 0 8px 8px"
-                }}>
-                  <span style={{ fontSize: `${(total.fontSize || 12) + 1}pt`, fontWeight: "700", color: total.fontColor || "#111827" }}>Total</span>
-                  <span style={{ fontSize: `${(total.fontSize || 12) + 1}pt`, fontWeight: "700", color: total.fontColor || "#111827" }}>SOS 1,283.00</span>
+                <div style={{ margin: "16px 0", borderTop: "1px solid rgba(255,255,255,0.2)" }} />
+                <div className="flex justify-between items-center">
+                  <span style={{ fontSize: `${(total.fontSize || 12) + 2}pt`, fontWeight: "800", color: "#ffffff", textTransform: "uppercase" }}>Total</span>
+                  <span style={{ fontSize: `${(total.fontSize || 12) + 2}pt`, fontWeight: "800", color: "#ffffff" }}>SOS 214.97</span>
                 </div>
               </div>
             </div>
@@ -1468,7 +1530,7 @@ export default function TemplateEditorModal({
             {total.showAmountInWords && (
               <div className="mb-8" style={{ fontSize: "11px", color: "#6b7280" }}>
                 <span className="font-semibold" style={{ color: "#374151" }}>Total In Words: </span>
-                Five Hundred Somali Shilling Only
+                Two Hundred and Fourteen Somali Shilling and Ninety Seven Cents Only
               </div>
             )}
 

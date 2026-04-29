@@ -3,6 +3,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { getSalesReceipts, deleteSalesReceipt, updateSalesReceipt, saveSalesReceipt, SalesReceipt } from "../../salesModel";
 import { currenciesAPI, salesReceiptsAPI, senderEmailsAPI } from "../../../../services/api";
+import { pdfTemplatesAPI, organizationAPI } from "../../../../services/api";
+import { useCurrency } from "../../../../hooks/useCurrency";
+import TransactionPDFDocument from "../../../../components/Transactions/TransactionPDFDocument";
 import { getCurrentUser } from "../../../../services/auth";
 import { resolveVerifiedPrimarySender } from "../../../../utils/emailSenderDisplay";
 import SalesReceiptCommentsPanel from "./SalesReceiptCommentsPanel";
@@ -113,6 +116,27 @@ export default function SalesReceiptDetail() {
     message: ""
   });
   const [isReceiptDocumentHovered, setIsReceiptDocumentHovered] = useState(false);
+
+  // PDF Template State
+  const [activePdfTemplate, setActivePdfTemplate] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchPdfTemplates = async () => {
+      try {
+        const response = await pdfTemplatesAPI.get();
+        if (response?.success && Array.isArray(response.data?.templates)) {
+          const receiptTemplates = response.data.templates.filter((t: any) => t.moduleType === "sales_receipts");
+          const defaultTemplate = receiptTemplates.find((t: any) => t.isDefault) || receiptTemplates[0];
+          if (defaultTemplate) {
+            setActivePdfTemplate(defaultTemplate);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching PDF templates:", error);
+      }
+    };
+    fetchPdfTemplates();
+  }, []);
   const [isChooseTemplateModalOpen, setIsChooseTemplateModalOpen] = useState(false);
   const [templateSearch, setTemplateSearch] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("Standard Template");
@@ -1160,165 +1184,37 @@ ${sellerInfo.name}`
         {/* Main Scrollable Content */}
         <div className="flex-1 overflow-y-auto bg-[#f8fafc]">
           <div className="max-w-7xl mx-auto py-4">
-            {/* Receipt Section */}
-            <div
-              className="p-6"
-              onMouseEnter={() => setIsReceiptDocumentHovered(true)}
-              onMouseLeave={() => {
-                setIsReceiptDocumentHovered(false);
-              }}
-            >
-              <div
-                ref={receiptDocumentRef}
-                className="max-w-4xl mx-auto bg-white shadow-lg relative border border-gray-100"
-                style={{ minHeight: "842px", padding: "40px" }}
-              >
-              {/* Seller Info */}
-              <div className="mb-6">
-                <div className="text-lg font-semibold text-gray-900">{sellerInfo.name}</div>
-                <div className="text-sm text-gray-600">{sellerInfo.location}</div>
-                <div className="text-sm text-gray-600">{sellerInfo.email}</div>
-              </div>
-
-              <hr className="mb-8 border-gray-200" />
-
-              {/* Receipt Header */}
-              <div className="mb-10">
-                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">SALES RECEIPT</h1>
-                <div className="text-sm text-gray-600 mt-1">
-                  Sales Receipt# {receipt.receiptNumber || receipt.id}
-                </div>
-              </div>
-
-              {/* Bill To and Date */}
-              <div className="flex justify-between items-start mb-8">
-                <div>
-                  <div className="text-sm font-bold text-gray-900 mb-2">Bill To</div>
-                  <div
-                    className="text-sm text-blue-600 font-medium cursor-pointer hover:underline"
-                    onClick={() => navigate(`/sales/customers/${receipt.customerId || receipt.customer}`)}
-                  >
-                    {receipt.customerName ||
-                      receipt.customer?.displayName ||
-                      receipt.customer?.companyName ||
-                      receipt.customer?.name ||
-                      receipt.customer?.contactName ||
-                      (typeof receipt.customer === "string" ? receipt.customer : "") ||
-                      "—"}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="flex justify-end gap-12 mb-2">
-                    <span className="text-sm text-gray-600">Receipt Date</span>
-                    <span className="text-sm text-gray-900 font-medium">{formatDate(receipt.date || receipt.receiptDate)}</span>
-                  </div>
-                  {(receipt.paymentReference || receipt.reference) && (
-                    <div className="flex justify-end gap-12 mb-2">
-                      <span className="text-sm text-gray-600">Reference#</span>
-                      <span className="text-sm text-gray-900 font-medium">{receipt.paymentReference || receipt.reference}</span>
-                    </div>
-                  )}
-                  {receipt.createdBy && (
-                    <div className="flex justify-end gap-12">
-                      <span className="text-sm text-gray-600">Created By</span>
-                      <span className="text-sm text-gray-900 font-medium">{receipt.createdBy.name}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Items Table */}
-              <div className="mb-8">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="bg-gray-50 border-y border-gray-200">
-                      <th className="py-3 px-4 text-left text-xs font-bold text-gray-600 uppercase w-12">#</th>
-                      <th className="py-3 px-4 text-left text-xs font-bold text-gray-600 uppercase">Item & Description</th>
-                      <th className="py-3 px-4 text-right text-xs font-bold text-gray-600 uppercase">Qty</th>
-                      <th className="py-3 px-4 text-right text-xs font-bold text-gray-600 uppercase">Rate</th>
-                      <th className="py-3 px-4 text-right text-xs font-bold text-gray-600 uppercase">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {receiptItems.length > 0 ? (
-                      receiptItems.map((item, index) => (
-                        <tr key={item.id || index}>
-                          <td className="py-4 px-4 text-sm text-gray-600 align-top">{index + 1}</td>
-                          <td className="py-4 px-4 align-top">
-                            <div className="text-sm font-medium text-gray-900">{item.name || item.itemDetails || "—"}</div>
-                            {item.description && (
-                              <div className="text-xs text-gray-500 mt-1">{item.description}</div>
-                            )}
-                          </td>
-                          <td className="py-4 px-4 text-sm text-gray-900 text-right align-top">
-                            {item.quantity || 0}
-                            {item.unit && <div className="text-xs text-gray-500 mt-0.5">{item.unit}</div>}
-                          </td>
-                          <td className="py-4 px-4 text-sm text-gray-900 text-right align-top">{formatCurrency(item.unitPrice || item.rate || 0, receipt.currency)}</td>
-                          <td className="py-4 px-4 text-sm text-gray-900 text-right font-medium align-top">{formatCurrency(item.total || item.amount || 0, receipt.currency)}</td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={5} className="text-center p-8 text-gray-500 italic">No items found</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Payment Details and Totals Row */}
-              <div className="flex justify-between items-start pt-4">
-                <div className="w-1/2 p-4 bg-gray-50 border border-gray-200 rounded-xl">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm text-gray-600">Payment Mode</span>
-                    <span className="text-sm text-gray-900 font-bold ml-12">
-                      {(receipt.paymentMethod || receipt.paymentMode || "—")
-                        .replace(/_/g, ' ')
-                        .split(' ')
-                        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-                        .join(' ')}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center border-t border-gray-200 pt-2 mt-2">
-                    <span className="text-sm text-gray-600">Payment Made</span>
-                    <span className="text-sm text-green-700 font-bold ml-12">{formatCurrency(receipt.total || receipt.amount || 0, receipt.currency)}</span>
-                  </div>
-                </div>
-
-                <div className="w-1/3">
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Sub Total</span>
-                      <span className="text-sm text-gray-900 font-medium">{formatCurrency(receipt.subTotal || receipt.total || 0, receipt.currency)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">vat (5%)</span>
-                      <span className="text-sm text-gray-900 font-medium">{formatCurrency((receipt.total || 0) - (receipt.subTotal || 0), receipt.currency)}</span>
-                    </div>
-                    <div className="pt-3 border-t-2 border-gray-200 flex justify-between items-center">
-                      <span className="text-base font-bold text-gray-900">Total</span>
-                      <span className="text-xl font-bold text-gray-900">{formatCurrency(receipt.total || receipt.amount || 0, receipt.currency)}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer Template Info */}
-              <div className="absolute bottom-10 right-10 flex items-center gap-2 text-xs text-gray-500">
-                <span>PDF Template : 'Elegant'</span>
-                <button
-                  className="text-blue-600 hover:underline"
-                  onClick={() => setIsChooseTemplateModalOpen(true)}
-                >
-                  Change
-                </button>
-              </div>
+            {/* Receipt Document */}
+            <div className="p-6" ref={receiptDocumentRef}>
+              <TransactionPDFDocument
+                data={{
+                  ...receipt,
+                  number: receipt.receiptNumber || receipt.id,
+                  date: receipt.date || receipt.receiptDate,
+                  items: receiptItems.map((item: any) => ({
+                    ...item,
+                    name: item.name || item.itemDetails || "—",
+                    description: item.description,
+                    quantity: item.quantity || 0,
+                    rate: item.unitPrice || item.rate || 0,
+                    amount: item.total || item.amount || 0,
+                    unit: item.unit
+                  }))
+                }}
+                config={activePdfTemplate?.config || {}}
+                moduleType="sales_receipts"
+                organization={sellerInfo}
+                totalsMeta={{
+                  subTotal: receipt.subTotal || receipt.total || 0,
+                  total: receipt.total || receipt.amount || 0,
+                  paidAmount: receipt.total || receipt.amount || 0,
+                  balance: 0
+                }}
+              />
             </div>
           </div>
 
         </div>
-      </div>
       </section>
       <SalesReceiptCommentsPanel
         open={showCommentsSidebar}

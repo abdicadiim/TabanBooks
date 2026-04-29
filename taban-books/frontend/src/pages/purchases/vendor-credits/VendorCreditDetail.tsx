@@ -21,12 +21,14 @@ import {
   Plus,
   Link2
 } from "lucide-react";
-import { vendorCreditsAPI, vendorsAPI, billsAPI, currenciesAPI, settingsAPI } from "../../../services/api";
+import { vendorCreditsAPI, vendorsAPI, billsAPI, currenciesAPI, settingsAPI, pdfTemplatesAPI, profileAPI } from "../../../services/api";
+import TransactionPDFDocument from "../../../components/Transactions/TransactionPDFDocument";
 import toast from "react-hot-toast";
 import { toast as notify } from "react-toastify";
 import { downloadVendorCreditsPaperPdf } from "./vendorCreditPdf";
 import ExportVendorCredits from "./ExportVendorCredits";
 import BulkUpdateModal from "../shared/BulkUpdateModal";
+import { useDeleteVendorCreditsMutation } from "../../../features/purchases/vendor-credits/vendorCreditQueries";
 
 export default function VendorCreditDetail() {
   const { id } = useParams();
@@ -69,6 +71,7 @@ export default function VendorCreditDetail() {
   const [organizationInfo, setOrganizationInfo] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(() => !preloadedVendorCredit);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [activePdfTemplate, setActivePdfTemplate] = useState<any>(null);
   const isInitialLoad = useRef(!preloadedVendorCredit);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const sidebarMoreMenuRef = useRef<HTMLDivElement | null>(null);
@@ -79,6 +82,7 @@ export default function VendorCreditDetail() {
   const moreMenuRef = useRef(null);
   const pdfMenuRef = useRef(null);
   const journalSectionRef = useRef<HTMLDivElement | null>(null);
+  const deleteVendorCreditsMutation = useDeleteVendorCreditsMutation();
 
   const parseMoneyValue = (value: any): number => {
     if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -330,8 +334,9 @@ export default function VendorCreditDetail() {
     if (!selectedCredits.length) return;
 
     try {
-      await vendorCreditsAPI.bulkDelete(selectedCredits);
-      toast.success("Vendor credit(s) deleted successfully");
+      const toastId = toast.loading("Deleting vendor credits...");
+      await deleteVendorCreditsMutation.mutateAsync({ ids: selectedCredits.map(String) });
+      toast.success("Vendor credit(s) deleted successfully", { id: toastId });
       await fetchData(true);
       handleClearSelection();
     } catch (error: any) {
@@ -410,6 +415,21 @@ export default function VendorCreditDetail() {
   };
   useEffect(() => {
     fetchData();
+
+    const fetchTemplate = async () => {
+      try {
+        const response = await pdfTemplatesAPI.get();
+        if (response?.success && Array.isArray(response.data)) {
+          const template = response.data.find((t: any) => t.moduleType === 'vendor_credits');
+          if (template) {
+            setActivePdfTemplate(template);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching vendor credits template:", error);
+      }
+    };
+    fetchTemplate();
 
     const handleUpdate = () => {
       fetchData(true);
@@ -673,8 +693,9 @@ export default function VendorCreditDetail() {
     if (!window.confirm("Are you sure you want to delete this vendor credit?")) return;
 
     try {
-      await vendorCreditsAPI.delete(String(creditId));
-      toast.success("Vendor credit deleted successfully");
+      const toastId = toast.loading("Deleting vendor credit...");
+      await deleteVendorCreditsMutation.mutateAsync({ ids: [String(creditId)] });
+      toast.success("Vendor credit deleted successfully", { id: toastId });
       window.dispatchEvent(new Event("vendorCreditsUpdated"));
       window.dispatchEvent(new Event("storage"));
       navigate("/purchases/vendor-credits");
@@ -2003,112 +2024,34 @@ export default function VendorCreditDetail() {
 
         {/* Scrollable Document Area */}
         <div style={styles.scrollArea} className="hide-scrollbar">
-          <div style={styles.documentWrapper}>
-            {/* Ribbon */}
-            <div style={{
-              ...styles.ribbon,
-              ...(vendorCredit.status?.toLowerCase() === 'closed' ? styles.ribbonClosed : {})
-            }}>
-              <div style={styles.ribbonText}>{vendorCredit.status?.toUpperCase() || "OPEN"}</div>
-            </div>
-
-            {/* Document Header */}
-            <div style={styles.docHeader}>
-              <div style={styles.orgInfo}>
-                <div style={styles.orgName}>{organizationInfo?.companyName || organizationInfo?.name || "TABAN ENTERPRISES"}</div>
-                <div style={styles.orgAddress}>
-                  {organizationInfo?.address?.city ? `${organizationInfo.address.city}, ` : ""}
-                  {organizationInfo?.address?.country || "Kenya"}<br />
-                  {organizationInfo?.address?.phone || organizationInfo?.phone || "+254(0)742,742,200"}<br />
-                  {organizationInfo?.email || "jndamukama@tabafirm.com"}
-                </div>
-              </div>
-              <div style={styles.docType}>
-                <div style={styles.docTitle}>VENDOR CREDITS</div>
-                <div style={styles.creditNoteRef}>CreditNote# {vendorCredit.creditNumber || vendorCredit.creditNote}</div>
-              </div>
-            </div>
-
-            {/* Credits Remaining Box */}
-            <div style={styles.creditsRemainingBox}>
-              <div style={styles.creditsLabel}>Credits Remaining</div>
-              <div style={styles.creditsAmount}>{formatCurrency(vendorCredit.balance || vendorCredit.amount, vendorCredit.currency)}</div>
-            </div>
-
-            {/* Address and Meta Grid */}
-            <div style={styles.docGrid}>
-              <div style={styles.addressBlock}>
-                <div style={styles.labelSmall}>Vendor Address</div>
-                <div style={styles.vendorLink} onClick={() => vendor && navigate(`/purchases/vendors/${vendor.id}`)}>
-                  {vendorCredit.vendorName || "Vendor Name"}
-                </div>
-              </div>
-              <div style={styles.metaBlock}>
-                <div style={styles.metaItem}>
-                  <span style={styles.metaLabel}>Date :</span>
-                  <span style={styles.metaValue}>{formatDate(vendorCredit.date)}</span>
-                </div>
-                <div style={styles.metaItem}>
-                  <span style={styles.metaLabel}>Reference# :</span>
-                  <span style={styles.metaValue}>{vendorCredit.referenceNumber || "N/A"}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Items Table */}
-            <table style={styles.itemsTable}>
-              <thead style={styles.itemsTableHeader}>
-                <tr>
-                  <th style={styles.itemsTableHeaderCell}>#</th>
-                  <th style={styles.itemsTableHeaderCell}>Item & Description</th>
-                  <th style={styles.itemsTableHeaderCell}>Qty</th>
-                  <th style={styles.itemsTableHeaderCell}>Rate</th>
-                  <th style={styles.itemsTableHeaderCell}>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {vendorCredit.items && vendorCredit.items.length > 0 ? (
-                  vendorCredit.items.map((item: any, index: number) => (
-                    <tr key={index} style={styles.itemsRow}>
-                      <td style={styles.itemsTableCell}>{index + 1}</td>
-                      <td style={styles.itemsTableCell}>
-                        {(item.item && typeof item.item === 'object' ? item.item.name : item.name) || item.name || item.description || item.itemDetails || "No description"}
-                      </td>
-                      <td style={styles.itemsTableCell}>{parseFloat(item.quantity || 0).toFixed(2)} pcs</td>
-                      <td style={styles.itemsTableCell}>{parseFloat(item.unitPrice || item.rate || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
-                      <td style={styles.itemsTableCell}>{parseFloat(item.total || item.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={5} style={{ ...styles.itemsTableCell, textAlign: "center" }}>No items found</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-
-            {/* Totals Section */}
-            <div style={styles.itemsTotalSection}>
-              <div style={styles.totalLine}>
-                <span>Sub Total</span>
-                <span>{calculateSubTotal().toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-              </div>
-              <div style={{ ...styles.totalLine, color: "#156372" }}>
-                <span>Credits Applied</span>
-                <span>(-) {appliedCreditsAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-              </div>
-              <div style={styles.grandTotalLine}>
-                <span>Total</span>
-                <span>{vendorCredit.currency} {total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-              </div>
-            </div>
-
-            {/* Bottom Shaded Box */}
-            <div style={styles.shadedBox}>
-              <div style={styles.shadedBoxLabel}>Credits Remaining</div>
-              <div style={styles.shadedBoxValue}>{vendorCredit.currency} {creditBalance.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
-            </div>
-
+          <div className="w-full max-w-4xl mx-auto">
+            <TransactionPDFDocument
+              data={{
+                ...vendorCredit,
+                number: vendorCredit.creditNumber || vendorCredit.creditNote,
+                date: vendorCredit.date,
+                customerName: vendorCredit.vendorName || (vendorCredit.vendor && typeof vendorCredit.vendor === 'object' ? (vendorCredit.vendor.displayName || vendorCredit.vendor.name) : "Vendor"),
+                billingAddress: vendorCredit.vendorAddress || (vendorCredit.vendor && typeof vendorCredit.vendor === 'object' ? vendorCredit.vendor.billingAddress : ""),
+                items: (vendorCredit.items || []).map((item: any) => ({
+                  ...item,
+                  name: (item.item && typeof item.item === 'object' ? item.item.name : item.name) || item.name || item.description || item.itemDetails || "Item",
+                  description: "",
+                  quantity: item.quantity || 0,
+                  rate: item.unitPrice || item.rate || 0,
+                  amount: item.total || item.amount || 0,
+                  unit: item.unit || ""
+                }))
+              }}
+              config={activePdfTemplate?.config || {}}
+              moduleType="vendor_credits"
+              organization={organizationInfo}
+              totalsMeta={{
+                subTotal: calculateSubTotal(),
+                total: total,
+                balance: creditBalance,
+                creditsApplied: appliedCreditsAmount
+              }}
+            />
           </div>
           {/* End of Document Card */}
 

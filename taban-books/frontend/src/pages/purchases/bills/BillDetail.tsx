@@ -24,7 +24,8 @@ import {
   Share2,
   Settings,
 } from "lucide-react";
-import { billsAPI, purchaseOrdersAPI, chartOfAccountsAPI, bankAccountsAPI, paymentsMadeAPI, transactionNumberSeriesAPI } from "../../../services/api";
+import { billsAPI, purchaseOrdersAPI, chartOfAccountsAPI, bankAccountsAPI, paymentsMadeAPI, transactionNumberSeriesAPI, pdfTemplatesAPI, profileAPI } from "../../../services/api";
+import TransactionPDFDocument from "../../../components/Transactions/TransactionPDFDocument";
 import { getBillStatusDisplay } from "../../../utils/billUtils";
 import { toast } from "react-hot-toast";
 import { AlertTriangle, Info } from "lucide-react";
@@ -181,6 +182,8 @@ export default function BillDetail() {
   const [exportType, setExportType] = useState<"bills" | "current-view">("bills");
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
   const [printPreviewUrl, setPrintPreviewUrl] = useState("");
+  const [activePdfTemplate, setActivePdfTemplate] = useState<any>(null);
+  const [organizationProfile, setOrganizationProfile] = useState<any>(null);
   const bulkActionsDropdownRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
@@ -289,6 +292,32 @@ export default function BillDetail() {
       console.error("Error loading bills list:", error);
     }
   };
+
+  useEffect(() => {
+    const fetchTemplateAndOrg = async () => {
+      try {
+        const [templatesRes, orgRes] = await Promise.all([
+          pdfTemplatesAPI.get(),
+          profileAPI.get()
+        ]);
+        
+        if (templatesRes?.success && Array.isArray(templatesRes.data)) {
+          const billsTemplate = templatesRes.data.find((t: any) => t.moduleType === 'bills');
+          if (billsTemplate) {
+            setActivePdfTemplate(billsTemplate);
+          }
+        }
+        
+        if (orgRes?.success) {
+          setOrganizationProfile(orgRes.data);
+        }
+      } catch (error) {
+        console.error("Error fetching templates or org profile:", error);
+      }
+    };
+    
+    fetchTemplateAndOrg();
+  }, []);
 
   const loadPurchaseOrders = async (purchaseOrderId: string | number) => {
     try {
@@ -3198,103 +3227,36 @@ export default function BillDetail() {
               </div>
 
               {showPdfView && (
-                <div style={styles.billDocument} ref={billDocumentRef}>
-                  {getBillStatusDisplay(bill).text === "OPEN" && (
-                    <div style={styles.ribbon}><span style={styles.ribbonText}>Open</span></div>
-                  )}
-                  {getBillStatusDisplay(bill).text === "PAID" && (
-                    <div style={styles.ribbon}><span style={{ ...styles.ribbonText, backgroundColor: "#10b981" }}>Paid</span></div>
-                  )}
-                  {getBillStatusDisplay(bill).text === "VOID" && (
-                    <div style={styles.ribbon}><span style={{ ...styles.ribbonText, backgroundColor: "#6b7280" }}>Void</span></div>
-                  )}
-
-                  <div style={styles.docHeader}>
-                    <div>
-                      <div style={{ fontSize: "16px", fontWeight: "700", color: "#111827" }}>d</div>
-                      <div style={styles.vendorAddress}>Aland Islands</div>
-                      <div style={styles.vendorAddress}>ascwcs685@gmail.com</div>
-                    </div>
-                    <div style={styles.docHeaderRight}>
-                      <div style={styles.billType}>BILL</div>
-                      <div style={styles.billNo}>Bill# {bill.billNumber}</div>
-                      <div style={styles.balanceDueSection}>
-                        <div style={styles.balanceDueLabel}>Balance Due</div>
-                        <div style={styles.balanceDueValue}>{resolvedBaseCurrencySymbol} {parseFloat(String(bill.balanceDue || 0)).toFixed(2)}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={styles.docBody}>
-                    <div>
-                      <div style={styles.billFromLabel}>Bill From</div>
-                      <div style={styles.vendorName}>{bill.vendorName}</div>
-                      <div style={styles.vendorAddress}>{bill.vendorAddress}<br />{bill.vendorCity}, {bill.vendorCountry}</div>
-                    </div>
-                    <div style={styles.docDetailsList}>
-                      <div style={styles.detailLabel}>Order Number :</div>
-                      <div style={styles.detailValue}>{bill.orderNumber || "-"}</div>
-                      <div style={styles.detailLabel}>Bill Date :</div>
-                      <div style={styles.detailValue}>{formatDateShort(bill.billDate)}</div>
-                      <div style={styles.detailLabel}>Due Date :</div>
-                      <div style={styles.detailValue}>{formatDateShort(bill.dueDate)}</div>
-                      <div style={styles.detailLabel}>Terms :</div>
-                      <div style={styles.detailValue}>{bill.paymentTerms || "Due on Receipt"}</div>
-                    </div>
-                  </div>
-
-                  <table style={styles.itemsTable}>
-                    <thead>
-                      <tr style={styles.itemsTableHeader}>
-                        <th style={{ ...styles.itemsTableHeaderCell, width: "40px" }}>#</th>
-                        <th style={styles.itemsTableHeaderCell}>Item & Description</th>
-                        <th style={{ ...styles.itemsTableHeaderCell, textAlign: "right", width: "80px" }}>Qty</th>
-                        <th style={{ ...styles.itemsTableHeaderCell, textAlign: "right", width: "100px" }}>Rate</th>
-                        <th style={{ ...styles.itemsTableHeaderCell, textAlign: "right", width: "120px" }}>Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bill.items.map((item, idx) => (
-                        <tr key={idx} style={styles.itemsTableRow}>
-                          <td style={styles.itemsTableCell}>{idx + 1}</td>
-                          <td style={styles.itemsTableCell}>{item.itemDetails}</td>
-                          <td style={{ ...styles.itemsTableCell, textAlign: "right" }}>{parseFloat(String(item.quantity)).toFixed(2)}</td>
-                          <td style={{ ...styles.itemsTableCell, textAlign: "right" }}>{parseFloat(String(item.rate)).toFixed(2)}</td>
-                          <td style={{ ...styles.itemsTableCell, textAlign: "right" }}>{parseFloat(String(item.amount)).toFixed(2)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  <div style={styles.docSummary}>
-                    <div style={styles.summaryRow}>
-                      <div style={styles.detailLabel}>Sub Total</div>
-                      <div style={{ textAlign: "right" }}>{parseFloat(String(bill.subTotal)).toFixed(2)}</div>
-                    </div>
-                    <div style={{ ...styles.summaryRow, ...styles.summaryTotal }}>
-                      <div style={{ fontWeight: "700" }}>Total</div>
-                      <div style={{ textAlign: "right" }}><strong>{resolvedBaseCurrencySymbol}{parseFloat(String(bill.total)).toFixed(2)}</strong></div>
-                    </div>
-
-                    {paymentsTotal > 0 && (
-                      <div style={{ ...styles.summaryRow, color: "#475569" }}>
-                        <div style={{ fontSize: "13px" }}>Payments Made</div>
-                        <div style={{ textAlign: "right" }}>(-) {paymentsTotal.toFixed(2)}</div>
-                      </div>
-                    )}
-
-                    {bill && (parseFloat(String(bill.total)) - parseFloat(String(bill.balanceDue)) - paymentsTotal) > 0.001 && (
-                      <div style={{ ...styles.summaryRow, color: "#156372" }}>
-                        <div style={{ color: "#156372" }}>Credits Applied</div>
-                        <div style={{ textAlign: "right", color: "#156372" }}>(-) {(parseFloat(String(bill.total)) - parseFloat(String(bill.balanceDue)) - paymentsTotal).toFixed(2)}</div>
-                      </div>
-                    )}
-
-                    <div style={styles.finalBalanceDue}>
-                      <div style={{ fontWeight: "700" }}>Balance Due</div>
-                      <div style={{ textAlign: "right" }}>{resolvedBaseCurrencySymbol}{parseFloat(String(bill.balanceDue || 0)).toFixed(2)}</div>
-                    </div>
-                  </div>
+                <div className="w-full max-w-4xl">
+                  <TransactionPDFDocument
+                    data={{
+                      ...bill,
+                      number: bill.billNumber,
+                      date: bill.billDate,
+                      customerName: bill.vendorName,
+                      billingAddress: bill.vendorAddress || `${bill.vendorCity || ""}, ${bill.vendorCountry || ""}`,
+                      items: (bill.items || []).map((item: any) => ({
+                        ...item,
+                        name: item.itemDetails || "Item",
+                        description: "",
+                        quantity: item.quantity || 0,
+                        rate: item.rate || 0,
+                        amount: item.amount || 0,
+                        unit: ""
+                      }))
+                    }}
+                    config={activePdfTemplate?.config || {}}
+                    moduleType="bills"
+                    organization={organizationProfile}
+                    totalsMeta={{
+                      subTotal: bill.subTotal,
+                      total: bill.total,
+                      paidAmount: paymentsTotal,
+                      balance: bill.balanceDue
+                    }}
+                  />
+                </div>
+              )}
 
                   {/* Journal Section */}
                   <div style={styles.journalSection} ref={journalSectionRef}>

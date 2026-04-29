@@ -1,10 +1,19 @@
 import React, { useState, useEffect, useRef } from "react";
 import { toast } from "react-hot-toast";
-import { senderEmailsAPI } from "../../../../services/api";
+import {
+  pdfTemplatesAPI,
+  currenciesAPI,
+  invoicesAPI,
+  debitNotesAPI,
+  creditNotesAPI,
+  paymentsReceivedAPI,
+  bankAccountsAPI,
+  refundsAPI,
+  senderEmailsAPI
+} from "../../../../services/api";
 import { resolvePrimarySender } from "../../../../utils/emailSenderDisplay";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { getInvoiceById, getInvoices, updateInvoice, getPayments, getTaxes, getCreditNotesByInvoiceId, deletePayment, Tax, Invoice, AttachedFile, saveInvoice } from "../../salesModel";
-import { currenciesAPI, invoicesAPI, debitNotesAPI, creditNotesAPI, paymentsReceivedAPI, bankAccountsAPI, refundsAPI } from "../../../../services/api";
 import InvoiceCommentsPanel from "./InvoiceCommentsPanel";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
@@ -13,10 +22,11 @@ import {
   ChevronDown, ChevronUp, ChevronRight, Sparkles, Plus, Filter,
   ArrowUpDown, CheckSquare, Square, Search, Star, Download, Mail, Calendar, AlertTriangle,
   Paperclip, MessageSquare, Link2, RotateCw, Repeat, Minus, Copy, BookOpen, Trash2, Settings,
-  HelpCircle, FileUp, Bold, Italic, Underline, Check, Upload, Pencil, Banknote,
+  HelpCircle, FileUp, Bold, Italic, Underline, Check, Upload, Pencil, Banknote, Printer,
   Strikethrough, AlignLeft, AlignCenter, AlignRight, AlignJustify, Link as LinkIcon, Image as ImageIcon
 } from "lucide-react";
 import { getStatesByCountry } from "../../../../constants/locationData";
+import TransactionPDFDocument from "../../../../components/Transactions/TransactionPDFDocument";
 
 const FieldCustomization: React.FC<any> = () => null;
 
@@ -327,13 +337,35 @@ export default function InvoiceDetail() { // Start of component
   const sidebarMoreRef = useRef<HTMLDivElement>(null);
   const sendDropdownRef = useRef<HTMLDivElement>(null);
   const pdfDropdownRef = useRef<HTMLDivElement>(null);
+  const invoiceDocumentRef = useRef<HTMLDivElement>(null);
 
   // Organization profile data
   const [organizationProfile, setOrganizationProfile] = useState<any>(null);
   const stateOptions = getStatesByCountry(organizationProfile?.address?.country || "");
   // Owner email data
-  // Owner email data
   const [ownerEmail, setOwnerEmail] = useState<any>(null);
+
+  // PDF Template State
+  const [activePdfTemplate, setActivePdfTemplate] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchPdfTemplates = async () => {
+      try {
+        const response = await pdfTemplatesAPI.get();
+        if (response?.success && Array.isArray(response.data?.templates)) {
+          const targetModule = isDebitNoteView ? "debit_notes" : "invoices";
+          const filtered = response.data.templates.filter((t: any) => t.moduleType === targetModule);
+          const defaultTemplate = filtered.find((t: any) => t.isDefault) || filtered[0];
+          if (defaultTemplate) {
+            setActivePdfTemplate(defaultTemplate);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching PDF templates:", error);
+      }
+    };
+    fetchPdfTemplates();
+  }, [isDebitNoteView]);
 
   useEffect(() => {
     const previousBodyOverflow = document.body.style.overflow;
@@ -1724,332 +1756,25 @@ export default function InvoiceDetail() { // Start of component
     }
   };
 
-  // Generate HTML content for invoice (shared for print and download)
-  const generateInvoiceHTML = () => {
-    if (!invoice) return '';
-
-    const displayItemsForHtml = normalizeInvoiceItems(invoice);
-    const itemsHTML = displayItemsForHtml.length > 0 ? displayItemsForHtml.map((item, index) => {
-      const rate = Number(item.displayRate || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const amount = Number(item.displayAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const qty = Number(item.displayQuantity || 0).toFixed(2);
-      const unit = item.displayUnit || 'pcs';
-      const itemName = item.displayName || 'N/A';
-      return `
-        <tr>
-          <td class="col-number">${index + 1}</td>
-          <td class="col-item">${itemName}</td>
-          <td class="col-qty">${qty} ${unit}</td>
-          <td class="col-rate">${rate}</td>
-          <td class="col-amount">${amount}</td>
-        </tr>
-      `;
-    }).join('') : '<tr><td colspan="5" style="text-align: center; color: #666;">No items</td></tr>';
-
-    const invoiceDate = invoice.invoiceDate || invoice.date || new Date().toISOString();
-    const formattedDate = formatDateShort(invoiceDate);
-    const dueDate = invoice.dueDate ? formatDateShort(invoice.dueDate) : formattedDate;
-    const customerName = invoice.customerName || (typeof invoice.customer === 'object' ? (invoice.customer?.displayName || invoice.customer?.companyName || invoice.customer?.name) : invoice.customer) || 'N/A';
-    const totalsMeta = getInvoiceTotalsMeta(invoice);
-    const subTotal = formatCurrencyNumber(totalsMeta.subTotal);
-    const total = formatCurrency(totalsMeta.total, invoice.currency || 'KES');
-    const balanceDue = formatCurrency(totalsMeta.balance, invoice.currency || 'KES');
-    const notes = invoice.customerNotes || '';
-
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Invoice ${invoice.invoiceNumber || invoice.id}</title>
-        <meta charset="UTF-8">
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          @page {
-            size: A4;
-            margin: 0;
-          }
-          body {
-            font-family: Arial, sans-serif;
-            padding: 40px;
-            color: #333;
-          }
-          .invoice-container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-          }
-          .header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #eee;
-          }
-          .company-info h1 {
-            font-size: 24px;
-            margin-bottom: 10px;
-            color: #111;
-          }
-          .invoice-info {
-            text-align: right;
-          }
-          .invoice-info h2 {
-            font-size: 32px;
-            font-weight: bold;
-            margin-bottom: 10px;
-            color: #111;
-          }
-          .invoice-number {
-            font-size: 18px;
-            color: #666;
-            margin-bottom: 10px;
-          }
-          .balance-due {
-            font-size: 20px;
-            font-weight: bold;
-            color: #111;
-          }
-          .details {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 30px;
-            margin-bottom: 30px;
-          }
-          .bill-to h3 {
-            font-size: 12px;
-            text-transform: uppercase;
-            color: #666;
-            margin-bottom: 10px;
-          }
-          .bill-to p {
-            font-size: 14px;
-            color: #333;
-            margin-bottom: 5px;
-          }
-          .invoice-details {
-            text-align: right;
-          }
-          .invoice-details p {
-            font-size: 14px;
-            margin-bottom: 5px;
-            display: flex;
-            justify-content: space-between;
-          }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 20px;
-          }
-          thead {
-            background-color: #374151;
-            color: white;
-          }
-          th {
-            padding: 12px;
-            text-align: left;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-          }
-          tbody tr {
-            border-bottom: 1px solid #eee;
-          }
-          td {
-            padding: 12px;
-            font-size: 14px;
-          }
-          .col-number { width: 5%; }
-          .col-item { width: 45%; }
-          .col-qty { width: 15%; }
-          .col-rate { width: 15%; }
-          .col-amount { width: 20%; text-align: right; }
-          .summary {
-            display: flex;
-            justify-content: flex-end;
-            margin-top: 20px;
-          }
-          .summary-table {
-            width: 300px;
-          }
-          .summary-table tr {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-          }
-          .summary-table .total {
-            font-weight: bold;
-            font-size: 16px;
-            border-top: 2px solid #eee;
-            padding-top: 10px;
-            margin-top: 10px;
-          }
-          .notes {
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
-          }
-          .notes h3 {
-            font-size: 14px;
-            font-weight: bold;
-            margin-bottom: 10px;
-          }
-          .notes p {
-            font-size: 14px;
-            color: #666;
-            line-height: 1.6;
-          }
-          @media print {
-            body { padding: 20px; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="invoice-container">
-          <div class="header">
-            <div class="company-info">
-              <h1>${DEFAULT_INVOICE_BRAND_NAME_UPPER}</h1>
-              <p>${organizationProfile?.address?.street1 || 'taleex'}</p>
-              <p>${organizationProfile?.address?.street2 || 'taleex'}</p>
-              <p>${organizationProfile?.address?.city ?
-        `${organizationProfile.address.city}${organizationProfile.address.zipCode ? ' ' + organizationProfile.address.zipCode : ''}${organizationProfile.address.state ? ', ' + organizationProfile.address.state : ''}` :
-        'mogadishu Nairobi 22223'
-      }</p>
-              <p>${organizationProfile?.address?.country || 'Somalia'}</p>
-              <p>${ownerEmail?.email || organizationProfile?.email || ""}</p>
-            </div>
-            <div class="invoice-info">
-              <h2>INVOICE</h2>
-              <div class="invoice-number"># ${invoice.invoiceNumber || invoice.id}</div>
-              <div class="balance-due">Balance Due: ${balanceDue}</div>
-            </div>
-          </div>
-          
-          <div class="details">
-            <div class="bill-to">
-              <h3>Bill To</h3>
-              <p><strong>${customerName}</strong></p>
-            </div>
-            <div class="invoice-details">
-              <p><span>Invoice Date :</span> <strong>${formattedDate}</strong></p>
-              <p><span>Terms :</span> <strong>Due on Receipt</strong></p>
-              <p><span>Due Date :</span> <strong>${dueDate}</strong></p>
-              ${invoice.orderNumber ? `<p><span>P.O.# :</span> <strong>${invoice.orderNumber}</strong></p>` : ''}
-            </div>
-          </div>
-          
-          <table>
-            <thead>
-              <tr>
-                <th class="col-number">#</th>
-                <th class="col-item">Item & Description</th>
-                <th class="col-qty">Qty</th>
-                <th class="col-rate">Rate</th>
-                <th class="col-amount">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${itemsHTML}
-            </tbody>
-          </table>
-          
-          <div class="summary">
-            <table class="summary-table">
-              <tr>
-                <td>Sub Total</td>
-                <td>${subTotal}</td>
-              </tr>
-              <tr>
-                <td colspan="2" style="font-size:12px;color:#6b7280;padding-top:0;padding-bottom:4px;">(${totalsMeta.taxExclusive})</td>
-              </tr>
-              ${totalsMeta.discountAmount > 0 ? `
-              <tr>
-                <td>${totalsMeta.discountLabel}</td>
-                <td>(-) ${formatCurrencyNumber(totalsMeta.discountAmount)}</td>
-              </tr>
-              <tr>
-                <td colspan="2" style="font-size:12px;color:#6b7280;padding-top:0;padding-bottom:4px;">(Applied on ${formatCurrencyNumber(totalsMeta.discountBase)})</td>
-              </tr>
-              ` : ''}
-              ${totalsMeta.taxAmount > 0 ? `
-              <tr>
-                <td>${totalsMeta.taxLabel}</td>
-                <td>${formatCurrencyNumber(totalsMeta.taxAmount)}</td>
-              </tr>
-              ` : ''}
-              ${totalsMeta.shippingCharges !== 0 ? `
-              <tr>
-                <td>Shipping charge</td>
-                <td>${formatCurrencyNumber(totalsMeta.shippingCharges)}</td>
-              </tr>
-              ` : ''}
-              ${totalsMeta.adjustment !== 0 ? `
-              <tr>
-                <td>Adjustment</td>
-                <td>${formatCurrencyNumber(totalsMeta.adjustment)}</td>
-              </tr>
-              ` : ''}
-              ${totalsMeta.roundOff !== 0 ? `
-              <tr>
-                <td>Round Off</td>
-                <td>${formatCurrencyNumber(totalsMeta.roundOff)}</td>
-              </tr>
-              ` : ''}
-              <tr class="total">
-                <td>Total</td>
-                <td>${total}</td>
-              </tr>
-              ${totalsMeta.paidAmount > 0 ? `
-              <tr>
-                <td>Payment Made</td>
-                <td>(-) ${formatCurrency(totalsMeta.paidAmount, invoice.currency || 'KES')}</td>
-              </tr>
-              ` : ''}
-              ${totalsMeta.creditsApplied > 0 ? `
-              <tr>
-                <td>Credits Applied</td>
-                <td>(-) ${formatCurrency(totalsMeta.creditsApplied, invoice.currency || 'KES')}</td>
-              </tr>
-              ` : ''}
-              <tr class="total">
-                <td>Balance Due</td>
-                <td>${formatCurrency(totalsMeta.balance, invoice.currency || 'KES')}</td>
-              </tr>
-            </table>
-          </div>
-          
-          ${notes ? `
-          <div class="notes">
-            <h3>Notes</h3>
-            <p>${notes}</p>
-          </div>
-          ` : ''}
-        </div>
-      </body>
-      </html>
-    `;
-  };
 
   const handleDownloadPDF = async () => {
     setIsPdfDropdownOpen(false);
-    if (!invoice) return;
-    setIsDownloadingPdf(true);
-
-    const wrapper = document.createElement("div");
-    wrapper.style.position = "fixed";
-    wrapper.style.left = "-10000px";
-    wrapper.style.top = "0";
-    wrapper.style.width = "794px";
-    wrapper.style.background = "#ffffff";
-    wrapper.style.zIndex = "-1";
-    wrapper.innerHTML = generateInvoiceHTML();
-    document.body.appendChild(wrapper);
+    if (!invoice || isDownloadingPdf) return;
+    
+    if (!invoiceDocumentRef.current) {
+      toast("Unable to find document for PDF generation.");
+      return;
+    }
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      const canvas = await html2canvas(wrapper, {
+      setIsDownloadingPdf(true);
+      const target = invoiceDocumentRef.current;
+      
+      const canvas = await html2canvas(target, {
         scale: 2,
         useCORS: true,
         backgroundColor: "#ffffff",
+        logging: false,
       });
 
       const pdf = new jsPDF("p", "mm", "a4");
@@ -2075,27 +1800,21 @@ export default function InvoiceDetail() { // Start of component
         heightLeft -= printableHeight;
       }
 
-      pdf.save(`Invoice-${invoice.invoiceNumber || invoice.id}.pdf`);
+      const fileName = `${isDebitNoteDocument ? "DebitNote" : "Invoice"}-${invoice.invoiceNumber || invoice.id}.pdf`;
+      pdf.save(fileName);
+      toast.success("PDF downloaded successfully.");
     } catch (error) {
       console.error("Error downloading invoice PDF:", error);
       toast("Failed to generate PDF. Please try again.");
     } finally {
       setIsDownloadingPdf(false);
-      if (wrapper.parentNode) {
-        wrapper.parentNode.removeChild(wrapper);
-      }
     }
   };
 
-  const handleViewInvoiceInNewPage = () => {
+  const handlePrint = () => {
     setIsPdfDropdownOpen(false);
     if (!invoice) return;
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(generateInvoiceHTML());
-      printWindow.document.close();
-      printWindow.print();
-    }
+    window.print();
   };
 
   const handleRecordPayment = () => {
@@ -3718,7 +3437,6 @@ export default function InvoiceDetail() { // Start of component
                 inv?.id ||
                 inv?._id ||
                 inv?.invoiceNumber ||
-                inv?.number ||
                 `invoice-${index}`
               ).trim() || `invoice-${index}`;
               const rowId = String(inv?.id || inv?._id || "").trim();
@@ -3827,14 +3545,35 @@ export default function InvoiceDetail() { // Start of component
               </button>
               <div className="h-5 w-px bg-gray-300 mx-1" />
 
-              <button
-                onClick={isDownloadingPdf ? undefined : handleDownloadPDF}
-                disabled={isDownloadingPdf}
-                className="inline-flex items-center gap-1.5 px-2 py-1 rounded hover:bg-gray-100 cursor-pointer disabled:opacity-60"
-              >
-                <FileText size={13} className={isDownloadingPdf ? "animate-pulse" : ""} />
-                {isDownloadingPdf ? "Downloading..." : "PDF"}
-              </button>
+              <div className="relative" ref={pdfDropdownRef}>
+                <button
+                  onClick={() => setIsPdfDropdownOpen(!isPdfDropdownOpen)}
+                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded hover:bg-gray-100 cursor-pointer"
+                >
+                  <FileText size={13} className={isDownloadingPdf ? "animate-pulse" : ""} />
+                  PDF/Print
+                  <ChevronDown size={13} />
+                </button>
+                {isPdfDropdownOpen && (
+                  <div className="absolute top-full left-0 mt-1 w-[160px] bg-white border border-gray-200 rounded-lg shadow-xl z-[100] py-1">
+                    <button
+                      className="w-full flex items-center gap-2 px-4 py-2 text-[13px] text-gray-700 hover:bg-gray-50"
+                      onClick={handleDownloadPDF}
+                      disabled={isDownloadingPdf}
+                    >
+                      <FileText size={13} />
+                      {isDownloadingPdf ? "Downloading..." : "Download PDF"}
+                    </button>
+                    <button
+                      className="w-full flex items-center gap-2 px-4 py-2 text-[13px] text-gray-700 hover:bg-gray-50"
+                      onClick={handlePrint}
+                    >
+                      <Printer size={13} />
+                      Print
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {invoice && canRecordPayment && (
                 <button
@@ -4358,295 +4097,31 @@ export default function InvoiceDetail() { // Start of component
           )}
 
           {/* Invoice Document */}
-          <div className="p-3 bg-gray-50">
-            <div
-              className="w-full max-w-[920px] mx-auto bg-white border border-[#d1d5db] shadow-sm overflow-hidden relative print-content"
-              data-print-content
-              style={{ width: "210mm", minHeight: "297mm", padding: "20mm" }}
-            >
-              {/* Status Ribbon */}
-              {(() => {
-                const ribbonStatus = normalizeKey(invoice.status || "");
-                const ribbonLabel =
-                  ribbonStatus === "partially_paid" ? "PARTIALLY PAID" :
-                  ribbonStatus === "paid" ? "PAID" :
-                  ribbonStatus === "sent" || ribbonStatus === "unpaid" ? "UNPAID" :
-                  ribbonStatus === "draft" ? "DRAFT" :
-                  ribbonStatus === "overdue" ? "OVERDUE" :
-                  "";
-                if (!ribbonLabel) return null;
-                const ribbonColor =
-                  ribbonStatus === "paid" ? "bg-green-500" :
-                  ribbonStatus === "partially_paid" ? "bg-blue-500" :
-                  ribbonStatus === "draft" ? "bg-yellow-500" :
-                  ribbonStatus === "overdue" ? "bg-red-500" :
-                  "bg-blue-500";
-                return (
-                <div className="absolute top-0 left-0 w-36 h-36 overflow-hidden">
-                  <div className={`absolute top-6 -left-8 w-48 h-9 transform -rotate-45 origin-center flex items-center justify-center shadow-sm ${ribbonColor}`}>
-                    <span className="text-white font-bold text-[13px] uppercase tracking-wider">
-                      {ribbonLabel}
-                    </span>
-                  </div>
-                </div>
-                );
-              })()}
-
-
-              {/* Document Header */}
-              <div className="flex justify-between items-start mb-12 mt-8">
-                {/* Left Column: Logo & Company Info */}
-                <div className="flex flex-col items-start gap-4">
-                  {/* Logo */}
-                  <div className="relative w-24 h-24">
-                    {logoPreview ? (
-                      <img
-                        src={logoPreview}
-                        alt="Organization Logo"
-                        className="w-full h-full object-contain object-left"
-                      />
-                    ) : (
-                      <svg width="96" height="96" viewBox="0 0 80 80" className="w-full h-full">
-                        {/* Sun with rays */}
-                        <circle cx="40" cy="15" r="12" fill="#f97316" />
-                        <circle cx="40" cy="15" r="8" fill="#fb923c" />
-                        {/* Sun rays */}
-                        {[...Array(8)].map((_, i) => {
-                          const angle = (i * 45) * (Math.PI / 180);
-                          const x1 = 40 + Math.cos(angle) * 12;
-                          const y1 = 15 + Math.sin(angle) * 12;
-                          const x2 = 40 + Math.cos(angle) * 18;
-                          const y2 = 15 + Math.sin(angle) * 18;
-                          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#f97316" strokeWidth="2" />;
-                        })}
-                        {/* Book - green covers */}
-                        <rect x="28" y="28" width="24" height="16" rx="2" fill="#16a34a" />
-                        <rect x="30" y="30" width="20" height="12" rx="1" fill="#15803d" />
-                        {/* Book pages - blue */}
-                        <rect x="30" y="30" width="18" height="12" rx="1" fill="#3b82f6" />
-                        <rect x="32" y="32" width="16" height="8" rx="1" fill="#2563eb" />
-                        {/* Pen - blue vertical */}
-                        <rect x="38" y="48" width="4" height="20" rx="2" fill="#1e3a8a" />
-                      </svg>
-                    )}
-                  </div>
-
-                  {/* Company Name & Address */}
-                  <div>
-                    <div className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-1">
-                      {DEFAULT_INVOICE_BRAND_NAME_UPPER}
-                    </div>
-                    <div className="text-xs text-gray-600 leading-relaxed max-w-[250px]">
-                      <p>{organizationProfile?.address?.street1 || 'taleex'}</p>
-                      <p>{organizationProfile?.address?.street2 || 'taleex'}</p>
-                      <p>
-                        {organizationProfile?.address?.city ?
-                          `${organizationProfile.address.city}${organizationProfile.address.zipCode ? ' ' + organizationProfile.address.zipCode : ''}` :
-                          'mogadishu Nairobi 22223'
-                        }
-                      </p>
-                      <p>{organizationProfile?.address?.country || 'Somalia'}</p>
-                      <p className="mt-1">{ownerEmail?.email || organizationProfile?.email || ""}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right Column: Invoice Details & Balance */}
-                <div className="text-right">
-                  <div className="flex items-center justify-end gap-3 mb-2">
-                    <div className="text-4xl font-normal text-gray-800">INVOICE</div>
-                  </div>
-                  <div className="text-sm font-medium text-gray-600 mb-8"># {invoice.invoiceNumber || invoice.id}</div>
-
-                  <div className="flex flex-col items-end">
-                    <div className="text-xs text-gray-600 mb-1">Balance Due</div>
-                    <div className="text-xl font-bold text-gray-900">
-                      {formatCurrency(invoiceTotalsMeta.balance, invoice.currency)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Bill To & Details Section */}
-              <div className="flex justify-between items-start mb-12">
-                {/* Bill To */}
-                <div className="mt-4">
-                  <div className="text-xs text-gray-500 mb-2">Bill To</div>
-                  <div className="text-sm font-bold text-blue-600 mb-1 uppercase">
-                    {invoice.customerName || (typeof invoice.customer === 'object' ? (invoice.customer?.displayName || invoice.customer?.companyName || invoice.customer?.name) : invoice.customer) || "CUSTOMER"}
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    {invoice.customerAddress?.street1 && <div>{invoice.customerAddress.street1}</div>}
-                    {invoice.customerAddress?.city && invoice.customerAddress?.state && (
-                      <div>{invoice.customerAddress.city}, {invoice.customerAddress.state}</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Info Grid */}
-                <div className="text-right">
-                  <div className="grid grid-cols-[auto_auto] gap-x-12 gap-y-2 text-sm">
-                    <div className="text-gray-600 text-right">Invoice Date :</div>
-                    <div className="text-gray-900 font-medium text-right">{formatDateShort(invoice.invoiceDate || invoice.date)}</div>
-
-                    <div className="text-gray-600 text-right">Terms :</div>
-                    <div className="text-gray-900 font-medium text-right">Due on Receipt</div>
-
-                    <div className="text-gray-600 text-right">Due Date :</div>
-                    <div className="text-gray-900 font-medium text-right">{formatDateShort(invoice.dueDate)}</div>
-
-                    <div className="text-gray-600 text-right">P.O.# :</div>
-                    <div className="text-gray-900 font-medium text-right">{invoice.orderNumber || invoice.poNumber || "22"}</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Items Table - Dark Header */}
-              <div className="mb-8">
-                <div className="text-sm font-semibold text-gray-700 mb-2">{itemsTableTitle}</div>
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="bg-[#333333] text-white">
-                      <th className="py-2 px-3 text-sm font-medium text-center w-12 border-r border-gray-600">#</th>
-                      <th className="py-2 px-4 text-sm font-medium text-left">Item & Description</th>
-                      <th className="py-2 px-3 text-sm font-medium text-center w-20">Qty</th>
-                      <th className="py-2 px-3 text-sm font-medium text-right w-24">Rate</th>
-                      <th className="py-2 px-4 text-sm font-medium text-right w-28">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayItems.length > 0 ? (
-                      displayItems.map((item, index) => (
-                        <tr key={item.id || index} className="border-b border-gray-200">
-                          <td className="py-4 px-3 text-sm text-gray-700 text-center align-top">{index + 1}</td>
-                          <td className="py-4 px-4 text-sm text-gray-900 align-top">
-                            <div className="font-medium">{item.displayName || "Item"}</div>
-                            {item.displayDescription && item.displayDescription !== item.displayName && (
-                              <div className="text-xs text-gray-500 mt-1">{item.displayDescription}</div>
-                            )}
-                          </td>
-                          <td className="py-4 px-3 text-sm text-gray-700 text-center align-top">
-                            <div>{Number(item.displayQuantity || 0).toFixed(2)}</div>
-                            <div className="text-xs text-gray-500">{item.displayUnit || 'pcs'}</div>
-                          </td>
-                          <td className="py-4 px-3 text-sm text-gray-700 text-right align-top">{Number(item.displayRate || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                          <td className="py-4 px-4 text-sm text-gray-900 text-right font-medium align-top">{Number(item.displayAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={5} className="py-8 text-center text-gray-500">No items</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Summary Section */}
-              <div className="flex justify-end mb-12">
-                <div className="w-80">
-                  <div className="flex justify-between py-2 text-sm border-b border-gray-200">
-                    <div className="text-gray-600">Sub Total</div>
-                    <div className="text-gray-900 font-medium">{invoiceTotalsMeta.subTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                  </div>
-                  <div className="text-xs text-gray-500 -mt-1 mb-1">({invoiceTotalsMeta.taxExclusive})</div>
-
-                  {invoiceTotalsMeta.discountAmount > 0 && (
-                    <>
-                      <div className="flex justify-between py-2 text-sm border-b border-gray-100">
-                        <div className="text-gray-600">{invoiceTotalsMeta.discountLabel}</div>
-                        <div className="text-gray-900 font-medium">
-                          (-) {invoiceTotalsMeta.discountAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </div>
-                      </div>
-                      <div className="text-xs text-gray-500 -mt-1 mb-1">
-                        (Applied on {invoiceTotalsMeta.discountBase.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
-                      </div>
-                    </>
-                  )}
-
-                  {invoiceTotalsMeta.taxAmount > 0 && (
-                    <div className="flex justify-between py-2 text-sm border-b border-gray-100">
-                      <div className="text-gray-600">{invoiceTotalsMeta.taxLabel}</div>
-                      <div className="text-gray-900 font-medium">
-                        {invoiceTotalsMeta.taxAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
-                    </div>
-                  )}
-
-                  {invoiceTotalsMeta.shippingCharges !== 0 && (
-                    <div className="flex justify-between py-2 text-sm border-b border-gray-100">
-                      <div className="text-gray-600">Shipping charge</div>
-                      <div className="text-gray-900 font-medium">
-                        {invoiceTotalsMeta.shippingCharges.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
-                    </div>
-                  )}
-
-                  {invoiceTotalsMeta.adjustment !== 0 && (
-                    <div className="flex justify-between py-2 text-sm border-b border-gray-100">
-                      <div className="text-gray-600">Adjustment</div>
-                      <div className="text-gray-900 font-medium">
-                        {invoiceTotalsMeta.adjustment.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
-                    </div>
-                  )}
-
-                  {invoiceTotalsMeta.roundOff !== 0 && (
-                    <div className="flex justify-between py-2 text-sm border-b border-gray-100">
-                      <div className="text-gray-600">Round Off</div>
-                      <div className="text-gray-900 font-medium">
-                        {invoiceTotalsMeta.roundOff.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex justify-between py-2 text-sm font-bold border-b border-gray-200">
-                    <div className="text-gray-900">Total</div>
-                    <div className="text-gray-900">{formatCurrency(invoiceTotalsMeta.total, invoice.currency)}</div>
-                  </div>
-
-                  {invoiceTotalsMeta.paidAmount > 0 && (
-                    <div className="flex justify-between py-2 text-sm text-gray-600">
-                      <div>Payment Made</div>
-                      <div className="font-medium">
-                        (-) {invoiceTotalsMeta.paidAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
-                    </div>
-                  )}
-
-                  {invoiceTotalsMeta.creditsApplied > 0 && (
-                    <div className="flex justify-between py-2 text-sm text-red-500">
-                      <div>Credits Applied</div>
-                      <div className="font-medium">
-                        (-) {invoiceTotalsMeta.creditsApplied.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex justify-between py-2 px-3 bg-gray-100 font-bold text-sm mt-2 border border-gray-200 rounded">
-                    <div className="text-gray-900 uppercase">Balance Due</div>
-                    <div className="text-gray-900">
-                      {formatCurrency(invoiceTotalsMeta.balance, invoice.currency)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Notes Section */}
-              <div className="mt-auto">
-                <div className="text-sm text-gray-900 mb-4">Notes</div>
-                <div className="text-sm text-gray-500 mb-8">
-                  {invoice.customerNotes || "Thank you for the payment. You just made our day."}
-                </div>
-              </div>
-
-              {/* PDF Template Footer */}
-              <div className="mt-8 pt-4 border-t border-gray-100">
-                <div className="text-xs text-gray-400">
-                  PDF Template: 'Standard Template' <button className="text-blue-600 hover:text-blue-700 underline ml-1">Change</button>
-                </div>
-              </div>
+          <div className="p-3 bg-gray-50 flex-1 overflow-auto">
+            <div ref={invoiceDocumentRef} className="print-content">
+              <TransactionPDFDocument
+                data={{
+                  ...invoice,
+                  number: invoice.invoiceNumber,
+                  date: invoice.invoiceDate,
+                  items: displayItems.map((item: any) => ({
+                    ...item,
+                    name: item.displayName || "Item",
+                    description: item.displayDescription,
+                    quantity: item.displayQuantity,
+                    rate: item.displayRate,
+                    amount: item.displayAmount,
+                    unit: item.displayUnit,
+                    taxRate: item.tax?.rate || 0
+                  }))
+                }}
+                config={activePdfTemplate?.config || {}}
+                moduleType={isDebitNoteView ? "debit_notes" : "invoices"}
+                organization={organizationProfile}
+                totalsMeta={invoiceTotalsMeta}
+              />
+            </div>
+          </div>
 
               {isDebitNoteView && (associatedInvoiceRow || (invoice as any)?.associatedInvoiceId || (invoice as any)?.invoiceId) && (
                 <div className="mt-8">
@@ -4760,11 +4235,10 @@ export default function InvoiceDetail() { // Start of component
               )}
             </div>
           </div>
-          </div>
-
         </div>
+      </div>
 
-        {showDeletePaymentModal && selectedPaymentForDelete && (
+      {showDeletePaymentModal && selectedPaymentForDelete && (
           <div className="fixed inset-0 z-[120] bg-black/40 flex items-start justify-center pt-12">
             <div className="w-full max-w-[560px] bg-white rounded-lg shadow-xl border border-gray-200">
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
@@ -6448,7 +5922,6 @@ export default function InvoiceDetail() { // Start of component
             </div>
           </div>
         )}
-      </div>
     </>
   );
 }
