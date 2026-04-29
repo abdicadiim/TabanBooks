@@ -134,6 +134,47 @@ type SelectableItem = {
   unit?: string;
 };
 
+const PURCHASE_ORDER_ITEM_CACHE_KEY = "purchase-order-items-cache";
+
+const readCachedVendors = (): VendorRecord[] => {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const raw = window.localStorage.getItem("vendors");
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const normalizeCachedVendor = (vendor: any): VendorRecord => ({
+  ...vendor,
+  _id: vendor?._id || vendor?.id || "",
+  id: vendor?.id || vendor?._id || "",
+  displayName: vendor?.displayName || vendor?.name || vendor?.companyName || "",
+  name: vendor?.name || vendor?.displayName || vendor?.companyName || "",
+  companyName: vendor?.companyName || "",
+  email: vendor?.email || vendor?.formData?.email || "",
+  workPhone: vendor?.workPhone || vendor?.formData?.workPhone || "",
+  mobile: vendor?.mobile || vendor?.formData?.mobile || "",
+  billingAddress: vendor?.billingAddress || null,
+  shippingAddress: vendor?.shippingAddress || null,
+  formData: vendor?.formData || undefined,
+});
+
+const readCachedPurchaseOrderItems = (): BulkItemOption[] => {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const raw = window.sessionStorage.getItem(PURCHASE_ORDER_ITEM_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 type PurchaseOrderItem = {
   id: number;
   itemId?: RecordId;
@@ -355,7 +396,7 @@ export default function NewPurchaseOrder() {
   });
   const [dateInputValue, setDateInputValue] = useState(() => formatIsoDateForDisplay(new Date().toISOString().split('T')[0]));
   const [deliveryDateInputValue, setDeliveryDateInputValue] = useState("");
-  const [vendors, setVendors] = useState<VendorRecord[]>([]);
+  const [vendors, setVendors] = useState<VendorRecord[]>(() => readCachedVendors().map((vendor) => normalizeCachedVendor(vendor)));
   const [vendorDropdownOpen, setVendorDropdownOpen] = useState(false);
   const [vendorDropdownSearch, setVendorDropdownSearch] = useState("");
   const [vendorSearchModalOpen, setVendorSearchModalOpen] = useState(false);
@@ -366,7 +407,7 @@ export default function NewPurchaseOrder() {
   const [vendorSearchResults, setVendorSearchResults] = useState<VendorRecord[]>([]);
   const [vendorSearchPage, setVendorSearchPage] = useState(1);
   const [vendorSearchCriteriaOpen, setVendorSearchCriteriaOpen] = useState(false);
-  const [allVendors, setAllVendors] = useState<VendorRecord[]>([]);
+  const [allVendors, setAllVendors] = useState<VendorRecord[]>(() => readCachedVendors().map((vendor) => normalizeCachedVendor(vendor)));
 
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
   const uploadMenuRef = useRef<HTMLDivElement>(null);
@@ -404,7 +445,7 @@ export default function NewPurchaseOrder() {
   const [taxOptions, setTaxOptions] = useState<TaxOption[]>([]);
   const [bulkItemsModalOpen, setBulkItemsModalOpen] = useState(false);
   const [bulkItemsLoading, setBulkItemsLoading] = useState(false);
-  const [bulkItems, setBulkItems] = useState<BulkItemOption[]>([]);
+  const [bulkItems, setBulkItems] = useState<BulkItemOption[]>(() => readCachedPurchaseOrderItems());
   const [bulkItemsSearch, setBulkItemsSearch] = useState("");
   const [bulkSelectedItemIds, setBulkSelectedItemIds] = useState<Record<string, boolean>>({});
   const [bulkSelectedItems, setBulkSelectedItems] = useState<BulkItemOption[]>([]);
@@ -658,7 +699,9 @@ export default function NewPurchaseOrder() {
       try {
         const response = await vendorsAPI.getAll();
         if (response && (response.code === 0 || response.success)) {
-          const loadedVendors = filterActiveRecords<VendorRecord>(response.data || response.vendors || []);
+          const loadedVendors = filterActiveRecords<VendorRecord>(response.data || response.vendors || []).map((vendor) =>
+            normalizeCachedVendor(vendor)
+          );
           setVendors(loadedVendors);
           setAllVendors(loadedVendors);
         }
@@ -690,6 +733,12 @@ export default function NewPurchaseOrder() {
       }
     }
 
+    const cachedVendors = readCachedVendors().map((vendor) => normalizeCachedVendor(vendor));
+    if (cachedVendors.length > 0) {
+      setVendors(cachedVendors);
+      setAllVendors(cachedVendors);
+    }
+
     loadVendors();
   }, []);
 
@@ -716,6 +765,14 @@ export default function NewPurchaseOrder() {
       }
     };
     loadTaxes();
+  }, []);
+
+  useEffect(() => {
+    if (bulkItems.length > 0) {
+      return;
+    }
+
+    void loadBulkItems();
   }, []);
 
   useEffect(() => {
@@ -1868,6 +1925,13 @@ export default function NewPurchaseOrder() {
         unit: item.unit || "",
       })).filter((item) => item.id);
       setBulkItems(normalizedItems);
+      if (typeof window !== "undefined") {
+        try {
+          window.sessionStorage.setItem(PURCHASE_ORDER_ITEM_CACHE_KEY, JSON.stringify(normalizedItems));
+        } catch {
+          // ignore cache write failures
+        }
+      }
     } catch (error) {
       console.error("Error loading items for bulk insert:", error);
       setBulkItems([]);
@@ -2406,7 +2470,7 @@ export default function NewPurchaseOrder() {
   };
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-white" style={{ backgroundColor: "#ffffff" }}>
+    <div className="flex min-h-screen flex-col bg-white" style={{ backgroundColor: "#ffffff" }}>
       {/* Header */}
       <div className="sticky top-0 z-30 flex flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white px-6 py-3 shadow-[0_1px_0_rgba(229,231,235,0.9)]">
         <h1 className="text-lg font-semibold text-gray-900">{isEdit ? "Edit Purchase Order" : "New Purchase Order"}</h1>
@@ -2419,8 +2483,8 @@ export default function NewPurchaseOrder() {
         </button>
       </div>
 
-      <form onSubmit={(e) => handleSubmit(e, "issued")} className="flex-1 overflow-hidden flex flex-col">
-        <div className="flex-1 overflow-y-auto">
+      <form onSubmit={(e) => handleSubmit(e, "issued")} className="flex flex-1 flex-col">
+        <div className="flex-1">
           <div className="flex flex-col">
             {/* Main Content Area */}
             <div className="pl-0 pr-6 py-6 space-y-6">
