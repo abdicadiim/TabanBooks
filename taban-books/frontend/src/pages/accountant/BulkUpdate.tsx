@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 import { accountantAPI, customersAPI, locationsAPI, vendorsAPI } from "../../services/api";
 
@@ -94,6 +94,7 @@ function SearchableSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -128,12 +129,13 @@ function SearchableSelect({
         onClick={() => setOpen((p) => !p)}
         style={{
           width: "100%",
-          height: 42,
+          height: 34,
           border: "1px solid #cbd5e1",
-          borderRadius: 8,
+          borderRadius: 4,
           background: "#fff",
           textAlign: "left",
-          padding: "0 12px",
+          padding: "0 10px",
+          fontSize: 13,
           color: selected ? "#0f172a" : "#94a3b8",
           cursor: "pointer",
         }}
@@ -147,7 +149,7 @@ function SearchableSelect({
           style={{
             position: "absolute",
             zIndex: 50,
-            top: 48,
+            top: 38,
             left: 0,
             right: 0,
             border: "1px solid #dbe3ef",
@@ -185,19 +187,25 @@ function SearchableSelect({
                         setOpen(false);
                         setQuery("");
                       }}
+                      onMouseEnter={() => setHoveredId(o.id)}
+                      onMouseLeave={() => setHoveredId(null)}
                       style={{
                         width: "100%",
                         border: "none",
-                        borderRadius: 8,
+                        borderRadius: 6,
                         textAlign: "left",
-                        padding: "9px 10px",
-                        background: isActive ? "#3b82f6" : "transparent",
-                        color: isActive ? "#fff" : "#334155",
+                        padding: "8px 10px",
+                        background: hoveredId === o.id ? "#f1f5f9" : "transparent",
+                        color: "#334155",
                         cursor: "pointer",
-                        fontSize: 15,
+                        fontSize: 13,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
                       }}
                     >
-                      {o.label}
+                      <span>{o.label}</span>
+                      {isActive && <span style={{ fontSize: 14, color: "#1a9b64" }}>✓</span>}
                     </button>
                   </React.Fragment>
                 );
@@ -273,7 +281,7 @@ export default function BulkUpdate() {
   const loadBase = async () => {
     setLoading(true);
     try {
-      const [accountsRes, historyRes, vendorsRes, customersRes, locationsRes] = await Promise.all([
+      const results = await Promise.allSettled([
         accountantAPI.getAccounts({ limit: 1000 }),
         accountantAPI.getBulkUpdateHistory(),
         vendorsAPI.getAll({ limit: 1000 }),
@@ -281,15 +289,30 @@ export default function BulkUpdate() {
         locationsAPI.getAll(),
       ]);
 
-      if (accountsRes?.success) setAccounts(resolveDataArray(accountsRes) as Account[]);
-      if (historyRes?.success) setHistory(resolveDataArray(historyRes) as HistoryRow[]);
+      const [accountsRes, historyRes, vendorsRes, customersRes, locationsRes] = results.map(r => 
+        r.status === 'fulfilled' ? r.value : { success: false, error: r.reason }
+      );
+
+      if (accountsRes?.success) {
+        setAccounts(resolveDataArray(accountsRes) as Account[]);
+      } else {
+        console.error("Failed to load accounts:", accountsRes?.error);
+      }
+
+      if (historyRes?.success) {
+        setHistory(resolveDataArray(historyRes) as HistoryRow[]);
+      } else {
+        console.error("Failed to load history:", historyRes?.error);
+      }
 
       const vendors = resolveVendorArray(vendorsRes)
         .map((v: any) => v.displayName || v.vendor_name || v.name)
         .filter(Boolean);
+      
       const customers = resolveCustomerArray(customersRes)
         .map((c: any) => c.displayName || c.customer_name || c.name)
         .filter(Boolean);
+
       const uniqueContacts = Array.from(new Set([...vendors, ...customers].map((n) => String(n).trim())))
         .filter(Boolean)
         .sort((a, b) => a.localeCompare(b));
@@ -304,8 +327,15 @@ export default function BulkUpdate() {
           .filter((l: OptionItem) => l.id && l.label)
           .sort((a: OptionItem, b: OptionItem) => a.label.localeCompare(b.label))
       );
-    } catch (error: any) {
-      toast.error(error?.message || "Failed to load bulk update data");
+
+      // Check for errors to show a single warning if needed
+      const failedCount = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value?.success)).length;
+      if (failedCount > 0) {
+        toast.error(`Some data failed to load (${failedCount} requests failed). Check console for details.`);
+      }
+    } catch (err: any) {
+      console.error("BulkUpdate: LoadBase critical error", err);
+      toast.error("Critical error loading page data");
     } finally {
       setLoading(false);
     }
@@ -442,7 +472,7 @@ export default function BulkUpdate() {
     <div style={{ minHeight: "calc(100vh - 60px)", background: "#f8fafc", padding: 20 }}>
       <div style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: hasSearched ? "2fr 1fr" : "1fr", gap: 14 }}>
         {!hasSearched ? (
-          <section style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, minHeight: 520, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <section style={{ borderRadius: 12, minHeight: 520, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
             <div style={{ maxWidth: 900, textAlign: "center" }}>
               <div style={{ fontSize: 68, lineHeight: 1, color: "#7c3aed" }}>[=]</div>
               <h2 style={{ margin: "10px 0 6px", fontSize: 40, fontWeight: 600, color: "#111827" }}>Bulk Update Accounts in Transactions</h2>
@@ -456,14 +486,14 @@ export default function BulkUpdate() {
 
               <button
                 onClick={() => setShowFilterModal(true)}
-                style={{ marginTop: 22, border: "none", borderRadius: 8, background: "#3b82f6", color: "#fff", padding: "10px 18px", fontSize: 18, cursor: "pointer", fontWeight: 600 }}
+                style={{ marginTop: 22, border: "none", borderRadius: 8, background: "#156372", color: "#fff", padding: "10px 18px", fontSize: 18, cursor: "pointer", fontWeight: 600 }}
               >
                 Filter and Bulk Update
               </button>
             </div>
           </section>
         ) : (
-          <section style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
+          <section style={{ borderRadius: 10, padding: 14 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
               <div>
                 <h2 style={{ margin: "0 0 6px", fontSize: 22 }}>Bulk Update</h2>
@@ -555,7 +585,7 @@ export default function BulkUpdate() {
         )}
 
         {hasSearched && (
-          <section style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
+          <section style={{ borderRadius: 10, padding: 14 }}>
             <h3 style={{ marginTop: 0 }}>Bulk Update History</h3>
             <div style={{ maxHeight: 360, overflow: "auto", border: "1px solid #e5e7eb", borderRadius: 8 }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -599,20 +629,20 @@ export default function BulkUpdate() {
       </div>
 
       {showFilterModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1200, padding: 16 }}>
-          <div style={{ width: "100%", maxWidth: 1040, background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 25px 50px rgba(15, 23, 42, 0.2)", overflow: "hidden" }}>
-            <div style={{ padding: "20px 24px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <h3 style={{ margin: 0, fontSize: 28, fontWeight: 500, color: "#111827" }}>Filter Transactions</h3>
-              <button onClick={() => setShowFilterModal(false)} style={{ width: 36, height: 36, borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer", fontSize: 20 }}>×</button>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1200, padding: 16 }}>
+          <div style={{ width: "100%", maxWidth: 800, background: "#fff", borderRadius: 8, boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }}>
+            <div style={{ padding: "18px 24px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 500, color: "#111827" }}>Filter Transactions</h3>
+              <button onClick={() => setShowFilterModal(false)} style={{ border: "none", background: "none", color: "#64748b", cursor: "pointer", fontSize: 24 }}>×</button>
             </div>
-
+            
             <div style={{ padding: 24 }}>
-              <p style={{ margin: "0 0 18px", color: "#475569", fontSize: 16 }}>
+              <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: 13 }}>
                 Select an account and enter your ranges to filter your transaction
               </p>
-
-              <div style={{ display: "grid", gridTemplateColumns: "160px minmax(340px, 1fr)", rowGap: 16, columnGap: 12, alignItems: "start" }}>
-                <div style={{ paddingTop: 9, fontSize: 24, color: "#ef4444" }}>Account*</div>
+              
+              <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", rowGap: 14, columnGap: 24, alignItems: "center" }}>
+                <div style={{ fontSize: 13, color: "#ef4444" }}>Account*</div>
                 <SearchableSelect
                   label=""
                   placeholder="Select an account"
@@ -621,7 +651,7 @@ export default function BulkUpdate() {
                   options={accountOptions}
                 />
 
-                <div style={{ paddingTop: 9, fontSize: 24, color: "#334155" }}>Contact</div>
+                <div style={{ fontSize: 13, color: "#334155" }}>Contact</div>
                 <SearchableSelect
                   label=""
                   placeholder="Select Contact"
@@ -630,21 +660,21 @@ export default function BulkUpdate() {
                   options={[{ id: "", label: "All Contacts" }, ...contacts]}
                 />
 
-                <div style={{ paddingTop: 9, fontSize: 24, color: "#334155" }}>Date Range</div>
+                <div style={{ fontSize: 13, color: "#334155" }}>Date Range</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 24px 1fr", gap: 8, alignItems: "center" }}>
-                  <input type="date" value={filters.dateFrom} onChange={(e) => setFilters((p) => ({ ...p, dateFrom: e.target.value }))} style={{ height: 42, border: "1px solid #cbd5e1", borderRadius: 8, padding: "0 12px" }} />
+                  <input type="date" value={filters.dateFrom} onChange={(e) => setFilters((p) => ({ ...p, dateFrom: e.target.value }))} style={{ height: 34, border: "1px solid #cbd5e1", borderRadius: 4, padding: "0 10px", fontSize: 13 }} />
                   <span style={{ textAlign: "center", color: "#64748b" }}>-</span>
-                  <input type="date" value={filters.dateTo} onChange={(e) => setFilters((p) => ({ ...p, dateTo: e.target.value }))} style={{ height: 42, border: "1px solid #cbd5e1", borderRadius: 8, padding: "0 12px" }} />
+                  <input type="date" value={filters.dateTo} onChange={(e) => setFilters((p) => ({ ...p, dateTo: e.target.value }))} style={{ height: 34, border: "1px solid #cbd5e1", borderRadius: 4, padding: "0 10px", fontSize: 13 }} />
                 </div>
 
-                <div style={{ paddingTop: 9, fontSize: 24, color: "#334155" }}>Total Amount Range</div>
+                <div style={{ fontSize: 13, color: "#334155" }}>Total Amount Range</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 24px 1fr", gap: 8, alignItems: "center" }}>
-                  <input value={filters.amountFrom} onChange={(e) => setFilters((p) => ({ ...p, amountFrom: e.target.value }))} style={{ height: 42, border: "1px solid #cbd5e1", borderRadius: 8, padding: "0 12px" }} />
+                  <input value={filters.amountFrom} onChange={(e) => setFilters((p) => ({ ...p, amountFrom: e.target.value }))} style={{ height: 34, border: "1px solid #cbd5e1", borderRadius: 4, padding: "0 10px", fontSize: 13 }} />
                   <span style={{ textAlign: "center", color: "#64748b" }}>-</span>
-                  <input value={filters.amountTo} onChange={(e) => setFilters((p) => ({ ...p, amountTo: e.target.value }))} style={{ height: 42, border: "1px solid #cbd5e1", borderRadius: 8, padding: "0 12px" }} />
+                  <input value={filters.amountTo} onChange={(e) => setFilters((p) => ({ ...p, amountTo: e.target.value }))} style={{ height: 34, border: "1px solid #cbd5e1", borderRadius: 4, padding: "0 10px", fontSize: 13 }} />
                 </div>
 
-                <div style={{ paddingTop: 9, fontSize: 24, color: "#334155" }}>Location</div>
+                <div style={{ fontSize: 13, color: "#334155" }}>Location</div>
                 <SearchableSelect
                   label=""
                   placeholder="Location"
@@ -665,17 +695,17 @@ export default function BulkUpdate() {
               </div>
             </div>
 
-            <div style={{ borderTop: "1px solid #e5e7eb", padding: "14px 24px", display: "flex", gap: 8 }}>
+            <div style={{ padding: "0 24px 24px", display: "flex", gap: 10 }}>
               <button
                 onClick={searchTransactions}
                 disabled={searching}
-                style={{ border: "none", borderRadius: 8, background: "#3b82f6", color: "#fff", padding: "10px 16px", cursor: "pointer", fontWeight: 600 }}
+                style={{ border: "none", borderRadius: 4, background: "#156372", color: "#fff", padding: "8px 20px", cursor: "pointer", fontWeight: 600, fontSize: 14 }}
               >
                 {searching ? "Searching..." : "Search"}
               </button>
               <button
                 onClick={() => setShowFilterModal(false)}
-                style={{ border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", color: "#1f2937", padding: "10px 16px", cursor: "pointer" }}
+                style={{ border: "1px solid #d1d5db", borderRadius: 4, background: "#fff", color: "#1f2937", padding: "8px 20px", cursor: "pointer", fontSize: 14 }}
               >
                 Cancel
               </button>

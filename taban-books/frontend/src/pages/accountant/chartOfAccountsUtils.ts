@@ -39,25 +39,28 @@ export const buildChartOfAccountsFormData = (
 
 export const mapChartOfAccountsResponse = (
   account: any,
-): ChartOfAccountsAccount => ({
-  ...account,
-  id: account._id || account.id || account.account_id,
-  name: account.accountName || account.name || account.account_name,
-  code: account.accountCode || account.code || account.account_code,
-  accountType: normalizeAccountTypeValue(
-    account.accountType || account.account_type || account.type,
-  ),
-  type: formatAccountTypeLabel(
-    account.accountType || account.account_type || account.type,
-  ),
-  parent: account.parentAccount
-    ? account.parentAccount.accountName || account.parentAccount.name
-    : account.parent_account_name || "-",
-  status:
-    account.isActive === false || account.is_active === false
-      ? "inactive"
-      : "active",
-});
+): ChartOfAccountsAccount => {
+  const rawActive = account.isActive ?? account.is_active ?? account.is_active_account;
+  const isActive = rawActive === true || rawActive === 1 || rawActive === "true" || rawActive === undefined;
+  
+  return {
+    ...account,
+    id: account._id || account.id || account.account_id,
+    name: account.accountName || account.name || account.account_name,
+    code: account.accountCode || account.code || account.account_code,
+    accountType: normalizeAccountTypeValue(
+      account.accountType || account.account_type || account.type,
+    ),
+    type: formatAccountTypeLabel(
+      account.accountType || account.account_type || account.type,
+    ),
+    parent: account.parentAccount
+      ? account.parentAccount.accountName || account.parentAccount.name
+      : account.parent_account_name || "-",
+    isActive,
+    status: isActive ? "active" : "inactive",
+  };
+};
 
 export const calculateChartAccountTransactionTotals = (
   accountTransactions: any[],

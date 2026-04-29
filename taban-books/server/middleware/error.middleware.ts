@@ -5,6 +5,8 @@
 
 import { Request, Response, NextFunction } from "express";
 import { logError } from "../utils/debug.js";
+import fs from "fs";
+import path from "path";
 
 // Ensure fetch is available (Node.js 18+ has it built-in)
 declare const fetch: typeof globalThis.fetch;
@@ -60,6 +62,14 @@ export const errorHandler = (
 
   // Also log to console for immediate visibility
   console.error("Error:", err);
+  
+  // Custom file log for debugging
+  try {
+    const logPath = path.join(process.cwd(), 'debug-errors.log');
+    const logLine = `[${new Date().toISOString()}] ${err.name}: ${err.message}\nStack: ${err.stack}\nURL: ${_req.method} ${_req.originalUrl}\n\n`;
+    fs.appendFileSync(logPath, logLine);
+  } catch (e) {}
+
   if (err.stack) {
     console.error("Stack:", err.stack);
   }

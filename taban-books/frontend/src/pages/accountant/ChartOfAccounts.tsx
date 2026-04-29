@@ -1,60 +1,53 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 
+
 import {
+  getAccounts,
+  getBaseCurrency,
+  getJournals,
   bulkDeleteAccounts as apiBulkDeleteAccounts,
   bulkUpdateAccountStatus as apiBulkUpdateAccountStatus,
-  createAccount as apiCreateAccount,
-  deleteAccount as apiDeleteAccount,
   updateAccount as apiUpdateAccount,
+  deleteAccount as apiDeleteAccount,
 } from "./accountantModel";
-import { normalizeAccountTypeValue } from "./chartOfAccountsConfig";
-import { ChartOfAccountsAccountModal } from "./chartOfAccounts/ChartOfAccountsAccountModal";
-import { ChartOfAccountsDetailView } from "./chartOfAccounts/ChartOfAccountsDetailView";
-import { ChartOfAccountsExportModals } from "./chartOfAccounts/ChartOfAccountsExportModals";
-import { ChartOfAccountsFindAccountantsSidebar } from "./chartOfAccounts/ChartOfAccountsFindAccountantsSidebar";
 import { ChartOfAccountsListView } from "./chartOfAccounts/ChartOfAccountsListView";
-import type {
-  ChartOfAccountsAccount as Account,
-  ChartOfAccountsCustomView as CustomView,
-  ChartOfAccountsFormData as FormData,
-} from "./chartOfAccountsTypes";
-import {
-  buildChartOfAccountsFormData,
-  EMPTY_CHART_OF_ACCOUNTS_FORM_DATA,
-  mapChartOfAccountsResponse,
-} from "./chartOfAccountsUtils";
+import { ChartOfAccountsDetailView } from "./chartOfAccounts/ChartOfAccountsDetailView";
+import { ChartOfAccountsAccountModal } from "./chartOfAccounts/ChartOfAccountsAccountModal";
+import type { ChartOfAccountsAccount as Account, ChartOfAccountsFormData } from "./chartOfAccountsTypes";
+import { mapChartOfAccountsResponse } from "./chartOfAccountsUtils";
+import { normalizeAccountTypeValue } from "./chartOfAccountsConfig";
 import { useChartOfAccountsData } from "./useChartOfAccountsData";
 
-function ChartOfAccounts() {
+const EMPTY_FORM_DATA: ChartOfAccountsFormData = {
+  accountType: "",
+  accountName: "",
+  accountCode: "",
+  description: "",
+  addToWatchlist: false,
+  isSubAccount: false,
+  parentAccountId: "",
+};
+
+export default function ChartOfAccounts() {
   const navigate = useNavigate();
-  const location = useLocation();
-
-  const [selectedView, setSelectedView] = useState("Active Accounts");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCustomView, setSelectedCustomView] = useState<CustomView | null>(null);
-  const [customViews, setCustomViews] = useState<CustomView[]>(() => {
-    try {
-      const saved = localStorage.getItem("customViews");
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
-  const [selectedSortBy, setSelectedSortBy] = useState("Account Code");
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedView, setSelectedView] = useState("All Accounts");
+  const [selectedSortBy, setSelectedSortBy] = useState("Account Name");
   const [sortOrder, setSortOrder] = useState("asc");
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
-
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isFindAccountantsOpen, setIsFindAccountantsOpen] = useState(false);
+  const [itemsPerPage, setItemsPerPage] = useState(15);
+  const [selectedCustomView, setSelectedCustomView] = useState<any>(null);
+  const [customViews] = useState<any[]>([]);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [isExportCurrentViewModalOpen, setIsExportCurrentViewModalOpen] = useState(false);
+  const [isExportCurrentViewModalOpen, setIsExportCurrentViewModalOpen] =
+    useState(false);
+  const [isFindAccountantsOpen, setIsFindAccountantsOpen] = useState(false);
   const [isNewTemplateModalOpen, setIsNewTemplateModalOpen] = useState(false);
 
   const {
@@ -63,10 +56,8 @@ function ChartOfAccounts() {
     allAccounts,
     baseCurrency,
     fetchAccounts,
-    fetchAllAccounts,
     isLoading,
     isTransactionsLoading,
-    reportDateRange,
     setIsLoading,
     totalPages,
     totalRecords,
@@ -81,54 +72,7 @@ function ChartOfAccounts() {
     sortOrder,
   });
 
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (params.get("action") === "new") {
-      setIsCreateModalOpen(true);
-      navigate(location.pathname, { replace: true });
-    }
-  }, [location.pathname, location.search, navigate]);
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("customViews");
-      setCustomViews(saved ? JSON.parse(saved) : []);
-    } catch {
-      setCustomViews([]);
-    }
-  }, [location.pathname]);
-
-  useEffect(() => {
-    if (isCreateModalOpen || editingAccount) {
-      fetchAllAccounts();
-    }
-  }, [editingAccount, fetchAllAccounts, isCreateModalOpen]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, selectedView]);
-
-  const selectedViewLabel = selectedCustomView?.name || selectedView;
-  const isEditModalOpen = Boolean(editingAccount);
-  const initialEditFormData = useMemo(
-    () => buildChartOfAccountsFormData(editingAccount),
-    [editingAccount],
-  );
-
-  const handleViewSelection = (value: string) => {
-    if (value.startsWith("custom:")) {
-      const customViewId = value.replace("custom:", "");
-      setSelectedCustomView(
-        customViews.find((customView) => customView.id === customViewId) || null,
-      );
-    } else {
-      setSelectedView(value);
-      setSelectedCustomView(null);
-    }
-
-    setCurrentPage(1);
-    setSelectedAccountIds([]);
-  };
+  const isEditModalOpen = !!editingAccount;
 
   const handleAccountClick = (account: Account) => {
     setSelectedAccount(account);
@@ -138,11 +82,16 @@ function ChartOfAccounts() {
     setEditingAccount(account);
   };
 
-  const handleCreateAccount = async (formData: FormData) => {
+  const handleViewSelection = (view: string) => {
+    setSelectedView(view);
+    setCurrentPage(1);
+  };
+
+  const handleSaveNew = async (formData: any) => {
     setIsLoading(true);
 
     try {
-      const newAccount = await apiCreateAccount({
+      const newAccount = await apiUpdateAccount("", {
         accountName: formData.accountName,
         accountCode: formData.accountCode,
         accountType: normalizeAccountTypeValue(formData.accountType),
@@ -166,7 +115,7 @@ function ChartOfAccounts() {
     }
   };
 
-  const handleSaveEdit = async (formData: FormData) => {
+  const handleSaveEdit = async (formData: any) => {
     if (!editingAccount) {
       return;
     }
@@ -277,59 +226,77 @@ function ChartOfAccounts() {
     }
   };
 
-  const handleBulkStatusChange = async (nextStatus: string) => {
-    if (!selectedAccountIds.length) {
+  const handleBulkStatusChange = async (nextStatus: string, targetIds?: string[]) => {
+    const idsToUpdate = targetIds || selectedAccountIds;
+    if (!idsToUpdate.length) {
       return;
     }
 
     setIsLoading(true);
 
     try {
-      const result = await apiBulkUpdateAccountStatus(
-        selectedAccountIds,
-        nextStatus === "active",
-      );
-      if (!result.success) {
+      // Strict ID check to avoid sending names or invalid identifiers
+      const validIds = idsToUpdate.filter(id => id && id.length >= 12); // Assuming MongoDB IDs or similar
+      
+      if (validIds.length === 0) {
+        toast.error("Invalid account IDs selected");
         return;
       }
 
-      toast.success(result.message);
-      setSelectedAccountIds([]);
-      await fetchAccounts();
+      const result = await apiBulkUpdateAccountStatus(
+        validIds,
+        nextStatus === "active",
+      );
+
+      if (result.success) {
+        // Parse the message to get the actual number of updated accounts if possible
+        const updatedCount = result.updatedCount || (result.message?.match(/(\d+) accounts updated/)?.[1]) || validIds.length;
+        const statusText = nextStatus === "active" ? "Active" : "Inactive";
+        
+        if (result.message && (result.message.includes("protected") || result.message.includes("0 accounts updated"))) {
+          toast.success(result.message, { icon: '🛡️', duration: 4000 });
+        } else {
+          toast.success(`${updatedCount} ${Number(updatedCount) === 1 ? 'account' : 'accounts'} marked as ${statusText}`);
+        }
+
+        if (!targetIds) {
+          setSelectedAccountIds([]);
+        }
+        await fetchAccounts();
+      } else {
+        toast.error(result.message || "Failed to update accounts status");
+      }
     } catch (error: any) {
-      toast.error(error.message || "Failed to update accounts status");
+      toast.error(error.message || "An error occurred during status update");
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleOpenTransactionReport = () => {
-    if (!selectedAccount) {
-      return;
-    }
-
-    const params = new URLSearchParams();
-    params.set("dateRange", "custom");
-
-    if (reportDateRange?.startDate && reportDateRange?.endDate) {
-      params.set("startDate", reportDateRange.startDate);
-      params.set("endDate", reportDateRange.endDate);
-    }
-
-    params.set("reportBasis", "accrual");
-    params.set(
-      "accountName",
-      String(selectedAccount.accountName || selectedAccount.name || ""),
-    );
-    navigate(`/reports/account_transactions?${params.toString()}`);
+    if (!selectedAccount) return;
+    navigate(`/accountant/reports/account-transactions?accountId=${selectedAccount.id || selectedAccount._id}`);
   };
+
+  const initialEditFormData = useMemo(() => {
+    if (!editingAccount) return null;
+    return {
+      accountType: editingAccount.type || editingAccount.accountType || "",
+      accountName: editingAccount.name || editingAccount.accountName || "",
+      accountCode: editingAccount.code || editingAccount.accountCode || "",
+      description: editingAccount.description || "",
+      addToWatchlist: editingAccount.showInWatchlist || editingAccount.addToWatchlist || false,
+      isSubAccount: !!editingAccount.parent,
+      parentAccountId: editingAccount.parentAccountId || "",
+    };
+  }, [editingAccount]);
 
   if (selectedAccount) {
     return (
       <>
         <ChartOfAccountsDetailView
           accountTransactions={accountTransactions}
-          accounts={accounts}
+          accounts={allAccounts}
           baseCurrency={baseCurrency}
           isTransactionsLoading={isTransactionsLoading}
           onClose={() => setSelectedAccount(null)}
@@ -341,20 +308,20 @@ function ChartOfAccounts() {
           selectedAccount={selectedAccount}
           transactionTotals={transactionTotals}
         />
-
+        
         <ChartOfAccountsAccountModal
           allAccounts={allAccounts}
-          initialFormData={EMPTY_CHART_OF_ACCOUNTS_FORM_DATA}
+          initialFormData={EMPTY_FORM_DATA}
           mode="create"
           onClose={() => setIsCreateModalOpen(false)}
-          onSubmit={handleCreateAccount}
+          onSubmit={handleSaveNew}
           open={isCreateModalOpen}
           submitting={isLoading}
         />
 
         <ChartOfAccountsAccountModal
           allAccounts={allAccounts}
-          initialFormData={initialEditFormData}
+          initialFormData={initialEditFormData || EMPTY_FORM_DATA}
           mode="edit"
           onClose={() => setEditingAccount(null)}
           onSubmit={handleSaveEdit}
@@ -406,41 +373,23 @@ function ChartOfAccounts() {
 
       <ChartOfAccountsAccountModal
         allAccounts={allAccounts}
-        initialFormData={EMPTY_CHART_OF_ACCOUNTS_FORM_DATA}
+        initialFormData={EMPTY_FORM_DATA}
         mode="create"
         onClose={() => setIsCreateModalOpen(false)}
-        onSubmit={handleCreateAccount}
+        onSubmit={handleSaveNew}
         open={isCreateModalOpen}
         submitting={isLoading}
       />
 
       <ChartOfAccountsAccountModal
         allAccounts={allAccounts}
-        initialFormData={initialEditFormData}
+        initialFormData={initialEditFormData || EMPTY_FORM_DATA}
         mode="edit"
         onClose={() => setEditingAccount(null)}
         onSubmit={handleSaveEdit}
         open={isEditModalOpen}
         submitting={isLoading}
       />
-
-      <ChartOfAccountsFindAccountantsSidebar
-        onClose={() => setIsFindAccountantsOpen(false)}
-        open={isFindAccountantsOpen}
-      />
-
-      <ChartOfAccountsExportModals
-        isExportCurrentViewModalOpen={isExportCurrentViewModalOpen}
-        isExportModalOpen={isExportModalOpen}
-        isNewTemplateModalOpen={isNewTemplateModalOpen}
-        onCloseExportCurrentViewModal={() => setIsExportCurrentViewModalOpen(false)}
-        onCloseExportModal={() => setIsExportModalOpen(false)}
-        onCloseNewTemplateModal={() => setIsNewTemplateModalOpen(false)}
-        onOpenNewTemplateModal={() => setIsNewTemplateModalOpen(true)}
-        selectedViewLabel={selectedViewLabel}
-      />
     </>
   );
 }
-
-export default ChartOfAccounts;

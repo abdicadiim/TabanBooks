@@ -207,148 +207,138 @@ export default function CurrencyAdjustments() {
   };
 
   return (
-    <div style={{ minHeight: "calc(100vh - 60px)", background: "#f8fafc" }}>
-      <div
-        style={{
-          background: "white",
-          borderBottom: "1px solid #e5e7eb",
-          padding: "18px 24px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 12,
-        }}
-      >
-        <div>
-          <h1 style={{ margin: 0, fontSize: 24, color: "#111827" }}>Base Currency Adjustments</h1>
-          <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: 13 }}>
-            Revalue open foreign-currency balances using updated exchange rates.
-          </p>
+    <div className="flex flex-col h-full bg-white">
+      {/* Header - Matching Items List style */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 min-h-[57px]">
+        <div className="flex items-center gap-3">
+          <h1 className="text-base font-bold text-slate-900">
+            Base Currency Adjustments
+          </h1>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            onClick={deleteSelected}
-            disabled={!selectedIds.length || submitting}
-            style={{
-              padding: "8px 12px",
-              border: "1px solid #fecaca",
-              background: selectedIds.length ? "#fff1f2" : "#f8fafc",
-              color: selectedIds.length ? "#b91c1c" : "#94a3b8",
-              borderRadius: 8,
-              cursor: selectedIds.length ? "pointer" : "not-allowed",
-              fontWeight: 600,
-            }}
-          >
-            Delete Selected
-          </button>
+
+        <div className="flex items-center gap-4">
+          {selectedIds.length > 0 && (
+            <button
+              onClick={deleteSelected}
+              disabled={submitting}
+              className="px-3 py-1.5 border border-red-200 rounded text-xs font-medium text-red-600 hover:bg-red-50 bg-white shadow-sm transition-colors"
+            >
+              Delete ({selectedIds.length})
+            </button>
+          )}
           <button
             onClick={openCreate}
-            style={{
-              padding: "8px 14px",
-              border: "none",
-              background: "#156372",
-              color: "white",
-              borderRadius: 8,
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
+            className="cursor-pointer transition-all bg-[#156372] text-white px-4 py-1 rounded border-[#0d4d59] border-b-[4px] hover:brightness-110 active:border-b-[2px] active:translate-y-[2px] flex items-center gap-1 text-sm font-semibold"
           >
-            + Make an Adjustment
+            + New
           </button>
         </div>
       </div>
 
-      <div style={{ padding: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-          <label style={{ fontSize: 13, color: "#64748b" }}>Filter:</label>
+      {/* Filter Row - Pill Style */}
+      <div className="flex items-center gap-4 px-4 py-2 border-b border-gray-100 bg-[#fbfcfd]">
+        <div className="flex items-center border border-gray-200 rounded-md px-2 py-0.5 bg-white shadow-sm">
+          <span className="text-[11px] text-gray-500 mr-1">Filter By:</span>
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as CurrencyAdjustmentPeriod)}
-            style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 10px", background: "white" }}
+            className="text-[11px] font-medium text-slate-700 focus:ring-0 cursor-pointer border-none p-0 bg-transparent outline-none"
           >
             {CURRENCY_ADJUSTMENT_LIST_PERIOD_OPTIONS.map((f) => (
               <option key={f} value={f}>{f}</option>
             ))}
           </select>
         </div>
+      </div>
 
-        <div style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 10, overflow: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ background: "#f8fafc" }}>
-                <th style={{ padding: "10px 12px", textAlign: "left", borderBottom: "1px solid #e5e7eb" }}></th>
-                <th style={{ padding: "10px 12px", textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>Date</th>
-                <th style={{ padding: "10px 12px", textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>Currency</th>
-                <th style={{ padding: "10px 12px", textAlign: "right", borderBottom: "1px solid #e5e7eb" }}>Prev Rate</th>
-                <th style={{ padding: "10px 12px", textAlign: "right", borderBottom: "1px solid #e5e7eb" }}>New Rate</th>
-                <th style={{ padding: "10px 12px", textAlign: "right", borderBottom: "1px solid #e5e7eb" }}>Gain/Loss (BCY)</th>
-                <th style={{ padding: "10px 12px", textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>Notes</th>
-                <th style={{ padding: "10px 12px", textAlign: "right", borderBottom: "1px solid #e5e7eb" }}>Action</th>
+      <div className="flex-1 overflow-auto">
+        <table className="w-full text-left border-collapse">
+          <thead className="bg-[#f8fafc] sticky top-0 z-10 border-b border-gray-200">
+            <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              <th className="px-4 py-2 w-12">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.length === filteredAdjustments.length && filteredAdjustments.length > 0}
+                  onChange={() => {
+                    if (selectedIds.length === filteredAdjustments.length) setSelectedIds([]);
+                    else setSelectedIds(filteredAdjustments.map(a => getCurrencyAdjustmentIdentifier(a)));
+                  }}
+                  className="rounded border-gray-300 text-slate-600 focus:ring-slate-500"
+                />
+              </th>
+              <th className="px-4 py-2">Date</th>
+              <th className="px-4 py-2">Currency</th>
+              <th className="px-4 py-2 text-right">Exchange Rate</th>
+              <th className="px-4 py-2 text-right">Gain or Loss</th>
+              <th className="px-4 py-2">Notes</th>
+              <th className="px-4 py-2 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {loading ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500 italic">Loading adjustments...</td>
               </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={8} style={{ padding: 18, color: "#64748b" }}>Loading adjustments...</td>
-                </tr>
-              ) : filteredAdjustments.length === 0 ? (
-                <tr>
-                  <td colSpan={8} style={{ padding: 18, color: "#64748b" }}>
-                    No adjustments found. Create one using "+ Make an Adjustment".
-                  </td>
-                </tr>
-              ) : (
-                filteredAdjustments.map((a) => {
-                  const id = getCurrencyAdjustmentIdentifier(a);
-                  if (!id) return null;
-                  const selected = selectedIds.includes(id);
-                  return (
-                    <tr key={id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                      <td style={{ padding: "10px 12px" }}>
-                        <input type="checkbox" checked={selected} onChange={() => toggleSelection(id)} />
-                      </td>
-                      <td style={{ padding: "10px 12px" }}>{toCurrencyAdjustmentInputDate(a.date)}</td>
-                      <td style={{ padding: "10px 12px" }}>{a.currency}</td>
-                      <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatCurrencyAdjustmentMoney(Number(a.previousExchangeRate || 1))}</td>
-                      <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatCurrencyAdjustmentMoney(Number(a.exchangeRate || 0))}</td>
-                      <td style={{ padding: "10px 12px", textAlign: "right", color: Number(a.gainOrLoss) >= 0 ? "#047857" : "#b91c1c", fontWeight: 700 }}>
-                        {Number(a.gainOrLoss) >= 0 ? "+" : ""}{formatCurrencyAdjustmentMoney(Number(a.gainOrLoss || 0))}
-                      </td>
-                      <td style={{ padding: "10px 12px", color: "#475569", maxWidth: 320 }}>{a.notes}</td>
-                      <td style={{ padding: "10px 12px", textAlign: "right" }}>
-                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                          <button
-                            onClick={() => deleteOne(id)}
-                            style={{ border: "1px solid #fecaca", background: "#fff1f2", color: "#b91c1c", borderRadius: 6, padding: "5px 8px", cursor: "pointer" }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+            ) : filteredAdjustments.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-16 text-center">
+                  <div className="text-gray-400 text-sm">Record a Base Currency Adjustment to correct fluctuations in exchange rates</div>
+                </td>
+              </tr>
+            ) : (
+              filteredAdjustments.map((a) => {
+                const id = getCurrencyAdjustmentIdentifier(a);
+                if (!id) return null;
+                const selected = selectedIds.includes(id);
+                return (
+                  <tr key={id} className="hover:bg-slate-50 transition-colors group">
+                    <td className="px-4 py-2.5">
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => toggleSelection(id)}
+                        className="rounded border-gray-300 text-slate-600 focus:ring-slate-500"
+                      />
+                    </td>
+                    <td className="px-4 py-2.5 text-sm text-slate-700">{toCurrencyAdjustmentInputDate(a.date)}</td>
+                    <td className="px-4 py-2.5 text-sm text-slate-600">{a.currency}</td>
+                    <td className="px-4 py-2.5 text-sm text-slate-600 text-right">{formatCurrencyAdjustmentMoney(Number(a.exchangeRate || 0))}</td>
+                    <td className={`px-4 py-2.5 text-sm text-right font-semibold ${Number(a.gainOrLoss) >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                      {Number(a.gainOrLoss) >= 0 ? "+" : ""}{formatCurrencyAdjustmentMoney(Number(a.gainOrLoss || 0))}
+                    </td>
+                    <td className="px-4 py-2.5 text-sm text-slate-500 truncate max-w-[240px]" title={a.notes}>{a.notes}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      <button
+                        onClick={() => deleteOne(id)}
+                        className="p-1.5 text-gray-400 hover:text-rose-600 transition-colors"
+                        title="Delete"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
 
       {showCreateModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-          <div style={{ width: 700, maxWidth: "calc(100vw - 32px)", background: "white", borderRadius: 12, border: "1px solid #e5e7eb", padding: 18 }}>
-            <h3 style={{ marginTop: 0 }}>Make a Base Currency Adjustment</h3>
-            <p style={{ marginTop: 0, color: "#64748b", fontSize: 13 }}>
-              Step 1: Enter adjustment details, then continue to confirm affected accounts.
-            </p>
+        <div className="fixed inset-0 bg-black/45 flex items-center justify-center z-[1200] p-4">
+          <div className="w-full max-w-[600px] bg-white rounded-lg shadow-2xl">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-lg font-medium text-slate-900">Base Currency Adjustment</h3>
+              <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div className="p-6 space-y-5">
               <div>
-                <label style={{ fontSize: 13, color: "#334155" }}>Currency *</label>
+                <label className="block text-[13px] text-rose-500 font-medium mb-1.5">Currency*</label>
                 <select
                   value={form.currency}
                   onChange={(e) => setForm((prev) => ({ ...prev, currency: e.target.value }))}
-                  style={{ width: "100%", marginTop: 6, padding: "9px 10px", border: "1px solid #cbd5e1", borderRadius: 8 }}
+                  className="w-full h-[34px] px-3 text-[13px] border border-gray-300 rounded focus:border-slate-400 outline-none bg-white transition-colors"
                 >
                   <option value="">Select currency</option>
                   {CURRENCY_ADJUSTMENT_CURRENCIES.map((c) => (
@@ -358,64 +348,61 @@ export default function CurrencyAdjustments() {
               </div>
 
               <div>
-                <label style={{ fontSize: 13, color: "#334155" }}>Adjustment Date *</label>
+                <label className="block text-[13px] text-rose-500 font-medium mb-1.5">Date of Adjustment*</label>
                 <input
                   type="date"
                   value={form.date}
                   onChange={(e) => setForm((prev) => ({ ...prev, date: e.target.value }))}
-                  style={{ width: "100%", marginTop: 6, padding: "9px 10px", border: "1px solid #cbd5e1", borderRadius: 8 }}
+                  className="w-full h-[34px] px-3 text-[13px] border border-gray-300 rounded focus:border-slate-400 outline-none transition-colors"
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: 13, color: "#334155" }}>Previous Exchange Rate</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.0001"
-                  value={form.previousExchangeRate}
-                  onChange={(e) => setForm((prev) => ({ ...prev, previousExchangeRate: e.target.value }))}
-                  style={{ width: "100%", marginTop: 6, padding: "9px 10px", border: "1px solid #cbd5e1", borderRadius: 8 }}
-                />
+                <label className="block text-[13px] text-rose-500 font-medium mb-1.5">Exchange Rate*</label>
+                <div className="flex items-center">
+                  <div className="h-[34px] flex items-center px-3 border border-r-0 border-gray-300 bg-gray-50 text-[13px] text-gray-500 rounded-l">
+                    1 {adjustments[0]?.baseCurrency || "AED"} =
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    placeholder="0.0000"
+                    value={form.exchangeRate}
+                    onChange={(e) => setForm((prev) => ({ ...prev, exchangeRate: e.target.value }))}
+                    className="flex-1 h-[34px] px-3 text-[13px] border border-gray-300 focus:border-slate-400 outline-none transition-colors"
+                  />
+                  <div className="h-[34px] flex items-center px-3 border border-l-0 border-gray-300 bg-gray-50 text-[13px] text-gray-500 rounded-r">
+                    {form.currency || "---"}
+                  </div>
+                </div>
               </div>
 
               <div>
-                <label style={{ fontSize: 13, color: "#334155" }}>New Exchange Rate *</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.0001"
-                  value={form.exchangeRate}
-                  onChange={(e) => setForm((prev) => ({ ...prev, exchangeRate: e.target.value }))}
-                  style={{ width: "100%", marginTop: 6, padding: "9px 10px", border: "1px solid #cbd5e1", borderRadius: 8 }}
+                <label className="block text-[13px] text-rose-500 font-medium mb-1.5">Notes*</label>
+                <textarea
+                  value={form.notes}
+                  onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  rows={3}
+                  placeholder="Max. 500 characters"
+                  className="w-full p-3 text-[13px] border border-gray-300 rounded focus:border-slate-400 outline-none transition-colors resize-none"
                 />
               </div>
             </div>
 
-            <div style={{ marginTop: 10 }}>
-              <label style={{ fontSize: 13, color: "#334155" }}>Notes (mandatory) *</label>
-              <textarea
-                value={form.notes}
-                onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
-                rows={3}
-                placeholder="Reason for adjustment"
-                style={{ width: "100%", marginTop: 6, padding: "10px", border: "1px solid #cbd5e1", borderRadius: 8, resize: "vertical" }}
-              />
-            </div>
-
-            <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button
-                onClick={() => setShowCreateModal(false)}
-                style={{ border: "1px solid #d1d5db", background: "white", borderRadius: 8, padding: "8px 12px", cursor: "pointer" }}
-              >
-                Cancel
-              </button>
+            <div className="px-6 py-4 border-t border-gray-50 flex items-center gap-3">
               <button
                 onClick={onPreview}
                 disabled={submitting}
-                style={{ border: "none", background: "#156372", color: "white", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontWeight: 700 }}
+                className="px-5 py-1.5 bg-[#156372] hover:bg-[#0d4d59] text-white text-sm font-medium rounded shadow-sm transition-colors"
               >
                 {submitting ? "Loading..." : "Continue"}
+              </button>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="px-5 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-slate-700 text-sm font-medium rounded shadow-sm transition-colors"
+              >
+                Cancel
               </button>
             </div>
           </div>
@@ -423,86 +410,90 @@ export default function CurrencyAdjustments() {
       )}
 
       {showConfirmModal && preview && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-          <div style={{ width: 980, maxWidth: "calc(100vw - 24px)", background: "white", borderRadius: 12, border: "1px solid #e5e7eb", padding: 18 }}>
-            <h3 style={{ marginTop: 0 }}>Confirm Base Currency Adjustment</h3>
-            <p style={{ marginTop: 0, color: "#64748b", fontSize: 13 }}>
-              FCY = Foreign Currency, BCY = Base Currency. Select accounts and click "Make an Adjustment".
-            </p>
-
-            <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 10, marginBottom: 10, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-              <div><strong>Currency:</strong> {preview.currency}</div>
-              <div><strong>Previous Rate:</strong> {formatCurrencyAdjustmentMoney(preview.previousExchangeRate)}</div>
-              <div><strong>New Rate:</strong> {formatCurrencyAdjustmentMoney(preview.exchangeRate)}</div>
+        <div className="fixed inset-0 bg-black/45 flex items-center justify-center z-[1200] p-4">
+          <div className="w-full max-w-[900px] bg-white rounded-lg shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-lg font-medium text-slate-900">Confirm Base Currency Adjustment</h3>
+              <button onClick={() => { setShowConfirmModal(false); setPreview(null); }} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
             </div>
 
-            <div style={{ maxHeight: "52vh", overflow: "auto", border: "1px solid #e5e7eb", borderRadius: 8 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: "#f8fafc" }}>
-                    <th style={{ padding: "10px", borderBottom: "1px solid #e5e7eb" }}>Select</th>
-                    <th style={{ padding: "10px", textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>Account</th>
-                    <th style={{ padding: "10px", textAlign: "right", borderBottom: "1px solid #e5e7eb" }}>Balance (FCY)</th>
-                    <th style={{ padding: "10px", textAlign: "right", borderBottom: "1px solid #e5e7eb" }}>Balance (BCY)</th>
-                    <th style={{ padding: "10px", textAlign: "right", borderBottom: "1px solid #e5e7eb" }}>Revalued Balance (BCY)</th>
-                    <th style={{ padding: "10px", textAlign: "right", borderBottom: "1px solid #e5e7eb" }}>Gain or Loss (BCY)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {preview.affectedAccounts.map((row) => (
-                    <tr key={row.accountId} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                      <td style={{ padding: "10px", textAlign: "center" }}>
-                        <input
-                          type="checkbox"
-                          checked={row.selected !== false}
-                          onChange={() => toggleAccountRow(row.accountId)}
-                        />
-                      </td>
-                      <td style={{ padding: "10px" }}>{row.accountName}</td>
-                      <td style={{ padding: "10px", textAlign: "right" }}>{formatCurrencyAdjustmentMoney(row.balanceFCY)}</td>
-                      <td style={{ padding: "10px", textAlign: "right" }}>{formatCurrencyAdjustmentMoney(row.balanceBCY)}</td>
-                      <td style={{ padding: "10px", textAlign: "right" }}>{formatCurrencyAdjustmentMoney(row.revaluedBalanceBCY)}</td>
-                      <td style={{ padding: "10px", textAlign: "right", color: row.gainOrLossBCY >= 0 ? "#047857" : "#b91c1c", fontWeight: 700 }}>
-                        {row.gainOrLossBCY >= 0 ? "+" : ""}{formatCurrencyAdjustmentMoney(row.gainOrLossBCY)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="p-6">
+              <div className="bg-slate-50 border border-slate-100 rounded-lg p-4 mb-6 flex flex-wrap gap-8 text-[13px]">
+                <div><span className="text-slate-500 mr-2">Currency:</span> <span className="font-semibold text-slate-900">{preview.currency}</span></div>
+                <div><span className="text-slate-500 mr-2">Previous Rate:</span> <span className="font-semibold text-slate-900">{formatCurrencyAdjustmentMoney(preview.previousExchangeRate)}</span></div>
+                <div><span className="text-slate-500 mr-2">New Rate:</span> <span className="font-semibold text-slate-900">{formatCurrencyAdjustmentMoney(preview.exchangeRate)}</span></div>
+              </div>
+
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="max-h-[40vh] overflow-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-gray-50 sticky top-0 border-b border-gray-200">
+                      <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        <th className="px-4 py-3 text-center w-12">Select</th>
+                        <th className="px-4 py-3">Account</th>
+                        <th className="px-4 py-3 text-right">Balance (FCY)</th>
+                        <th className="px-4 py-3 text-right">Balance (BCY)</th>
+                        <th className="px-4 py-3 text-right">Revalued (BCY)</th>
+                        <th className="px-4 py-3 text-right">Gain/Loss (BCY)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {preview.affectedAccounts.map((row) => (
+                        <tr key={row.accountId} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={row.selected !== false}
+                              onChange={() => toggleAccountRow(row.accountId)}
+                              className="rounded border-gray-300 text-slate-600"
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-[13px] text-slate-700 font-medium">{row.accountName}</td>
+                          <td className="px-4 py-3 text-[13px] text-slate-600 text-right">{formatCurrencyAdjustmentMoney(row.balanceFCY)}</td>
+                          <td className="px-4 py-3 text-[13px] text-slate-600 text-right">{formatCurrencyAdjustmentMoney(row.balanceBCY)}</td>
+                          <td className="px-4 py-3 text-[13px] text-slate-600 text-right">{formatCurrencyAdjustmentMoney(row.revaluedBalanceBCY)}</td>
+                          <td className={`px-4 py-3 text-[13px] text-right font-bold ${row.gainOrLossBCY >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                            {row.gainOrLossBCY >= 0 ? "+" : ""}{formatCurrencyAdjustmentMoney(row.gainOrLossBCY)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-between items-center">
+                <div className="text-[13px] text-slate-500 italic">
+                  * Select accounts to include in this adjustment.
+                </div>
+                <div className="text-right">
+                  <span className="text-[13px] text-slate-500 mr-2">Total Gain/Loss (Selected):</span>
+                  <span className={`text-base font-bold ${selectedGainLoss >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                    {selectedGainLoss >= 0 ? "+" : ""}{formatCurrencyAdjustmentMoney(selectedGainLoss)}
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div style={{ marginTop: 10, textAlign: "right", fontSize: 15 }}>
-              <strong>Total Gain/Loss (Selected): </strong>
-              <span style={{ color: selectedGainLoss >= 0 ? "#047857" : "#b91c1c", fontWeight: 800 }}>
-                {selectedGainLoss >= 0 ? "+" : ""}{formatCurrencyAdjustmentMoney(selectedGainLoss)}
-              </span>
-            </div>
-
-            <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <div className="px-6 py-4 border-t border-gray-50 flex items-center gap-3">
               <button
-                onClick={() => {
-                  setShowConfirmModal(false);
-                  setShowCreateModal(true);
-                }}
-                style={{ border: "1px solid #d1d5db", background: "white", borderRadius: 8, padding: "8px 12px", cursor: "pointer" }}
+                onClick={onMakeAdjustment}
+                disabled={submitting}
+                className="px-5 py-1.5 bg-[#156372] hover:bg-[#0d4d59] text-white text-sm font-medium rounded shadow-sm transition-colors"
+              >
+                {submitting ? "Saving..." : "Make an Adjustment"}
+              </button>
+              <button
+                onClick={() => { setShowConfirmModal(false); setShowCreateModal(true); }}
+                className="px-5 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-slate-700 text-sm font-medium rounded shadow-sm transition-colors"
               >
                 Back
               </button>
               <button
-                onClick={() => {
-                  setShowConfirmModal(false);
-                  setPreview(null);
-                }}
-                style={{ border: "1px solid #d1d5db", background: "white", borderRadius: 8, padding: "8px 12px", cursor: "pointer" }}
+                onClick={() => { setShowConfirmModal(false); setPreview(null); }}
+                className="px-5 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-slate-700 text-sm font-medium rounded shadow-sm transition-colors"
               >
                 Cancel
-              </button>
-              <button
-                onClick={onMakeAdjustment}
-                disabled={submitting}
-                style={{ border: "none", background: "#156372", color: "white", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontWeight: 700 }}
-              >
-                {submitting ? "Saving..." : "Make an Adjustment"}
               </button>
             </div>
           </div>

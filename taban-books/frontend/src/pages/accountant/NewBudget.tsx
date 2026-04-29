@@ -7,6 +7,41 @@ import {
   parseFiscalYear,
 } from "./budgetUtils";
 
+interface Account {
+  accountName?: string;
+  name?: string;
+  accountCode?: string;
+  code?: string;
+  accountType?: string;
+  type?: string;
+  isActive?: boolean;
+  _id?: string;
+  id?: string;
+  parent?: string;
+  parentAccountId?: string;
+  showInWatchlist?: boolean;
+  description?: string;
+}
+
+interface Budget {
+  name?: string;
+  fiscalYearLabel?: string;
+  fiscalYear?: string | number;
+  budgetPeriod?: string;
+  location?: string;
+  includeAssetLiabilityEquity?: boolean;
+  selectedIncomeAccounts?: string[];
+  selectedExpenseAccounts?: string[];
+  selectedAssetAccounts?: string[];
+  selectedLiabilityAccounts?: string[];
+  selectedEquityAccounts?: string[];
+  createForReportingTag?: boolean;
+  reportingTagName?: string;
+  reportingTagOption?: string;
+  _id?: string;
+  id?: string;
+}
+
 function NewBudget() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -15,7 +50,8 @@ function NewBudget() {
   const [formData, setFormData] = useState({
     name: "",
     fiscalYear: "Jan 2025 - Dec 2025",
-    budgetPeriod: "Monthly"
+    budgetPeriod: "Monthly",
+    location: ""
   });
 
   const [isFiscalYearOpen, setIsFiscalYearOpen] = useState(false);
@@ -23,25 +59,25 @@ function NewBudget() {
   const [fiscalYearSearch, setFiscalYearSearch] = useState("");
   const [budgetPeriodSearch, setBudgetPeriodSearch] = useState("");
   const [includeAssetLiabilityEquity, setIncludeAssetLiabilityEquity] = useState(false);
-  const [selectedIncomeAccounts, setSelectedIncomeAccounts] = useState([]);
-  const [selectedExpenseAccounts, setSelectedExpenseAccounts] = useState([]);
-  const [selectedAssetAccounts, setSelectedAssetAccounts] = useState([]);
-  const [selectedLiabilityAccounts, setSelectedLiabilityAccounts] = useState([]);
-  const [selectedEquityAccounts, setSelectedEquityAccounts] = useState([]);
+  const [selectedIncomeAccounts, setSelectedIncomeAccounts] = useState<string[]>([]);
+  const [selectedExpenseAccounts, setSelectedExpenseAccounts] = useState<string[]>([]);
+  const [selectedAssetAccounts, setSelectedAssetAccounts] = useState<string[]>([]);
+  const [selectedLiabilityAccounts, setSelectedLiabilityAccounts] = useState<string[]>([]);
+  const [selectedEquityAccounts, setSelectedEquityAccounts] = useState<string[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalAccountType, setModalAccountType] = useState(null); // "income", "expense", "asset", "liability", "equity"
-  const [modalSelectedAccounts, setModalSelectedAccounts] = useState([]);
+  const [modalAccountType, setModalAccountType] = useState<string | null>(null); // "income", "expense", "asset", "liability", "equity"
+  const [modalSelectedAccounts, setModalSelectedAccounts] = useState<string[]>([]);
   const [accountSearchTerm, setAccountSearchTerm] = useState("");
-  const [expandedCategories, setExpandedCategories] = useState({});
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
-  const [originalBudget, setOriginalBudget] = useState(null);
-  const [allAccounts, setAllAccounts] = useState([]);
+  const [originalBudget, setOriginalBudget] = useState<Budget | null>(null);
+  const [allAccounts, setAllAccounts] = useState<Account[]>([]);
   const [createForReportingTag, setCreateForReportingTag] = useState(false);
   const [reportingTagName, setReportingTagName] = useState("");
   const [reportingTagOption, setReportingTagOption] = useState("All");
 
-  const fiscalYearRef = useRef(null);
-  const budgetPeriodRef = useRef(null);
+  const fiscalYearRef = useRef<HTMLDivElement>(null);
+  const budgetPeriodRef = useRef<HTMLDivElement>(null);
 
   // Load budget data if editing
   useEffect(() => {
@@ -58,7 +94,8 @@ function NewBudget() {
           setFormData({
             name: budget.name || "",
             fiscalYear: fiscalYearLabel,
-            budgetPeriod: budget.budgetPeriod || "Monthly"
+            budgetPeriod: budget.budgetPeriod || "Monthly",
+            location: budget.location || ""
           });
           setIncludeAssetLiabilityEquity(budget.includeAssetLiabilityEquity || false);
           setSelectedIncomeAccounts(budget.selectedIncomeAccounts || []);
@@ -100,259 +137,113 @@ function NewBudget() {
   const incomeAccounts = accounts.filter(acc => acc.accountType === "income");
   const expenseAccounts = accounts.filter(acc => acc.accountType === "expense");
 
-  // Sample income accounts to always show in the modal
-  const sampleIncomeAccounts = [
-    { accountName: "Discount", type: "Income", accountCode: "INC-001" },
-    { accountName: "General Income", type: "Income", accountCode: "INC-002" },
-    { accountName: "Interest Income", type: "Income", accountCode: "INC-003" },
-    { accountName: "Late Fee Income", type: "Income", accountCode: "INC-004" },
-    { accountName: "Other Charges", type: "Income", accountCode: "INC-005" },
-    { accountName: "Sales", type: "Income", accountCode: "INC-006" },
-    { accountName: "Shipping Charge", type: "Income", accountCode: "INC-007" }
-  ];
-
-  // Sample expense accounts to always show in the modal
-  const sampleExpenseAccounts = [
-    { accountName: "Cost of Goods Sold", type: "Expense", accountCode: "EXP-001" },
-    { accountName: "Automobile Expense", type: "Expense", accountCode: "EXP-002" },
-    { accountName: "Bad Debt", type: "Expense", accountCode: "EXP-003" },
-    { accountName: "Bank Fees and Charges", type: "Expense", accountCode: "EXP-004" },
-    { accountName: "Consultant Expense", type: "Expense", accountCode: "EXP-005" },
-    { accountName: "Credit Card Charges", type: "Expense", accountCode: "EXP-006" },
-    { accountName: "Depreciation Expense", type: "Expense", accountCode: "EXP-007" },
-    { accountName: "IT and Internet Expenses", type: "Expense", accountCode: "EXP-008" },
-    { accountName: "Janitorial Expense", type: "Expense", accountCode: "EXP-009" },
-    { accountName: "Lodging", type: "Expense", accountCode: "EXP-010" },
-    { accountName: "Meals and entertainment", type: "Expense", accountCode: "EXP-011" },
-    { accountName: "Office Supplies", type: "Expense", accountCode: "EXP-012" },
-    { accountName: "Other Expenses", type: "Expense", accountCode: "EXP-013" },
-    { accountName: "Postage", type: "Expense", accountCode: "EXP-014" },
-    { accountName: "Printing and Stationery", type: "Expense", accountCode: "EXP-015" },
-    { accountName: "Purchase Discounts", type: "Expense", accountCode: "EXP-016" },
-    { accountName: "Rent Expense", type: "Expense", accountCode: "EXP-017" },
-    { accountName: "Repairs and Maintenance", type: "Expense", accountCode: "EXP-018" },
-    { accountName: "Salaries and Employee Wages", type: "Expense", accountCode: "EXP-019" },
-    { accountName: "Telephone Expense", type: "Expense", accountCode: "EXP-020" },
-    { accountName: "Travel Expense", type: "Expense", accountCode: "EXP-021" },
-    { accountName: "Exchange Gain or Loss", type: "Expense", accountCode: "EXP-022" }
-  ];
-
   // Group accounts by type for modal display with hierarchical structure
   const getGroupedAccounts = () => {
-    if (modalAccountType === "income") {
-      // Get income accounts from localStorage
-      const storedIncomeAccounts = accounts.filter(acc => acc.type === "Income");
-      const storedOtherIncomeAccounts = accounts.filter(acc => acc.type === "Other Income");
+    // Filter accounts based on modalAccountType
+    const filteredAccounts = allAccounts.filter(acc => {
+      const type = (acc.accountType || acc.type || "").toLowerCase();
+      const modalTypeLower = (modalAccountType || "").toLowerCase();
+      
+      if (modalTypeLower === "income") {
+        return type.includes("income");
+      } else if (modalTypeLower === "expense") {
+        return type.includes("expense") || type.includes("cost of goods sold");
+      } else if (modalTypeLower === "asset") {
+        return type.includes("asset") || type.includes("receivable") || type.includes("cash") || type.includes("bank");
+      } else if (modalTypeLower === "liability") {
+        return type.includes("liability") || type.includes("payable") || type.includes("credit card");
+      } else if (modalTypeLower === "equity") {
+        return type.includes("equity");
+      }
+      return true;
+    });
 
-      // Always use sample income accounts for the Income sub-category
-      // Merge with stored accounts if they exist, but prioritize showing sample accounts
-      const incomeAccountsToUse = storedIncomeAccounts.length > 0
-        ? [...sampleIncomeAccounts, ...storedIncomeAccounts.filter(acc =>
-          !sampleIncomeAccounts.some(sample => sample.accountName === acc.accountName)
-        )]
-        : sampleIncomeAccounts;
-
-      // Always show Income structure
-      const structure = {
-        "Income": {
-          "Income": incomeAccountsToUse,
-          "Other Income": storedOtherIncomeAccounts
-        }
-      };
-
-      return structure;
-    } else if (modalAccountType === "expense") {
-      // For expense accounts
-      const storedExpenseAccounts = accounts.filter(acc => acc.type === "Expense");
-
-      // Always use sample expense accounts for the Cost Of Goods Sold sub-category
-      // Merge with stored accounts if they exist, but prioritize showing sample accounts
-      const expenseAccountsToUse = storedExpenseAccounts.length > 0
-        ? [...sampleExpenseAccounts, ...storedExpenseAccounts.filter(acc =>
-          !sampleExpenseAccounts.some(sample => sample.accountName === acc.accountName)
-        )]
-        : sampleExpenseAccounts;
-
-      // Always show Expense structure with Cost Of Goods Sold sub-category
-      const structure = {
-        "Expense": {
-          "Cost Of Goods Sold": expenseAccountsToUse
-        }
-      };
-
-      return structure;
-    } else if (modalAccountType === "asset") {
-      // For asset accounts - hierarchical structure
-      const storedAssetAccounts = accounts.filter(acc => acc.type === "Asset");
-
-      // Sample asset accounts to always show
-      const sampleAssetAccounts = {
-        "Accounts Receivable": [
-          { accountName: "Accounts Receivable", type: "Asset", accountCode: "AST-001" }
-        ],
-        "Other current assets": [
-          { accountName: "Advance Tax", type: "Asset", accountCode: "AST-002" },
-          { accountName: "Employee Advance", type: "Asset", accountCode: "AST-003" },
-          { accountName: "Finished Goods", type: "Asset", accountCode: "AST-004" },
-          { accountName: "Inventory Asset", type: "Asset", accountCode: "AST-005" },
-          { accountName: "Prepaid Expenses", type: "Asset", accountCode: "AST-006" },
-          { accountName: "Sales to Customers (Cash)", type: "Asset", accountCode: "AST-007" },
-          { accountName: "Work in Progress", type: "Asset", accountCode: "AST-008" }
-        ],
-        "Cash": [
-          { accountName: "mohamed", type: "Asset", accountCode: "AST-009" },
-          { accountName: "Petty Cash", type: "Asset", accountCode: "AST-010" },
-          { accountName: "Undeposited Funds", type: "Asset", accountCode: "AST-011" }
-        ],
-        "Bank": [
-          { accountName: "salam somali bank", type: "Asset", accountCode: "AST-012" }
-        ],
-        "Fixed Assets": [
-          { accountName: "Furniture and Equipment", type: "Asset", accountCode: "AST-013" }
-        ]
-      };
-
-      // Merge with stored accounts
-      const structure = {
-        "Assets": {
-          "Current Assets": {
-            "Accounts Receivable": sampleAssetAccounts["Accounts Receivable"],
-            "Other current assets": sampleAssetAccounts["Other current assets"],
-            "Cash and Cash Equivalent": {
-              "Cash": sampleAssetAccounts["Cash"],
-              "Bank": sampleAssetAccounts["Bank"]
-            }
-          },
-          "Other Assets": [],
-          "Fixed Assets": sampleAssetAccounts["Fixed Assets"]
-        }
-      };
-
-      return structure;
-    } else if (modalAccountType === "liability") {
-      // For liability accounts - hierarchical structure
-      const storedLiabilityAccounts = accounts.filter(acc => acc.type === "Liability");
-
-      // Sample liability accounts to always show
-      const sampleLiabilityAccounts = {
-        "Current Liabilities": [
-          { accountName: "Accounts Payable", type: "Liability", accountCode: "LIA-001" },
-          { accountName: "Employee Reimbursements", type: "Liability", accountCode: "LIA-002" },
-          { accountName: "Opening Balance Adjustments", type: "Liability", accountCode: "LIA-003" },
-          { accountName: "Tax Payable", type: "Liability", accountCode: "LIA-004" },
-          { accountName: "Unearned Revenue", type: "Liability", accountCode: "LIA-005" }
-        ],
-        "Long Term Liabilities": [],
-        "Other Liabilities": []
-      };
-
-      // Merge with stored accounts
-      const structure = {
-        "Liabilities": {
-          "Current Liabilities": sampleLiabilityAccounts["Current Liabilities"],
-          "Long Term Liabilities": storedLiabilityAccounts.filter(acc =>
-            !sampleLiabilityAccounts["Current Liabilities"].some(sample => sample.accountName === acc.accountName)
-          ),
-          "Other Liabilities": []
-        }
-      };
-
-      return structure;
-    } else if (modalAccountType === "equity") {
-      // For equity accounts - hierarchical structure
-      const storedEquityAccounts = accounts.filter(acc => acc.type === "Equity");
-
-      // Sample equity accounts to always show
-      const sampleEquityAccounts = [
-        { accountName: "Current Year Earnings", type: "Equity", accountCode: "EQT-001" },
-        { accountName: "Drawings", type: "Equity", accountCode: "EQT-002" },
-        { accountName: "Opening Balance Offset", type: "Equity", accountCode: "EQT-003" },
-        { accountName: "Owner's Equity", type: "Equity", accountCode: "EQT-004" },
-        { accountName: "Retained Earnings", type: "Equity", accountCode: "EQT-005" }
-      ];
-
-      // Merge with stored accounts
-      const equityAccountsToUse = storedEquityAccounts.length > 0
-        ? [...sampleEquityAccounts, ...storedEquityAccounts.filter(acc =>
-          !sampleEquityAccounts.some(sample => sample.accountName === acc.accountName)
-        )]
-        : sampleEquityAccounts;
-
-      // Always show Equities structure
-      const structure = {
-        "Equities": {
-          "Equities": equityAccountsToUse
-        }
-      };
-
-      return structure;
+    // Grouping logic
+    const grouped: any = {};
+    const modalType = modalAccountType || "Other";
+    
+    if (modalType === "Income") {
+      grouped["Income"] = {};
+      filteredAccounts.forEach(acc => {
+        const type = acc.accountType || acc.type || "Other Income";
+        if (!grouped["Income"][type]) grouped["Income"][type] = [];
+        grouped["Income"][type].push(acc);
+      });
+    } else if (modalType === "Expense") {
+      grouped["Expense"] = {};
+      filteredAccounts.forEach(acc => {
+        const type = acc.accountType || acc.type || "Other Expense";
+        if (!grouped["Expense"][type]) grouped["Expense"][type] = [];
+        grouped["Expense"][type].push(acc);
+      });
+    } else if (modalType === "Asset") {
+      grouped["Assets"] = {};
+      filteredAccounts.forEach(acc => {
+        const type = acc.accountType || acc.type || "Other Asset";
+        if (!grouped["Assets"][type]) grouped["Assets"][type] = [];
+        grouped["Assets"][type].push(acc);
+      });
+    } else if (modalType === "Liability") {
+      grouped["Liabilities"] = {};
+      filteredAccounts.forEach(acc => {
+        const type = acc.accountType || acc.type || "Other Liability";
+        if (!grouped["Liabilities"][type]) grouped["Liabilities"][type] = [];
+        grouped["Liabilities"][type].push(acc);
+      });
+    } else if (modalType === "Equity") {
+      grouped["Equity"] = {};
+      filteredAccounts.forEach(acc => {
+        const type = acc.accountType || acc.type || "Equity";
+        if (!grouped["Equity"][type]) grouped["Equity"][type] = [];
+        grouped["Equity"][type].push(acc);
+      });
+    } else {
+      filteredAccounts.forEach(acc => {
+        const type = acc.accountType || acc.type || "Other";
+        if (!grouped[type]) grouped[type] = [];
+        grouped[type].push(acc);
+      });
     }
-    return {};
+
+    return grouped;
   };
 
-  const toggleCategory = (categoryPath) => {
+  const toggleCategory = (categoryPath: string) => {
     setExpandedCategories(prev => ({
       ...prev,
       [categoryPath]: !prev[categoryPath]
     }));
   };
 
-  const getFilteredAccounts = () => {
-    const grouped = getGroupedAccounts();
-    const allAccounts = [];
-
-    const extractAccounts = (data) => {
-      if (Array.isArray(data)) {
-        data.forEach(acc => {
-          if (accountSearchTerm === "" ||
-            acc.accountName?.toLowerCase().includes(accountSearchTerm.toLowerCase()) ||
-            acc.accountCode?.toLowerCase().includes(accountSearchTerm.toLowerCase())) {
-            allAccounts.push(acc);
-          }
-        });
-      } else if (typeof data === 'object') {
-        Object.keys(data).forEach(key => {
-          extractAccounts(data[key]);
-        });
-      }
-    };
-
-    Object.keys(grouped).forEach(mainCategory => {
-      extractAccounts(grouped[mainCategory]);
-    });
-
-    return allAccounts;
-  };
-
-  const handleOpenModal = (type) => {
+  const handleOpenModal = (type: string) => {
     setModalAccountType(type);
-    let currentSelected = [];
-    if (type === "income") {
+    let currentSelected: string[] = [];
+    if (type === "Income") {
       currentSelected = selectedIncomeAccounts;
-    } else if (type === "expense") {
+    } else if (type === "Expense") {
       currentSelected = selectedExpenseAccounts;
-    } else if (type === "asset") {
+    } else if (type === "Asset") {
       currentSelected = selectedAssetAccounts;
-    } else if (type === "liability") {
+    } else if (type === "Liability") {
       currentSelected = selectedLiabilityAccounts;
-    } else if (type === "equity") {
+    } else if (type === "Equity") {
       currentSelected = selectedEquityAccounts;
     }
     setModalSelectedAccounts([...currentSelected]);
     setAccountSearchTerm("");
     // Initialize all categories as expanded
-    if (type === "income") {
+    if (type === "Income") {
       setExpandedCategories({
         "Income": true,
         "Income:Income": true,
         "Income:Other Income": true
       });
-    } else if (type === "expense") {
+    } else if (type === "Expense") {
       setExpandedCategories({
         "Expense": true,
         "Expense:Cost Of Goods Sold": true
       });
-    } else if (type === "asset") {
+    } else if (type === "Asset") {
       setExpandedCategories({
         "Assets": true,
         "Assets:Current Assets": true,
@@ -364,14 +255,14 @@ function NewBudget() {
         "Assets:Other Assets": true,
         "Assets:Fixed Assets": true
       });
-    } else if (type === "liability") {
+    } else if (type === "Liability") {
       setExpandedCategories({
         "Liabilities": true,
         "Liabilities:Current Liabilities": true,
         "Liabilities:Long Term Liabilities": true,
         "Liabilities:Other Liabilities": true
       });
-    } else if (type === "equity") {
+    } else if (type === "Equity") {
       setExpandedCategories({
         "Equities": true,
         "Equities:Equities": true
@@ -387,7 +278,7 @@ function NewBudget() {
     setAccountSearchTerm("");
   };
 
-  const handleToggleAccount = (accountName) => {
+  const handleToggleAccount = (accountName: string) => {
     setModalSelectedAccounts(prev => {
       if (prev.includes(accountName)) {
         return prev.filter(name => name !== accountName);
@@ -399,20 +290,49 @@ function NewBudget() {
 
   const handleSelectAll = () => {
     const filtered = getFilteredAccounts();
-    const allNames = filtered.map(acc => acc.accountName).filter(Boolean);
+    const allNames = filtered.map(acc => acc.accountName || acc.name || "").filter(Boolean);
     setModalSelectedAccounts(allNames);
   };
 
+  const getFilteredAccounts = (): any[] => {
+    const grouped = getGroupedAccounts();
+    const accountsList: any[] = [];
+
+    const extractAccounts = (data: any) => {
+      if (Array.isArray(data)) {
+        data.forEach(acc => {
+          const name = acc.accountName || acc.name || "";
+          const code = acc.accountCode || acc.code || "";
+          if (accountSearchTerm === "" ||
+            name.toLowerCase().includes(accountSearchTerm.toLowerCase()) ||
+            code.toLowerCase().includes(accountSearchTerm.toLowerCase())) {
+            accountsList.push(acc);
+          }
+        });
+      } else if (typeof data === 'object' && data !== null) {
+        Object.keys(data).forEach(key => {
+          extractAccounts(data[key]);
+        });
+      }
+    };
+
+    Object.keys(grouped).forEach(key => {
+      extractAccounts(grouped[key]);
+    });
+
+    return accountsList;
+  };
+
   const handleUpdateAccounts = () => {
-    if (modalAccountType === "income") {
+    if (modalAccountType === "Income") {
       setSelectedIncomeAccounts([...modalSelectedAccounts]);
-    } else if (modalAccountType === "expense") {
+    } else if (modalAccountType === "Expense") {
       setSelectedExpenseAccounts([...modalSelectedAccounts]);
-    } else if (modalAccountType === "asset") {
+    } else if (modalAccountType === "Asset") {
       setSelectedAssetAccounts([...modalSelectedAccounts]);
-    } else if (modalAccountType === "liability") {
+    } else if (modalAccountType === "Liability") {
       setSelectedLiabilityAccounts([...modalSelectedAccounts]);
-    } else if (modalAccountType === "equity") {
+    } else if (modalAccountType === "Equity") {
       setSelectedEquityAccounts([...modalSelectedAccounts]);
     }
     handleCloseModal();
@@ -421,11 +341,11 @@ function NewBudget() {
 
   // Close dropdowns when clicking outside
   useEffect(() => {
-    function handleClickOutside(event) {
-      if (fiscalYearRef.current && !fiscalYearRef.current.contains(event.target)) {
+    function handleClickOutside(event: MouseEvent) {
+      if (fiscalYearRef.current && !fiscalYearRef.current.contains(event.target as Node)) {
         setIsFiscalYearOpen(false);
       }
-      if (budgetPeriodRef.current && !budgetPeriodRef.current.contains(event.target)) {
+      if (budgetPeriodRef.current && !budgetPeriodRef.current.contains(event.target as Node)) {
         setIsBudgetPeriodOpen(false);
       }
     }
@@ -450,10 +370,10 @@ function NewBudget() {
   };
 
   // Validation states
-  const [errors, setErrors] = useState({});
-  const [touched, setTouched] = useState({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
 
-  const validateField = (name, value) => {
+  const validateField = (name: string, value: string) => {
     const newErrors = { ...errors };
     if (!value || value.trim() === "") {
       newErrors[name] = "This field is required";
@@ -463,1896 +383,686 @@ function NewBudget() {
     setErrors(newErrors);
   };
 
-  const handleBlur = (name, value) => {
+  const handleBlur = (name: string, value: string) => {
     setTouched({ ...touched, [name]: true });
     validateField(name, value);
   };
 
   return (
     <div style={{
-      minHeight: "calc(100vh - 60px)",
-      width: "100%",
+      minHeight: "100vh",
+      backgroundColor: "white",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "flex-start",
       padding: "0"
     }}>
       <div style={{
-        backgroundColor: "white",
-        borderRadius: "0",
-        boxShadow: "none",
-        maxWidth: "100%",
-        margin: "0",
-        overflow: "hidden"
+        width: "100%",
+        maxWidth: "1000px",
+        display: "flex",
+        flexDirection: "column",
+        position: "relative"
       }}>
-        {/* Header - Fixed */}
+        {/* Header */}
         <div style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "16px 24px",
-          borderBottom: "1px solid #e5e7eb",
-          backgroundColor: "white",
-          position: "fixed",
-          top: 0,
-          left: "var(--sidebar-width, 260px)",
-          right: 0,
-          zIndex: 100,
-          transition: "left 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+          padding: "24px 32px",
+          borderBottom: "1px solid #f3f4f6"
         }}>
           <h1 style={{
-            fontSize: "20px",
-            fontWeight: "600",
+            fontSize: "24px",
+            fontWeight: "500",
             color: "#111827",
             margin: 0
           }}>
             New Budget
           </h1>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <button
-              onClick={() => navigate("/accountant/budgets")}
-              type="button"
-              aria-label="Cancel"
-              style={{
-                padding: "8px 16px",
-                backgroundColor: "transparent",
-                border: "1px solid #e5e7eb",
-                borderRadius: "6px",
-                fontSize: "14px",
-                fontWeight: "500",
-                cursor: "pointer",
-                color: "#6b7280",
-                transition: "all 0.2s ease"
-              }}
-              onMouseOver={(e) => {
-                e.target.style.backgroundColor = "#f9fafb";
-                e.target.style.borderColor = "#d1d5db";
-                e.target.style.color = "#111827";
-              }}
-              onMouseOut={(e) => {
-                e.target.style.backgroundColor = "transparent";
-                e.target.style.borderColor = "#e5e7eb";
-                e.target.style.color = "#6b7280";
-              }}
-            >
-              Cancel
-            </button>
-
-            <button
-              onClick={() => navigate("/accountant/budgets")}
-              type="button"
-              aria-label="Close"
-              style={{
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                padding: "8px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: "6px",
-                transition: "all 0.2s ease",
-                color: "#6b7280"
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.backgroundColor = "#f3f4f6";
-                e.target.style.color = "#111827";
-                e.target.style.transform = "rotate(90deg)";
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.backgroundColor = "transparent";
-                e.target.style.color = "#6b7280";
-                e.target.style.transform = "rotate(0deg)";
-              }}
-            >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <div style={{
-          width: "100%",
-          padding: "24px",
-          minHeight: "calc(100vh - 200px)",
-          marginTop: "70px"
-        }}>
-
-          {/* Form */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-            {/* Name Field */}
-            <div style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "8px",
-              marginBottom: "24px"
-            }}>
-              <label
-                htmlFor="budget-name"
-                style={{
-                  fontSize: "13px",
-                  fontWeight: "500",
-                  color: "#111827",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  marginBottom: "6px"
-                }}
-              >
-                Name <span style={{ color: "#ef4444" }}>*</span>
-              </label>
-              <div style={{ position: "relative", maxWidth: "400px" }}>
-                <input
-                  id="budget-name"
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => {
-                    setFormData(prev => ({ ...prev, name: e.target.value }));
-                    if (touched.name) validateField("name", e.target.value);
-                  }}
-                  placeholder="Enter budget name"
-                  aria-label="Budget name"
-                  aria-required="true"
-                  aria-invalid={errors.name ? "true" : "false"}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    border: errors.name && touched.name
-                      ? "1px solid #ef4444"
-                      : formData.name && !errors.name
-                        ? "1px solid #10b981"
-                        : "1px solid #e5e7eb",
-                    borderRadius: "8px",
-                    fontSize: "14px",
-                    outline: "none",
-                    backgroundColor: "white",
-                    color: "#111827",
-                    transition: "all 0.2s ease",
-                    boxShadow: errors.name && touched.name
-                      ? "0 0 0 3px rgba(239, 68, 68, 0.1), 0 1px 2px rgba(0, 0, 0, 0.05)"
-                      : formData.name && !errors.name
-                        ? "0 0 0 3px rgba(16, 185, 129, 0.1), 0 1px 2px rgba(0, 0, 0, 0.05)"
-                        : "0 1px 2px rgba(0, 0, 0, 0.05)"
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = "#156372";
-                    e.target.style.boxShadow = "0 0 0 3px rgba(38, 99, 235, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1)";
-                    e.target.style.transform = "translateY(-1px)";
-                  }}
-                  onBlur={(e) => {
-                    handleBlur("name", e.target.value);
-                    if (errors.name && touched.name) {
-                      e.target.style.borderColor = "#ef4444";
-                      e.target.style.boxShadow = "0 0 0 3px rgba(239, 68, 68, 0.1), 0 1px 2px rgba(0, 0, 0, 0.05)";
-                    } else if (formData.name && !errors.name) {
-                      e.target.style.borderColor = "#10b981";
-                      e.target.style.boxShadow = "0 0 0 3px rgba(16, 185, 129, 0.1), 0 1px 2px rgba(0, 0, 0, 0.05)";
-                    } else {
-                      e.target.style.borderColor = "#e5e7eb";
-                      e.target.style.boxShadow = "0 1px 2px rgba(0, 0, 0, 0.05)";
-                    }
-                    e.target.style.transform = "translateY(0)";
-                  }}
-                />
-                {errors.name && touched.name && (
-                  <div style={{
-                    marginTop: "6px",
-                    fontSize: "13px",
-                    color: "#ef4444",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px"
-                  }}>
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <circle cx="8" cy="8" r="7" stroke="#ef4444" strokeWidth="1.5" fill="none" />
-                      <path d="M8 5v3M8 10h.01" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" />
-                    </svg>
-                    {errors.name}
-                  </div>
-                )}
-                {formData.name && !errors.name && touched.name && (
-                  <div style={{
-                    position: "absolute",
-                    right: "12px",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    color: "#10b981"
-                  }}>
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                      <circle cx="10" cy="10" r="9" fill="#10b981" />
-                      <path d="M6 10l3 3 5-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Fiscal Year Field */}
-            <div style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "8px",
-              marginBottom: "24px"
-            }}>
-              <label
-                htmlFor="fiscal-year"
-                style={{
-                  fontSize: "13px",
-                  fontWeight: "500",
-                  color: "#111827",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  marginBottom: "6px"
-                }}
-              >
-                Fiscal Year <span style={{ color: "#ef4444" }}>*</span>
-              </label>
-              <div ref={fiscalYearRef} style={{ position: "relative", maxWidth: "400px" }}>
-                <div
-                  id="fiscal-year"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setIsFiscalYearOpen(!isFiscalYearOpen)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setIsFiscalYearOpen(!isFiscalYearOpen);
-                    }
-                  }}
-                  aria-label="Select fiscal year"
-                  aria-expanded={isFiscalYearOpen}
-                  aria-required="true"
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    border: errors.fiscalYear && touched.fiscalYear
-                      ? "1px solid #ef4444"
-                      : formData.fiscalYear && !errors.fiscalYear
-                        ? "1px solid #10b981"
-                        : "1px solid #e5e7eb",
-                    borderRadius: "8px",
-                    fontSize: "14px",
-                    background: "white",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    color: "#111827",
-                    transition: "all 0.2s ease",
-                    boxShadow: isFiscalYearOpen
-                      ? "0 0 0 3px rgba(38, 99, 235, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1)"
-                      : errors.fiscalYear && touched.fiscalYear
-                        ? "0 0 0 3px rgba(239, 68, 68, 0.1), 0 1px 2px rgba(0, 0, 0, 0.05)"
-                        : formData.fiscalYear && !errors.fiscalYear
-                          ? "0 0 0 3px rgba(16, 185, 129, 0.1), 0 1px 2px rgba(0, 0, 0, 0.05)"
-                          : "0 1px 2px rgba(0, 0, 0, 0.05)"
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "#156372";
-                    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(38, 99, 235, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1)";
-                    e.currentTarget.style.transform = "translateY(-1px)";
-                  }}
-                  onBlur={(e) => {
-                    if (errors.fiscalYear && touched.fiscalYear) {
-                      e.currentTarget.style.borderColor = "#ef4444";
-                      e.currentTarget.style.boxShadow = "0 0 0 3px rgba(239, 68, 68, 0.1), 0 1px 2px rgba(0, 0, 0, 0.05)";
-                    } else if (formData.fiscalYear && !errors.fiscalYear) {
-                      e.currentTarget.style.borderColor = "#10b981";
-                      e.currentTarget.style.boxShadow = "0 0 0 3px rgba(16, 185, 129, 0.1), 0 1px 2px rgba(0, 0, 0, 0.05)";
-                    } else {
-                      e.currentTarget.style.borderColor = "#e5e7eb";
-                      e.currentTarget.style.boxShadow = "0 1px 2px rgba(0, 0, 0, 0.05)";
-                    }
-                    e.currentTarget.style.transform = "translateY(0)";
-                  }}
-                >
-                  <span>{formData.fiscalYear}</span>
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 14 14"
-                    fill="none"
-                    style={{
-                      transform: isFiscalYearOpen ? "rotate(180deg)" : "rotate(0deg)",
-                      transition: "transform 0.2s ease"
-                    }}
-                  >
-                    <path d="M3.5 5.25l3.5 3.5 3.5-3.5" stroke="#6b7280" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </div>
-
-                {isFiscalYearOpen && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "calc(100% + 4px)",
-                      left: 0,
-                      right: 0,
-                      backgroundColor: "white",
-                      border: "1px solid #d1d5db",
-                      borderRadius: "8px",
-                      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
-                      zIndex: 1000,
-                      maxHeight: "300px",
-                      overflow: "hidden",
-                      display: "flex",
-                      flexDirection: "column"
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {/* Search Bar */}
-                    <div style={{
-                      padding: "8px",
-                      borderBottom: "1px solid #e5e7eb",
-                      backgroundColor: "#f9fafb"
-                    }}>
-                      <div style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        padding: "8px 12px",
-                        border: "1px solid #d1d5db",
-                        borderRadius: "6px",
-                        backgroundColor: "white"
-                      }}>
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                          <circle cx="7" cy="7" r="5" stroke="#9ca3af" strokeWidth="1.5" fill="none" />
-                          <path d="M11 11l-3-3" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" />
-                        </svg>
-                        <input
-                          type="text"
-                          placeholder="Search"
-                          value={fiscalYearSearch}
-                          onChange={(e) => setFiscalYearSearch(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          style={{
-                            flex: 1,
-                            border: "none",
-                            outline: "none",
-                            fontSize: "14px",
-                            background: "transparent"
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Options List */}
-                    <div style={{
-                      maxHeight: "240px",
-                      overflowY: "auto",
-                      padding: "4px 0"
-                    }}>
-                      {getFilteredFiscalYears().map((year) => (
-                        <div
-                          key={year}
-                          onClick={() => {
-                            setFormData(prev => ({ ...prev, fiscalYear: year }));
-                            setIsFiscalYearOpen(false);
-                            setFiscalYearSearch("");
-                          }}
-                          style={{
-                            padding: "10px 14px",
-                            cursor: "pointer",
-                            fontSize: "14px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            backgroundColor: formData.fiscalYear === year ? "#eff6ff" : "transparent",
-                            color: "#111827",
-                            transition: "all 0.15s ease"
-                          }}
-                          onMouseEnter={(e) => {
-                            if (formData.fiscalYear !== year) {
-                              e.currentTarget.style.backgroundColor = "#f9fafb";
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (formData.fiscalYear !== year) {
-                              e.currentTarget.style.backgroundColor = "transparent";
-                            }
-                          }}
-                        >
-                          <span>{year}</span>
-                          {formData.fiscalYear === year && (
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                              <path d="M13 4l-6 6-3-3" stroke="#156372" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Budget Period Field */}
-            <div style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "8px",
-              marginBottom: "24px"
-            }}>
-              <label
-                htmlFor="budget-period"
-                style={{
-                  fontSize: "13px",
-                  fontWeight: "500",
-                  color: "#111827",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  marginBottom: "6px"
-                }}
-              >
-                Budget Period <span style={{ color: "#ef4444" }}>*</span>
-              </label>
-              <div ref={budgetPeriodRef} style={{ position: "relative", maxWidth: "400px" }}>
-                <div
-                  id="budget-period"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setIsBudgetPeriodOpen(!isBudgetPeriodOpen)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setIsBudgetPeriodOpen(!isBudgetPeriodOpen);
-                    }
-                  }}
-                  aria-label="Select budget period"
-                  aria-expanded={isBudgetPeriodOpen}
-                  aria-required="true"
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    border: errors.budgetPeriod && touched.budgetPeriod
-                      ? "1px solid #ef4444"
-                      : formData.budgetPeriod && !errors.budgetPeriod
-                        ? "1px solid #10b981"
-                        : "1px solid #e5e7eb",
-                    borderRadius: "8px",
-                    fontSize: "14px",
-                    background: "white",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    color: "#111827",
-                    transition: "all 0.2s ease",
-                    boxShadow: isBudgetPeriodOpen
-                      ? "0 0 0 3px rgba(38, 99, 235, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1)"
-                      : errors.budgetPeriod && touched.budgetPeriod
-                        ? "0 0 0 3px rgba(239, 68, 68, 0.1), 0 1px 2px rgba(0, 0, 0, 0.05)"
-                        : formData.budgetPeriod && !errors.budgetPeriod
-                          ? "0 0 0 3px rgba(16, 185, 129, 0.1), 0 1px 2px rgba(0, 0, 0, 0.05)"
-                          : "0 1px 2px rgba(0, 0, 0, 0.05)"
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "#156372";
-                    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(38, 99, 235, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1)";
-                    e.currentTarget.style.transform = "translateY(-1px)";
-                  }}
-                  onBlur={(e) => {
-                    if (errors.budgetPeriod && touched.budgetPeriod) {
-                      e.currentTarget.style.borderColor = "#ef4444";
-                      e.currentTarget.style.boxShadow = "0 0 0 3px rgba(239, 68, 68, 0.1), 0 1px 2px rgba(0, 0, 0, 0.05)";
-                    } else if (formData.budgetPeriod && !errors.budgetPeriod) {
-                      e.currentTarget.style.borderColor = "#10b981";
-                      e.currentTarget.style.boxShadow = "0 0 0 3px rgba(16, 185, 129, 0.1), 0 1px 2px rgba(0, 0, 0, 0.05)";
-                    } else {
-                      e.currentTarget.style.borderColor = "#e5e7eb";
-                      e.currentTarget.style.boxShadow = "0 1px 2px rgba(0, 0, 0, 0.05)";
-                    }
-                    e.currentTarget.style.transform = "translateY(0)";
-                  }}
-                >
-                  <span>{formData.budgetPeriod}</span>
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 14 14"
-                    fill="none"
-                    style={{
-                      transform: isBudgetPeriodOpen ? "rotate(180deg)" : "rotate(0deg)",
-                      transition: "transform 0.2s ease"
-                    }}
-                  >
-                    <path d="M3.5 5.25l3.5 3.5 3.5-3.5" stroke="#6b7280" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </div>
-
-                {isBudgetPeriodOpen && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "calc(100% + 4px)",
-                      left: 0,
-                      right: 0,
-                      backgroundColor: "white",
-                      border: "1px solid #d1d5db",
-                      borderRadius: "8px",
-                      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
-                      zIndex: 1000,
-                      maxHeight: "300px",
-                      overflow: "hidden",
-                      display: "flex",
-                      flexDirection: "column"
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {/* Search Bar */}
-                    <div style={{
-                      padding: "8px",
-                      borderBottom: "1px solid #e5e7eb",
-                      backgroundColor: "#f9fafb"
-                    }}>
-                      <div style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        padding: "8px 12px",
-                        border: "1px solid #d1d5db",
-                        borderRadius: "6px",
-                        backgroundColor: "white"
-                      }}>
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                          <circle cx="7" cy="7" r="5" stroke="#9ca3af" strokeWidth="1.5" fill="none" />
-                          <path d="M11 11l-3-3" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" />
-                        </svg>
-                        <input
-                          type="text"
-                          placeholder="Search"
-                          value={budgetPeriodSearch}
-                          onChange={(e) => setBudgetPeriodSearch(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          style={{
-                            flex: 1,
-                            border: "none",
-                            outline: "none",
-                            fontSize: "14px",
-                            background: "transparent"
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Options List */}
-                    <div style={{
-                      maxHeight: "240px",
-                      overflowY: "auto",
-                      padding: "4px 0"
-                    }}>
-                      {getFilteredBudgetPeriods().map((period) => (
-                        <div
-                          key={period}
-                          onClick={() => {
-                            setFormData(prev => ({ ...prev, budgetPeriod: period }));
-                            setIsBudgetPeriodOpen(false);
-                            setBudgetPeriodSearch("");
-                          }}
-                          style={{
-                            padding: "10px 14px",
-                            cursor: "pointer",
-                            fontSize: "14px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            backgroundColor: formData.budgetPeriod === period ? "#eff6ff" : "transparent",
-                            color: "#111827",
-                            transition: "all 0.15s ease"
-                          }}
-                          onMouseEnter={(e) => {
-                            if (formData.budgetPeriod !== period) {
-                              e.currentTarget.style.backgroundColor = "#f9fafb";
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (formData.budgetPeriod !== period) {
-                              e.currentTarget.style.backgroundColor = "transparent";
-                            }
-                          }}
-                        >
-                          <span>{period}</span>
-                          {formData.budgetPeriod === period && (
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                              <path d="M13 4l-6 6-3-3" stroke="#156372" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Income and Expense Accounts Section */}
-            <div>
-              <div style={{
-                fontSize: "12px",
-                fontWeight: "600",
-                color: "#6b7280",
-                textTransform: "uppercase",
-                marginBottom: "20px"
-              }}>
-                INCOME AND EXPENSE ACCOUNTS
-              </div>
-
-              {/* Income Accounts */}
-              <div style={{ display: "flex", alignItems: "flex-start", gap: "24px", marginBottom: "24px" }}>
-                <label style={{
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  color: "#111827",
-                  minWidth: "120px",
-                  paddingTop: "10px"
-                }}>
-                  Income Accounts
-                </label>
-                <div style={{ flex: 1 }}>
-                  <div style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: "8px",
-                    padding: "16px",
-                    backgroundColor: "white",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "12px"
-                  }}>
-                    {selectedIncomeAccounts.length > 0 && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                        {selectedIncomeAccounts.map((account, index) => (
-                          <div
-                            key={index}
-                            style={{
-                              padding: "6px 12px",
-                              backgroundColor: "#f3f4f6",
-                              borderRadius: "6px",
-                              fontSize: "14px",
-                              color: "#111827",
-                              fontWeight: "400"
-                            }}
-                          >
-                            {account}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <button
-                      onClick={() => handleOpenModal("income")}
-                      style={{
-                        padding: "6px 12px",
-                        backgroundColor: "transparent",
-                        color: "#60a5fa",
-                        border: "1px dashed #60a5fa",
-                        borderRadius: "6px",
-                        fontSize: "13px",
-                        fontWeight: "500",
-                        cursor: "pointer",
-                        alignSelf: "flex-start",
-                        transition: "all 0.2s ease"
-                      }}
-                      onMouseOver={(e) => {
-                        e.target.style.backgroundColor = "#e0f2fe";
-                        e.target.style.borderColor = "#156372";
-                        e.target.style.color = "#156372";
-                      }}
-                      onMouseOut={(e) => {
-                        e.target.style.backgroundColor = "transparent";
-                        e.target.style.borderColor = "#60a5fa";
-                        e.target.style.color = "#60a5fa";
-                      }}
-                    >
-                      Add or Remove Accounts
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Expense Accounts */}
-              <div style={{ display: "flex", alignItems: "flex-start", gap: "24px", marginBottom: "24px" }}>
-                <label style={{
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  color: "#111827",
-                  minWidth: "120px",
-                  paddingTop: "10px"
-                }}>
-                  Expense Accounts
-                </label>
-                <div style={{ flex: 1 }}>
-                  <div style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: "8px",
-                    padding: "16px",
-                    backgroundColor: "white",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "12px"
-                  }}>
-                    {selectedExpenseAccounts.length > 0 && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                        {selectedExpenseAccounts.map((account, index) => (
-                          <div
-                            key={index}
-                            style={{
-                              padding: "6px 12px",
-                              backgroundColor: "#f3f4f6",
-                              borderRadius: "6px",
-                              fontSize: "14px",
-                              color: "#111827",
-                              fontWeight: "400"
-                            }}
-                          >
-                            {account}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <button
-                      onClick={() => handleOpenModal("expense")}
-                      style={{
-                        padding: "6px 12px",
-                        backgroundColor: "transparent",
-                        color: "#60a5fa",
-                        border: "1px dashed #60a5fa",
-                        borderRadius: "6px",
-                        fontSize: "13px",
-                        fontWeight: "500",
-                        cursor: "pointer",
-                        alignSelf: "flex-start",
-                        transition: "all 0.2s ease"
-                      }}
-                      onMouseOver={(e) => {
-                        e.target.style.backgroundColor = "#e0f2fe";
-                        e.target.style.borderColor = "#156372";
-                        e.target.style.color = "#156372";
-                      }}
-                      onMouseOut={(e) => {
-                        e.target.style.backgroundColor = "transparent";
-                        e.target.style.borderColor = "#60a5fa";
-                        e.target.style.color = "#60a5fa";
-                      }}
-                    >
-                      Add or Remove Accounts
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Include Asset, Liability, and Equity Accounts Checkbox - Only show when unchecked */}
-              {!includeAssetLiabilityEquity && (
-                <div style={{ display: "flex", alignItems: "flex-start", gap: "24px" }}>
-                  <div style={{ minWidth: "120px" }}></div>
-                  <label style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "10px",
-                    cursor: "pointer"
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <div
-                        onClick={() => setIncludeAssetLiabilityEquity(!includeAssetLiabilityEquity)}
-                        style={{
-                          width: "20px",
-                          height: "20px",
-                          borderRadius: "50%",
-                          backgroundColor: includeAssetLiabilityEquity ? "#156372" : "transparent",
-                          border: includeAssetLiabilityEquity ? "none" : "2px solid #156372",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          cursor: "pointer",
-                          flexShrink: 0
-                        }}
-                      >
-                        {includeAssetLiabilityEquity && (
-                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                            <path d="M6 3v6M3 6h6" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-                          </svg>
-                        )}
-                        {!includeAssetLiabilityEquity && (
-                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                            <path d="M6 3v6M3 6h6" stroke="#156372" strokeWidth="1.5" strokeLinecap="round" />
-                          </svg>
-                        )}
-                      </div>
-                      <span style={{ fontSize: "14px", color: "#111827" }}>
-                        Include Asset, Liability, and Equity Accounts in Budget
-                      </span>
-                    </div>
-                  </label>
-                </div>
-              )}
-
-              {/* Reporting Tag Association */}
-              <div style={{ display: "flex", alignItems: "flex-start", gap: "24px", marginTop: "16px" }}>
-                <div style={{ minWidth: "120px" }}></div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px", cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={createForReportingTag}
-                      onChange={(e) => setCreateForReportingTag(e.target.checked)}
-                    />
-                    <span style={{ fontSize: "14px", color: "#111827" }}>
-                      Create this budget for a specific reporting tag
-                    </span>
-                  </label>
-                  {createForReportingTag && (
-                    <div style={{ display: "flex", gap: "12px", maxWidth: "560px" }}>
-                      <input
-                        type="text"
-                        value={reportingTagName}
-                        onChange={(e) => setReportingTagName(e.target.value)}
-                        placeholder="Tag Name"
-                        style={{
-                          flex: 1,
-                          padding: "10px 12px",
-                          border: "1px solid #e5e7eb",
-                          borderRadius: "8px",
-                          fontSize: "14px",
-                        }}
-                      />
-                      <select
-                        value={reportingTagOption}
-                        onChange={(e) => setReportingTagOption(e.target.value)}
-                        style={{
-                          width: "180px",
-                          padding: "10px 12px",
-                          border: "1px solid #e5e7eb",
-                          borderRadius: "8px",
-                          fontSize: "14px",
-                          backgroundColor: "white",
-                        }}
-                      >
-                        <option value="All">All</option>
-                        <option value="Contains">Contains</option>
-                        <option value="Starts With">Starts With</option>
-                        <option value="Ends With">Ends With</option>
-                      </select>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Asset, Liability, and Equity Accounts Sections - Shown when checkbox is checked */}
-              {includeAssetLiabilityEquity && (
-                <>
-                  {/* Asset Accounts */}
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: "24px", marginTop: "24px" }}>
-                    <label style={{
-                      fontSize: "14px",
-                      fontWeight: "500",
-                      color: "#111827",
-                      minWidth: "120px",
-                      paddingTop: "10px"
-                    }}>
-                      Asset Accounts
-                    </label>
-                    <div style={{ flex: 1 }}>
-                      <div style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "8px",
-                        padding: "16px",
-                        backgroundColor: "white",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "12px"
-                      }}>
-                        {selectedAssetAccounts.length > 0 && (
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                            {selectedAssetAccounts.map((account, index) => (
-                              <div
-                                key={index}
-                                style={{
-                                  padding: "6px 12px",
-                                  backgroundColor: "#f3f4f6",
-                                  borderRadius: "6px",
-                                  fontSize: "14px",
-                                  color: "#111827",
-                                  fontWeight: "400"
-                                }}
-                              >
-                                {account}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <button
-                          onClick={() => handleOpenModal("asset")}
-                          style={{
-                            padding: "6px 12px",
-                            backgroundColor: "transparent",
-                            color: "#60a5fa",
-                            border: "1px dashed #60a5fa",
-                            borderRadius: "6px",
-                            fontSize: "13px",
-                            fontWeight: "500",
-                            cursor: "pointer",
-                            alignSelf: "flex-start",
-                            transition: "all 0.2s ease"
-                          }}
-                          onMouseOver={(e) => {
-                            e.target.style.backgroundColor = "#e0f2fe";
-                            e.target.style.borderColor = "#156372";
-                            e.target.style.color = "#156372";
-                          }}
-                          onMouseOut={(e) => {
-                            e.target.style.backgroundColor = "transparent";
-                            e.target.style.borderColor = "#60a5fa";
-                            e.target.style.color = "#60a5fa";
-                          }}
-                        >
-                          Add or Remove Accounts
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Liability Accounts */}
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: "24px", marginTop: "16px" }}>
-                    <label style={{
-                      fontSize: "14px",
-                      fontWeight: "500",
-                      color: "#111827",
-                      minWidth: "120px",
-                      paddingTop: "10px"
-                    }}>
-                      Liability Accounts
-                    </label>
-                    <div style={{ flex: 1 }}>
-                      <div style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "8px",
-                        padding: "16px",
-                        backgroundColor: "white",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "12px"
-                      }}>
-                        {selectedLiabilityAccounts.length > 0 && (
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                            {selectedLiabilityAccounts.map((account, index) => (
-                              <div
-                                key={index}
-                                style={{
-                                  padding: "6px 12px",
-                                  backgroundColor: "#f3f4f6",
-                                  borderRadius: "6px",
-                                  fontSize: "14px",
-                                  color: "#111827",
-                                  fontWeight: "400"
-                                }}
-                              >
-                                {account}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <button
-                          onClick={() => handleOpenModal("liability")}
-                          style={{
-                            padding: "6px 12px",
-                            backgroundColor: "transparent",
-                            color: "#60a5fa",
-                            border: "1px dashed #60a5fa",
-                            borderRadius: "6px",
-                            fontSize: "13px",
-                            fontWeight: "500",
-                            cursor: "pointer",
-                            alignSelf: "flex-start",
-                            transition: "all 0.2s ease"
-                          }}
-                          onMouseOver={(e) => {
-                            e.target.style.backgroundColor = "#e0f2fe";
-                            e.target.style.borderColor = "#156372";
-                            e.target.style.color = "#156372";
-                          }}
-                          onMouseOut={(e) => {
-                            e.target.style.backgroundColor = "transparent";
-                            e.target.style.borderColor = "#60a5fa";
-                            e.target.style.color = "#60a5fa";
-                          }}
-                        >
-                          Add or Remove Accounts
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Equity Accounts */}
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: "24px", marginTop: "16px" }}>
-                    <label style={{
-                      fontSize: "14px",
-                      fontWeight: "500",
-                      color: "#111827",
-                      minWidth: "120px",
-                      paddingTop: "10px"
-                    }}>
-                      Equity Accounts
-                    </label>
-                    <div style={{ flex: 1 }}>
-                      <div style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "8px",
-                        padding: "16px",
-                        backgroundColor: "white",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "12px"
-                      }}>
-                        {selectedEquityAccounts.length > 0 && (
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                            {selectedEquityAccounts.map((account, index) => (
-                              <div
-                                key={index}
-                                style={{
-                                  padding: "6px 12px",
-                                  backgroundColor: "#f3f4f6",
-                                  borderRadius: "6px",
-                                  fontSize: "14px",
-                                  color: "#111827",
-                                  fontWeight: "400"
-                                }}
-                              >
-                                {account}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <button
-                          onClick={() => handleOpenModal("equity")}
-                          style={{
-                            padding: "6px 12px",
-                            backgroundColor: "transparent",
-                            color: "#60a5fa",
-                            border: "1px dashed #60a5fa",
-                            borderRadius: "6px",
-                            fontSize: "13px",
-                            fontWeight: "500",
-                            cursor: "pointer",
-                            alignSelf: "flex-start",
-                            transition: "all 0.2s ease"
-                          }}
-                          onMouseOver={(e) => {
-                            e.target.style.backgroundColor = "#e0f2fe";
-                            e.target.style.borderColor = "#156372";
-                            e.target.style.color = "#156372";
-                          }}
-                          onMouseOut={(e) => {
-                            e.target.style.backgroundColor = "transparent";
-                            e.target.style.borderColor = "#60a5fa";
-                            e.target.style.color = "#60a5fa";
-                          }}
-                        >
-                          Add or Remove Accounts
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Action Buttons */}
-            <div style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: "12px",
-              paddingTop: "32px",
-              borderTop: "1px solid #e5e7eb",
-              marginTop: "24px"
-            }}>
-              <button
-                onClick={() => navigate("/accountant/budgets")}
-                type="button"
-                aria-label="Cancel form"
-                style={{
-                  padding: "12px 24px",
-                  backgroundColor: "transparent",
-                  border: "2px solid #e5e7eb",
-                  borderRadius: "12px",
-                  fontSize: "15px",
-                  fontWeight: "600",
-                  cursor: "pointer",
-                  color: "#6b7280",
-                  transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-                }}
-                onMouseOver={(e) => {
-                  e.target.style.backgroundColor = "#f9fafb";
-                  e.target.style.borderColor = "#d1d5db";
-                  e.target.style.color = "#111827";
-                  e.target.style.transform = "translateY(-2px)";
-                  e.target.style.boxShadow = "0 4px 6px rgba(0, 0, 0, 0.1)";
-                }}
-                onMouseOut={(e) => {
-                  e.target.style.backgroundColor = "transparent";
-                  e.target.style.borderColor = "#e5e7eb";
-                  e.target.style.color = "#6b7280";
-                  e.target.style.transform = "translateY(0)";
-                  e.target.style.boxShadow = "none";
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  // Validate all fields
-                  const allValid = formData.name && formData.fiscalYear && formData.budgetPeriod;
-                  if (allValid) {
-                    const { startDate, endDate, startYear } = parseFiscalYear(formData.fiscalYear);
-                    const periods = getPeriods(formData.budgetPeriod as any, formData.fiscalYear);
-                    const generatedLines = buildLinesFromSelections({
-                      periods,
-                      income: selectedIncomeAccounts,
-                      expense: selectedExpenseAccounts,
-                      asset: selectedAssetAccounts,
-                      liability: selectedLiabilityAccounts,
-                      equity: selectedEquityAccounts,
-                    });
-
-                    // Prepare budget data
-                    const budgetData = {
-                      ...(originalBudget || {}),
-                      name: formData.name,
-                      fiscalYear: startYear,
-                      fiscalYearLabel: formData.fiscalYear,
-                      budgetPeriod: formData.budgetPeriod,
-                      includeAssetLiabilityEquity: includeAssetLiabilityEquity,
-                      selectedIncomeAccounts: selectedIncomeAccounts,
-                      selectedExpenseAccounts: selectedExpenseAccounts,
-                      selectedAssetAccounts: selectedAssetAccounts,
-                      selectedLiabilityAccounts: selectedLiabilityAccounts,
-                      selectedEquityAccounts: selectedEquityAccounts,
-                      createForReportingTag,
-                      reportingTagName,
-                      reportingTagOption,
-                      startDate,
-                      endDate,
-                      lines: Array.isArray((originalBudget as any)?.lines) && (originalBudget as any).lines.length > 0
-                        ? (originalBudget as any).lines
-                        : generatedLines,
-                    };
-
-                    // Save budget
-                    const success = await saveBudget(budgetData);
-
-                    if (success) {
-                      // Navigate back to budgets list
-                      navigate("/accountant/budgets");
-                    } else {
-                      alert("Failed to save budget. Please try again.");
-                    }
-                  }
-                }}
-                type="button"
-                disabled={!formData.name || !formData.fiscalYear || !formData.budgetPeriod}
-                aria-label="Save budget"
-                style={{
-                  padding: "12px 32px",
-                  backgroundColor: formData.name && formData.fiscalYear && formData.budgetPeriod
-                    ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-                    : "#d1d5db",
-                  border: "none",
-                  borderRadius: "12px",
-                  fontSize: "15px",
-                  fontWeight: "600",
-                  cursor: formData.name && formData.fiscalYear && formData.budgetPeriod ? "pointer" : "not-allowed",
-                  color: "white",
-                  transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                  boxShadow: formData.name && formData.fiscalYear && formData.budgetPeriod
-                    ? "0 4px 6px rgba(102, 126, 234, 0.4)"
-                    : "none"
-                }}
-                onMouseOver={(e) => {
-                  if (formData.name && formData.fiscalYear && formData.budgetPeriod) {
-                    e.target.style.transform = "translateY(-2px) scale(1.02)";
-                    e.target.style.boxShadow = "0 8px 12px rgba(102, 126, 234, 0.5)";
-                  }
-                }}
-                onMouseOut={(e) => {
-                  if (formData.name && formData.fiscalYear && formData.budgetPeriod) {
-                    e.target.style.transform = "translateY(0) scale(1)";
-                    e.target.style.boxShadow = "0 4px 6px rgba(102, 126, 234, 0.4)";
-                  }
-                }}
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Configure Accounts Modal */}
-        {isModalOpen && (
-          <div
+          <button
+            onClick={() => navigate("/accountant/budgets")}
             style={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: "8px",
+              borderRadius: "50%",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              zIndex: 10000
+              color: "#9ca3af",
+              transition: "all 0.2s"
             }}
-            onClick={handleCloseModal}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "#fee2e2";
+              e.currentTarget.style.color = "#ef4444";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+              e.currentTarget.style.color = "#9ca3af";
+            }}
           >
-            <div
-              style={{
-                backgroundColor: "white",
-                borderRadius: "12px",
-                width: "90%",
-                maxWidth: "600px",
-                maxHeight: "80vh",
-                display: "flex",
-                flexDirection: "column",
-                boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Modal Header */}
-              <div style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "20px 24px",
-                borderBottom: "1px solid #e5e7eb"
-              }}>
-                <h2 style={{
-                  fontSize: "18px",
-                  fontWeight: "600",
-                  color: "#111827",
-                  margin: 0
-                }}>
-                  Configure Accounts
-                </h2>
-                <button
-                  onClick={handleCloseModal}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: "4px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderRadius: "4px"
-                  }}
-                  onMouseEnter={(e) => e.target.style.backgroundColor = "#f3f4f6"}
-                  onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
-                >
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                    <path d="M15 5L5 15M5 5l10 10" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </button>
-              </div>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
 
-              {/* Modal Content */}
-              <div style={{
-                padding: "20px 24px",
-                overflowY: "auto",
-                flex: 1
-              }}>
-                {/* Select Accounts Label */}
-                <div style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: "12px"
-                }}>
-                  <label style={{
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    color: "#111827"
-                  }}>
-                    Select Accounts <span style={{ color: "#ef4444" }}>*</span>
-                  </label>
-                  <button
-                    onClick={handleSelectAll}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "#156372",
-                      cursor: "pointer",
-                      fontSize: "14px",
-                      fontWeight: "500",
-                      padding: "4px 8px"
-                    }}
-                    onMouseEnter={(e) => e.target.style.textDecoration = "underline"}
-                    onMouseLeave={(e) => e.target.style.textDecoration = "none"}
-                  >
-                    Select All
-                  </button>
-                </div>
-
-                {/* Search Bar */}
-                <div style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  padding: "10px 12px",
-                  border: "1px solid #d1d5db",
-                  borderRadius: "8px",
-                  backgroundColor: "#f9fafb",
-                  marginBottom: "16px"
-                }}>
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <circle cx="7" cy="7" r="5" stroke="#9ca3af" strokeWidth="1.5" fill="none" />
-                    <path d="M11 11l-3-3" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                  <input
-                    type="text"
-                    placeholder="Search accounts..."
-                    value={accountSearchTerm}
-                    onChange={(e) => setAccountSearchTerm(e.target.value)}
-                    style={{
-                      flex: 1,
-                      border: "none",
-                      outline: "none",
-                      fontSize: "14px",
-                      background: "transparent",
-                      color: "#111827"
-                    }}
-                  />
-                </div>
-
-                {/* Account List */}
-                <div style={{
-                  maxHeight: "400px",
-                  overflowY: "auto"
-                }}>
-                  {Object.keys(getGroupedAccounts()).map(mainCategory => {
-                    const categoryData = getGroupedAccounts()[mainCategory];
-                    const isMainExpanded = expandedCategories[mainCategory] !== false;
-
-                    return (
-                      <div key={mainCategory} style={{ marginBottom: "8px" }}>
-                        {/* Main Category (Income) */}
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            padding: "8px 4px",
-                            cursor: "pointer"
-                          }}
-                          onClick={() => toggleCategory(mainCategory)}
-                        >
-                          <div style={{
-                            width: "20px",
-                            height: "20px",
-                            borderRadius: "50%",
-                            backgroundColor: "#156372",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0
-                          }}>
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 12 12"
-                              fill="none"
-                            >
-                              <path
-                                d="M3 6h6"
-                                stroke="white"
-                                strokeWidth="1.5"
-                                strokeLinecap="round"
-                              />
-                              {!isMainExpanded && (
-                                <path
-                                  d="M6 3v6"
-                                  stroke="white"
-                                  strokeWidth="1.5"
-                                  strokeLinecap="round"
-                                />
-                              )}
-                            </svg>
-                          </div>
-                          <div style={{
-                            width: "6px",
-                            height: "6px",
-                            borderRadius: "50%",
-                            backgroundColor: "#156372"
-                          }}></div>
-                          <span style={{
-                            fontSize: "14px",
-                            fontWeight: "600",
-                            color: "#111827"
-                          }}>
-                            {mainCategory}
-                          </span>
-                        </div>
-
-                        {/* Sub-categories and accounts */}
-                        {isMainExpanded && Object.keys(categoryData).map(subCategory => {
-                          const subCategoryData = categoryData[subCategory];
-                          const isSubCategoryObject = typeof subCategoryData === 'object' && !Array.isArray(subCategoryData);
-                          const categoryPath = `${mainCategory}:${subCategory}`;
-                          const isSubExpanded = expandedCategories[categoryPath] !== false;
-
-                          // If it's an object (nested structure), render nested categories
-                          if (isSubCategoryObject) {
-                            return (
-                              <div key={subCategory} style={{ marginLeft: "20px", marginBottom: "8px" }}>
-                                {/* Sub-category header */}
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "8px",
-                                    padding: "8px 4px",
-                                    cursor: "pointer"
-                                  }}
-                                  onClick={() => toggleCategory(categoryPath)}
-                                >
-                                  <div style={{
-                                    width: "20px",
-                                    height: "20px",
-                                    borderRadius: "50%",
-                                    backgroundColor: "#156372",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    flexShrink: 0
-                                  }}>
-                                    <svg
-                                      width="12"
-                                      height="12"
-                                      viewBox="0 0 12 12"
-                                      fill="none"
-                                    >
-                                      <path
-                                        d="M3 6h6"
-                                        stroke="white"
-                                        strokeWidth="1.5"
-                                        strokeLinecap="round"
-                                      />
-                                      {!isSubExpanded && (
-                                        <path
-                                          d="M6 3v6"
-                                          stroke="white"
-                                          strokeWidth="1.5"
-                                          strokeLinecap="round"
-                                        />
-                                      )}
-                                    </svg>
-                                  </div>
-                                  <div style={{
-                                    width: "6px",
-                                    height: "6px",
-                                    borderRadius: "50%",
-                                    backgroundColor: "#156372"
-                                  }}></div>
-                                  <span style={{
-                                    fontSize: "14px",
-                                    fontWeight: "600",
-                                    color: "#111827"
-                                  }}>
-                                    {subCategory}
-                                  </span>
-                                </div>
-
-                                {/* Nested sub-categories (3rd level) */}
-                                {isSubExpanded && Object.keys(subCategoryData).map(nestedCategory => {
-                                  const nestedData = subCategoryData[nestedCategory];
-                                  const isNestedObject = typeof nestedData === 'object' && !Array.isArray(nestedData);
-                                  const nestedPath = `${categoryPath}:${nestedCategory}`;
-                                  const isNestedExpanded = expandedCategories[nestedPath] !== false;
-
-                                  if (isNestedObject) {
-                                    // 4th level - render nested structure
-                                    return (
-                                      <div key={nestedCategory} style={{ marginLeft: "20px", marginBottom: "8px" }}>
-                                        <div
-                                          style={{
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: "8px",
-                                            padding: "8px 4px",
-                                            cursor: "pointer"
-                                          }}
-                                          onClick={() => toggleCategory(nestedPath)}
-                                        >
-                                          <div style={{
-                                            width: "20px",
-                                            height: "20px",
-                                            borderRadius: "50%",
-                                            backgroundColor: "#156372",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
-                                            flexShrink: 0
-                                          }}>
-                                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                                              <path d="M3 6h6" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-                                              {!isNestedExpanded && (
-                                                <path d="M6 3v6" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-                                              )}
-                                            </svg>
-                                          </div>
-                                          <div style={{
-                                            width: "6px",
-                                            height: "6px",
-                                            borderRadius: "50%",
-                                            backgroundColor: "#156372"
-                                          }}></div>
-                                          <span style={{
-                                            fontSize: "14px",
-                                            fontWeight: "600",
-                                            color: "#111827"
-                                          }}>
-                                            {nestedCategory}
-                                          </span>
-                                        </div>
-
-                                        {/* Accounts at 4th level */}
-                                        {isNestedExpanded && Array.isArray(nestedData) && (
-                                          nestedData
-                                            .filter(acc => {
-                                              if (accountSearchTerm === "") return true;
-                                              return acc.accountName?.toLowerCase().includes(accountSearchTerm.toLowerCase()) ||
-                                                acc.accountCode?.toLowerCase().includes(accountSearchTerm.toLowerCase());
-                                            })
-                                            .map(acc => {
-                                              const isSelected = modalSelectedAccounts.includes(acc.accountName);
-                                              return (
-                                                <div
-                                                  key={acc.accountName || acc.accountCode}
-                                                  style={{
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    justifyContent: "space-between",
-                                                    padding: "8px 12px",
-                                                    paddingLeft: "64px",
-                                                    fontSize: "14px",
-                                                    color: "#111827",
-                                                    cursor: "pointer",
-                                                    backgroundColor: isSelected ? "#f3f4f6" : "transparent",
-                                                    borderRadius: "4px"
-                                                  }}
-                                                  onClick={() => handleToggleAccount(acc.accountName)}
-                                                  onMouseEnter={(e) => {
-                                                    if (!isSelected) {
-                                                      e.currentTarget.style.backgroundColor = "#f9fafb";
-                                                    }
-                                                  }}
-                                                  onMouseLeave={(e) => {
-                                                    if (!isSelected) {
-                                                      e.currentTarget.style.backgroundColor = "transparent";
-                                                    }
-                                                  }}
-                                                >
-                                                  <span>{acc.accountName || acc.accountCode}</span>
-                                                  {isSelected && (
-                                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                                      <path
-                                                        d="M13 4l-6 6-3-3"
-                                                        stroke="#156372"
-                                                        strokeWidth="2"
-                                                        strokeLinecap="round"
-                                                        strokeLinejoin="round"
-                                                      />
-                                                    </svg>
-                                                  )}
-                                                </div>
-                                              );
-                                            })
-                                        )}
-                                      </div>
-                                    );
-                                  } else {
-                                    // 3rd level accounts
-                                    const accounts = Array.isArray(nestedData) ? nestedData : [];
-                                    const filteredAccounts = accounts.filter(acc => {
-                                      if (accountSearchTerm === "") return true;
-                                      return acc.accountName?.toLowerCase().includes(accountSearchTerm.toLowerCase()) ||
-                                        acc.accountCode?.toLowerCase().includes(accountSearchTerm.toLowerCase());
-                                    });
-
-                                    return (
-                                      <div key={nestedCategory} style={{ marginLeft: "20px", marginBottom: "8px" }}>
-                                        <div
-                                          style={{
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: "8px",
-                                            padding: "8px 4px",
-                                            cursor: "pointer"
-                                          }}
-                                          onClick={() => toggleCategory(nestedPath)}
-                                        >
-                                          <div style={{
-                                            width: "20px",
-                                            height: "20px",
-                                            borderRadius: "50%",
-                                            backgroundColor: "#156372",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
-                                            flexShrink: 0
-                                          }}>
-                                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                                              <path d="M3 6h6" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-                                              {!isNestedExpanded && (
-                                                <path d="M6 3v6" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-                                              )}
-                                            </svg>
-                                          </div>
-                                          <div style={{
-                                            width: "6px",
-                                            height: "6px",
-                                            borderRadius: "50%",
-                                            backgroundColor: "#156372"
-                                          }}></div>
-                                          <span style={{
-                                            fontSize: "14px",
-                                            fontWeight: "600",
-                                            color: "#111827"
-                                          }}>
-                                            {nestedCategory}
-                                          </span>
-                                        </div>
-
-                                        {isNestedExpanded && (
-                                          filteredAccounts.map(acc => {
-                                            const isSelected = modalSelectedAccounts.includes(acc.accountName);
-                                            return (
-                                              <div
-                                                key={acc.accountName || acc.accountCode}
-                                                style={{
-                                                  display: "flex",
-                                                  alignItems: "center",
-                                                  justifyContent: "space-between",
-                                                  padding: "8px 12px",
-                                                  paddingLeft: "44px",
-                                                  fontSize: "14px",
-                                                  color: "#111827",
-                                                  cursor: "pointer",
-                                                  backgroundColor: isSelected ? "#f3f4f6" : "transparent",
-                                                  borderRadius: "4px"
-                                                }}
-                                                onClick={() => handleToggleAccount(acc.accountName)}
-                                                onMouseEnter={(e) => {
-                                                  if (!isSelected) {
-                                                    e.currentTarget.style.backgroundColor = "#f9fafb";
-                                                  }
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                  if (!isSelected) {
-                                                    e.currentTarget.style.backgroundColor = "transparent";
-                                                  }
-                                                }}
-                                              >
-                                                <span>{acc.accountName || acc.accountCode}</span>
-                                                {isSelected && (
-                                                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                                    <path
-                                                      d="M13 4l-6 6-3-3"
-                                                      stroke="#156372"
-                                                      strokeWidth="2"
-                                                      strokeLinecap="round"
-                                                      strokeLinejoin="round"
-                                                    />
-                                                  </svg>
-                                                )}
-                                              </div>
-                                            );
-                                          })
-                                        )}
-                                      </div>
-                                    );
-                                  }
-                                })}
-                              </div>
-                            );
-                          } else {
-                            // Direct accounts array (2-level structure)
-                            const allSubAccounts = Array.isArray(subCategoryData) ? subCategoryData : [];
-                            const subAccounts = allSubAccounts.filter(acc => {
-                              if (accountSearchTerm === "") return true;
-                              return acc.accountName?.toLowerCase().includes(accountSearchTerm.toLowerCase()) ||
-                                acc.accountCode?.toLowerCase().includes(accountSearchTerm.toLowerCase());
-                            });
-
-                            return (
-                              <div key={subCategory} style={{ marginLeft: "20px", marginBottom: "8px" }}>
-                                {/* Sub-category */}
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "8px",
-                                    padding: "8px 4px",
-                                    cursor: "pointer"
-                                  }}
-                                  onClick={() => toggleCategory(categoryPath)}
-                                >
-                                  <div style={{
-                                    width: "20px",
-                                    height: "20px",
-                                    borderRadius: "50%",
-                                    backgroundColor: "#156372",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    flexShrink: 0
-                                  }}>
-                                    <svg
-                                      width="12"
-                                      height="12"
-                                      viewBox="0 0 12 12"
-                                      fill="none"
-                                    >
-                                      <path
-                                        d="M3 6h6"
-                                        stroke="white"
-                                        strokeWidth="1.5"
-                                        strokeLinecap="round"
-                                      />
-                                      {!isSubExpanded && (
-                                        <path
-                                          d="M6 3v6"
-                                          stroke="white"
-                                          strokeWidth="1.5"
-                                          strokeLinecap="round"
-                                        />
-                                      )}
-                                    </svg>
-                                  </div>
-                                  <div style={{
-                                    width: "6px",
-                                    height: "6px",
-                                    borderRadius: "50%",
-                                    backgroundColor: "#156372"
-                                  }}></div>
-                                  <span style={{
-                                    fontSize: "14px",
-                                    fontWeight: "600",
-                                    color: "#111827"
-                                  }}>
-                                    {subCategory}
-                                  </span>
-                                </div>
-
-                                {/* Individual Accounts */}
-                                {isSubExpanded && (
-                                  subAccounts.map(acc => {
-                                    const isSelected = modalSelectedAccounts.includes(acc.accountName);
-                                    return (
-                                      <div
-                                        key={acc.accountName || acc.accountCode}
-                                        style={{
-                                          display: "flex",
-                                          alignItems: "center",
-                                          justifyContent: "space-between",
-                                          padding: "8px 12px",
-                                          paddingLeft: "44px",
-                                          fontSize: "14px",
-                                          color: "#111827",
-                                          cursor: "pointer",
-                                          backgroundColor: isSelected ? "#f3f4f6" : "transparent",
-                                          borderRadius: "4px"
-                                        }}
-                                        onClick={() => handleToggleAccount(acc.accountName)}
-                                        onMouseEnter={(e) => {
-                                          if (!isSelected) {
-                                            e.currentTarget.style.backgroundColor = "#f9fafb";
-                                          }
-                                        }}
-                                        onMouseLeave={(e) => {
-                                          if (!isSelected) {
-                                            e.currentTarget.style.backgroundColor = "transparent";
-                                          }
-                                        }}
-                                      >
-                                        <span>{acc.accountName || acc.accountCode}</span>
-                                        {isSelected && (
-                                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                            <path
-                                              d="M13 4l-6 6-3-3"
-                                              stroke="#156372"
-                                              strokeWidth="2"
-                                              strokeLinecap="round"
-                                              strokeLinejoin="round"
-                                            />
-                                          </svg>
-                                        )}
-                                      </div>
-                                    );
-                                  })
-                                )}
-                              </div>
-                            );
-                          }
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Modal Footer */}
-              <div style={{
-                display: "flex",
-                justifyContent: "flex-start",
-                gap: "12px",
-                padding: "16px 24px",
-                borderTop: "1px solid #e5e7eb"
-              }}>
-                <button
-                  onClick={handleUpdateAccounts}
-                  style={{
-                    padding: "8px 20px",
-                    backgroundColor: "#156372",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "6px",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    cursor: "pointer"
-                  }}
-                  onMouseOver={(e) => e.target.style.backgroundColor = "#0D4A52"}
-                  onMouseOut={(e) => e.target.style.backgroundColor = "#156372"}
-                >
-                  Update
-                </button>
-                <button
-                  onClick={handleCloseModal}
-                  style={{
-                    padding: "8px 20px",
-                    backgroundColor: "white",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: "6px",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    cursor: "pointer",
-                    color: "#6b7280"
-                  }}
-                  onMouseOver={(e) => {
-                    e.target.style.backgroundColor = "#f9fafb";
-                    e.target.style.borderColor = "#d1d5db";
-                  }}
-                  onMouseOut={(e) => {
-                    e.target.style.backgroundColor = "white";
-                    e.target.style.borderColor = "#e5e7eb";
-                  }}
-                >
-                  Cancel
-                </button>
+        {/* Form Body */}
+        <div style={{
+          padding: "40px 32px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "24px"
+        }}>
+          
+          {/* Name Field */}
+          <div style={{ display: "flex", alignItems: "flex-start" }}>
+            <div style={{ width: "140px", paddingTop: "10px" }}>
+              <label style={{ fontSize: "13px", fontWeight: "500", color: "#e11d48" }}>
+                Name*
+              </label>
+            </div>
+            <div style={{ flex: 1 }}>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => {
+                  setFormData(prev => ({ ...prev, name: e.target.value }));
+                  if (touched.name) validateField("name", e.target.value);
+                }}
+                onBlur={(e) => handleBlur("name", e.target.value)}
+                style={{
+                  width: "100%",
+                  maxWidth: "400px",
+                  padding: "8px 12px",
+                  border: errors.name && touched.name ? "1px solid #ef4444" : "1px solid #d1d5db",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  outline: "none"
+                }}
+              />
+              <div style={{ marginTop: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#156372" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                  <line x1="7" y1="7" x2="7.01" y2="7"></line>
+                </svg>
+                <a href="#" onClick={(e) => e.preventDefault()} style={{ fontSize: "13px", color: "#156372", textDecoration: "none" }}>
+                  Create this budget for a specific reporting tag
+                </a>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
               </div>
             </div>
           </div>
-        )}
+
+          {/* Fiscal Year Field */}
+          <div style={{ display: "flex", alignItems: "flex-start" }}>
+            <div style={{ width: "140px", paddingTop: "10px" }}>
+              <label style={{ fontSize: "13px", fontWeight: "500", color: "#e11d48" }}>
+                Fiscal Year*
+              </label>
+            </div>
+            <div style={{ flex: 1, position: "relative" }} ref={fiscalYearRef}>
+              <div
+                onClick={() => setIsFiscalYearOpen(!isFiscalYearOpen)}
+                style={{
+                  width: "100%",
+                  maxWidth: "400px",
+                  padding: "8px 12px",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  backgroundColor: "white",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between"
+                }}
+              >
+                <span>{formData.fiscalYear}</span>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ transform: isFiscalYearOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
+                  <path d="M3.5 5.25l3.5 3.5 3.5-3.5" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              {isFiscalYearOpen && (
+                <div style={{
+                  position: "absolute",
+                  top: "100%",
+                  width: "100%",
+                  maxWidth: "400px",
+                  marginTop: "4px",
+                  backgroundColor: "white",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "8px",
+                  boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                  zIndex: 100,
+                  maxHeight: "240px",
+                  overflowY: "auto"
+                }}>
+                  {fiscalYears.map(year => (
+                    <div
+                      key={year}
+                      onClick={() => {
+                        setFormData(prev => ({ ...prev, fiscalYear: year }));
+                        setIsFiscalYearOpen(false);
+                      }}
+                      style={{
+                        padding: "10px 14px",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        backgroundColor: formData.fiscalYear === year ? "#f0fdfa" : "transparent",
+                        color: formData.fiscalYear === year ? "#156372" : "#374151"
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f9fafb"}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = formData.fiscalYear === year ? "#f0fdfa" : "transparent"}
+                    >
+                      {year}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Budget Period Field */}
+          <div style={{ display: "flex", alignItems: "flex-start" }}>
+            <div style={{ width: "140px", paddingTop: "10px" }}>
+              <label style={{ fontSize: "13px", fontWeight: "500", color: "#e11d48" }}>
+                Budget Period*
+              </label>
+            </div>
+            <div style={{ flex: 1, position: "relative" }} ref={budgetPeriodRef}>
+              <div
+                onClick={() => setIsBudgetPeriodOpen(!isBudgetPeriodOpen)}
+                style={{
+                  width: "100%",
+                  maxWidth: "400px",
+                  padding: "8px 12px",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  backgroundColor: "white",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between"
+                }}
+              >
+                <span>{formData.budgetPeriod}</span>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ transform: isBudgetPeriodOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
+                  <path d="M3.5 5.25l3.5 3.5 3.5-3.5" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              {isBudgetPeriodOpen && (
+                <div style={{
+                  position: "absolute",
+                  top: "100%",
+                  width: "100%",
+                  maxWidth: "400px",
+                  marginTop: "4px",
+                  backgroundColor: "white",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "8px",
+                  boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                  zIndex: 100
+                }}>
+                  {budgetPeriods.map(period => (
+                    <div
+                      key={period}
+                      onClick={() => {
+                        setFormData(prev => ({ ...prev, budgetPeriod: period }));
+                        setIsBudgetPeriodOpen(false);
+                      }}
+                      style={{
+                        padding: "10px 14px",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        backgroundColor: formData.budgetPeriod === period ? "#f0fdfa" : "transparent",
+                        color: formData.budgetPeriod === period ? "#156372" : "#374151"
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f9fafb"}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = formData.budgetPeriod === period ? "#f0fdfa" : "transparent"}
+                    >
+                      {period}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Location Field */}
+          <div style={{ display: "flex", alignItems: "flex-start" }}>
+            <div style={{ width: "140px", paddingTop: "10px" }}>
+              <label style={{ fontSize: "13px", fontWeight: "500", color: "#374151" }}>
+                Location
+              </label>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div
+                style={{
+                  width: "100%",
+                  maxWidth: "400px",
+                  padding: "8px 12px",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  backgroundColor: "white",
+                  color: "#9ca3af",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between"
+                }}
+              >
+                <span>Location</span>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M3.5 5.25l3.5 3.5 3.5-3.5" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ fontSize: "11px", color: "#9ca3af", fontWeight: "600", marginTop: "12px", marginBottom: "4px" }}>
+            ZB.ACCOUNT.PLACCOUNTS
+          </div>
+
+          {/* Income Accounts Section */}
+          <div style={{ display: "flex", alignItems: "flex-start" }}>
+            <div style={{ width: "140px", paddingTop: "10px" }}>
+              <label style={{ fontSize: "13px", fontWeight: "500", color: "#374151" }}>
+                Income Accounts
+              </label>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div 
+                onClick={() => handleOpenModal("Income")}
+                style={{
+                  width: "100%",
+                  maxWidth: "400px",
+                  padding: "10px 14px",
+                  border: "1px dashed #d1d5db",
+                  borderRadius: "4px",
+                  backgroundColor: "white",
+                  cursor: "pointer"
+                }}
+              >
+                <span style={{ fontSize: "13px", color: "#156372" }}>Add Accounts</span>
+              </div>
+              {selectedIncomeAccounts.length > 0 && (
+                <div style={{ fontSize: "12px", color: "#156372", marginTop: "4px", fontWeight: "500" }}>
+                  {selectedIncomeAccounts.length} accounts selected
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Expense Accounts Section */}
+          <div style={{ display: "flex", alignItems: "flex-start" }}>
+            <div style={{ width: "140px", paddingTop: "10px" }}>
+              <label style={{ fontSize: "13px", fontWeight: "500", color: "#374151" }}>
+                Expense Accounts
+              </label>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div 
+                onClick={() => handleOpenModal("Expense")}
+                style={{
+                  width: "100%",
+                  maxWidth: "400px",
+                  padding: "10px 14px",
+                  border: "1px dashed #d1d5db",
+                  borderRadius: "4px",
+                  backgroundColor: "white",
+                  cursor: "pointer"
+                }}
+              >
+                <span style={{ fontSize: "13px", color: "#156372" }}>Add Accounts</span>
+              </div>
+              {selectedExpenseAccounts.length > 0 && (
+                <div style={{ fontSize: "12px", color: "#156372", marginTop: "4px", fontWeight: "500" }}>
+                  {selectedExpenseAccounts.length} accounts selected
+                </div>
+              )}
+            </div>
+          </div>
+
+          {!includeAssetLiabilityEquity ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "12px" }}>
+              <button 
+                onClick={() => setIncludeAssetLiabilityEquity(true)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  cursor: "pointer",
+                  color: "#156372",
+                  fontSize: "13px"
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#156372" stroke="none">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="16" stroke="white" strokeWidth="2"></line>
+                  <line x1="8" y1="12" x2="16" y2="12" stroke="white" strokeWidth="2"></line>
+                </svg>
+                Include Asset, Liability, and Equity Accounts in Budget
+              </button>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: "11px", color: "#9ca3af", fontWeight: "600", marginTop: "24px", marginBottom: "4px" }}>
+                ASSET, LIABILITY, AND EQUITY ACCOUNTS
+              </div>
+
+              {/* Asset Accounts Section */}
+              <div style={{ display: "flex", alignItems: "flex-start" }}>
+                <div style={{ width: "140px", paddingTop: "10px" }}>
+                  <label style={{ fontSize: "13px", fontWeight: "500", color: "#374151" }}>
+                    Asset Accounts
+                  </label>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div 
+                    onClick={() => handleOpenModal("Asset")}
+                    style={{
+                      width: "100%",
+                      maxWidth: "400px",
+                      padding: "10px 14px",
+                      border: "1px dashed #d1d5db",
+                      borderRadius: "4px",
+                      backgroundColor: "white",
+                      cursor: "pointer"
+                    }}
+                  >
+                    <span style={{ fontSize: "13px", color: "#156372" }}>Add Accounts</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Liability Accounts Section */}
+              <div style={{ display: "flex", alignItems: "flex-start" }}>
+                <div style={{ width: "140px", paddingTop: "10px" }}>
+                  <label style={{ fontSize: "13px", fontWeight: "500", color: "#374151" }}>
+                    Liability Accounts
+                  </label>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div 
+                    onClick={() => handleOpenModal("Liability")}
+                    style={{
+                      width: "100%",
+                      maxWidth: "400px",
+                      padding: "10px 14px",
+                      border: "1px dashed #d1d5db",
+                      borderRadius: "4px",
+                      backgroundColor: "white",
+                      cursor: "pointer"
+                    }}
+                  >
+                    <span style={{ fontSize: "13px", color: "#156372" }}>Add Accounts</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Equity Accounts Section */}
+              <div style={{ display: "flex", alignItems: "flex-start" }}>
+                <div style={{ width: "140px", paddingTop: "10px" }}>
+                  <label style={{ fontSize: "13px", fontWeight: "500", color: "#374151" }}>
+                    Equity Accounts
+                  </label>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div 
+                    onClick={() => handleOpenModal("Equity")}
+                    style={{
+                      width: "100%",
+                      maxWidth: "400px",
+                      padding: "10px 14px",
+                      border: "1px dashed #d1d5db",
+                      borderRadius: "4px",
+                      backgroundColor: "white",
+                      cursor: "pointer"
+                    }}
+                  >
+                    <span style={{ fontSize: "13px", color: "#156372" }}>Add Accounts</span>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          padding: "24px 32px",
+          borderTop: "1px solid #f3f4f6"
+        }}>
+          <button
+            onClick={async () => {
+              if (!formData.name) {
+                setErrors({ name: "Budget name is required" });
+                setTouched({ name: true });
+                return;
+              }
+              const success = await saveBudget({
+                ...formData,
+                includeAssetLiabilityEquity,
+                selectedIncomeAccounts,
+                selectedExpenseAccounts,
+                selectedAssetAccounts,
+                selectedLiabilityAccounts,
+                selectedEquityAccounts,
+                createForReportingTag,
+                reportingTagName,
+                reportingTagOption
+              });
+              if (success) navigate("/accountant/budgets");
+            }}
+            style={{
+              padding: "8px 16px",
+              backgroundColor: "#156372",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              fontSize: "13px",
+              fontWeight: "600",
+              cursor: "pointer"
+            }}
+          >
+            Create Budget
+          </button>
+          <button
+            onClick={() => navigate("/accountant/budgets")}
+            style={{
+              padding: "8px 16px",
+              backgroundColor: "#f3f4f6",
+              color: "#374151",
+              border: "1px solid #d1d5db",
+              borderRadius: "4px",
+              fontSize: "13px",
+              fontWeight: "600",
+              cursor: "pointer"
+            }}
+          >
+            Cancel
+          </button>
+        </div>
       </div>
+
+      {/* Account Selection Modal Overlay */}
+      {isModalOpen && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.4)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+          padding: "20px"
+        }}>
+          <div style={{
+            backgroundColor: "white",
+            width: "100%",
+            maxWidth: "850px",
+            borderRadius: "4px",
+            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.15)",
+            display: "flex",
+            flexDirection: "column",
+            maxHeight: "90vh",
+            overflow: "hidden"
+          }}>
+            {/* Modal Header */}
+            <div style={{ padding: "16px 24px", borderBottom: "1px solid #eee", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ fontSize: "18px", fontWeight: "400", color: "#333", margin: 0 }}>
+                Configure Accounts
+              </h3>
+              <button 
+                onClick={handleCloseModal} 
+                style={{ 
+                  background: "transparent", 
+                  border: "none", 
+                  cursor: "pointer", 
+                  color: "#666", 
+                  padding: "4px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center"
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            
+            <div style={{ padding: "0", flex: 1, overflowY: "auto" }}>
+               <div style={{ padding: "20px 24px 10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <h4 style={{ fontSize: "15px", color: "#333", fontWeight: "400", margin: 0 }}>
+                    <span style={{ color: "#e11d48" }}>*</span>&nbsp;Select Accounts
+                  </h4>
+                  <h4 onClick={handleSelectAll} style={{ fontSize: "14px", color: "#156372", fontWeight: "400", margin: 0, cursor: "pointer" }}>
+                    Select All
+                  </h4>
+               </div>
+
+               <div style={{ padding: "0 24px 20px" }}>
+                 <div style={{ display: "flex", border: "1px solid #ddd", borderRadius: "4px", overflow: "hidden", borderBottomLeftRadius: 0, borderBottomRightRadius: 0, backgroundColor: "white" }}>
+                   <span style={{ backgroundColor: "#f3f4f6", padding: "10px 14px", borderRight: "1px solid #ddd", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                     <svg width="14" height="14" viewBox="0 0 512 512" fill="#888"><path d="M455.2 419.8L385.3 350c25.6-33.5 39.1-74.4 38.2-117.1-1-48.5-20.4-94.1-54.7-128.4-35.3-35.3-82.2-54.7-132.2-54.7h-.2c-50 0-97 19.6-132.3 55-72.5 72.8-72.5 191.2.1 264 24.8 24.8 55.9 42.1 90 50 33.1 7.7 67.6 6.2 99.9-4.2 13.1-4.2 20.3-18.3 16.1-31.5-4.2-13.1-18.3-20.3-31.5-16.1-49.3 15.9-102.6 3.1-139.1-33.5-53.2-53.3-53.3-140-.1-193.4 25.9-25.9 60.3-40.3 96.9-40.3h.1c36.6 0 71 14.2 96.8 40.1 25.1 25.1 39.4 58.5 40.1 94.1.7 35.4-12.1 69.3-36 95.3l-.1.1c-11.6 12.8-11.2 32.3 1 44.5l81.4 81.4c4.9 4.9 11.3 7.3 17.7 7.3 6.4 0 12.8-2.4 17.7-7.3 9.8-9.9 9.8-25.7.1-35.5z"></path></svg>
+                   </span>
+                   <input 
+                    type="text" 
+                    value={accountSearchTerm}
+                    onChange={(e) => setAccountSearchTerm(e.target.value)}
+                    style={{ flex: 1, padding: "10px 14px", border: "none", fontSize: "14px", outline: "none", color: "#333" }}
+                   />
+                 </div>
+
+                 <div style={{ border: "1px solid #ddd", borderTop: "none", height: "400px", overflowY: "auto", backgroundColor: "white" }}>
+                    <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                      {(() => {
+                        const renderNode = (data: any, path: string = "", level: number = 0) => {
+                          if (Array.isArray(data)) {
+                            return data.map((acc, i) => {
+                              const isSelected = modalSelectedAccounts.includes(acc.accountName || acc.name || "");
+                              const matchesSearch = accountSearchTerm === "" || 
+                                (acc.accountName || acc.name || "").toLowerCase().includes(accountSearchTerm.toLowerCase()) ||
+                                (acc.accountCode || acc.code || "").toLowerCase().includes(accountSearchTerm.toLowerCase());
+                              
+                              if (!matchesSearch) return null;
+
+                              return (
+                                <li 
+                                  key={`${path}-${acc.accountName || acc.name || i}`} 
+                                  onClick={() => handleToggleAccount(acc.accountName || acc.name || "")}
+                                  style={{ 
+                                    display: "flex", 
+                                    alignItems: "center", 
+                                    padding: "10px 20px", 
+                                    cursor: "pointer",
+                                    borderBottom: "1px solid #f9f9f9"
+                                  }}
+                                >
+                                  <span style={{ display: "inline-block", width: `${level * 32}px` }}></span>
+                                  <label style={{ fontSize: "14px", color: "#333", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", margin: 0, flex: 1 }}>
+                                    {acc.accountName || acc.name}
+                                    {isSelected && (
+                                      <svg viewBox="0 0 512 512" width="18" height="18" fill="#156372" style={{ verticalAlign: "middle" }}>
+                                        <path d="M222.7 335.9c-4.4 0-8.4-1.8-11.4-4.8l-62.4-63.9c-6.2-6.3-6.1-16.4.3-22.6 6.3-6.2 16.4-6.1 22.6.3l51.2 52.4 117.5-116.5c6.3-6.2 16.4-6.2 22.6.1s6.2 16.4-.1 22.6L234 331.3c-3 2.9-7.1 4.6-11.3 4.6z"></path>
+                                      </svg>
+                                    )}
+                                  </label>
+                                </li>
+                              );
+                            });
+                          }
+
+                          return Object.keys(data).map(key => {
+                            const currentPath = path ? `${path}:${key}` : key;
+                            const isExpanded = expandedCategories[currentPath];
+                            const hasChildren = typeof data[key] === 'object';
+                            
+                            return (
+                              <div key={currentPath}>
+                                <li 
+                                  onClick={() => toggleCategory(currentPath)}
+                                  style={{ 
+                                    display: "flex", 
+                                    alignItems: "center", 
+                                    padding: "10px 20px", 
+                                    cursor: "pointer",
+                                    backgroundColor: "white",
+                                    borderBottom: "1px solid #f9f9f9"
+                                  }}
+                                >
+                                  <span style={{ display: "inline-block", width: `${level * 32}px` }}></span>
+                                  {hasChildren && (
+                                    <button style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", marginRight: "12px" }}>
+                                      <svg viewBox="0 0 512 512" width="18" height="18">
+                                        <path fill="#156372" d="M256 15C122.9 15 15 122.9 15 256s107.9 241 241 241 241-107.9 241-241S389.1 15 256 15zm122 263H134c-12.2 0-22-9.8-22-22s9.8-22 22-22h244c12.2 0 22 9.8 22 22s-9.8 22-22 22z"></path>
+                                        <path fill="#FFF" d="M378 234H134c-12.2 0-22 9.8-22 22s9.8 22 22 22h244c12.2 0 22-9.8 22-22s-9.8-22-22-22z"></path>
+                                        {!isExpanded && <path fill="#FFF" d="M234 134v244c0 12.2 9.8 22 22 22s22-9.8 22-22V134c0-12.2-9.8-22-22-22s-22 9.8-22 22z"></path>}
+                                      </svg>
+                                    </button>
+                                  )}
+                                  <label style={{ fontSize: "14px", fontWeight: "400", color: "#333", margin: 0, cursor: "pointer" }}>
+                                    {key}
+                                  </label>
+                                </li>
+                                {isExpanded && renderNode(data[key], currentPath, level + 1)}
+                              </div>
+                            );
+                          });
+                        };
+
+                        const grouped = getGroupedAccounts();
+                        return renderNode(grouped);
+                      })()}
+                    </ul>
+                 </div>
+               </div>
+            </div>
+
+            <div style={{ padding: "20px 32px", borderTop: "1px solid #eee", display: "flex", gap: "10px", justifyContent: "flex-start" }}>
+              <button onClick={handleUpdateAccounts} style={{ padding: "10px 24px", backgroundColor: "#156372", color: "white", border: "none", borderRadius: "4px", fontSize: "14px", fontWeight: "600", cursor: "pointer" }}>Update</button>
+              <button onClick={handleCloseModal} style={{ padding: "10px 24px", backgroundColor: "white", color: "#333", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "14px", fontWeight: "600", cursor: "pointer" }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default NewBudget;
-

@@ -103,7 +103,6 @@ const menu = [
     path: "/accountant",
     children: [
       { label: "Journal Entries", path: "/accountant/manual-journals" },
-      { label: "Recurring Journals", path: "/accountant/recurring-journals", moduleKey: "recurringJournals" },
       { label: "Bulk Update", path: "/accountant/bulk-update" },
       { label: "Currency Adjustments", path: "/accountant/currency-adjustments" },
       { label: "Chart of Accounts", path: "/accountant/chart-of-accounts" },

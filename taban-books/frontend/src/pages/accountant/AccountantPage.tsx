@@ -64,7 +64,6 @@ export default function AccountantPage() {
       <Route path="budgets/:id/actuals" element={<BudgetVsActuals />} />
       <Route path="budgets/:id/edit" element={<NewBudget />} />
       <Route path="transaction-locking" element={<TransactionLocking />} />
-      <Route path="recurring-journals" element={<Placeholder title="Recurring Journals" />} />
       <Route path="fixed-assets" element={<Placeholder title="Fixed Assets" />} />
       <Route path="*" element={<Placeholder title="Accountant" />} />
     </Routes>

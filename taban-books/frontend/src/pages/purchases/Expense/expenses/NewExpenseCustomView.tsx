@@ -45,51 +45,22 @@ const MOCK_ROLES = [
     { id: "assigned", name: "Staff (Assigned Customers Only)" },
 ];
 
-type SelectorMode = "Users" | "Roles";
-type MockUser = (typeof MOCK_USERS)[number];
-type MockRole = (typeof MOCK_ROLES)[number];
-type SelectableItem = MockUser | MockRole;
-type SelectedItem = SelectableItem & { type: SelectorMode };
-
-interface Criterion {
-    id: number;
-    field: string;
-    comparator: string;
-    value: string;
-}
-
-type VisibilityOption = "Only Me" | "Only Selected Users & Roles" | "Everyone";
-
-interface ExpenseCustomViewFormData {
-    name: string;
-    markAsFavorite: boolean;
-    criteria: Criterion[];
-    selectedColumns: string[];
-    visibility: VisibilityOption;
-}
-
-interface VisibilityCardOption {
-    id: VisibilityOption;
-    label: string;
-    icon: React.ReactNode;
-}
-
 function UserRoleSelector() {
-    const [selectorMode, setSelectorMode] = useState<SelectorMode>("Users");
+    const [selectorMode, setSelectorMode] = useState("Users"); // "Users" | "Roles"
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [inputValue, setInputValue] = useState("");
     const [isInputFocused, setIsInputFocused] = useState(false);
-    const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
-    const inputRef = React.useRef<HTMLInputElement | null>(null);
+    const [selectedItems, setSelectedItems] = useState([]);
+    const inputRef = React.useRef(null);
 
     const toggleDropdown = () => setIsDropdownOpen(!isDropdownOpen);
-    const selectMode = (mode: SelectorMode) => {
+    const selectMode = (mode) => {
         setSelectorMode(mode);
         setIsDropdownOpen(false);
         setInputValue("");
     };
 
-    const handleSelect = (item: SelectableItem) => {
+    const handleSelect = (item) => {
         if (!selectedItems.find(i => i.id === item.id)) {
             setSelectedItems([...selectedItems, { ...item, type: selectorMode }]);
         }
@@ -97,7 +68,7 @@ function UserRoleSelector() {
         setIsInputFocused(false);
     };
 
-    const handleRemove = (id: SelectedItem["id"]) => {
+    const handleRemove = (id) => {
         setSelectedItems(selectedItems.filter(i => i.id !== id));
     };
 
@@ -108,14 +79,13 @@ function UserRoleSelector() {
         }
     };
 
-    const sourceItems: SelectableItem[] = selectorMode === "Users" ? MOCK_USERS : MOCK_ROLES;
-    const filteredItems = sourceItems
+    const filteredItems = (selectorMode === "Users" ? MOCK_USERS : MOCK_ROLES)
         .filter(item =>
             !selectedItems.find(i => i.id === item.id) &&
             item.name.toLowerCase().includes(inputValue.toLowerCase())
         );
 
-    const highlightBorder = (focused: boolean) => focused ? `1px solid ${Z.primary}` : `1px solid ${Z.line}`;
+    const highlightBorder = (focused) => focused ? `1px solid ${Z.primary}` : `1px solid ${Z.line}`;
 
     return (
         <div style={{
@@ -143,7 +113,7 @@ function UserRoleSelector() {
                             backgroundColor: "#ffffff", border: "1px solid #e5e7eb", borderRadius: "6px",
                             boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)", zIndex: 20
                         }}>
-                            {(["Users", "Roles"] as SelectorMode[]).map(mode => (
+                            {["Users", "Roles"].map(mode => (
                                 <div
                                     key={mode}
                                     onClick={(e) => { e.stopPropagation(); selectMode(mode); }}
@@ -209,20 +179,26 @@ function UserRoleSelector() {
                                         display: "flex", flexDirection: "column"
                                     }}
                                     onMouseEnter={(e) => {
-                                        e.currentTarget.style.backgroundColor = Z.primary;
-                                        e.currentTarget.style.color = "#ffffff";
-                                        const emailDiv = e.currentTarget.querySelector<HTMLElement>(".email-sub");
+                                        const target = e.currentTarget as HTMLElement;
+                                        target.style.backgroundColor = Z.primary;
+                                        target.style.color = "#ffffff";
+                                        const emailDiv = target.querySelector(".email-sub") as HTMLElement | null;
                                         if (emailDiv) emailDiv.style.opacity = "0.9";
                                     }}
                                     onMouseLeave={(e) => {
-                                        e.currentTarget.style.backgroundColor = "transparent";
-                                        e.currentTarget.style.color = "#374151";
-                                        const emailDiv = e.currentTarget.querySelector<HTMLElement>(".email-sub");
+                                        const target = e.currentTarget as HTMLElement;
+                                        target.style.backgroundColor = "transparent";
+                                        target.style.color = "#374151";
+                                        const emailDiv = target.querySelector(".email-sub") as HTMLElement | null;
                                         if (emailDiv) emailDiv.style.opacity = "1";
                                     }}
                                 >
                                     <div style={{ fontSize: "13px", fontWeight: "600", textTransform: "uppercase" }}>{item.name}</div>
-                                    {"email" in item && item.email && <div className="email-sub" style={{ fontSize: "12px", color: "inherit", opacity: 1 }}>{item.email}</div>}
+                                    {(item as { email?: string }).email && (
+                                        <div className="email-sub" style={{ fontSize: "12px", color: "inherit", opacity: 1 }}>
+                                            {(item as { email?: string }).email}
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                             {filteredItems.length === 0 && <div style={{ padding: "12px", textAlign: "center", color: "#6b7280", fontSize: "13px" }}>No results found</div>}
@@ -256,7 +232,7 @@ function UserRoleSelector() {
 export default function NewExpenseCustomView() {
     const navigate = useNavigate();
 
-    const [formData, setFormData] = useState<ExpenseCustomViewFormData>({
+    const [formData, setFormData] = useState({
         name: "",
         markAsFavorite: false,
         criteria: [{ id: 1, field: "", comparator: "", value: "" }],
@@ -306,13 +282,7 @@ export default function NewExpenseCustomView() {
         "is in", "is not in", "is empty", "is not empty"
     ];
 
-    const visibilityOptions: VisibilityCardOption[] = [
-        { id: "Only Me", label: "Only Me", icon: <Lock size={16} /> },
-        { id: "Only Selected Users & Roles", label: "Only Selected Users & Roles", icon: <Users size={16} /> },
-        { id: "Everyone", label: "Everyone", icon: <Globe size={16} /> }
-    ];
-
-    const handleCriterionChange = (id: number, field: keyof Omit<Criterion, "id">, value: string) => {
+    const handleCriterionChange = (id, field, value) => {
         setFormData((prev) => ({
             ...prev,
             criteria: prev.criteria.map((c) =>
@@ -331,21 +301,21 @@ export default function NewExpenseCustomView() {
         }));
     };
 
-    const removeCriterion = (id: number) => {
+    const removeCriterion = (id) => {
         setFormData((prev) => ({
             ...prev,
             criteria: prev.criteria.filter((c) => c.id !== id),
         }));
     };
 
-    const moveColumnToSelected = (column: string) => {
+    const moveColumnToSelected = (column) => {
         setFormData((prev) => ({
             ...prev,
             selectedColumns: [...prev.selectedColumns, column],
         }));
     };
 
-    const moveColumnToAvailable = (column: string) => {
+    const moveColumnToAvailable = (column) => {
         if (requiredColumns.includes(column)) return;
         setFormData((prev) => ({
             ...prev,
@@ -353,20 +323,20 @@ export default function NewExpenseCustomView() {
         }));
     };
 
-    const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleSubmit = (e) => {
         e.preventDefault();
         console.log("Saving expense custom view:", formData);
 
         const success = saveExpenseCustomView(formData);
         if (success) {
-            navigate("/purchases/expenses");
+            navigate("/expenses");
         } else {
             alert("Failed to save custom view.");
         }
     };
 
     const handleClose = () => {
-        navigate("/purchases/expenses");
+        navigate("/expenses");
     };
 
     return (
@@ -540,7 +510,11 @@ export default function NewExpenseCustomView() {
                             Visibility Preference
                         </h3>
                         <div style={{ display: "flex", gap: "16px", marginTop: "8px" }}>
-                            {visibilityOptions.map((opt) => {
+                            {[
+                                { id: "Only Me", label: "Only Me", icon: <Lock size={16} /> },
+                                { id: "Only Selected Users & Roles", label: "Only Selected Users & Roles", icon: <Users size={16} /> },
+                                { id: "Everyone", label: "Everyone", icon: <Globe size={16} /> }
+                            ].map((opt) => {
                                 const isSelected = formData.visibility === opt.id;
                                 return (
                                     <div

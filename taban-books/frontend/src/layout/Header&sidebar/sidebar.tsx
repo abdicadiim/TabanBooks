@@ -125,7 +125,6 @@ const items: MenuItem[] = [
     icon: Calculator,
     children: [
       { label: "Journal Entries", to: "/accountant/manual-journals" },
-      { label: "Recurring Journals", to: "/accountant/recurring-journals", moduleKey: "recurringJournals" },
       { label: "Bulk Update", to: "/accountant/bulk-update" },
       { label: "Currency Adjustments", to: "/accountant/currency-adjustments" },
       { label: "Chart of Accounts", to: "/accountant/chart-of-accounts" },

@@ -1,21 +1,22 @@
-﻿
-import React, { useState, useRef, useEffect, useMemo } from "react";
+
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { getExpenseCustomViews } from "../shared/purchasesModel";
 import { useNavigate, useLocation } from "react-router-dom";
 import BulkUpdateModal from "../shared/BulkUpdateModal";
 import DeleteConfirmationModal from "../shared/DeleteConfirmationModal";
 import ExportExpenses from "./ExportExpenses";
-import { jsPDF } from "jspdf";
+import JSZip from "jszip";
+import { toast } from "react-toastify";
 import {
   expensesAPI,
   vendorsAPI,
   customersAPI,
   chartOfAccountsAPI,
   bankAccountsAPI,
-  currenciesAPI
+  currenciesAPI,
 } from "../../../services/api";
+import { useExpensesQuery } from "./expensesQueries";
 import { useCurrency } from "../../../hooks/useCurrency";
-import { getBankAccountsFromResponse, getChartAccountsFromResponse, mergeAccountOptions } from "../shared/accountOptions";
 import {
   ChevronDown,
   ChevronUp,
@@ -39,16 +40,30 @@ import {
   Users,
   ChevronDown as ChevronDownIcon,
   Filter,
+  SlidersHorizontal,
   Info,
+  Paperclip,
+  PlusCircle,
 } from "lucide-react";
 
 const EXPENSES_KEY = "expenses_v1";
+const EXPENSE_COLUMNS_KEY = "taban_expenses_column_widths_v1";
+const EXPENSE_VISIBLE_COLUMNS_KEY = "taban_expenses_visible_columns_v1";
 
 const getLS = (k: string) => {
   if (typeof window !== "undefined" && window.localStorage) {
     return window.localStorage.getItem(k);
   }
   return null;
+};
+
+const hasAnyAttachment = (expense: any) => {
+  const listKeys = ["receipts", "uploads", "documents", "attachments", "files"];
+  const valueKeys = ["receipt", "receiptFile", "receiptUrl", "document", "documentFile", "documentUrl"];
+
+  const hasList = listKeys.some((key) => Array.isArray(expense?.[key]) && expense[key].length > 0);
+  const hasValue = valueKeys.some((key) => Boolean(expense?.[key]));
+  return expense?.hasReceipt === true || hasList || hasValue;
 };
 
 export default function Expenses() {
@@ -72,7 +87,9 @@ export default function Expenses() {
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showCustomizeColumnsModal, setShowCustomizeColumnsModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [currencies, setCurrencies] = useState<any[]>([]);
   const [searchType, setSearchType] = useState("Expenses");
   const searchTypeOptions = [
@@ -168,125 +185,133 @@ export default function Expenses() {
   const uploadMenuRef = useRef(null);
   const fileInputRef = useRef(null);
   const [hoveredMenuItem, setHoveredMenuItem] = useState(null);
-
-  // Load expenses from API
-  const loadExpenses = async () => {
+  const expensesQuery = useExpensesQuery({ baseCurrencyCode: baseCurrency?.code });
+  const refreshData = useCallback(async () => {
+    setIsRefreshing(true);
     try {
-      setIsRefreshing(true);
-      // Fetch expenses, contacts and accounts in parallel to ensure we can display names
-      const [response, vendorsResponse, customersResponse, accountsResponse, bankAccountsResponse, cursResp] = await Promise.all([
-        expensesAPI.getAll({ limit: 1000 }),
-        vendorsAPI.getAll({ limit: 1000 }),
-        customersAPI.getAll({ limit: 1000 }),
-        chartOfAccountsAPI.getAccounts({ limit: 1000 }),
-        bankAccountsAPI.getAll({ limit: 1000 }),
-        currenciesAPI.getAll(),
-      ]);
-
-      const vendors = (vendorsResponse && (vendorsResponse.data || vendorsResponse.vendors || vendorsResponse.data?.data)) || [];
-      const customers = (customersResponse && (customersResponse.data || customersResponse.customers || customersResponse.data?.data)) || [];
-      const chartAccounts = getChartAccountsFromResponse(accountsResponse);
-      const bankAccounts = getBankAccountsFromResponse(bankAccountsResponse);
-      const cursList = Array.isArray(cursResp) ? cursResp : (cursResp?.data || []);
-
-      const accounts = mergeAccountOptions(chartAccounts, bankAccounts);
-
-      setVendorsList(vendors);
-      setCustomersList(customers);
-      setAccountsList(accounts);
-      setCurrencies(cursList);
-
-      if (response && (response.code === 0 || response.success) && (response.expenses || response.data)) {
-        const apiExpenses = response.expenses || response.data || [];
-
-        // Create quick lookup maps
-        const vendorById = new Map(vendors.map((v: any) => [v._id || v.id, v]));
-        const customerById = new Map(customers.map((c: any) => [c._id || c.id, c]));
-        const accountById = new Map(accounts.map((a: any) => [a._id || a.id, a]));
-
-        const mapped = apiExpenses.map((expense: any) => {
-          const vendorName = expense.vendor_name || expense.vendorName || expense.vendor?.name || (expense.vendor_id ? (vendorById.get(expense.vendor_id)?.displayName || vendorById.get(expense.vendor_id)?.name) : "");
-          const customerName = expense.customer_name || expense.customerName || expense.customer?.name || (expense.customer_id ? (customerById.get(expense.customer_id)?.displayName || customerById.get(expense.customer_id)?.name) : "");
-          const paidThroughName = expense.paid_through_account_name || expense.paidThrough || (expense.paid_through_account_id ? (accountById.get(expense.paid_through_account_id)?.accountName) : "");
-
-          return {
-            ...expense,
-            id: expense.expense_id || expense._id || expense.id,
-            date: expense.date ? new Date(expense.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : "",
-            expenseAccount: expense.account_name || (expense.account_id ? (accountById.get(expense.account_id)?.accountName) : ""),
-            amount: expense.total ?? expense.amount ?? expense.sub_total ?? 0,
-            currency: baseCurrency?.code || expense.currency_code || "USD",
-            currencySymbol: (() => {
-              const currencyStr = baseCurrency?.code || expense.currency_code || "USD";
-              const code = currencyStr.split(" - ")[0];
-              const match = cursList.find((c: any) => c.code === code || c.code === currencyStr);
-              return match ? match.symbol : code || currencyStr;
-            })(),
-            paidThrough: paidThroughName || "",
-            vendor: vendorName || "",
-            reference: expense.reference_number,
-            customerName: customerName || "",
-            status: (expense.status || "").toUpperCase(),
-            notes: expense.description,
-          };
-        });
-
-        setExpenses(mapped);
-
-        // Backfill missing vendor_name / paid_through_account_name on the server if we could resolve them locally
-        const updates: Array<Promise<any>> = [];
-        mapped.forEach((m) => {
-          const raw = m; // includes raw fields
-          const apiId = raw.expense_id || raw.id;
-          const payload: any = {};
-          let needsUpdate = false;
-          if (!raw.vendor_name && raw.vendor && (raw.vendor_id || vendors.length > 0)) {
-            // try to find vendor id
-            const v = vendors.find((x: any) => (x.displayName || x.name) === raw.vendor || x._id === raw.vendor_id || x.id === raw.vendor_id);
-            if (v) {
-              payload.vendor_id = v._id || v.id;
-              payload.vendor_name = v.displayName || v.name;
-              needsUpdate = true;
-            } else if (raw.vendor) {
-              payload.vendor_name = raw.vendor;
-              needsUpdate = true;
-            }
-          }
-          if (!raw.paid_through_account_name && raw.paidThrough && (raw.paid_through_account_id || accounts.length > 0)) {
-            const a = accounts.find((x: any) => x.accountName === raw.paidThrough || x._id === raw.paid_through_account_id || x.id === raw.paid_through_account_id);
-            if (a) {
-              payload.paid_through_account_id = a._id || a.id;
-              payload.paid_through_account_name = a.accountName;
-              needsUpdate = true;
-            } else if (raw.paidThrough) {
-              payload.paid_through_account_name = raw.paidThrough;
-              needsUpdate = true;
-            }
-          }
-          if (needsUpdate && apiId) {
-            updates.push(expensesAPI.update(apiId, payload).catch((err) => { console.error('Backfill update failed for expense', apiId, err); }));
-          }
-        });
-
-        if (updates.length > 0) {
-          // fire and forget; continue after they settle
-          Promise.allSettled(updates).then(() => {
-            // refresh to reflect server changes
-            loadExpenses();
-          });
-        }
-      } else {
-        setExpenses([]);
-      }
-    } catch (e) {
-      console.error("Error loading expenses:", e);
-      setExpenses([]);
-      setVendorsList([]);
-      setCustomersList([]);
-      setAccountsList([]);
+      await expensesQuery.refetch();
     } finally {
       setIsRefreshing(false);
     }
+  }, [expensesQuery]);
+  const resizingRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
+    const defaults = {
+      select: 60,
+      date: 140,
+      location: 160,
+      expenseAccount: 220,
+      reference: 140,
+      customerName: 180,
+      status: 140,
+      amount: 140,
+      actions: 44,
+    };
+    try {
+      const raw = localStorage.getItem(EXPENSE_COLUMNS_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (!parsed || typeof parsed !== "object") return defaults;
+      return { ...defaults, ...parsed };
+    } catch {
+      return defaults;
+    }
+  });
+  const allTableColumns = useMemo(
+    () => [
+      { key: "date", label: "Date", required: true },
+      { key: "location", label: "Location", required: false },
+      { key: "expenseAccount", label: "Expense Account", required: true },
+      { key: "reference", label: "Reference#", required: false },
+      { key: "customerName", label: "Customer Name", required: false },
+      { key: "status", label: "Status", required: false },
+      { key: "amount", label: "Amount", required: true },
+    ],
+    []
+  );
+  const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(EXPENSE_VISIBLE_COLUMNS_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    } catch {
+      // ignore
+    }
+    return ["date", "location", "expenseAccount", "reference", "customerName", "status", "amount"];
+  });
+  const isColumnVisible = (key: string) => visibleColumnKeys.includes(key);
+
+  const tableMinWidth = useMemo(
+    () => {
+      const visibleWidths = allTableColumns.reduce((sum, col) => {
+        if (!visibleColumnKeys.includes(col.key)) return sum;
+        return sum + Number(columnWidths[col.key] || 0);
+      }, 0);
+      return Number(columnWidths.select || 60) + Number(columnWidths.actions || 44) + visibleWidths;
+    },
+    [allTableColumns, columnWidths, visibleColumnKeys]
+  );
+
+  const startResizing = (key: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingRef.current = {
+      key,
+      startX: e.clientX,
+      startWidth: Number(columnWidths[key] || 120),
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  const renderResizeHandle = (key: string) => (
+    <div
+      className="absolute -right-[4px] top-0 bottom-0 z-20 w-[10px] cursor-col-resize bg-transparent"
+      onMouseDown={(e) => startResizing(key, e)}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="pointer-events-none absolute left-1/2 top-[5px] bottom-[5px] w-[2px] -translate-x-1/2 rounded bg-transparent group-hover/header:bg-slate-300 group-hover/header:opacity-100 hover:bg-[#156372]" />
+    </div>
+  );
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const { key, startX, startWidth } = resizingRef.current;
+      const nextWidth = Math.max(60, startWidth + (e.clientX - startX));
+      setColumnWidths((prev) => ({ ...prev, [key]: nextWidth }));
+    };
+
+    const handleMouseUp = () => {
+      if (!resizingRef.current) return;
+      resizingRef.current = null;
+      document.body.style.cursor = "default";
+      document.body.style.userSelect = "auto";
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(EXPENSE_COLUMNS_KEY, JSON.stringify(columnWidths));
+  }, [columnWidths]);
+
+  useEffect(() => {
+    localStorage.setItem(EXPENSE_VISIBLE_COLUMNS_KEY, JSON.stringify(visibleColumnKeys));
+  }, [visibleColumnKeys]);
+
+  const toggleVisibleColumn = (key: string) => {
+    const column = allTableColumns.find((col) => col.key === key);
+    if (!column) return;
+    if (column.required) return;
+    setVisibleColumnKeys((prev) => {
+      if (prev.includes(key)) return prev.filter((k) => k !== key);
+      return [...prev, key];
+    });
   };
 
   const downloadSampleFile = (type) => {
@@ -322,17 +347,90 @@ export default function Expenses() {
   };
 
   const handleRefresh = () => {
-    loadExpenses();
+    void refreshData();
   };
 
+  const handleAttachFromDesktop = () => {
+    if (fileInputRef.current) {
+      (fileInputRef.current as any).click();
+    }
+    setUploadMenuOpen(false);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const fileArray = Array.from(files).map((f: File) => ({
+        id: Math.random().toString(36).substr(2, 9),
+        name: f.name,
+        size: f.size,
+        type: f.type,
+        uploadDate: new Date(),
+        uploadedBy: "Abdi Ladilf",
+        uploadedFrom: "Documents module",
+        status: Math.random() > 0.3 ? "UNREADABLE" : "SUCCESS",
+        originalFile: f
+      }));
+      navigate("/expenses/receipts", { state: { newFiles: fileArray } });
+    }
+  };
+
+
   useEffect(() => {
-    loadExpenses();
+    const reload = () => {
+      void refreshData();
+    };
+    window.addEventListener("storage", reload);
+    const visibilityHandler = () => {
+      if (!document.hidden) {
+        void refreshData();
+      }
+    };
+    document.addEventListener("visibilitychange", visibilityHandler);
+
+    return () => {
+      window.removeEventListener("storage", reload);
+      document.removeEventListener("visibilitychange", visibilityHandler);
+    };
+  }, [refreshData]);
+
+  useEffect(() => {
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+    };
   }, []);
 
-  // Reload expenses when location changes (e.g., coming back from new expense page)
   useEffect(() => {
-    loadExpenses();
-  }, [location.pathname]);
+    if (expensesQuery.isLoading) {
+      setIsLoading(true);
+      return;
+    }
+
+    setIsLoading(false);
+
+    if (expensesQuery.data) {
+      const { expenses: fetchedExpenses, vendors, customers, accounts, currencies: cursList } = expensesQuery.data;
+      setExpenses(fetchedExpenses);
+      setVendorsList(vendors);
+      setCustomersList(customers);
+      setAccountsList(accounts);
+      setCurrencies(cursList);
+      return;
+    }
+
+    if (expensesQuery.isError) {
+      setExpenses([]);
+      setVendorsList([]);
+      setCustomersList([]);
+      setAccountsList([]);
+      setCurrencies([]);
+    }
+  }, [expensesQuery.data, expensesQuery.isLoading, expensesQuery.isError]);
 
   // Handle Esc key to clear selection
   useEffect(() => {
@@ -347,7 +445,7 @@ export default function Expenses() {
 
   const handleDeleteSelected = () => {
     if (selectedExpenses.length === 0) {
-      alert("Please select at least one expense to delete.");
+      toast.error("Please select at least one expense to delete.");
       return;
     }
     setShowDeleteModal(true);
@@ -366,8 +464,7 @@ export default function Expenses() {
       );
 
       if (!deleteTargets.length) {
-        setNotification("No valid expense IDs selected for delete." as any);
-        setTimeout(() => setNotification(null), 3000);
+        toast.error("No valid expense IDs selected for delete.");
         setShowDeleteModal(false);
         return;
       }
@@ -393,17 +490,16 @@ export default function Expenses() {
       const failed = results.filter(r => !r.success).length;
 
       // Refresh expenses from database
-      await loadExpenses();
+      await refreshData();
 
       // Show success/error notification
       if (failed === 0) {
-        setNotification(`The selected expense${count > 1 ? "s have" : " has"} been deleted successfully.` as any);
+        toast.success(`The selected expense${count > 1 ? "s have" : " has"} been deleted successfully.`);
       } else if (successful > 0) {
-        setNotification(`${successful} expense${successful > 1 ? "s" : ""} deleted successfully. ${failed} failed.` as any);
+        toast.success(`${successful} expense${successful > 1 ? "s" : ""} deleted successfully. ${failed} failed.`);
       } else {
-        setNotification(`Failed to delete expenses. Please try again.` as any);
+        toast.error(`Failed to delete expenses. Please try again.`);
       }
-      setTimeout(() => setNotification(null), 3000);
 
       setSelectedExpenses([]);
       window.dispatchEvent(new Event("expensesUpdated"));
@@ -411,15 +507,14 @@ export default function Expenses() {
       setShowDeleteModal(false);
     } catch (error) {
       console.error("Error deleting expenses:", error);
-      setNotification("Failed to delete expenses. Please try again." as any);
-      setTimeout(() => setNotification(null), 3000);
+      toast.error("Failed to delete expenses. Please try again.");
       setShowDeleteModal(false);
     }
   };
 
   const handleBulkUpdate = () => {
     if (selectedExpenses.length === 0) {
-      alert("Please select at least one expense to update.");
+      toast.error("Please select at least one expense to update.");
       return;
     }
     setShowBulkUpdateModal(true);
@@ -439,6 +534,13 @@ export default function Expenses() {
     if (!normalized) return "";
     if (normalized === "nonbillable") return "non-billable";
     return normalized;
+  };
+
+  const getExpenseStatusClass = (value: any) => {
+    const status = String(value || "").trim().toLowerCase();
+    if (status === "invoiced") return "text-[#ff4d4f]";
+    if (status === "non-billable" || status === "unbilled" || status === "billable") return "text-[#3f5f8f]";
+    return "text-[#7b88a3]";
   };
 
   const resolveAccountByName = (name: string) => {
@@ -463,13 +565,29 @@ export default function Expenses() {
   };
 
   const handleBulkUpdateSubmit = async (field: string, value: any) => {
+    const fieldKeyMap: Record<string, string> = {
+      Date: "date",
+      "Expense Account": "expenseAccount",
+      "Paid Through": "paidThrough",
+      Vendor: "vendor",
+      "Customer Name": "customerName",
+      Status: "status",
+      Currency: "currency",
+      Amount: "amount",
+      Notes: "notes",
+      Billable: "billable",
+      "Reference#": "reference",
+      Location: "location",
+    };
+    const fieldKey = fieldKeyMap[field] || field;
+
     if (!selectedExpenses.length) {
-      alert("Please select at least one expense.");
+      toast.error("Please select at least one expense.");
       return;
     }
 
     if (value === "" || value === null || value === undefined) {
-      alert("Please enter a new value.");
+      toast.error("Please enter a new value.");
       return;
     }
 
@@ -479,24 +597,26 @@ export default function Expenses() {
     );
 
     if (!selectedRows.length) {
-      alert("No valid expenses selected.");
+      toast.error("No valid expenses selected.");
       return;
     }
 
     let displayValue: any = value;
-    if (field === "date") {
+    if (fieldKey === "date") {
       displayValue = formatDateToDisplay(String(value));
-    } else if (field === "currency") {
+    } else if (fieldKey === "currency") {
       displayValue = String(value || "").toUpperCase();
-    } else if (field === "status") {
+    } else if (fieldKey === "status") {
       displayValue = String(value || "").toUpperCase();
-    } else if (field === "amount") {
+    } else if (fieldKey === "amount") {
       const numeric = Number.parseFloat(String(value));
       if (!Number.isFinite(numeric)) {
-        alert("Please enter a valid amount.");
+        toast.error("Please enter a valid amount.");
         return;
       }
       displayValue = numeric;
+    } else if (fieldKey === "billable") {
+      displayValue = Boolean(value);
     }
 
     // Optimistic UI update
@@ -507,7 +627,7 @@ export default function Expenses() {
         }
         return {
           ...expense,
-          [field]: displayValue,
+          [fieldKey]: displayValue,
         };
       })
     );
@@ -522,7 +642,7 @@ export default function Expenses() {
 
           const payload: any = {};
 
-          switch (field) {
+          switch (fieldKey) {
             case "date": {
               payload.date = String(value);
               break;
@@ -588,8 +708,23 @@ export default function Expenses() {
               payload.description = String(value);
               break;
             }
+            case "billable": {
+              const isBillable = value === true || String(value).toLowerCase() === "true";
+              payload.is_billable = isBillable;
+              payload.status = isBillable ? "billable" : "non-billable";
+              break;
+            }
+            case "reference": {
+              payload.reference_number = String(value);
+              break;
+            }
+            case "location": {
+              payload.location = String(value);
+              payload.location_name = String(value);
+              break;
+            }
             default: {
-              payload[field] = value;
+              payload[fieldKey] = value;
             }
           }
 
@@ -615,22 +750,18 @@ export default function Expenses() {
       setSelectedExpenses([]);
       window.dispatchEvent(new Event("expensesUpdated"));
       window.dispatchEvent(new Event("storage"));
-      await loadExpenses();
+      await refreshData();
     } catch (err) {
       console.error("Bulk update error", err);
       setNotification("Bulk update failed");
       setTimeout(() => setNotification(null), 3000);
-      await loadExpenses();
+      await refreshData();
     }
   };
 
   const expenseFieldOptions = useMemo(() => {
     const uniqueAccountNames = Array.from(
-      new Set(
-        accountsList
-          .map((account: any) => account?.accountName || account?.name)
-          .filter(Boolean)
-      )
+      new Set(accountsList.map((account: any) => account?.accountName || account?.name).filter(Boolean))
     );
     const uniqueVendorNames = Array.from(
       new Set(vendorsList.map((vendor: any) => vendor?.displayName || vendor?.name).filter(Boolean))
@@ -641,37 +772,46 @@ export default function Expenses() {
     const uniqueCurrencyCodes = Array.from(
       new Set(currencies.map((currency: any) => currency?.code).filter(Boolean))
     );
+    const uniqueLocations = Array.from(
+      new Set(expenses.map((row: any) => row?.location).filter(Boolean))
+    );
 
     return [
-      { value: "date", label: "Date", type: "date" },
+      { value: "Date", label: "Date", type: "date" as const },
       {
-        value: "expenseAccount",
+        value: "Expense Account",
         label: "Expense Account",
-        type: "select",
-        options: uniqueAccountNames.map((name) => ({ label: name, value: name })),
+        type: "select" as const,
+        options: uniqueAccountNames.map((name) => ({ label: String(name), value: String(name) })),
       },
       {
-        value: "paidThrough",
+        value: "Paid Through",
         label: "Paid Through",
-        type: "select",
-        options: uniqueAccountNames.map((name) => ({ label: name, value: name })),
+        type: "select" as const,
+        options: uniqueAccountNames.map((name) => ({ label: String(name), value: String(name) })),
       },
       {
-        value: "vendor",
+        value: "Vendor",
         label: "Vendor",
-        type: "select",
-        options: uniqueVendorNames.map((name) => ({ label: name, value: name })),
+        type: "select" as const,
+        options: uniqueVendorNames.map((name) => ({ label: String(name), value: String(name) })),
       },
       {
-        value: "customerName",
+        value: "Customer Name",
         label: "Customer Name",
-        type: "select",
-        options: uniqueCustomerNames.map((name) => ({ label: name, value: name })),
+        type: "select" as const,
+        options: uniqueCustomerNames.map((name) => ({ label: String(name), value: String(name) })),
       },
       {
-        value: "status",
+        value: "Location",
+        label: "Location",
+        type: "select" as const,
+        options: uniqueLocations.map((name) => ({ label: String(name), value: String(name) })),
+      },
+      {
+        value: "Status",
         label: "Status",
-        type: "select",
+        type: "select" as const,
         options: [
           { label: "Unbilled", value: "unbilled" },
           { label: "Invoiced", value: "invoiced" },
@@ -681,26 +821,31 @@ export default function Expenses() {
         ],
       },
       {
-        value: "currency",
-        label: "Currency",
-        type: "select",
-        options: uniqueCurrencyCodes.map((code) => ({ label: code, value: code })),
+        value: "Billable",
+        label: "Billable",
+        type: "boolean" as const,
       },
-      { value: "amount", label: "Amount", type: "number", min: 0, step: "0.01" },
-      { value: "notes", label: "Notes", type: "text", placeholder: "Enter notes" },
+      {
+        value: "Currency",
+        label: "Currency",
+        type: "select" as const,
+        options: uniqueCurrencyCodes.map((code) => ({ label: String(code), value: String(code) })),
+      },
+      { value: "Amount", label: "Amount", type: "number" as const, placeholder: "Enter amount" },
+      { value: "Reference#", label: "Reference#", type: "text" as const, placeholder: "Enter reference" },
+      { value: "Notes", label: "Notes", type: "text" as const, placeholder: "Enter notes" },
     ];
-  }, [accountsList, vendorsList, customersList, currencies]);
+  }, [accountsList, vendorsList, customersList, currencies, expenses]);
 
   const handleDownloadReceipt = () => {
     // If expenses are selected, export only selected expenses
     // Otherwise, open export modal to choose what to export
     if (selectedExpenses.length > 0) {
-      // Download selected expenses as PDF
       const selectedSet = new Set(selectedExpenses.map((id) => String(id)));
       const selectedExpenseData = expenses.filter((exp) =>
         selectedSet.has(String(exp.id || exp.expense_id || exp._id))
       );
-      downloadExpensesAsPDF(selectedExpenseData);
+      void downloadSelectedExpenseAttachmentsAsZip(selectedExpenseData);
     } else {
       // Open export modal to export all expenses or configure export
       setExportType("expenses");
@@ -708,59 +853,201 @@ export default function Expenses() {
     }
   };
 
-  const downloadExpensesAsPDF = (expensesToExport: any[]) => {
-    if (expensesToExport.length === 0) {
-      alert("No expenses to download.");
+  const sanitizeName = (value: any, fallback = "file") => {
+    const cleaned = String(value || "")
+      .trim()
+      .replace(/[\\/:*?"<>|]/g, "_")
+      .replace(/\s+/g, " ");
+    return cleaned || fallback;
+  };
+
+  const toBase64Content = (value: string) => {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) return "";
+    if (trimmed.startsWith("data:")) {
+      const parts = trimmed.split(",");
+      return parts.length > 1 ? parts[1] : "";
+    }
+    return trimmed;
+  };
+
+  const isLikelyBase64 = (value: string) => /^[A-Za-z0-9+/=]+$/.test(value) && value.length > 100;
+
+  const getAttachmentEntriesFromExpense = (expense: any) => {
+    const allEntries: any[] = [];
+    const candidateKeys = [
+      "receipts",
+      "uploads",
+      "documents",
+      "attachments",
+      "receipt",
+      "receiptFile",
+      "receiptUrl",
+      "document",
+      "documentFile",
+      "documentUrl",
+      "file",
+      "files",
+    ];
+
+    candidateKeys.forEach((key) => {
+      const value = expense?.[key];
+      if (Array.isArray(value)) {
+        allEntries.push(...value);
+      } else if (value !== undefined && value !== null && value !== "") {
+        allEntries.push(value);
+      }
+    });
+
+    return allEntries;
+  };
+
+  const resolveAttachmentPayload = async (entry: any, fallbackName: string) => {
+    if (entry instanceof File || entry instanceof Blob) {
+      return { blob: entry as Blob, name: sanitizeName((entry as any).name || fallbackName, fallbackName) };
+    }
+
+    if (typeof entry === "string") {
+      const raw = entry.trim();
+      if (!raw) return null;
+      if (/^https?:\/\//i.test(raw) || raw.startsWith("blob:") || raw.startsWith("data:")) {
+        try {
+          const response = await fetch(raw);
+          if (!response.ok) return null;
+          const blob = await response.blob();
+          const fromUrl = raw.split("?")[0].split("/").pop();
+          return { blob, name: sanitizeName(fromUrl || fallbackName, fallbackName) };
+        } catch {
+          return null;
+        }
+      }
+      if (isLikelyBase64(raw)) {
+        try {
+          const content = toBase64Content(raw);
+          const bytes = Uint8Array.from(atob(content), (c) => c.charCodeAt(0));
+          return { blob: new Blob([bytes]), name: sanitizeName(fallbackName, fallbackName) };
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    }
+
+    if (entry && typeof entry === "object") {
+      const fileObj = entry.file || entry.originalFile;
+      if (fileObj instanceof File || fileObj instanceof Blob) {
+        return { blob: fileObj as Blob, name: sanitizeName(entry.name || (fileObj as any).name || fallbackName, fallbackName) };
+      }
+
+      const possibleUrl = String(entry.url || entry.previewUrl || entry.downloadUrl || entry.path || "").trim();
+      if (possibleUrl) {
+        try {
+          const response = await fetch(possibleUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            const fromUrl = possibleUrl.split("?")[0].split("/").pop();
+            return { blob, name: sanitizeName(entry.name || fromUrl || fallbackName, fallbackName) };
+          }
+        } catch {
+          // fall through
+        }
+      }
+
+      const base64Raw = String(entry.base64 || entry.data || "").trim();
+      if (base64Raw && isLikelyBase64(toBase64Content(base64Raw))) {
+        try {
+          const content = toBase64Content(base64Raw);
+          const bytes = Uint8Array.from(atob(content), (c) => c.charCodeAt(0));
+          return { blob: new Blob([bytes]), name: sanitizeName(entry.name || fallbackName, fallbackName) };
+        } catch {
+          return null;
+        }
+      }
+    }
+
+    return null;
+  };
+
+  const downloadSelectedExpenseAttachmentsAsZip = async (expensesToExport: any[]) => {
+    if (!expensesToExport.length) {
+      toast.error("No expenses selected.");
       return;
     }
 
-    const pdf = new jsPDF("p", "mm", "a4");
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 12;
-    const contentWidth = pageWidth - margin * 2;
-    let y = margin;
+    const zip = new JSZip();
+    let addedCount = 0;
+    let noAttachmentCount = 0;
 
-    pdf.setFontSize(14);
-    pdf.text("Expenses Export", margin, y);
-    y += 7;
-    pdf.setFontSize(10);
-    pdf.text(`Generated: ${new Date().toLocaleString()}`, margin, y);
-    y += 5;
-    pdf.text(`Total Expenses: ${expensesToExport.length}`, margin, y);
-    y += 8;
+    for (let i = 0; i < expensesToExport.length; i += 1) {
+      const expense = expensesToExport[i];
+      const expenseId = String(expense?.expense_id || expense?.id || expense?._id || i + 1);
+      const reference = String(expense?.reference || expense?.reference_number || "").trim();
+      const expenseFolder = sanitizeName(reference || `expense-${expenseId}`, `expense-${expenseId}`);
+      const entries = getAttachmentEntriesFromExpense(expense);
 
-    expensesToExport.forEach((expense: any, index: number) => {
-      const amount = Number.parseFloat(String(expense.amount || 0)) || 0;
-      const line = `${index + 1}. ${expense.date || "-"} | ${expense.expenseAccount || "-"} | ${expense.currency || "USD"
-        } ${amount.toFixed(2)} | ${expense.status || "-"}`;
-      const wrapped = pdf.splitTextToSize(line, contentWidth);
-      const notesText = expense.notes ? `Notes: ${expense.notes}` : "";
-      const wrappedNotes = notesText ? pdf.splitTextToSize(notesText, contentWidth) : [];
-
-      if (y + wrapped.length * 5 + wrappedNotes.length * 5 + 8 > pageHeight - margin) {
-        pdf.addPage();
-        y = margin;
+      if (!entries.length) {
+        noAttachmentCount += 1;
+        continue;
       }
 
-      pdf.setFont("helvetica", "normal");
-      pdf.text(wrapped, margin, y);
-      y += wrapped.length * 5;
+      let expenseAdded = 0;
 
-      if (wrappedNotes.length) {
-        pdf.setFont("helvetica", "italic");
-        pdf.text(wrappedNotes, margin + 3, y);
-        y += wrappedNotes.length * 5;
+      for (let j = 0; j < entries.length; j += 1) {
+        const entry = entries[j];
+        const fallbackName = `attachment-${j + 1}`;
+        const resolved = await resolveAttachmentPayload(entry, fallbackName);
+
+        if (resolved?.blob) {
+          zip.file(`${expenseFolder}/${resolved.name}`, resolved.blob);
+          expenseAdded += 1;
+          addedCount += 1;
+        }
       }
 
-      y += 3;
-    });
+      if (expenseAdded === 0) {
+        const attachmentNames = entries
+          .map((entry: any, index: number) => {
+            if (typeof entry === "string") return entry.trim();
+            if (entry && typeof entry === "object") {
+              return String(entry.name || entry.fileName || `attachment-${index + 1}`).trim();
+            }
+            return `attachment-${index + 1}`;
+          })
+          .filter(Boolean);
 
-    pdf.save(`expenses_${new Date().toISOString().split("T")[0]}.pdf`);
+        if (attachmentNames.length > 0) {
+          // Keep export useful even when only attachment names are stored in local data.
+          zip.file(
+            `${expenseFolder}/_attachment-list.txt`,
+            `This expense has attachment records, but binary file content is not available in local storage.\n\nAttachments:\n${attachmentNames.map((name) => `- ${name}`).join("\n")}`
+          );
+          addedCount += 1;
+        } else {
+          noAttachmentCount += 1;
+        }
+      }
+    }
 
-    // Show notification
-    setNotification(`${expensesToExport.length} expense${expensesToExport.length > 1 ? 's' : ''} exported to PDF.`);
-    setTimeout(() => setNotification(null), 3000);
+    if (addedCount === 0) {
+      toast.error("No downloadable receipt/document files found for the selected expenses.");
+      return;
+    }
+
+    const content = await zip.generateAsync({ type: "blob" });
+    const url = window.URL.createObjectURL(content);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `expense-attachments-${new Date().toISOString().slice(0, 10)}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    const successMessage = noAttachmentCount > 0
+      ? `ZIP downloaded. Added ${addedCount} file${addedCount > 1 ? "s" : ""}. ${noAttachmentCount} selected expense${noAttachmentCount > 1 ? "s had" : " had"} no downloadable attachments.`
+      : `ZIP downloaded with ${addedCount} file${addedCount > 1 ? "s" : ""}.`;
+    setNotification(successMessage as any);
+    setTimeout(() => setNotification(null), 4000);
   };
 
   const handleClearSelection = () => {
@@ -783,7 +1070,7 @@ export default function Expenses() {
     "Non-Billable",
     "With Receipts",
     "Without Receipts",
-    "From Taban Books Expense",
+    "From Zoho Expense",
     ...customViews.map(cv => cv.name)
   ];
 
@@ -834,20 +1121,6 @@ export default function Expenses() {
     setDropdownOpen(false);
   };
 
-  const handleAttachFromDesktop = () => {
-    setUploadMenuOpen(false);
-    fileInputRef.current?.click();
-  };
-
-  const handleFileSelect = (e: any) => {
-    const files = e.target.files;
-    if (files.length > 0) {
-      // Handle file upload
-      console.log("Files selected:", files);
-    }
-  };
-
-  // Get display text for header
   const getDisplayText = () => {
     return selectedView === "All" ? "All Expenses" : selectedView;
   };
@@ -911,11 +1184,11 @@ export default function Expenses() {
             case "Non-Billable":
               return expense.billable === false || status === "NON-BILLABLE";
             case "With Receipts":
-              return expense.hasReceipt === true || expense.receipt || expense.receiptFile || expense.receiptUrl;
+              return hasAnyAttachment(expense);
             case "Without Receipts":
-              return !expense.hasReceipt && !expense.receipt && !expense.receiptFile && !expense.receiptUrl;
-            case "From Taban Books Expense":
-              return expense.fromZohoExpense === true || expense.source === "Taban Books Expense" || expense.importSource === "Taban Books";
+              return !hasAnyAttachment(expense);
+            case "From Zoho Expense":
+              return expense.fromZohoExpense === true || expense.source === "Zoho Expense" || expense.importSource === "Zoho";
             default:
               return true;
           }
@@ -1062,22 +1335,26 @@ export default function Expenses() {
       marginTop: "8px",
       backgroundColor: "#ffffff",
       borderRadius: "8px",
-      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+      boxShadow: "0 8px 18px rgba(0, 0, 0, 0.14)",
       border: "1px solid #e5e7eb",
-      minWidth: "200px",
+      minWidth: "186px",
       zIndex: 100,
-      padding: "4px 0",
+      padding: "6px",
     },
     uploadMenuItem: {
       display: "flex",
       alignItems: "center",
-      padding: "8px 16px",
-      fontSize: "14px",
-      color: "#111827",
+      justifyContent: "center",
+      padding: "10px 14px",
+      fontSize: "13px",
+      fontWeight: "600",
+      color: "#ffffff",
       cursor: "pointer",
       border: "none",
-      background: "none",
+      backgroundColor: "#3b82f6",
       width: "100%",
+      borderRadius: "10px",
+      boxShadow: "inset 0 0 0 2px #bfdbfe, 0 0 0 1px #2563eb",
       textAlign: "left",
     },
     newButton: {
@@ -1132,7 +1409,7 @@ export default function Expenses() {
       border: "none",
       background: "none",
       width: "100%",
-      textAlign: "left",
+      textAlign: "left" as const,
     },
     dropdownItemSelected: {
       backgroundColor: "#15637210",
@@ -1162,7 +1439,7 @@ export default function Expenses() {
       border: "none",
       background: "none",
       width: "100%",
-      textAlign: "left",
+      textAlign: "left" as const,
     },
     moreDropdownWrapper: {
       position: "relative",
@@ -1192,7 +1469,7 @@ export default function Expenses() {
       border: "none",
       background: "none",
       width: "100%",
-      textAlign: "left",
+      textAlign: "left" as const,
     },
     submenuWrapper: {
       position: "relative",
@@ -1221,7 +1498,7 @@ export default function Expenses() {
       border: "none",
       background: "none",
       width: "100%",
-      textAlign: "left",
+      textAlign: "left" as const,
     },
     submenuItemSelected: {
       backgroundColor: "#15637210",
@@ -1246,7 +1523,7 @@ export default function Expenses() {
     },
     tableHeaderCell: {
       padding: "12px",
-      textAlign: "left",
+      textAlign: "left" as const,
       fontSize: "12px",
       fontWeight: "600",
       color: "#6b7280",
@@ -1320,94 +1597,60 @@ export default function Expenses() {
   };
 
   return (
-    <div style={styles.container}>
-      {/* CSS Animations */}
-      <style dangerouslySetInnerHTML={{
-        __html: `
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-      `}} />
+      <div className="flex flex-col h-[calc(100vh-72px)] w-full bg-[#f6f7fb] font-sans text-gray-800 antialiased relative overflow-hidden">
       {/* Header */}
       {selectedExpenses.length === 0 && (
-        <div style={styles.header}>
-          <div style={styles.headerContent}>
-            <div style={styles.headerLeft}>
-              <div style={styles.dropdownWrapper} ref={dropdownRef}>
+        <div className="flex-none border-b border-gray-100 bg-white px-6 py-6">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-1 items-center gap-6">
+              <button
+                className="cursor-pointer border-none bg-transparent py-2 text-base font-medium text-gray-500"
+                onClick={() => navigate("/expenses/receipts")}
+              >
+                Receipts Inbox
+              </button>
+              <div className="relative inline-block" ref={dropdownRef}>
                 <button
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px",
-                    padding: "6px 12px",
-                    fontSize: "14px",
-                    fontWeight: "600",
-                    color: "#111827",
-                    backgroundColor: "transparent",
-                    border: "none",
-                    cursor: "pointer"
-                  }}
+                  className="flex cursor-pointer items-center gap-1.5 border-none border-b-2 border-b-blue-500 bg-transparent py-2 text-base font-bold text-gray-900"
                   onClick={() => setDropdownOpen(!dropdownOpen)}
                 >
                   {getDisplayText()}
                   {dropdownOpen ? (
-                    <ChevronUp size={16} style={{ color: "#156372" }} />
+                    <ChevronUp size={18} className="text-blue-500" />
                   ) : (
-                    <ChevronDown size={16} style={{ color: "#156372" }} />
+                    <ChevronDown size={18} className="text-blue-500" />
                   )}
                 </button>
                 {dropdownOpen && (
-                  <div style={styles.dropdown}>
+                  <div className="absolute left-0 top-full z-[100] mt-2 min-w-[240px] rounded-lg border border-gray-200 bg-white py-1 shadow-md">
                     {expenseViews.map((view) => (
                       <button
                         key={view}
-                        style={{
-                          ...styles.dropdownItem,
-                          ...(selectedView === view
-                            ? styles.dropdownItemSelected
-                            : {}),
-                        }}
+                        className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm ${selectedView === view ? "bg-transparent text-gray-700" : "bg-transparent text-gray-700 hover:bg-gray-50"}`}
                         onClick={() => handleViewSelect(view)}
-                        onMouseEnter={(e) => {
-                          if (selectedView !== view) {
-                            e.target.style.backgroundColor = "#f9fafb";
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (selectedView !== view) {
-                            e.target.style.backgroundColor = "transparent";
-                          }
-                        }}
                       >
-                        <span style={styles.dropdownItemText}>{view}</span>
+                        <span
+                          className={`inline-flex items-center rounded-md px-2 py-1 ${selectedView === view ? "border border-[#156372] text-[#156372]" : "border border-transparent text-gray-700"}`}
+                        >
+                          {view}
+                        </span>
                         <Star
                           size={16}
-                          style={styles.dropdownStar}
+                          className="h-4 w-4 text-gray-400"
                           fill="none"
                           strokeWidth={1.5}
                         />
                       </button>
                     ))}
-                    <div style={styles.dropdownDivider} />
+                    <div className="my-1 h-px bg-gray-200" />
                     <button
-                      style={styles.dropdownNewView}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-[#156372] hover:bg-gray-50"
                       onClick={() => {
                         setDropdownOpen(false);
-                        navigate("/purchases/expenses/custom-view/new");
-                      }}
-                      onMouseEnter={(e) => {
-                        e.target.style.backgroundColor = "#f9fafb";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.target.style.backgroundColor = "transparent";
+                        navigate("/expenses/custom-view/new");
                       }}
                     >
-                      <Plus size={16} />
+                      <PlusCircle size={16} className="text-[#156372]" />
                       New Custom View
                     </button>
                   </div>
@@ -1415,33 +1658,49 @@ export default function Expenses() {
               </div>
             </div>
 
-            <div style={styles.headerRight}>
+            <div className="flex items-center gap-2">
+              <div className="relative inline-block" ref={uploadMenuRef}>
+                <button
+                  className="flex cursor-pointer items-center gap-1 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700"
+                  onClick={() => setUploadMenuOpen(!uploadMenuOpen)}
+                >
+                  Upload Expense
+                  <ChevronDown size={16} className="text-gray-500" />
+                </button>
+                {uploadMenuOpen && (
+                  <div className="absolute left-0 top-full z-[100] mt-2 min-w-[186px] rounded-lg border border-gray-200 bg-white p-1.5 shadow-[0_8px_18px_rgba(0,0,0,0.14)]">
+                    <button className="w-full rounded-[10px] bg-blue-500 px-3.5 py-2.5 text-left text-[13px] font-semibold text-white shadow-[inset_0_0_0_2px_#bfdbfe,0_0_0_1px_#2563eb]" onClick={handleAttachFromDesktop}>
+                      Attach From Desktop
+                    </button>
+                  </div>
+                )}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  onChange={handleFileSelect}
+                  multiple
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
+                />
+              </div>
               <button
-                style={styles.newButton}
-                onClick={() => navigate("/purchases/expenses/new")}
-                onMouseEnter={(e) => (e.target.style.backgroundColor = "#0D4A52")}
-                onMouseLeave={(e) => (e.target.style.backgroundColor = "#156372")}
+                className="flex cursor-pointer items-center gap-1 rounded-md border-none bg-[#156372] px-4 py-2 text-sm font-medium text-white hover:bg-[#0f4f5a]"
+                onClick={() => navigate("/expenses/new")}
               >
                 <Plus size={16} />
                 New
               </button>
-              <div style={styles.moreDropdownWrapper} ref={moreMenuRef}>
+              <div className="relative inline-block" ref={moreMenuRef}>
                 <button
-                  style={styles.moreButton}
+                  className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-gray-300 bg-white p-2 text-gray-900 hover:bg-gray-50"
                   onClick={() => setMoreMenuOpen(!moreMenuOpen)}
-                  onMouseEnter={(e) => {
-                    e.target.style.backgroundColor = "#f9fafb";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.backgroundColor = "#ffffff";
-                  }}
                 >
                   <MoreVertical size={18} />
                 </button>
                 {moreMenuOpen && (
-                  <div style={styles.moreDropdown}>
+                  <div className="absolute right-0 top-full z-[100] mt-2 min-w-[200px] rounded-lg border border-gray-200 bg-white py-1 shadow-md">
                     <div
-                      style={styles.submenuWrapper}
+                      className="relative"
                       onMouseEnter={() => {
                         setSortSubmenuOpen(true);
                         setHoveredMenuItem('sort');
@@ -1452,44 +1711,27 @@ export default function Expenses() {
                       }}
                     >
                       <button
-                        style={{
-                          ...styles.moreDropdownItem,
-                          backgroundColor: (hoveredMenuItem === 'sort' || sortSubmenuOpen) ? "#156372" : "transparent",
-                          color: (hoveredMenuItem === 'sort' || sortSubmenuOpen) ? "#ffffff" : "#111827",
-                        }}
+                        className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm ${(hoveredMenuItem === 'sort' || sortSubmenuOpen) ? "bg-[#156372] text-white" : "bg-transparent text-gray-900"}`}
                       >
-                        <ArrowUpDown size={16} style={{ color: (hoveredMenuItem === 'sort' || sortSubmenuOpen) ? "#ffffff" : "#6b7280" }} />
+                        <ArrowUpDown size={16} className={(hoveredMenuItem === 'sort' || sortSubmenuOpen) ? "text-white" : "text-gray-500"} />
                         <span>Sort by</span>
-                        <ChevronRight size={16} style={{ color: (hoveredMenuItem === 'sort' || sortSubmenuOpen) ? "#ffffff" : "#6b7280" }} />
+                        <ChevronRight size={16} className={`ml-auto ${(hoveredMenuItem === 'sort' || sortSubmenuOpen) ? "text-white" : "text-gray-500"}`} />
                       </button>
                       {sortSubmenuOpen && (
-                        <div style={styles.submenu}>
+                        <div className="absolute right-full top-0 z-[101] mr-1 min-w-[200px] rounded-lg border border-gray-200 bg-white py-1 shadow-md">
                           {sortOptions.map((option) => (
                             <button
                               key={option}
-                              style={{
-                                ...styles.submenuItem,
-                                ...(selectedSort === option ? styles.submenuItemSelected : {}),
-                              }}
+                              className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm ${selectedSort === option ? "bg-[#15637210] text-[#156372]" : "text-gray-900 hover:bg-gray-100"}`}
                               onClick={() => {
                                 setSelectedSort(option);
                                 setSortSubmenuOpen(false);
                                 setMoreMenuOpen(false);
                               }}
-                              onMouseEnter={(e) => {
-                                if (selectedSort !== option) {
-                                  e.currentTarget.style.backgroundColor = "#f3f4f6";
-                                }
-                              }}
-                              onMouseLeave={(e) => {
-                                if (selectedSort !== option) {
-                                  e.currentTarget.style.backgroundColor = "transparent";
-                                }
-                              }}
                             >
                               <span>{option}</span>
                               {selectedSort === option && (
-                                <ChevronDown size={16} style={{ color: "#156372" }} />
+                                <ChevronDown size={16} className="text-[#156372]" />
                               )}
                             </button>
                           ))}
@@ -1498,50 +1740,40 @@ export default function Expenses() {
                     </div>
 
                     <div
-                      style={styles.submenuWrapper}
+                      className="relative"
                       ref={importSubmenuRef}
                       onMouseEnter={() => setImportSubmenuOpen(true)}
                       onMouseLeave={() => setImportSubmenuOpen(false)}
                     >
                       <button
-                        style={{
-                          ...styles.moreDropdownItem,
-                          backgroundColor: (hoveredMenuItem === 'import' || importSubmenuOpen) ? "#156372" : "transparent",
-                          color: (hoveredMenuItem === 'import' || importSubmenuOpen) ? "#ffffff" : "#111827",
-                        }}
+                        className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm ${(hoveredMenuItem === 'import' || importSubmenuOpen) ? "bg-[#156372] text-white" : "bg-transparent text-gray-900"}`}
                         onMouseEnter={() => setHoveredMenuItem('import')}
                         onMouseLeave={() => setHoveredMenuItem(null)}
                       >
-                        <Download size={16} style={{ color: (hoveredMenuItem === 'import' || importSubmenuOpen) ? "#ffffff" : "#6b7280" }} />
+                        <Download size={16} className={(hoveredMenuItem === 'import' || importSubmenuOpen) ? "text-white" : "text-gray-500"} />
                         <span>Import</span>
-                        <ChevronRight size={16} style={{ color: (hoveredMenuItem === 'import' || importSubmenuOpen) ? "#ffffff" : "#6b7280" }} />
+                        <ChevronRight size={16} className={`ml-auto ${(hoveredMenuItem === 'import' || importSubmenuOpen) ? "text-white" : "text-gray-500"}`} />
                       </button>
                       {importSubmenuOpen && (
-                        <div style={styles.submenu}>
+                        <div className="absolute right-full top-0 z-[101] mr-1 min-w-[200px] rounded-lg border border-gray-200 bg-white py-1 shadow-md">
                           <button
-                            style={{ ...styles.submenuItem, fontSize: "13px" }}
+                            className="w-full px-4 py-2 text-left text-[13px] text-gray-900 hover:bg-gray-100"
                             onClick={() => {
                               setMoreMenuOpen(false);
-                              navigate("/purchases/expenses/import");
+                              navigate("/expenses/import");
                             }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = "#f3f4f6"}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
                           >
                             Import Expenses
                           </button>
                           <button
-                            style={{ ...styles.submenuItem, fontSize: "13px" }}
+                            className="w-full px-4 py-2 text-left text-[13px] text-gray-900 hover:bg-gray-100"
                             onClick={() => downloadSampleFile('csv')}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = "#f3f4f6"}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
                           >
                             Download Sample CSV
                           </button>
                           <button
-                            style={{ ...styles.submenuItem, fontSize: "13px" }}
+                            className="w-full px-4 py-2 text-left text-[13px] text-gray-900 hover:bg-gray-100"
                             onClick={() => downloadSampleFile('xls')}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = "#f3f4f6"}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
                           >
                             Download Sample XLS
                           </button>
@@ -1550,7 +1782,7 @@ export default function Expenses() {
                     </div>
 
                     <div
-                      style={styles.submenuWrapper}
+                      className="relative"
                       onMouseEnter={() => {
                         setExportSubmenuOpen(true);
                         setHoveredMenuItem('export');
@@ -1561,47 +1793,33 @@ export default function Expenses() {
                       }}
                     >
                       <button
-                        style={{
-                          ...styles.moreDropdownItem,
-                          backgroundColor: (hoveredMenuItem === 'export' || exportSubmenuOpen) ? "#156372" : "transparent",
-                          color: (hoveredMenuItem === 'export' || exportSubmenuOpen) ? "#ffffff" : "#111827",
-                        }}
+                        className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm ${(hoveredMenuItem === 'export' || exportSubmenuOpen) ? "bg-[#156372] text-white" : "bg-transparent text-gray-900"}`}
                       >
-                        <Upload size={16} style={{ color: (hoveredMenuItem === 'export' || exportSubmenuOpen) ? "#ffffff" : "#6b7280" }} />
+                        <Upload size={16} className={(hoveredMenuItem === 'export' || exportSubmenuOpen) ? "text-white" : "text-gray-500"} />
                         <span>Export</span>
-                        <ChevronRight size={16} style={{ color: (hoveredMenuItem === 'export' || exportSubmenuOpen) ? "#ffffff" : "#6b7280" }} />
+                        <ChevronRight size={16} className={`ml-auto ${(hoveredMenuItem === 'export' || exportSubmenuOpen) ? "text-white" : "text-gray-500"}`} />
                       </button>
                       {exportSubmenuOpen && (
-                        <div style={styles.submenu}>
+                        <div className="absolute right-full top-0 z-[101] mr-1 min-w-[200px] rounded-lg border border-gray-200 bg-white py-1 shadow-md">
                           <button
-                            style={{
-                              ...styles.submenuItem,
-                              fontSize: "13px"
-                            }}
+                            className="w-full px-4 py-2 text-left text-[13px] text-gray-900 hover:bg-gray-100"
                             onClick={() => {
                               setMoreMenuOpen(false);
                               setExportSubmenuOpen(false);
                               setExportType("expenses");
                               setShowExportModal(true);
                             }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = "#f3f4f6"}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
                           >
                             Export Expenses
                           </button>
                           <button
-                            style={{
-                              ...styles.submenuItem,
-                              fontSize: "13px"
-                            }}
+                            className="w-full px-4 py-2 text-left text-[13px] text-gray-900 hover:bg-gray-100"
                             onClick={() => {
                               setMoreMenuOpen(false);
                               setExportSubmenuOpen(false);
                               setExportType("current-view");
                               setShowExportModal(true);
                             }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = "#f3f4f6"}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
                           >
                             Export Current View
                           </button>
@@ -1614,11 +1832,7 @@ export default function Expenses() {
 
 
                     <button
-                      style={{
-                        ...styles.moreDropdownItem,
-                        backgroundColor: hoveredMenuItem === 'preferences' ? "#156372" : "transparent",
-                        color: hoveredMenuItem === 'preferences' ? "#ffffff" : "#111827",
-                      }}
+                      className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm ${hoveredMenuItem === 'preferences' ? "bg-[#156372] text-white" : "bg-transparent text-gray-900"}`}
                       onMouseEnter={() => setHoveredMenuItem('preferences')}
                       onMouseLeave={() => setHoveredMenuItem(null)}
                       onClick={() => {
@@ -1626,16 +1840,12 @@ export default function Expenses() {
                         navigate("/settings/expenses");
                       }}
                     >
-                      <Settings size={16} style={{ color: hoveredMenuItem === 'preferences' ? "#ffffff" : "#6b7280" }} />
+                      <Settings size={16} className={hoveredMenuItem === 'preferences' ? "text-white" : "text-gray-500"} />
                       <span>Preferences</span>
                     </button>
 
                     <button
-                      style={{
-                        ...styles.moreDropdownItem,
-                        backgroundColor: hoveredMenuItem === 'refresh' ? "#156372" : "transparent",
-                        color: hoveredMenuItem === 'refresh' ? "#ffffff" : "#111827",
-                      }}
+                      className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm ${hoveredMenuItem === 'refresh' ? "bg-[#156372] text-white" : "bg-transparent text-gray-900"}`}
                       onMouseEnter={() => setHoveredMenuItem('refresh')}
                       onMouseLeave={() => setHoveredMenuItem(null)}
                       onClick={() => {
@@ -1646,10 +1856,7 @@ export default function Expenses() {
                     >
                       <RotateCw
                         size={16}
-                        style={{
-                          color: hoveredMenuItem === 'refresh' ? "#ffffff" : "#6b7280",
-                          animation: isRefreshing ? "spin 1s linear infinite" : "none"
-                        }}
+                        className={`${hoveredMenuItem === 'refresh' ? "text-white" : "text-gray-500"} ${isRefreshing ? "animate-spin" : ""}`}
                       />
                       <span>Refresh List</span>
                     </button>
@@ -1662,155 +1869,66 @@ export default function Expenses() {
       )}
 
       {/* Main content area */}
-      <div style={styles.tableContainer}>
+      <div className="flex-1 overflow-auto bg-[#f6f7fb] min-h-0 custom-scrollbar">
         {/* Action Bar - Shows when items are selected */}
         {selectedExpenses.length > 0 && (
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "12px 16px",
-            backgroundColor: "#f9fafb",
-            borderBottom: "1px solid #e5e7eb",
-          }}>
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-            }}>
+          <div className="flex items-center justify-between border-b border-gray-100 bg-white px-4 py-3">
+            <div className="flex items-center gap-3">
               <button
                 onClick={handleBulkUpdate}
-                style={{
-                  padding: "6px 12px",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  color: "#374151",
-                  backgroundColor: "#ffffff",
-                  border: "1px solid #d1d5db",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#f3f4f6";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "#ffffff";
-                }}
+                className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
               >
                 Bulk Update
               </button>
 
               <button
                 onClick={handleDownloadReceipt}
-                style={{
-                  padding: "6px",
-                  fontSize: "14px",
-                  color: "#374151",
-                  backgroundColor: "#ffffff",
-                  border: "1px solid #d1d5db",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#f3f4f6";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "#ffffff";
-                }}
+                className="flex items-center justify-center rounded-md border border-gray-300 bg-white p-1.5 text-sm text-gray-700 hover:bg-gray-100"
               >
                 <FileText size={16} />
               </button>
 
               <button
                 onClick={handleDeleteSelected}
-                style={{
-                  padding: "6px 12px",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  color: "#0D4A52",
-                  backgroundColor: "#ffffff",
-                  border: "1px solid #d1d5db",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#fef2f2";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "#ffffff";
-                }}
+                className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-[#0D4A52] hover:bg-red-50"
               >
                 Delete
               </button>
 
-              <span style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                minWidth: "24px",
-                height: "24px",
-                padding: "0 8px",
-                background: "linear-gradient(to right, #156372, #0D4A52)",
-                borderRadius: "4px",
-                fontSize: "13px",
-                fontWeight: "600",
-                color: "#ffffff",
-                marginLeft: "4px",
-              }}>
+              <span className="ml-1 flex h-6 min-w-6 items-center justify-center rounded bg-gradient-to-r from-[#156372] to-[#0D4A52] px-2 text-[13px] font-semibold text-white">
                 {selectedExpenses.length}
               </span>
-              <span style={{
-                fontSize: "14px",
-                color: "#374151",
-                fontWeight: "500",
-                marginLeft: "4px",
-              }}>
+              <span className="ml-1 text-sm font-medium text-gray-700">
                 Selected
               </span>
             </div>
 
             <button
               onClick={handleClearSelection}
-              style={{
-                padding: "4px 8px",
-                fontSize: "12px",
-                color: "#6b7280",
-                backgroundColor: "transparent",
-                border: "none",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = "#374151";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = "#6b7280";
-              }}
+              className="flex items-center gap-1 border-none bg-transparent px-2 py-1 text-xs text-gray-500 hover:text-gray-700"
               title="Press Esc to clear selection"
             >
-              <span style={{ fontSize: "11px" }}>Esc</span>
+              <span className="text-[11px]">Esc</span>
               <X size={14} />
             </button>
           </div>
         )}
 
-        <div style={styles.tableWrapper}>
-          <table style={styles.table}>
-            <thead style={styles.tableHeader}>
+        <table className="w-full min-w-0 border-collapse table-fixed text-[13px] bg-white" style={{ minWidth: `${tableMinWidth}px` }}>
+            <thead className="sticky top-0 z-20 border-b border-gray-200 bg-[#f6f7fb]">
               <tr>
-                <th style={styles.tableHeaderCellWithCheckbox}>
-                  <div style={styles.tableHeaderCheckboxWrapper}>
+                <th className="group/header relative px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500" style={{ width: columnWidths.select }}>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="cursor-pointer border-none bg-transparent p-0 text-[#156372] hover:text-[#0f4a56]"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowCustomizeColumnsModal(true);
+                      }}
+                    >
+                      <SlidersHorizontal size={14} />
+                    </button>
                     <input
                       type="checkbox"
                       checked={selectedExpenses.length === filteredExpenses.length && filteredExpenses.length > 0}
@@ -1821,59 +1939,62 @@ export default function Expenses() {
                           setSelectedExpenses([]);
                         }
                       }}
-                      style={styles.tableCheckbox}
+                      className="h-4 w-4 cursor-pointer"
                     />
                   </div>
+                  {renderResizeHandle("select")}
                 </th>
-                <th style={styles.tableHeaderCell}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    DATE
-                    <button
-                      onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        padding: "2px",
-                        display: "flex",
-                        alignItems: "center",
-                        color: "#6b7280",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.color = "#156372";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.color = "#6b7280";
-                      }}
-                    >
-                      <Filter size={14} />
-                    </button>
-                  </div>
+                {isColumnVisible("date") && (
+                <th className="group/header relative whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500" style={{ width: columnWidths.date }}>
+                  DATE
+                  {renderResizeHandle("date")}
                 </th>
-                <th style={styles.tableHeaderCell}>EXPENSE ACCOUNT</th>
-                <th style={styles.tableHeaderCell}>REFERENCE#</th>
-                <th style={styles.tableHeaderCell}>VENDOR NAME</th>
-                <th style={styles.tableHeaderCell}>PAID THROUGH</th>
-                <th style={styles.tableHeaderCell}>CUSTOMER NAME</th>
-                <th style={styles.tableHeaderCell}>STATUS</th>
-                <th style={styles.tableHeaderCell}>
-                  <div style={styles.tableHeaderAmount}>
+                )}
+                {isColumnVisible("location") && (
+                <th className="group/header relative whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500" style={{ width: columnWidths.location }}>
+                  LOCATION
+                  {renderResizeHandle("location")}
+                </th>
+                )}
+                {isColumnVisible("expenseAccount") && (
+                <th className="group/header relative whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500" style={{ width: columnWidths.expenseAccount }}>
+                  EXPENSE ACCOUNT
+                  {renderResizeHandle("expenseAccount")}
+                </th>
+                )}
+                {isColumnVisible("reference") && (
+                <th className="group/header relative whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500" style={{ width: columnWidths.reference }}>
+                  REFERENCE#
+                  {renderResizeHandle("reference")}
+                </th>
+                )}
+                {isColumnVisible("customerName") && (
+                <th className="group/header relative whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500" style={{ width: columnWidths.customerName }}>
+                  CUSTOMER NAME
+                  {renderResizeHandle("customerName")}
+                </th>
+                )}
+                {isColumnVisible("status") && (
+                <th className="group/header relative whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500" style={{ width: columnWidths.status }}>
+                  STATUS
+                  {renderResizeHandle("status")}
+                </th>
+                )}
+                {isColumnVisible("amount") && (
+                <th className="group/header relative whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500" style={{ width: columnWidths.amount }}>
+                  <div className="flex items-center justify-between">
                     AMOUNT
-                    <button
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        padding: "4px",
-                        display: "flex",
-                        alignItems: "center",
-                        color: "#6b7280",
-                      }}
-                      onClick={() => setShowSearchModal(true)}
-                    >
-                      <Search size={14} />
-                    </button>
                   </div>
+                  {renderResizeHandle("amount")}
+                </th>
+                )}
+                <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase text-gray-500" style={{ width: columnWidths.actions }}>
+                  <button
+                    className="mx-auto flex cursor-pointer items-center border-none bg-transparent p-1 text-gray-500"
+                    onClick={() => setShowSearchModal(true)}
+                  >
+                    <Search size={14} />
+                  </button>
                 </th>
               </tr>
             </thead>
@@ -1881,33 +2002,36 @@ export default function Expenses() {
               {isRefreshing ? (
                 // Skeleton loading rows
                 Array.from({ length: 5 }).map((_, index) => (
-                  <tr key={`skeleton-${index}`} style={styles.tableRow}>
-                    <td style={styles.tableCell}>
-                      <div style={styles.skeletonCheckbox}></div>
+                  <tr key={`skeleton-${index}`} className="group cursor-pointer border-b border-[#eef1f6] h-[50px] hover:bg-[#f8fafc]">
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900" style={{ width: columnWidths.select }}>
+                      <div className="flex items-center gap-2">
+                        <span className="inline-block w-[14px] shrink-0" aria-hidden="true"></span>
+                        <div className="h-4 w-4 animate-pulse rounded bg-gray-200"></div>
+                      </div>
                     </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "150px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "100px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "100px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "100px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
-                      <div style={{ ...styles.skeletonCell, width: "70px" }}></div>
+                    {isColumnVisible("date") && <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900" style={{ width: columnWidths.date }}>
+                      <div className="h-4 w-[80px] animate-pulse rounded bg-gray-200"></div>
+                    </td>}
+                    {isColumnVisible("location") && <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900" style={{ width: columnWidths.location }}>
+                      <div className="h-4 w-[100px] animate-pulse rounded bg-gray-200"></div>
+                    </td>}
+                    {isColumnVisible("expenseAccount") && <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900" style={{ width: columnWidths.expenseAccount }}>
+                      <div className="h-4 w-[150px] animate-pulse rounded bg-gray-200"></div>
+                    </td>}
+                    {isColumnVisible("reference") && <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900" style={{ width: columnWidths.reference }}>
+                      <div className="h-4 w-[80px] animate-pulse rounded bg-gray-200"></div>
+                    </td>}
+                    {isColumnVisible("customerName") && <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900" style={{ width: columnWidths.customerName }}>
+                      <div className="h-4 w-[100px] animate-pulse rounded bg-gray-200"></div>
+                    </td>}
+                    {isColumnVisible("status") && <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900" style={{ width: columnWidths.status }}>
+                      <div className="h-4 w-[80px] animate-pulse rounded bg-gray-200"></div>
+                    </td>}
+                    {isColumnVisible("amount") && <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900" style={{ width: columnWidths.amount }}>
+                      <div className="h-4 w-[70px] animate-pulse rounded bg-gray-200"></div>
+                    </td>}
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900" style={{ width: columnWidths.actions }}>
+                      <div className="mx-auto h-4 w-4 animate-pulse rounded bg-gray-200"></div>
                     </td>
                   </tr>
                 ))
@@ -1915,78 +2039,123 @@ export default function Expenses() {
                 filteredExpenses.map((expense) => (
                   <tr
                     key={expense.id}
-                    style={{
-                      ...styles.tableRow,
-                      backgroundColor: selectedExpenses.includes(expense.id) ? "#15637210" : "transparent",
-                    }}
+                    className={`group cursor-pointer border-b border-[#eef1f6] h-[50px] ${selectedExpenses.includes(expense.id) ? "bg-[#15637210]" : "bg-transparent hover:bg-[#f8fafc]"}`}
                     onClick={(e) => {
                       // Don't navigate if clicking on checkbox
-                      if (e.target.type !== "checkbox") {
-                        navigate(`/purchases/expenses/${expense.id}`);
-                      }
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!selectedExpenses.includes(expense.id)) {
-                        e.currentTarget.style.backgroundColor = "#f9fafb";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!selectedExpenses.includes(expense.id)) {
-                        e.currentTarget.style.backgroundColor = "transparent";
-                      } else {
-                        e.currentTarget.style.backgroundColor = "#15637210";
+                      if ((e.target as HTMLInputElement).type !== "checkbox") {
+                        navigate(`/expenses/${expense.id}`);
                       }
                     }}
                   >
-                    <td style={styles.tableCell} onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedExpenses.includes(expense.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedExpenses([...selectedExpenses, expense.id]);
-                          } else {
-                            setSelectedExpenses(selectedExpenses.filter((id) => id !== expense.id));
-                          }
-                        }}
-                        style={styles.tableCheckbox}
-                      />
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-2">
+                        <span className="inline-block w-[14px] shrink-0" aria-hidden="true"></span>
+                        <input
+                          type="checkbox"
+                          checked={selectedExpenses.includes(expense.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedExpenses([...selectedExpenses, expense.id]);
+                            } else {
+                              setSelectedExpenses(selectedExpenses.filter((id) => id !== expense.id));
+                            }
+                          }}
+                          className="h-4 w-4 cursor-pointer"
+                        />
+                      </div>
                     </td>
-                    <td style={styles.tableCell}>{expense.date}</td>
-                    <td style={styles.tableCell}>
+                    {isColumnVisible("date") && <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900" style={{ width: columnWidths.date }}>{expense.date}</td>}
+                    {isColumnVisible("location") && <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900" style={{ width: columnWidths.location }}>{expense.location}</td>}
+                    {isColumnVisible("expenseAccount") && <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900" style={{ width: columnWidths.expenseAccount }}>
                       <span
-                        style={styles.expenseAccountLink}
+                        className="cursor-pointer text-blue-500 no-underline"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {expense.expenseAccount}
                       </span>
-                    </td>
-                    <td style={styles.tableCell}>{expense.reference || ""}</td>
-                    <td style={styles.tableCell}>{expense.vendor || ""}</td>
-                    <td style={styles.tableCell}>{expense.paidThrough || ""}</td>
-                    <td style={styles.tableCell}>{expense.customerName || ""}</td>
-                    <td style={styles.tableCell}>
-                      <span style={styles.statusBadge}>{expense.status}</span>
-                    </td>
-                    <td style={{ ...styles.tableCell, ...styles.tableAmount }}>
-                      {expense.currencySymbol || symbol || baseCurrency?.symbol || "KSh"} {parseFloat(expense.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>}
+                    {isColumnVisible("reference") && <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900" style={{ width: columnWidths.reference }}>{expense.reference || ""}</td>}
+                    {isColumnVisible("customerName") && <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900" style={{ width: columnWidths.customerName }}>{expense.customerName || expense.customer?.displayName || expense.customer?.companyName || expense.customer?.name || ""}</td>}
+                    {isColumnVisible("status") && <td className={`whitespace-nowrap px-4 py-3 text-sm font-medium ${getExpenseStatusClass(expense.status)}`} style={{ width: columnWidths.status }}>
+                      {(expense.status || "").toUpperCase() || "UNBILLED"}
+                    </td>}
+                    {isColumnVisible("amount") && <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-medium text-gray-900" style={{ width: columnWidths.amount }}>
+                      <span className="block text-right">
+                        {expense.currencySymbol || symbol || baseCurrency?.symbol || "KSh"} {parseFloat(expense.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </td>}
+                    <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700" style={{ width: columnWidths.actions }}>
+                      {hasAnyAttachment(expense) ? <Paperclip size={14} className="mx-auto" /> : null}
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={9} style={{ ...styles.tableCell, textAlign: "center", padding: "48px 16px", color: "#6b7280" }}>
+                  <td colSpan={visibleColumnKeys.length + 2} className="px-4 py-12 text-center text-sm text-gray-500">
                     No expenses found
                   </td>
                 </tr>
               )}
             </tbody>
-          </table>
-        </div>
+        </table>
       </div>
 
+      {showCustomizeColumnsModal && (
+        <div className="fixed inset-0 z-[2200] bg-black/45" onClick={() => setShowCustomizeColumnsModal(false)}>
+          <div
+            className="mx-auto mt-8 w-full max-w-[640px] rounded-md border border-gray-300 bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
+              <div className="flex items-center gap-2 text-base text-gray-700">
+                <SlidersHorizontal size={14} className="text-gray-600" />
+                <span className="text-2xl font-medium text-gray-700">Customize Columns</span>
+              </div>
+              <div className="text-sm text-gray-500">{visibleColumnKeys.length} of {allTableColumns.length} Selected</div>
+            </div>
+            <div className="px-5 py-4">
+              <div className="mb-3 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-400">
+                Search
+              </div>
+              <div className="space-y-2">
+                {allTableColumns.map((col) => (
+                  <div key={col.key} className="flex items-center justify-between rounded bg-gray-50 px-3 py-3">
+                    <label className="flex items-center gap-3 text-sm text-gray-700">
+                      <span className="text-gray-400">⋮⋮</span>
+                      <input
+                        type="checkbox"
+                        checked={visibleColumnKeys.includes(col.key)}
+                        disabled={col.required}
+                        onChange={() => toggleVisibleColumn(col.key)}
+                        className="h-4 w-4"
+                      />
+                      <span>{col.label}</span>
+                    </label>
+                    {col.required && <Lock size={14} className="text-gray-400" />}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-3 border-t border-gray-200 px-5 py-4">
+              <button
+                className="rounded bg-emerald-500 px-4 py-2 text-sm text-white hover:bg-emerald-600"
+                onClick={() => setShowCustomizeColumnsModal(false)}
+              >
+                Save
+              </button>
+              <button
+                className="rounded border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                onClick={() => setShowCustomizeColumnsModal(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* New Custom View Modal */}
-      {
+      {/*
         showCustomViewModal && (
           <NewCustomViewModal
             onClose={() => setShowCustomViewModal(false)}
@@ -1997,7 +2166,7 @@ export default function Expenses() {
             }}
           />
         )
-      }
+      */}
 
       {/* Bulk Update Modal */}
       <BulkUpdateModal
@@ -2029,43 +2198,53 @@ export default function Expenses() {
       {/* Search Modal */}
       {showSearchModal && (
         <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2000]"
+          className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 backdrop-blur-sm"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowSearchModal(false);
             }
           }}
         >
-          <div className="bg-white rounded-lg shadow-lg w-full max-w-[800px] mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="mx-4 max-h-[90vh] w-full max-w-[800px] overflow-y-auto rounded-xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Header */}
-            <div className="flex items-center justify-between py-4 px-6 border-b border-gray-200">
-              <div className="flex items-center gap-6">
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5">
+              <div className="flex items-center gap-8">
                 {/* Search Type Dropdown */}
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-gray-700">Search</label>
+                <div className="flex items-center gap-3">
+                  <label className="text-[13px] font-semibold text-gray-700">Search</label>
                   <div className="relative" ref={searchTypeDropdownRef}>
                     <div
-                      className={`flex items-center justify-between w-[140px] py-2 px-3 text-sm text-gray-700 bg-white border rounded-md cursor-pointer transition-colors ${isSearchTypeDropdownOpen ? "border-[#156372]" : "border-gray-300 hover:border-gray-400"}`}
+                      className={`flex w-[160px] cursor-pointer items-center justify-between rounded-lg border px-4 py-2.5 text-sm transition-all duration-200 ${
+                        isSearchTypeDropdownOpen
+                          ? "border-[#156372] ring-2 ring-[#15637210]"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
                       onClick={(e) => {
                         e.stopPropagation();
                         setIsSearchTypeDropdownOpen(!isSearchTypeDropdownOpen);
                       }}
                     >
-                      <span>{searchType}</span>
-                      <ChevronDown size={16} className={`text-gray-500 transition-transform ${isSearchTypeDropdownOpen ? "rotate-180" : ""}`} />
+                      <span className="font-medium text-gray-700">{searchType}</span>
+                      <ChevronDown
+                        size={16}
+                        className={`text-gray-400 transition-transform duration-200 ${
+                          isSearchTypeDropdownOpen ? "rotate-180" : ""
+                        }`}
+                      />
                     </div>
                     {isSearchTypeDropdownOpen && (
-                      <div
-                        className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#156372] border-t-0 rounded-b-md shadow-lg z-[1002] max-h-[300px] overflow-y-auto"
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                      <div className="absolute left-0 right-0 top-full z-[1002] mt-2 max-h-[400px] overflow-y-auto rounded-xl border border-gray-100 bg-white p-1.5 shadow-xl">
                         {searchTypeOptions.map((option) => (
                           <div
                             key={option}
-                            className={`py-2.5 px-3.5 text-sm cursor-pointer transition-colors ${searchType === option
-                              ? "bg-[#156372] text-white hover:bg-[#0D4A52]"
-                              : "text-gray-700 hover:bg-gray-100"
-                              }`}
+                            className={`cursor-pointer rounded-lg px-4 py-2.5 text-sm transition-all duration-200 ${
+                              searchType === option
+                                ? "bg-[#156372] font-semibold text-white shadow-md shadow-[#15637230]"
+                                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                            }`}
                             onClick={(e) => {
                               e.stopPropagation();
                               setSearchType(option);
@@ -2081,22 +2260,31 @@ export default function Expenses() {
                 </div>
 
                 {/* Filter Dropdown */}
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-gray-700">Filter</label>
+                <div className="flex items-center gap-3">
+                  <label className="text-[13px] font-semibold text-gray-700">Filter</label>
                   <div className="relative" ref={filterDropdownRef}>
                     <div
-                      className={`flex items-center justify-between w-[160px] py-2 px-3 text-sm text-gray-700 bg-white border rounded-md cursor-pointer transition-colors ${isFilterDropdownOpen ? "border-[#156372]" : "border-gray-300 hover:border-gray-400"}`}
+                      className={`flex w-[160px] cursor-pointer items-center justify-between rounded-lg border px-4 py-2.5 text-sm transition-all duration-200 ${
+                        isFilterDropdownOpen
+                          ? "border-[#156372] ring-2 ring-[#15637210]"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
                       onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
                     >
-                      <span>{selectedView}</span>
-                      <ChevronDown size={16} className={`text-gray-500 transition-transform ${isFilterDropdownOpen ? "rotate-180" : ""}`} />
+                      <span className="font-medium text-gray-700">{selectedView}</span>
+                      <ChevronDown
+                        size={16}
+                        className={`text-gray-400 transition-transform duration-200 ${
+                          isFilterDropdownOpen ? "rotate-180" : ""
+                        }`}
+                      />
                     </div>
                     {isFilterDropdownOpen && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#156372] border-t-0 rounded-b-md shadow-lg z-[1002] max-h-[200px] overflow-y-auto">
+                      <div className="absolute left-0 right-0 top-full z-[1002] mt-2 rounded-xl border border-gray-100 bg-white p-1.5 shadow-xl">
                         {["All", "Open", "Paid", "Draft"].map((view) => (
                           <div
                             key={view}
-                            className="py-2.5 px-3.5 text-sm text-gray-700 cursor-pointer transition-colors hover:bg-gray-100"
+                            className="cursor-pointer rounded-lg px-4 py-2.5 text-sm font-medium text-gray-600 transition-all duration-200 hover:bg-gray-50 hover:text-gray-900"
                             onClick={() => {
                               setSelectedView(view);
                               setIsFilterDropdownOpen(false);
@@ -2111,7 +2299,7 @@ export default function Expenses() {
                 </div>
               </div>
               <button
-                className="flex items-center justify-center w-7 h-7 bg-transparent border-none cursor-pointer text-gray-500 hover:text-gray-700 transition-colors"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-all duration-200 hover:bg-gray-100 hover:text-gray-600 focus:outline-none"
                 onClick={() => setShowSearchModal(false)}
               >
                 <X size={20} />
@@ -2119,411 +2307,317 @@ export default function Expenses() {
             </div>
 
             {/* Search Criteria Body */}
-            <div style={{ padding: "24px" }}>
+            <div className="p-8">
               {searchType === "Expenses" && (
-                <div style={{ display: "flex", gap: "24px" }}>
+                <div className="grid grid-cols-2 gap-8">
                   {/* Left Column */}
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <div className="flex flex-col gap-5">
                     {/* Expense Account */}
                     <div>
-                      <label style={{ display: "block", fontSize: "13px", fontWeight: "500", color: "#374151", marginBottom: "6px" }}>
+                      <label className="mb-2 block text-[13px] font-semibold text-gray-700">
                         Expense Account
                       </label>
-                      <select
-                        value={searchModalData.expenseAccount}
-                        onChange={(e) => setSearchModalData(prev => ({ ...prev, expenseAccount: e.target.value }))}
-                        style={{
-                          width: "100%",
-                          padding: "8px 28px 8px 10px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "6px",
-                          fontSize: "14px",
-                          outline: "none",
-                          boxSizing: "border-box",
-                          appearance: "none",
-                          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23374151' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                          backgroundRepeat: "no-repeat",
-                          backgroundPosition: "right 10px center",
-                        }}
-                      >
-                        <option value="">Select expense account</option>
-                        <option value="Cost of Goods Sold">Cost of Goods Sold</option>
-                        <option value="Advertising And Marketing">Advertising And Marketing</option>
-                        <option value="Office Supplies">Office Supplies</option>
-                      </select>
+                      <div className="relative">
+                        <select
+                          value={searchModalData.expenseAccount}
+                          onChange={(e) =>
+                            setSearchModalData((prev) => ({ ...prev, expenseAccount: e.target.value }))
+                          }
+                          className="w-full appearance-none rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
+                        >
+                          <option value="">Select expense account</option>
+                          <option value="Cost of Goods Sold">Cost of Goods Sold</option>
+                          <option value="Advertising And Marketing">Advertising And Marketing</option>
+                          <option value="Office Supplies">Office Supplies</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      </div>
                     </div>
 
                     {/* Notes */}
                     <div>
-                      <label style={{ display: "block", fontSize: "13px", fontWeight: "500", color: "#374151", marginBottom: "6px" }}>
+                      <label className="mb-2 block text-[13px] font-semibold text-gray-700">
                         Notes
                       </label>
                       <input
                         type="text"
+                        placeholder="Search by notes..."
                         value={searchModalData.notes}
-                        onChange={(e) => setSearchModalData(prev => ({ ...prev, notes: e.target.value }))}
-                        style={{
-                          width: "100%",
-                          padding: "8px 12px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "6px",
-                          fontSize: "14px",
-                          outline: "none",
-                          boxSizing: "border-box",
-                        }}
+                        onChange={(e) => setSearchModalData((prev) => ({ ...prev, notes: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
                       />
                     </div>
 
                     {/* Date Range */}
                     <div>
-                      <label style={{ display: "block", fontSize: "13px", fontWeight: "500", color: "#374151", marginBottom: "6px" }}>
+                      <label className="mb-2 block text-[13px] font-semibold text-gray-700">
                         Date Range
                       </label>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <div className="flex items-center gap-3">
                         <input
                           type="text"
-                          placeholder="dd/MM/yyyy"
+                          placeholder="DD/MM/YYYY"
                           value={searchModalData.dateRangeFromExpense}
-                          onChange={(e) => setSearchModalData(prev => ({ ...prev, dateRangeFromExpense: e.target.value }))}
-                          style={{
-                            flex: 1,
-                            padding: "8px 12px",
-                            border: "1px solid #d1d5db",
-                            borderRadius: "6px",
-                            fontSize: "14px",
-                            outline: "none",
-                            boxSizing: "border-box",
-                          }}
+                          onChange={(e) =>
+                            setSearchModalData((prev) => ({ ...prev, dateRangeFromExpense: e.target.value }))
+                          }
+                          className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
                         />
-                        <span style={{ color: "#6b7280" }}>-</span>
+                        <span className="text-gray-400">—</span>
                         <input
                           type="text"
-                          placeholder="dd/MM/yyyy"
+                          placeholder="DD/MM/YYYY"
                           value={searchModalData.dateRangeToExpense}
-                          onChange={(e) => setSearchModalData(prev => ({ ...prev, dateRangeToExpense: e.target.value }))}
-                          style={{
-                            flex: 1,
-                            padding: "8px 12px",
-                            border: "1px solid #d1d5db",
-                            borderRadius: "6px",
-                            fontSize: "14px",
-                            outline: "none",
-                            boxSizing: "border-box",
-                          }}
+                          onChange={(e) =>
+                            setSearchModalData((prev) => ({ ...prev, dateRangeToExpense: e.target.value }))
+                          }
+                          className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
                         />
                       </div>
                     </div>
 
                     {/* Total Range */}
                     <div>
-                      <label style={{ display: "block", fontSize: "13px", fontWeight: "500", color: "#374151", marginBottom: "6px" }}>
+                      <label className="mb-2 block text-[13px] font-semibold text-gray-700">
                         Total Range
                       </label>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <input
-                          type="text"
-                          value={searchModalData.totalRangeFromExpense}
-                          onChange={(e) => setSearchModalData(prev => ({ ...prev, totalRangeFromExpense: e.target.value }))}
-                          style={{
-                            flex: 1,
-                            padding: "8px 12px",
-                            border: "1px solid #d1d5db",
-                            borderRadius: "6px",
-                            fontSize: "14px",
-                            outline: "none",
-                            boxSizing: "border-box",
-                          }}
-                        />
-                        <span style={{ color: "#6b7280" }}>-</span>
-                        <input
-                          type="text"
-                          value={searchModalData.totalRangeToExpense}
-                          onChange={(e) => setSearchModalData(prev => ({ ...prev, totalRangeToExpense: e.target.value }))}
-                          style={{
-                            flex: 1,
-                            padding: "8px 12px",
-                            border: "1px solid #d1d5db",
-                            borderRadius: "6px",
-                            fontSize: "14px",
-                            outline: "none",
-                            boxSizing: "border-box",
-                          }}
-                        />
+                      <div className="flex items-center gap-3">
+                        <div className="relative w-full">
+                          <input
+                            type="text"
+                            placeholder="Min"
+                            value={searchModalData.totalRangeFromExpense}
+                            onChange={(e) =>
+                              setSearchModalData((prev) => ({
+                                ...prev,
+                                totalRangeFromExpense: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
+                          />
+                        </div>
+                        <span className="text-gray-400">—</span>
+                        <div className="relative w-full">
+                          <input
+                            type="text"
+                            placeholder="Max"
+                            value={searchModalData.totalRangeToExpense}
+                            onChange={(e) =>
+                              setSearchModalData((prev) => ({
+                                ...prev,
+                                totalRangeToExpense: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
+                          />
+                        </div>
                       </div>
                     </div>
 
                     {/* Customer Name */}
                     <div>
-                      <label style={{ display: "block", fontSize: "13px", fontWeight: "500", color: "#374151", marginBottom: "6px" }}>
+                      <label className="mb-2 block text-[13px] font-semibold text-gray-700">
                         Customer Name
                       </label>
-                      <select
-                        value={searchModalData.customerName}
-                        onChange={(e) => setSearchModalData(prev => ({ ...prev, customerName: e.target.value }))}
-                        style={{
-                          width: "100%",
-                          padding: "8px 28px 8px 10px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "6px",
-                          fontSize: "14px",
-                          outline: "none",
-                          boxSizing: "border-box",
-                          appearance: "none",
-                          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23374151' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                          backgroundRepeat: "no-repeat",
-                          backgroundPosition: "right 10px center",
-                        }}
-                      >
-                        <option value="">Select customer</option>
-                      </select>
+                      <div className="relative">
+                        <select
+                          value={searchModalData.customerName}
+                          onChange={(e) =>
+                            setSearchModalData((prev) => ({ ...prev, customerName: e.target.value }))
+                          }
+                          className="w-full appearance-none rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
+                        >
+                          <option value="">Select customer</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      </div>
                     </div>
 
                     {/* Vendor */}
                     <div>
-                      <label style={{ display: "block", fontSize: "13px", fontWeight: "500", color: "#374151", marginBottom: "6px" }}>
+                      <label className="mb-2 block text-[13px] font-semibold text-gray-700">
                         Vendor
                       </label>
-                      <select
-                        value={searchModalData.vendorName}
-                        onChange={(e) => setSearchModalData(prev => ({ ...prev, vendorName: e.target.value }))}
-                        style={{
-                          width: "100%",
-                          padding: "8px 28px 8px 10px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "6px",
-                          fontSize: "14px",
-                          outline: "none",
-                          boxSizing: "border-box",
-                          appearance: "none",
-                          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23374151' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                          backgroundRepeat: "no-repeat",
-                          backgroundPosition: "right 10px center",
-                        }}
-                      >
-                        <option value="">Select vendor</option>
-                      </select>
+                      <div className="relative">
+                        <select
+                          value={searchModalData.vendorName}
+                          onChange={(e) => setSearchModalData((prev) => ({ ...prev, vendorName: e.target.value }))}
+                          className="w-full appearance-none rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
+                        >
+                          <option value="">Select vendor</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      </div>
                     </div>
 
                     {/* Tax Exemptions */}
                     <div>
-                      <label style={{ display: "block", fontSize: "13px", fontWeight: "500", color: "#374151", marginBottom: "6px" }}>
+                      <label className="mb-2 block text-[13px] font-semibold text-gray-700">
                         Tax Exemptions
                       </label>
-                      <select
-                        value={searchModalData.taxExemptions}
-                        onChange={(e) => setSearchModalData(prev => ({ ...prev, taxExemptions: e.target.value }))}
-                        style={{
-                          width: "100%",
-                          padding: "8px 28px 8px 10px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "6px",
-                          fontSize: "14px",
-                          outline: "none",
-                          boxSizing: "border-box",
-                          appearance: "none",
-                          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23374151' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                          backgroundRepeat: "no-repeat",
-                          backgroundPosition: "right 10px center",
-                        }}
-                      >
-                        <option value="">Select a Tax Exemption</option>
-                      </select>
+                      <div className="relative">
+                        <select
+                          value={searchModalData.taxExemptions}
+                          onChange={(e) =>
+                            setSearchModalData((prev) => ({ ...prev, taxExemptions: e.target.value }))
+                          }
+                          className="w-full appearance-none rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
+                        >
+                          <option value="">Select a Tax Exemption</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      </div>
                     </div>
                   </div>
 
                   {/* Right Column */}
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <div className="flex flex-col gap-5">
                     {/* Paid Through */}
                     <div>
-                      <label style={{ display: "block", fontSize: "13px", fontWeight: "500", color: "#374151", marginBottom: "6px" }}>
+                      <label className="mb-2 block text-[13px] font-semibold text-gray-700">
                         Paid Through
                       </label>
-                      <select
-                        value={searchModalData.paidThrough}
-                        onChange={(e) => setSearchModalData(prev => ({ ...prev, paidThrough: e.target.value }))}
-                        style={{
-                          width: "100%",
-                          padding: "8px 28px 8px 10px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "6px",
-                          fontSize: "14px",
-                          outline: "none",
-                          boxSizing: "border-box",
-                          appearance: "none",
-                          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23374151' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                          backgroundRepeat: "no-repeat",
-                          backgroundPosition: "right 10px center",
-                        }}
-                      >
-                        <option value="">Select paid through</option>
-                        <option value="Cash">Cash</option>
-                        <option value="Bank">Bank</option>
-                      </select>
+                      <div className="relative">
+                        <select
+                          value={searchModalData.paidThrough}
+                          onChange={(e) => setSearchModalData((prev) => ({ ...prev, paidThrough: e.target.value }))}
+                          className="w-full appearance-none rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
+                        >
+                          <option value="">Select paid through</option>
+                          <option value="Cash">Cash</option>
+                          <option value="Bank">Bank</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      </div>
                     </div>
 
                     {/* Reference# */}
                     <div>
-                      <label style={{ display: "block", fontSize: "13px", fontWeight: "500", color: "#374151", marginBottom: "6px" }}>
+                      <label className="mb-2 block text-[13px] font-semibold text-gray-700">
                         Reference#
                       </label>
                       <input
                         type="text"
+                        placeholder="Enter reference number..."
                         value={searchModalData.referenceNumber}
-                        onChange={(e) => setSearchModalData(prev => ({ ...prev, referenceNumber: e.target.value }))}
-                        style={{
-                          width: "100%",
-                          padding: "8px 12px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "6px",
-                          fontSize: "14px",
-                          outline: "none",
-                          boxSizing: "border-box",
-                        }}
+                        onChange={(e) =>
+                          setSearchModalData((prev) => ({ ...prev, referenceNumber: e.target.value }))
+                        }
+                        className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
                       />
                     </div>
 
                     {/* Status */}
                     <div>
-                      <label style={{ display: "block", fontSize: "13px", fontWeight: "500", color: "#374151", marginBottom: "6px" }}>
+                      <label className="mb-2 block text-[13px] font-semibold text-gray-700">
                         Status
                       </label>
-                      <select
-                        value={searchModalData.statusExpense}
-                        onChange={(e) => setSearchModalData(prev => ({ ...prev, statusExpense: e.target.value }))}
-                        style={{
-                          width: "100%",
-                          padding: "8px 28px 8px 10px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "6px",
-                          fontSize: "14px",
-                          outline: "none",
-                          boxSizing: "border-box",
-                          appearance: "none",
-                          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23374151' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                          backgroundRepeat: "no-repeat",
-                          backgroundPosition: "right 10px center",
-                        }}
-                      >
-                        <option value="">All</option>
-                        <option value="Draft">Draft</option>
-                        <option value="Paid">Paid</option>
-                        <option value="Unpaid">Unpaid</option>
-                      </select>
+                      <div className="relative">
+                        <select
+                          value={searchModalData.statusExpense}
+                          onChange={(e) =>
+                            setSearchModalData((prev) => ({ ...prev, statusExpense: e.target.value }))
+                          }
+                          className="w-full appearance-none rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
+                        >
+                          <option value="">All</option>
+                          <option value="Draft">Draft</option>
+                          <option value="Paid">Paid</option>
+                          <option value="Unpaid">Unpaid</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      </div>
                     </div>
 
                     {/* Source */}
                     <div>
-                      <label style={{ display: "block", fontSize: "13px", fontWeight: "500", color: "#374151", marginBottom: "6px" }}>
+                      <label className="mb-2 block text-[13px] font-semibold text-gray-700">
                         Source
                       </label>
-                      <select
-                        value={searchModalData.source}
-                        onChange={(e) => setSearchModalData(prev => ({ ...prev, source: e.target.value }))}
-                        style={{
-                          width: "100%",
-                          padding: "8px 28px 8px 10px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "6px",
-                          fontSize: "14px",
-                          outline: "none",
-                          boxSizing: "border-box",
-                          appearance: "none",
-                          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23374151' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                          backgroundRepeat: "no-repeat",
-                          backgroundPosition: "right 10px center",
-                        }}
-                      >
-                        <option value="">Select source</option>
-                        <option value="Manual">Manual</option>
-                        <option value="Import">Import</option>
-                      </select>
+                      <div className="relative">
+                        <select
+                          value={searchModalData.source}
+                          onChange={(e) => setSearchModalData((prev) => ({ ...prev, source: e.target.value }))}
+                          className="w-full appearance-none rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
+                        >
+                          <option value="">Select source</option>
+                          <option value="Manual">Manual</option>
+                          <option value="Import">Import</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      </div>
                     </div>
 
                     {/* Employee */}
                     <div>
-                      <label style={{ display: "block", fontSize: "13px", fontWeight: "500", color: "#374151", marginBottom: "6px" }}>
+                      <label className="mb-2 block text-[13px] font-semibold text-gray-700">
                         Employee
                       </label>
-                      <select
-                        value={searchModalData.employee}
-                        onChange={(e) => setSearchModalData(prev => ({ ...prev, employee: e.target.value }))}
-                        style={{
-                          width: "100%",
-                          padding: "8px 28px 8px 10px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "6px",
-                          fontSize: "14px",
-                          outline: "none",
-                          boxSizing: "border-box",
-                          appearance: "none",
-                          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23374151' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                          backgroundRepeat: "no-repeat",
-                          backgroundPosition: "right 10px center",
-                        }}
-                      >
-                        <option value="">Select employee</option>
-                      </select>
+                      <div className="relative">
+                        <select
+                          value={searchModalData.employee}
+                          onChange={(e) => setSearchModalData((prev) => ({ ...prev, employee: e.target.value }))}
+                          className="w-full appearance-none rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
+                        >
+                          <option value="">Select employee</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      </div>
                     </div>
 
                     {/* Project Name */}
                     <div>
-                      <label style={{ display: "block", fontSize: "13px", fontWeight: "500", color: "#374151", marginBottom: "6px" }}>
+                      <label className="mb-2 block text-[13px] font-semibold text-gray-700">
                         Project Name
                       </label>
-                      <select
-                        value={searchModalData.projectName}
-                        onChange={(e) => setSearchModalData(prev => ({ ...prev, projectName: e.target.value }))}
-                        style={{
-                          width: "100%",
-                          padding: "8px 28px 8px 10px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "6px",
-                          fontSize: "14px",
-                          outline: "none",
-                          boxSizing: "border-box",
-                          appearance: "none",
-                          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23374151' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                          backgroundRepeat: "no-repeat",
-                          backgroundPosition: "right 10px center",
-                        }}
-                      >
-                        <option value="">Select a project</option>
-                      </select>
+                      <div className="relative">
+                        <select
+                          value={searchModalData.projectName}
+                          onChange={(e) => setSearchModalData((prev) => ({ ...prev, projectName: e.target.value }))}
+                          className="w-full appearance-none rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
+                        >
+                          <option value="">Select a project</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
 
               {searchType === "Customers" && (
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-8">
+                  <div className="flex flex-col gap-5">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Display Name</label>
+                      <label className="mb-2 block text-[13px] font-semibold text-gray-700">Display Name</label>
                       <input
                         type="text"
+                        placeholder="John Doe"
                         value={searchModalData.displayName}
-                        onChange={(e) => setSearchModalData(prev => ({ ...prev, displayName: e.target.value }))}
-                        className="w-full py-2 px-3 text-sm text-gray-700 bg-white border border-gray-300 rounded-md focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
+                        onChange={(e) => setSearchModalData((prev) => ({ ...prev, displayName: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+                      <label className="mb-2 block text-[13px] font-semibold text-gray-700">Email Address</label>
                       <input
                         type="email"
+                        placeholder="example@mail.com"
                         value={searchModalData.email}
-                        onChange={(e) => setSearchModalData(prev => ({ ...prev, email: e.target.value }))}
-                        className="w-full py-2 px-3 text-sm text-gray-700 bg-white border border-gray-300 rounded-md focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
+                        onChange={(e) => setSearchModalData((prev) => ({ ...prev, email: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
                       />
                     </div>
                   </div>
-                  <div className="space-y-4">
+                  <div className="flex flex-col gap-5">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone</label>
+                      <label className="mb-2 block text-[13px] font-semibold text-gray-700">Phone Number</label>
                       <input
                         type="tel"
+                        placeholder="+1 234 567 890"
                         value={searchModalData.phone}
-                        onChange={(e) => setSearchModalData(prev => ({ ...prev, phone: e.target.value }))}
-                        className="w-full py-2 px-3 text-sm text-gray-700 bg-white border border-gray-300 rounded-md focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
+                        onChange={(e) => setSearchModalData((prev) => ({ ...prev, phone: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 focus:border-[#156372] focus:outline-none focus:ring-2 focus:ring-[#15637210]"
                       />
                     </div>
                   </div>
@@ -2531,15 +2625,7 @@ export default function Expenses() {
               )}
 
               {/* Action Buttons */}
-              <div style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "flex-end",
-                gap: "12px",
-                marginTop: "24px",
-                paddingTop: "16px",
-                borderTop: "1px solid #e5e7eb"
-              }}>
+              <div className="mt-10 flex items-center justify-end gap-3 border-t border-gray-100 pt-6">
                 <button
                   onClick={() => {
                     setShowSearchModal(false);
@@ -2562,22 +2648,7 @@ export default function Expenses() {
                       projectName: "",
                     });
                   }}
-                  style={{
-                    padding: "8px 16px",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    backgroundColor: "#ffffff",
-                    color: "#374151",
-                    borderRadius: "6px",
-                    border: "1px solid #d1d5db",
-                    cursor: "pointer",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.backgroundColor = "#f9fafb";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.backgroundColor = "#ffffff";
-                  }}
+                  className="rounded-lg border border-gray-200 bg-white px-6 py-2.5 text-sm font-semibold text-gray-600 transition-all duration-200 hover:bg-gray-50 hover:text-gray-900 focus:outline-none"
                 >
                   Cancel
                 </button>
@@ -2586,22 +2657,7 @@ export default function Expenses() {
                     console.log("Search with:", searchType, searchModalData);
                     setShowSearchModal(false);
                   }}
-                  style={{
-                    padding: "8px 16px",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    backgroundColor: "#156372",
-                    color: "#ffffff",
-                    borderRadius: "6px",
-                    border: "none",
-                    cursor: "pointer",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.backgroundColor = "#0D4A52";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.backgroundColor = "#156372";
-                  }}
+                  className="rounded-lg bg-[#156372] px-8 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#15637230] transition-all duration-200 hover:bg-[#0D4A52] hover:shadow-xl hover:shadow-[#15637240] focus:outline-none"
                 >
                   Search
                 </button>
@@ -2610,57 +2666,24 @@ export default function Expenses() {
           </div>
         </div>
       )}
-
       {/* Success Notification */}
-      {
-        notification && (
-          <div
-            style={{
-              position: "fixed",
-              top: "20px",
-              right: "20px",
-              backgroundColor: "#d1fae5",
-              border: "1px solid #10b981",
-              borderRadius: "8px",
-              padding: "12px 16px",
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              zIndex: 10001,
-              boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-            }}
-          >
-            <div
-              style={{
-                width: "24px",
-                height: "24px",
-                borderRadius: "4px",
-                backgroundColor: "#10b981",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <Check size={16} style={{ color: "#ffffff" }} />
-            </div>
-            <span
-              style={{
-                fontSize: "14px",
-                color: "#065f46",
-                fontWeight: "500",
-              }}
-            >
-              {notification}
-            </span>
+      {notification && (
+        <div className="fixed right-6 top-6 z-[10001] flex items-center gap-3 overflow-hidden rounded-xl border border-emerald-100 bg-white p-1 pr-6 shadow-2xl animate-in fade-in slide-in-from-top-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500 text-white shadow-lg shadow-emerald-200">
+            <Check size={20} strokeWidth={3} />
           </div>
-        )
-      }
-    </div >
+          <div className="flex flex-col">
+            <span className="text-[13px] font-bold text-gray-900">Success</span>
+            <span className="text-[12px] font-medium text-emerald-600">{notification}</span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
-function NewCustomViewModal({ onClose, onSave }) {
+
+function NewCustomViewModal({ onClose, onSave }: { onClose: () => void; onSave: (data: any) => void }) {
   const [formData, setFormData] = useState({
     name: "",
     markAsFavorite: false,
@@ -2680,13 +2703,13 @@ function NewCustomViewModal({ onClose, onSave }) {
     visibility: "Only Me",
   });
   const [searchQuery, setSearchQuery] = useState("");
-  const [expenseAccountDropdowns, setExpenseAccountDropdowns] = useState({});
-  const [expenseAccountSearch, setExpenseAccountSearch] = useState({});
-  const [paidThroughDropdowns, setPaidThroughDropdowns] = useState({});
-  const [paidThroughSearch, setPaidThroughSearch] = useState({});
+  const [expenseAccountDropdowns, setExpenseAccountDropdowns] = useState<Record<string, boolean>>({});
+  const [expenseAccountSearch, setExpenseAccountSearch] = useState<Record<string, string>>({});
+  const [paidThroughDropdowns, setPaidThroughDropdowns] = useState<Record<string, boolean>>({});
+  const [paidThroughSearch, setPaidThroughSearch] = useState<Record<string, string>>({});
 
   // Expense Account data with grouped categories
-  const expenseAccounts = {
+  const expenseAccounts: Record<string, string[]> = {
     "Cost Of Goods Sold": [
       "Cost of Goods Sold",
     ],
@@ -2718,7 +2741,7 @@ function NewCustomViewModal({ onClose, onSave }) {
   };
 
   // Paid Through account data with grouped categories
-  const paidThroughAccounts = {
+  const paidThroughAccounts: Record<string, string[]> = {
     "Cash": [
       "Cash",
       "Petty Cash",
@@ -2746,11 +2769,11 @@ function NewCustomViewModal({ onClose, onSave }) {
     return Object.values(expenseAccounts).flat();
   };
 
-  const getFilteredAccounts = (criterionId) => {
+  const getFilteredAccounts = (criterionId: number) => {
     const searchTerm = (expenseAccountSearch[criterionId] || "").toLowerCase();
     if (!searchTerm) return expenseAccounts;
 
-    const filtered = {};
+    const filtered: Record<string, string[]> = {};
     Object.keys(expenseAccounts).forEach(category => {
       const matching = expenseAccounts[category].filter(account =>
         account.toLowerCase().includes(searchTerm)
@@ -2762,14 +2785,14 @@ function NewCustomViewModal({ onClose, onSave }) {
     return filtered;
   };
 
-  const toggleExpenseAccountDropdown = (criterionId) => {
+  const toggleExpenseAccountDropdown = (criterionId: number) => {
     setExpenseAccountDropdowns(prev => ({
       ...prev,
       [criterionId]: !prev[criterionId]
     }));
   };
 
-  const handleExpenseAccountSelect = (criterionId, account) => {
+  const handleExpenseAccountSelect = (criterionId: number, account: string) => {
     handleCriterionChange(criterionId, "value", account);
     setExpenseAccountDropdowns(prev => ({
       ...prev,
@@ -2781,11 +2804,11 @@ function NewCustomViewModal({ onClose, onSave }) {
     }));
   };
 
-  const getFilteredPaidThroughAccounts = (criterionId) => {
+  const getFilteredPaidThroughAccounts = (criterionId: number) => {
     const searchTerm = (paidThroughSearch[criterionId] || "").toLowerCase();
     if (!searchTerm) return paidThroughAccounts;
 
-    const filtered = {};
+    const filtered: Record<string, string[]> = {};
     Object.keys(paidThroughAccounts).forEach(category => {
       const matching = paidThroughAccounts[category].filter(account =>
         account.toLowerCase().includes(searchTerm)
@@ -2797,14 +2820,14 @@ function NewCustomViewModal({ onClose, onSave }) {
     return filtered;
   };
 
-  const togglePaidThroughDropdown = (criterionId) => {
+  const togglePaidThroughDropdown = (criterionId: number) => {
     setPaidThroughDropdowns(prev => ({
       ...prev,
       [criterionId]: !prev[criterionId]
     }));
   };
 
-  const handlePaidThroughSelect = (criterionId, account) => {
+  const handlePaidThroughSelect = (criterionId: number, account: string) => {
     handleCriterionChange(criterionId, "value", account);
     setPaidThroughDropdowns(prev => ({
       ...prev,
@@ -2816,15 +2839,16 @@ function NewCustomViewModal({ onClose, onSave }) {
     }));
   };
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    const checked = (e.target as HTMLInputElement).checked;
     setFormData((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
     }));
   };
 
-  const handleCriterionChange = (id, field, value) => {
+  const handleCriterionChange = (id: number, field: string, value: string) => {
     setFormData((prev) => ({
       ...prev,
       criteria: prev.criteria.map((c) =>
@@ -2848,14 +2872,14 @@ function NewCustomViewModal({ onClose, onSave }) {
     }));
   };
 
-  const removeCriterion = (id) => {
+  const removeCriterion = (id: number) => {
     setFormData((prev) => ({
       ...prev,
       criteria: prev.criteria.filter((c) => c.id !== id),
     }));
   };
 
-  const moveColumnToSelected = (column) => {
+  const moveColumnToSelected = (column: string) => {
     setFormData((prev) => ({
       ...prev,
       availableColumns: prev.availableColumns.filter((c) => c !== column),
@@ -2863,7 +2887,7 @@ function NewCustomViewModal({ onClose, onSave }) {
     }));
   };
 
-  const moveColumnToAvailable = (column) => {
+  const moveColumnToAvailable = (column: string) => {
     // Don't allow removing required columns
     const requiredColumns = ["Date", "Expense Account", "Amount"];
     if (requiredColumns.includes(column)) return;
@@ -2878,12 +2902,12 @@ function NewCustomViewModal({ onClose, onSave }) {
     col.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     onSave(formData);
   };
 
-  const modalStyles = {
+  const modalStyles: Record<string, React.CSSProperties> = {
     overlay: {
       position: "fixed",
       top: 0,
@@ -3111,9 +3135,11 @@ function NewCustomViewModal({ onClose, onSave }) {
 
   // Close dropdowns when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event) => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
       Object.keys(expenseAccountDropdowns).forEach(criterionId => {
-        if (expenseAccountDropdowns[criterionId] && !event.target.closest(`[data-expense-account-dropdown="${criterionId}"]`)) {
+        if (expenseAccountDropdowns[criterionId] && !target.closest(`[data-expense-account-dropdown="${criterionId}"]`)) {
           setExpenseAccountDropdowns(prev => ({
             ...prev,
             [criterionId]: false
@@ -3121,7 +3147,7 @@ function NewCustomViewModal({ onClose, onSave }) {
         }
       });
       Object.keys(paidThroughDropdowns).forEach(criterionId => {
-        if (paidThroughDropdowns[criterionId] && !event.target.closest(`[data-paid-through-dropdown="${criterionId}"]`)) {
+        if (paidThroughDropdowns[criterionId] && !target.closest(`[data-paid-through-dropdown="${criterionId}"]`)) {
           setPaidThroughDropdowns(prev => ({
             ...prev,
             [criterionId]: false
@@ -3275,12 +3301,12 @@ function NewCustomViewModal({ onClose, onSave }) {
                               }}
                               onClick={(e) => e.stopPropagation()}
                               onFocus={(e) => {
-                                e.target.style.borderColor = "#156372";
-                                e.target.style.boxShadow = "0 0 0 3px rgba(37, 99, 235, 0.1)";
+                                e.currentTarget.style.borderColor = "#156372";
+                                e.currentTarget.style.boxShadow = "0 0 0 3px rgba(37, 99, 235, 0.1)";
                               }}
                               onBlur={(e) => {
-                                e.target.style.borderColor = "#d1d5db";
-                                e.target.style.boxShadow = "none";
+                                e.currentTarget.style.borderColor = "#d1d5db";
+                                e.currentTarget.style.boxShadow = "none";
                               }}
                             />
                           </div>
@@ -3323,12 +3349,12 @@ function NewCustomViewModal({ onClose, onSave }) {
                                   }}
                                   onMouseEnter={(e) => {
                                     if (criterion.value !== account) {
-                                      e.target.style.backgroundColor = "#f3f4f6";
+                                      e.currentTarget.style.backgroundColor = "#f3f4f6";
                                     }
                                   }}
                                   onMouseLeave={(e) => {
                                     if (criterion.value !== account) {
-                                      e.target.style.backgroundColor = "transparent";
+                                      e.currentTarget.style.backgroundColor = "transparent";
                                     }
                                   }}
                                 >
@@ -3363,10 +3389,10 @@ function NewCustomViewModal({ onClose, onSave }) {
                               gap: "8px",
                             }}
                             onMouseEnter={(e) => {
-                              e.target.style.backgroundColor = "#f3f4f6";
+                              e.currentTarget.style.backgroundColor = "#f3f4f6";
                             }}
                             onMouseLeave={(e) => {
-                              e.target.style.backgroundColor = "transparent";
+                              e.currentTarget.style.backgroundColor = "transparent";
                             }}
                           >
                             <Plus size={16} />
@@ -3465,12 +3491,12 @@ function NewCustomViewModal({ onClose, onSave }) {
                                   }}
                                   onMouseEnter={(e) => {
                                     if (criterion.value !== account) {
-                                      e.target.style.backgroundColor = "#f9fafb";
+                                      e.currentTarget.style.backgroundColor = "#f9fafb";
                                     }
                                   }}
                                   onMouseLeave={(e) => {
                                     if (criterion.value !== account) {
-                                      e.target.style.backgroundColor = "transparent";
+                                      e.currentTarget.style.backgroundColor = "transparent";
                                     }
                                   }}
                                 >
@@ -3505,10 +3531,10 @@ function NewCustomViewModal({ onClose, onSave }) {
                               gap: "8px",
                             }}
                             onMouseEnter={(e) => {
-                              e.target.style.backgroundColor = "#f3f4f6";
+                              e.currentTarget.style.backgroundColor = "#f3f4f6";
                             }}
                             onMouseLeave={(e) => {
-                              e.target.style.backgroundColor = "transparent";
+                              e.currentTarget.style.backgroundColor = "transparent";
                             }}
                           >
                             <Plus size={16} />
@@ -3578,8 +3604,8 @@ function NewCustomViewModal({ onClose, onSave }) {
                       key={column}
                       style={modalStyles.columnItem}
                       onClick={() => moveColumnToSelected(column)}
-                      onMouseEnter={(e) => (e.target.style.backgroundColor = "#f3f4f6")}
-                      onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f3f4f6")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                     >
                       <GripVertical size={16} style={{ color: "#9ca3af" }} />
                       <span style={{ fontSize: "14px" }}>{column}</span>
@@ -3603,10 +3629,10 @@ function NewCustomViewModal({ onClose, onSave }) {
                         onClick={() => moveColumnToAvailable(column)}
                         onMouseEnter={(e) => {
                           if (!isRequired) {
-                            e.target.style.backgroundColor = "#f3f4f6";
+                            e.currentTarget.style.backgroundColor = "#f3f4f6";
                           }
                         }}
-                        onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                       >
                         <GripVertical size={16} style={{ color: "#9ca3af" }} />
                         <span style={{ fontSize: "14px" }}>
@@ -3667,16 +3693,16 @@ function NewCustomViewModal({ onClose, onSave }) {
               type="button"
               onClick={onClose}
               style={modalStyles.cancelBtn}
-              onMouseEnter={(e) => (e.target.style.backgroundColor = "#f9fafb")}
-              onMouseLeave={(e) => (e.target.style.backgroundColor = "#ffffff")}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f9fafb")}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
             >
               Cancel
             </button>
             <button
               type="submit"
               style={modalStyles.saveBtn}
-              onMouseEnter={(e) => (e.target.style.backgroundColor = "#0D4A52")}
-              onMouseLeave={(e) => (e.target.style.backgroundColor = "#156372")}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#0D4A52")}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#156372")}
             >
               Save
             </button>

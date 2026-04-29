@@ -1,13 +1,4 @@
-import React, {
-  useState,
-  useRef,
-  useEffect,
-  useMemo,
-  type CSSProperties,
-  type ChangeEvent,
-  type FormEvent,
-  type MouseEvent as ReactMouseEvent,
-} from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
 import {
@@ -16,6 +7,7 @@ import {
   Plus,
   PlusCircle,
   MoreVertical,
+  SlidersHorizontal,
   Filter,
   Search,
   Check,
@@ -38,195 +30,215 @@ import {
   ArrowRight,
   FileText,
 } from "lucide-react";
-import BulkUpdateModal from "../shared/BulkUpdateModal";
+import BulkUpdateModal, { BulkFieldOption } from "../shared/BulkUpdateModal";
 import DeleteConfirmationModal from "../shared/DeleteConfirmationModal";
 import ExportRecurringExpenses from "./ExportRecurringExpenses";
+import { computeRecurringExpenseDisplayAmount } from "../shared/recurringExpenseModel";
 
-import { recurringExpensesAPI, currenciesAPI } from "../../../services/api";
+import { recurringExpensesAPI, currenciesAPI, taxesAPI } from "../../../services/api";
 import { useCurrency } from "../../../hooks/useCurrency";
 
-const REPEAT_EVERY_DAYS = {
-  Week: 7,
-  "2 Weeks": 14,
-  Month: 30,
-  "2 Months": 60,
-  "3 Months": 90,
-  "6 Months": 180,
-  Year: 365,
-  "2 Years": 730,
-  "3 Years": 1095,
-} as const;
+const resolveRecurringExpenseRows = (payload: unknown): any[] => {
+  if (!payload) {
+    return [];
+  }
 
-type RepeatEveryOption = keyof typeof REPEAT_EVERY_DAYS;
-type ViewOption = "All" | "Active" | "Stopped" | "Expired";
-type SortOption =
-  | "Created Time"
-  | "Profile Name"
-  | "Expense Account"
-  | "Vendor Name"
-  | "Last Expense Date"
-  | "Next Expense Date"
-  | "Amount";
-type SortDirection = "asc" | "desc";
-type HoveredMenuItem = "export" | null;
-type SelectorMode = "Users" | "Roles";
-type VisibilityOption = "Only Me" | "Only Selected Users & Roles" | "Everyone";
+  if (Array.isArray(payload)) {
+    return payload;
+  }
 
-interface CurrencyOption {
-  code?: string;
-  symbol?: string;
-}
+  if (typeof payload !== "object") {
+    return [];
+  }
 
-interface RecurringExpense {
-  id: string;
-  recurringExpenseId: string;
-  profileName: string;
-  expenseAccount: string;
-  vendor: string;
-  repeatEvery: string;
-  startDate: string;
-  amount: number | string;
-  currency: string;
-  status: string;
-  active: boolean;
-  createdTime?: string;
-  description?: string;
-  customerName?: string;
-  nextExpenseDate?: string;
-}
+  const candidateKeys = ["recurring_expenses", "data", "rows", "items"];
+  for (const key of candidateKeys) {
+    const next = (payload as Record<string, unknown>)[key];
+    const resolved = resolveRecurringExpenseRows(next);
+    if (resolved.length > 0) {
+      return resolved;
+    }
+  }
 
-interface SearchModalData {
-  expenseAccount: string;
-  vendorName: string;
-  frequency: string;
-  lastExpenseDateFrom: string;
-  lastExpenseDateTo: string;
-  nextExpenseDateFrom: string;
-  nextExpenseDateTo: string;
-  status: string;
-  amountFrom: string;
-  amountTo: string;
-  notes: string;
-  customerName: string;
-  projectName: string;
-}
-
-interface SelectableItem {
-  id: number | string;
-  name: string;
-  email?: string;
-  role?: string;
-}
-
-interface SelectedShareItem extends SelectableItem {
-  type: SelectorMode;
-}
-
-interface CustomViewCriterion {
-  id: number;
-  field: string;
-  comparator: string;
-  value: string;
-}
-
-interface CustomViewFormData {
-  name: string;
-  markAsFavorite: boolean;
-  criteria: CustomViewCriterion[];
-  availableColumns: string[];
-  selectedColumns: string[];
-  visibility: VisibilityOption;
-  selectedUsers: SelectedShareItem[];
-  userType: SelectorMode;
-  selectUsers: string;
-}
-
-interface NewCustomViewModalProps {
-  onClose: () => void;
-  onSave: (customView: CustomViewFormData) => void;
-}
-
-const DEFAULT_SEARCH_MODAL_DATA: SearchModalData = {
-  expenseAccount: "",
-  vendorName: "",
-  frequency: "",
-  lastExpenseDateFrom: "",
-  lastExpenseDateTo: "",
-  nextExpenseDateFrom: "",
-  nextExpenseDateTo: "",
-  status: "",
-  amountFrom: "",
-  amountTo: "",
-  notes: "",
-  customerName: "",
-  projectName: "",
+  return [];
 };
 
-const getRepeatEveryDays = (frequency?: string): number =>
-  REPEAT_EVERY_DAYS[frequency as RepeatEveryOption] ?? 7;
-
 export default function RecurringExpenses() {
+  const RECURRING_VISIBLE_COLUMNS_KEY = "recurring_expenses_visible_columns_v1";
+  const defaultVisibleColumnKeys = [
+    "profileName",
+    "location",
+    "expenseAccount",
+    "customerName",
+    "frequency",
+    "lastExpenseDate",
+    "nextExpenseDate",
+    "status",
+    "amount",
+  ];
+  const allTableColumns = [
+    { key: "profileName", label: "Profile Name" },
+    { key: "location", label: "Location" },
+    { key: "expenseAccount", label: "Category Name" },
+    { key: "customerName", label: "Customer Name" },
+    { key: "frequency", label: "Frequency" },
+    { key: "lastExpenseDate", label: "Last Expense Date" },
+    { key: "nextExpenseDate", label: "Next Expense Date" },
+    { key: "status", label: "Status" },
+    { key: "amount", label: "Amount" },
+    { key: "vendor", label: "Vendor Name" },
+    { key: "wsq", label: "wsq" },
+  ];
   const navigate = useNavigate();
   const { code: baseCurrencyCode, symbol: baseCurrencySymbol } = useCurrency();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [sortSubmenuOpen, setSortSubmenuOpen] = useState(false);
   const [exportSubmenuOpen, setExportSubmenuOpen] = useState(false);
-  const [selectedView, setSelectedView] = useState<ViewOption>("All");
-  const [selectedSort, setSelectedSort] = useState<SortOption>("Created Time");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
-  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [selectedView, setSelectedView] = useState("All");
+  const [selectedSort, setSelectedSort] = useState("Created Time");
+  const [sortDirection, setSortDirection] = useState("desc"); // "asc" or "desc"
+  const [recurringExpenses, setRecurringExpenses] = useState([]);
+  const [selectedItems, setSelectedItems] = useState([]);
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showCustomViewModal, setShowCustomViewModal] = useState(false);
+  const [showCustomizeColumnsModal, setShowCustomizeColumnsModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showExportRecurringExpensesModal, setShowExportRecurringExpensesModal] = useState(false);
   const [showExportCurrentViewModal, setShowExportCurrentViewModal] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
-  const [currencies, setCurrencies] = useState<CurrencyOption[]>([]);
-  const [searchModalData, setSearchModalData] = useState<SearchModalData>(DEFAULT_SEARCH_MODAL_DATA);
-  const [notification, setNotification] = useState<string | null>(null);
-  const dropdownRef = useRef<HTMLDivElement | null>(null);
-  const moreMenuRef = useRef<HTMLDivElement | null>(null);
-  const sortSubmenuRef = useRef<HTMLDivElement | null>(null);
-  const exportSubmenuRef = useRef<HTMLDivElement | null>(null);
-  const exportSubmenuTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [hoveredMenuItem, setHoveredMenuItem] = useState<HoveredMenuItem>(null);
+  const [customizeColumnsSearch, setCustomizeColumnsSearch] = useState("");
+  const [currencies, setCurrencies] = useState<any[]>([]);
+  const [taxRatesById, setTaxRatesById] = useState<Record<string, number>>({});
+  const [searchModalData, setSearchModalData] = useState({
+    expenseAccount: "",
+    vendorName: "",
+    frequency: "",
+    lastExpenseDateFrom: "",
+    lastExpenseDateTo: "",
+    nextExpenseDateFrom: "",
+    nextExpenseDateTo: "",
+    status: "",
+    amountFrom: "",
+    amountTo: "",
+    notes: "",
+    customerName: "",
+    projectName: "",
+  });
+  const [notification, setNotification] = useState(null);
+  const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(() => {
+    const validKeys = new Set(allTableColumns.map((col) => col.key));
+    if (typeof window === "undefined") return [...defaultVisibleColumnKeys];
+    try {
+      const raw = localStorage.getItem(RECURRING_VISIBLE_COLUMNS_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed) && parsed.length) {
+        const sanitized = parsed.filter((key: string) => validKeys.has(key));
+        return sanitized.length ? sanitized : [...defaultVisibleColumnKeys];
+      }
+      return [...defaultVisibleColumnKeys];
+    } catch {
+      return [...defaultVisibleColumnKeys];
+    }
+  });
+  const dropdownRef = useRef(null);
+  const moreMenuRef = useRef(null);
+  const sortSubmenuRef = useRef(null);
+  const exportSubmenuRef = useRef(null);
+  const exportSubmenuTimeoutRef = useRef(null);
+  const [hoveredMenuItem, setHoveredMenuItem] = useState(null);
+  const filteredCustomizeColumns = allTableColumns.filter((col) =>
+    col.label.toLowerCase().includes(customizeColumnsSearch.trim().toLowerCase())
+  );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(RECURRING_VISIBLE_COLUMNS_KEY, JSON.stringify(visibleColumnKeys));
+    } catch {
+      // ignore localStorage write failures
+    }
+  }, [visibleColumnKeys]);
+
+  const isColumnVisible = (key: string) => visibleColumnKeys.includes(key);
+  const toggleVisibleColumn = (key: string) => {
+    setVisibleColumnKeys((prev) =>
+      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]
+    );
+  };
 
   // Load recurring expenses from API
-  const loadExpenses = async (): Promise<void> => {
+  const loadExpenses = async () => {
     try {
       setIsRefreshing(true);
       const response = await recurringExpensesAPI.getAll({ limit: 1000 });
-      if (response && response.code === 0 && response.recurring_expenses) {
-        // Map API response to match component state structure
-        const mappedExpenses: RecurringExpense[] = response.recurring_expenses.map((expense: any) => ({
-          id: String(expense._id || expense.recurring_expense_id || ""),
-          recurringExpenseId: String(expense.recurring_expense_id || expense._id || ""),
-          profileName: String(expense.profile_name || ""),
-          expenseAccount: String(expense.account_name || ""),
-          vendor: expense.vendor_name || "",
-          repeatEvery: String(expense.repeat_every || ""),
-          startDate: String(expense.start_date || ""),
-          amount: expense.amount ?? 0,
-          currency: String(baseCurrencyCode || expense.currency_code || "USD"),
-          status: (expense.status || "active").toUpperCase(),
-          active: expense.status !== "stopped" && expense.status !== "expired",
-          createdTime: expense.created_time || expense.createdAt || "",
-          description: expense.description || "",
-          customerName: expense.customer_name || "",
-          nextExpenseDate: expense.next_expense_date || "",
-        }));
-        setRecurringExpenses(mappedExpenses);
-      } else {
-        setRecurringExpenses([]);
-      }
+      const rowsFromResponse = resolveRecurringExpenseRows(response);
+      const expenseRows =
+        rowsFromResponse.length > 0 ? rowsFromResponse : resolveRecurringExpenseRows(response?.data);
+
+      // Map API response to match component state structure
+      const mappedExpenses = expenseRows.map((expense: any) => ({
+        id: expense._id || expense.recurring_expense_id,
+        recurringExpenseId: expense.recurring_expense_id || expense._id,
+        profileName: expense.profile_name,
+        location: expense.location || expense.location_name || "",
+        expenseAccount: expense.account_name,
+        vendor: expense.vendor_name || "",
+        repeatEvery: expense.repeat_every,
+        startDate: expense.start_date,
+        amount: expense.amount,
+        taxName: expense.tax_name || expense.taxName || "",
+        taxId: expense.tax_id || expense.taxId || "",
+        taxRate: Number(expense.tax_percentage ?? expense.taxPercentage ?? expense.rate ?? 0),
+        isInclusiveTax: Boolean(expense.is_inclusive_tax),
+        displayAmount: computeRecurringExpenseDisplayAmount(
+          expense.amount,
+          Number(expense.tax_percentage ?? expense.taxPercentage ?? expense.rate ?? 0),
+          Boolean(expense.is_inclusive_tax)
+        ),
+        currency: baseCurrencyCode || expense.currency_code || "USD",
+        status: (expense.status || "active").toUpperCase(),
+        active: expense.status !== 'stopped' && expense.status !== 'expired',
+        createdTime: expense.created_time || expense.createdAt,
+        description: expense.description,
+        customerName: expense.customer_name,
+        nextExpenseDate: expense.next_expense_date,
+        wsq: (() => {
+          const tags = Array.isArray(expense.reporting_tags) ? expense.reporting_tags : [];
+          const wsqTag = tags.find((tag: any) =>
+            String(tag?.name || tag?.tagName || "").trim().toLowerCase() === "wsq"
+          );
+          return wsqTag?.value || expense?.wsq || "";
+        })(),
+      }));
+      setRecurringExpenses(mappedExpenses);
 
       // Fetch currencies
       const cursResp = await currenciesAPI.getAll();
       const cursList = Array.isArray(cursResp) ? cursResp : (cursResp?.data || []);
       setCurrencies(cursList);
+
+      try {
+        const primary = await taxesAPI.getForTransactions().catch(() => null);
+        const fallback = await taxesAPI.getAll({ status: "active" }).catch(() => null);
+        const rows = [
+          ...(Array.isArray(primary?.data) ? primary.data : []),
+          ...(Array.isArray(primary?.taxes) ? primary.taxes : []),
+          ...(Array.isArray(fallback?.data) ? fallback.data : []),
+        ];
+        const next: Record<string, number> = {};
+        rows.forEach((tax: any) => {
+          const id = String(tax?._id || tax?.id || tax?.tax_id || tax?.taxId || "").trim();
+          const direct = Number(tax?.taxPercentage ?? tax?.rate ?? tax?.percentage ?? 0);
+          if (id && Number.isFinite(direct) && direct > 0) {
+            next[id] = direct;
+          }
+        });
+        setTaxRatesById(next);
+      } catch (error) {
+        console.error("Error loading tax rates:", error);
+        setTaxRatesById({});
+      }
     } catch (error) {
       console.error("Error loading recurring expenses:", error);
     } finally {
@@ -301,12 +313,11 @@ export default function RecurringExpenses() {
 
   // Close dropdown when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event: globalThis.MouseEvent) => {
-      const target = event.target as Node | null;
-      if (dropdownRef.current && target && !dropdownRef.current.contains(target)) {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setDropdownOpen(false);
       }
-      if (moreMenuRef.current && target && !moreMenuRef.current.contains(target)) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target)) {
         setMoreMenuOpen(false);
         setSortSubmenuOpen(false);
         setExportSubmenuOpen(false);
@@ -326,7 +337,7 @@ export default function RecurringExpenses() {
     }
   }, [dropdownOpen, moreMenuOpen, sortSubmenuOpen, exportSubmenuOpen]);
 
-  const handleSelectAll = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleSelectAll = (e) => {
     if (e.target.checked) {
       setSelectedItems(displayExpenses.map((expense) => expense.id));
     } else {
@@ -334,7 +345,7 @@ export default function RecurringExpenses() {
     }
   };
 
-  const handleSelectItem = (id: string) => {
+  const handleSelectItem = (id) => {
     setSelectedItems((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     );
@@ -403,7 +414,7 @@ export default function RecurringExpenses() {
     return "";
   };
 
-  const handleBulkUpdateSubmit = async (field: string, value: string) => {
+  const handleBulkUpdateSubmit = async (field, value) => {
     try {
       const statusValue = field === "status" ? normalizeStatus(value) : "";
       await Promise.all(
@@ -472,19 +483,19 @@ export default function RecurringExpenses() {
     }
   };
 
-  const recurringExpenseFieldOptions = useMemo(() => {
+  const recurringExpenseFieldOptions = useMemo<BulkFieldOption[]>(() => {
     const uniqueExpenseAccounts = Array.from(
-      new Set(recurringExpenses.map((expense) => expense.expenseAccount).filter((value): value is string => Boolean(value)))
+      new Set(recurringExpenses.map((expense: any) => expense?.expenseAccount).filter(Boolean))
     );
     const uniqueVendors = Array.from(
-      new Set(recurringExpenses.map((expense) => expense.vendor).filter((value): value is string => Boolean(value)))
+      new Set(recurringExpenses.map((expense: any) => expense?.vendor).filter(Boolean))
     );
     const uniqueCurrencies = Array.from(
       new Set(
         [
-          ...currencies.map((currency) => currency?.code).filter((value): value is string => Boolean(value)),
+          ...currencies.map((currency: any) => currency?.code).filter(Boolean),
           baseCurrencyCode,
-        ].filter((value): value is string => Boolean(value))
+        ].filter(Boolean)
       )
     );
 
@@ -540,17 +551,28 @@ export default function RecurringExpenses() {
     ];
   }, [recurringExpenses, currencies, baseCurrencyCode]);
 
-  const formatDate = (dateString?: string) => {
+  const formatDate = (dateString) => {
     if (!dateString) return "";
     const date = new Date(dateString);
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     return `${date.getDate().toString().padStart(2, "0")} ${months[date.getMonth()]} ${date.getFullYear()}`;
   };
 
-  const calculateNextDate = (startDate?: string, frequency?: string) => {
+  const calculateNextDate = (startDate, frequency) => {
     if (!startDate) return "";
     const date = new Date(startDate);
-    const days = getRepeatEveryDays(frequency);
+    const frequencyMap = {
+      "Week": 7,
+      "2 Weeks": 14,
+      "Month": 30,
+      "2 Months": 60,
+      "3 Months": 90,
+      "6 Months": 180,
+      "Year": 365,
+      "2 Years": 730,
+      "3 Years": 1095,
+    };
+    const days = frequencyMap[frequency] || 7;
     date.setDate(date.getDate() + days);
     return formatDate(date.toISOString().split("T")[0]);
   };
@@ -563,8 +585,21 @@ export default function RecurringExpenses() {
     return match ? match.symbol : code;
   };
 
+  const getRecurringExpenseAmount = (expense: any) => {
+    const resolvedTaxRate = Number(
+      expense?.taxRate ||
+      taxRatesById[String(expense?.taxId || "").trim()] ||
+      0
+    );
+    return computeRecurringExpenseDisplayAmount(
+      expense?.amount,
+      resolvedTaxRate,
+      Boolean(expense?.isInclusiveTax)
+    );
+  };
+
   // Sort options
-  const sortOptions: SortOption[] = [
+  const sortOptions = [
     "Created Time",
     "Profile Name",
     "Expense Account",
@@ -575,12 +610,11 @@ export default function RecurringExpenses() {
   ];
 
   // Sort expenses based on selected sort option
-  const getSortedExpenses = (expenses: RecurringExpense[]) => {
+  const getSortedExpenses = (expenses) => {
     const sorted = [...expenses];
 
     sorted.sort((a, b) => {
-      let aValue: number | string = 0;
-      let bValue: number | string = 0;
+      let aValue, bValue;
 
       switch (selectedSort) {
         case "Created Time":
@@ -608,35 +642,46 @@ export default function RecurringExpenses() {
           const bNextDate = b.startDate ? new Date(b.startDate) : new Date(0);
           const aFreq = a.repeatEvery || "Week";
           const bFreq = b.repeatEvery || "Week";
-          aNextDate.setDate(aNextDate.getDate() + getRepeatEveryDays(aFreq));
-          bNextDate.setDate(bNextDate.getDate() + getRepeatEveryDays(bFreq));
+          const frequencyMap = {
+            "Week": 7,
+            "2 Weeks": 14,
+            "Month": 30,
+            "2 Months": 60,
+            "3 Months": 90,
+            "6 Months": 180,
+            "Year": 365,
+            "2 Years": 730,
+            "3 Years": 1095,
+          };
+          aNextDate.setDate(aNextDate.getDate() + (frequencyMap[aFreq] || 7));
+          bNextDate.setDate(bNextDate.getDate() + (frequencyMap[bFreq] || 7));
           aValue = aNextDate.getTime();
           bValue = bNextDate.getTime();
           break;
         case "Amount":
-          aValue = Number(a.amount || 0);
-          bValue = Number(b.amount || 0);
+          aValue = parseFloat(String(getRecurringExpenseAmount(a) || 0));
+          bValue = parseFloat(String(getRecurringExpenseAmount(b) || 0));
           break;
         default:
           return 0;
       }
 
-      if (typeof aValue === "string" && typeof bValue === "string") {
+      if (typeof aValue === "string") {
         return sortDirection === "asc"
           ? aValue.localeCompare(bValue)
           : bValue.localeCompare(aValue);
+      } else {
+        return sortDirection === "asc"
+          ? aValue - bValue
+          : bValue - aValue;
       }
-
-      return sortDirection === "asc"
-        ? Number(aValue) - Number(bValue)
-        : Number(bValue) - Number(aValue);
     });
 
     return sorted;
   };
 
   // Handle sort selection
-  const handleSortSelect = (sortOption: SortOption) => {
+  const handleSortSelect = (sortOption) => {
     if (selectedSort === sortOption) {
       // Toggle sort direction if same option is selected
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
@@ -649,7 +694,7 @@ export default function RecurringExpenses() {
   };
 
   // Export function
-  const exportRecurringExpenses = (format: "csv" | "json", expensesToExport: RecurringExpense[]) => {
+  const exportRecurringExpenses = (format, expensesToExport) => {
     const exportData = expensesToExport.slice(0, 25000);
 
     if (format === "csv") {
@@ -678,7 +723,7 @@ export default function RecurringExpenses() {
           `"${(expense.startDate || "").replace(/"/g, '""')}"`,
           `"${(expense.startDate ? formatDate(expense.startDate) : "").replace(/"/g, '""')}"`,
           `"${calculateNextDate(expense.startDate, expense.repeatEvery).replace(/"/g, '""')}"`,
-          String(expense.amount || "0.00"),
+          expense.amount || "0.00",
           `"${(baseCurrencyCode || expense.currency || "").replace(/"/g, '""')}"`,
           `"${(expense.status || "ACTIVE").replace(/"/g, '""')}"`,
           `"${(expense.createdTime || "").replace(/"/g, '""')}"`,
@@ -710,7 +755,7 @@ export default function RecurringExpenses() {
   };
 
   // Get filtered expenses based on selected view (memoized)
-  const getFilteredExpenses = useMemo<RecurringExpense[]>(() => {
+  const getFilteredExpenses = useMemo(() => {
     let filtered = recurringExpenses;
 
     if (selectedView !== "All") {
@@ -726,7 +771,18 @@ export default function RecurringExpenses() {
           case "Expired":
             if (!expense.startDate) return false;
             const nextDate = new Date(expense.startDate);
-            const days = getRepeatEveryDays(expense.repeatEvery);
+            const frequencyMap = {
+              "Week": 7,
+              "2 Weeks": 14,
+              "Month": 30,
+              "2 Months": 60,
+              "3 Months": 90,
+              "6 Months": 180,
+              "Year": 365,
+              "2 Years": 730,
+              "3 Years": 1095,
+            };
+            const days = frequencyMap[expense.repeatEvery] || 7;
             nextDate.setDate(nextDate.getDate() + days);
             return nextDate < new Date();
           default:
@@ -739,12 +795,11 @@ export default function RecurringExpenses() {
   }, [recurringExpenses, selectedView]);
 
   // Get sorted and filtered expenses (memoized for performance)
-  const displayExpenses = useMemo<RecurringExpense[]>(() => {
+  const displayExpenses = useMemo(() => {
     const sorted = [...getFilteredExpenses];
 
     sorted.sort((a, b) => {
-      let aValue: number | string = 0;
-      let bValue: number | string = 0;
+      let aValue, bValue;
 
       switch (selectedSort) {
         case "Created Time":
@@ -772,44 +827,67 @@ export default function RecurringExpenses() {
           const bNextDate = b.startDate ? new Date(b.startDate) : new Date(0);
           const aFreq = a.repeatEvery || "Week";
           const bFreq = b.repeatEvery || "Week";
-          aNextDate.setDate(aNextDate.getDate() + getRepeatEveryDays(aFreq));
-          bNextDate.setDate(bNextDate.getDate() + getRepeatEveryDays(bFreq));
+          const frequencyMap = {
+            "Week": 7,
+            "2 Weeks": 14,
+            "Month": 30,
+            "2 Months": 60,
+            "3 Months": 90,
+            "6 Months": 180,
+            "Year": 365,
+            "2 Years": 730,
+            "3 Years": 1095,
+          };
+          aNextDate.setDate(aNextDate.getDate() + (frequencyMap[aFreq] || 7));
+          bNextDate.setDate(bNextDate.getDate() + (frequencyMap[bFreq] || 7));
           aValue = aNextDate.getTime();
           bValue = bNextDate.getTime();
           break;
         case "Amount":
-          aValue = Number(a.amount || 0);
-          bValue = Number(b.amount || 0);
+          aValue = parseFloat(a.amount || 0);
+          bValue = parseFloat(b.amount || 0);
           break;
         default:
           return 0;
       }
 
-      if (typeof aValue === "string" && typeof bValue === "string") {
+      if (typeof aValue === "string") {
         return sortDirection === "asc"
           ? aValue.localeCompare(bValue)
           : bValue.localeCompare(aValue);
+      } else {
+        return sortDirection === "asc"
+          ? aValue - bValue
+          : bValue - aValue;
       }
-
-      return sortDirection === "asc"
-        ? Number(aValue) - Number(bValue)
-        : Number(bValue) - Number(aValue);
     });
 
     return sorted;
   }, [getFilteredExpenses, selectedSort, sortDirection]);
 
-  const styles: Record<string, CSSProperties> = {
+  const styles: Record<string, React.CSSProperties> = {
     container: {
       width: "100%",
-      minHeight: "100vh",
+      minHeight: "calc(100vh - 72px)",
+      padding: "0",
       backgroundColor: "#ffffff",
       display: "flex",
       flexDirection: "column",
     },
+    listCard: {
+      width: "100%",
+      flex: 1,
+      border: "none",
+      borderRadius: "0",
+      backgroundColor: "#ffffff",
+      boxShadow: "none",
+      display: "flex",
+      flexDirection: "column",
+      overflow: "hidden",
+    },
     header: {
-      padding: "16px 24px",
-      borderBottom: "1px solid #e5e7eb",
+      padding: "24px 24px 20px",
+      borderBottom: "1px solid #eef1f6",
       backgroundColor: "#ffffff",
     },
     headerContent: {
@@ -821,7 +899,7 @@ export default function RecurringExpenses() {
     headerLeft: {
       display: "flex",
       alignItems: "center",
-      gap: "8px",
+      gap: "12px",
       flex: 1,
     },
     dropdownWrapper: {
@@ -829,7 +907,7 @@ export default function RecurringExpenses() {
       display: "inline-block",
     },
     headerTitle: {
-      fontSize: "20px",
+      fontSize: "15px",
       fontWeight: "700",
       color: "#111827",
       background: "none",
@@ -837,8 +915,10 @@ export default function RecurringExpenses() {
       cursor: "pointer",
       display: "flex",
       alignItems: "center",
-      gap: "4px",
-      padding: 0,
+      gap: "6px",
+      padding: "12px 0",
+      borderBottom: "2px solid #111827",
+      marginBottom: "-2px",
     },
     dropdown: {
       position: "absolute",
@@ -867,28 +947,29 @@ export default function RecurringExpenses() {
     headerRight: {
       display: "flex",
       alignItems: "center",
-      gap: "8px",
+      gap: "12px",
     },
     newButton: {
-      padding: "8px 16px",
-      backgroundColor: "#156372",
+      padding: "6px 16px",
+      background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)",
       color: "#ffffff",
       fontSize: "14px",
-      fontWeight: "500",
-      borderRadius: "6px",
-      border: "none",
+      fontWeight: "700",
+      borderRadius: "8px",
+      border: "1px solid #0D4A52",
       cursor: "pointer",
       display: "flex",
       alignItems: "center",
-      gap: "4px",
-      transition: "background-color 0.2s",
+      gap: "6px",
+      boxShadow: "0 2px 6px rgba(21, 99, 114, 0.22)",
+      transition: "all 0.2s",
     },
     moreButton: {
-      padding: "8px",
+      padding: "6px",
       color: "#111827",
-      backgroundColor: "#f3f4f6",
-      border: "none",
-      borderRadius: "6px",
+      backgroundColor: "#ffffff",
+      border: "1px solid #d1d5db",
+      borderRadius: "8px",
       cursor: "pointer",
       display: "flex",
       alignItems: "center",
@@ -964,29 +1045,41 @@ export default function RecurringExpenses() {
     table: {
       width: "100%",
       borderCollapse: "collapse",
+      minWidth: "1200px",
+    },
+    tableWrap: {
+      flex: 1,
+      minHeight: 0,
+      overflow: "auto",
+      borderTop: "1px solid #eef1f6",
+      backgroundColor: "#ffffff",
     },
     tableHeader: {
-      backgroundColor: "#f9fafb",
-      borderBottom: "1px solid #e5e7eb",
+      backgroundColor: "#f6f7fb",
+      borderBottom: "1px solid #e6e9f2",
+      position: "sticky",
+      top: 0,
+      zIndex: 10,
     },
     tableHeaderCell: {
       padding: "12px 16px",
       textAlign: "left",
-      fontSize: "12px",
+      fontSize: "10px",
       fontWeight: "600",
-      color: "#6b7280",
+      color: "#7b8494",
       textTransform: "uppercase",
-      borderBottom: "1px solid #e5e7eb",
+      letterSpacing: "0.06em",
+      borderBottom: "1px solid #e6e9f2",
     },
     tableBody: {
       backgroundColor: "#ffffff",
     },
     tableRow: {
-      borderBottom: "1px solid #e5e7eb",
+      borderBottom: "1px solid #eef1f6",
     },
     tableCell: {
       padding: "12px 16px",
-      fontSize: "14px",
+      fontSize: "13px",
       color: "#111827",
     },
     checkbox: {
@@ -1000,10 +1093,11 @@ export default function RecurringExpenses() {
       fontSize: "14px",
     },
     emptyState: {
-      padding: "48px 24px",
+      padding: "60px 24px",
       textAlign: "center",
       color: "#6b7280",
       fontSize: "14px",
+      backgroundColor: "#ffffff",
     },
     skeletonCell: {
       height: "16px",
@@ -1032,6 +1126,13 @@ export default function RecurringExpenses() {
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.5; }
+        }
+        .recurring-expenses-scrollbar {
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        .recurring-expenses-scrollbar::-webkit-scrollbar {
+          display: none;
         }
       `}} />
       {/* Notification */}
@@ -1077,10 +1178,11 @@ export default function RecurringExpenses() {
           </span>
         </div>
       )}
+      <div style={styles.listCard}>
       {selectedItems.length > 0 && (
         <div style={{
-          padding: "12px 24px",
-          borderBottom: "1px solid #e5e7eb",
+          padding: "16px 24px",
+          borderBottom: "1px solid #eef1f6",
           backgroundColor: "#ffffff",
           display: "flex",
           alignItems: "center",
@@ -1254,7 +1356,7 @@ export default function RecurringExpenses() {
                 </button>
                 {dropdownOpen && (
                   <div style={styles.dropdown}>
-                    {(["All", "Active", "Stopped", "Expired"] as const).map((option) => {
+                    {["All", "Active", "Stopped", "Expired"].map((option) => {
                       const isSelected = selectedView === option;
                       return (
                         <button
@@ -1324,12 +1426,12 @@ export default function RecurringExpenses() {
             <div style={styles.headerRight}>
               <button
                 style={styles.newButton}
-                onClick={() => navigate("/purchases/recurring-expenses/new")}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#0D4A52")}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#156372")}
-              >
-                <Plus size={16} />
-                New
+                onClick={() => navigate("/expenses/recurring-expenses/new")}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#0D4A52")}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#22c55e")}
+            >
+              <Plus size={16} />
+              New
               </button>
               <div style={{ position: "relative" }} ref={moreMenuRef}>
                 <button
@@ -1339,10 +1441,10 @@ export default function RecurringExpenses() {
                     setMoreMenuOpen(!moreMenuOpen);
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "#e5e7eb";
+                    e.currentTarget.style.backgroundColor = "#f9fafb";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "#f3f4f6";
+                    e.currentTarget.style.backgroundColor = "#ffffff";
                   }}
                 >
                   <MoreVertical size={18} />
@@ -1439,7 +1541,7 @@ export default function RecurringExpenses() {
                       }}
                       onClick={() => {
                         setMoreMenuOpen(false);
-                        navigate("/purchases/recurring-expenses/import");
+                        navigate("/expenses/recurring-expenses/import");
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.backgroundColor = "#f9fafb";
@@ -1597,7 +1699,7 @@ export default function RecurringExpenses() {
 
       {/* Table */}
       {isRefreshing || recurringExpenses.length > 0 ? (
-        <div>
+        <div style={styles.tableWrap} className="recurring-expenses-scrollbar">
           <table style={styles.table}>
             <thead style={styles.tableHeader}>
               <tr>
@@ -1607,22 +1709,36 @@ export default function RecurringExpenses() {
                     alignItems: "center",
                     gap: "8px"
                   }}>
+                    <button
+                      type="button"
+                      style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer", color: "#156372" }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCustomizeColumnsSearch("");
+                        setShowCustomizeColumnsModal(true);
+                      }}
+                    >
+                      <SlidersHorizontal size={14} />
+                    </button>
                     <input
                       type="checkbox"
                       checked={selectedItems.length === displayExpenses.length && displayExpenses.length > 0}
                       onChange={handleSelectAll}
                       style={{ ...styles.checkbox, accentColor: "#156372" }}
                     />
-                    PROFILE NAME
+                    {isColumnVisible("profileName") ? "PROFILE NAME" : null}
                   </div>
                 </th>
-                <th style={styles.tableHeaderCell}>EXPENSE ACCOUNT</th>
-                <th style={styles.tableHeaderCell}>VENDOR NAME</th>
-                <th style={styles.tableHeaderCell}>FREQUENCY</th>
-                <th style={styles.tableHeaderCell}>LAST EXPENSE DATE</th>
-                <th style={styles.tableHeaderCell}>NEXT EXPENSE DATE</th>
-                <th style={styles.tableHeaderCell}>STATUS</th>
-                <th style={styles.tableHeaderCell}>AMOUNT</th>
+                {isColumnVisible("location") && <th style={styles.tableHeaderCell}>LOCATION</th>}
+                {isColumnVisible("expenseAccount") && <th style={styles.tableHeaderCell}>EXPENSE ACCOUNT</th>}
+                {isColumnVisible("customerName") && <th style={styles.tableHeaderCell}>CUSTOMER NAME</th>}
+                {isColumnVisible("vendor") && <th style={styles.tableHeaderCell}>VENDOR NAME</th>}
+                {isColumnVisible("frequency") && <th style={styles.tableHeaderCell}>FREQUENCY</th>}
+                {isColumnVisible("lastExpenseDate") && <th style={styles.tableHeaderCell}>LAST EXPENSE DATE</th>}
+                {isColumnVisible("nextExpenseDate") && <th style={styles.tableHeaderCell}>NEXT EXPENSE DATE</th>}
+                {isColumnVisible("status") && <th style={styles.tableHeaderCell}>STATUS</th>}
+                {isColumnVisible("amount") && <th style={styles.tableHeaderCell}>AMOUNT</th>}
+                {isColumnVisible("wsq") && <th style={styles.tableHeaderCell}>WSQ</th>}
               </tr>
             </thead>
             <tbody style={styles.tableBody}>
@@ -1632,31 +1748,41 @@ export default function RecurringExpenses() {
                   <tr key={`skeleton-${index}`} style={styles.tableRow}>
                     <td style={styles.tableCell}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ display: "inline-block", width: "14px", flexShrink: 0 }} />
                         <div style={styles.skeletonCheckbox}></div>
                         <div style={{ ...styles.skeletonCell, width: "100px" }}></div>
                       </div>
                     </td>
-                    <td style={styles.tableCell}>
+                    {isColumnVisible("location") && <td style={styles.tableCell}>
+                      <div style={{ ...styles.skeletonCell, width: "100px" }}></div>
+                    </td>}
+                    {isColumnVisible("expenseAccount") && <td style={styles.tableCell}>
                       <div style={{ ...styles.skeletonCell, width: "120px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
+                    </td>}
+                    {isColumnVisible("customerName") && <td style={styles.tableCell}>
+                      <div style={{ ...styles.skeletonCell, width: "100px" }}></div>
+                    </td>}
+                    {isColumnVisible("vendor") && <td style={styles.tableCell}>
                       <div style={{ ...styles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
+                    </td>}
+                    {isColumnVisible("frequency") && <td style={styles.tableCell}>
                       <div style={{ ...styles.skeletonCell, width: "60px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
+                    </td>}
+                    {isColumnVisible("lastExpenseDate") && <td style={styles.tableCell}>
                       <div style={{ ...styles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
+                    </td>}
+                    {isColumnVisible("nextExpenseDate") && <td style={styles.tableCell}>
                       <div style={{ ...styles.skeletonCell, width: "80px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
+                    </td>}
+                    {isColumnVisible("status") && <td style={styles.tableCell}>
                       <div style={{ ...styles.skeletonCell, width: "60px" }}></div>
-                    </td>
-                    <td style={styles.tableCell}>
+                    </td>}
+                    {isColumnVisible("amount") && <td style={styles.tableCell}>
                       <div style={{ ...styles.skeletonCell, width: "70px" }}></div>
-                    </td>
+                    </td>}
+                    {isColumnVisible("wsq") && <td style={styles.tableCell}>
+                      <div style={{ ...styles.skeletonCell, width: "70px" }}></div>
+                    </td>}
                   </tr>
                 ))
               ) : (
@@ -1666,11 +1792,16 @@ export default function RecurringExpenses() {
                     style={{ ...styles.tableRow, cursor: "pointer" }}
                     onClick={(e) => {
                       // Don't navigate if clicking on checkbox or its container
-                      const target = e.target as HTMLElement;
-                      if ((target instanceof HTMLInputElement && target.type === "checkbox") || target.closest('input[type="checkbox"]') || target.closest('td')?.querySelector('input[type="checkbox"]')) {
+                      const target = e.target as HTMLElement | null;
+                      const inputTarget = target as HTMLInputElement | null;
+                      if (
+                        inputTarget?.type === "checkbox" ||
+                        target?.closest('input[type="checkbox"]') ||
+                        target?.closest('td')?.querySelector('input[type="checkbox"]')
+                      ) {
                         return;
                       }
-                      navigate(`/purchases/recurring-expenses/${expense.id}`);
+                      navigate(`/expenses/recurring-expenses/${expense.id}`);
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f9fafb")}
                     onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
@@ -1691,6 +1822,7 @@ export default function RecurringExpenses() {
                         alignItems: "center",
                         gap: "8px"
                       }}>
+                        <span style={{ display: "inline-block", width: "14px", flexShrink: 0 }} />
                         <input
                           type="checkbox"
                           checked={selectedItems.includes(expense.id)}
@@ -1703,26 +1835,29 @@ export default function RecurringExpenses() {
                           }}
                           style={{ ...styles.checkbox, accentColor: "#156372" }}
                         />
-                        {expense.profileName || ""}
+                        {isColumnVisible("profileName") ? (expense.profileName || "") : null}
                       </div>
                     </td>
-                    <td style={styles.tableCell}>{expense.expenseAccount || ""}</td>
-                    <td style={styles.tableCell}>{expense.vendor || ""}</td>
-                    <td style={styles.tableCell}>{expense.repeatEvery || ""}</td>
-                    <td style={styles.tableCell}>
+                    {isColumnVisible("location") && <td style={styles.tableCell}>{expense.location || ""}</td>}
+                    {isColumnVisible("expenseAccount") && <td style={styles.tableCell}>{expense.expenseAccount || ""}</td>}
+                    {isColumnVisible("customerName") && <td style={styles.tableCell}>{expense.customerName || ""}</td>}
+                    {isColumnVisible("vendor") && <td style={styles.tableCell}>{expense.vendor || ""}</td>}
+                    {isColumnVisible("frequency") && <td style={styles.tableCell}>{expense.repeatEvery || ""}</td>}
+                    {isColumnVisible("lastExpenseDate") && <td style={styles.tableCell}>
                       {expense.startDate ? formatDate(expense.startDate) : ""}
-                    </td>
-                    <td style={styles.tableCell}>
+                    </td>}
+                    {isColumnVisible("nextExpenseDate") && <td style={styles.tableCell}>
                       {calculateNextDate(expense.startDate, expense.repeatEvery)}
-                    </td>
-                    <td style={styles.tableCell}>
+                    </td>}
+                    {isColumnVisible("status") && <td style={styles.tableCell}>
                       <span style={styles.statusActive}>
                         {expense.status === "ACTIVE" || expense.active !== false ? "ACTIVE" : expense.status || "ACTIVE"}
                       </span>
-                    </td>
-                    <td style={styles.tableCell}>
-                      {getCurrencySymbol()} {expense.amount ? Number(expense.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00"}
-                    </td>
+                    </td>}
+                    {isColumnVisible("amount") && <td style={styles.tableCell}>
+                      {getCurrencySymbol()} {Number(getRecurringExpenseAmount(expense) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>}
+                    {isColumnVisible("wsq") && <td style={styles.tableCell}>{expense.wsq || ""}</td>}
                   </tr>
                 ))
               )}
@@ -1769,7 +1904,7 @@ export default function RecurringExpenses() {
               gap: "16px"
             }}>
               <button
-                onClick={() => navigate("/purchases/recurring-expenses/new")}
+                onClick={() => navigate("/expenses/recurring-expenses/new")}
                 style={{
                   padding: "12px 24px",
                   fontSize: "16px",
@@ -1794,7 +1929,7 @@ export default function RecurringExpenses() {
                 NEW RECURRING EXPENSE
               </button>
               <button
-                onClick={() => navigate("/purchases/recurring-expenses/import")}
+                onClick={() => navigate("/expenses/recurring-expenses/import")}
                 style={{
                   background: "none",
                   border: "none",
@@ -2030,10 +2165,83 @@ export default function RecurringExpenses() {
         isOpen={showBulkUpdateModal}
         onClose={() => setShowBulkUpdateModal(false)}
         title="Bulk Update Recurring Expenses"
-        fieldOptions={recurringExpenseFieldOptions as any}
+        fieldOptions={recurringExpenseFieldOptions}
         onUpdate={handleBulkUpdateSubmit}
         entityName="recurring expenses"
       />
+
+      {showCustomizeColumnsModal && (
+        <div
+          className="fixed inset-0 z-[2200] bg-black/45"
+          onClick={() => {
+            setShowCustomizeColumnsModal(false);
+            setCustomizeColumnsSearch("");
+          }}
+        >
+          <div
+            className="mx-auto mt-6 w-full max-w-[560px] rounded-md border border-gray-300 bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+              <div className="flex items-center gap-2 text-base text-gray-700">
+                <SlidersHorizontal size={14} className="text-gray-600" />
+                <span className="text-xl font-medium text-gray-700">Customize Columns</span>
+              </div>
+            </div>
+            <div className="px-4 py-3">
+              <input
+                type="text"
+                value={customizeColumnsSearch}
+                onChange={(e) => setCustomizeColumnsSearch(e.target.value)}
+                placeholder="Search"
+                className="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 outline-none focus:border-blue-500"
+              />
+              <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                {filteredCustomizeColumns.map((col: any) => (
+                  <div key={col.key} className="flex items-center justify-between rounded bg-gray-50 px-3 py-2.5">
+                    <label className="flex items-center gap-3 text-sm text-gray-700">
+                      <span className="text-gray-400">⋮⋮</span>
+                      <input
+                        type="checkbox"
+                        checked={visibleColumnKeys.includes(col.key)}
+                        onChange={() => toggleVisibleColumn(col.key)}
+                        className="h-4 w-4"
+                      />
+                      <span>{col.label}</span>
+                    </label>
+                  </div>
+                ))}
+                {filteredCustomizeColumns.length === 0 && (
+                  <div className="rounded border border-dashed border-gray-300 px-3 py-4 text-sm text-gray-500">
+                    No columns found.
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-3 border-t border-gray-200 px-4 py-3">
+              <button
+                className="rounded bg-emerald-500 px-4 py-2 text-sm text-white hover:bg-emerald-600"
+                onClick={() => {
+                  setShowCustomizeColumnsModal(false);
+                  setCustomizeColumnsSearch("");
+                }}
+              >
+                Save
+              </button>
+              <button
+                className="rounded border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                onClick={() => {
+                  setShowCustomizeColumnsModal(false);
+                  setCustomizeColumnsSearch("");
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      </div>
 
       {/* Delete Confirmation Modal */}
       <DeleteConfirmationModal
@@ -2530,7 +2738,21 @@ export default function RecurringExpenses() {
                   <button
                     onClick={() => {
                       setShowSearchModal(false);
-                      setSearchModalData({ ...DEFAULT_SEARCH_MODAL_DATA });
+                      setSearchModalData({
+                        expenseAccount: "",
+                        vendorName: "",
+                        frequency: "",
+                        lastExpenseDateFrom: "",
+                        lastExpenseDateTo: "",
+                        nextExpenseDateFrom: "",
+                        nextExpenseDateTo: "",
+                        status: "",
+                        amountFrom: "",
+                        amountTo: "",
+                        notes: "",
+                        customerName: "",
+                        projectName: "",
+                      });
                     }}
                     style={{
                       padding: "8px 16px",
@@ -2599,14 +2821,14 @@ const Z = {
   bgMain: "#f3f4f6",
 };
 
-const MOCK_USERS: SelectableItem[] = [
+const MOCK_USERS = [
   { id: 1, name: "Jirde Hussein Khalif", email: "jirde@taban.com", role: "Admin" },
   { id: 2, name: "Ibrahim Ahmed", email: "ibrahim@taban.com", role: "Editor" },
   { id: 3, name: "Sarah Smith", email: "sarah@taban.com", role: "Viewer" },
   { id: 4, name: "Tech Support", email: "support@taban.com", role: "Support" },
 ];
 
-const MOCK_ROLES: SelectableItem[] = [
+const MOCK_ROLES = [
   { id: "admin", name: "Admin" },
   { id: "staff", name: "Staff" },
   { id: "timesheet", name: "TimesheetStaff" },
@@ -2614,21 +2836,21 @@ const MOCK_ROLES: SelectableItem[] = [
 ];
 
 function UserRoleSelector() {
-  const [selectorMode, setSelectorMode] = useState<SelectorMode>("Users");
+  const [selectorMode, setSelectorMode] = useState("Users"); // "Users" | "Roles"
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [isInputFocused, setIsInputFocused] = useState(false);
-  const [selectedItems, setSelectedItems] = useState<SelectedShareItem[]>([]);
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedItems, setSelectedItems] = useState([]);
+  const inputRef = useRef(null);
 
   const toggleDropdown = () => setIsDropdownOpen(!isDropdownOpen);
-  const selectMode = (mode: SelectorMode) => {
+  const selectMode = (mode) => {
     setSelectorMode(mode);
     setIsDropdownOpen(false);
     setInputValue("");
   };
 
-  const handleSelect = (item: SelectableItem) => {
+  const handleSelect = (item) => {
     if (!selectedItems.find(i => i.id === item.id)) {
       setSelectedItems([...selectedItems, { ...item, type: selectorMode }]);
     }
@@ -2636,7 +2858,7 @@ function UserRoleSelector() {
     setIsInputFocused(false);
   };
 
-  const handleRemove = (id: number | string) => {
+  const handleRemove = (id) => {
     setSelectedItems(selectedItems.filter(i => i.id !== id));
   };
 
@@ -2653,7 +2875,7 @@ function UserRoleSelector() {
       item.name.toLowerCase().includes(inputValue.toLowerCase())
     );
 
-  const highlightBorder = (focused: boolean) => focused ? `1px solid ${Z.primaryColor}` : `1px solid ${Z.line}`;
+  const highlightBorder = (focused) => focused ? `1px solid ${Z.primaryColor}` : `1px solid ${Z.line}`;
 
   return (
     <div style={{
@@ -2681,7 +2903,7 @@ function UserRoleSelector() {
               backgroundColor: "#ffffff", border: "1px solid #e5e7eb", borderRadius: "6px",
               boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)", zIndex: 20
             }}>
-              {(["Users", "Roles"] as const).map(mode => (
+              {["Users", "Roles"].map(mode => (
                 <div
                   key={mode}
                   onClick={(e) => { e.stopPropagation(); selectMode(mode); }}
@@ -2715,7 +2937,7 @@ function UserRoleSelector() {
           <input
             ref={inputRef}
             value={inputValue}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setInputValue(e.target.value)}
+            onChange={(e) => setInputValue(e.target.value)}
             onFocus={() => setIsInputFocused(true)}
             onBlur={() => setTimeout(() => setIsInputFocused(false), 200)}
             placeholder={selectedItems.length === 0 ? (selectorMode === "Users" ? "Select Users" : "Add Roles") : ""}
@@ -2747,20 +2969,26 @@ function UserRoleSelector() {
                     display: "flex", flexDirection: "column"
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = Z.primaryColor;
-                    e.currentTarget.style.color = "#ffffff";
-                    const emailDiv = e.currentTarget.querySelector(".email-sub") as HTMLElement | null;
+                    const target = e.currentTarget as HTMLElement;
+                    target.style.backgroundColor = Z.primaryColor;
+                    target.style.color = "#ffffff";
+                    const emailDiv = target.querySelector(".email-sub") as HTMLElement | null;
                     if (emailDiv) emailDiv.style.opacity = "0.9";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "transparent";
-                    e.currentTarget.style.color = "#374151";
-                    const emailDiv = e.currentTarget.querySelector(".email-sub") as HTMLElement | null;
+                    const target = e.currentTarget as HTMLElement;
+                    target.style.backgroundColor = "transparent";
+                    target.style.color = "#374151";
+                    const emailDiv = target.querySelector(".email-sub") as HTMLElement | null;
                     if (emailDiv) emailDiv.style.opacity = "1";
                   }}
                 >
                   <div style={{ fontSize: "13px", fontWeight: "600", textTransform: "uppercase" }}>{item.name}</div>
-                  {item.email && <div className="email-sub" style={{ fontSize: "12px", color: "inherit", opacity: 1 }}>{item.email}</div>}
+                  {(item as { email?: string }).email && (
+                    <div className="email-sub" style={{ fontSize: "12px", color: "inherit", opacity: 1 }}>
+                      {(item as { email?: string }).email}
+                    </div>
+                  )}
                 </div>
               ))}
               {filteredItems.length === 0 && <div style={{ padding: "12px", textAlign: "center", color: "#6b7280", fontSize: "13px" }}>No results found</div>}
@@ -2791,8 +3019,8 @@ function UserRoleSelector() {
   );
 }
 
-function NewCustomViewModal({ onClose, onSave }: NewCustomViewModalProps) {
-  const [formData, setFormData] = useState<CustomViewFormData>({
+function NewCustomViewModal({ onClose, onSave }) {
+  const [formData, setFormData] = useState({
     name: "",
     markAsFavorite: false,
     criteria: [{ id: 1, field: "", comparator: "", value: "" }],
@@ -2816,7 +3044,7 @@ function NewCustomViewModal({ onClose, onSave }: NewCustomViewModalProps) {
   });
   const [searchQuery, setSearchQuery] = useState("");
 
-  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData((prev) => ({
       ...prev,
@@ -2824,7 +3052,7 @@ function NewCustomViewModal({ onClose, onSave }: NewCustomViewModalProps) {
     }));
   };
 
-  const handleCriterionChange = (id: number, field: "field" | "comparator" | "value", value: string) => {
+  const handleCriterionChange = (id, field, value) => {
     setFormData((prev) => ({
       ...prev,
       criteria: prev.criteria.map((c) =>
@@ -2848,14 +3076,14 @@ function NewCustomViewModal({ onClose, onSave }: NewCustomViewModalProps) {
     }));
   };
 
-  const removeCriterion = (id: number) => {
+  const removeCriterion = (id) => {
     setFormData((prev) => ({
       ...prev,
       criteria: prev.criteria.filter((c) => c.id !== id),
     }));
   };
 
-  const moveColumnToSelected = (column: string) => {
+  const moveColumnToSelected = (column) => {
     setFormData((prev) => ({
       ...prev,
       availableColumns: prev.availableColumns.filter((c) => c !== column),
@@ -2863,7 +3091,7 @@ function NewCustomViewModal({ onClose, onSave }: NewCustomViewModalProps) {
     }));
   };
 
-  const moveColumnToAvailable = (column: string) => {
+  const moveColumnToAvailable = (column) => {
     // Don't allow removing required columns
     const requiredColumns = ["Profile Name", "Expense Account", "Frequency", "Next Expense Date", "Status", "Amount"];
     if (requiredColumns.includes(column)) {
@@ -2876,7 +3104,7 @@ function NewCustomViewModal({ onClose, onSave }: NewCustomViewModalProps) {
     }));
   };
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     onSave(formData);
   };
@@ -2914,7 +3142,7 @@ function NewCustomViewModal({ onClose, onSave }: NewCustomViewModalProps) {
     col.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const modalStyles: Record<string, CSSProperties> = {
+  const modalStyles: Record<string, React.CSSProperties> = {
     overlay: {
       position: "fixed",
       top: 0,
@@ -3288,11 +3516,11 @@ function NewCustomViewModal({ onClose, onSave }: NewCustomViewModalProps) {
               <label style={{ ...modalStyles.label, marginBottom: "4px" }}>Visibility Preference</label>
 
               <div style={{ display: "flex", gap: "16px", marginTop: "8px" }}>
-                {([
+                {[
                   { id: "Only Me", label: "Only Me", icon: <Lock size={16} /> },
                   { id: "Only Selected Users & Roles", label: "Only Selected Users & Roles", icon: <User size={16} /> },
                   { id: "Everyone", label: "Everyone", icon: <Folder size={16} /> }
-                ] as const).map((opt) => {
+                ].map((opt) => {
                   const isSelected = formData.visibility === opt.id;
                   return (
                     <div

@@ -266,7 +266,17 @@ export async function apiRequest(endpoint: string, options: ApiRequestOptions = 
       // If not JSON, return text or null
       const text = await response.text();
       if (!response.ok) {
-        throw new Error(text || `API request failed: ${response.statusText}`);
+        // Handle HTTP errors
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || response.statusText || "Internal Server Error";
+        const fullError = `API Error [${response.status}] ${endpoint}: ${errorMessage}`;
+        console.error(fullError, errorData);
+        throw {
+          message: errorMessage,
+          status: response.status,
+          data: errorData,
+          endpoint
+        };
       }
       return text || null;
     }
