@@ -29,6 +29,29 @@ const readCachedVendorCredits = () => {
   }
 };
 
+const mergeVendorCreditIntoList = (credits: any[], incoming: any) => {
+  if (!incoming || typeof incoming !== "object") return Array.isArray(credits) ? credits : [];
+
+  const nextCredits = Array.isArray(credits) ? [...credits] : [];
+  const incomingId = String(incoming.id || incoming._id || "").trim();
+  const incomingCreditNote = String(incoming.creditNote || incoming.vendorCreditNumber || "").trim();
+  const existingIndex = nextCredits.findIndex((credit: any) => {
+    const existingId = String(credit?.id || credit?._id || "").trim();
+    const existingCreditNote = String(credit?.creditNote || credit?.vendorCreditNumber || "").trim();
+    return (
+      (incomingId && existingId === incomingId) ||
+      (incomingCreditNote && existingCreditNote === incomingCreditNote)
+    );
+  });
+
+  if (existingIndex >= 0) {
+    nextCredits[existingIndex] = { ...nextCredits[existingIndex], ...incoming };
+    return nextCredits;
+  }
+
+  return [incoming, ...nextCredits];
+};
+
 const normalizeVendorCreditView = (value: any): string => {
   const normalized = String(value || "").trim().toLowerCase();
   if (
@@ -46,6 +69,7 @@ export default function VendorCredits() {
   const navigate = useNavigate();
   const location = useLocation();
   const cachedVendorCredits = useMemo(() => readCachedVendorCredits(), []);
+  const pendingVendorCredit = location.state?.pendingVendorCredit || null;
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
@@ -133,10 +157,19 @@ export default function VendorCredits() {
 
   useEffect(() => {
     if (Array.isArray(vendorCreditsQuery.data)) {
-      setVendorCredits(vendorCreditsQuery.data);
+      setVendorCredits((prev) =>
+        pendingVendorCredit
+          ? mergeVendorCreditIntoList(vendorCreditsQuery.data, pendingVendorCredit)
+          : vendorCreditsQuery.data
+      );
       setHasLoadedInitialCredits(true);
     }
-  }, [vendorCreditsQuery.data]);
+  }, [vendorCreditsQuery.data, pendingVendorCredit]);
+
+  useEffect(() => {
+    if (!pendingVendorCredit) return;
+    setVendorCredits((prev) => mergeVendorCreditIntoList(prev, pendingVendorCredit));
+  }, [pendingVendorCredit]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

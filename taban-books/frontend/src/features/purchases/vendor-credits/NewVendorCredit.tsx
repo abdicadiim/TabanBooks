@@ -1511,7 +1511,12 @@ export default function NewVendorCredit() {
       if (isEdit && creditId) {
         navigate(`/purchases/vendor-credits/${creditId}`, { replace: true });
       } else {
-        navigate("/purchases/vendor-credits", { replace: true });
+        navigate("/purchases/vendor-credits", {
+          replace: true,
+          state: {
+            pendingVendorCredit: optimisticRecord,
+          },
+        });
       }
     } catch (error: any) {
       console.error("Error saving vendor credit:", error);
