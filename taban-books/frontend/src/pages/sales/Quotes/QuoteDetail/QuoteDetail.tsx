@@ -48,7 +48,8 @@ import {
   Send
 } from "lucide-react";
 import { getQuoteById, getQuotes, updateQuote, deleteQuotes, getCustomers, getSalespersons, getProjects, getInvoices, saveInvoice, saveQuote } from "../../salesModel";
-import { currenciesAPI, documentsAPI, senderEmailsAPI, settingsAPI, transactionNumberSeriesAPI, pdfTemplatesAPI } from "../../../../services/api";
+import { pdfTemplatesAPI, currenciesAPI, documentsAPI, senderEmailsAPI, settingsAPI, transactionNumberSeriesAPI } from "../../../../services/api";
+import TransactionPDFDocument from "../../../../components/Transactions/TransactionPDFDocument";
 import { toast } from "react-hot-toast";
 import { resolvePrimarySender } from "../../../../utils/emailSenderDisplay";
 import QuoteCommentsPanel from "./QuoteCommentsPanel";
@@ -257,6 +258,7 @@ const QuoteDetail = () => {
   const [isLinkGenerated, setIsLinkGenerated] = useState(false);
   const shareModalRef = useRef<HTMLDivElement>(null);
   const visibilityDropdownRef = useRef<HTMLDivElement>(null);
+  const quoteDocumentRef = useRef<HTMLDivElement>(null);
 
   // Data for dropdowns
   const [customers, setCustomers] = useState<any[]>([]);
@@ -296,7 +298,7 @@ const QuoteDetail = () => {
         if (data.success && data.data) {
           setOrganizationProfile(data.data);
           // Store in localStorage as fallback
-          localStorage.setItem('organization_profile', JSON.stringify(sanitizeProfileForCache(data.data)));
+          localStorage.setItem('organization_profile', JSON.stringify(data.data));
         }
       } else {
         console.error('Failed to fetch organization profile:', response.status, response.statusText);
@@ -357,7 +359,7 @@ const QuoteDetail = () => {
         if (data.success && data.data) {
           setOrganizationProfile(data.data);
           // Update localStorage
-          localStorage.setItem('organization_profile', JSON.stringify(sanitizeProfileForCache(data.data)));
+          localStorage.setItem('organization_profile', JSON.stringify(data.data));
         }
       }
     } catch (error) {
@@ -1644,274 +1646,8 @@ const QuoteDetail = () => {
   const handleViewQuoteInNewPage = () => {
     setShowPdfDropdown(false);
     if (!quote) return;
-    const totalsMeta = getQuoteTotalsMeta(quote);
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Quote ${quote.quoteNumber || quote.id}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            padding: 40px; 
-            color: #333;
-            line-height: 1.6;
-          }
-          .header { 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: flex-start;
-            margin-bottom: 40px; 
-            padding-bottom: 20px;
-            border-bottom: 2px solid #2563eb;
-          }
-          .company-info h1 { 
-            color: #2563eb; 
-            font-size: 28px; 
-            margin-bottom: 5px;
-          }
-          .company-info p { 
-            color: #666; 
-            font-size: 12px;
-          }
-          .quote-info { text-align: right; }
-          .quote-info h2 { 
-            font-size: 24px; 
-            color: #111;
-            margin-bottom: 10px;
-          }
-          .quote-info .status { 
-            display: inline-block;
-            font-size: 12px; 
-            font-weight: 600;
-            color: #1e40af;
-            margin-bottom: 10px;
-          }
-          .quote-info p { font-size: 14px; color: #666; }
-          .section { margin-bottom: 30px; }
-          .section-title { 
-            font-size: 16px; 
-            font-weight: 600; 
-            color: #111;
-            margin-bottom: 15px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid #e5e7eb;
-          }
-          .info-grid { 
-            display: grid; 
-            grid-template-columns: 1fr 1fr; 
-            gap: 15px; 
-          }
-          .info-item { padding: 10px; background: #f9fafb; border-radius: 6px; }
-          .info-label { font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight: 500; }
-          .info-value { font-size: 14px; color: #111; font-weight: 500; margin-top: 4px; }
-          .customer-box {
-            background: #f9fafb;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-          }
-          .customer-name { font-size: 16px; font-weight: 600; color: #111; margin-bottom: 5px; }
-          .customer-address { font-size: 14px; color: #666; }
-          table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            margin: 20px 0; 
-          }
-          th, td { 
-            padding: 12px 15px; 
-            text-align: left; 
-            border-bottom: 1px solid #e5e7eb; 
-          }
-          th { 
-            background: #f3f4f6; 
-            font-weight: 600; 
-            color: #374151; 
-            font-size: 12px;
-            text-transform: uppercase;
-          }
-          td { font-size: 14px; color: #374151; }
-          .totals { 
-            margin-left: auto; 
-            width: 350px; 
-            margin-top: 20px;
-          }
-          .totals-row { 
-            display: flex; 
-            justify-content: space-between; 
-            padding: 8px 0;
-            font-size: 14px;
-          }
-          .totals-subrow {
-            font-size: 12px;
-            color: #6b7280;
-            margin-top: -4px;
-            margin-bottom: 8px;
-          }
-          .totals-row.total { 
-            background: #f3f4f6;
-            font-weight: 700;
-            font-size: 16px;
-            margin-top: 12px;
-            padding: 12px 14px;
-          }
-          .notes { 
-            background: #f9fafb; 
-            padding: 15px; 
-            border-radius: 6px;
-            font-size: 14px;
-            color: #666;
-          }
-          .footer { 
-            margin-top: 40px; 
-            text-align: center; 
-            color: #9ca3af; 
-            font-size: 12px;
-            padding-top: 20px;
-            border-top: 1px solid #e5e7eb;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div class="company-info">
-            <h1>${organizationNameHtml}</h1>
-            <p>Professional Accounting Solutions</p>
-          </div>
-          <div class="quote-info">
-            <h2>QUOTE</h2>
-            <div class="status">${(quote.status || 'Draft').toUpperCase()}</div>
-            <p><strong>${quote.quoteNumber || quote.id}</strong></p>
-          </div>
-        </div>
-
-        <div class="section">
-          <div class="info-grid">
-            <div class="info-item">
-              <div class="info-label">Quote Date</div>
-              <div class="info-value">${formatDate(quote.quoteDate)}</div>
-            </div>
-            <div class="info-item">
-              <div class="info-label">Expiry Date</div>
-              <div class="info-value">${formatDate(quote.expiryDate)}</div>
-            </div>
-            <div class="info-item">
-              <div class="info-label">Reference</div>
-              <div class="info-value">${quote.referenceNumber || '-'}</div>
-            </div>
-            <div class="info-item">
-              <div class="info-label">Salesperson</div>
-              <div class="info-value">${quote.salesperson || '-'}</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="section">
-          <div class="section-title">Bill To</div>
-          <div class="customer-box">
-            <div class="customer-name">${quote.customerName || 'N/A'}</div>
-            <div class="customer-address">${quote.billingAddress || 'No address provided'}</div>
-          </div>
-        </div>
-
-        <div class="section">
-          <div class="section-title">Items</div>
-          <table>
-            <thead>
-              <tr>
-                <th style="width: 40px;">#</th>
-                <th>Item</th>
-                <th style="width: 80px;">Qty</th>
-                <th style="width: 120px;">Price</th>
-                <th style="width: 120px;">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${quote.items && quote.items.length > 0 ? quote.items.map((item: any, index: number) => `
-                <tr>
-                  <td>${index + 1}</td>
-                  <td>
-                    <strong>${item.name || item.item?.name || 'N/A'}</strong>
-                    ${item.description ? `<br><span style="color: #666; font-size: 12px;">${item.description}</span>` : ''}
-                  </td>
-                  <td>${item.quantity || 0}</td>
-                  <td>${formatCurrency(item.unitPrice || item.rate || item.price, quote.currency)}</td>
-                  <td>${formatCurrency(item.total || item.amount || (item.quantity * (item.unitPrice || item.rate || item.price)), quote.currency)}</td>
-                </tr>
-              `).join('') : '<tr><td colspan="5" style="text-align: center; color: #666;">No items</td></tr>'}
-            </tbody>
-          </table>
-
-          <div class="totals">
-            <div class="totals-row">
-              <span>Sub Total</span>
-              <span>${formatCurrency(totalsMeta.subTotal, quote.currency)}</span>
-            </div>
-            <div class="totals-subrow">(${totalsMeta.taxExclusive})</div>
-            ${totalsMeta.discount > 0 ? `
-            <div class="totals-row">
-              <span>${totalsMeta.discountLabel}</span>
-              <span>(-) ${formatCurrency(totalsMeta.discount, quote.currency)}</span>
-            </div>
-            <div class="totals-subrow">
-              (Applied on ${formatCurrency(totalsMeta.discountBase, quote.currency)})
-            </div>
-            ` : ''}
-            <div class="totals-row">
-              <span>${totalsMeta.taxLabel}</span>
-              <span>${formatCurrency(totalsMeta.taxAmount, quote.currency)}</span>
-            </div>
-            <div class="totals-row">
-              <span>Shipping charge</span>
-              <span>${formatCurrency(totalsMeta.shippingCharges, quote.currency)}</span>
-            </div>
-            <div class="totals-row">
-              <span>${totalsMeta.shippingTaxLabel}</span>
-              <span>${formatCurrency(totalsMeta.shippingTaxAmount, quote.currency)}</span>
-            </div>
-            <div class="totals-row">
-              <span>Adjustment</span>
-              <span>${formatCurrency(totalsMeta.adjustment, quote.currency)}</span>
-            </div>
-            <div class="totals-row">
-              <span>Round Off</span>
-              <span>${formatCurrency(totalsMeta.roundOff, quote.currency)}</span>
-            </div>
-            <div class="totals-row total">
-              <span>Total</span>
-              <span>${formatCurrency(totalsMeta.total, quote.currency)}</span>
-            </div>
-          </div>
-        </div>
-
-        ${quote.customerNotes ? `
-        <div class="section">
-          <div class="section-title">Notes</div>
-          <div class="notes">${quote.customerNotes}</div>
-        </div>
-        ` : ''}
-
-        ${quote.termsAndConditions ? `
-        <div class="section">
-          <div class="section-title">Terms & Conditions</div>
-          <div class="notes">${quote.termsAndConditions}</div>
-        </div>
-        ` : ''}
-
-        <div class="footer">
-          <p>Generated by ${organizationNameHtml} on ${new Date().toLocaleDateString()}</p>
-          <p>Thank you for your business!</p>
-        </div>
-      </body>
-      </html>
-      `);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
-    }
+    
+    window.print();
   };
 
   const handleSendReminder = () => {
@@ -1992,185 +1728,6 @@ const QuoteDetail = () => {
     }
   };
 
-  // Generate HTML content for quote (shared for print and download)
-  const generateQuoteHTML = () => {
-    return generateQuoteHTMLForQuote(quote);
-  };
-
-  // Generate HTML content for a specific quote (used for bulk export)
-  function generateQuoteHTMLForQuote(quoteData: any) {
-    if (!quoteData) return '';
-
-    const itemsHTML = quoteData.items && quoteData.items.length > 0 ? quoteData.items.map((item: any, index: number) => {
-      const rate = parseFloat(item.unitPrice || item.rate || item.price || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const amount = parseFloat(item.total || item.amount || (item.quantity * (item.unitPrice || item.rate || item.price || 0))).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const qty = parseFloat(item.quantity || 0).toFixed(2);
-      const unit = item.item?.unit || item.unit || 'pcs';
-      const itemName = item.name || item.item?.name || 'N/A';
-      const rowBg = index % 2 === 0 ? '#ffffff' : '#fafafa';
-      return `
-        <tr style="background:${rowBg};">
-          <td>${index + 1}</td>
-          <td>
-            <div><strong style="font-weight: 500;">${itemName}</strong></div>
-            ${item.description ? `<div style="font-size: 12px; color: #6b7280; margin-top: 2px;">${item.description}</div>` : ''}
-          </td>
-          <td>
-            <div>${qty}</div>
-            <div class="qty-unit">${unit}</div>
-          </td>
-          <td>${rate}</td>
-          <td>${amount}</td>
-        </tr>
-      `;
-    }).join('') : '<tr><td colspan="5" style="padding: 24px; text-align: center; color: #666; font-size: 14px;">No items added</td></tr>';
-
-    const quoteDate = quoteData.quoteDate || quoteData.date || new Date().toISOString();
-    const customerName = quoteData.customerName || (typeof quoteData.customer === 'object' ? (quoteData.customer?.displayName || quoteData.customer?.name) : quoteData.customer) || 'N/A';
-    const notes = quoteData.customerNotes || 'Looking forward for your business.';
-    const totalsMeta = getQuoteTotalsMeta(quoteData);
-
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Quote ${quoteData.quoteNumber || quoteData.id}</title>
-        <meta charset="UTF-8">
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          @page { size: A4; margin: 20mm; }
-          body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            padding: 42px 36px 22px 36px;
-            color: #111827;
-            line-height: 1.35;
-            background: #fff;
-          }
-          .quote-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; border-bottom: 1px solid #e5e7eb; padding-bottom: 14px; }
-          .company-name { font-size: 16px; font-weight: 700; margin-bottom: 3px; }
-          .company-address { font-size: 11px; color: #4b5563; line-height: 1.45; }
-          .quote-title h1 { font-size: 40px; font-weight: 500; color: #111827; letter-spacing: 1.2px; line-height: 1; }
-          .quote-number { font-size: 16px; color: #111827; font-weight: 700; margin-top: 6px; text-align: right; }
-          .bill-date { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
-          .bill-to-label { font-size: 15px; color: #111827; margin-bottom: 4px; font-weight: 600; }
-          .bill-to-name { font-size: 15px; color: #2563eb; font-weight: 600; line-height: 1.2; }
-          .bill-date-right { display: flex; align-items: center; gap: 22px; }
-          .bill-date-colon { font-size: 16px; color: #6b7280; line-height: 1; }
-          .quote-date { font-size: 13px; color: #111827; min-width: 120px; text-align: right; }
-          .items-table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
-          .items-table th { padding: 9px 12px; text-align: left; color: white; font-size: 11px; font-weight: 600; background-color: #3f3f46; }
-          .items-table th:first-child { width: 44px; text-align: center; }
-          .items-table th:nth-child(3), .items-table th:nth-child(4), .items-table th:nth-child(5) { width: 100px; text-align: right; }
-          .items-table td { border-bottom: 1px solid #d1d5db; padding: 9px 12px; font-size: 11px; vertical-align: top; }
-          .items-table td:first-child { text-align: center; }
-          .items-table td:nth-child(3), .items-table td:nth-child(4), .items-table td:nth-child(5) { text-align: right; }
-          .qty-unit { font-size: 10px; color: #6b7280; margin-top: 2px; }
-          .totals { width: 320px; margin-left: auto; border: 1px solid #e5e7eb; border-radius: 8px; background: #fcfcfd; padding: 10px 12px; }
-          .total-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 11px; color: #4b5563; }
-          .total-row.subtotal { font-size: 15px; color: #111827; font-weight: 600; }
-          .total-subrow { font-size: 10px; color: #6b7280; margin-top: -2px; margin-bottom: 6px; }
-          .total-row.final { padding: 10px 12px; font-size: 17px; font-weight: 700; background: #f3f4f6; border-radius: 6px; margin-top: 8px; color: #111827; }
-          .total-value { color: #111827; font-weight: 500; }
-          .notes { margin-top: 18px; margin-bottom: 12px; border-top: 1px dashed #d1d5db; padding-top: 10px; }
-          .notes-label { font-size: 13px; font-weight: 700; color: #111827; margin-bottom: 6px; letter-spacing: 0.2px; }
-          .notes-content { font-size: 11px; color: #4b5563; white-space: pre-line; line-height: 1.5; }
-          .footer { margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 14px; text-align: center; }
-          .footer-text { font-size: 10px; color: #6b7280; }
-        </style>
-      </head>
-      <body>
-        <div class="quote-header">
-          <div class="quote-title">
-            <div class="company-name">${organizationProfile?.name || ''}</div>
-            <div class="company-address">
-              ${organizationProfile?.address?.street1 || ''}<br/>
-              ${organizationProfile?.address?.street2 || ''}<br/>
-              ${organizationProfile?.address?.city ? `${organizationProfile.address.city}${organizationProfile.address.zipCode ? ` ${organizationProfile.address.zipCode}` : ''}${organizationProfile.address.state ? `, ${organizationProfile.address.state}` : ''}` : ''}<br/>
-              ${organizationProfile?.address?.country || ''}<br/>
-              ${ownerEmail?.email || organizationProfile?.email || ''}
-            </div>
-          </div>
-          <div class="quote-title">
-            <h1>QUOTE</h1>
-            <div class="quote-number"># ${quoteData.quoteNumber || quoteData.id}</div>
-          </div>
-        </div>
-
-        <div class="bill-date">
-          <div>
-            <div class="bill-to-label">Bill To</div>
-            <div class="bill-to-name">${customerName}</div>
-          </div>
-          <div class="bill-date-right">
-            <div class="bill-date-colon">:</div>
-            <div class="quote-date">${new Date(quoteDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
-          </div>
-        </div>
-
-        <table class="items-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Item & Description</th>
-              <th>Qty</th>
-              <th>Rate</th>
-              <th>Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${itemsHTML}
-          </tbody>
-        </table>
-
-        <div class="totals">
-          <div class="total-row subtotal">
-            <span class="total-label">Sub Total</span>
-            <span class="total-value">${Number(totalsMeta.subTotal || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-          </div>
-          ${totalsMeta.discount > 0 ? `
-          <div class="total-row">
-            <span class="total-label">${totalsMeta.discountLabel}</span>
-            <span class="total-value">(-) ${formatCurrency(totalsMeta.discount || 0, quoteData.currency)}</span>
-          </div>
-          <div class="total-subrow">
-            (Applied on ${formatCurrency(totalsMeta.discountBase, quoteData.currency)})
-          </div>
-          ` : ''}
-          <div class="total-row">
-            <span class="total-label">${totalsMeta.taxLabel}</span>
-            <span class="total-value">${formatCurrency(totalsMeta.taxAmount || 0, quoteData.currency)}</span>
-          </div>
-          <div class="total-row">
-            <span class="total-label">Shipping charge</span>
-            <span class="total-value">${formatCurrency(totalsMeta.shippingCharges, quoteData.currency)}</span>
-          </div>
-          <div class="total-row">
-            <span class="total-label">${totalsMeta.shippingTaxLabel}</span>
-            <span class="total-value">${formatCurrency(totalsMeta.shippingTaxAmount, quoteData.currency)}</span>
-          </div>
-          <div class="total-row">
-            <span class="total-label">Adjustment</span>
-            <span class="total-value">${formatCurrency(totalsMeta.adjustment, quoteData.currency)}</span>
-          </div>
-          <div class="total-row">
-            <span class="total-label">Round Off</span>
-            <span class="total-value">${formatCurrency(totalsMeta.roundOff, quoteData.currency)}</span>
-          </div>
-          <div class="total-row final">
-            <span>Total</span>
-            <span>${formatCurrency(totalsMeta.total, quoteData.currency)}</span>
-          </div>
-        </div>
-
-        <div class="notes">
-          <div class="notes-label">Notes</div>
-          <div class="notes-content">${notes}</div>
-        </div>
-      </body>
-      </html>
-    `;
-  }
-
   // PDF/Print handlers
   const handlePrintQuote = () => {
     setShowPdfDropdown(false);
@@ -2186,70 +1743,45 @@ const QuoteDetail = () => {
     if (!quote) return;
 
     try {
-      const sourceElement = document.querySelector('[data-print-content]') as HTMLElement | null;
-      if (!sourceElement) {
+      const target = quoteDocumentRef.current;
+      if (!target) {
         throw new Error("Quote preview element not found.");
       }
 
-      const wrapper = document.createElement("div");
-      wrapper.style.position = "fixed";
-      wrapper.style.left = "-100000px";
-      wrapper.style.top = "0";
-      wrapper.style.width = "794px"; // A4 width at 96dpi
-      wrapper.style.background = "#ffffff";
-      wrapper.style.padding = "0";
-      wrapper.style.margin = "0";
-      wrapper.style.overflow = "visible";
-
-      const cloned = sourceElement.cloneNode(true) as HTMLElement;
-      cloned.style.width = "794px";
-      cloned.style.maxWidth = "794px";
-      cloned.style.margin = "0";
-      cloned.style.boxShadow = "none";
-      cloned.style.background = "#ffffff";
-      wrapper.appendChild(cloned);
-      document.body.appendChild(wrapper);
-
-      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-
-      const canvas = await html2canvas(wrapper, {
-        scale: 1.5,
+      const canvas = await html2canvas(target, {
+        scale: 2,
         useCORS: true,
         backgroundColor: "#ffffff",
-        allowTaint: true,
-        width: 794,
-        windowWidth: 794,
-        scrollX: 0,
-        scrollY: 0,
       });
-      document.body.removeChild(wrapper);
 
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const margin = 10;
+      const pdf = new jsPDF("p", "mm", "a4");
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const printableWidth = pageWidth - margin * 2;
-      const printableHeight = pageHeight - margin * 2;
-      const imgHeight = (canvas.height * printableWidth) / canvas.width;
+      const margin = 10;
+      const printableWidth = pageWidth - (margin * 2);
+      const printableHeight = pageHeight - (margin * 2);
+      const imgWidth = printableWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const imgData = canvas.toDataURL("image/png");
+
       let heightLeft = imgHeight;
       let position = margin;
 
-      pdf.addImage(imgData, 'JPEG', margin, position, printableWidth, imgHeight);
+      pdf.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
       heightLeft -= printableHeight;
 
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight + margin;
+      while (heightLeft > 0.01) {
+        position = margin - (imgHeight - heightLeft);
         pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', margin, position, printableWidth, imgHeight);
+        pdf.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
         heightLeft -= printableHeight;
       }
 
       pdf.save(`Quote-${quote.quoteNumber || quote.id}.pdf`);
       toast.success("Quote PDF downloaded.");
     } catch (error) {
-      console.error('Error generating PDF:', error);
-      toast.error("Failed to download quote PDF.");
+      console.error("Error downloading quote PDF:", error);
+      toast.error("Failed to generate PDF. Please try again.");
     }
   };
 
@@ -2501,6 +2033,185 @@ const QuoteDetail = () => {
       toast.error("Failed to mark quote as declined. Please try again.");
     }
   };
+
+  // Generate HTML content for quote (shared for print and download)
+  const generateQuoteHTML = () => {
+    return generateQuoteHTMLForQuote(quote);
+  };
+
+  // Generate HTML content for a specific quote (used for bulk export)
+  function generateQuoteHTMLForQuote(quoteData: any) {
+    if (!quoteData) return '';
+
+    const itemsHTML = quoteData.items && quoteData.items.length > 0 ? quoteData.items.map((item: any, index: number) => {
+      const rate = parseFloat(item.unitPrice || item.rate || item.price || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const amount = parseFloat(item.total || item.amount || (item.quantity * (item.unitPrice || item.rate || item.price || 0))).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const qty = parseFloat(item.quantity || 0).toFixed(2);
+      const unit = item.item?.unit || item.unit || 'pcs';
+      const itemName = item.name || item.item?.name || 'N/A';
+      const rowBg = index % 2 === 0 ? '#ffffff' : '#fafafa';
+      return `
+        <tr style="background:${rowBg};">
+          <td>${index + 1}</td>
+          <td>
+            <div><strong style="font-weight: 500;">${itemName}</strong></div>
+            ${item.description ? `<div style="font-size: 12px; color: #6b7280; margin-top: 2px;">${item.description}</div>` : ''}
+          </td>
+          <td>
+            <div>${qty}</div>
+            <div class="qty-unit">${unit}</div>
+          </td>
+          <td>${rate}</td>
+          <td>${amount}</td>
+        </tr>
+      `;
+    }).join('') : '<tr><td colspan="5" style="padding: 24px; text-align: center; color: #666; font-size: 14px;">No items added</td></tr>';
+
+    const quoteDate = quoteData.quoteDate || quoteData.date || new Date().toISOString();
+    const customerName = quoteData.customerName || (typeof quoteData.customer === 'object' ? (quoteData.customer?.displayName || quoteData.customer?.name) : quoteData.customer) || 'N/A';
+    const notes = quoteData.customerNotes || 'Looking forward for your business.';
+    const totalsMeta = getQuoteTotalsMeta(quoteData);
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Quote ${quoteData.quoteNumber || quoteData.id}</title>
+        <meta charset="UTF-8">
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          @page { size: A4; margin: 20mm; }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 42px 36px 22px 36px;
+            color: #111827;
+            line-height: 1.35;
+            background: #fff;
+          }
+          .quote-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; border-bottom: 1px solid #e5e7eb; padding-bottom: 14px; }
+          .company-name { font-size: 16px; font-weight: 700; margin-bottom: 3px; }
+          .company-address { font-size: 11px; color: #4b5563; line-height: 1.45; }
+          .quote-title h1 { font-size: 40px; font-weight: 500; color: #111827; letter-spacing: 1.2px; line-height: 1; }
+          .quote-number { font-size: 16px; color: #111827; font-weight: 700; margin-top: 6px; text-align: right; }
+          .bill-date { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+          .bill-to-label { font-size: 15px; color: #111827; margin-bottom: 4px; font-weight: 600; }
+          .bill-to-name { font-size: 15px; color: #2563eb; font-weight: 600; line-height: 1.2; }
+          .bill-date-right { display: flex; align-items: center; gap: 22px; }
+          .bill-date-colon { font-size: 16px; color: #6b7280; line-height: 1; }
+          .quote-date { font-size: 13px; color: #111827; min-width: 120px; text-align: right; }
+          .items-table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+          .items-table th { padding: 9px 12px; text-align: left; color: white; font-size: 11px; font-weight: 600; background-color: #3f3f46; }
+          .items-table th:first-child { width: 44px; text-align: center; }
+          .items-table th:nth-child(3), .items-table th:nth-child(4), .items-table th:nth-child(5) { width: 100px; text-align: right; }
+          .items-table td { border-bottom: 1px solid #d1d5db; padding: 9px 12px; font-size: 11px; vertical-align: top; }
+          .items-table td:first-child { text-align: center; }
+          .items-table td:nth-child(3), .items-table td:nth-child(4), .items-table td:nth-child(5) { text-align: right; }
+          .qty-unit { font-size: 10px; color: #6b7280; margin-top: 2px; }
+          .totals { width: 320px; margin-left: auto; border: 1px solid #e5e7eb; border-radius: 8px; background: #fcfcfd; padding: 10px 12px; }
+          .total-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 11px; color: #4b5563; }
+          .total-row.subtotal { font-size: 15px; color: #111827; font-weight: 600; }
+          .total-subrow { font-size: 10px; color: #6b7280; margin-top: -2px; margin-bottom: 6px; }
+          .total-row.final { padding: 10px 12px; font-size: 17px; font-weight: 700; background: #f3f4f6; border-radius: 6px; margin-top: 8px; color: #111827; }
+          .total-value { color: #111827; font-weight: 500; }
+          .notes { margin-top: 18px; margin-bottom: 12px; border-top: 1px dashed #d1d5db; padding-top: 10px; }
+          .notes-label { font-size: 13px; font-weight: 700; color: #111827; margin-bottom: 6px; letter-spacing: 0.2px; }
+          .notes-content { font-size: 11px; color: #4b5563; white-space: pre-line; line-height: 1.5; }
+          .footer { margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 14px; text-align: center; }
+          .footer-text { font-size: 10px; color: #6b7280; }
+        </style>
+      </head>
+      <body>
+        <div class="quote-header">
+          <div class="quote-title">
+            <div class="company-name">${organizationProfile?.name || ''}</div>
+            <div class="company-address">
+              ${organizationProfile?.address?.street1 || ''}<br/>
+              ${organizationProfile?.address?.street2 || ''}<br/>
+              ${organizationProfile?.address?.city ? `${organizationProfile.address.city}${organizationProfile.address.zipCode ? ` ${organizationProfile.address.zipCode}` : ''}${organizationProfile.address.state ? `, ${organizationProfile.address.state}` : ''}` : ''}<br/>
+              ${organizationProfile?.address?.country || ''}<br/>
+              ${ownerEmail?.email || organizationProfile?.email || ''}
+            </div>
+          </div>
+          <div class="quote-title">
+            <h1>QUOTE</h1>
+            <div class="quote-number"># ${quoteData.quoteNumber || quoteData.id}</div>
+          </div>
+        </div>
+
+        <div class="bill-date">
+          <div>
+            <div class="bill-to-label">Bill To</div>
+            <div class="bill-to-name">${customerName}</div>
+          </div>
+          <div class="bill-date-right">
+            <div class="bill-date-colon">:</div>
+            <div class="quote-date">${new Date(quoteDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+          </div>
+        </div>
+
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Item & Description</th>
+              <th>Qty</th>
+              <th>Rate</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsHTML}
+          </tbody>
+        </table>
+
+        <div class="totals">
+          <div class="total-row subtotal">
+            <span class="total-label">Sub Total</span>
+            <span class="total-value">${Number(totalsMeta.subTotal || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+          ${totalsMeta.discount > 0 ? `
+          <div class="total-row">
+            <span class="total-label">${totalsMeta.discountLabel}</span>
+            <span class="total-value">(-) ${formatCurrency(totalsMeta.discount || 0, quoteData.currency)}</span>
+          </div>
+          <div class="total-subrow">
+            (Applied on ${formatCurrency(totalsMeta.discountBase, quoteData.currency)})
+          </div>
+          ` : ''}
+          <div class="total-row">
+            <span class="total-label">${totalsMeta.taxLabel}</span>
+            <span class="total-value">${formatCurrency(totalsMeta.taxAmount || 0, quoteData.currency)}</span>
+          </div>
+          <div class="total-row">
+            <span class="total-label">Shipping charge</span>
+            <span class="total-value">${formatCurrency(totalsMeta.shippingCharges, quoteData.currency)}</span>
+          </div>
+          <div class="total-row">
+            <span class="total-label">${totalsMeta.shippingTaxLabel}</span>
+            <span class="total-value">${formatCurrency(totalsMeta.shippingTaxAmount, quoteData.currency)}</span>
+          </div>
+          <div class="total-row">
+            <span class="total-label">Adjustment</span>
+            <span class="total-value">${formatCurrency(totalsMeta.adjustment, quoteData.currency)}</span>
+          </div>
+          <div class="total-row">
+            <span class="total-label">Round Off</span>
+            <span class="total-value">${formatCurrency(totalsMeta.roundOff, quoteData.currency)}</span>
+          </div>
+          <div class="total-row final">
+            <span>Total</span>
+            <span>${formatCurrency(totalsMeta.total, quoteData.currency)}</span>
+          </div>
+        </div>
+
+        <div class="notes">
+          <div class="notes-label">Notes</div>
+          <div class="notes-content">${notes}</div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
 
   const resolveSubscriptionNumberForQuote = async (sourceQuote: any) => {
     const locationName = String(sourceQuote?.selectedLocation || sourceQuote?.location || "Head Office").trim() || "Head Office";
@@ -3774,646 +3485,166 @@ const QuoteDetail = () => {
           {activeTab === "details" && (
             <div className="flex-1 p-2 md:p-3 bg-gray-50 overflow-y-auto">
               {showPdfView ? (
-                /* PDF View - Document Style */
-                (() => {
-                  const config = activePdfTemplate?.config || {};
-                  const hf = config.headerFooter || {};
-                  const labels = hf.labels || {};
-                  const txFields = config.transactionDetails?.fields || {};
-                  const totalLabels = config.total?.labels || {};
-                  const table = config.table || {};
-                  
-                   const total = config.total || {};
-                  
-                  const labelFor = (obj: any, key: string, fallback: string) => (typeof obj?.[key] === "string" ? obj[key] : obj?.[key]?.label || fallback);
-                  const isVisible = (obj: any, key: string, fallback = true) => {
-                    if (!obj || obj[key] === undefined) return fallback;
-                    if (typeof obj[key] === "boolean") return obj[key];
-                    if (typeof obj[key]?.visible === "boolean") return obj[key].visible;
-                    return fallback;
-                  };
+                <div className="flex-1 overflow-auto bg-gray-50 p-6" ref={quoteDocumentRef}>
+                  <TransactionPDFDocument
+                    data={{
+                      ...quote,
+                      number: quote.quoteNumber,
+                      date: quote.quoteDate,
+                      expiryDate: quote.expiryDate,
+                      referenceNumber: quote.referenceNumber,
+                      items: (quote.items || []).map((item: any) => ({
+                        ...item,
+                        name: item.name || item.item?.name || "Item",
+                        rate: item.unitPrice || item.rate || item.price || 0,
+                        taxRate: item.tax?.rate || 0
+                      }))
+                    }}
+                    config={activePdfTemplate?.config || {}}
+                    moduleType="quotes"
+                    organization={organizationProfile}
+                    totalsMeta={quoteTotalsMeta}
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-500">
+                  Select a tab to view details
+                </div>
+              )}
+            </div>
+          )}
+          {activeTab === "details" && !showPdfView && (
+            <div className="flex-1 overflow-y-auto p-4 bg-white">
+              <div className="max-w-4xl mx-auto">
+                <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
+                  <h2 className="flex items-center gap-3 text-xl font-semibold text-gray-900">
+                    {quote.quoteNumber || quote.id}
+                    {getStatusBadge(quote.status)}
+                  </h2>
+                  <p className="text-sm text-gray-600">
+                    Total : <span className="text-lg font-semibold text-gray-900">{formatCurrency(quote.total, quote.currency)}</span>
+                  </p>
+                </div>
 
-                  const fmt = (val: number) => {
-                    const s = Number(val || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                    const symbol = quote.currency || "SOS";
-                    return total.currencyPosition === "after" ? `${s} ${symbol}` : `${symbol} ${s}`;
-                  };
-
-                  return (
-                    <div
-                      className="w-full max-w-[920px] mx-auto border border-[#d1d5db] shadow-sm overflow-hidden print-content"
-                      data-print-content
-                      style={{ 
-                        width: "210mm", 
-                        maxWidth: "210mm", 
-                        minHeight: "297mm", 
-                        position: "relative",
-                        backgroundColor: config.general?.backgroundColor || "#ffffff",
-                        color: config.general?.fontColor || "#000000",
-                        fontFamily: config.general?.fontFamily || "Helvetica, Arial, sans-serif",
-                        fontSize: `${config.general?.fontSize || 9}pt`,
-                        display: "flex",
-                        flexDirection: "column"
-                      }}
-                    >
-                      {/* Header Bar */}
-                      {(hf.headerBgColor || hf.bgImage) && (
-                        <div style={{ backgroundColor: hf.headerBgColor || "transparent", height: "40px", flexShrink: 0, width: "100%", position: "relative" }}>
-                          {hf.bgImage && <img src={hf.bgImage} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />}
-                        </div>
-                      )}
-
-                      <div style={{ 
-                        padding: `${(hf.headerBgColor || hf.bgImage) ? "0.2in" : (config.general?.margins?.top || 0.7) + "in"} ${config.general?.margins?.right || 0.4}in ${(hf.footerBgColor || hf.footerBgImage || hf.showPageNumber !== false) ? "0.2in" : (config.general?.margins?.bottom || 0.7) + "in"} ${config.general?.margins?.left || 0.55}in`,
-                        flex: 1,
-                        display: "flex",
-                        flexDirection: "column"
-                      }}>
-                        {/* Status Ribbon (Internal Preview Only) */}
-                        <div style={{
-                          position: "absolute",
-                          top: "0",
-                          left: "0",
-                          width: "200px",
-                          height: "200px",
-                          overflow: "hidden",
-                          zIndex: 10,
-                          pointerEvents: "none"
-                        }}>
-                          <div style={{
-                            position: "absolute",
-                            top: "40px",
-                            left: "-60px",
-                            width: "200px",
-                            height: "30px",
-                            backgroundColor: statusRibbonConfig.color,
-                            color: "white",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: "14px",
-                            fontWeight: "600",
-                            transform: "rotate(-45deg)",
-                            boxShadow: "0 2px 4px rgba(0,0,0,0.2)"
-                          }}>
-                            {statusRibbonConfig.label}
-                          </div>
-                        </div>
-
-                        {/* Header with Company Info */}
-                        {(() => {
-                          const details = config.transactionDetails || {};
-                          return (
-                            <div className="flex items-start justify-between mb-6 pb-5" style={{ position: "relative", borderBottom: `1px solid ${activeTheme.accent}33` }}>
-                              <div style={{ maxWidth: "46%" }}>
-                                {isVisible(details, "showOrgLogo") && (details.orgLogo || organizationProfile?.logo) && (
-                                  <div className="mb-4 h-12 w-32 overflow-hidden flex items-center justify-center bg-gray-50 rounded border border-gray-100">
-                                    <img src={details.orgLogo || organizationProfile?.logo} alt="Org Logo" className="max-h-full max-w-full object-contain" />
-                                  </div>
-                                )}
-                                {isVisible(details, "showOrgName") && (
-                                  <div style={{ 
-                                    fontSize: `${details.orgNameFontSize || 16}pt`, 
-                                    fontWeight: "700", 
-                                    color: details.orgNameColor || config.general?.labelColor || activeTheme.accent, 
-                                    marginBottom: "3px" 
-                                  }}>
-                                    {organizationProfile?.name || "Organization Name"}
-                                  </div>
-                                )}
-                                {isVisible(details, "showOrgAddress") && (
-                                  <div style={{ fontSize: "11px", color: config.general?.labelColor || "#4b5563", lineHeight: "1.45" }}>
-                                    {organizationProfile?.address?.street1 && <>{organizationProfile.address.street1}<br /></>}
-                                    {organizationProfile?.address?.street2 && <>{organizationProfile.address.street2}<br /></>}
-                                    {(organizationProfile?.address?.city || organizationProfile?.address?.zipCode || organizationProfile?.address?.state) && (
-                                      <>
-                                        {organizationProfile.address.city || ""}
-                                        {organizationProfile.address.zipCode ? ` ${organizationProfile.address.zipCode}` : ""}
-                                        {organizationProfile.address.state ? `, ${organizationProfile.address.state}` : ""}
-                                        <br />
-                                      </>
-                                    )}
-                                    {organizationProfile?.address?.country && (
-                                      <>
-                                        {organizationProfile.address.country}
-                                        <br />
-                                      </>
-                                    )}
-                                    {ownerEmail?.email || organizationProfile?.email || ""}
-                                  </div>
-                                )}
-                              </div>
-                              <div style={{ textAlign: "right", marginTop: "2px" }}>
-                                {isVisible(hf, "showDocumentTitle") && (
-                                  <div style={{ 
-                                    fontSize: `${hf.titleFontSize || 32}pt`, 
-                                    lineHeight: "1.1", 
-                                    fontWeight: "300", 
-                                    textTransform: "uppercase", 
-                                    letterSpacing: "1px",
-                                    color: hf.titleFontColor || "#111827" 
-                                  }}>
-                                    {isVisible(labels, "docTitle") ? labelFor(labels, "docTitle", "Quote") : "Quote"}
-                                  </div>
-                                )}
-                                <div style={{ fontSize: "14px", fontWeight: "700", color: "#111827", marginTop: "4px" }}>
-                                  {labelFor(labels, "numberField", "#")} {quote.quoteNumber || "17"}
-                                </div>
-                                {(hf.phoneLabel || hf.faxLabel) && (
-                                  <div style={{ fontSize: "11px", color: config.general?.labelColor || "#6b7280", marginTop: "8px" }}>
-                                    {hf.phoneLabel && <div>{hf.phoneLabel}: {organizationProfile?.phone || "000-000-0000"}</div>}
-                                    {hf.faxLabel && <div>{hf.faxLabel}: {organizationProfile?.fax || "000-000-0000"}</div>}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                        {/* Bill To and Info Grid Row */}
-                        {(() => {
-                          const details = config.transactionDetails || {};
-                          return (
-                            <div style={{ marginBottom: "32px" }}>
-                              <div className="flex justify-between items-baseline" style={{ borderBottom: "1px solid #f3f4f6", paddingBottom: "8px", marginBottom: "12px" }}>
-                                <div style={{ fontSize: "14px", color: "#111827", fontWeight: "600" }}>
-                                  {labelFor(labels, "billToField", "Bill To")}
-                                </div>
-                                <div className="flex items-center gap-4">
-                                  <span style={{ color: "#d1d5db" }}>:</span>
-                                  <div style={{ fontSize: "13px", color: "#111827", fontWeight: "400" }}>
-                                    {quote.quoteDate ? new Date(quote.quoteDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "-"}
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <div style={{ 
-                                    fontSize: `${details.custNameFontSize || 14}pt`, 
-                                    color: details.custNameColor || "#2563eb", 
-                                    fontWeight: "600", 
-                                    lineHeight: "1.2",
-                                    marginBottom: "4px"
-                                  }}>{quote.customerName || "N/A"}</div>
-                                  <div style={{ fontSize: "11px", color: "#4b5563", maxWidth: "400px", lineHeight: "1.5" }}>{quote.billingAddress || ""}</div>
-                                </div>
-                                <div className="text-right">
-                                  {isVisible(labels, "expiryDate") && quote.expiryDate && (
-                                    <div className="flex items-center justify-end gap-2 text-[12px] text-gray-500">
-                                      <span>Expiry Date:</span>
-                                      <span className="font-medium text-gray-900">{new Date(quote.expiryDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</span>
-                                    </div>
-                                  )}
-                                  {isVisible(labels, "referenceField") && quote.referenceNumber && (
-                                    <div className="flex items-center justify-end gap-2 text-[12px] text-gray-500 mt-1">
-                                      <span>Reference#:</span>
-                                      <span className="font-medium text-gray-900">{quote.referenceNumber}</span>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                      {/* Items Table */}
-                      <div className="mb-6">
-                        <table style={{ 
-                          width: "100%", 
-                          borderCollapse: "collapse",
-                          border: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
-                        }}>
-                          <thead>
-                            <tr style={{ 
-                              backgroundColor: table.showHeaderBg !== false ? (table.headerBgColor || activeTheme.headerBg || "#3c3d3a") : "transparent",
-                              borderBottom: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
-                            }}>
-                              {isVisible(table.labels, "lineNumber") && (
-                                <th style={{ 
-                                  padding: "9px 12px", 
-                                  textAlign: "center", 
-                                  color: table.headerFontColor || activeTheme.headerText || "white", 
-                                  fontSize: `${table.headerFontSize || 11}pt`, 
-                                  fontWeight: "600", 
-                                  width: `${table.labels?.lineNumber?.width || 5}%`,
-                                  borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
-                                }}>{labelFor(table.labels, "lineNumber", "#")}</th>
-                              )}
-                              {isVisible(table.labels, "item") && (
-                                <th style={{ 
-                                  padding: "9px 12px", 
-                                  textAlign: "left", 
-                                  color: table.headerFontColor || activeTheme.headerText || "white", 
-                                  fontSize: `${table.headerFontSize || 11}pt`, 
-                                  fontWeight: "600",
-                                  width: `${table.labels?.item?.width || 30}%`,
-                                  borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
-                                }}>
-                                  {labelFor(table.labels, "item", "Item")}
-                                </th>
-                              )}
-                              {isVisible(table.labels, "quantity") && (
-                                <th style={{ 
-                                  padding: "9px 12px", 
-                                  textAlign: "right", 
-                                  color: table.headerFontColor || activeTheme.headerText || "white", 
-                                  fontSize: `${table.headerFontSize || 11}pt`, 
-                                  fontWeight: "600", 
-                                  width: `${table.labels?.quantity?.width || 11}%`,
-                                  borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
-                                }}>
-                                  {labelFor(table.labels, "quantity", "Qty")}
-                                </th>
-                              )}
-                              {isVisible(table.labels, "rate") && (
-                                <th style={{ 
-                                  padding: "9px 12px", 
-                                  textAlign: "right", 
-                                  color: table.headerFontColor || activeTheme.headerText || "white", 
-                                  fontSize: `${table.headerFontSize || 11}pt`, 
-                                  fontWeight: "600", 
-                                  width: `${table.labels?.rate?.width || 11}%`,
-                                  borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
-                                }}>
-                                  {labelFor(table.labels, "rate", "Rate")}
-                                </th>
-                              )}
-                              {isVisible(table.labels, "taxPercent") && (
-                                <th style={{ 
-                                  padding: "9px 12px", 
-                                  textAlign: "right", 
-                                  color: table.headerFontColor || activeTheme.headerText || "white", 
-                                  fontSize: `${table.headerFontSize || 11}pt`, 
-                                  fontWeight: "600", 
-                                  width: `${table.labels?.taxPercent?.width || 11}%`,
-                                  borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
-                                }}>
-                                  {labelFor(table.labels, "taxPercent", "VAT %")}
-                                </th>
-                              )}
-                              {isVisible(table.labels, "amount") && (
-                                <th style={{ 
-                                  padding: "9px 12px", 
-                                  textAlign: "right", 
-                                  color: table.headerFontColor || activeTheme.headerText || "white", 
-                                  fontSize: `${table.headerFontSize || 11}pt`, 
-                                  fontWeight: "600", 
-                                  width: `${table.labels?.amount?.width || 15}%`
-                                }}>
-                                  {labelFor(table.labels, "amount", "Amount")}
-                                </th>
-                              )}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {quote.items && quote.items.length > 0 ? (
-                              quote.items.map((item: any, index: number) => (
-                                <tr key={item.id || index} style={{ 
-                                  borderBottom: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : `1px solid #d1d5db`, 
-                                  backgroundColor: table.showRowBg !== false ? (index % 2 === 0 ? "transparent" : (table.rowBgColor || `${activeTheme.accent}0a`)) : "transparent"
-                                }}>
-                                  {isVisible(table.labels, "lineNumber") && (
-                                    <td style={{ 
-                                      padding: "9px 12px", 
-                                      fontSize: `${table.rowFontSize || 11}pt`, 
-                                      color: table.rowFontColor || config.general?.fontColor || "#111827", 
-                                      textAlign: "center", 
-                                      verticalAlign: "top",
-                                      borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
-                                    }}>{index + 1}</td>
-                                  )}
-                                  {isVisible(table.labels, "item") && (
-                                    <td style={{ 
-                                      padding: "9px 12px", 
-                                      fontSize: `${table.rowFontSize || 11}pt`, 
-                                      color: table.rowFontColor || config.general?.fontColor || "#111827", 
-                                      verticalAlign: "top",
-                                      borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
-                                    }}>
-                                      <div>
-                                        <strong style={{ fontWeight: "600", color: table.rowFontColor || config.general?.fontColor || "#111827" }}>{item.name || item.item?.name || "N/A"}</strong>
-                                        {isVisible(table.labels, "description") && item.description && (
-                                          <div style={{ 
-                                            fontSize: `${table.descFontSize || 10}pt`, 
-                                            color: table.descFontColor || config.general?.labelColor || "#6b7280", 
-                                            marginTop: "2px" 
-                                          }}>
-                                            {item.description}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </td>
-                                  )}
-                                  {isVisible(table.labels, "quantity") && (
-                                    <td style={{ 
-                                      padding: "9px 12px", 
-                                      fontSize: `${table.rowFontSize || 11}pt`, 
-                                      color: table.rowFontColor || config.general?.fontColor || "#111827", 
-                                      textAlign: "right", 
-                                      verticalAlign: "top",
-                                      borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
-                                    }}>
-                                      <div>{Number(item.quantity || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                                      {table.showUnit !== false && (
-                                        <div style={{ fontSize: "10px", color: config.general?.labelColor || "#6b7280", marginTop: "2px" }}>{item.item?.unit || item.unit || "pcs"}</div>
-                                      )}
-                                    </td>
-                                  )}
-                                  {isVisible(table.labels, "rate") && (
-                                    <td style={{ 
-                                      padding: "9px 12px", 
-                                      fontSize: `${table.rowFontSize || 11}pt`, 
-                                      color: table.rowFontColor || config.general?.fontColor || "#111827", 
-                                      textAlign: "right", 
-                                      verticalAlign: "top",
-                                      borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
-                                    }}>
-                                      {Number(item.unitPrice || item.rate || item.price || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </td>
-                                  )}
-                                  {isVisible(table.labels, "taxPercent") && (
-                                    <td style={{ 
-                                      padding: "9px 12px", 
-                                      fontSize: `${table.rowFontSize || 11}pt`, 
-                                      color: table.rowFontColor || config.general?.fontColor || "#111827", 
-                                      textAlign: "right", 
-                                      verticalAlign: "top",
-                                      borderRight: table.showBorder !== false ? `1px solid ${table.borderColor || "#adadad"}` : "none"
-                                    }}>
-                                      {item.tax?.rate || 0}%
-                                    </td>
-                                  )}
-                                  {isVisible(table.labels, "amount") && (
-                                    <td style={{ 
-                                      padding: "9px 12px", 
-                                      fontSize: `${table.rowFontSize || 11}pt`, 
-                                      color: table.rowFontColor || config.general?.fontColor || "#111827", 
-                                      textAlign: "right", 
-                                      verticalAlign: "top" 
-                                    }}>
-                                      {Number(item.total || item.amount || (item.quantity * (item.unitPrice || item.rate || item.price || 0))).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </td>
-                                  )}
-                                </tr>
-                              ))
-                            ) : (
-                              <tr>
-                                <td colSpan={6} style={{ padding: "24px", textAlign: "center", color: config.general?.labelColor || "#666", fontSize: "14px" }}>
-                                  No items added
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {/* Totals Section */}
-                      {total.showSection !== false && (
-                        <div className="flex justify-end mb-7">
-                          <div style={{ 
-                            width: "360px", 
-                            backgroundColor: total.showBg !== false ? (total.bgColor || "#ffffff") : "transparent",
-                            padding: "20px", 
-                            borderRadius: "12px",
-                            fontSize: `${total.fontSize || 11}pt`,
-                            color: total.fontColor || "#374151",
-                            border: "1px solid #e5e7eb",
-                            boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
-                          }}>
-                            {isVisible(total.labels, "subTotal") && (
-                              <div className="flex justify-between py-2 items-center">
-                                <span className="font-semibold text-gray-900">{labelFor(total.labels, "subTotal", "Sub Total")}</span>
-                                <span className="font-medium">{fmt(quoteTotalsMeta.subTotal || 0)}</span>
-                              </div>
-                            )}
-                            
-                            {total.showTaxDetails !== false && (
-                              <div className="flex justify-between py-1.5 items-center text-sm text-gray-500">
-                                <span>{quoteTotalsMeta.taxLabel || "Tax (Included)"}</span>
-                                <span>{fmt(quoteTotalsMeta.taxAmount || 0)}</span>
-                              </div>
-                            )}
-
-                            {isVisible(total.labels, "shipping") && (
-                              <div className="flex justify-between py-1.5 items-center text-sm text-gray-500">
-                                <span>{labelFor(total.labels, "shipping", "Shipping charge")}</span>
-                                <span>{fmt(quote.shippingCharges || 0)}</span>
-                              </div>
-                            )}
-
-                            {isVisible(total.labels, "shippingTax") && (
-                              <div className="flex justify-between py-1.5 items-center text-sm text-gray-500">
-                                <span>{labelFor(total.labels, "shippingTax", "Shipping Tax")}</span>
-                                <span>{fmt(quoteTotalsMeta.shippingTaxAmount || 0)}</span>
-                              </div>
-                            )}
-
-                            {isVisible(total.labels, "adjustment") && (
-                              <div className="flex justify-between py-1.5 items-center text-sm text-gray-500">
-                                <span>{labelFor(total.labels, "adjustment", "Adjustment")}</span>
-                                <span>{fmt(quoteTotalsMeta.adjustment || 0)}</span>
-                              </div>
-                            )}
-
-                            {isVisible(total.labels, "roundOff") && (
-                              <div className="flex justify-between py-1.5 items-center text-sm text-gray-500">
-                                <span>{labelFor(total.labels, "roundOff", "Round Off")}</span>
-                                <span>{fmt(quoteTotalsMeta.roundOff || 0)}</span>
-                              </div>
-                            )}
-
-                            {total.showQuantity && (
-                              <div className="flex justify-between py-1.5 items-center text-sm text-gray-500 border-t border-gray-100 mt-2 pt-2">
-                                <span>Total Quantity</span>
-                                <span>{quote.items?.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                              </div>
-                            )}
-
-                            {isVisible(total.labels, "total") && (
-                              <div className="flex justify-between items-center py-3 px-4 mt-4 font-bold rounded-lg" style={{ 
-                                backgroundColor: total.showBalanceBg !== false ? (total.balanceBgColor || "#f9fafb") : "#f9fafb",
-                                fontSize: `${(total.fontSize || 12) + 2}pt`,
-                                color: total.fontColor || "#111827" 
-                              }}>
-                                <span>{labelFor(total.labels, "total", "Total")}</span>
-                                <span>{fmt(quoteTotalsMeta.total || 0)}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {total.showAmountInWords && (
-                        <div className="mb-8" style={{ fontSize: "11px", color: "#6b7280" }}>
-                          <span className="font-semibold" style={{ color: "#374151" }}>Total In Words: </span>
-                          {quoteTotalsMeta.totalInWords || "N/A"}
-                        </div>
-                      )}
-
-                      {/* Notes Section */}
-                      <div style={{ marginBottom: "28px", borderTop: `1px dashed ${activeTheme.accent}33`, paddingTop: "10px" }}>
-                        <div style={{ fontSize: "13px", fontWeight: "700", color: config.general?.labelColor || activeTheme.accent, marginBottom: "6px", letterSpacing: "0.2px" }}>
-                          Notes
-                        </div>
-                        <div style={{ fontSize: "11px", color: config.general?.fontColor || "#4b5563", lineHeight: "1.5" }}>
-                          {quote.customerNotes || "Looking forward for your business."}
-                        </div>
-                      </div>
-
-                      {/* Footer Bar */}
-                      {(hf.footerBgColor || hf.footerBgImage || hf.showPageNumber !== false) && (
-                        <div style={{ backgroundColor: hf.footerBgColor || "transparent", height: "40px", flexShrink: 0, width: "100%", position: "relative", marginTop: "auto" }}>
-                          {hf.footerBgImage && <img src={hf.footerBgImage} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />}
-                          {hf.showPageNumber !== false && (
-                            <div style={{ 
-                              position: "absolute", 
-                              bottom: "10px", 
-                              right: hf.pageNumberPosition === "Right" ? "20px" : "auto",
-                              left: hf.pageNumberPosition === "Left" ? "20px" : "auto",
-                              color: (hf.footerBgColor || hf.footerBgImage) ? "white" : (hf.footerFontColor || "#6C718A"), 
-                              fontSize: "10pt" 
-                            }}>
-                              1
-                            </div>
-                          )}
-                        </div>
-                      )}
+                {/* Quote Information Grid */}
+                <div className="space-y-4 mb-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Quote Number</span>
+                      <span className="text-sm text-gray-900">{quote.quoteNumber || quote.id}</span>
                     </div>
-                  </div>
-                );
-              })()
-            ) : (
-                /* Regular Detail View */
-                <div>
-                  {/* Quote Header Info */}
-                  <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
-                    <h2 className="flex items-center gap-3 text-xl font-semibold text-gray-900">
-                      {quote.quoteNumber || quote.id}
-                      {getStatusBadge(quote.status)}
-                    </h2>
-                    <p className="text-sm text-gray-600">
-                      Total : <span className="text-lg font-semibold text-gray-900">{formatCurrency(quote.total, quote.currency)}</span>
-                    </p>
-                  </div>
-
-                  {/* Quote Information Grid */}
-                  <div className="space-y-4 mb-6">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Quote Number</span>
-                        <span className="text-sm text-gray-900">{quote.quoteNumber || quote.id}</span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Quote Date</span>
-                        <span className="text-sm text-gray-900">{formatDate(quote.quoteDate)}</span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Creation Date</span>
-                        <span className="text-sm text-gray-900">{formatDate(quote.createdAt)}</span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Salesperson</span>
-                        <span className="flex items-center gap-2 text-sm text-gray-900">
-                          {quote.salesperson ? (
-                            <>
-                              <span className="flex items-center justify-center w-6 h-6 rounded-full text-white text-xs font-semibold" style={{ backgroundColor: "#f97316" }}>
-                                {getInitial(quote.salesperson)}
-                              </span>
-                              {quote.salesperson}
-                            </>
-                          ) : "-"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Expiry Date</span>
-                        <span className="text-sm text-gray-900">{formatDate(quote.expiryDate)}</span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Reference Number</span>
-                        <span className="text-sm text-gray-900">{quote.referenceNumber || "-"}</span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Project</span>
-                        <span className="text-sm text-gray-900 project-link">{quote.projectName || "-"}</span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">PDF Template</span>
-                        <span className="text-sm text-gray-900 template">
-                          Standard Template
-                          <span className="mr-2 text-gray-500">âš™</span>
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Subject</span>
-                        <span className="text-sm text-gray-900">{quote.subject || "-"}</span>
-                      </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Quote Date</span>
+                      <span className="text-sm text-gray-900">{formatDate(quote.quoteDate)}</span>
                     </div>
                   </div>
 
-                  {/* Customer Details Section */}
-                  <div className="mb-6 pb-4 border-b border-gray-200">
-                    <h3 className="text-base font-semibold text-gray-900 mb-4">Customer Details</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="flex flex-col">
-                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Name</span>
-                          <span className="text-sm text-gray-900">
-                            <span className="flex items-center justify-center w-6 h-6 rounded-full text-white text-xs font-semibold mr-2" style={{ backgroundColor: "#2563eb" }}>
-                              {getInitial(quote.customerName)}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Creation Date</span>
+                      <span className="text-sm text-gray-900">{formatDate(quote.createdAt)}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Salesperson</span>
+                      <span className="flex items-center gap-2 text-sm text-gray-900">
+                        {quote.salesperson ? (
+                          <>
+                            <span className="flex items-center justify-center w-6 h-6 rounded-full text-white text-xs font-semibold" style={{ backgroundColor: "#f97316" }}>
+                              {getInitial(quote.salesperson)}
                             </span>
-                            {quote.customerName || "-"}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="flex flex-col">
-                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Billing Address</span>
-                          <span className="text-sm text-gray-900">{quote.billingAddress || "-"}</span>
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Shipping Address</span>
-                          <span className="text-sm text-gray-900">{quote.shippingAddress || "-"}</span>
-                        </div>
-                      </div>
+                            {quote.salesperson}
+                          </>
+                        ) : "-"}
+                      </span>
                     </div>
                   </div>
 
-                  {/* Items Section */}
-                  <div className="mb-6 pb-4 border-b border-gray-200">
-                    <h3 className="text-base font-semibold text-gray-900 mb-4">
-                      Items
-                      <span className="ml-2 text-gray-700 text-xs font-medium">{quote.items?.length || 0}</span>
-                    </h3>
-                    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                      <table className="w-full border-collapse text-sm">
-                        <thead>
-                          <tr>
-                            <th>S.NO</th>
-                            <th>ITEM</th>
-                            <th>QTY</th>
-                            <th>PRICE</th>
-                            <th>AMOUNT</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {quote.items && quote.items.length > 0 ? (
-                            quote.items.map((item: any, index: number) => (
-                              <tr key={item.id || index}>
-                                <td className="py-3 px-4 text-gray-900 text-center">{index + 1}</td>
-                                <td className="py-3 px-4 text-gray-900">
-                                  <div className="flex items-center justify-center w-12 h-12 bg-gray-100 rounded-md mr-3 flex-shrink-0">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Expiry Date</span>
+                      <span className="text-sm text-gray-900">{formatDate(quote.expiryDate)}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Reference Number</span>
+                      <span className="text-sm text-gray-900">{quote.referenceNumber || "-"}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Project</span>
+                      <span className="text-sm text-gray-900 project-link">{quote.projectName || "-"}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">PDF Template</span>
+                      <span className="text-sm text-gray-900 template">
+                        Standard Template
+                        <span className="mr-2 text-gray-500">⚙</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Subject</span>
+                      <span className="text-sm text-gray-900">{quote.subject || "-"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Customer Details Section */}
+                <div className="mb-6 pb-4 border-b border-gray-200">
+                  <h3 className="text-base font-semibold text-gray-900 mb-4">Customer Details</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Name</span>
+                        <span className="text-sm text-gray-900 flex items-center">
+                          <span className="flex items-center justify-center w-6 h-6 rounded-full text-white text-xs font-semibold mr-2" style={{ backgroundColor: "#2563eb" }}>
+                            {getInitial(quote.customerName)}
+                          </span>
+                          {quote.customerName || "-"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Billing Address</span>
+                        <span className="text-sm text-gray-900">{quote.billingAddress || "-"}</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Shipping Address</span>
+                        <span className="text-sm text-gray-900">{quote.shippingAddress || "-"}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Items Section */}
+                <div className="mb-6 pb-4 border-b border-gray-200">
+                  <h3 className="text-base font-semibold text-gray-900 mb-4">
+                    Items
+                    <span className="ml-2 text-gray-700 text-xs font-medium">{quote.items?.length || 0}</span>
+                  </h3>
+                  <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                    <table className="w-full border-collapse text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 text-left">
+                          <th className="py-3 px-4 font-semibold">S.NO</th>
+                          <th className="py-3 px-4 font-semibold">ITEM</th>
+                          <th className="py-3 px-4 font-semibold">QTY</th>
+                          <th className="py-3 px-4 font-semibold text-right">PRICE</th>
+                          <th className="py-3 px-4 font-semibold text-right">AMOUNT</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {quote.items && quote.items.length > 0 ? (
+                          quote.items.map((item: any, index: number) => (
+                            <tr key={item.id || index} className="border-t border-gray-100">
+                              <td className="py-3 px-4 text-gray-900 text-center">{index + 1}</td>
+                              <td className="py-3 px-4 text-gray-900">
+                                <div className="flex items-center gap-3">
+                                  <div className="flex items-center justify-center w-12 h-12 bg-gray-100 rounded-md flex-shrink-0">
                                     {item.image ? (
                                       <img src={item.image} alt={item.name} className="item-image" />
                                     ) : (
@@ -4427,115 +3658,97 @@ const QuoteDetail = () => {
                                     <span className="text-xs text-gray-600">{item.description}</span>
                                     {item.item?.sku && <span className="text-xs text-gray-500">SKU: {item.item.sku}</span>}
                                   </div>
-                                </td>
-                                <td className="py-3 px-4 text-gray-900">
-                                  {item.quantity}
-                                  {item.item?.unit && <span className="text-xs text-gray-500 ml-1">{item.item.unit}</span>}
-                                </td>
-                                <td className="py-3 px-4 text-gray-900 text-right">{formatCurrency(item.unitPrice || item.rate || item.price, quote.currency)}</td>
-                                <td className="py-3 px-4 text-gray-900 text-right font-medium">{formatCurrency(item.total || item.amount || (item.quantity * (item.unitPrice || item.rate || item.price)), quote.currency)}</td>
-                              </tr>
-                            ))
-                          ) : (
-                            <tr>
-                              <td colSpan={5} className="py-8 px-4 text-center text-sm text-gray-500">No items added</td>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 text-gray-900">
+                                {item.quantity}
+                                {item.item?.unit && <span className="text-xs text-gray-500 ml-1">{item.item.unit}</span>}
+                              </td>
+                              <td className="py-3 px-4 text-gray-900 text-right">{formatCurrency(item.unitPrice || item.rate || item.price, quote.currency)}</td>
+                              <td className="py-3 px-4 text-gray-900 text-right font-medium">{formatCurrency(item.total || item.amount || (item.quantity * (item.unitPrice || item.rate || item.price)), quote.currency)}</td>
                             </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Totals */}
-                    <div className="flex flex-col items-end gap-2 mt-4">
-                      <div className="flex items-center justify-between w-64 py-2">
-                        <span className="text-sm text-gray-600">Sub Total</span>
-                        <span className="text-sm font-medium text-gray-900">{formatCurrency(quoteTotalsMeta.subTotal, quote.currency)}</span>
-                      </div>
-                      <div className="w-64 text-xs text-gray-500 -mt-2 mb-1">
-                        ({quoteTotalsMeta.taxExclusive})
-                      </div>
-                      {quoteTotalsMeta.discount > 0 && (
-                        <>
-                          <div className="flex items-center justify-between w-64 py-2">
-                            <span className="text-sm text-gray-600">{quoteTotalsMeta.discountLabel}</span>
-                            <span className="text-sm font-medium text-gray-900">(-) {formatCurrency(quoteTotalsMeta.discount, quote.currency)}</span>
-                          </div>
-                          <div className="w-64 text-xs text-gray-500 -mt-2 mb-1">
-                            (Applied on {formatCurrency(quoteTotalsMeta.discountBase, quote.currency)})
-                          </div>
-                        </>
-                      )}
-                      <div className="flex items-center justify-between w-64 py-2">
-                        <span className="text-sm text-gray-600">{quoteTotalsMeta.taxLabel}</span>
-                        <span className="text-sm font-medium text-gray-900">{formatCurrency(quoteTotalsMeta.taxAmount, quote.currency)}</span>
-                      </div>
-                      <div className="flex items-center justify-between w-64 py-2">
-                        <span className="text-sm text-gray-600">Shipping charge</span>
-                        <span className="text-sm font-medium text-gray-900">{formatCurrency(quoteTotalsMeta.shippingCharges, quote.currency)}</span>
-                      </div>
-                      <div className="flex items-center justify-between w-64 py-2">
-                        <span className="text-sm text-gray-600">{quoteTotalsMeta.shippingTaxLabel}</span>
-                        <span className="text-sm font-medium text-gray-900">{formatCurrency(quoteTotalsMeta.shippingTaxAmount, quote.currency)}</span>
-                      </div>
-                      <div className="flex items-center justify-between w-64 py-2">
-                        <span className="text-sm text-gray-600">Adjustment</span>
-                        <span className="text-sm font-medium text-gray-900">{formatCurrency(quoteTotalsMeta.adjustment, quote.currency)}</span>
-                      </div>
-                      <div className="flex items-center justify-between w-64 py-2">
-                        <span className="text-sm text-gray-600">Round Off</span>
-                        <span className="text-sm font-medium text-gray-900">{formatCurrency(quoteTotalsMeta.roundOff, quote.currency)}</span>
-                      </div>
-                      <div className="flex items-center justify-between w-64 py-2 px-3 bg-gray-100 total-row">
-                        <span className="text-sm text-gray-600">Total</span>
-                        <span className="text-sm font-medium text-gray-900 text-lg font-bold">{formatCurrency(quoteTotalsMeta.total, quote.currency)}</span>
-                      </div>
-                    </div>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={5} className="py-8 px-4 text-center text-sm text-gray-500">No items added</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
                   </div>
 
-                  {/* Notes Section */}
-                  <div className="mb-6 pb-4 border-b border-gray-200">
-                    <h3 className="text-base font-semibold text-gray-900 mb-4">Notes</h3>
-                    <p className="text-sm text-gray-700 whitespace-pre-line">
-                      {quote.customerNotes || "Looking forward for your business."}
-                    </p>
-                  </div>
-
-                  {/* Email Recipients Section */}
-                  {quote.customerEmail && (
-                    <div className="mb-6 pb-4 border-b border-gray-200">
-                      <h3 className="text-base font-semibold text-gray-900 mb-4">Email Recipients</h3>
-                      <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-700">
-                        <span className="flex items-center justify-center w-8 h-8 rounded-full text-white text-xs font-semibold" style={{ backgroundColor: "#ef4444" }}>
-                          {quote.customerEmail.charAt(0).toUpperCase()}
-                        </span>
-                        <span className="text-sm text-gray-700">{quote.customerEmail}</span>
+                  {/* Totals */}
+                  <div className="flex flex-col items-end gap-2 mt-4">
+                    <div className="flex items-center justify-between w-64 py-2">
+                      <span className="text-sm text-gray-600">Sub Total</span>
+                      <span className="text-sm font-medium text-gray-900">{formatCurrency(quoteTotalsMeta.subTotal, quote.currency)}</span>
+                    </div>
+                    {quoteTotalsMeta.discount > 0 && (
+                      <div className="flex items-center justify-between w-64 py-2">
+                        <span className="text-sm text-gray-600">{quoteTotalsMeta.discountLabel}</span>
+                        <span className="text-sm font-medium text-gray-900">(-) {formatCurrency(quoteTotalsMeta.discount, quote.currency)}</span>
                       </div>
+                    )}
+                    <div className="flex items-center justify-between w-64 py-2">
+                      <span className="text-sm text-gray-600">{quoteTotalsMeta.taxLabel}</span>
+                      <span className="text-sm font-medium text-gray-900">{formatCurrency(quoteTotalsMeta.taxAmount, quote.currency)}</span>
                     </div>
-                  )}
-
-                  {/* Terms and Conditions Section */}
-                  <div className="mb-6 pb-4 border-b border-gray-200">
-                    <h3 className="text-base font-semibold text-gray-900 mb-4">Terms and Conditions</h3>
-                    <div className="text-sm text-gray-700 whitespace-pre-line">
-                      {quote.termsAndConditions ? (
-                        <p>{quote.termsAndConditions}</p>
-                      ) : (
-                        <p className="text-sm text-gray-500 italic">No Terms and Conditions</p>
-                      )}
+                    <div className="flex items-center justify-between w-64 py-2">
+                      <span className="text-sm text-gray-600">Shipping charge</span>
+                      <span className="text-sm font-medium text-gray-900">{formatCurrency(quoteTotalsMeta.shippingCharges, quote.currency)}</span>
                     </div>
-                  </div>
-
-                  {/* Navigation */}
-                  <div className="flex items-center justify-between p-4 border-t border-gray-200 bg-gray-50">
-                    <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium cursor-pointer hover:bg-gray-50">
-                      <ChevronLeft size={16} />
-                    </button>
-                    <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium cursor-pointer hover:bg-gray-50">
-                      <ChevronRight size={16} />
-                    </button>
+                    <div className="flex items-center justify-between w-64 py-4 px-3 bg-gray-100 mt-2 rounded">
+                      <span className="text-base font-bold text-gray-900">Total</span>
+                      <span className="text-lg font-bold text-[#0D4A52]">{formatCurrency(quoteTotalsMeta.total, quote.currency)}</span>
+                    </div>
                   </div>
                 </div>
-              )}
+
+                {/* Notes Section */}
+                <div className="mb-6 pb-4 border-b border-gray-200">
+                  <h3 className="text-base font-semibold text-gray-900 mb-4">Notes</h3>
+                  <p className="text-sm text-gray-700 whitespace-pre-line">
+                    {quote.customerNotes || "Looking forward for your business."}
+                  </p>
+                </div>
+
+                {/* Email Recipients Section */}
+                {quote.customerEmail && (
+                  <div className="mb-6 pb-4 border-b border-gray-200">
+                    <h3 className="text-base font-semibold text-gray-900 mb-4">Email Recipients</h3>
+                    <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-700 w-fit">
+                      <span className="flex items-center justify-center w-8 h-8 rounded-full text-white text-xs font-semibold" style={{ backgroundColor: "#ef4444" }}>
+                        {quote.customerEmail.charAt(0).toUpperCase()}
+                      </span>
+                      <span className="text-sm text-gray-700">{quote.customerEmail}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Terms and Conditions Section */}
+                <div className="mb-6 pb-4 border-b border-gray-200">
+                  <h3 className="text-base font-semibold text-gray-900 mb-4">Terms and Conditions</h3>
+                  <div className="text-sm text-gray-700 whitespace-pre-line">
+                    {quote.termsAndConditions ? (
+                      <p>{quote.termsAndConditions}</p>
+                    ) : (
+                      <p className="text-sm text-gray-500 italic">No Terms and Conditions</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Navigation */}
+                <div className="flex items-center justify-between p-4 border-t border-gray-200 bg-gray-50 mt-8 rounded-lg">
+                  <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium cursor-pointer hover:bg-gray-50">
+                    <ChevronLeft size={16} />
+                    <span>Previous</span>
+                  </button>
+                  <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium cursor-pointer hover:bg-gray-50">
+                    <span>Next</span>
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

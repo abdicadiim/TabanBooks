@@ -2,10 +2,9 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { toast } from "react-hot-toast";
 import { useParams, useNavigate } from "react-router-dom";
 import { getCreditNoteById, getCreditNotes, deleteCreditNote, CreditNote, AttachedFile, updateCreditNote } from "../../salesModel";
-import { currenciesAPI, bankAccountsAPI, chartOfAccountsAPI, refundsAPI, creditNotesAPI, invoicesAPI, settingsAPI, customersAPI } from "../../../../services/api";
-import ApplyToInvoices from "./ApplyToInvoices";
+import { pdfTemplatesAPI, organizationAPI } from "../../../../services/api";
+import TransactionPDFDocument from "../../../../components/Transactions/TransactionPDFDocument";
 import CreditNoteCommentsPanel from "./CreditNoteCommentsPanel";
-import CreditNotePreview from "./CreditNotePreview";
 import { findCachedCreditNoteById, readCachedCreditNotes } from "../creditNoteQueries";
 import { downloadCreditNotesPdf } from "../creditNotePdf";
 import {
@@ -98,6 +97,27 @@ export default function CreditNoteDetail() {
 
   // Customize Dropdown States
   const [isCreditNoteDocumentHovered, setIsCreditNoteDocumentHovered] = useState(false);
+
+  // PDF Template State
+  const [activePdfTemplate, setActivePdfTemplate] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchPdfTemplates = async () => {
+      try {
+        const response = await pdfTemplatesAPI.get();
+        if (response?.success && Array.isArray(response.data?.templates)) {
+          const creditTemplates = response.data.templates.filter((t: any) => t.moduleType === "credit_notes");
+          const defaultTemplate = creditTemplates.find((t: any) => t.isDefault) || creditTemplates[0];
+          if (defaultTemplate) {
+            setActivePdfTemplate(defaultTemplate);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching PDF templates:", error);
+      }
+    };
+    fetchPdfTemplates();
+  }, []);
   const [isCustomizeDropdownOpen, setIsCustomizeDropdownOpen] = useState(false);
   const [isChooseTemplateModalOpen, setIsChooseTemplateModalOpen] = useState(false);
   const [isOrganizationAddressModalOpen, setIsOrganizationAddressModalOpen] = useState(false);
@@ -1605,10 +1625,30 @@ const handleClone = () => {
         )}
       </div>
       <div className="w-full max-w-[920px] mx-auto relative">
-        <CreditNotePreview
-          creditNote={creditNote}
-          organizationProfile={organizationProfile}
-          baseCurrency={baseCurrency}
+        <TransactionPDFDocument
+          data={{
+            ...creditNote,
+            number: creditNote.creditNoteNumber || creditNote.id,
+            date: creditNote.creditNoteDate || creditNote.date,
+            items: (creditNote.items || []).map((item: any) => ({
+              ...item,
+              name: item.name || item.itemDetails || "—",
+              description: item.description,
+              quantity: item.quantity || 0,
+              rate: item.unitPrice || item.rate || 0,
+              amount: item.total || item.amount || 0,
+              unit: item.unit
+            }))
+          }}
+          config={activePdfTemplate?.config || {}}
+          moduleType="credit_notes"
+          organization={organizationProfile}
+          totalsMeta={{
+            subTotal: creditNote.subTotal || creditNote.total || creditNote.amount || 0,
+            total: creditNote.total || creditNote.amount || 0,
+            paidAmount: 0,
+            balance: creditNote.balance || creditNote.total || creditNote.amount || 0
+          }}
         />
       </div>
       {hasAppliedDocuments && (

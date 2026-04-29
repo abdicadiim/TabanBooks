@@ -12,9 +12,10 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-import { paymentsMadeAPI, billsAPI, vendorsAPI, settingsAPI } from "../../../services/api";
+import { paymentsMadeAPI, billsAPI, vendorsAPI, settingsAPI, pdfTemplatesAPI } from "../../../services/api";
 import toast from "react-hot-toast";
 import { useCurrency } from "../../../hooks/useCurrency";
+import TransactionPDFDocument from "../../../components/Transactions/TransactionPDFDocument";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { buildPaymentDeleteWarning } from "../../../utils/paymentDeleteWarning";
@@ -40,7 +41,9 @@ export default function PaymentDetail() {
   const dropdownRef = useRef(null);
   const emailModalRef = useRef(null);
   const fileInputRef = useRef(null);
-  const statementRef = useRef<HTMLDivElement | null>(null);
+  const statementRef = useRef<HTMLDivElement>(null);
+  const [pdfTemplates, setPdfTemplates] = useState<any[]>([]);
+  const [activePdfTemplate, setActivePdfTemplate] = useState<any>(null);
 
   const fetchData = async (forceSidebar = false) => {
     if (isInitialLoad.current) setIsLoading(true);
@@ -109,6 +112,22 @@ export default function PaymentDetail() {
       window.removeEventListener("paymentsUpdated", handlePaymentsUpdate);
     };
   }, [id]);
+
+  useEffect(() => {
+    const loadTemplates = async () => {
+      try {
+        const response = await pdfTemplatesAPI.get();
+        if (response && response.data) {
+          setPdfTemplates(response.data);
+          const active = response.data.find((t: any) => t.isDefault) || response.data[0];
+          setActivePdfTemplate(active);
+        }
+      } catch (error) {
+        console.error("Error fetching PDF templates:", error);
+      }
+    };
+    loadTemplates();
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -930,113 +949,36 @@ export default function PaymentDetail() {
 
         {/* Content */}
           <div style={styles.content}>
-          <div ref={statementRef} style={{ ...styles.document, padding: "48px", position: "relative" }}>
-            {/* Paid Ribbon */}
-            <div style={styles.ribbon}>
-              <div style={styles.ribbonText}>Paid</div>
-            </div>
-
-            {/* Document Header (Org Info) */}
-            <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: "40px" }}>
-              <div style={styles.infoStack}>
-                <div style={{ fontSize: "24px", fontWeight: "700", color: "#111827" }}>
-                  {organizationInfo?.companyName?.[0] || organizationInfo?.name?.[0] || "d"}
-                </div>
-                <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "16px" }}>
-                  {organizationInfo?.address?.city || "Aland Islands"}<br />
-                  {organizationInfo?.email || "ascwcs685@gmail.com"}
-                </div>
-              </div>
-            </div>
-
-            {/* Centered Document Title */}
-            <div style={{ textAlign: "center", marginBottom: "40px", borderTop: "1px solid #f3f4f6", paddingTop: "20px" }}>
-              <div style={{ fontSize: "14px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", letterSpacing: "1px" }}>
-                PAYMENTS MADE
-              </div>
-            </div>
-
-            {/* Detail Grid with Amount Paid Box */}
-            <div style={styles.detailGrid}>
-              <div style={styles.infoStack}>
-                <div style={styles.infoRow}>
-                  <div style={styles.infoLabel}>Payment#</div>
-                  <div style={styles.infoValue}>{payment.paymentNumber || id}</div>
-                </div>
-                <div style={styles.infoRow}>
-                  <div style={styles.infoLabel}>Payment Date</div>
-                  <div style={styles.infoValue}>{formatDate(payment.date)}</div>
-                </div>
-                <div style={styles.infoRow}>
-                  <div style={styles.infoLabel}>Reference Number</div>
-                  <div style={styles.infoValue}>{payment.reference || ""}</div>
-                </div>
-                <div style={styles.infoRow}>
-                  <div style={styles.infoLabel}>Paid To</div>
-                  <div style={{ ...styles.infoValue, ...styles.vendorLink }} onClick={() => vendor && navigate(`/purchases/vendors/${vendor.id}`)}>
-                    {payment.vendorName || "Vendor"}
-                  </div>
-                </div>
-                <div style={styles.infoRow}>
-                  <div style={styles.infoLabel}>Payment Mode</div>
-                  <div style={styles.infoValue}>{payment.mode || "Cash"}</div>
-                </div>
-                <div style={styles.infoRow}>
-                  <div style={styles.infoLabel}>Paid Through</div>
-                  <div style={styles.infoValue}>{payment.paidThrough || "Petty Cash"}</div>
-                </div>
-
-                <div style={{ marginTop: "32px", marginBottom: "32px" }}>
-                  <div style={{ fontSize: "11px", color: "#6b7280", fontWeight: "600", marginBottom: "8px", textTransform: "uppercase" }}>Paid To</div>
-                  <div style={{ fontSize: "14px", fontWeight: "700", color: "#111827" }}>{payment.vendorName || "Vendor"}</div>
-                </div>
-              </div>
-
-              {/* Amount Paid Box */}
-              <div style={styles.amountBox}>
-                <div style={styles.amountBoxLabel}>Amount Paid</div>
-                <div style={styles.amountBoxValue}>
-                  {currencySymbol}{parseFloat(payment.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                </div>
-              </div>
-            </div>
-
-            {/* Payment for Table */}
-            <div style={{ borderTop: "1px solid #f3f4f6", paddingTop: "24px" }}>
-              <div style={{ fontSize: "16px", fontWeight: "700", color: "#111827", marginBottom: "16px" }}>Payment for</div>
-              <table style={styles.paymentForTable}>
-                <thead style={styles.paymentForHeader}>
-                  <tr>
-                    <th style={styles.paymentForTh}>Bill Number</th>
-                    <th style={styles.paymentForTh}>Bill Date</th>
-                    <th style={styles.paymentForTh}>Bill Amount</th>
-                    <th style={styles.paymentForTh}>Payment Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {associatedBills.length > 0 ? (
-                    associatedBills.map((bill) => (
-                      <tr key={bill.id}>
-                        <td style={{ ...styles.paymentForTd, color: "#156372", cursor: "pointer" }} onClick={() => navigate(`/purchases/bills/${bill.id}`)}>
-                          {bill.billNumber || bill.id}
-                        </td>
-                        <td style={styles.paymentForTd}>{formatDate(bill.date)}</td>
-                        <td style={styles.paymentForTd}>{currencySymbol} {parseFloat(bill.total || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
-                        <td style={styles.paymentForTd}>{currencySymbol} {parseFloat(bill.amountApplied || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td style={{ ...styles.paymentForTd, color: "#156372", cursor: "pointer" }} onClick={() => payment.billId && navigate(`/purchases/bills/${payment.billId}`)}>
-                        {payment.billNumber || "---"}
-                      </td>
-                      <td style={styles.paymentForTd}>{formatDate(payment.billDate || payment.date)}</td>
-                      <td style={styles.paymentForTd}>{currencySymbol} {parseFloat(payment.billAmount || payment.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
-                      <td style={styles.paymentForTd}>{currencySymbol} {parseFloat(payment.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+            <div ref={statementRef} className="w-full max-w-[920px] mx-auto h-full flex flex-col">
+              <TransactionPDFDocument
+                data={{
+                  ...payment,
+                  number: payment.paymentNumber || payment.id,
+                  date: payment.date,
+                  customerName: payment.vendorName || vendor?.displayName || vendor?.name || "Vendor",
+                  billingAddress: vendorAddressLines.join(", "),
+                  items: (payment.allocations || []).map((alloc: any) => {
+                    const bill = alloc.bill || {};
+                    return {
+                      name: bill.billNumber || bill.id || "Bill Payment",
+                      description: `Bill Date: ${formatDate(bill.date || payment.date)}`,
+                      amount: alloc.amount || 0,
+                      quantity: 1,
+                      rate: alloc.amount || 0,
+                      unit: ""
+                    };
+                  })
+                }}
+                config={activePdfTemplate?.config || {}}
+                moduleType="payments"
+                organization={organizationInfo}
+                totalsMeta={{
+                  subTotal: payment.amount || 0,
+                  total: payment.amount || 0,
+                  paidAmount: payment.amount || 0,
+                  balance: 0
+                }}
+              />
             </div>
           </div>
 

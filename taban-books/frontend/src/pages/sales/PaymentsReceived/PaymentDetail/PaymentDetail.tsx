@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getPaymentById, getPayments, updatePayment, deletePayment, getInvoiceById, updateInvoice, Payment } from "../../salesModel";
-import { settingsAPI, bankAccountsAPI, refundsAPI, chartOfAccountsAPI } from "../../../../services/api";
+import { settingsAPI, bankAccountsAPI, refundsAPI, chartOfAccountsAPI, pdfTemplatesAPI } from "../../../../services/api";
 import { useCurrency } from "../../../../hooks/useCurrency";
+import TransactionPDFDocument from "../../../../components/Transactions/TransactionPDFDocument";
 import PaymentCommentsPanel from "./PaymentCommentsPanel";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
@@ -97,6 +98,27 @@ export default function PaymentDetail() {
   const refundDatePickerRef = useRef<HTMLDivElement>(null);
   const attachmentsFileInputRef = useRef<HTMLInputElement>(null);
   const receiptPaperRef = useRef<HTMLDivElement>(null);
+
+  // PDF Template State
+  const [activePdfTemplate, setActivePdfTemplate] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchPdfTemplates = async () => {
+      try {
+        const response = await pdfTemplatesAPI.get();
+        if (response?.success && Array.isArray(response.data?.templates)) {
+          const paymentTemplates = response.data.templates.filter((t: any) => t.moduleType === "payments");
+          const defaultTemplate = paymentTemplates.find((t: any) => t.isDefault) || paymentTemplates[0];
+          if (defaultTemplate) {
+            setActivePdfTemplate(defaultTemplate);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching PDF templates:", error);
+      }
+    };
+    fetchPdfTemplates();
+  }, []);
 
   const paymentModeOptions = ["Cash", "Check", "Credit Card", "Debit Card", "Bank Transfer", "PayPal", "Other"];
   const depositToOptions = ["[123231] mohamed", "[123232] Account 1", "[123233] Account 2"];
@@ -1626,163 +1648,31 @@ export default function PaymentDetail() {
           )}
           <div className="flex-1 min-h-0 overflow-hidden">
             {/* Receipt Card */}
-            <div
-              ref={receiptPaperRef}
-              className="w-full max-w-[210mm] h-full min-h-[297mm] max-h-full mx-auto bg-white border border-gray-300 shadow-[0_2px_8px_rgba(0,0,0,0.08)] relative mt-6 overflow-y-auto scrollbar-hide print:shadow-none print:max-w-none print:w-[210mm] print:min-h-[297mm] print:max-h-none print:overflow-visible print:m-0"
-            >
-            <div className="absolute left-0 top-0 w-0 h-0 border-l-[46px] border-l-[#156372] border-b-[46px] border-b-transparent" />
-            <div className="absolute top-[8px] left-[3px] -rotate-45 text-[10px] font-bold tracking-wide text-white uppercase">
-              Paid
+            <div className="w-full max-w-[920px] mx-auto h-full flex flex-col" ref={receiptPaperRef}>
+              <TransactionPDFDocument
+                data={{
+                  ...payment,
+                  number: payment.referenceNumber || payment.id,
+                  date: payment.paymentDate,
+                  items: (payment.allocations || []).map((alloc: any) => ({
+                    name: alloc.invoice?.invoiceNumber || alloc.invoice?.id || alloc.invoice || "Payment Allocation",
+                    description: `Invoice Date: ${alloc.invoice?.date || "N/A"}`,
+                    amount: alloc.amount,
+                    quantity: 1,
+                    rate: alloc.amount
+                  }))
+                }}
+                config={activePdfTemplate?.config || {}}
+                moduleType="payments"
+                organization={organizationProfile}
+                totalsMeta={{
+                  subTotal: payment.amountReceived,
+                  total: payment.amountReceived,
+                  paidAmount: payment.amountReceived,
+                  balance: 0
+                }}
+              />
             </div>
-
-          <div className="px-8 py-9 sm:px-12 sm:py-10 text-[12px] text-gray-700">
-            <div className="mb-8">
-              {logoPreview && (
-                <img src={logoPreview} alt="Company Logo" className="h-14 object-contain mb-4" />
-              )}
-              <div className="text-[14px] font-semibold text-gray-900">{organizationData.name}</div>
-              <div className="mt-2 text-[11px] text-gray-500 leading-5">
-                <p>{organizationData.street1}</p>
-                {organizationData.street2 && <p>{organizationData.street2}</p>}
-                <p>{organizationData.city} {organizationData.zipCode}</p>
-                <p>{organizationData.stateProvince}</p>
-                <p>{organizationData.country}</p>
-                <p>{organizationData.email}</p>
-              </div>
-            </div>
-
-            <div className="border-t border-gray-200 pt-6">
-              <div className="text-center text-[13px] tracking-wide text-gray-700 mb-6">
-                {String((payment as any).paymentType || "Payment").toUpperCase()} RECEIPT
-                <div className="h-px bg-gray-200 w-44 mx-auto mt-1.5" />
-              </div>
-
-              <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-                <div className="w-full md:max-w-[360px]">
-                  <div className="grid grid-cols-[130px_1fr] border-b border-gray-200 py-2">
-                    <span className="text-[11px] text-gray-500">Payment Date</span>
-                    <span className="text-[11px] font-semibold text-gray-900">{formatDate(payment.paymentDate)}</span>
-                  </div>
-                  <div className="grid grid-cols-[130px_1fr] border-b border-gray-200 py-2">
-                    <span className="text-[11px] text-gray-500">Reference Number</span>
-                    <span className="text-[11px] font-semibold text-gray-900">{payment.referenceNumber || "-"}</span>
-                  </div>
-                  <div className="grid grid-cols-[130px_1fr] border-b border-gray-200 py-2">
-                    <span className="text-[11px] text-gray-500">Payment Mode</span>
-                    <span className="text-[11px] font-semibold text-gray-900">{payment.paymentMode || "Cash"}</span>
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-r from-[#156372] to-[#0D4A52] text-white px-4 py-3 text-center min-w-[170px] self-start">
-                  <div className="text-[10px] font-medium mb-1">Amount Received</div>
-                  <div className="text-[18px] font-bold leading-tight">
-                    {(payment.currency || symbol || baseCurrency?.code || "USD").substring(0, 3)}{parseFloat(payment.amountReceived || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-8">
-                <div className="text-[11px] text-gray-500 mb-2">Received From</div>
-                <div className="text-[12px] font-semibold text-blue-600">{payment.customerName}</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-gray-200 px-8 py-7 sm:px-12">
-            <div className="text-[13px] font-semibold text-gray-900 mb-3">Payment for</div>
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-[11px]">
-                <thead>
-                  <tr className="bg-gray-100 border-b border-gray-200">
-                    <th className="px-3 py-2 text-left font-medium text-gray-600">Invoice Number</th>
-                    <th className="px-3 py-2 text-left font-medium text-gray-600">Invoice Date</th>
-                    <th className="px-3 py-2 text-right font-medium text-gray-600">Invoice Amount</th>
-                    <th className="px-3 py-2 text-right font-medium text-gray-600">Payment Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {payment.allocations && payment.allocations.length > 0 ? (
-                    payment.allocations.map((alloc, idx) => (
-                      <tr key={idx} className="border-b border-gray-200">
-                        <td className="px-3 py-2">
-                          <span
-                            className="text-blue-600 hover:text-blue-700 hover:underline cursor-pointer font-medium"
-                            onClick={() => navigate(`/sales/invoices/${alloc.invoice?._id || alloc.invoice?.id || alloc.invoice}`)}
-                          >
-                            {alloc.invoice?.invoiceNumber || alloc.invoice?.id || alloc.invoice || "-"}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-gray-800">{formatDate(alloc.invoice?.date || payment.paymentDate)}</td>
-                        <td className="px-3 py-2 text-right text-gray-800">
-                          {(payment.currency || "USD").substring(0, 3)}{parseFloat(alloc.invoice?.total || alloc.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        <td className="px-3 py-2 text-right text-gray-800">
-                          {(payment.currency || "USD").substring(0, 3)}{parseFloat(alloc.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                    ))
-                  ) : payment.invoiceNumber ? (
-                    <tr className="border-b border-gray-200">
-                      <td className="px-3 py-2">
-                        <span
-                          className="text-blue-600 hover:text-blue-700 hover:underline cursor-pointer font-medium"
-                          onClick={() => navigate(`/sales/invoices/${payment.invoiceNumber}`)}
-                        >
-                          {payment.invoiceNumber}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-gray-800">{formatDate(payment.invoiceDate || payment.paymentDate)}</td>
-                      <td className="px-3 py-2 text-right text-gray-800">
-                        {(payment.currency || "USD").substring(0, 3)}{parseFloat(payment.invoiceAmount || payment.amountReceived || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </td>
-                      <td className="px-3 py-2 text-right text-gray-800">
-                        {(payment.currency || "USD").substring(0, 3)}{parseFloat(payment.amountReceived || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </td>
-                    </tr>
-                  ) : (
-                    <tr>
-                      <td colSpan="4" className="px-3 py-4 text-center text-gray-500">No invoices linked</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-            <div className="px-7 pb-6 sm:px-10 text-[10px] text-gray-400">
-              PDF Template : Elite Template <span className="text-blue-600 cursor-pointer">Change</span>
-            </div>
-
-            {/* Refund History Section - Displayed inside the paper after table if refunds exist */}
-            {refunds.length > 0 && (
-              <div className="mt-12 border-t-2 border-gray-100 pt-8">
-              <h3 className="text-sm font-bold text-gray-900 mb-4 uppercase tracking-wider">Refund History</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Refund Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Refund#</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Description</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {refunds.map((refund, idx) => (
-                      <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="px-4 py-3 text-gray-900">{formatDate(refund.refundDate)}</td>
-                        <td className="px-4 py-3 text-gray-900">{refund.refundNumber}</td>
-                        <td className="px-4 py-3 text-gray-500 italic">{refund.description || "Refund for payment"}</td>
-                        <td className="px-4 py-3 text-right text-gray-900 font-bold">
-                          {(payment.currency || symbol || baseCurrency?.code || "USD").substring(0, 3)} {parseFloat(refund.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              </div>
-            )}
             </div>
           </div>
 

@@ -10,7 +10,8 @@ import {
   ArrowUpDown, Download, FileUp, Settings, RefreshCw, ChevronRight as ChevronRightIcon
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { settingsAPI } from "../../../../services/api";
+import { settingsAPI, pdfTemplatesAPI, profileAPI } from "../../../../services/api";
+import TransactionPDFDocument from "../../../../components/Transactions/TransactionPDFDocument";
 import { exportToCSV, exportToExcel, exportToPDF } from "../exportUtils";
 
 type AddressBlock = {
@@ -96,6 +97,7 @@ export default function RecurringInvoiceDetail() {
   const [organizationProfile, setOrganizationProfile] = useState<any | null>(null);
   const [recurringInvoiceSettings, setRecurringInvoiceSettings] = useState<any | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [activePdfTemplate, setActivePdfTemplate] = useState<any>(null);
   const [organizationData, setOrganizationData] = useState({
     name: "",
     street1: "",
@@ -349,7 +351,33 @@ export default function RecurringInvoiceDetail() {
   useEffect(() => {
     clearRecurringSelection();
 
-    const fetchData = async () => {
+    useEffect(() => {
+    const fetchTemplateAndProfile = async () => {
+      try {
+        const [templatesRes, profileRes] = await Promise.all([
+          pdfTemplatesAPI.get(),
+          profileAPI.get()
+        ]);
+        
+        if (templatesRes?.success && Array.isArray(templatesRes.data)) {
+          const invoiceTemplate = templatesRes.data.find((t: any) => t.moduleType === 'invoices');
+          if (invoiceTemplate) {
+            setActivePdfTemplate(invoiceTemplate);
+          }
+        }
+        
+        if (profileRes?.success) {
+          setOrganizationProfile(profileRes.data);
+        }
+      } catch (error) {
+        console.error("Error fetching templates or profile:", error);
+      }
+    };
+    
+    fetchTemplateAndProfile();
+  }, []);
+
+  const fetchData = async () => {
       try {
         const recurringInvoiceData = await getRecurringInvoiceById(String(id));
         if (recurringInvoiceData) {
@@ -1332,134 +1360,34 @@ export default function RecurringInvoiceDetail() {
             </div>
           )}
 
-          {activeTab === "Next Invoice" && (
-            <div className="p-6 bg-white">
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 max-w-5xl mx-auto" style={{ position: "relative", overflow: "hidden" }}>
-                {/* Active Banner */}
-                <div
-                  className="absolute top-4 left-6 text-green-600 text-xs font-semibold uppercase"
-                >
-                  Active
-                </div>
-
-                {/* Header Section */}
-                <div className="flex items-start justify-between mb-8 pt-6">
-                  {/* Left Side - Organization header (read from DB) */}
-                  <div className="flex items-start gap-4">
-                    {/* Logo */}
-                    <div className="w-20 h-20 flex items-center justify-center bg-gray-100 rounded">
-                      {logoPreview ? (
-                        <img src={logoPreview} alt="logo" className="max-h-16 object-contain" />
-                      ) : (
-                        <div className="text-2xl font-bold text-gray-400">{(organizationData.name || '').charAt(0) || 'D'}</div>
-                      )}
-                    </div>
-                    <div>
-                      <div className="text-lg font-bold text-gray-900 mb-1">{organizationData.name || 'Company'}</div>
-                      {organizationData.street1 && <div className="text-sm text-gray-600">{organizationData.street1}</div>}
-                      {organizationData.street2 && <div className="text-sm text-gray-600">{organizationData.street2}</div>}
-                      {(organizationData.city || organizationData.stateProvince || organizationData.zipCode) && (
-                        <div className="text-sm text-gray-600">{[organizationData.city, organizationData.stateProvince, organizationData.zipCode].filter(Boolean).join(', ')}</div>
-                      )}
-                      {organizationData.country && <div className="text-sm text-gray-600">{organizationData.country}</div>}
-                      {organizationData.email && <div className="text-sm text-gray-600">{organizationData.email}</div>}
-                    </div>
-                  </div>
-
-                  {/* Right Side - Invoice Info */}
-                  <div className="text-right">
-                    <div className="text-3xl font-bold text-gray-900 mb-2">INVOICE</div>
-                    <div className="text-sm text-gray-600 mb-2"># Will be generated automatically</div>
-                    <div className="text-sm text-gray-600 mb-1">Balance Due</div>
-                    <div className="text-2xl font-bold text-gray-900 mb-4">
-                      {formatCurrency(recurringInvoice.total || 0, recurringInvoice.currency || "USD")}
-                    </div>
-                    <div className="text-sm text-gray-600 space-y-1">
-                      <div>Invoice Date : {nextInvoiceDate ? formatDate(nextInvoiceDate) : formatDate(recurringInvoice.startDate || recurringInvoice.startOn)}</div>
-                      <div>Terms : {recurringInvoice.paymentTerms || "Due on Receipt"}</div>
-                      <div>Due Date : {nextInvoiceDate ? formatDate(nextInvoiceDate) : formatDate(recurringInvoice.startDate || recurringInvoice.startOn)}</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bill To Section */}
-                <div className="mb-6">
-                  <div className="text-sm font-semibold text-gray-700 uppercase mb-2">Bill To</div>
-                  <div className="text-base font-medium text-[#156372]">{recurringInvoice.customerName || (typeof recurringInvoice.customer === 'object' ? (recurringInvoice.customer?.displayName || recurringInvoice.customer?.name) : recurringInvoice.customer) || "KOWNI"}</div>
-                </div>
-
-                {/* Items Table */}
-                <div className="mb-6">
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr className="bg-gray-800 text-white">
-                        <th className="px-4 py-3 text-left text-sm font-semibold">#</th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold">Item & Description</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold">Qty</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold">Rate</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recurringInvoice.items && recurringInvoice.items.length > 0 ? (
-                        recurringInvoice.items.map((item, index) => {
-                          const description = item.itemDetails || item.description || item.name || (item.item && item.item.name) || "-";
-                          const quantity = parseFloat(item.quantity || item.qty || 0);
-                          const rate = parseFloat(item.rate || item.unitPrice || item.price || 0);
-                          const amount = parseFloat(item.amount || item.total || (rate * quantity) || 0);
-
-                          return (
-                            <tr key={item.id || index} className="border-b border-gray-200">
-                              <td className="px-4 py-3 text-sm">{index + 1}</td>
-                              <td className="px-4 py-3 text-sm">{description}</td>
-                              <td className="px-4 py-3 text-sm text-right">{quantity.toFixed(2)}</td>
-                              <td className="px-4 py-3 text-sm text-right">{rate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                              <td className="px-4 py-3 text-sm text-right">{amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                            </tr>
-                          );
-                        })
-                      ) : (
-                        <tr>
-                          <td colSpan={5} className="px-4 py-3 text-sm text-center text-gray-500">No items</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Summary Section */}
-                <div className="flex justify-end mb-6">
-                  <div className="w-64 space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Sub Total</span>
-                      <span className="text-gray-900">
-                        {(recurringInvoice.subtotal || recurringInvoice.subTotal || recurringInvoice.total || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-200">
-                      <span className="text-gray-900">Total</span>
-                      <span className="text-gray-900">
-                        {formatCurrency(recurringInvoice.total || 0, recurringInvoice.currency || "USD")}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-lg font-bold bg-gray-100 px-3 py-2 rounded">
-                      <span className="text-gray-900">Balance Due</span>
-                      <span className="text-gray-900">
-                        {formatCurrency(recurringInvoice.total || 0, recurringInvoice.currency || "USD")}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Notes Section */}
-                {(recurringInvoice.customerNotes || recurringInvoice.termsAndConditions) && (
-                  <div className="pt-6 border-t border-gray-200">
-                    <div className="text-sm font-semibold text-gray-700 uppercase mb-2">Notes</div>
-                    <div className="text-sm text-gray-600 whitespace-pre-line">
-                      {recurringInvoice.customerNotes || recurringInvoice.termsAndConditions || "Thank you for the payment. You just made our day."}
-                    </div>
-                  </div>
-                )}
+            <div className="p-6 bg-white flex justify-center">
+              <div className="w-full max-w-4xl">
+                <TransactionPDFDocument
+                  data={{
+                    ...recurringInvoice,
+                    number: "Will be generated automatically",
+                    date: nextInvoiceDate || recurringInvoice.startDate || recurringInvoice.startOn,
+                    customerName: recurringInvoice.customerName || (typeof recurringInvoice.customer === 'object' ? (recurringInvoice.customer?.displayName || recurringInvoice.customer?.name) : recurringInvoice.customer),
+                    billingAddress: recurringInvoice.billingAddress || (typeof recurringInvoice.customer === 'object' ? recurringInvoice.customer?.billingAddress : ""),
+                    items: (recurringInvoice.items || []).map((item: any) => ({
+                      ...item,
+                      name: item.itemDetails || item.description || item.name || (item.item && item.item.name) || "Item",
+                      description: "",
+                      quantity: item.quantity || item.qty || 0,
+                      rate: item.rate || item.unitPrice || item.price || 0,
+                      amount: item.amount || item.total || 0,
+                      unit: item.unit || ""
+                    }))
+                  }}
+                  config={activePdfTemplate?.config || {}}
+                  moduleType="invoices"
+                  organization={organizationProfile}
+                  totalsMeta={{
+                    subTotal: recurringInvoice.subtotal || recurringInvoice.subTotal || recurringInvoice.total || 0,
+                    total: recurringInvoice.total || 0,
+                    balance: recurringInvoice.total || 0
+                  }}
+                />
               </div>
             </div>
           )}

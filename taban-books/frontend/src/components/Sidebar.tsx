@@ -480,11 +480,25 @@ export default function Sidebar() {
     }
   }, [location.pathname, filteredMenu]);
 
-  // Auto-minimize main sidebar on reports routes to avoid double sidebar layout.
+  // Auto-minimize main sidebar on specific routes to avoid clutter and maximize workspace.
   useEffect(() => {
     const isReportsRoute = location.pathname.startsWith("/reports");
+    
+    // Pattern for detail/edit/new views across sales and purchases
+    const pathParts = location.pathname.split("/").filter(Boolean);
+    
+    let isTransactionWorkspace = false;
+    // Check if we are in a sub-route of a module (usually 3+ parts: /sales/invoices/:id or /sales/invoices/new)
+    if (pathParts.length >= 3) {
+      const [module] = pathParts;
+      if (["sales", "purchases", "items", "inventory", "banking", "accountant"].includes(module)) {
+        isTransactionWorkspace = true;
+      }
+    }
 
-    if (isReportsRoute && !inReportsRef.current) {
+    const shouldCollapse = isReportsRoute || isTransactionWorkspace;
+
+    if (shouldCollapse && !inReportsRef.current) {
       collapsedBeforeReportsRef.current = isCollapsed;
       inReportsRef.current = true;
       if (!isCollapsed) {
@@ -493,7 +507,7 @@ export default function Sidebar() {
       return;
     }
 
-    if (!isReportsRoute && inReportsRef.current) {
+    if (!shouldCollapse && inReportsRef.current) {
       inReportsRef.current = false;
       setIsCollapsed(collapsedBeforeReportsRef.current);
     }

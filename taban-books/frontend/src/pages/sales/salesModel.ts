@@ -1995,6 +1995,9 @@ export interface Quote {
   attachedFiles?: AttachedFile[];
   comments?: QuoteComment[];
   activityLogs?: any[];
+  acceptedDate?: string;
+  declinedDate?: string;
+  approvalLevel?: number;
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -2117,6 +2120,9 @@ export const mapQuoteFromApi = (quote: any): Quote => {
     taxExclusive: taxExclusive,
     attachedFiles: mapQuoteAttachedFiles(quote),
     comments: mapQuoteComments(quote),
+    acceptedDate: quote?.acceptedDate,
+    declinedDate: quote?.declinedDate,
+    approvalLevel: quote?.approvalLevel,
     createdAt: quote?.createdAt,
     updatedAt: quote?.updatedAt
   };
@@ -2334,6 +2340,14 @@ export const updateQuote = async (quoteId: string, quoteData: Partial<Quote>): P
 
     if (quoteData.expiryDate !== undefined) {
       apiData.expiryDate = toISO(quoteData.expiryDate) || quoteData.expiryDate;
+    }
+
+    if (quoteData.acceptedDate !== undefined) {
+      apiData.acceptedDate = toISO(quoteData.acceptedDate) || quoteData.acceptedDate;
+    }
+
+    if (quoteData.declinedDate !== undefined) {
+      apiData.declinedDate = toISO(quoteData.declinedDate) || quoteData.declinedDate;
     }
 
     if (quoteData.customerId !== undefined || quoteData.customer !== undefined) {
