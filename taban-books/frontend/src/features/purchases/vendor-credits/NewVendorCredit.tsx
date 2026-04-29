@@ -1354,7 +1354,7 @@ export default function NewVendorCredit() {
     container: {
       width: "100%",
       backgroundColor: "#ffffff",
-      height: "100vh",
+      minHeight: "100vh",
       display: "flex",
       flexDirection: "column",
       fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
@@ -1377,7 +1377,6 @@ export default function NewVendorCredit() {
     content: {
       padding: "32px",
       flex: 1,
-      overflowY: "auto",
       backgroundColor: "#ffffff",
     },
     formSection: {

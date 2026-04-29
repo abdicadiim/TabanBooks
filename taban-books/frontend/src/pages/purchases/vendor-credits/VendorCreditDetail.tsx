@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
@@ -44,7 +44,7 @@ export default function VendorCreditDetail() {
     };
   });
   const [vendorCredits, setVendorCredits] = useState<any[]>(() => preloadedVendorCredits);
-  const [vendor, setVendor] = useState(null);
+  const [vendor, setVendor] = useState<any>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [selectedView, setSelectedView] = useState("All");
   const [selectedSort, setSelectedSort] = useState("date");
@@ -62,7 +62,7 @@ export default function VendorCreditDetail() {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [pdfMenuOpen, setPdfMenuOpen] = useState(false);
   const [showApplyModal, setShowApplyModal] = useState(false);
-  const [bills, setBills] = useState([]);
+  const [bills, setBills] = useState<any[]>([]);
   const [creditApplications, setCreditApplications] = useState<Record<string, any>>({});
   const [appliedOnDate, setAppliedOnDate] = useState(true);
   const [appliedDate, setAppliedDate] = useState(new Date().toISOString().split("T")[0]);
@@ -79,8 +79,8 @@ export default function VendorCreditDetail() {
   const importSubmenuRef = useRef<HTMLDivElement | null>(null);
   const exportSubmenuRef = useRef<HTMLDivElement | null>(null);
   const bulkActionsRef = useRef<HTMLDivElement | null>(null);
-  const moreMenuRef = useRef(null);
-  const pdfMenuRef = useRef(null);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const pdfMenuRef = useRef<HTMLDivElement | null>(null);
   const journalSectionRef = useRef<HTMLDivElement | null>(null);
   const deleteVendorCreditsMutation = useDeleteVendorCreditsMutation();
 
@@ -511,7 +511,7 @@ export default function VendorCreditDetail() {
     // Current total applied excluding this bill
     const currentApplied = Object.entries(creditApplications)
       .filter(([id]) => id !== billId)
-      .reduce((sum, [_, val]) => sum + (val as number), 0);
+      .reduce((sum: number, [_, val]) => sum + (val as number), 0);
 
     // Max allowed for this bill is min(bill balance, remaining available credits)
     const maxAllowed = Math.max(0, Math.min(balance, availableTotal - currentApplied));
@@ -524,7 +524,7 @@ export default function VendorCreditDetail() {
   };
 
   const calculateTotalCreditsApplied = () => {
-    return Object.values(creditApplications).reduce((sum, val) => sum + parseMoneyValue(val), 0);
+    return Object.values(creditApplications).reduce((sum: number, val: any) => sum + parseMoneyValue(val), 0);
   };
 
   const creditBalance = parseMoneyValue(vendorCredit?.balance ?? vendorCredit?.amount ?? 0);
@@ -561,23 +561,24 @@ export default function VendorCreditDetail() {
   };
 
   useEffect(() => {
-    const handleClickOutside = (event: any) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      const targetNode = event.target as Node | null;
+      if (dropdownRef.current && targetNode && !dropdownRef.current.contains(targetNode)) {
         setDropdownOpen(false);
       }
-      if (sidebarMoreMenuRef.current && !sidebarMoreMenuRef.current.contains(event.target)) {
+      if (sidebarMoreMenuRef.current && targetNode && !sidebarMoreMenuRef.current.contains(targetNode)) {
         setSidebarMoreMenuOpen(false);
         setSortSubmenuOpen(false);
         setImportSubmenuOpen(false);
         setExportSubmenuOpen(false);
       }
-      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target)) {
+      if (moreMenuRef.current && targetNode && !moreMenuRef.current.contains(targetNode)) {
         setMoreMenuOpen(false);
       }
-      if (pdfMenuRef.current && !pdfMenuRef.current.contains(event.target)) {
+      if (pdfMenuRef.current && targetNode && !pdfMenuRef.current.contains(targetNode)) {
         setPdfMenuOpen(false);
       }
-      if (bulkActionsRef.current && !bulkActionsRef.current.contains(event.target)) {
+      if (bulkActionsRef.current && targetNode && !bulkActionsRef.current.contains(targetNode)) {
         setBulkActionsOpen(false);
       }
     };
@@ -605,9 +606,12 @@ export default function VendorCreditDetail() {
   // Format date
   const formatDate = (dateString: string | Date) => {
     if (!dateString) return "";
-    const date = new Date(typeof dateString === 'string' && !dateString.includes('T') ? dateString + "T00:00:00" : dateString);
+    const date =
+      typeof dateString === "string"
+        ? new Date(!dateString.includes("T") ? `${dateString}T00:00:00` : dateString)
+        : new Date(dateString.getTime());
     if (isNaN(date.getTime())) {
-      return dateString;
+      return String(dateString);
     }
     return date.toLocaleDateString("en-GB", {
       day: "2-digit",
@@ -617,26 +621,26 @@ export default function VendorCreditDetail() {
   };
 
   // Format currency
-  const formatCurrency = (amount, currency = "CAD") => {
+  const formatCurrency = (amount: string | number, currency = "CAD") => {
     const symbol = currency === "CAD" ? "$" : currency === "USD" ? "$" : currency === "AWG" ? "AWG" : currency === "USD" ? "USD" : currency;
-    const formattedAmount = parseFloat(amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formattedAmount = parseFloat(String(amount || 0)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return `${symbol}${formattedAmount}`;
   };
 
   // Calculate totals
   const calculateSubTotal = () => {
     if (!vendorCredit || !vendorCredit.items) return 0;
-    return vendorCredit.items.reduce((sum, item) => sum + (parseFloat(item.total || item.amount) || 0), 0);
+    return vendorCredit.items.reduce((sum: number, item: any) => sum + (parseFloat(item.total || item.amount) || 0), 0);
   };
 
   const calculateTaxAmount = () => {
     if (!vendorCredit || !vendorCredit.items) return 0;
     let taxTotal = 0;
-    vendorCredit.items.forEach(item => {
+    vendorCredit.items.forEach((item: any) => {
       if (item.tax) {
         const taxMatch = item.tax.match(/(\d+(?:\.\d+)?)/);
         const taxPercent = taxMatch ? parseFloat(taxMatch[1]) : 0;
-        if (vendorCredit.formData?.taxExclusive === "Tax Inclusive") {
+        if ((vendorCredit as any).formData?.taxExclusive === "Tax Inclusive") {
           const subtotal = parseFloat(item.quantity || 0) * parseFloat(item.unitPrice || item.rate || 0);
           taxTotal += (subtotal * taxPercent) / (100 + taxPercent);
         } else {
@@ -650,7 +654,7 @@ export default function VendorCreditDetail() {
   const calculateTotal = () => {
     const subTotal = calculateSubTotal();
     const taxAmount = calculateTaxAmount();
-    const adjustment = vendorCredit?.formData?.adjustment || 0;
+    const adjustment = (vendorCredit as any)?.formData?.adjustment || 0;
     return subTotal + taxAmount + adjustment;
   };
 
@@ -663,11 +667,11 @@ export default function VendorCreditDetail() {
 
   // Get vendor address
   const getVendorAddress = () => {
-    if (!vendor || !vendor.formData) return null;
-    const billing = vendor.formData;
+    if (!vendor || !(vendor as any).formData) return null;
+    const billing = (vendor as any).formData;
     return {
-      name: vendor.name,
-      email: billing.email || vendor.email || "",
+      name: (vendor as any).name,
+      email: billing.email || (vendor as any).email || "",
       country: billing.billingCountry || "",
       street1: billing.billingStreet1 || "",
       street2: billing.billingStreet2 || "",
@@ -792,7 +796,7 @@ export default function VendorCreditDetail() {
   const total = calculateTotal();
   const baseAmount = getBaseCurrencyAmount();
 
-  const styles = {
+  const styles: any = {
     container: {
       display: "flex",
       width: "100%",
@@ -1395,8 +1399,8 @@ export default function VendorCreditDetail() {
       padding: "24px",
       overflowY: "auto" as const,
       flex: 1,
-      msOverflowStyle: "none",
-      scrollbarWidth: "none",
+      msOverflowStyle: "none" as const,
+      scrollbarWidth: "none" as const,
     },
     modalTopBar: {
       display: "flex",
@@ -1717,9 +1721,9 @@ export default function VendorCreditDetail() {
   const remainingCredits = Math.max(0, availableCredits - (totalAmountToCredit as number));
 
   // Format date for display
-  const formatDateDisplay = (dateString) => {
+  const formatDateDisplay = (dateString: string | Date) => {
     if (!dateString) return "";
-    const date = new Date(dateString);
+    const date = typeof dateString === 'string' ? new Date(dateString) : new Date(dateString.getTime());
     return date.toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "2-digit",
@@ -1787,12 +1791,12 @@ export default function VendorCreditDetail() {
                 onChange={handleSelectAll}
                 style={styles.creditItemCheckbox}
               />
-              <div style={{ position: "relative" }}>
+              <div style={{ position: "relative" as const }}>
                 <button style={styles.bulkActionButton} onClick={() => setBulkActionsOpen((prev) => !prev)}>
                   Bulk Actions <ChevronDown size={14} />
                 </button>
                 {bulkActionsOpen && (
-                  <div style={{ ...styles.moreDropdown, left: 0, right: "auto", top: "calc(100% + 8px)" }}>
+                  <div style={{ ...styles.moreDropdown, left: 0, right: "auto", top: "calc(100% + 8px)" } as CSSProperties}>
                     <button style={styles.moreDropdownItem} onClick={handleBulkUpdate}>Bulk Update</button>
                     <button style={styles.moreDropdownItem} onClick={handleDownloadSelectedPdf}>Print</button>
                     <button style={styles.moreDropdownItem} onClick={handleDeleteSelected}>Delete</button>
@@ -1809,7 +1813,7 @@ export default function VendorCreditDetail() {
           </div>
         ) : (
           <div style={styles.sidebarHeader}>
-            <div style={{ position: "relative" }} ref={dropdownRef}>
+            <div style={{ position: "relative" as const }} ref={dropdownRef}>
               <button style={styles.sidebarTitle} onClick={() => setDropdownOpen(!dropdownOpen)}>
                 {selectedView === "All" ? "All Vendor Credits" : selectedView}
                 {dropdownOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -1838,43 +1842,43 @@ export default function VendorCreditDetail() {
                 </button>
                 {sidebarMoreMenuOpen && (
                   <div style={styles.moreDropdown}>
-                    <div style={{ position: "relative" }} ref={sortSubmenuRef}>
+                    <div style={{ position: "relative" as const }} ref={sortSubmenuRef}>
                       <button style={styles.moreDropdownItem} onClick={(e) => { e.stopPropagation(); setSortSubmenuOpen(!sortSubmenuOpen); setImportSubmenuOpen(false); setExportSubmenuOpen(false); }}>
                         <ArrowUpDown size={14} /> Sort by <ChevronRight size={14} style={{ marginLeft: "auto" }} />
                       </button>
                       {sortSubmenuOpen && (
-                        <div style={{ ...styles.moreDropdown, position: "absolute", top: 0, left: "calc(100% + 8px)" }}>
+                        <div style={{ ...styles.moreDropdown, position: "absolute" as const, top: 0, left: "calc(100% + 8px)" }}>
                           {sortOptions.map((option) => {
                             const sortMap: any = { "Credit Note #": "creditNote", "Date": "date", "Vendor Name": "vendor", "Amount": "amount", "Status": "status" };
                             const isSelected = selectedSort === sortMap[option];
                             return (
                               <button key={option} style={styles.moreDropdownItem} onClick={(e) => { e.stopPropagation(); handleSortSelect(option); }}>
                                 <span>{option}</span>
-                                {isSelected ? <span style={{ marginLeft: "auto", color: "#156372" }}>{sortDirection === "asc" ? "↑" : "↓"}</span> : null}
+                                {isSelected ? <span style={{ marginLeft: "auto", color: "#156372" }}>{sortDirection === "asc" ? "?" : "?"}</span> : null}
                               </button>
                             );
                           })}
                         </div>
                       )}
                     </div>
-                    <div style={{ position: "relative" }} ref={importSubmenuRef}>
+                    <div style={{ position: "relative" as const }} ref={importSubmenuRef}>
                       <button style={styles.moreDropdownItem} onClick={(e) => { e.stopPropagation(); setImportSubmenuOpen(!importSubmenuOpen); setSortSubmenuOpen(false); setExportSubmenuOpen(false); }}>
                         <Download size={14} /> Import <ChevronRight size={14} style={{ marginLeft: "auto" }} />
                       </button>
                       {importSubmenuOpen && (
-                        <div style={{ ...styles.moreDropdown, position: "absolute", top: 0, left: "calc(100% + 8px)" }}>
+                        <div style={{ ...styles.moreDropdown, position: "absolute" as const, top: 0, left: "calc(100% + 8px)" }}>
                           <button style={styles.moreDropdownItem} onClick={() => navigate("/purchases/vendor-credits/import/applied")}>Import Applied Vendor Credits</button>
                           <button style={styles.moreDropdownItem} onClick={() => navigate("/purchases/vendor-credits/import/refunds")}>Import Refunds</button>
                           <button style={styles.moreDropdownItem} onClick={() => navigate("/purchases/vendor-credits/import")}>Import Vendor Credits</button>
                         </div>
                       )}
                     </div>
-                    <div style={{ position: "relative" }} ref={exportSubmenuRef}>
+                    <div style={{ position: "relative" as const }} ref={exportSubmenuRef}>
                       <button style={styles.moreDropdownItem} onClick={(e) => { e.stopPropagation(); setExportSubmenuOpen(!exportSubmenuOpen); setSortSubmenuOpen(false); setImportSubmenuOpen(false); }}>
                         <Upload size={14} /> Export <ChevronRight size={14} style={{ marginLeft: "auto" }} />
                       </button>
                       {exportSubmenuOpen && (
-                        <div style={{ ...styles.moreDropdown, position: "absolute", top: 0, left: "calc(100% + 8px)" }}>
+                        <div style={{ ...styles.moreDropdown, position: "absolute" as const, top: 0, left: "calc(100% + 8px)" }}>
                           <button style={styles.moreDropdownItem} onClick={() => { setExportModalType("vendor-credits"); setShowExportModal(true); setSidebarMoreMenuOpen(false); }}>Export Vendor Credits</button>
                           <button style={styles.moreDropdownItem} onClick={() => { setExportModalType("applied"); setShowExportModal(true); setSidebarMoreMenuOpen(false); }}>Export Applied Vendor Credits</button>
                           <button style={styles.moreDropdownItem} onClick={() => { setExportModalType("current-view"); setShowExportModal(true); setSidebarMoreMenuOpen(false); }}>Export Current View</button>
@@ -2291,6 +2295,14 @@ export default function VendorCreditDetail() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
 
 
 
