@@ -77,6 +77,7 @@ const readCachedPurchaseOrders = () => {
 export default function PurchaseOrders() {
   const navigate = useNavigate();
   const location = useLocation();
+  const pendingPurchaseOrderRef = useRef<any>(location.state?.pendingPurchaseOrder || null);
   const notificationTimeoutRef = useRef(null);
   const { code: baseCurrencyCode, symbol: baseCurrencySymbol } = useCurrency();
   const displayCurrencyCode = baseCurrencyCode || "USD";
@@ -88,7 +89,16 @@ export default function PurchaseOrders() {
       return mapPurchaseOrdersForView(stateOrders);
     }
 
-    return readCachedPurchaseOrders();
+    const cachedOrders = readCachedPurchaseOrders();
+    const pendingPurchaseOrder = location.state?.pendingPurchaseOrder;
+    if (!pendingPurchaseOrder?.id) {
+      return cachedOrders;
+    }
+
+    return mapPurchaseOrdersForView([
+      pendingPurchaseOrder,
+      ...cachedOrders.filter((order) => order.id !== pendingPurchaseOrder.id),
+    ]);
   });
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [showCustomViewModal, setShowCustomViewModal] = useState(false);
@@ -170,7 +180,28 @@ export default function PurchaseOrders() {
       const response = await purchaseOrdersAPI.getAll();
 
       if (response && (response.code === 0 || response.success)) {
-        const mappedOrders = mapPurchaseOrdersForView(response.data || []);
+        let mappedOrders = mapPurchaseOrdersForView(response.data || []);
+        const pendingPurchaseOrder = pendingPurchaseOrderRef.current;
+
+        if (pendingPurchaseOrder?.id) {
+          const pendingNumber = String(
+            pendingPurchaseOrder.purchaseOrderNumber || pendingPurchaseOrder.purchase_order_number || ""
+          ).trim();
+
+          const hasRealMatch = mappedOrders.some((order) => {
+            const orderNumber = String(order.purchaseOrderNumber || order.purchase_order_number || "").trim();
+            return order.id === pendingPurchaseOrder.id || (!!pendingNumber && orderNumber === pendingNumber);
+          });
+
+          if (hasRealMatch) {
+            pendingPurchaseOrderRef.current = null;
+          } else {
+            mappedOrders = mapPurchaseOrdersForView([
+              pendingPurchaseOrder,
+              ...mappedOrders.filter((order) => order.id !== pendingPurchaseOrder.id),
+            ]);
+          }
+        }
 
         setPurchaseOrders(mappedOrders);
       }

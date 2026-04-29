@@ -2261,6 +2261,60 @@ export default function NewPurchaseOrder() {
         terms: formData.termsAndConditions // Update key to match backend 'terms'
       };
 
+      if (!isEdit && status !== "issued") {
+        const pendingId = `pending-po-${Date.now()}`;
+        const pendingPurchaseOrder = {
+          id: pendingId,
+          _id: pendingId,
+          purchaseOrderNumber: purchaseOrderData.purchase_order_number,
+          purchase_order_number: purchaseOrderData.purchase_order_number,
+          referenceNumber: purchaseOrderData.reference_number,
+          reference_number: purchaseOrderData.reference_number,
+          vendorName: purchaseOrderData.vendor_name,
+          vendor_name: purchaseOrderData.vendor_name,
+          status: "draft",
+          billedStatus: "Not Billed",
+          deliveryDate: purchaseOrderData.delivery_date,
+          delivery_date: purchaseOrderData.delivery_date,
+          date: purchaseOrderData.date,
+          amount: purchaseOrderData.total,
+          total: purchaseOrderData.total,
+          location: selectedLocation?.name || "Head Office",
+          companyName: purchaseOrderData.vendor_name,
+        };
+
+        setSaveLoadingState(null);
+        submitLockRef.current = false;
+
+        startTransition(() => {
+          navigate("/purchases/purchase-orders", {
+            replace: true,
+            state: { pendingPurchaseOrder },
+          });
+        });
+
+        void (async () => {
+          try {
+            const response = await createPurchaseOrderWithNumberRetry(purchaseOrderData);
+            if (response && (response.code === 0 || response.success)) {
+              window.dispatchEvent(new Event("purchaseOrdersUpdated"));
+            } else {
+              alert(response?.message || "Failed to create purchase order");
+            }
+          } catch (error: any) {
+            console.error("Error creating purchase order:", error);
+            if (isDuplicatePurchaseOrderNumberError(error)) {
+              alert("Purchase order number already exists. Please use a different number.");
+            } else {
+              alert(error?.message || "An error occurred while creating the purchase order.");
+            }
+            window.dispatchEvent(new Event("purchaseOrdersUpdated"));
+          }
+        })();
+
+        return;
+      }
+
       let response;
       if (isEdit && (routeOrderId || editOrder?._id || editOrder?.id)) {
         // Update existing order
