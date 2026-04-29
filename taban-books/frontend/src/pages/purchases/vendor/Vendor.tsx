@@ -1174,12 +1174,37 @@ export default function Vendor() {
     },
   };
 
-  const handleDeleteSelected = () => {
-    if (selectedVendors.length === 0) {
+  const deleteSelectedVendors = async (vendorIds = selectedVendors) => {
+    const idsToDelete = vendorIds
+      .map((vendorId) => String(vendorId || "").trim())
+      .filter(Boolean);
+
+    if (idsToDelete.length === 0) {
       toast.error("Please select at least one vendor to delete.");
       return;
     }
-    setShowDeleteModal(true);
+
+    const count = idsToDelete.length;
+    const previousVendors = [...vendors];
+    const remainingVendors = vendors.filter((vendor) => !idsToDelete.includes(getVendorId(vendor)));
+
+    persistVendors(remainingVendors);
+    setSelectedVendors([]);
+    setShowDeleteModal(false);
+    toast.success(`Vendor${count > 1 ? "s" : ""} deleted successfully.`);
+    window.dispatchEvent(new Event("vendorSaved"));
+
+    try {
+      await vendorsAPI.bulkDelete(idsToDelete);
+    } catch (error) {
+      persistVendors(previousVendors);
+      window.dispatchEvent(new Event("vendorSaved"));
+      toast.error(error?.message || "Failed to delete selected vendors.");
+    }
+  };
+
+  const handleDeleteSelected = () => {
+    void deleteSelectedVendors();
   };
 
   const handleClearSelection = () => {
@@ -1611,8 +1636,13 @@ export default function Vendor() {
               Merge
             </button>
             <button
+              type="button"
               style={styles.bulkActionButton}
-              onClick={handleDeleteSelected}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                handleDeleteSelected();
+              }}
               onMouseEnter={(e) => (e.target.style.backgroundColor = "#fee2e2")}
               onMouseLeave={(e) => (e.target.style.backgroundColor = "#f3f4f6")}
             >
@@ -4491,30 +4521,7 @@ function NewCustomViewModal({ onClose, onSave }) {
       <DeleteConfirmationModal
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
-        onConfirm={async () => {
-          const idsToDelete = selectedVendors
-            .map((vendorId) => String(vendorId || "").trim())
-            .filter(Boolean);
-
-          if (idsToDelete.length === 0) {
-            setShowDeleteModal(false);
-            return;
-          }
-
-          const count = idsToDelete.length;
-          try {
-            await vendorsAPI.bulkDelete(idsToDelete);
-
-            const remainingVendors = vendors.filter((vendor) => !idsToDelete.includes(getVendorId(vendor)));
-            persistVendors(remainingVendors);
-            setSelectedVendors([]);
-            setShowDeleteModal(false);
-            toast.success(`Vendor${count > 1 ? "s" : ""} deleted successfully.`);
-            window.dispatchEvent(new Event("vendorSaved"));
-          } catch (error) {
-            toast.error(error?.message || "Failed to delete selected vendors.");
-          }
-        }}
+        onConfirm={() => deleteSelectedVendors()}
         entityName="vendor(s)"
         count={selectedVendors.length}
       />
