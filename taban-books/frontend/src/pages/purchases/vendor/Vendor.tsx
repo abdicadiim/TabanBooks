@@ -2361,7 +2361,9 @@ export default function Vendor() {
                     onClick={(e) => {
                       // Don't navigate if clicking on checkbox or its container
                       if (!e.target.closest('input[type="checkbox"]') && !e.target.closest('td:first-child')) {
-                        navigate(`/purchases/vendors/${vendorId}`);
+                        navigate(`/purchases/vendors/${vendorId}`, {
+                          state: { vendor },
+                        });
                       }
                     }}
                     onMouseEnter={(e) => {

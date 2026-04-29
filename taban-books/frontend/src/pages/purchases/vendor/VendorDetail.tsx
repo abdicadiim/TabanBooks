@@ -224,12 +224,59 @@ const mapVendorForDetail = (vendorData: any, fallbackId?: string) => {
   };
 };
 
+const normalizeSidebarVendor = (vendorData: any) => ({
+  ...vendorData,
+  id: String(vendorData?._id || vendorData?.id || ""),
+  _id: vendorData?._id || vendorData?.id || "",
+  name:
+    vendorData?.displayName ||
+    vendorData?.name ||
+    vendorData?.companyName ||
+    `${vendorData?.firstName || ""} ${vendorData?.lastName || ""}`.trim() ||
+    "Vendor",
+  currency:
+    vendorData?.currency ||
+    vendorData?.currencyCode ||
+    vendorData?.formData?.currency ||
+    vendorData?.formData?.currencyCode,
+  payables:
+    Number(
+      vendorData?.payables ??
+      vendorData?.outstandingPayables ??
+      vendorData?.totalPayables ??
+      vendorData?.formData?.payables ??
+      0
+    ) || 0,
+  unusedVendorCredits:
+    Number(
+      vendorData?.unusedVendorCredits ??
+      vendorData?.unusedCredits ??
+      vendorData?.vendorCredits ??
+      vendorData?.formData?.unusedVendorCredits ??
+      0
+    ) || 0,
+});
+
 export default function VendorDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const { code: baseCurrencyCode } = useCurrency();
-  const initialRouteVendor = location.state?.vendor ? mapVendorForDetail(location.state.vendor, id) : null;
+  const cachedVendorList = (() => {
+    try {
+      const raw = localStorage.getItem("vendors");
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })();
+  const cachedVendor =
+    cachedVendorList.find((vendorRecord: any) =>
+      [String(vendorRecord?._id || "").trim(), String(vendorRecord?.id || "").trim()].includes(String(id || "").trim())
+    ) || null;
+  const initialVendorSource = location.state?.vendor || cachedVendor;
+  const initialRouteVendor = initialVendorSource ? mapVendorForDetail(initialVendorSource, id) : null;
   const [vendor, setVendor] = useState<Vendor | null>(initialRouteVendor);
   const [isLoading, setIsLoading] = useState(!initialRouteVendor);
   const [organizationProfile, setOrganizationProfile] = useState<any>(null);
@@ -237,7 +284,7 @@ export default function VendorDetail() {
 
   // Note: We allow both MongoDB ObjectIds and legacy timestamp IDs
   // The backend will handle both formats
-  const [vendors, setVendors] = useState<any[]>([]);
+  const [vendors, setVendors] = useState<any[]>(() => cachedVendorList.map((vendorRecord: any) => normalizeSidebarVendor(vendorRecord)));
   function formatCurrency(amount: any, currency?: string) {
     const resolvedCode = String(currency || baseCurrencyCode || "USD").split(" - ")[0].trim();
     return `${resolvedCode}${parseFloat(amount || 0).toFixed(2)}`;
@@ -284,9 +331,18 @@ export default function VendorDetail() {
   const [isBulkActionsDropdownOpen, setIsBulkActionsDropdownOpen] = useState(false);
   const bulkActionsDropdownRef = useRef<HTMLDivElement>(null);
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
-  const [selectedSidebarView, setSelectedSidebarView] = useState("All Vendors");
+  const [selectedSidebarView, setSelectedSidebarView] = useState("Active Vendors");
   const [isSidebarViewDropdownOpen, setIsSidebarViewDropdownOpen] = useState(false);
   const sidebarViewDropdownRef = useRef<HTMLDivElement>(null);
+  const sidebarViewOptions = [
+    "All Vendors",
+    "Active Vendors",
+    "Inactive Vendors",
+    "CRM Vendors",
+    "Vendor Portal Enabled",
+    "Vendor Portal Disabled",
+    "Duplicate Vendors",
+  ];
 
   // Additional state variables
   const [paymentsMade, setPaymentsMade] = useState<any[]>([]);
@@ -784,19 +840,7 @@ export default function VendorDetail() {
           ? response.data
           : (response?.data?.data && Array.isArray(response.data.data) ? response.data.data : []));
 
-      setVendors(
-        (vendorsList || []).map((vend: any) => ({
-          ...vend,
-          id: String(vend?._id || vend?.id || ""),
-          _id: vend?._id || vend?.id || "",
-          name:
-            vend?.displayName ||
-            vend?.name ||
-            vend?.companyName ||
-            `${vend?.firstName || ""} ${vend?.lastName || ""}`.trim() ||
-            "Vendor",
-        }))
-      );
+      setVendors((vendorsList || []).map((vend: any) => normalizeSidebarVendor(vend)));
     } catch (error: any) {
     }
   };
