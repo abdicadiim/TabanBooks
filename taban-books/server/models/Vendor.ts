@@ -252,7 +252,9 @@ const vendorSchema = new Schema<IVendor>({
 });
 
 // Indexes for better query performance
+vendorSchema.index({ organization: 1, id: 1 });
 vendorSchema.index({ organization: 1, displayName: 1 });
+vendorSchema.index({ organization: 1, name: 1 });
 vendorSchema.index({ organization: 1, email: 1 });
 vendorSchema.index({ organization: 1, companyName: 1 });
 vendorSchema.index({ organization: 1, status: 1 });

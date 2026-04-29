@@ -3296,7 +3296,6 @@ export default function BillDetail() {
                       </tbody>
                     </table>
                   </div>
-                </div>
               )}
 
               {/* Payments Made Tab Content */}

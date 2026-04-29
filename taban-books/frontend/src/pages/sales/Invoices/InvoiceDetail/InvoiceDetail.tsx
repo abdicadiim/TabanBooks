@@ -4235,7 +4235,6 @@ export default function InvoiceDetail() { // Start of component
               )}
             </div>
           </div>
-        </div>
       </div>
 
       {showDeletePaymentModal && selectedPaymentForDelete && (
