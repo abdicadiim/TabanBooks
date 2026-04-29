@@ -1,6 +1,6 @@
 ﻿import React, { useState, useRef, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { ChevronLeft, ChevronDown, Edit, HelpCircle, CheckCircle } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronDown, Edit, HelpCircle, CheckCircle } from "lucide-react";
 
 function ImportAppliedCustomerCreditsMapFields() {
   const navigate = useNavigate();
@@ -129,15 +129,14 @@ function ImportAppliedCustomerCreditsMapFields() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              gap: "6px",
               borderRadius: "4px",
               fontSize: "14px"
             }}
             onMouseEnter={(e) => e.target.style.backgroundColor = "#f9fafb"}
             onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
           >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M12.5 7.5l-5 5m0-5l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            <ArrowLeft size={16} />
             Back
           </button>
         </div>
@@ -683,5 +682,4 @@ function ImportAppliedCustomerCreditsMapFields() {
 }
 
 export default ImportAppliedCustomerCreditsMapFields;
-
 

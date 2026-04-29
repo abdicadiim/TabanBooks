@@ -42,6 +42,7 @@ export function ManualJournalExportModal({
   onClose,
   onConfirmExport,
   onOpenTemplateModal,
+  
 }: ManualJournalExportModalProps) {
   if (!open) {
     return null;
@@ -231,20 +232,21 @@ const overlayStyle: React.CSSProperties = {
   position: "fixed",
   inset: 0,
   backgroundColor: "rgba(15, 23, 42, 0.45)",
+  zIndex: 9999,
   display: "flex",
-  alignItems: "center",
   justifyContent: "center",
-  zIndex: 4000,
-  padding: "20px",
+  alignItems: "flex-start",
+  padding: "0 20px 20px",
 };
 
 const modalStyle: React.CSSProperties = {
   width: "100%",
-  maxWidth: "760px",
   backgroundColor: "#ffffff",
-  borderRadius: "20px",
+  maxWidth:"760px",
+  borderRadius: "0 0 20px 20px",
   boxShadow: "0 24px 48px rgba(15, 23, 42, 0.18)",
   overflow: "hidden",
+  marginTop: "0px",
 };
 
 const headerStyle: React.CSSProperties = {

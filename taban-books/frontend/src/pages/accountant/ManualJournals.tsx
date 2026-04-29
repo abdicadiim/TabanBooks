@@ -13,23 +13,23 @@ function ManualJournals() {
 
   return (
     <>
-      <div style={{ minHeight: "calc(100vh - 60px)", backgroundColor: "#f8fafc" }}>
+      <div
+        style={{
+          minHeight: "calc(100vh - 60px)",
+          backgroundColor: "#ffffff",
+        }}
+      >
         <ManualJournalEditorHeader
-          isBusy={controller.isBusy}
           isEditMode={controller.isEditMode}
-          onBack={controller.navigateBack}
           onChooseTemplate={controller.openTemplateSidebar}
-          onPublish={controller.publishJournal}
-          onSaveDraft={controller.saveAsDraft}
         />
 
         <div
           style={{
-            margin: "0 auto",
-            maxWidth: "1400px",
+            width: "100%",
             display: "grid",
-            gap: "20px",
-            padding: "24px",
+            gap: "18px",
+            padding: "12px 12px 28px",
           }}
         >
           {controller.isLoadingJournal ? (
@@ -71,22 +71,30 @@ function ManualJournals() {
 
           <ManualJournalEntriesTable
             contacts={controller.availableContacts}
+            currencyCode={
+              controller.baseCurrency?.code || controller.formData.currency || "SOS"
+            }
             entries={controller.entries}
             groupedAccounts={controller.groupedAccounts}
             isBusy={controller.isBusy}
+            locationOptions={controller.availableLocations}
             onAddRow={controller.addEntry}
-            onOpenNewTaxModal={controller.openNewTaxModal}
             onRemoveRow={controller.removeEntry}
             onSelectAccount={controller.selectAccount}
             onUpdateEntry={controller.updateEntry}
-            taxOptions={controller.taxOptions}
+            projectOptions={controller.availableProjects}
+            reportingTagOptions={controller.availableReportingTags}
             totals={controller.totals}
           />
 
           <ManualJournalAttachmentsCard
             attachments={controller.attachments}
+            isBusy={controller.isBusy}
             onAddFiles={controller.addAttachments}
+            onCancel={controller.navigateBack}
+            onPublish={controller.publishJournal}
             onRemoveFile={controller.removeAttachment}
+            onSaveDraft={controller.saveAsDraft}
           />
         </div>
       </div>

@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { X } from "lucide-react";
+import { Info, X } from "lucide-react";
 
 import {
   ACCOUNT_TYPE_LABELS,
   getAccountTypeCategoryDescription,
-  getAccountTypeCategoryLabel,
 } from "../chartOfAccountsConfig";
 import type {
   ChartOfAccountsAccount,
@@ -20,6 +19,21 @@ interface ChartOfAccountsAccountModalProps {
   open: boolean;
   submitting?: boolean;
 }
+
+const BRAND_PRIMARY = "#156372";
+const BRAND_BORDER = "#d8e0ea";
+const INPUT_STYLE: React.CSSProperties = {
+  width: "100%",
+  minHeight: "48px",
+  padding: "0 14px",
+  borderRadius: "14px",
+  border: `1px solid ${BRAND_BORDER}`,
+  fontSize: "14px",
+  color: "#0f172a",
+  backgroundColor: "#ffffff",
+  boxSizing: "border-box",
+  outline: "none",
+};
 
 export function ChartOfAccountsAccountModal({
   allAccounts,
@@ -72,6 +86,7 @@ export function ChartOfAccountsAccountModal({
   const title = mode === "create" ? "Create Account" : "Edit Account";
   const submitLabel = mode === "create" ? "Create Account" : "Save Changes";
   const isSaveDisabled = !formData.accountType || !formData.accountName.trim() || submitting;
+  const accountTypeHint = getAccountTypeCategoryDescription(formData.accountType);
 
   const handleFieldChange = <K extends keyof ChartOfAccountsFormData>(
     field: K,
@@ -93,11 +108,13 @@ export function ChartOfAccountsAccountModal({
       style={{
         position: "fixed",
         inset: 0,
-        backgroundColor: "rgba(15, 23, 42, 0.45)",
+        backgroundColor: "rgba(15, 23, 42, 0.32)",
+        backdropFilter: "blur(3px)",
+        WebkitBackdropFilter: "blur(3px)",
         display: "flex",
-        alignItems: "center",
+        alignItems: "flex-start",
         justifyContent: "center",
-        padding: "24px",
+        padding: "0 0 24px",
         zIndex: 3000,
       }}
       onClick={(event) => {
@@ -108,43 +125,50 @@ export function ChartOfAccountsAccountModal({
     >
       <div
         style={{
-          backgroundColor: "#ffffff",
-          borderRadius: "16px",
           width: "100%",
-          maxWidth: "880px",
-          boxShadow: "0 24px 48px rgba(15, 23, 42, 0.18)",
+          maxWidth: "860px",
+          backgroundColor: "#ffffff",
+          borderRadius: "0 0 22px 22px",
+          border: "1px solid #e2e8f0",
+          boxShadow: "0 28px 70px rgba(15, 23, 42, 0.18)",
           overflow: "hidden",
+          marginTop: 0,
         }}
       >
         <div
           style={{
-            padding: "20px 24px",
-            borderBottom: "1px solid #e5e7eb",
+            padding: "24px 24px 18px",
+            borderBottom: "1px solid #edf2f7",
             display: "flex",
-            alignItems: "center",
+            alignItems: "flex-start",
             justifyContent: "space-between",
+            gap: "16px",
           }}
         >
           <div>
-            <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 600, color: "#0f172a" }}>
+            <h2 style={{ margin: 0, fontSize: "22px", fontWeight: 700, color: "#0f172a" }}>
               {title}
             </h2>
-            <p style={{ margin: "6px 0 0", fontSize: "14px", color: "#64748b" }}>
-              Keep account setup simple and consistent across your chart.
+            <p style={{ margin: "8px 0 0", fontSize: "14px", color: "#64748b", lineHeight: 1.6 }}>
+              Set the account type, naming, structure, and dashboard visibility before saving.
             </p>
           </div>
+
           <button
             type="button"
             onClick={onClose}
             style={{
-              border: "none",
-              backgroundColor: "transparent",
-              color: "#ef4444",
-              cursor: "pointer",
+              width: "40px",
+              height: "40px",
+              borderRadius: "999px",
+              border: "1px solid #dbe3ec",
+              backgroundColor: "#ffffff",
+              color: "#64748b",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              padding: "6px",
+              cursor: "pointer",
+              flexShrink: 0,
             }}
           >
             <X size={20} />
@@ -155,26 +179,26 @@ export function ChartOfAccountsAccountModal({
           style={{
             padding: "24px",
             display: "grid",
-            gap: "24px",
-            gridTemplateColumns: "minmax(0, 1fr) 280px",
+            gap: "18px",
+            maxHeight: "calc(100vh - 210px)",
+            overflowY: "auto",
           }}
         >
-          <div style={{ display: "grid", gap: "18px" }}>
+          <div
+            style={{
+              display: "grid",
+              gap: "18px",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            }}
+          >
             <label style={{ display: "grid", gap: "8px" }}>
-              <span style={{ fontSize: "14px", fontWeight: 600, color: "#111827" }}>
+              <span style={{ fontSize: "14px", fontWeight: 700, color: "#334155" }}>
                 Account Type
               </span>
               <select
                 value={formData.accountType}
                 onChange={(event) => handleFieldChange("accountType", event.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid #cbd5e1",
-                  fontSize: "14px",
-                  backgroundColor: "#ffffff",
-                }}
+                style={INPUT_STYLE}
               >
                 <option value="">Select account type</option>
                 {ACCOUNT_TYPE_LABELS.map((type) => (
@@ -186,96 +210,40 @@ export function ChartOfAccountsAccountModal({
             </label>
 
             <label style={{ display: "grid", gap: "8px" }}>
-              <span style={{ fontSize: "14px", fontWeight: 600, color: "#111827" }}>
+              <span style={{ fontSize: "14px", fontWeight: 700, color: "#334155" }}>
                 Account Name
               </span>
               <input
                 type="text"
                 value={formData.accountName}
                 onChange={(event) => handleFieldChange("accountName", event.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid #cbd5e1",
-                  fontSize: "14px",
-                }}
+                placeholder="Enter account name"
+                style={INPUT_STYLE}
               />
             </label>
 
             <label style={{ display: "grid", gap: "8px" }}>
-              <span style={{ fontSize: "14px", fontWeight: 600, color: "#111827" }}>
+              <span style={{ fontSize: "14px", fontWeight: 700, color: "#334155" }}>
                 Account Code
               </span>
               <input
                 type="text"
                 value={formData.accountCode}
                 onChange={(event) => handleFieldChange("accountCode", event.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid #cbd5e1",
-                  fontSize: "14px",
-                }}
+                placeholder="Optional"
+                style={INPUT_STYLE}
               />
             </label>
 
-            <label style={{ display: "grid", gap: "8px" }}>
-              <span style={{ fontSize: "14px", fontWeight: 600, color: "#111827" }}>
-                Description
-              </span>
-              <textarea
-                rows={4}
-                value={formData.description}
-                onChange={(event) =>
-                  handleFieldChange("description", event.target.value.slice(0, 500))
-                }
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid #cbd5e1",
-                  fontSize: "14px",
-                  resize: "vertical",
-                  fontFamily: "inherit",
-                }}
-              />
-            </label>
-
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-                fontSize: "14px",
-                color: "#334155",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={formData.isSubAccount}
-                onChange={(event) => handleFieldChange("isSubAccount", event.target.checked)}
-              />
-              <span>Make this a sub-account</span>
-            </label>
-
-            {formData.isSubAccount && (
+            {formData.isSubAccount ? (
               <label style={{ display: "grid", gap: "8px" }}>
-                <span style={{ fontSize: "14px", fontWeight: 600, color: "#111827" }}>
+                <span style={{ fontSize: "14px", fontWeight: 700, color: "#334155" }}>
                   Parent Account
                 </span>
                 <select
                   value={formData.parentAccountId}
                   onChange={(event) => handleFieldChange("parentAccountId", event.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid #cbd5e1",
-                    fontSize: "14px",
-                    backgroundColor: "#ffffff",
-                  }}
+                  style={INPUT_STYLE}
                 >
                   <option value="">Select a parent account</option>
                   {groupedParentAccounts.map(([groupName, accounts]) => (
@@ -289,87 +257,173 @@ export function ChartOfAccountsAccountModal({
                   ))}
                 </select>
               </label>
+            ) : (
+              <div
+                style={{
+                  border: "1px dashed #d8e0ea",
+                  borderRadius: "14px",
+                  padding: "14px 16px",
+                  display: "grid",
+                  alignContent: "center",
+                  backgroundColor: "#fbfdff",
+                }}
+              >
+                <span style={{ fontSize: "13px", fontWeight: 700, color: "#334155" }}>
+                  Account Type Notes
+                </span>
+                <span style={{ marginTop: "6px", fontSize: "13px", lineHeight: 1.6, color: "#64748b" }}>
+                  {accountTypeHint}
+                </span>
+              </div>
             )}
+          </div>
+
+          <label style={{ display: "grid", gap: "8px" }}>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: "#334155" }}>
+              Description
+            </span>
+            <textarea
+              rows={4}
+              value={formData.description}
+              onChange={(event) =>
+                handleFieldChange("description", event.target.value.slice(0, 500))
+              }
+              placeholder="Optional description"
+              style={{
+                ...INPUT_STYLE,
+                minHeight: "120px",
+                padding: "14px",
+                resize: "vertical",
+                fontFamily: "inherit",
+              }}
+            />
+          </label>
+
+          <div
+            style={{
+              display: "grid",
+              gap: "12px",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            }}
+          >
+            <label
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "10px",
+                padding: "14px 16px",
+                borderRadius: "14px",
+                border: "1px solid #e2e8f0",
+                backgroundColor: "#ffffff",
+                color: "#334155",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={formData.isSubAccount}
+                onChange={(event) => handleFieldChange("isSubAccount", event.target.checked)}
+                style={{ marginTop: "2px", accentColor: BRAND_PRIMARY }}
+              />
+              <span style={{ display: "grid", gap: "4px" }}>
+                <span style={{ fontSize: "14px", fontWeight: 600 }}>Make this a sub-account</span>
+                <span style={{ fontSize: "13px", color: "#64748b" }}>
+                  Organize this account under a parent account.
+                </span>
+              </span>
+            </label>
 
             <label
               style={{
                 display: "flex",
-                alignItems: "center",
+                alignItems: "flex-start",
                 gap: "10px",
-                fontSize: "14px",
+                padding: "14px 16px",
+                borderRadius: "14px",
+                border: "1px solid #e2e8f0",
+                backgroundColor: "#ffffff",
                 color: "#334155",
               }}
             >
               <input
                 type="checkbox"
                 checked={formData.addToWatchlist}
-                onChange={(event) =>
-                  handleFieldChange("addToWatchlist", event.target.checked)
-                }
+                onChange={(event) => handleFieldChange("addToWatchlist", event.target.checked)}
+                style={{ marginTop: "2px", accentColor: BRAND_PRIMARY }}
               />
-              <span>Add this account to the dashboard watchlist</span>
+              <span style={{ display: "grid", gap: "4px" }}>
+                <span style={{ fontSize: "14px", fontWeight: 600 }}>
+                  Add this account to the dashboard watchlist
+                </span>
+                <span style={{ fontSize: "13px", color: "#64748b" }}>
+                  Keep important balances easier to monitor.
+                </span>
+              </span>
             </label>
           </div>
 
           <div
             style={{
-              borderRadius: "12px",
-              backgroundColor: "#0f172a",
-              color: "#e2e8f0",
-              padding: "18px",
-              alignSelf: "start",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "10px",
+              padding: "16px 18px",
+              borderRadius: "18px",
+              border: "1px solid #e2e8f0",
+              backgroundColor: "#f8fafc",
+              color: "#475569",
             }}
           >
-            <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 600 }}>
-              {getAccountTypeCategoryLabel(formData.accountType)}
-            </h3>
-            <p style={{ margin: "10px 0 0", fontSize: "13px", lineHeight: 1.6 }}>
-              {getAccountTypeCategoryDescription(formData.accountType)}
-            </p>
+            <Info size={18} color={BRAND_PRIMARY} style={{ flexShrink: 0, marginTop: "2px" }} />
+            <div style={{ fontSize: "13px", lineHeight: 1.7 }}>
+              {accountTypeHint}
+              {formData.description ? ` Description length: ${formData.description.length}/500.` : ""}
+            </div>
           </div>
         </div>
 
         <div
           style={{
             padding: "18px 24px",
-            borderTop: "1px solid #e5e7eb",
+            borderTop: "1px solid #edf2f7",
             display: "flex",
+            justifyContent: "flex-end",
             gap: "12px",
-            justifyContent: "flex-start",
+            backgroundColor: "#ffffff",
           }}
         >
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              borderRadius: "14px",
+              border: "1px solid #d8e0ea",
+              backgroundColor: "#ffffff",
+              color: "#475569",
+              padding: "12px 20px",
+              fontSize: "14px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
           <button
             type="button"
             onClick={handleSubmit}
             disabled={isSaveDisabled}
             style={{
               border: "none",
-              borderRadius: "8px",
-              backgroundColor: isSaveDisabled ? "#94a3b8" : "#156372",
+              borderRadius: "14px",
+              backgroundColor: isSaveDisabled ? "#9eb7bc" : BRAND_PRIMARY,
               color: "#ffffff",
-              padding: "10px 18px",
+              padding: "12px 20px",
               fontSize: "14px",
-              fontWeight: 600,
+              fontWeight: 700,
               cursor: isSaveDisabled ? "not-allowed" : "pointer",
+              boxShadow: isSaveDisabled ? "none" : "0 10px 24px rgba(21, 99, 114, 0.22)",
             }}
           >
             {submitting ? "Saving..." : submitLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              borderRadius: "8px",
-              border: "1px solid #cbd5e1",
-              backgroundColor: "#ffffff",
-              color: "#334155",
-              padding: "10px 18px",
-              fontSize: "14px",
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-          >
-            Cancel
           </button>
         </div>
       </div>

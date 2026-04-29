@@ -15,9 +15,7 @@ interface ManualJournalsListTableProps {
   sortBy: string;
   sortOrder: "asc" | "desc";
   onCreateJournal: () => void;
-  onOpenRecurringModal: () => void;
   onOpenJournal: (journalId: string) => void;
-  onImportJournals: () => void;
   onOpenSearch: () => void;
   onSelectAll: () => void;
   onSelectJournal: (journalId: string) => void;
@@ -28,24 +26,10 @@ function ManualJournalsTableSkeleton() {
   return (
     <>
       {Array.from({ length: 8 }).map((_, index) => (
-        <tr
-          key={index}
-          style={{
-            borderBottom: "1px solid #f1f5f9",
-            height: "56px",
-          }}
-        >
+        <tr key={index} style={{ borderBottom: "1px solid #f1f5f9", height: "56px" }}>
           <td style={{ padding: "0 16px" }}>
-            <div
-              style={{
-                width: "16px",
-                height: "16px",
-                borderRadius: "4px",
-                backgroundColor: "#e2e8f0",
-              }}
-            />
+            <div style={{ width: "16px", height: "16px", borderRadius: "4px", backgroundColor: "#e2e8f0" }} />
           </td>
-
           {Array.from({ length: 8 }).map((_, cellIndex) => (
             <td key={cellIndex} style={{ padding: "0 12px" }}>
               <div
@@ -72,9 +56,7 @@ export function ManualJournalsListTable({
   sortBy,
   sortOrder,
   onCreateJournal,
-  onOpenRecurringModal,
   onOpenJournal,
-  onImportJournals,
   onOpenSearch,
   onSelectAll,
   onSelectJournal,
@@ -85,99 +67,44 @@ export function ManualJournalsListTable({
       <div
         style={{
           margin: "24px",
-          padding: "70px 24px",
+          backgroundColor: "#ffffff",
+          border: "1px solid #e5e7eb",
+          borderRadius: "22px",
+          padding: "60px 24px",
           textAlign: "center",
         }}
       >
-        <h2
-          style={{
-            margin: 0,
-            fontSize: "30px",
-            fontWeight: 500,
-            color: "#000000",
-          }}
-        >
-          Start making journal entries.
+        <h2 style={{ margin: 0, fontSize: "28px", fontWeight: 700, color: "#111827" }}>
+          Start making journal entries
         </h2>
-
         <p
           style={{
-            margin: "18px auto 0",
-            maxWidth: "620px",
-            fontSize: "16px",
-            lineHeight: 1.6,
-            color: "#6b7280",
+            margin: "12px auto 0",
+            maxWidth: "520px",
+            fontSize: "15px",
+            lineHeight: 1.8,
+            color: "#64748b",
           }}
         >
-          You can transfer & adjust money between accounts.
+          Record transfers, adjustments, and accountant-led corrections from a
+          cleaner list page that keeps the important actions easy to find.
         </p>
-
-        <div
-          style={{
-            marginTop: "42px",
-            display: "flex",
-            justifyContent: "center",
-            gap: "28px",
-            flexWrap: "wrap",
-          }}
-        >
-          <button
-            type="button"
-            onClick={onCreateJournal}
-            style={{
-              minWidth: "320px",
-              border: "1px solid #0D4A52",
-              borderBottom: "3px solid #0D4A52",
-              borderRadius: "8px",
-              padding: "18px 28px",
-              background: "linear-gradient(180deg, #156372 0%, #0D4A52 100%)",
-              color: "#ffffff",
-              cursor: "pointer",
-              fontSize: "16px",
-              fontWeight: 700,
-              boxShadow: "0 1px 2px rgba(15, 23, 42, 0.12)",
-            }}
-          >
-            CREATE NEW JOURNAL
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenRecurringModal}
-            style={{
-              minWidth: "390px",
-              border: "1px solid #d1d5db",
-              borderBottom: "3px solid #d1d5db",
-              borderRadius: "8px",
-              padding: "18px 28px",
-              backgroundColor: "#ffffff",
-              color: "#334155",
-              cursor: "pointer",
-              fontSize: "16px",
-              fontWeight: 600,
-              boxShadow: "0 1px 2px rgba(15, 23, 42, 0.08)",
-            }}
-          >
-            CREATE RECURRING JOURNAL
-          </button>
-        </div>
-
         <button
           type="button"
-          onClick={onImportJournals}
+          onClick={onCreateJournal}
           style={{
-            marginTop: "30px",
+            marginTop: "24px",
             border: "none",
-            backgroundColor: "transparent",
-            color: "#156372",
+            borderRadius: "12px",
+            padding: "12px 18px",
+            backgroundColor: "#156372",
+            color: "#ffffff",
             cursor: "pointer",
-            fontSize: "16px",
-            fontWeight: 600,
-            textDecoration: "underline",
-            textUnderlineOffset: "3px",
+            fontSize: "14px",
+            fontWeight: 700,
           }}
         >
-          Import Journals
+          Create New Journal
         </button>
       </div>
     );
@@ -195,24 +122,10 @@ export function ManualJournalsListTable({
           textAlign: "center",
         }}
       >
-        <h2
-          style={{
-            margin: 0,
-            fontSize: "22px",
-            fontWeight: 700,
-            color: "#111827",
-          }}
-        >
+        <h2 style={{ margin: 0, fontSize: "22px", fontWeight: 700, color: "#111827" }}>
           No journals match the current filters
         </h2>
-
-        <p
-          style={{
-            margin: "10px 0 0",
-            fontSize: "14px",
-            color: "#64748b",
-          }}
-        >
+        <p style={{ margin: "10px 0 0", fontSize: "14px", color: "#64748b" }}>
           Try another view, period, or advanced-search combination.
         </p>
       </div>
@@ -243,24 +156,10 @@ export function ManualJournalsListTable({
         }}
       >
         <div>
-          <h2
-            style={{
-              margin: 0,
-              fontSize: "18px",
-              fontWeight: 700,
-              color: "#111827",
-            }}
-          >
+          <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "#111827" }}>
             Journal Entries
           </h2>
-
-          <p
-            style={{
-              margin: "6px 0 0",
-              fontSize: "13px",
-              color: "#64748b",
-            }}
-          >
+          <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#64748b" }}>
             Review status, references, notes, and reporting method at a glance.
           </p>
         </div>
@@ -274,14 +173,12 @@ export function ManualJournalsListTable({
             gap: "8px",
             borderRadius: "10px",
             border: "1px solid #d1d5db",
-            borderBottom: "3px solid #d1d5db",
             padding: "10px 14px",
             backgroundColor: "#ffffff",
-            color: "#475569",
+            color: "#334155",
             cursor: "pointer",
             fontSize: "14px",
             fontWeight: 600,
-            boxShadow: "0 1px 2px rgba(15, 23, 42, 0.08)",
           }}
         >
           <Search size={16} />
@@ -290,34 +187,17 @@ export function ManualJournalsListTable({
       </div>
 
       <div style={{ overflowX: "auto" }}>
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            minWidth: "1060px",
-          }}
-        >
-          <thead style={{ backgroundColor: "#f6f7fb" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "1060px" }}>
+          <thead style={{ backgroundColor: "#f8fafc" }}>
             <tr>
-              <th
-                style={{
-                  width: "44px",
-                  padding: "14px 16px",
-                  textAlign: "left",
-                }}
-              >
+              <th style={{ width: "44px", padding: "14px 16px", textAlign: "left" }}>
                 <input
                   type="checkbox"
                   checked={allSelected}
                   onChange={onSelectAll}
-                  style={{
-                    width: "16px",
-                    height: "16px",
-                    cursor: "pointer",
-                  }}
+                  style={{ width: "16px", height: "16px", cursor: "pointer" }}
                 />
               </th>
-
               <th
                 style={{
                   padding: "14px 12px",
@@ -346,46 +226,22 @@ export function ManualJournalsListTable({
                   }}
                 >
                   DATE
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      flexDirection: "column",
-                      gap: "1px",
-                    }}
-                  >
-                    <ChevronUp
-                      size={10}
-                      color={
-                        sortBy === "Date" && sortOrder === "asc"
-                          ? "#156372"
-                          : "#cbd5e1"
-                      }
-                    />
-                    <ChevronDown
-                      size={10}
-                      color={
-                        sortBy === "Date" && sortOrder === "desc"
-                          ? "#156372"
-                          : "#cbd5e1"
-                      }
-                    />
+                  <span style={{ display: "inline-flex", flexDirection: "column", gap: "1px" }}>
+                    <ChevronUp size={10} color={sortBy === "Date" && sortOrder === "asc" ? "#156372" : "#cbd5e1"} />
+                    <ChevronDown size={10} color={sortBy === "Date" && sortOrder === "desc" ? "#156372" : "#cbd5e1"} />
                   </span>
                 </button>
               </th>
-
               <th style={headerCellStyle}>JOURNAL#</th>
               <th style={headerCellStyle}>REFERENCE#</th>
               <th style={headerCellStyle}>STATUS</th>
               <th style={headerCellStyle}>NOTES</th>
-              <th style={{ ...headerCellStyle, textAlign: "right" }}>
-                AMOUNT
-              </th>
+              <th style={{ ...headerCellStyle, textAlign: "right" }}>AMOUNT</th>
               <th style={headerCellStyle}>CREATED BY</th>
               <th style={headerCellStyle}>REPORTING METHOD</th>
               <th style={{ ...headerCellStyle, width: "44px" }} />
             </tr>
           </thead>
-
           <tbody>
             {isLoading ? (
               <ManualJournalsTableSkeleton />
@@ -393,7 +249,6 @@ export function ManualJournalsListTable({
               journals.map((journal) => {
                 const journalId = String(journal.id || journal._id);
                 const selected = selectedJournalIds.includes(journalId);
-
                 return (
                   <tr
                     key={journalId}
@@ -410,28 +265,16 @@ export function ManualJournalsListTable({
                         checked={selected}
                         onChange={() => onSelectJournal(journalId)}
                         onClick={(event) => event.stopPropagation()}
-                        style={{
-                          width: "16px",
-                          height: "16px",
-                          cursor: "pointer",
-                        }}
+                        style={{ width: "16px", height: "16px", cursor: "pointer" }}
                       />
                     </td>
-
-                    <td style={bodyCellStyle}>
-                      {formatManualJournalDate(journal.date)}
-                    </td>
-
+                    <td style={bodyCellStyle}>{formatManualJournalDate(journal.date)}</td>
                     <td style={bodyCellStyle}>
                       <span style={{ color: "#2563eb", fontWeight: 600 }}>
                         {journal.journalNumber}
                       </span>
                     </td>
-
-                    <td style={bodyCellStyle}>
-                      {journal.referenceNumber || "-"}
-                    </td>
-
+                    <td style={bodyCellStyle}>{journal.referenceNumber || "-"}</td>
                     <td style={bodyCellStyle}>
                       <span
                         style={{
@@ -458,7 +301,6 @@ export function ManualJournalsListTable({
                         {journal.status}
                       </span>
                     </td>
-
                     <td style={{ ...bodyCellStyle, maxWidth: "220px" }}>
                       <div
                         style={{
@@ -471,29 +313,13 @@ export function ManualJournalsListTable({
                         {journal.notes || "-"}
                       </div>
                     </td>
-
-                    <td
-                      style={{
-                        ...bodyCellStyle,
-                        textAlign: "right",
-                        fontWeight: 700,
-                        color: "#111827",
-                      }}
-                    >
-                      {formatManualJournalCurrency(
-                        journal.amount,
-                        journal.currency,
-                      )}
+                    <td style={{ ...bodyCellStyle, textAlign: "right", fontWeight: 700, color: "#111827" }}>
+                      {formatManualJournalCurrency(journal.amount, journal.currency)}
                     </td>
-
-                    <td style={bodyCellStyle}>
-                      {journal.createdBy || "System"}
-                    </td>
-
+                    <td style={bodyCellStyle}>{journal.createdBy || "System"}</td>
                     <td style={bodyCellStyle}>
                       {journal.reportingMethod || "Accrual and Cash"}
                     </td>
-
                     <td style={{ ...bodyCellStyle, textAlign: "right" }}>
                       <MoreHorizontal size={16} color="#94a3b8" />
                     </td>
@@ -511,11 +337,10 @@ export function ManualJournalsListTable({
 const headerCellStyle: React.CSSProperties = {
   padding: "14px 12px",
   textAlign: "left",
-  fontSize: "10px",
-  fontWeight: 600,
-  color: "#7b8494",
-  letterSpacing: "0.06em",
-  textTransform: "uppercase",
+  fontSize: "11px",
+  fontWeight: 700,
+  color: "#64748b",
+  letterSpacing: "0.08em",
 };
 
 const bodyCellStyle: React.CSSProperties = {

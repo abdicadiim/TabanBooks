@@ -40,12 +40,32 @@ export interface ManualJournalEntry {
   accountId: string;
   description: string;
   contact: string;
+  location?: string;
   type: string;
   tax?: string;
   project?: string;
   reportingTags?: string;
   debits: string;
   credits: string;
+}
+
+export interface ManualJournalLocationOption {
+  id: string;
+  label: string;
+  isDefault?: boolean;
+}
+
+export interface ManualJournalProjectOption {
+  id: string;
+  name: string;
+}
+
+export interface ManualJournalReportingTagOption {
+  id: string;
+  name: string;
+  isRequired?: boolean;
+  moduleLevel?: Record<string, "transaction" | "lineItem">;
+  options?: string[];
 }
 
 export interface ManualJournal {

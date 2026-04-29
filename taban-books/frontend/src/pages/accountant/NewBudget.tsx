@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import toast from "react-hot-toast";
 import { useNavigate, useParams } from "react-router-dom";
 import { saveBudget, getBudgetById, getAccounts } from "./accountantModel";
 import {
@@ -1642,7 +1643,7 @@ function NewBudget() {
                       // Navigate back to budgets list
                       navigate("/accountant/budgets");
                     } else {
-                      alert("Failed to save budget. Please try again.");
+                      toast.error("Failed to save budget. Please try again.");
                     }
                   }
                 }}
@@ -2355,4 +2356,3 @@ function NewBudget() {
 }
 
 export default NewBudget;
-

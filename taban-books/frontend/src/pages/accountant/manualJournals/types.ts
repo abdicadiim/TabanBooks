@@ -2,6 +2,8 @@ import type {
   ManualJournal,
   ManualJournalContact,
   ManualJournalEntry,
+  ManualJournalLocationOption,
+  ManualJournalProjectOption,
   ManualJournalTax,
 } from "../manualJournalTypes";
 
@@ -46,6 +48,8 @@ export interface ManualJournalTemplateRecord {
 export interface BuildManualJournalPayloadArgs {
   attachmentsCount: number;
   availableContacts: ManualJournalContact[];
+  availableLocations: ManualJournalLocationOption[];
+  availableProjects: ManualJournalProjectOption[];
   availableTaxes: ManualJournalTax[];
   entries: ManualJournalEntry[];
   formData: ManualJournalFormState;

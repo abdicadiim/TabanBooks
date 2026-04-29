@@ -32,10 +32,7 @@ export function ManualJournalTemplateSidebar({
     <div
       style={{
         position: "fixed",
-        top: "165px",
-        left: 0,
-        right: 0,
-        bottom: 0,
+        inset: 0,
         zIndex: 50,
         backgroundColor: "rgba(15, 23, 42, 0.45)",
       }}
@@ -45,7 +42,7 @@ export function ManualJournalTemplateSidebar({
         style={{
           marginLeft: "auto",
           display: "flex",
-          height: "calc(100vh - 165px)",
+          height: "100%",
           width: "min(460px, 100%)",
           flexDirection: "column",
           backgroundColor: "#ffffff",

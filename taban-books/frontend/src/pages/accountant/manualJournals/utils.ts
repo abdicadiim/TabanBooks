@@ -51,9 +51,22 @@ export const mapLinesToManualJournalEntries = (
       accountId: line.accountId || line.account_id || line.account || "",
       description: line.description || "",
       contact: line.contact || line.customerName || line.customer_name || "",
+      location:
+        line.locationName ||
+        line.location_name ||
+        line.location ||
+        line.locationId ||
+        line.location_id ||
+        "",
       type: line.type || "",
       tax: line.tax || line.taxName || line.tax_name || "",
-      project: line.project || line.projectId || line.project_id || "",
+      project:
+        line.projectName ||
+        line.project_name ||
+        line.project ||
+        line.projectId ||
+        line.project_id ||
+        "",
       reportingTags: line.reportingTags || line.reporting_tags || "",
       debits: debit ? String(debit) : "",
       credits: credit ? String(credit) : "",
@@ -98,6 +111,7 @@ const hasLineContent = (entry: ManualJournalEntry) =>
       (Number.parseFloat(entry.credits) || 0) > 0 ||
       entry.description ||
       entry.contact ||
+      entry.location ||
       entry.type ||
       entry.tax ||
       entry.project ||
@@ -110,6 +124,8 @@ const formatLineValidationError = (index: number, message: string) =>
 export const buildManualJournalPayload = ({
   attachmentsCount,
   availableContacts,
+  availableLocations,
+  availableProjects,
   availableTaxes,
   entries,
   formData,
@@ -161,6 +177,28 @@ export const buildManualJournalPayload = ({
       (contact) => contact.name === entry.contact,
     );
     const selectedTax = availableTaxes.find((tax) => tax.name === entry.tax);
+    const selectedLocation = availableLocations.find((location) => {
+      const entryLocation = String(entry.location || "").trim().toLowerCase();
+      if (!entryLocation) {
+        return false;
+      }
+
+      return (
+        location.id.trim().toLowerCase() === entryLocation ||
+        location.label.trim().toLowerCase() === entryLocation
+      );
+    });
+    const selectedProject = availableProjects.find((project) => {
+      const entryProject = String(entry.project || "").trim().toLowerCase();
+      if (!entryProject) {
+        return false;
+      }
+
+      return (
+        project.id.trim().toLowerCase() === entryProject ||
+        project.name.trim().toLowerCase() === entryProject
+      );
+    });
 
     normalizedEntries.push({
       id: entry.id,
@@ -175,11 +213,15 @@ export const buildManualJournalPayload = ({
         selectedContact?.type === "Customer"
           ? selectedContact.name
           : undefined,
+      location: selectedLocation?.label || entry.location || undefined,
+      locationId: selectedLocation?.id,
       type: entry.type || "",
       tax: entry.tax || undefined,
       taxId: selectedTax?._id || selectedTax?.id,
       taxName: selectedTax?.name || entry.tax || undefined,
-      project: entry.project || undefined,
+      project: selectedProject?.name || entry.project || undefined,
+      projectId: selectedProject?.id,
+      projectName: selectedProject?.name || entry.project || undefined,
       reportingTags: entry.reportingTags || undefined,
       debits: debit > 0 ? String(debit) : "",
       credits: credit > 0 ? String(credit) : "",

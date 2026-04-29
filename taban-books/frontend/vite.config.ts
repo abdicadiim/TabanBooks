@@ -9,7 +9,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, "");
-  const rawApiBaseUrl = env.VITE_API_BASE_URL || process.env.VITE_API_BASE_URL || "http://127.0.0.1:5000";
+  const rawApiBaseUrl =
+    env.VITE_API_BASE_URL ||
+    process.env.VITE_API_BASE_URL ||
+    "http://127.0.0.1:5000";
+
   // Normalize localhost to IPv4 loopback to avoid intermittent Node DNS localhost resolution issues in proxy.
   const apiBaseUrl = rawApiBaseUrl.replace("http://localhost:", "http://127.0.0.1:");
   const frontendUrl = env.VITE_FRONTEND_URL || process.env.VITE_FRONTEND_URL || "http://localhost:5175";
@@ -61,9 +65,7 @@ export default defineConfig(({ mode }) => {
                 return "spreadsheet";
               }
 
-              if (
-                normalizedId.includes("/jspdf/")
-              ) {
+              if (normalizedId.includes("/jspdf/")) {
                 return "pdf-core";
               }
 
@@ -138,31 +140,30 @@ export default defineConfig(({ mode }) => {
           ws: true,
           timeout: 30000,
           proxyTimeout: 30000,
-          // Retry on connection errors
-          configure: (proxy: HttpProxy.Server, _options: ProxyOptions) => {
-            proxy.on('error', (err: Error, req: IncomingMessage, res: ServerResponse) => {
-              console.error('[Vite Proxy] Proxy error:', err.message);
-              console.error('[Vite Proxy] Request:', req.url);
+          configure: (proxy: HttpProxy.Server) => {
+            proxy.on("error", (err: Error, req: IncomingMessage, res: ServerResponse) => {
+              console.error("[Vite Proxy] Proxy error:", err.message);
+              console.error("[Vite Proxy] Request:", req.url);
             });
 
             if (isProxyDebugEnabled) {
-              proxy.on('proxyReq', (_proxyReq: any, req: IncomingMessage, _res: ServerResponse) => {
-                console.log('[Vite Proxy] Proxying:', req.method, req.url);
+              proxy.on("proxyReq", (_proxyReq: unknown, req: IncomingMessage, _res: ServerResponse) => {
+                console.log("[Vite Proxy] Proxying:", req.method, req.url);
               });
-              console.log('[Vite Proxy] Proxy middleware configured');
-              console.log('[Vite Proxy] Target:', apiBaseUrl);
+              console.log("[Vite Proxy] Proxy middleware configured");
+              console.log("[Vite Proxy] Target:", apiBaseUrl);
             }
           },
-        }
-      }
+        },
+      },
     },
   };
 
   if (isProxyDebugEnabled) {
-    console.log('[Vite Config] Proxy target:', apiBaseUrl);
-    console.log('[Vite Config] Frontend URL:', frontendUrl);
-    console.log('[Vite Config] Frontend port:', port);
-    console.log('[Vite Config] Mode:', mode);
+    console.log("[Vite Config] Proxy target:", apiBaseUrl);
+    console.log("[Vite Config] Frontend URL:", frontendUrl);
+    console.log("[Vite Config] Frontend port:", port);
+    console.log("[Vite Config] Mode:", mode);
   }
 
   return config;

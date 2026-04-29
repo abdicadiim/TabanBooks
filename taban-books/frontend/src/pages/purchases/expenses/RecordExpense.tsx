@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from "react";
+﻿﻿import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
@@ -20,6 +20,7 @@ import {
   Trash2,
 } from "lucide-react";
 import DatePicker from "../../../components/DatePicker";
+import { toast } from "react-hot-toast";
 import NewVendorModal from "../bills/NewVendorModal";
 import { vendorsAPI, customersAPI, expensesAPI, chartOfAccountsAPI, bankAccountsAPI, journalEntriesAPI, projectsAPI, currenciesAPI as dbCurrenciesAPI, taxesAPI } from "../../../services/api";
 import NewCurrencyModal from "../../settings/organization-settings/setup-configurations/currencies/NewCurrencyModal";
@@ -908,7 +909,7 @@ export default function RecordExpense() {
     const validFiles = files.filter(file => {
       // Check file size (10MB limit)
       if (file.size > 10 * 1024 * 1024) {
-        alert(`File "${file.name}" exceeds 10MB limit. Maximum file size is 10MB.`);
+        toast.error(`File "${file.name}" exceeds 10MB limit. Maximum file size is 10MB.`);
         return false;
       }
       return true;
@@ -1021,7 +1022,7 @@ export default function RecordExpense() {
       );
 
       if (validBulkExpenses.length === 0) {
-        alert("Please fill in at least one expense with all required fields (Date, Expense Account, Amount, Paid Through)");
+        toast.error("Please fill in at least one expense with all required fields (Date, Expense Account, Amount, Paid Through)");
         setSaveLoadingState(null);
         return false;
       }
@@ -1066,7 +1067,7 @@ export default function RecordExpense() {
         }
 
         if (successCount > 0) {
-          alert(`${successCount} expenses saved successfully!${errorMessages.length > 0 ? `\nErrors: ${errorMessages.join(', ')}` : ''}`);
+          toast.success(`${successCount} expenses saved successfully!${errorMessages.length > 0 ? `\nErrors: ${errorMessages.join(', ')}` : ''}`);
           window.dispatchEvent(new Event("expensesUpdated"));
 
           if (navigateAway) {
@@ -1074,12 +1075,12 @@ export default function RecordExpense() {
           }
           return true;
         } else {
-          alert(`Failed to save expenses: ${errorMessages.join(', ')}`);
+          toast.error(`Failed to save expenses: ${errorMessages.join(', ')}`);
           return false;
         }
       } catch (error: any) {
         console.error("Error saving bulk expenses:", error);
-        alert(error?.message || "Error creating bulk expenses. Please try again.");
+        toast.error(error?.message || "Error creating bulk expenses. Please try again.");
         return false;
       } finally {
         setSaveLoadingState(null);
@@ -1088,7 +1089,7 @@ export default function RecordExpense() {
 
     // Validate required fields for single expense
     if (!formData.date || !formData.expenseAccount || !formData.amount || !formData.paidThrough) {
-      alert("Please fill in all required fields (Date, Expense Account, Amount, Paid Through)");
+      toast.error("Please fill in all required fields (Date, Expense Account, Amount, Paid Through)");
       setSaveLoadingState(null);
       return false;
     }
@@ -1165,7 +1166,7 @@ export default function RecordExpense() {
         // Generate journal entry for the expense
         await generateJournalEntry(expenseData);
 
-        alert("Expense saved successfully!");
+        toast.success("Expense saved successfully!");
         window.dispatchEvent(new Event("expensesUpdated"));
 
         if (navigateAway) {
@@ -1173,12 +1174,12 @@ export default function RecordExpense() {
         }
         return true;
       } else {
-        alert(response?.message || "Error creating expense");
+        toast.error(response?.message || "Error creating expense");
         return false;
       }
     } catch (error: any) {
       console.error("Error saving expense:", error);
-      alert(error?.message || "Error creating expense. Please try again.");
+      toast.error(error?.message || "Error creating expense. Please try again.");
       return false;
     } finally {
       setSaveLoadingState(null);
@@ -1464,7 +1465,7 @@ export default function RecordExpense() {
 
   const handleSaveAndSelect = async () => {
     if (!newAccountData.accountName.trim()) {
-      alert("Please enter an account name");
+      toast.error("Please enter an account name");
       return;
     }
 
@@ -1531,13 +1532,13 @@ export default function RecordExpense() {
           tabanExpense: false,
         });
 
-        alert("Account created successfully!");
+        toast.success("Account created successfully!");
       } else {
-        alert(response.message || "Failed to create account");
+        toast.error(response.message || "Failed to create account");
       }
     } catch (error: any) {
       console.error("Error creating account:", error);
-      alert("Error creating account: " + (error.message || "Unknown error"));
+      toast.error("Error creating account: " + (error.message || "Unknown error"));
     }
   };
 
@@ -5568,4 +5569,3 @@ export default function RecordExpense() {
     </>
   );
 }
-

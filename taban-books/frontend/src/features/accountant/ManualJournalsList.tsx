@@ -1,11 +1,10 @@
-import React, { useState } from "react";
+import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { AccountantDirectorySidebar } from "./components/AccountantDirectorySidebar";
 import { ManualJournalAdvancedSearchModal } from "./manualJournalsList/ManualJournalAdvancedSearchModal";
 import { ManualJournalExportModal } from "./manualJournalsList/ManualJournalExportModal";
 import { ManualJournalTemplateModal } from "./manualJournalsList/ManualJournalTemplateModal";
-import { ManualJournalTemplateSidebar } from "./manualJournals/ManualJournalTemplateSidebar";
 import { ManualJournalsListBulkActions } from "./manualJournalsList/ManualJournalsListBulkActions";
 import { ManualJournalsListHeader } from "./manualJournalsList/ManualJournalsListHeader";
 import { ManualJournalsListTable } from "./manualJournalsList/ManualJournalsListTable";
@@ -16,28 +15,9 @@ function ManualJournalsList() {
   const location = useLocation();
   const controller = useManualJournalsListController(location.pathname);
 
-  const [isTemplateSidebarOpen, setIsTemplateSidebarOpen] = useState(false);
-
-  const openNewJournal = () => {
-    navigate("/accountant/manual-journals/new");
-  };
-
-  const openTemplateSidebar = () => {
-    setIsTemplateSidebarOpen(true);
-  };
-
-  const closeTemplateSidebar = () => {
-    setIsTemplateSidebarOpen(false);
-  };
-
   return (
     <>
-      <div
-        style={{
-          minHeight: "calc(100vh - 60px)",
-          backgroundColor: "#f8fafc",
-        }}
-      >
+      <div style={{ minHeight: "calc(100vh - 60px)", backgroundColor: "#f8fafc" }}>
         <ManualJournalsListBulkActions
           isBusy={controller.isBusy}
           selectedCount={controller.selectedJournals.length}
@@ -63,17 +43,11 @@ function ManualJournalsList() {
           onChangeView={controller.handleViewSelectionChange}
           onClearAdvancedSearch={controller.clearAdvancedSearch}
           onImport={(route) => navigate(route)}
-          onManageTemplates={() =>
-            navigate("/accountant/manual-journals/templates")
-          }
-          onNewCustomView={() =>
-            navigate("/accountant/manual-journals/new-custom-view")
-          }
-          onNewFromTemplate={openTemplateSidebar}
-          onNewJournal={openNewJournal}
-          onNewTemplate={() =>
-            navigate("/accountant/manual-journals/templates/new")
-          }
+          onManageTemplates={() => navigate("/accountant/manual-journals/templates")}
+          onNewCustomView={() => navigate("/accountant/manual-journals/new-custom-view")}
+          onNewFromTemplate={() => navigate("/accountant/manual-journals/new?fromTemplate=true")}
+          onNewJournal={() => navigate("/accountant/manual-journals/new")}
+          onNewTemplate={() => navigate("/accountant/manual-journals/templates/new")}
           onOpenAccountants={controller.openAccountants}
           onOpenExport={controller.openExportModal}
           onOpenSearch={controller.openSearchModal}
@@ -87,12 +61,8 @@ function ManualJournalsList() {
           selectedJournalIds={controller.selectedJournals}
           sortBy={controller.sortBy}
           sortOrder={controller.sortOrder}
-          onCreateJournal={openNewJournal}
-          onOpenRecurringModal={openTemplateSidebar}
-          onOpenJournal={(journalId) =>
-            navigate(`/accountant/manual-journals/${journalId}`)
-          }
-          onImportJournals={() => navigate("/accountant/manual-journals/import")}
+          onCreateJournal={() => navigate("/accountant/manual-journals/new")}
+          onOpenJournal={(journalId) => navigate(`/accountant/manual-journals/${journalId}`)}
           onOpenSearch={controller.openSearchModal}
           onSelectAll={controller.selectAllJournals}
           onSelectJournal={controller.toggleJournalSelection}
@@ -131,22 +101,6 @@ function ManualJournalsList() {
         onClose={controller.closeTemplateModal}
         onRemoveField={controller.removeTemplateField}
         onSave={controller.saveTemplate}
-      />
-
-      <ManualJournalTemplateSidebar
-        open={isTemplateSidebarOpen}
-        isLoading={controller.isLoading}
-        templates={controller.savedTemplates}
-        onClose={closeTemplateSidebar}
-        onCreateTemplate={() =>
-          navigate("/accountant/manual-journals/templates/new")
-        }
-        onApply={(template) => {
-          closeTemplateSidebar();
-          navigate("/accountant/manual-journals/new?fromTemplate=true", {
-            state: { template },
-          });
-        }}
       />
 
       <AccountantDirectorySidebar

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import toast from "react-hot-toast";
 import { useNavigate, useLocation } from "react-router-dom";
 import { X } from "lucide-react";
 import { saveJournalTemplate } from "./accountantModel";
@@ -340,8 +341,8 @@ function NewJournalTemplate() {
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", padding: "24px 32px", borderTop: "1px solid #e5e7eb", backgroundColor: "#f9fafb", position: "sticky", bottom: 0 }}>
         <button onClick={() => navigate("/accountant/manual-journals/templates")} style={{ padding: "12px 24px", background: "white", border: "1px solid #d1d5db", borderRadius: "8px", cursor: "pointer" }}>Cancel</button>
         <button onClick={async () => {
-          if (!formData.templateName.trim()) return alert("Template name is required");
-          if (!formData.notes.trim()) return alert("Notes are required");
+          if (!formData.templateName.trim()) return toast.error("Template name is required");
+          if (!formData.notes.trim()) return toast.error("Notes are required");
 
           const lines = templateEntries
             .filter((entry) => entry.account)
@@ -360,7 +361,7 @@ function NewJournalTemplate() {
             });
 
           if (lines.length === 0) {
-            alert("Please add at least one account line.");
+            toast.error("Please add at least one account line.");
             return;
           }
 
@@ -378,7 +379,7 @@ function NewJournalTemplate() {
 
           const success = await saveJournalTemplate(payload);
           if (!success) {
-            alert("Failed to save template.");
+            toast.error("Failed to save template.");
             return;
           }
 

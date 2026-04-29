@@ -1542,7 +1542,7 @@ export default function InvoiceDetail() { // Start of component
 
   const handleSendEmailSubmit = async () => {
     if (!emailData.to || !emailData.subject) {
-      toast("Please fill in required fields (To and Subject)");
+      toast.error("Please fill in required fields (To and Subject)");
       return;
     }
 
@@ -1676,7 +1676,7 @@ export default function InvoiceDetail() { // Start of component
 
   const handleScheduleEmailSubmit = () => {
     if (!scheduleData.to || !scheduleData.subject || !scheduleData.date || !scheduleData.time) {
-      toast("Please fill in required fields (To, Subject, Date, and Time)");
+      toast.error("Please fill in required fields (To, Subject, Date, and Time)");
       return;
     }
     // TODO: Implement actual email sending
@@ -1719,7 +1719,7 @@ export default function InvoiceDetail() { // Start of component
 
   const handleGenerateLink = () => {
     if (!linkExpirationDate) {
-      toast("Please select an expiration date");
+      toast.error("Please select an expiration date");
       return;
     }
 
@@ -2931,14 +2931,14 @@ export default function InvoiceDetail() { // Start of component
   const handleFileUpload = (files: FileList | File[]) => {
     const validFiles = Array.from(files as ArrayLike<File>).filter(file => {
       if (file.size > 10 * 1024 * 1024) {
-        toast(`File ${file.name} is too large. Maximum size is 10MB.`);
+        toast.error(`File ${file.name} is too large. Maximum size is 10MB.`);
         return false;
       }
       return true;
     });
 
     if (invoiceAttachments.length + validFiles.length > 5) {
-      toast("Maximum 5 files allowed. Please remove some files first.");
+      toast.error("Maximum 5 files allowed. Please remove some files first.");
       return;
     }
 
