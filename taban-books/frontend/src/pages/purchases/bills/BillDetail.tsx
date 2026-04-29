@@ -2470,7 +2470,7 @@ export default function BillDetail() {
                     </div>
                   </div>
                   <div style={styles.sidebarItemNumber}>
-                    {b.billNumber} â€¢ {formatDateShort(b.billDate)}
+                    {b.billNumber} • {formatDateShort(b.billDate)}
                   </div>
                   <div
                     className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-block ${status.color}`}
@@ -3232,7 +3232,7 @@ export default function BillDetail() {
                     data={{
                       ...bill,
                       number: bill.billNumber,
-                      date: bill.billDate,
+                      date: formatDateShort(bill.billDate),
                       customerName: bill.vendorName,
                       billingAddress: bill.vendorAddress || `${bill.vendorCity || ""}, ${bill.vendorCountry || ""}`,
                       items: (bill.items || []).map((item: any) => ({

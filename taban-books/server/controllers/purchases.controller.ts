@@ -20,6 +20,7 @@ import BankTransaction from "../models/BankTransaction.js";
 import Currency from "../models/Currency.js";
 import Organization from "../models/Organization.js";
 import { updateAccountBalances } from "../utils/accounting.js";
+import { syncLinkedBankTransaction } from "../utils/bankTransactionSync.js";
 import { sendEmail } from "../services/email.service.js";
 import mongoose from "mongoose";
 import fs from "fs";
@@ -94,6 +95,175 @@ const deriveBillPaymentStatus = (bill: any, balance: number, settledAmount: numb
     return "partially paid";
   }
   return "open";
+};
+
+const applyVendorCreditToLinkedBill = async (
+  organizationId: string,
+  credit: any,
+  session: mongoose.ClientSession
+): Promise<number> => {
+  const billId = String(credit?.bill || "").trim();
+  const creditId = String(credit?._id || credit?.id || "").trim();
+  const vendorId = String(credit?.vendor || "").trim();
+  const creditStatus = String(credit?.status || "").toLowerCase().trim();
+
+  if (!billId || !creditId || !vendorId) return 0;
+  if (!mongoose.Types.ObjectId.isValid(billId)) return 0;
+  if (creditStatus === "draft" || creditStatus === "cancelled" || creditStatus === "refunded") return 0;
+
+  const bill = await Bill.findOne({
+    _id: billId,
+    organization: organizationId,
+  }).session(session);
+
+  if (!bill) return 0;
+  if (String(bill.vendor || "") !== vendorId) return 0;
+
+  const billStatus = String(bill.status || "").toLowerCase().trim();
+  if (billStatus === "draft" || billStatus === "void" || billStatus === "cancelled") return 0;
+
+  const alreadyApplied = Math.max(0, roundMoney(Number(credit.total || 0) - Number(credit.balance || 0)));
+  const billCurrentCreditsApplied = roundMoney(Number((bill as any).vendorCreditsApplied || 0));
+  const billCurrentPaidAmount = roundMoney(Number((bill as any).paidAmount || 0));
+  const billCurrentBalance = roundMoney(Math.max(0, Number(bill.total || 0) - billCurrentPaidAmount - billCurrentCreditsApplied));
+  const availableCreditBalance = roundMoney(Number(credit.balance || 0));
+  const amountToApply = roundMoney(Math.min(availableCreditBalance, billCurrentBalance));
+
+  if (amountToApply <= 0) {
+    const refreshedCreditBalance = roundMoney(Number(credit.balance || 0));
+    credit.status = refreshedCreditBalance <= 0 ? "closed" : alreadyApplied > 0 ? "applied" : credit.status;
+    await credit.save({ session });
+    return 0;
+  }
+
+  (bill as any).vendorCreditsApplied = roundMoney(billCurrentCreditsApplied + amountToApply);
+  bill.balance = roundMoney(Math.max(0, Number(bill.total || 0) - billCurrentPaidAmount - Number((bill as any).vendorCreditsApplied || 0)));
+  bill.status = deriveBillPaymentStatus(
+    bill,
+    roundMoney(Number(bill.balance || 0)),
+    roundMoney(billCurrentPaidAmount + Number((bill as any).vendorCreditsApplied || 0))
+  ) as any;
+  await bill.save({ session });
+
+  credit.balance = roundMoney(Math.max(0, availableCreditBalance - amountToApply));
+  credit.status = Number(credit.balance || 0) <= 0 ? "closed" : "applied";
+  await credit.save({ session });
+
+  return amountToApply;
+};
+
+const releaseVendorCreditFromLinkedBill = async (
+  organizationId: string,
+  credit: any,
+  session: mongoose.ClientSession
+): Promise<number> => {
+  const billId = String(credit?.bill || "").trim();
+  const vendorId = String(credit?.vendor || "").trim();
+
+  if (!billId || !vendorId) return 0;
+  if (!mongoose.Types.ObjectId.isValid(billId)) return 0;
+
+  const appliedAmount = Math.max(0, roundMoney(Number(credit.total || 0) - Number(credit.balance || 0)));
+  if (appliedAmount <= 0) return 0;
+
+  const bill = await Bill.findOne({
+    _id: billId,
+    organization: organizationId,
+  }).session(session);
+
+  if (!bill) return 0;
+  if (String(bill.vendor || "") !== vendorId) return 0;
+
+  const billCurrentCreditsApplied = roundMoney(Number((bill as any).vendorCreditsApplied || 0));
+  (bill as any).vendorCreditsApplied = roundMoney(Math.max(0, billCurrentCreditsApplied - appliedAmount));
+  const paidAmount = roundMoney(Number((bill as any).paidAmount || 0));
+  bill.balance = roundMoney(Math.max(0, Number(bill.total || 0) - paidAmount - Number((bill as any).vendorCreditsApplied || 0)));
+  bill.status = deriveBillPaymentStatus(
+    bill,
+    roundMoney(Number(bill.balance || 0)),
+    roundMoney(paidAmount + Number((bill as any).vendorCreditsApplied || 0))
+  ) as any;
+  await bill.save({ session });
+
+  return appliedAmount;
+};
+
+const deleteVendorCreditsLinkedToBill = async (
+  organizationId: string,
+  billId: mongoose.Types.ObjectId,
+  session: mongoose.ClientSession
+): Promise<string[]> => {
+  const linkedCredits = await VendorCredit.find({
+    organization: organizationId,
+    bill: billId,
+  }).session(session);
+
+  const deletedCreditIds: string[] = [];
+
+  for (const credit of linkedCredits) {
+    const stockDelta = buildVendorCreditStockDelta(
+      (credit as any).items || [],
+      (credit as any).status,
+      [],
+      "draft"
+    );
+
+    await applyVendorCreditStockDelta(organizationId, stockDelta, session);
+    await releaseVendorCreditFromLinkedBill(organizationId, credit, session);
+
+    await VendorCredit.deleteOne({
+      _id: credit._id,
+      organization: organizationId,
+    }).session(session);
+
+    deletedCreditIds.push(String(credit._id));
+  }
+
+  return deletedCreditIds;
+};
+
+const deletePaymentsLinkedToBill = async (
+  organizationId: string,
+  billId: mongoose.Types.ObjectId,
+  session: mongoose.ClientSession
+): Promise<string[]> => {
+  const linkedPayments = await PaymentMade.find({
+    organization: organizationId,
+    "allocations.bill": billId,
+  }).session(session);
+
+  const deletedPaymentIds: string[] = [];
+
+  for (const payment of linkedPayments) {
+    const journals = await JournalEntry.find({
+      organization: organizationId,
+      sourceId: payment._id,
+      sourceType: "payment_made",
+    }).session(session);
+
+    for (const entry of journals) {
+      try {
+        await updateAccountBalances(entry.lines, organizationId, true);
+      } catch (err) {
+        console.error("[BILLS] Failed to reverse linked payment journal balances:", err);
+      }
+    }
+
+    await JournalEntry.deleteMany({
+      organization: organizationId,
+      sourceId: payment._id,
+      sourceType: "payment_made",
+    }).session(session);
+
+    await PaymentMade.deleteOne({
+      _id: payment._id,
+      organization: organizationId,
+    }).session(session);
+
+    deletedPaymentIds.push(String(payment._id));
+  }
+
+  return deletedPaymentIds;
 };
 
 const hydrateBillBalancesAndStatuses = async (organizationId: string, bills: any[]) => {
@@ -2295,7 +2465,7 @@ export const deleteBill = async (req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
-    const bill = await Bill.findOneAndDelete({
+    const bill = await Bill.findOne({
       _id: id,
       organization: req.user.organizationId
     }).session(session);
@@ -2304,6 +2474,18 @@ export const deleteBill = async (req: AuthRequest, res: Response): Promise<void>
       res.status(404).json({ success: false, message: 'Bill not found' });
       return;
     }
+
+    const deletedVendorCreditIds = await deleteVendorCreditsLinkedToBill(
+      req.user.organizationId.toString(),
+      bill._id as mongoose.Types.ObjectId,
+      session
+    );
+
+    const deletedPaymentIds = await deletePaymentsLinkedToBill(
+      req.user.organizationId.toString(),
+      bill._id as mongoose.Types.ObjectId,
+      session
+    );
 
     // Reverse stock changes if the bill was not a draft/void/cancelled
     if (bill.status !== 'draft' && bill.status !== 'void' && bill.status !== 'cancelled') {
@@ -2322,6 +2504,11 @@ export const deleteBill = async (req: AuthRequest, res: Response): Promise<void>
         console.error('[BILLS] Error reversing journal entry on bill deletion:', err);
       }
     }
+
+    await Bill.deleteOne({
+      _id: id,
+      organization: req.user.organizationId
+    }).session(session);
 
     const linkedPurchaseOrderId = String(
       (bill as any).purchaseOrderId ||
@@ -2348,6 +2535,34 @@ export const deleteBill = async (req: AuthRequest, res: Response): Promise<void>
     }
 
     await session.commitTransaction();
+
+    for (const paymentId of deletedPaymentIds) {
+      try {
+        await syncLinkedBankTransaction({
+          organizationId: req.user.organizationId,
+          transactionKey: `payment_made:${paymentId}`,
+          source: "payment_made",
+          transactionType: "withdrawal",
+          debitOrCredit: "debit",
+          amount: 0,
+          shouldSync: false,
+        });
+      } catch (bankSyncError) {
+        console.error("[BILLS] Failed to remove linked bank transaction after payment delete:", bankSyncError);
+      }
+    }
+
+    if (deletedVendorCreditIds.length > 0) {
+      try {
+        await reverseAndDeleteVendorCreditJournals(
+          deletedVendorCreditIds,
+          req.user.organizationId.toString()
+        );
+      } catch (journalError: any) {
+        console.error("[BILLS] Failed to reverse linked vendor credit journals on bill delete:", journalError?.message || journalError);
+      }
+    }
+
     res.json({ success: true, message: 'Bill deleted' });
   } catch (error: any) {
     // Check if session has active transaction
@@ -2751,6 +2966,12 @@ export const createVendorCredit = async (req: AuthRequest, res: Response): Promi
       { itemCount: stockDelta.size }
     );
 
+    await measureRequestStep(
+      req as any,
+      "vendor-credits.auto-apply-linked-bill",
+      () => applyVendorCreditToLinkedBill(req.user!.organizationId.toString(), credit, session)
+    );
+
     const creditDataForResponse =
       typeof (credit as any)?.toObject === "function"
         ? (credit as any).toObject()
@@ -3011,6 +3232,12 @@ export const updateVendorCredit = async (req: AuthRequest, res: Response): Promi
     }
 
     if (!isMetadataOnlyUpdate) {
+      await measureRequestStep(
+        req as any,
+        "vendor-credits.release-linked-bill-before-update",
+        () => releaseVendorCreditFromLinkedBill(req.user!.organizationId.toString(), existingCredit, session)
+      );
+
       const nextStatus = updateData.status !== undefined ? updateData.status : existingCredit.status;
       const nextItems = Array.isArray(updateData.items) ? updateData.items : (existingCredit.items || []);
       const stockDelta = buildVendorCreditStockDelta(
@@ -3024,6 +3251,12 @@ export const updateVendorCredit = async (req: AuthRequest, res: Response): Promi
         "vendor-credits.apply-stock-delta",
         () => applyVendorCreditStockDelta(req.user!.organizationId.toString(), stockDelta, session),
         { itemCount: stockDelta.size }
+      );
+
+      await measureRequestStep(
+        req as any,
+        "vendor-credits.auto-apply-linked-bill-after-update",
+        () => applyVendorCreditToLinkedBill(req.user!.organizationId.toString(), credit, session)
       );
     }
 
@@ -3169,6 +3402,7 @@ export const deleteVendorCredit = async (req: AuthRequest, res: Response): Promi
       "draft"
     );
     await applyVendorCreditStockDelta(req.user.organizationId.toString(), stockDelta, session);
+    await releaseVendorCreditFromLinkedBill(req.user.organizationId.toString(), credit, session);
 
     await VendorCredit.deleteOne({
       _id: id,
@@ -3245,6 +3479,8 @@ export const bulkDeleteVendorCredits = async (req: AuthRequest, res: Response): 
       for (const [itemId, delta] of stockDelta.entries()) {
         combinedStockDelta.set(itemId, (combinedStockDelta.get(itemId) || 0) + delta);
       }
+
+      await releaseVendorCreditFromLinkedBill(req.user.organizationId.toString(), credit, session);
     }
 
     await applyVendorCreditStockDelta(req.user.organizationId.toString(), combinedStockDelta, session);
