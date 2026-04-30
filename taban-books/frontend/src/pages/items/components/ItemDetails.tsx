@@ -78,6 +78,74 @@ const toFiniteNumber = (value: any): number | null => {
     return Number.isFinite(parsed) ? parsed : null;
 };
 
+const normalizeLocationKey = (value: any): string =>
+    String(value || "").trim().toLowerCase();
+
+const buildLocationStockMap = (item: any, locations: any[], totalStock: number): Record<string, number> => {
+    const stockMap: Record<string, number> = {};
+
+    const assignStock = (name: any, value: any) => {
+        const key = normalizeLocationKey(name);
+        const parsed = toFiniteNumber(value);
+        if (!key || parsed === null) return;
+        stockMap[key] = parsed;
+    };
+
+    [
+        item?.locationStocks,
+        item?.stockByLocation,
+        item?.inventoryByLocation,
+        item?.locationQuantities,
+        item?.quantityByLocation,
+    ].forEach((source: any) => {
+        if (!source) return;
+
+        if (Array.isArray(source)) {
+            source.forEach((entry: any) => {
+                assignStock(
+                    entry?.name || entry?.locationName || entry?.location || entry?.label,
+                    entry?.stockOnHand ?? entry?.stockQuantity ?? entry?.quantityOnHand ?? entry?.quantity ?? entry?.availableQty,
+                );
+            });
+            return;
+        }
+
+        if (typeof source === "object") {
+            Object.entries(source).forEach(([name, value]) => {
+                if (value && typeof value === "object") {
+                    assignStock(
+                        (value as any)?.name || (value as any)?.locationName || name,
+                        (value as any)?.stockOnHand ?? (value as any)?.stockQuantity ?? (value as any)?.quantityOnHand ?? (value as any)?.quantity ?? (value as any)?.availableQty,
+                    );
+                } else {
+                    assignStock(name, value);
+                }
+            });
+        }
+    });
+
+    const defaultLocationName =
+        locations.find((loc: any) => loc?.isDefault)?.name ||
+        locations.find((loc: any) => normalizeLocationKey(loc?.name || loc?.locationName) === "head office")?.name ||
+        item?.locationName ||
+        item?.warehouseLocation ||
+        "Head Office";
+
+    const defaultLocationKey = normalizeLocationKey(defaultLocationName);
+    if (defaultLocationKey && !Object.prototype.hasOwnProperty.call(stockMap, defaultLocationKey)) {
+        stockMap[defaultLocationKey] = totalStock;
+    }
+
+    (locations || []).forEach((loc: any) => {
+        const key = normalizeLocationKey(loc?.name || loc?.locationName);
+        if (key && !Object.prototype.hasOwnProperty.call(stockMap, key)) {
+            stockMap[key] = 0;
+        }
+    });
+
+    return stockMap;
+};
+
 export default function ItemDetails({
     item,
     onBack,
@@ -135,6 +203,7 @@ export default function ItemDetails({
 
     const committedStock = toFiniteNumber(inventorySummary?.committedStock) ?? 0;
     const availableForSale = resolvedStockOnHand - committedStock;
+    const adjustStockLocationStocks = buildLocationStockMap(item, locations, resolvedStockOnHand);
 
     const transactionTypeOptions = [
         "Quotes",
@@ -597,6 +666,7 @@ export default function ItemDetails({
     return (
         <div className="flex flex-col h-full bg-white relative">
             {/* Top Navigation / Header */}
+            {!showAdjustStock && (
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                     <h1 className="text-2xl font-bold text-slate-800 truncate">{item.name}</h1>
@@ -681,8 +751,10 @@ export default function ItemDetails({
                     </button>
                 </div>
             </div>
+            )}
 
             {/* Tabs Bar - Scrollable on mobile */}
+            {!showAdjustStock && (
             <div className="flex items-center gap-4 sm:gap-8 px-6 border-b border-gray-100 overflow-x-auto no-scrollbar">
                 {["Overview", "Locations", "Transactions", "History"].map(tab => (
                     <button
@@ -694,6 +766,7 @@ export default function ItemDetails({
                     </button>
                 ))}
             </div>
+            )}
 
             {/* Main Content Area */}
             <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
@@ -703,6 +776,7 @@ export default function ItemDetails({
                         initialAccounts={adjustStockAccounts}
                         initialLocations={locations}
                         initialStockOnHand={resolvedStockOnHand}
+                        initialLocationStocks={adjustStockLocationStocks}
                         onBack={() => setShowAdjustStock(false)}
                         onUpdate={async (data) => {
                             await onUpdate({ ...item, ...data });

@@ -12,6 +12,7 @@ interface AdjustStockProps {
     initialAccounts?: Account[];
     initialLocations?: Array<any>;
     initialStockOnHand?: number;
+    initialLocationStocks?: Record<string, number>;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 11);
@@ -27,10 +28,22 @@ const DEFAULT_REASONS = [
 const inputClassName =
     "h-11 w-full rounded-md border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-400 focus:border-[#156372] focus:ring-2 focus:ring-[rgba(21,99,114,0.15)]";
 
+const numberInputClassName = `${inputClassName} appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`;
+
 const readOnlyInputClassName =
     "h-11 w-full rounded-md border border-slate-200 bg-slate-50 px-4 text-sm text-slate-400 outline-none";
 
-export default function AdjustStock({ item, onBack, onUpdate, initialAccounts = [], initialLocations = [], initialStockOnHand }: AdjustStockProps) {
+const normalizeLocationKey = (value: any) => String(value || "").trim().toLowerCase();
+
+export default function AdjustStock({
+    item,
+    onBack,
+    onUpdate,
+    initialAccounts = [],
+    initialLocations = [],
+    initialStockOnHand,
+    initialLocationStocks = {},
+}: AdjustStockProps) {
     const currentStock = Number(
         initialStockOnHand ??
         item.stockOnHand ??
@@ -40,7 +53,6 @@ export default function AdjustStock({ item, onBack, onUpdate, initialAccounts = 
     );
     const unitLabel = item?.unit || "pcs";
     const unitCost = Number(item.costPrice || 0);
-    const currentValue = currentStock * unitCost;
     const locationDropdownRef = useRef<HTMLDivElement>(null);
     const reasonDropdownRef = useRef<HTMLDivElement>(null);
     const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
@@ -57,7 +69,7 @@ export default function AdjustStock({ item, onBack, onUpdate, initialAccounts = 
         account: "Cost of Goods Sold",
         referenceNumber: "",
         location: initialLocations.find((loc: any) => loc?.isDefault)?.name || initialLocations[0]?.name || "",
-        newQuantity: currentStock ? String(currentStock) : "0",
+        newQuantity: "",
         quantityAdjusted: "",
         costPrice: item.costPrice?.toString() || "0",
         reason: "",
@@ -72,6 +84,18 @@ export default function AdjustStock({ item, onBack, onUpdate, initialAccounts = 
 
     const requiredLabelClassName = "mb-2 block text-[14px] font-medium text-red-500";
     const labelClassName = "mb-2 block text-[14px] font-medium text-slate-700";
+    const selectedLocationStock = useMemo(() => {
+        const selectedKey = normalizeLocationKey(form.location);
+        if (selectedKey && Object.prototype.hasOwnProperty.call(initialLocationStocks, selectedKey)) {
+            return Number(initialLocationStocks[selectedKey] || 0);
+        }
+        return currentStock;
+    }, [currentStock, form.location, initialLocationStocks]);
+
+    const selectedLocationValue = useMemo(
+        () => selectedLocationStock * unitCost,
+        [selectedLocationStock, unitCost],
+    );
 
     const displayDate = useMemo(() => {
         if (!form.date) return "";
@@ -108,11 +132,11 @@ export default function AdjustStock({ item, onBack, onUpdate, initialAccounts = 
 
             return {
                 ...prev,
-                newQuantity: currentStock.toString(),
+                newQuantity: "",
                 quantityAdjusted: "",
             };
         });
-    }, [currentStock, currentValue]);
+    }, [selectedLocationStock, selectedLocationValue]);
 
     useEffect(() => {
         const loadReasons = async () => {
@@ -167,11 +191,19 @@ export default function AdjustStock({ item, onBack, onUpdate, initialAccounts = 
     const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
         setForm((prev) => {
+            if (value.trim() === "") {
+                return {
+                    ...prev,
+                    newQuantity: "",
+                    quantityAdjusted: "",
+                };
+            }
+
             const newQty = parseFloat(value) || 0;
             const adjusted =
                 prev.adjustmentType === "value"
-                    ? newQty - currentValue
-                    : newQty - currentStock;
+                    ? newQty - selectedLocationValue
+                    : newQty - selectedLocationStock;
             return {
                 ...prev,
                 newQuantity: value,
@@ -183,15 +215,22 @@ export default function AdjustStock({ item, onBack, onUpdate, initialAccounts = 
     const handleAdjustedChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
         setForm((prev) => {
-            const adjusted = parseFloat(value.replace(/[+]/g, "")) || 0;
-            const signedAdjusted = value.trim().startsWith("-") ? -adjusted : adjusted;
+            if (value.trim() === "") {
+                return {
+                    ...prev,
+                    quantityAdjusted: "",
+                    newQuantity: "",
+                };
+            }
+
+            const signedAdjusted = parseFloat(value.replace(/[+]/g, "")) || 0;
             return {
                 ...prev,
                 quantityAdjusted: value,
                 newQuantity: String(
                     prev.adjustmentType === "value"
-                        ? currentValue + signedAdjusted
-                        : currentStock + signedAdjusted
+                        ? selectedLocationValue + signedAdjusted
+                        : selectedLocationStock + signedAdjusted
                 ),
             };
         });
@@ -201,7 +240,7 @@ export default function AdjustStock({ item, onBack, onUpdate, initialAccounts = 
         setForm((prev) => ({
             ...prev,
             adjustmentType: value,
-            newQuantity: value === "value" ? "0.00" : currentStock.toString(),
+            newQuantity: value === "value" ? "0.00" : "",
             quantityAdjusted: "",
         }));
     };
@@ -361,7 +400,12 @@ export default function AdjustStock({ item, onBack, onUpdate, initialAccounts = 
                                                                 key={loc?._id || loc?.id || name}
                                                                 type="button"
                                                                 onClick={() => {
-                                                                    setForm((prev) => ({ ...prev, location: name }));
+                                                                    setForm((prev) => ({
+                                                                        ...prev,
+                                                                        location: name,
+                                                                        newQuantity: prev.adjustmentType === "value" ? "0.00" : "",
+                                                                        quantityAdjusted: "",
+                                                                    }));
                                                                     setLocationDropdownOpen(false);
                                                                     setLocationSearch("");
                                                                 }}
@@ -387,8 +431,10 @@ export default function AdjustStock({ item, onBack, onUpdate, initialAccounts = 
                                         <input
                                             type="text"
                                             readOnly
-                                            value={form.adjustmentType === "value" ? `KES${currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ""}
-                                            className={`${readOnlyInputClassName} h-9 text-right ${form.adjustmentType === "value" ? "text-slate-700 font-medium" : ""}`}
+                                            value={form.adjustmentType === "value"
+                                                ? `KES${selectedLocationValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                                : selectedLocationStock.toFixed(2)}
+                                            className={`${readOnlyInputClassName} h-9 text-right ${form.adjustmentType === "value" ? "text-slate-700 font-medium" : "text-slate-700"}`}
                                         />
                                         {form.adjustmentType === "quantity" && (
                                             <div className="mt-1 text-[14px] text-slate-900">{unitLabel}</div>
@@ -406,7 +452,7 @@ export default function AdjustStock({ item, onBack, onUpdate, initialAccounts = 
                                         value={form.newQuantity}
                                         onChange={handleQuantityChange}
                                         step="0.01"
-                                        className={`${inputClassName} h-9 text-right`}
+                                        className={`${numberInputClassName} h-9 text-right`}
                                     />
                                 </div>
 
@@ -433,7 +479,7 @@ export default function AdjustStock({ item, onBack, onUpdate, initialAccounts = 
                                             value={form.costPrice}
                                             onChange={handleChange}
                                             step="0.01"
-                                            className={`${inputClassName} h-9 text-right`}
+                                            className={`${numberInputClassName} h-9 text-right`}
                                         />
                                     </div>
                                 )}
