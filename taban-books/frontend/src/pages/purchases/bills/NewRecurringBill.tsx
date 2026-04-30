@@ -2590,6 +2590,7 @@ export default function NewRecurringBill() {
                           const recurringBillId = response.recurring_bill?._id || response.data?._id;
 
                           toast.success(isEdit ? "The recurring bill has been updated." : "The recurring bill has been created.", { position: "top-center" });
+                          window.dispatchEvent(new Event("recurringBillsUpdated"));
                           setIsLoading(false);
                           navigate("/purchases/recurring-bills");
 

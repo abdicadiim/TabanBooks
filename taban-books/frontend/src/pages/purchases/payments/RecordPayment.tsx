@@ -20,6 +20,7 @@ import { getAccountOptionLabel, getBankAccountsFromResponse, getChartAccountsFro
 export default function RecordPayment() {
   const navigate = useNavigate();
   const location = useLocation();
+  const returnToRecurringBillId = location.state?.returnToRecurringBillId || "";
 
   // Add global styles for focus states and animations
   useEffect(() => {
@@ -501,8 +502,15 @@ export default function RecordPayment() {
       const response = await paymentsMadeAPI.create(paymentData);
 
       if (response && (response.code === 0 || response.success)) {
-        // Backend usually handles journal entries, but we could add a manual trigger here if needed
-        navigate("/purchases/payments-made");
+        window.dispatchEvent(new Event("paymentsUpdated"));
+        window.dispatchEvent(new Event("billsUpdated"));
+        window.dispatchEvent(new Event("recurringBillsUpdated"));
+
+        if (returnToRecurringBillId) {
+          navigate(`/purchases/recurring-bills/${returnToRecurringBillId}`);
+        } else {
+          navigate("/purchases/payments-made");
+        }
       } else {
         alert(response?.message || "Failed to record payment.");
       }
@@ -515,6 +523,10 @@ export default function RecordPayment() {
   };
 
   const handleCancel = () => {
+    if (returnToRecurringBillId) {
+      navigate(`/purchases/recurring-bills/${returnToRecurringBillId}`);
+      return;
+    }
     navigate("/purchases/payments-made");
   };
 

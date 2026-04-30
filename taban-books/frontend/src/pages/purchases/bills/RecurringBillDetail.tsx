@@ -17,6 +17,18 @@ import { recurringBillsAPI, billsAPI } from "../../../services/api";
 import toast from "react-hot-toast";
 import { useCurrency } from "../../../hooks/useCurrency";
 
+const isValidMongoId = (value: any) =>
+  typeof value === "string" && /^[a-fA-F0-9]{24}$/.test(value);
+
+const normalizeText = (value: any) => String(value || "").trim().toLowerCase();
+
+const toEntityId = (value: any): string => {
+  if (!value) return "";
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (typeof value === "object") return String(value._id || value.id || "");
+  return "";
+};
+
 export default function RecurringBillDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -108,23 +120,61 @@ export default function RecurringBillDetail() {
       if (!recurringBill) return;
       setIsFetchingBills(true);
       try {
-        // Fetch all bills and filter by vendor and a pattern in bill number
-        // In a real app, there would be a specific field like recurringBillId
         const response = await billsAPI.getAll({ limit: 1000 });
         if (response && response.success && response.data) {
+          const recurringVendorId = toEntityId((recurringBill as any).vendor || (recurringBill as any).vendorId || (recurringBill as any).vendor_id);
+          const recurringVendorName = normalizeText((recurringBill as any).vendorName);
+          const recurringProfileName = String((recurringBill as any).profileName || "").trim();
+          const recurringAmount = Number((recurringBill as any).amount || (recurringBill as any).total || 0);
+
           const filtered = response.data.filter((b: any) => {
-            // Check if it belongs to this vendor and follows the profile name pattern
-            const isSameVendor = b.vendorName === recurringBill.vendorName || (b.vendor && b.vendor.displayName === recurringBill.vendorName);
-            const matchesProfile = b.billNumber && b.billNumber.startsWith(recurringBill.profileName);
-            return isSameVendor && matchesProfile;
+            const billVendorId = toEntityId(b.vendor || b.vendorId || b.vendor_id);
+            const billVendorName = normalizeText(b.vendorName || b.vendor?.displayName || b.vendor?.name);
+            const billNumber = String(b.billNumber || "").trim();
+            const orderNumber = String(b.orderNumber || "").trim();
+            const referenceNumber = String(b.referenceNumber || "").trim();
+            const billAmount = Number(b.total || 0);
+            const isRecurringBillRecord = Boolean(b.isRecurring);
+
+            const matchesVendor =
+              (recurringVendorId && billVendorId && recurringVendorId === billVendorId) ||
+              (recurringVendorName && billVendorName && recurringVendorName === billVendorName);
+
+            const matchesProfile =
+              (recurringProfileName && billNumber.startsWith(recurringProfileName)) ||
+              (recurringProfileName && orderNumber.startsWith(recurringProfileName)) ||
+              (recurringProfileName && referenceNumber.startsWith(recurringProfileName));
+
+            const matchesAmount =
+              recurringAmount > 0 &&
+              billAmount > 0 &&
+              Math.abs(recurringAmount - billAmount) < 0.01;
+
+            return matchesVendor && (matchesProfile || (isRecurringBillRecord && matchesAmount));
           });
-          setRealChildBills(filtered.map((b: any) => ({
+
+          const sortedBills = filtered
+            .slice()
+            .sort((a: any, b: any) => {
+              const aTime = new Date(a.date || a.createdAt || 0).getTime();
+              const bTime = new Date(b.date || b.createdAt || 0).getTime();
+              return bTime - aTime;
+            });
+
+          setRealChildBills(sortedBills.map((b: any) => ({
             ...b,
             id: b._id || b.id,
             vendorName: b.vendorName || (b.vendor && b.vendor.displayName) || "",
-            profileName: b.billNumber,
+            vendorId: toEntityId(b.vendor || b.vendorId || b.vendor_id),
+            profileName: b.billNumber || b.orderNumber || (recurringBill as any).profileName || "",
+            billNumber: b.billNumber || "",
             date: b.date ? new Date(b.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : "",
             amount: `${resolvedBaseCurrencySymbol}${parseFloat(b.total || 0).toFixed(2)}`,
+            total: b.total || 0,
+            balance: b.balance,
+            balanceDue: b.balance !== undefined ? b.balance : b.balanceDue,
+            paidAmount: b.paidAmount || 0,
+            currency: b.currency || resolvedBaseCurrency,
             status: (b.status || "OPEN").toUpperCase()
           })));
         }
@@ -135,7 +185,7 @@ export default function RecurringBillDetail() {
       }
     };
     fetchRealBills();
-  }, [recurringBill, id]);
+  }, [recurringBill, id, resolvedBaseCurrency, resolvedBaseCurrencySymbol]);
 
   useEffect(() => {
     if (!moreMenuOpen) return;
@@ -202,13 +252,6 @@ export default function RecurringBillDetail() {
         toast.error("Failed to delete recurring bill");
       }
     }
-  };
-
-  const toEntityId = (value: any): string => {
-    if (!value) return "";
-    if (typeof value === "string" || typeof value === "number") return String(value);
-    if (typeof value === "object") return String(value._id || value.id || "");
-    return "";
   };
 
   const toFiniteNumber = (value: any, fallback = 0) => {
@@ -773,6 +816,7 @@ export default function RecurringBillDetail() {
       date: dateStr,
       amount: `${resolvedBaseCurrencySymbol}${parseFloat(recurringBill.amount || 0).toFixed(2)}`,
       status: "OVERDUE",
+      isPlaceholder: true,
     });
 
     return childBills.length > 0 ? childBills : [{
@@ -786,6 +830,7 @@ export default function RecurringBillDetail() {
       }),
       amount: `${resolvedBaseCurrencySymbol}${parseFloat(recurringBill.amount || 0).toFixed(2)}`,
       status: recurringBill.status || "STOPPED",
+      isPlaceholder: true,
     }];
   };
 
@@ -1096,17 +1141,16 @@ export default function RecurringBillDetail() {
                          <button 
                           onClick={() => {
                             const targetBillId = bill.id || bill._id;
-                            if (!targetBillId) {
-                              toast.error("This child bill is missing an ID.");
+                            if (!targetBillId || !isValidMongoId(String(targetBillId))) {
+                              toast.error("This recurring bill has not created a real bill yet. Create the bill first, then record payment.");
                               return;
                             }
 
-                            // Open the bill detail page and immediately show the built-in record payment form.
-                            navigate(`/purchases/bills/${targetBillId}`, {
+                            navigate(`/purchases/payments-made/new`, {
                               state: {
+                                fromBill: true,
                                 bill,
-                                bills: realChildBills,
-                                openRecordPayment: true,
+                                returnToRecurringBillId: id,
                               }
                             });
                           }}

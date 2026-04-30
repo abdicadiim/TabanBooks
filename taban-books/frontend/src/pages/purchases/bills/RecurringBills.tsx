@@ -12,6 +12,22 @@ const RECURRING_BILLS_KEY = "recurring_bills_v1";
 
 let cachedRecurringBills = [];
 
+const normalizeRecurringBill = (bill: any, fallbackCurrency: string) => ({
+  ...bill,
+  id: bill?.id || bill?._id || bill?.recurring_bill_id || "",
+  profileName: bill?.profile_name || bill?.profileName || "",
+  vendorName: bill?.vendor_name || bill?.vendorName || bill?.vendor?.displayName || bill?.vendor?.name || "",
+  vendorId: bill?.vendor?._id || bill?.vendor?.id || bill?.vendor || bill?.vendorId || bill?.vendor_id || "",
+  frequency: bill?.repeat_every || bill?.repeatEvery || "",
+  startDate: bill?.start_date || bill?.startDate || "",
+  lastBillDate: bill?.last_created_date || bill?.lastBillDate || "",
+  nextBillDate: bill?.next_bill_date || bill?.nextBillDate || "",
+  amount: bill?.total ?? bill?.amount ?? 0,
+  currency: bill?.currency || fallbackCurrency,
+  status: bill?.status ? String(bill.status).toUpperCase() : "ACTIVE",
+  createdTime: bill?.createdAt || bill?.created_time || "",
+});
+
 const getLS = (k) => {
   if (typeof window !== "undefined" && window.localStorage) {
     const data = window.localStorage.getItem(k);
@@ -123,18 +139,9 @@ export default function RecurringBills() {
       const response = await recurringBillsAPI.getAll();
       if (response && (response.code === 0 || response.success)) {
         const loadedBills = response.recurring_bills || response.data || [];
-        const mappedBills = loadedBills.map(b => ({
-          id: b.id || b._id,
-          profileName: b.profile_name,
-          vendorName: b.vendor_name,
-          vendorId: b.vendor,
-          frequency: b.repeat_every,
-          startDate: b.start_date,
-          nextBillDate: b.next_bill_date,
-          amount: b.total,
-          currency: b.currency || displayCurrencyCode,
-          status: b.status ? b.status.toUpperCase() : "ACTIVE"
-        }));
+        const mappedBills = Array.isArray(loadedBills)
+          ? loadedBills.map((b: any) => normalizeRecurringBill(b, displayCurrencyCode))
+          : [];
         setRecurringBills(mappedBills);
         cachedRecurringBills = mappedBills;
         setLS(RECURRING_BILLS_KEY, mappedBills);

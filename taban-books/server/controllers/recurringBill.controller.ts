@@ -6,6 +6,7 @@
 import { Request, Response } from "express";
 import RecurringBill from "../models/RecurringBill.js";
 import Bill from "../models/Bill.js";
+import Item from "../models/Item.js";
 import Vendor from "../models/Vendor.js";
 import mongoose from "mongoose";
 
@@ -17,6 +18,48 @@ interface AuthRequest extends Request {
         email?: string;
     };
 }
+
+const toFiniteNumber = (value: any, fallback = 0): number => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const adjustRecurringBillItemStock = async (
+    organizationId: string,
+    items: any[] = [],
+    direction: 1 | -1,
+): Promise<void> => {
+    if (!Array.isArray(items) || items.length === 0) {
+        return;
+    }
+
+    for (const line of items) {
+        const rawItemId = line?.item?._id || line?.item?.id || line?.itemId || line?.item;
+        const itemId = rawItemId ? String(rawItemId) : "";
+        if (!itemId || !mongoose.Types.ObjectId.isValid(itemId)) {
+            continue;
+        }
+
+        const quantity = toFiniteNumber(line?.quantity, 0);
+        if (quantity <= 0) {
+            continue;
+        }
+
+        const itemDoc = await Item.findOne({
+            _id: itemId,
+            organization: organizationId,
+        });
+
+        if (!itemDoc) {
+            continue;
+        }
+
+        const currentStock = toFiniteNumber(itemDoc.stockQuantity, 0);
+        const nextStock = Math.max(0, currentStock + direction * quantity);
+        itemDoc.stockQuantity = nextStock;
+        await itemDoc.save();
+    }
+};
 
 /**
  * Create a Recurring Bill
@@ -270,6 +313,14 @@ export const deleteRecurringBill = async (req: AuthRequest, res: Response): Prom
             res.status(400).json({ code: 1, message: "Invalid recurring bill ID format" });
             return;
         }
+
+        const recurringBill = await RecurringBill.findOne({ _id: id, organization: req.user.organizationId });
+        if (!recurringBill) {
+            res.status(404).json({ code: 1, message: "Recurring bill not found" });
+            return;
+        }
+
+        await adjustRecurringBillItemStock(req.user.organizationId, recurringBill.items || [], -1);
 
         const result = await RecurringBill.deleteOne({ _id: id, organization: req.user.organizationId });
 

@@ -197,6 +197,7 @@ export default function BillDetail() {
       (entry: any) => String(entry.id || entry._id) === String(id)
     ) ||
     null;
+  const hasValidBillId = isValidMongoId(id);
   const [bill, setBill] = useState<Bill | null>(() => matchedInitialBill);
   const [isBillLoading, setIsBillLoading] = useState(() => !matchedInitialBill);
   const [bills, setBills] = useState<Bill[]>(() => initialBills as Bill[]);
@@ -414,11 +415,12 @@ export default function BillDetail() {
       }
 
       if (!isValidMongoId(id)) {
-        if (stateBill) {
-          setBill(stateBill);
+        if (matchedInitialBill) {
+          setBill(matchedInitialBill);
         } else {
           setBill(null);
         }
+        setPurchaseOrders([]);
         return;
       }
 
@@ -567,6 +569,12 @@ export default function BillDetail() {
       }
 
       if (id && id !== 'undefined' && id !== 'null') {
+        if (!isValidMongoId(id)) {
+          setBill((currentBill) => currentBill || matchedInitialBill);
+          setPurchaseOrders([]);
+          return;
+        }
+
         try {
           const billRes = await billsAPI.getById(id);
           if (billRes && billRes.success && billRes.data) {
@@ -647,7 +655,7 @@ export default function BillDetail() {
       window.removeEventListener("storage", handleBillsUpdate);
       window.removeEventListener("focus", handleBillsUpdate);
     };
-  }, [id]);
+  }, [id, matchedInitialBill, resolvedBaseCurrency]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1364,7 +1372,7 @@ export default function BillDetail() {
   if (!bill) {
     return (
       <div style={{ padding: "48px", textAlign: "center" }}>
-        <p>Bill not found</p>
+        <p>{id && !hasValidBillId ? "This bill link is not a real saved bill yet." : "Bill not found"}</p>
         <button onClick={() => navigate("/purchases/bills")}>
           Back to Bills
         </button>
