@@ -155,6 +155,9 @@ const readCachedPaidThroughAccounts = () => {
   }
 };
 
+const isValidMongoId = (value: any) =>
+  typeof value === "string" && /^[a-fA-F0-9]{24}$/.test(value);
+
 const getDefaultPaidThroughAccount = (accounts: any[] = [], paymentMode = "Cash") => {
   if (!Array.isArray(accounts) || accounts.length === 0) return null;
 
@@ -233,6 +236,7 @@ export default function BillDetail() {
   const printPreviewFrameRef = useRef<HTMLIFrameElement>(null);
   const isGeneratingPrintPreviewRef = useRef(false);
   const printPreviewUrlRef = useRef("");
+  const hasAutoOpenedRecordPaymentRef = useRef(false);
 
   // Payment Recording State
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
@@ -379,7 +383,7 @@ export default function BillDetail() {
 
   const loadPayments = async () => {
     try {
-      if (id) {
+      if (id && isValidMongoId(id)) {
         const response = await paymentsMadeAPI.getByBill(id);
         if (response && response.success && response.data) {
           setPayments(
@@ -406,6 +410,15 @@ export default function BillDetail() {
     try {
       if (!id || id === 'undefined' || id === 'null') {
         setBill(null);
+        return;
+      }
+
+      if (!isValidMongoId(id)) {
+        if (stateBill) {
+          setBill(stateBill);
+        } else {
+          setBill(null);
+        }
         return;
       }
 
@@ -1306,6 +1319,40 @@ export default function BillDetail() {
   // Get currency
   const currency = resolvedBaseCurrencySymbol;
 
+  const openRecordPaymentForm = () => {
+    if (!bill) return;
+
+    const availableAccounts =
+      paidThroughAccounts.length > 0 ? paidThroughAccounts : readCachedPaidThroughAccounts();
+    const defaultPaymentMode = "Cash";
+    const defaultAccount = getDefaultPaidThroughAccount(availableAccounts, defaultPaymentMode);
+
+    setPaymentFormData(prev => ({
+      ...prev,
+      location: "Head Office",
+      paymentAmount: String(bill.balanceDue || bill.total || ""),
+      paymentDate: todayIsoDate,
+      paymentMadeOn: todayIsoDate,
+      paymentMode: defaultPaymentMode,
+      paidThrough: defaultAccount?.name || prev.paidThrough || "",
+      paidThroughId: defaultAccount?._id || defaultAccount?.id || prev.paidThroughId || "",
+      reference: `Payment for ${bill.billNumber}`,
+    }));
+
+    setDismissedPaymentAmountWarning(false);
+    setShowPaymentAmountWarning(false);
+    setIsRecordingPayment(true);
+  };
+
+  useEffect(() => {
+    if (!location.state?.openRecordPayment) return;
+    if (!bill) return;
+    if (hasAutoOpenedRecordPaymentRef.current) return;
+
+    hasAutoOpenedRecordPaymentRef.current = true;
+    openRecordPaymentForm();
+  }, [bill, location.state]);
+
   if (isBillLoading) {
     return (
       <div style={{ padding: "48px", textAlign: "center" }}>
@@ -1331,31 +1378,6 @@ export default function BillDetail() {
   const isBillUnpaid = !isBillPaid;
   const enteredPaymentAmount = toFiniteNumber(paymentFormData.paymentAmount, 0);
   const hasExcessPaymentAmount = enteredPaymentAmount > billBalanceDue && billBalanceDue >= 0;
-
-  const openRecordPaymentForm = () => {
-    if (!bill) return;
-
-    const availableAccounts =
-      paidThroughAccounts.length > 0 ? paidThroughAccounts : readCachedPaidThroughAccounts();
-    const defaultPaymentMode = "Cash";
-    const defaultAccount = getDefaultPaidThroughAccount(availableAccounts, defaultPaymentMode);
-
-    setPaymentFormData(prev => ({
-      ...prev,
-      location: "Head Office",
-      paymentAmount: String(bill.balanceDue || bill.total || ""),
-      paymentDate: todayIsoDate,
-      paymentMadeOn: todayIsoDate,
-      paymentMode: defaultPaymentMode,
-      paidThrough: defaultAccount?.name || prev.paidThrough || "",
-      paidThroughId: defaultAccount?._id || defaultAccount?.id || prev.paidThroughId || "",
-      reference: `Payment for ${bill.billNumber}`,
-    }));
-
-    setDismissedPaymentAmountWarning(false);
-    setShowPaymentAmountWarning(false);
-    setIsRecordingPayment(true);
-  };
 
   const handlePaymentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;

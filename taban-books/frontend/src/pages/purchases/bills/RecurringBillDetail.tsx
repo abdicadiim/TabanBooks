@@ -1095,15 +1095,18 @@ export default function RecurringBillDetail() {
                         <div style={{ fontSize: "11px", color: "#3b82f6", textTransform: "uppercase", letterSpacing: "1px" }}>{bill.status === "OVERDUE" ? "OPEN" : bill.status}</div>
                          <button 
                           onClick={() => {
-                            // Navigate to the standalone Record Payment page (Image 1)
-                            navigate("/purchases/payments-made/new", {
+                            const targetBillId = bill.id || bill._id;
+                            if (!targetBillId) {
+                              toast.error("This child bill is missing an ID.");
+                              return;
+                            }
+
+                            // Open the bill detail page and immediately show the built-in record payment form.
+                            navigate(`/purchases/bills/${targetBillId}`, {
                               state: {
-                                fromBill: true,
-                                bill: bill, // Passing the full bill object for RecordPayment.tsx
-                                billId: bill.id,
-                                billNumber: bill.profileName,
-                                vendorName: bill.vendorName,
-                                amount: bill.amount.replace(/[^0-9.]/g, '')
+                                bill,
+                                bills: realChildBills,
+                                openRecordPayment: true,
                               }
                             });
                           }}
