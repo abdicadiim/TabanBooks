@@ -633,12 +633,7 @@ export default function CreditNoteDetail() {
 
   const handleViewJournal = () => {
     setIsMoreMenuOpen(false);
-    const journalId = getCreditNoteJournalId();
-    if (journalId) {
-      navigate(`/accountant/manual-journals/${journalId}`);
-      return;
-    }
-    navigate("/accountant/manual-journals");
+    navigate("/sales/credit-notes/journal");
   };
 
   const handleScheduleEmail = () => {
@@ -808,15 +803,6 @@ Best regards`,
       const response = await creditNotesAPI.applyToInvoices(creditNote.id, allocations);
 
       if (response && response.success) {
-        const currentBalance = toNumber((creditNote as any)?.balance ?? (creditNote as any)?.total ?? 0);
-        const nextBalance = Math.max(0, currentBalance - appliedTotal);
-        await creditNotesAPI.update(creditNote.id, {
-          balance: nextBalance,
-          creditsUsed: toNumber((creditNote as any)?.creditsUsed) + appliedTotal,
-          status: nextBalance <= 0 ? "closed" : ((creditNote as any)?.status || "open"),
-          allocationUpdatedAt: new Date().toISOString()
-        });
-
         await Promise.all(
           allocations.map(async (allocation: any) => {
             const invoiceId = String(allocation?.invoiceId || "").trim();
@@ -1881,7 +1867,7 @@ Best regards`,
             </div>
           )}
 
-          {creditAppliedInvoicesRows.length > 0 && (
+          {hasAppliedDocuments && (
             <div className="w-full max-w-[1280px] mx-auto mb-3 border border-gray-200 rounded-md bg-white overflow-hidden">
               <button
                 type="button"

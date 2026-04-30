@@ -354,6 +354,94 @@ export function ChartOfAccountsDetailView({
               marginBottom: "32px",
             }}
           >
+            <div style={{ padding: "18px", borderRadius: "14px", backgroundColor: "#ecfeff" }}>
+              <p style={{ margin: 0, fontSize: "12px", fontWeight: 700, color: "#0f766e", textTransform: "uppercase" }}>
+                Closing Balance
+              </p>
+              <p style={{ margin: "10px 0 0", fontSize: "22px", fontWeight: 700, color: "#0f172a" }}>
+                {currencyLabel} {formatMoney(Math.abs(balance))} ({balanceSuffix})
+              </p>
+            </div>
+            <div style={{ padding: "18px", borderRadius: "14px", backgroundColor: "#f8fafc" }}>
+              <p style={{ margin: 0, fontSize: "12px", fontWeight: 700, color: "#156372", textTransform: "uppercase" }}>
+                Total Debit
+              </p>
+              <p style={{ margin: "10px 0 0", fontSize: "22px", fontWeight: 700, color: "#0f172a" }}>
+                {currencyLabel} {formatMoney(transactionTotals.debit)}
+              </p>
+            </div>
+            <div style={{ padding: "18px", borderRadius: "14px", backgroundColor: "#f8fafc" }}>
+              <p style={{ margin: 0, fontSize: "12px", fontWeight: 700, color: "#156372", textTransform: "uppercase" }}>
+                Total Credit
+              </p>
+              <p style={{ margin: "10px 0 0", fontSize: "22px", fontWeight: 700, color: "#0f172a" }}>
+                {currencyLabel} {formatMoney(transactionTotals.credit)}
+              </p>
+            </div>
+          </div>
+
+          {selectedAccount.description && (
+            <div style={{ marginBottom: "24px" }}>
+              <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 600, color: "#0f172a" }}>
+                Description
+              </h3>
+              <p style={{ margin: "10px 0 0", fontSize: "14px", lineHeight: 1.7, color: "#156372" }}>
+                {selectedAccount.description}
+              </p>
+            </div>
+          )}
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+              marginBottom: "16px",
+            }}
+          >
+            <div>
+              <h3 style={{ margin: 0, fontSize: "24px", fontWeight: 500, color: "#111827" }}>
+                Recent Transactions
+              </h3>
+            </div>
+            <div style={{ display: "flex", gap: "4px" }}>
+              <button
+                type="button"
+                style={{
+                  border: "1px solid #0f766e",
+                  backgroundColor: "#f0fdfa",
+                  color: "#0f766e",
+                  padding: "4px 8px",
+                  borderRadius: "4px",
+                  fontSize: "12px",
+                  cursor: "pointer",
+                }}
+              >
+                FCY
+              </button>
+              <button
+                type="button"
+                style={{
+                  border: "1px solid #cbd5e1",
+                  backgroundColor: "#ffffff",
+                  color: "#64748b",
+                  padding: "4px 8px",
+                  borderRadius: "4px",
+                  fontSize: "12px",
+                  cursor: "pointer",
+                }}
+              >
+                BCY
+              </button>
+            </div>
+          </div>
+
+          {isTransactionsLoading ? (
+            <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
+              <Loader2 className="animate-spin" size={28} color="#156372" />
+            </div>
+          ) : accountTransactions.length === 0 ? (
             <div
               style={{
                 backgroundColor: brand.white,

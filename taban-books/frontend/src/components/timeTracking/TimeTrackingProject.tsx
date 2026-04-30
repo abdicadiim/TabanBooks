@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { X, Search, ArrowUpDown, ChevronRight, ChevronDown, Download, Upload, Settings, Eye, EyeOff, Info } from "lucide-react";
 import { projectsAPI, timeEntriesAPI } from "../../services/api";
@@ -1446,7 +1446,7 @@ export default function TimeTrackingProject() {
                   borderRight: "1px solid #e5e7eb"
                 }}
               >
-                â˜°
+                ☰
               </button>
               <button
                 onClick={() => setViewMode('grid')}
@@ -1462,7 +1462,7 @@ export default function TimeTrackingProject() {
                   color: "#374151"
                 }}
               >
-                âŠž
+                ⊞
               </button>
             </div>
 
@@ -1867,7 +1867,7 @@ export default function TimeTrackingProject() {
                   e.currentTarget.style.backgroundColor = "transparent";
                 }}
               >
-                â‹¯
+                ⋯
               </button>
 
               {/* More Menu Dropdown */}
@@ -2019,7 +2019,7 @@ export default function TimeTrackingProject() {
                               <span>{option}</span>
                               {isSelected && (
                                 <span style={{ fontSize: "12px", color: "#156372" }}>
-                                  {sortDirection === "asc" ? "â†‘" : "â†“"}
+                                  {sortDirection === "asc" ? "↑" : "↓"}
                                 </span>
                               )}
                             </button>
@@ -3363,7 +3363,7 @@ export default function TimeTrackingProject() {
                   justifyContent: 'center'
                 }}
               >
-                Ã—
+                ×
               </button>
             </div>
 

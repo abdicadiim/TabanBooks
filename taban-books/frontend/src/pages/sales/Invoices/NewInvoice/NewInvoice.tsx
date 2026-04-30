@@ -2703,58 +2703,58 @@ const handleCancel = () => {
 return (
   <>
     <div className="w-full h-full min-h-0 flex flex-col bg-gray-50 overflow-hidden">
-      {/* Header */}
-      <div className="sticky top-0 z-40 flex-shrink-0 border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
-        <div className="w-full px-6 py-4 flex justify-between items-center">
-          <h1 className="text-lg font-normal text-gray-900 m-0 flex items-center gap-3">
-            <FileText size={20} className="text-gray-500" />
-            {isEditMode ? "Edit Invoice" : "New Invoice"}
-          </h1>
-          <div className="flex items-center gap-3">
-            <div className="relative" ref={settingsDropdownRef}>
-              <button
-                className="p-2 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-                onClick={() => setIsSettingsDropdownOpen(!isSettingsDropdownOpen)}
-              >
-                <Settings size={18} />
-              </button>
-              {isSettingsDropdownOpen && (
-                <div className="absolute right-0 top-full mt-2 bg-white rounded shadow-lg border border-gray-200 z-50 min-w-[200px] overflow-hidden">
-                  <div className="p-1">
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
-                      onClick={() => {
-                        setIsSettingsDropdownOpen(false);
-                        setIsPreferencesOpen(true);
-                        setActivePreferencesTab("preferences");
-                      }}
-                    >
-                      Preferences
-                    </button>
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
-                      onClick={() => {
-                        setIsSettingsDropdownOpen(false);
-                        navigate("/settings/invoices");
-                      }}
-                    >
-                      Manage Custom Fields
-                    </button>
+      <div className="w-full flex-1 min-h-0 bg-gray-50 pb-24 overflow-y-auto custom-scrollbar">
+        {/* Header */}
+        <div className="border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
+          <div className="w-full px-6 py-4 flex justify-between items-center">
+            <h1 className="text-lg font-normal text-gray-900 m-0 flex items-center gap-3">
+              <FileText size={20} className="text-gray-500" />
+              {isEditMode ? "Edit Invoice" : "New Invoice"}
+            </h1>
+            <div className="flex items-center gap-3">
+              <div className="relative" ref={settingsDropdownRef}>
+                <button
+                  className="p-2 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                  onClick={() => setIsSettingsDropdownOpen(!isSettingsDropdownOpen)}
+                >
+                  <Settings size={18} />
+                </button>
+                {isSettingsDropdownOpen && (
+                  <div className="absolute right-0 top-full mt-2 bg-white rounded shadow-lg border border-gray-200 z-50 min-w-[200px] overflow-hidden">
+                    <div className="p-1">
+                      <button
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                        onClick={() => {
+                          setIsSettingsDropdownOpen(false);
+                          setIsPreferencesOpen(true);
+                          setActivePreferencesTab("preferences");
+                        }}
+                      >
+                        Preferences
+                      </button>
+                      <button
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                        onClick={() => {
+                          setIsSettingsDropdownOpen(false);
+                          navigate("/settings/invoices");
+                        }}
+                      >
+                        Manage Custom Fields
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+              <button
+                onClick={handleCancel}
+                className="p-2 rounded text-red-500 hover:text-red-600 transition-colors"
+              >
+                <X size={18} />
+              </button>
             </div>
-            <button
-              onClick={handleCancel}
-              className="p-2 rounded text-red-500 hover:text-red-600 transition-colors"
-            >
-              <X size={18} />
-            </button>
           </div>
         </div>
-      </div>
 
-      <div className="w-full flex-1 min-h-0 bg-gray-50 pb-24 overflow-y-auto custom-scrollbar">
         <div className="w-full px-6 py-6 space-y-6">
           {/* Scan Mode Interface */}
           {isScanModeOpen && (

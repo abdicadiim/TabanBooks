@@ -158,7 +158,7 @@ function TransactionModuleCard({
             >
               Transactions before {formatLockDate(lock?.date)} are currently locked.
             </div>
-            <div style={{ fontSize: "14px", lineHeight: 1.7, color: "#475569" }}>
+            <div style={{ fontSize: "14px", lineHeight: 1.7, color: "#156372" }}>
               {lock?.reason}
             </div>
           </>
@@ -256,7 +256,7 @@ export function TransactionLockingDashboard({
                   margin: "12px 0 0",
                   fontSize: "15px",
                   lineHeight: 1.8,
-                  color: "#475569",
+                  color: "#156372",
                 }}
               >
                 Close accounting periods with confidence by locking each module
@@ -332,7 +332,7 @@ export function TransactionLockingDashboard({
               <div style={{ marginTop: "10px", fontSize: "28px", fontWeight: 700, color: "#111827" }}>
                 {lockedCount} / {TRANSACTION_MODULES.length}
               </div>
-              <div style={{ marginTop: "6px", fontSize: "14px", color: "#475569" }}>
+              <div style={{ marginTop: "6px", fontSize: "14px", color: "#156372" }}>
                 modules are currently locked.
               </div>
             </div>
@@ -351,7 +351,7 @@ export function TransactionLockingDashboard({
               <div style={{ marginTop: "10px", fontSize: "18px", fontWeight: 700, color: "#111827" }}>
                 {negativeStockOption === "allow" ? "Allowed" : "Restricted"}
               </div>
-              <div style={{ marginTop: "6px", fontSize: "14px", lineHeight: 1.6, color: "#475569" }}>
+              <div style={{ marginTop: "6px", fontSize: "14px", lineHeight: 1.6, color: "#156372" }}>
                 {negativeStockCopy.description}
               </div>
             </div>
@@ -397,7 +397,7 @@ export function TransactionLockingDashboard({
             <h2 style={{ margin: 0, fontSize: "22px", fontWeight: 700, color: "#111827" }}>
               Lock All Transactions At Once
             </h2>
-            <p style={{ margin: "10px 0 0", fontSize: "14px", lineHeight: 1.7, color: "#475569" }}>
+            <p style={{ margin: "10px 0 0", fontSize: "14px", lineHeight: 1.7, color: "#156372" }}>
               If you prefer one shared lock date across Sales, Purchases, Banking, and
               Accountant transactions, first confirm which module locks are already in
               place.

@@ -1,45 +1,26 @@
 import React, { useState } from "react";
-import { useNavigate, Link, useLocation } from "react-router-dom";
-import { Building2, Mail, Lock, Globe, ChevronDown, Eye, EyeOff } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  ArrowRight,
+  Building2,
+  Eye,
+  EyeOff,
+  Lock,
+  Mail,
+  ShieldCheck,
+} from "lucide-react";
 
-const COUNTRIES = [
-  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
-  "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan",
-  "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia",
-  "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica",
-  "Croatia", "Cuba", "Cyprus", "Czech Republic", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt",
-  "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon",
-  "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana",
-  "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel",
-  "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Korea, North", "Korea, South", "Kuwait",
-  "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg",
-  "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico",
-  "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru",
-  "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Macedonia", "Norway", "Oman", "Pakistan",
-  "Palau", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania",
-  "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal",
-  "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Sudan",
-  "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan", "Tajikistan", "Tanzania",
-  "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda",
-  "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City", "Venezuela", "Vietnam",
-  "Yemen", "Zambia", "Zimbabwe"
-];
-
-// Reusable color constant for the "Green Dark" / Teal theme
-const THEME_COLOR = "#0f4e5a";
 const SIGNUP_DRAFT_STORAGE_KEY = "taban_signup_draft";
 const SIGNUP_PASSWORD_SESSION_KEY = "taban_signup_password";
+const PANEL_BG_CLASS = "bg-[#1f6675]";
+const PRIMARY_BUTTON_CLASS =
+  "bg-[#1f6675] shadow-2xl shadow-[#1f6675]/20 hover:-translate-y-0.5 hover:bg-[#185766]";
 
 type SignupDraft = {
   name?: string;
   email?: string;
   organizationName?: string;
   country?: string;
-};
-
-const sanitizeCountry = (value: any): string => {
-  const normalized = String(value || "").trim();
-  return COUNTRIES.includes(normalized) ? normalized : "Bolivia";
 };
 
 const readSignupDraft = (): SignupDraft | null => {
@@ -53,7 +34,7 @@ const readSignupDraft = (): SignupDraft | null => {
       name: String(parsed.name || ""),
       email: String(parsed.email || ""),
       organizationName: String(parsed.organizationName || ""),
-      country: sanitizeCountry(parsed.country),
+      country: String(parsed.country || "Somalia"),
     };
   } catch {
     return null;
@@ -65,27 +46,19 @@ const persistSignupDraft = (data: SignupDraft) => {
     name: String(data.name || ""),
     email: String(data.email || ""),
     organizationName: String(data.organizationName || ""),
-    country: sanitizeCountry(data.country),
+    country: String(data.country || "Somalia"),
   };
+
   localStorage.setItem(SIGNUP_DRAFT_STORAGE_KEY, JSON.stringify(safeDraft));
 };
 
 const validatePassword = (password: string) => {
   const hasMinLength = password.length > 8;
   const hasUppercase = /[A-Z]/.test(password);
-  const hasNumber = /\d/.test(password);
-  const hasSpecialChar = /[^A-Za-z0-9]/.test(password);
-
-  const score = [hasMinLength, hasUppercase, hasNumber, hasSpecialChar].filter(Boolean).length;
-  const strength = score <= 1 ? "Weak" : score === 2 ? "Medium" : "Strong";
 
   return {
     hasMinLength,
     hasUppercase,
-    hasNumber,
-    hasSpecialChar,
-    score,
-    strength,
     isValid: hasMinLength && hasUppercase,
   };
 };
@@ -94,6 +67,8 @@ export default function Signup() {
   const navigate = useNavigate();
   const location = useLocation();
   const stateDraft = ((location.state as any)?.signupDraft || {}) as SignupDraft;
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
   const [formData, setFormData] = useState(() => {
     const storedDraft = readSignupDraft() || {};
     return {
@@ -101,24 +76,22 @@ export default function Signup() {
       email: String(stateDraft.email || storedDraft.email || ""),
       password: "",
       organizationName: String(stateDraft.organizationName || storedDraft.organizationName || ""),
-      country: sanitizeCountry(stateDraft.country || storedDraft.country || "Bolivia"),
+      country: String(stateDraft.country || storedDraft.country || "Somalia"),
     };
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [termsAccepted, setTermsAccepted] = useState(true);
   const passwordValidation = validatePassword(formData.password);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
+
     setFormData((prev) => {
       const next = {
         ...prev,
         [name]: value,
       };
 
-      // Persist non-sensitive fields only. Password must never be stored.
       if (name !== "password") {
         persistSignupDraft({
           name: next.name,
@@ -127,17 +100,15 @@ export default function Signup() {
           country: next.country,
         });
       }
+
       return next;
     });
-    setError("");
+
+    if (error) setError("");
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!termsAccepted) {
-      setError("Please accept the Terms of Service and Privacy Policy to continue.");
-      return;
-    }
 
     if (!passwordValidation.isValid) {
       setError("Password must be more than 8 characters and include at least one uppercase letter.");
@@ -154,6 +125,7 @@ export default function Signup() {
         organizationName: formData.organizationName,
         country: formData.country,
       };
+
       persistSignupDraft(signupDraft);
       sessionStorage.setItem(SIGNUP_PASSWORD_SESSION_KEY, formData.password);
 
@@ -165,7 +137,7 @@ export default function Signup() {
           password: formData.password,
           country: formData.country,
           signupDraft,
-        }
+        },
       });
     } catch (err: any) {
       setError(err.message || "Signup failed. Please try again.");
@@ -173,169 +145,212 @@ export default function Signup() {
     }
   };
 
+  const handleSignInClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    if (isLeaving) return;
+
+    setIsLeaving(true);
+    window.setTimeout(() => {
+      navigate("/login");
+    }, 260);
+  };
+
+  const inputClassName =
+    "h-20 w-full rounded-[30px] border border-slate-200 bg-slate-100 px-6 text-base font-medium text-slate-700 outline-none transition-all placeholder:text-slate-400 focus:border-teal-300 focus:bg-white focus:ring-4 focus:ring-teal-700/10";
+  const labelClass = "mb-3 block text-sm font-semibold text-slate-700";
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f5f7f9] p-4 md:p-8 font-sans">
-      <div className="w-full max-w-[560px] bg-white rounded-[2rem] overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.1)] border border-gray-100">
-        <div className="flex flex-col items-center justify-center p-8 md:p-12 lg:p-16 bg-white">
-          <div className="w-full max-w-[400px]">
-            <div className="mb-8 flex items-center gap-3">
-              <div style={{ backgroundColor: THEME_COLOR }} className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg shadow-teal-100">
-                <span className="text-white font-bold text-xl">TB</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xl font-black text-slate-900 leading-none">Taban</span>
-                <span style={{ color: THEME_COLOR }} className="text-base font-bold leading-none mt-1">Taban Books</span>
-              </div>
-            </div>
+    <div className="relative min-h-screen overflow-hidden bg-sky-50 px-4 py-6 font-sans sm:px-6 lg:px-10">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute left-10 top-10 h-40 w-40 rounded-full bg-white/90 blur-3xl" />
+        <div className="absolute bottom-10 right-10 h-56 w-56 rounded-full bg-sky-200/60 blur-3xl" />
+      </div>
 
-            <h1 className="text-2xl lg:text-3xl font-bold text-slate-900 mb-8 tracking-tight">
-              Let&apos;s get started<span style={{ color: THEME_COLOR }}>.</span>
-            </h1>
-
-            {error && (
-              <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-xl">
-                <p className="text-red-700 text-sm font-semibold">{error}</p>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Building2 className="h-5 w-5 text-gray-400 group-focus-within:text-[#156372] transition-colors" />
-                </div>
-                <input
-                  type="text"
-                  name="organizationName"
-                  value={formData.organizationName}
-                  onChange={handleChange}
-                  required
-                  className="block w-full pl-12 pr-4 py-3.5 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#156372]/20 focus:border-[#156372] transition-all bg-gray-50/30"
-                  placeholder="Company Name"
-                />
+      <div className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl items-center justify-center">
+        <div className={`${isLeaving ? "animate-auth-card-exit" : "animate-auth-card"} grid w-full overflow-hidden rounded-[3rem] bg-white shadow-2xl shadow-sky-200/80 lg:w-[1320px] lg:grid-cols-2`}>
+          <div className={`${isLeaving ? "animate-auth-panel-exit" : "animate-auth-panel"} relative hidden min-h-full items-center justify-center overflow-hidden px-8 py-10 text-white lg:flex lg:rounded-r-[9rem] ${PANEL_BG_CLASS}`}>
+            <div className="relative z-10 flex w-full max-w-lg flex-col items-center text-center">
+              <div className="mb-10 inline-flex items-center gap-3 rounded-full border border-white/20 bg-white/10 px-8 py-4 text-xs font-bold uppercase tracking-[0.25em] text-white/90">
+                <ShieldCheck size={20} />
+                Secure Signup
               </div>
 
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-gray-400 group-focus-within:text-[#156372] transition-colors" />
-                </div>
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  required
-                  className="block w-full pl-12 pr-4 py-3.5 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#156372]/20 focus:border-[#156372] transition-all bg-gray-50/30"
-                  placeholder="Email address"
-                />
-              </div>
+              <h2 className="text-4xl font-bold leading-tight tracking-tight text-white sm:text-5xl">Welcome Back</h2>
 
-              <div className="relative group">
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-[#156372] transition-colors" />
-                  </div>
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    name="password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    required
-                    minLength={9}
-                    pattern="(?=.*[A-Z]).{9,}"
-                    title="Password must be more than 8 characters and include at least one uppercase letter."
-                    className="block w-full pl-12 pr-12 py-3.5 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#156372]/20 focus:border-[#156372] transition-all bg-gray-50/30"
-                    placeholder="Password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((prev) => !prev)}
-                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-[#156372] transition-colors"
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                  >
-                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                  </button>
-                </div>
-                {formData.password && (
-                  <div className="mt-2 px-1">
-                    <p className={`text-[11px] font-semibold ${passwordValidation.score >= 3 ? "text-emerald-600" : passwordValidation.score === 2 ? "text-amber-600" : "text-red-500"}`}>
-                      Password strength: {passwordValidation.strength}
-                    </p>
-                    <p className="text-[11px] whitespace-nowrap overflow-x-auto">
-                      <span className={passwordValidation.hasMinLength ? "text-emerald-600" : "text-gray-500"}>
-                        More than 8 characters
-                      </span>
-                      <span className="text-gray-400"> | </span>
-                      <span className={passwordValidation.hasUppercase ? "text-emerald-600" : "text-gray-500"}>
-                        At least one uppercase letter
-                      </span>
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Globe className="h-5 w-5 text-gray-400 group-focus-within:text-[#156372] transition-colors" />
-                </div>
-                <div className="relative">
-                  <select
-                    name="country"
-                    value={formData.country}
-                    onChange={handleChange}
-                    className="block w-full pl-12 pr-10 py-3.5 border border-gray-200 rounded-xl text-gray-900 bg-gray-50/30 appearance-none focus:outline-none focus:ring-2 focus:ring-[#156372]/20 focus:border-[#156372] transition-all"
-                  >
-                    {COUNTRIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
-                </div>
-              </div>
-
-              <div className="py-2">
-                <p className="text-[11px] text-gray-500 mb-3 ml-1 font-medium">Your data will be in US data center.</p>
-                <label className="flex items-start gap-3 cursor-pointer group px-1">
-                  <input
-                    type="checkbox"
-                    checked={termsAccepted}
-                    onChange={(e) => {
-                      setTermsAccepted(e.target.checked);
-                      setError("");
-                    }}
-                    className="mt-1 w-4 h-4 rounded-md border-gray-300 text-[#156372] focus:ring-[#156372] focus:ring-offset-0 cursor-pointer"
-                  />
-                  <span className="text-[11px] text-gray-600 leading-normal">
-                    I agree to the <span style={{ color: THEME_COLOR }} className="font-bold">Terms of Service</span> and <span style={{ color: THEME_COLOR }} className="font-bold">Privacy Policy</span>.
-                  </span>
-                </label>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-[#f6a821] hover:bg-[#e89c1d] text-white py-4 rounded-xl font-bold text-sm tracking-wider shadow-[0_10px_20px_rgba(246,168,33,0.3)] transition-all active:transform active:scale-[0.98] mt-2 h-[56px] flex items-center justify-center"
-              >
-                {loading ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  "CREATE MY ACCOUNT"
-                )}
-              </button>
-            </form>
-
-            <div className="mt-8 text-center pt-6 border-t border-gray-100">
-              <p className="text-sm text-gray-500 font-medium">
-                Already have an account?{" "}
-                <Link to="/login" style={{ color: THEME_COLOR }} className="font-bold hover:underline transition-colors ml-1">
-                  Log in
-                </Link>
+              <p className="mt-8 max-w-md text-xl leading-[1.7] text-white/85">
+                Enter your personal details to continue with Full System and manage everything in
+                one place.
               </p>
+
+              <Link
+                to="/login"
+                onClick={handleSignInClick}
+                className="mt-14 inline-flex min-h-[76px] min-w-[320px] items-center justify-center rounded-full border border-white/30 px-10 text-lg font-bold text-white transition-all duration-300 hover:scale-[1.02] hover:bg-white/10"
+              >
+                Sign In
+              </Link>
             </div>
           </div>
+
+          <section className={`${isLeaving ? "animate-auth-form-exit" : "animate-auth-form"} flex items-center px-8 py-8 sm:px-10 lg:px-14 xl:px-16`}>
+            <div className="w-full max-w-2xl">
+              <div className="mb-10">
+                <h1 className="text-4xl font-bold tracking-tight text-[#16213d] sm:text-5xl">
+                  Create Account
+                </h1>
+                <p className="mt-4 text-base leading-7 text-slate-500">
+                  Use your email and password to create your workspace.
+                </p>
+              </div>
+
+              {error ? (
+                <div className="mb-8 rounded-3xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-medium text-rose-700">
+                  {error}
+                </div>
+              ) : null}
+
+              <form className="space-y-6" onSubmit={handleSubmit}>
+                <div>
+                  <label className={labelClass}>Company Name</label>
+                  <div className="relative">
+                    <Building2 className="pointer-events-none absolute left-6 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      name="organizationName"
+                      value={formData.organizationName}
+                      onChange={handleChange}
+                      required
+                      autoComplete="organization"
+                      placeholder="Taban Enterprise"
+                      className={`${inputClassName} pl-16`}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className={labelClass}>Email Address</label>
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-6 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      required
+                      autoComplete="email"
+                      placeholder="info@taban.so"
+                      className={`${inputClassName} pl-16`}
+                    />
+                  </div>
+                  <p className="mt-3 text-xs text-slate-500">
+                    We&apos;ll let you know if this email is already in use.
+                  </p>
+                </div>
+
+                <div>
+                  <label className={labelClass}>Password</label>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-6 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      name="password"
+                      value={formData.password}
+                      onChange={handleChange}
+                      required
+                      autoComplete="new-password"
+                      minLength={9}
+                      pattern="(?=.*[A-Z]).{9,}"
+                      title="Password must be more than 8 characters and include at least one uppercase letter."
+                      placeholder="Enter your password"
+                      className={`${inputClassName} pl-16 pr-16`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      className="absolute right-5 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-200/70 hover:text-slate-700"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff size={24} /> : <Eye size={24} />}
+                    </button>
+                  </div>
+                  <p className="mt-3 text-xs text-slate-500">
+                    Use 9+ characters and include at least one uppercase letter.
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className={`mx-auto mt-4 flex w-full max-w-sm items-center justify-center gap-3 rounded-[26px] px-8 py-5 text-lg font-bold text-white transition-all duration-300 disabled:transform-none disabled:opacity-60 ${PRIMARY_BUTTON_CLASS}`}
+                >
+                  <span>{loading ? "Creating..." : "Sign Up"}</span>
+                  <ArrowRight size={24} />
+                </button>
+              </form>
+            </div>
+          </section>
         </div>
       </div>
+
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @keyframes authCardReveal {
+              from { opacity: 0; transform: translateY(18px) scale(0.985); }
+              to { opacity: 1; transform: translateY(0) scale(1); }
+            }
+
+            @keyframes authPanelReveal {
+              from { opacity: 0; transform: translateX(-26px); }
+              to { opacity: 1; transform: translateX(0); }
+            }
+
+            @keyframes authFormReveal {
+              from { opacity: 0; transform: translateX(26px); }
+              to { opacity: 1; transform: translateX(0); }
+            }
+
+            @keyframes authCardExit {
+              from { opacity: 1; transform: translateY(0) scale(1); }
+              to { opacity: 0; transform: translateY(-12px) scale(0.992); }
+            }
+
+            @keyframes authPanelExit {
+              from { opacity: 1; transform: translateX(0); }
+              to { opacity: 0; transform: translateX(-22px); }
+            }
+
+            @keyframes authFormExit {
+              from { opacity: 1; transform: translateX(0); }
+              to { opacity: 0; transform: translateX(22px); }
+            }
+
+            .animate-auth-card {
+              animation: authCardReveal 0.65s ease-out both;
+            }
+
+            .animate-auth-panel {
+              animation: authPanelReveal 0.8s ease-out both;
+            }
+
+            .animate-auth-form {
+              animation: authFormReveal 0.8s ease-out both;
+            }
+
+            .animate-auth-card-exit {
+              animation: authCardExit 0.26s ease-in both;
+            }
+
+            .animate-auth-panel-exit {
+              animation: authPanelExit 0.22s ease-in both;
+            }
+
+            .animate-auth-form-exit {
+              animation: authFormExit 0.22s ease-in both;
+            }
+          `,
+        }}
+      />
     </div>
   );
 }

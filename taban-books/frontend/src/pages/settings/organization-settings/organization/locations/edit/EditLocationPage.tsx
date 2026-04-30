@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { getCurrentUser } from "../../../../../../services/auth";
 import { Upload, X, ChevronDown, ChevronUp, Search, Check, Plus } from "lucide-react";
@@ -1189,7 +1189,7 @@ export default function EditLocationPage() {
                 ) : (
                   <>
                     <p className="text-sm font-medium text-gray-900 mb-2">
-                      â€¢ {formData.locationAccess.length} user(s) selected
+                      • {formData.locationAccess.length} user(s) selected
                     </p>
                     <p className="text-xs text-gray-600 mb-4">
                       Selected users can create and access transactions for this location.

@@ -204,7 +204,7 @@ const ApplyToInvoices: React.FC<ApplyToInvoicesProps> = ({ isOpen, onClose, cred
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
+        <div className="fixed inset-0 z-[3000] overflow-y-auto">
             <div className="flex min-h-full items-start justify-center px-4 pt-8 pb-6 text-center sm:px-6 lg:px-8">
                 <div className="fixed inset-0 transition-opacity" aria-hidden="true">
                     <div className="absolute inset-0 bg-gray-500 opacity-75" onClick={onClose}></div>
@@ -396,7 +396,8 @@ const ApplyToInvoices: React.FC<ApplyToInvoicesProps> = ({ isOpen, onClose, cred
                     <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse border-t border-gray-200">
                         <button
                             type="button"
-                            className={`w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm ${saving || totalApplied === 0 || remainingCredits < 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            className={`w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#156372] sm:ml-3 sm:w-auto sm:text-sm ${saving || totalApplied === 0 || remainingCredits < 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
                             onClick={handleSave}
                             disabled={saving || totalApplied === 0 || remainingCredits < 0}
                         >

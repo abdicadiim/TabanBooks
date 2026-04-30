@@ -1,4 +1,4 @@
-﻿import type { ManualJournalFieldMapping, ManualJournalExportSettings, ManualJournalSearchForm } from "./types";
+import type { ManualJournalFieldMapping, ManualJournalExportSettings, ManualJournalSearchForm } from "./types";
 
 export const MANUAL_JOURNAL_BUILT_IN_VIEWS = [
   "All",

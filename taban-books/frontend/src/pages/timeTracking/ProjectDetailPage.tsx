@@ -1,4 +1,4 @@
-Ôªøimport React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { projectsAPI, timeEntriesAPI, invoicesAPI, quotesAPI, creditNotesAPI, refundsAPI, taxesAPI, usersAPI } from "../../services/api";
 import { getCurrentUser } from "../../services/auth";
@@ -3486,7 +3486,7 @@ export default function ProjectDetailPage() {
                     <div className="flex-1">
                       <div className="mb-2 flex items-center gap-2 text-[12px]">
                         <span className="font-semibold text-[#111827]">{getCommentAuthorName(comment)}</span>
-                        <span className="text-[#94a3b8]">‚Ä¢</span>
+                        <span className="text-[#94a3b8]">ï</span>
                         <span className="text-[#64748b]">
                           {new Date(comment.createdAt).toLocaleString("en-GB", {
                             day: "2-digit",
@@ -3601,7 +3601,7 @@ export default function ProjectDetailPage() {
                   {/* Unbilled/Billed */}
                   <div>
                     <div style={{ fontSize: "12px", color: "#059669", marginBottom: "4px" }}>
-                      ‚óè Unbilled Amount
+                      ? Unbilled Amount
                     </div>
                     <div style={{ fontSize: "13px", color: "#059669", fontWeight: "600" }}>
                       {formatMoney(unbilledAmount)}
@@ -3609,7 +3609,7 @@ export default function ProjectDetailPage() {
                   </div>
                   <div>
                     <div style={{ fontSize: "12px", color: "#ef4444", marginBottom: "4px" }}>
-                      ‚óè Billed Amount
+                      ? Billed Amount
                     </div>
                     <div style={{ fontSize: "13px", color: "#ef4444", fontWeight: "600" }}>
                       {formatMoney(billedAmount)}
@@ -3994,7 +3994,7 @@ export default function ProjectDetailPage() {
                         fontSize: "12px",
                         cursor: "pointer",
                         backgroundColor: "transparent",
-                        color: "#475569",
+                        color: "#156372",
                         appearance: "none",
                         backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
                         backgroundRepeat: "no-repeat",
@@ -4034,7 +4034,7 @@ export default function ProjectDetailPage() {
                         fontSize: "12px",
                         cursor: "pointer",
                         backgroundColor: "transparent",
-                        color: "#475569",
+                        color: "#156372",
                         appearance: "none",
                         backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
                         backgroundRepeat: "no-repeat",
@@ -4792,9 +4792,9 @@ export default function ProjectDetailPage() {
                       borderRadius: "6px",
                       color: "#2563eb"
                     }}>
-                      <span style={{ cursor: "pointer" }}>‚Äπ</span>
+                      <span style={{ cursor: "pointer" }}>ã</span>
                       <span>1 - {Math.min(3, filteredExpenses.length)}</span>
-                      <span style={{ cursor: "pointer" }}>‚Ä∫</span>
+                      <span style={{ cursor: "pointer" }}>õ</span>
                     </div>
                   </div>
                 </div>
@@ -5438,7 +5438,7 @@ export default function ProjectDetailPage() {
                               alignItems: "center"
                             }}
                           >
-                            √ó
+                            ◊
                           </button>
                         </span>
                       ))
@@ -6863,7 +6863,7 @@ export default function ProjectDetailPage() {
                         <div className="flex-1">
                           <div className="mb-2 flex items-center gap-2 text-[12px]">
                             <span className="font-semibold text-[#111827]">{getCommentAuthorName(comment)}</span>
-                            <span className="text-[#94a3b8]">‚Ä¢</span>
+                            <span className="text-[#94a3b8]">ï</span>
                             <span className="text-[#64748b]">
                               {new Date(comment.createdAt).toLocaleString("en-GB", {
                                 day: "2-digit",

@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { X, Info, Eye, EyeOff } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -22,7 +22,7 @@ const ExportItemsModal = ({ isOpen, onClose, data, accounts = [] }: ExportItemsM
 
     const handleExport = () => {
         if (module !== "Items") {
-            toast("Only Items export is currently supported.", { icon: "â„¹ï¸" });
+            toast("Only Items export is currently supported.", { icon: "ℹ️" });
         }
 
         let exportData = [...(data || [])];

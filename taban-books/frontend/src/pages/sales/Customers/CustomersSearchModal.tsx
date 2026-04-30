@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { ChevronDown, Search, X } from "lucide-react";
 import type { CustomersPageController } from "./useCustomersPageController";
 

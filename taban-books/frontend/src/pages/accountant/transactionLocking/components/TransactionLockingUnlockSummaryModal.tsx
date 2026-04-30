@@ -82,7 +82,7 @@ export function TransactionLockingUnlockSummaryModal({
               borderRadius: "999px",
               border: "1px solid #d1d5db",
               backgroundColor: "#ffffff",
-              color: "#475569",
+              color: "#156372",
               cursor: "pointer",
             }}
           >
@@ -93,7 +93,7 @@ export function TransactionLockingUnlockSummaryModal({
         <div style={{ padding: "24px", display: "grid", gap: "14px" }}>
           {hasLockedModules ? (
             <>
-              <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.7, color: "#475569" }}>
+              <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.7, color: "#156372" }}>
                 The following modules are already locked and would need to be unlocked
                 before you can switch to a single global lock date.
               </p>
@@ -112,7 +112,7 @@ export function TransactionLockingUnlockSummaryModal({
                     <div style={{ fontSize: "15px", fontWeight: 700, color: "#111827" }}>
                       {module.name}
                     </div>
-                    <div style={{ marginTop: "6px", fontSize: "14px", color: "#475569" }}>
+                    <div style={{ marginTop: "6px", fontSize: "14px", color: "#156372" }}>
                       Lock date: {formatLockDate(module.lock.date)}
                     </div>
                   </div>
@@ -120,7 +120,7 @@ export function TransactionLockingUnlockSummaryModal({
               </div>
             </>
           ) : (
-            <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.7, color: "#475569" }}>
+            <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.7, color: "#156372" }}>
               All modules are currently unlocked, so you can introduce a shared lock
               date whenever that workflow is ready.
             </p>

@@ -42,6 +42,13 @@ import { formatSenderDisplay, resolveVerifiedPrimarySender } from "../../../../u
 const paymentModeOptions = ["Cash", "Check", "Credit Card", "Debit Card", "Bank Transfer", "PayPal", "Other"];
 const LS_LOCATIONS_CACHE_KEY = "taban_locations_cache";
 
+const isActiveLookupRecord = (row: any) => {
+  if (!row) return false;
+  if (row?.isActive === false || row?.active === false) return false;
+  const status = String(row?.status || row?.state || "active").trim().toLowerCase();
+  return !["inactive", "archived", "disabled", "deleted"].includes(status);
+};
+
 export default function RecordPayment() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -223,6 +230,7 @@ export default function RecordPayment() {
     return initials || "C";
   };
   const filteredCustomerDropdownOptions = customers.filter((customer) => {
+    if (!isActiveLookupRecord(customer)) return false;
     const search = customerSearch.toLowerCase();
     if (!search) return true;
     const haystack = [
@@ -375,11 +383,11 @@ export default function RecordPayment() {
         // Load customers from backend
         const customersResponse = await customersAPI.getAll();
         if (customersResponse && customersResponse.success && customersResponse.data) {
-          setCustomers(customersResponse.data.map((c: any) => normalizeCustomer(c)));
+          setCustomers(customersResponse.data.map((c: any) => normalizeCustomer(c)).filter(isActiveLookupRecord));
         } else {
           // Fallback to local storage
           const allCustomers = await getCustomers();
-          setCustomers((allCustomers || []).map((c: any) => normalizeCustomer(c)));
+          setCustomers((allCustomers || []).map((c: any) => normalizeCustomer(c)).filter(isActiveLookupRecord));
         }
 
         // Load bank accounts + Chart of Accounts for "Deposit To"
@@ -535,11 +543,11 @@ export default function RecordPayment() {
           setFormData(prev => ({ ...prev, paymentNumber: nextNum, currency: prev.currency || baseCurrencyCode }));
         }
       } catch (error) {
-        console.error('Error loading data:', error);
-        // Fallback to local storage
-        const allCustomers = await getCustomers();
-        setCustomers((allCustomers || []).map((c: any) => normalizeCustomer(c)));
-      }
+      console.error('Error loading data:', error);
+      // Fallback to local storage
+      const allCustomers = await getCustomers();
+      setCustomers((allCustomers || []).map((c: any) => normalizeCustomer(c)).filter(isActiveLookupRecord));
+    }
     };
 
     loadData();
@@ -1880,7 +1888,7 @@ export default function RecordPayment() {
     <div className="w-full h-screen bg-white overflow-y-auto">
       <div className="flex flex-col min-h-screen bg-white">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-white sticky top-0 z-10">
+        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-white">
           <h1 className="text-xl font-bold text-gray-800">
             {selectedInvoice ? `Payment for ${selectedInvoice.invoiceNumber || selectedInvoice.id}` : "Record Payment"}
           </h1>

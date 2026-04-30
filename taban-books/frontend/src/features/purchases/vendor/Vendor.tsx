@@ -1275,10 +1275,10 @@ export default function Vendor() {
               <div>
                 <p style="margin:0 0 6px 0; font-size:11px; font-weight:700; color:#334155; text-transform:uppercase;">To</p>
                 <p style="margin:0; font-size:14px; font-weight:700;">${safeText(displayName)}</p>
-                <p style="margin:2px 0 0 0; font-size:12px; color:#475569;">${safeText(vendorEmail)}</p>
+                <p style="margin:2px 0 0 0; font-size:12px; color:#156372;">${safeText(vendorEmail)}</p>
               </div>
               <div style="min-width:250px; border:1px solid #e2e8f0; border-radius:10px; padding:12px;">
-                <p style="margin:0 0 8px 0; font-size:11px; font-weight:700; color:#475569; text-transform:uppercase;">Account Summary</p>
+                <p style="margin:0 0 8px 0; font-size:11px; font-weight:700; color:#156372; text-transform:uppercase;">Account Summary</p>
                 <div style="display:flex; justify-content:space-between; font-size:12px; margin:5px 0;"><span style="color:#64748b;">Opening Balance</span><strong>${vendorCurrency} ${openingBalance.toFixed(2)}</strong></div>
                 <div style="display:flex; justify-content:space-between; font-size:12px; margin:5px 0;"><span style="color:#64748b;">Billed Amount</span><strong>${vendorCurrency} ${billedAmount.toFixed(2)}</strong></div>
                 <div style="display:flex; justify-content:space-between; font-size:12px; margin:5px 0;"><span style="color:#64748b;">Amount Paid</span><strong>${vendorCurrency} ${amountPaid.toFixed(2)}</strong></div>

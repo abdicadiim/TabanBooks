@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { useCurrency } from "../../hooks/useCurrency";
 
 export default function ProjectsCard(props: { data?: any; loading?: boolean }) {

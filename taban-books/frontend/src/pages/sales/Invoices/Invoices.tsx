@@ -1267,7 +1267,23 @@ export default function Invoices() {
     const diffDays = hasValidDueDate
       ? Math.ceil((dueDateValue!.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
       : null;
-    const balanceDue = Number(invoice.balance !== undefined ? invoice.balance : (invoice.balanceDue || 0));
+    const total = Number(getInvoiceDisplayTotal(invoice)) || 0;
+    const paid = Number((invoice as any)?.amountPaid || (invoice as any)?.paidAmount || 0) || 0;
+    const creditsApplied = Number((invoice as any)?.creditsApplied || 0) || 0;
+    const retainersApplied = Number(
+      (invoice as any)?.retainerAppliedAmount ||
+      (invoice as any)?.retainersApplied ||
+      (invoice as any)?.retainerAmountApplied ||
+      (invoice as any)?.retainerAppliedTotal ||
+      0
+    ) || 0;
+    const explicitBalance = invoice.balance !== undefined
+      ? Number(invoice.balance)
+      : (invoice.balanceDue !== undefined ? Number(invoice.balanceDue) : NaN);
+    const computedBalance = Math.max(0, total - paid - creditsApplied - retainersApplied);
+    const balanceDue = Number.isFinite(explicitBalance)
+      ? ((creditsApplied > 0 || retainersApplied > 0) ? Math.min(explicitBalance, computedBalance) : explicitBalance)
+      : computedBalance;
     const isOverdueByDate = Boolean(
       hasValidDueDate &&
       dueDateValue!.getTime() < Date.now() &&
@@ -1275,6 +1291,15 @@ export default function Invoices() {
       rawStatus !== "paid" &&
       rawStatus !== "draft" &&
       rawStatus !== "void"
+    );
+    const isPartiallyPaid = Boolean(
+      rawStatus === "partially paid" ||
+      rawStatus === "partially_paid" ||
+      rawStatus.includes("partial") ||
+      (total > 0 && balanceDue > 0 && balanceDue < total) ||
+      creditsApplied > 0 ||
+      retainersApplied > 0 ||
+      paid > 0
     );
 
     if (rawStatus === "paid") {
@@ -1285,6 +1310,9 @@ export default function Invoices() {
     }
     if (rawStatus === "pending" || rawStatus === "pending approval") {
       return { text: "PENDING", className: "text-amber-500" };
+    }
+    if (isPartiallyPaid && balanceDue > 0) {
+      return { text: "PARTIALLY PAID", className: "text-green-600" };
     }
     if (rawStatus === "sent") {
       if (hasValidDueDate && diffDays !== null) {
@@ -3083,7 +3111,7 @@ export default function Invoices() {
 
       <div className="flex-1 min-h-0 overflow-hidden">
         {!hasInvoices && !isRefreshing && Boolean(invoiceListQuery.data) ? (
-          <div className="flex h-full items-center justify-center overflow-auto py-16 text-center">
+          <div className="hidden flex h-full items-center justify-center overflow-auto py-16 text-center">
             <div className="max-w-md px-6">
               <h2 className="text-2xl font-semibold text-gray-900">No invoices yet</h2>
               <p className="mt-2 text-sm text-gray-600">

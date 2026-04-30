@@ -476,16 +476,16 @@ export default function SendQuoteEmail() {
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:34px;">
           <div style="max-width:55%;">
             <div style="font-size:34px; font-weight:700; color:#111; margin-bottom:6px;">${organizationName}</div>
-            ${organizationStreet ? `<div style="font-size:14px; color:#475569; line-height:1.45;">${organizationStreet}</div>` : ""}
-            ${(organizationCity || organizationState) ? `<div style="font-size:14px; color:#475569; line-height:1.45;">${organizationCity}${organizationCity && organizationState ? ", " : ""}${organizationState}</div>` : ""}
-            ${organizationCountry ? `<div style="font-size:14px; color:#475569; line-height:1.45;">${organizationCountry}</div>` : ""}
-            ${organizationPhone ? `<div style="font-size:14px; color:#475569; line-height:1.45;">${organizationPhone}</div>` : ""}
-            ${organizationEmail ? `<div style="font-size:14px; color:#475569; line-height:1.45;">${organizationEmail}</div>` : ""}
+            ${organizationStreet ? `<div style="font-size:14px; color:#156372; line-height:1.45;">${organizationStreet}</div>` : ""}
+            ${(organizationCity || organizationState) ? `<div style="font-size:14px; color:#156372; line-height:1.45;">${organizationCity}${organizationCity && organizationState ? ", " : ""}${organizationState}</div>` : ""}
+            ${organizationCountry ? `<div style="font-size:14px; color:#156372; line-height:1.45;">${organizationCountry}</div>` : ""}
+            ${organizationPhone ? `<div style="font-size:14px; color:#156372; line-height:1.45;">${organizationPhone}</div>` : ""}
+            ${organizationEmail ? `<div style="font-size:14px; color:#156372; line-height:1.45;">${organizationEmail}</div>` : ""}
           </div>
           <div style="text-align:right; min-width:210px;">
             <div style="font-size:52px; font-weight:800; letter-spacing:0.5px; line-height:1;">QUOTE</div>
             <div style="font-size:22px; color:#111; font-weight:700; margin-top:8px;">#${quoteData.quoteNumber || quoteData.id}</div>
-            <div style="font-size:14px; color:#475569; margin-top:38px;">${formattedDate}</div>
+            <div style="font-size:14px; color:#156372; margin-top:38px;">${formattedDate}</div>
           </div>
         </div>
 
@@ -497,11 +497,11 @@ export default function SendQuoteEmail() {
         <table style="width:100%; border-collapse:collapse; margin-bottom:30px;">
           <thead>
             <tr>
-              <th style="padding:12px; text-align:left; color:#fff; font-size:12px; font-weight:700; background-color:#475569;">#</th>
-              <th style="padding:12px; text-align:left; color:#fff; font-size:12px; font-weight:700; background-color:#475569;">Item & Description</th>
-              <th style="padding:12px; text-align:right; color:#fff; font-size:12px; font-weight:700; background-color:#475569;">Qty</th>
-              <th style="padding:12px; text-align:right; color:#fff; font-size:12px; font-weight:700; background-color:#475569;">Rate</th>
-              <th style="padding:12px; text-align:right; color:#fff; font-size:12px; font-weight:700; background-color:#475569;">Amount</th>
+              <th style="padding:12px; text-align:left; color:#fff; font-size:12px; font-weight:700; background-color:#156372;">#</th>
+              <th style="padding:12px; text-align:left; color:#fff; font-size:12px; font-weight:700; background-color:#156372;">Item & Description</th>
+              <th style="padding:12px; text-align:right; color:#fff; font-size:12px; font-weight:700; background-color:#156372;">Qty</th>
+              <th style="padding:12px; text-align:right; color:#fff; font-size:12px; font-weight:700; background-color:#156372;">Rate</th>
+              <th style="padding:12px; text-align:right; color:#fff; font-size:12px; font-weight:700; background-color:#156372;">Amount</th>
             </tr>
           </thead>
           <tbody>
@@ -510,18 +510,18 @@ export default function SendQuoteEmail() {
         </table>
 
         <div style="width:320px; margin-left:auto; margin-bottom:34px;">
-          <div style="display:flex; justify-content:space-between; padding:8px 0; font-size:14px; color:#475569;">
+          <div style="display:flex; justify-content:space-between; padding:8px 0; font-size:14px; color:#156372;">
             <span>Sub Total</span>
             <span style="font-weight:600; color:#111;">${formatCurrency(subTotal, quoteData.currency)}</span>
           </div>
           ${quoteData.discount > 0 ? `
-          <div style="display:flex; justify-content:space-between; padding:8px 0; font-size:14px; color:#475569;">
+          <div style="display:flex; justify-content:space-between; padding:8px 0; font-size:14px; color:#156372;">
             <span>Discount</span>
             <span style="font-weight:600; color:#111;">-${formatCurrency(quoteData.discount || 0, quoteData.currency)}</span>
           </div>
           ` : ""}
           ${(typeof quoteData.taxAmount !== 'undefined' && quoteData.taxAmount > 0) ? `
-          <div style="display:flex; justify-content:space-between; padding:8px 0; font-size:14px; color:#475569;">
+          <div style="display:flex; justify-content:space-between; padding:8px 0; font-size:14px; color:#156372;">
             <span>${quoteData.taxName || "Tax"}</span>
             <span style="font-weight:600; color:#111;">${formatCurrency(quoteData.taxAmount || 0, quoteData.currency)}</span>
           </div>
@@ -534,7 +534,7 @@ export default function SendQuoteEmail() {
 
         <div>
           <div style="font-size:14px; font-weight:700; color:#111; margin-bottom:6px;">Notes</div>
-          <div style="font-size:14px; color:#475569; line-height:1.6;">${notes}</div>
+          <div style="font-size:14px; color:#156372; line-height:1.6;">${notes}</div>
         </div>
       </div>
     `;

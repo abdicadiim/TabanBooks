@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef } from "react";
+import React, { useState, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { X, ChevronRight, Upload, Check, Info, ChevronDown, Search } from "lucide-react";
 import * as XLSX from "xlsx";
@@ -371,7 +371,7 @@ export default function TaxImportPage() {
                                     </div>
                                 )}
                                 <p className="mt-6 text-[12px] text-gray-400 font-normal">
-                                    Maximum File Size: 25 MB â€¢ File Format: CSV or TSV or XLS
+                                    Maximum File Size: 25 MB • File Format: CSV or TSV or XLS
                                 </p>
                             </div>
 

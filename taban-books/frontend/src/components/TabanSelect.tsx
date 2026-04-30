@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Search, ChevronDown, Plus, Check, Trash2 } from "lucide-react";
 import { useOrganizationBranding } from "../hooks/useOrganizationBranding";

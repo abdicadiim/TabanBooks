@@ -1,4 +1,4 @@
-﻿// @ts-nocheck
+// @ts-nocheck
 import React, { useState, useRef, useEffect } from "react";
 import { X, Eye, EyeOff, Info, ChevronDown, Search, Check, ChevronUp } from "lucide-react";
 

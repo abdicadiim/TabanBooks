@@ -129,6 +129,13 @@ const renderAddressBlock = (address: AddressBlock, emptyLabel: string) => {
   );
 };
 
+const isActiveLookupRecord = (row: any) => {
+  if (!row) return false;
+  if (row?.isActive === false || row?.active === false) return false;
+  const status = String(row?.status || row?.state || "active").trim().toLowerCase();
+  return !["inactive", "archived", "disabled", "deleted"].includes(status);
+};
+
 export default function NewRecurringInvoice() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -637,21 +644,28 @@ export default function NewRecurringInvoice() {
           getSalespersonsFromAPI(),
           getTaxesFromAPI()
         ]);
-        const loadedCustomers = (customersResponse?.data || []).map((c: any) => normalizeCustomer(c));
+        const loadedCustomers = (customersResponse?.data || [])
+          .map((c: any) => normalizeCustomer(c))
+          .filter(isActiveLookupRecord);
         setCustomers(loadedCustomers);
 
-        const transformedItems = (loadedItems || []).map(item => ({
-          id: item._id || item.id,
-          name: item.name || "",
-          sku: item.sku || "",
-          rate: item.sellingPrice || item.costPrice || item.rate || 0,
-          stockOnHand: item.stockQuantity || item.stockOnHand || item.quantityOnHand || 0,
-          unit: item.unit || item.unitOfMeasure || "pcs",
-          tax: item.taxId || item.salesTaxId || item.tax || item.salesTax || item.taxInfo?.taxId || item.taxInfo?.taxName || item.taxRate || item.salesTaxRate || "",
-          taxId: item.taxId || item.salesTaxId || item.taxInfo?.taxId || "",
-          taxRate: item.taxRate || item.salesTaxRate || item.taxInfo?.taxRate || 0,
-          taxInfo: item.taxInfo || undefined
-        }));
+        const transformedItems = (loadedItems || [])
+          .map(item => ({
+            id: item._id || item.id,
+            name: item.name || "",
+            sku: item.sku || "",
+            rate: item.sellingPrice || item.costPrice || item.rate || 0,
+            stockOnHand: item.stockQuantity || item.stockOnHand || item.quantityOnHand || 0,
+            unit: item.unit || item.unitOfMeasure || "pcs",
+            tax: item.taxId || item.salesTaxId || item.tax || item.salesTax || item.taxInfo?.taxId || item.taxInfo?.taxName || item.taxRate || item.salesTaxRate || "",
+            taxId: item.taxId || item.salesTaxId || item.taxInfo?.taxId || "",
+            taxRate: item.taxRate || item.salesTaxRate || item.taxInfo?.taxRate || 0,
+            taxInfo: item.taxInfo || undefined,
+            status: item.status || "active",
+            active: item.active,
+            isActive: item.isActive
+          }))
+          .filter(isActiveLookupRecord);
         setItems(transformedItems);
 
         setSalespersons((loadedSalespersons || []).map((s: any) => normalizeSalesperson(s)));
@@ -1541,7 +1555,9 @@ export default function NewRecurringInvoice() {
 
   const reloadCustomersForRecurring = async () => {
     const customersResponse = await getCustomersFromAPI();
-    const normalizedCustomers = ((customersResponse?.data || []) as any[]).map(normalizeCustomer);
+    const normalizedCustomers = ((customersResponse?.data || []) as any[])
+      .map(normalizeCustomer)
+      .filter(isActiveLookupRecord);
     setCustomers(normalizedCustomers);
     return normalizedCustomers;
   };
@@ -1591,8 +1607,9 @@ export default function NewRecurringInvoice() {
   };
 
   const filteredCustomers = (Array.isArray(customers) ? customers : []).filter(customer =>
-    (customer.name || "").toLowerCase().includes(customerSearch.toLowerCase()) ||
-    (customer.email || "").toLowerCase().includes(customerSearch.toLowerCase())
+    isActiveLookupRecord(customer) &&
+    ((customer.name || "").toLowerCase().includes(customerSearch.toLowerCase()) ||
+      (customer.email || "").toLowerCase().includes(customerSearch.toLowerCase()))
   );
 
   useEffect(() => {
@@ -1703,11 +1720,13 @@ export default function NewRecurringInvoice() {
 
   const searchableItems = useMemo(
     () =>
-      items.map((item) => ({
-        ...item,
-        __searchName: String(item.name || "").toLowerCase(),
-        __searchSku: String(item.sku || "").toLowerCase()
-      })),
+      items
+        .filter(isActiveLookupRecord)
+        .map((item) => ({
+          ...item,
+          __searchName: String(item.name || "").toLowerCase(),
+          __searchSku: String(item.sku || "").toLowerCase()
+        })),
     [items]
   );
 
@@ -1723,11 +1742,15 @@ export default function NewRecurringInvoice() {
 
   const getBulkFilteredItems = () => {
     if (!bulkAddSearch.trim()) {
-      return items;
+      return items.filter(isActiveLookupRecord);
     }
+    const query = bulkAddSearch.toLowerCase();
     return items.filter(item =>
-      (item.name || "").toLowerCase().includes(bulkAddSearch.toLowerCase()) ||
-      (item.sku || "").toLowerCase().includes(bulkAddSearch.toLowerCase())
+      isActiveLookupRecord(item) &&
+      (
+        (item.name || "").toLowerCase().includes(query) ||
+        (item.sku || "").toLowerCase().includes(query)
+      )
     );
   };
 
@@ -2466,19 +2489,19 @@ export default function NewRecurringInvoice() {
 
   return (
     <div className="w-full h-screen flex flex-col overflow-hidden bg-gray-50">
-      {/* Header */}
-      <div className="flex-shrink-0 border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
-        <div className="w-full px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <FileText size={24} className="text-gray-700" />
-            <h1 className="text-2xl font-semibold text-gray-900 m-0">
-              {isEditMode ? "Edit Recurring Invoice" : "New Recurring Invoice"}
-            </h1>
+      <div className="flex-1 overflow-y-auto scrollbar-hide bg-gray-50">
+        {/* Header */}
+        <div className="border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
+          <div className="w-full px-6 py-4 flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <FileText size={24} className="text-gray-700" />
+              <h1 className="text-2xl font-semibold text-gray-900 m-0">
+                {isEditMode ? "Edit Recurring Invoice" : "New Recurring Invoice"}
+              </h1>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="flex-1 overflow-y-auto scrollbar-hide bg-gray-50">
             <div className="w-full max-w-[980px] px-6 py-6 space-y-6 pb-24">
 
           {/* Main Form Content */}

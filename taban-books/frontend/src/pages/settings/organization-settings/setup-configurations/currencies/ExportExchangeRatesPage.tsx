@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, Info, Eye, EyeOff } from "lucide-react";
 import * as XLSX from "xlsx";

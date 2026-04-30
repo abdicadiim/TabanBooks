@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { useCurrency } from "../../hooks/useCurrency";
 import { Building2, CreditCard } from "lucide-react";
 

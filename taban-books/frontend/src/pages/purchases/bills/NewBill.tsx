@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { createPortal } from "react-dom";
 import {
@@ -7439,8 +7439,8 @@ function NewCustomerModal({ onClose, onSave }: { onClose: () => void; onSave: (c
             <div style={{ padding: "48px 24px", textAlign: "center", color: "#6b7280", fontSize: "14px" }}>
               <div style={{ marginBottom: "8px" }}>
                 Start adding custom fields for your Customers and Vendors by going to{" "}
-                <span style={{ fontWeight: "600" }}>Settings</span> âž¡{" "}
-                <span style={{ fontWeight: "600" }}>Preferences</span> âž¡{" "}
+                <span style={{ fontWeight: "600" }}>Settings</span> ➡{" "}
+                <span style={{ fontWeight: "600" }}>Preferences</span> ➡{" "}
                 <span style={{ fontWeight: "600" }}>Customers and Vendors</span>. You can also refine the address format of your Customers and Vendors from there.
               </div>
             </div>
@@ -7454,7 +7454,7 @@ function NewCustomerModal({ onClose, onSave }: { onClose: () => void; onSave: (c
               </div>
               <div style={{ marginBottom: "8px" }}>
                 Start creating reporting tags by going to{" "}
-                <span style={{ fontWeight: "600" }}>More Settings</span> âž¡{" "}
+                <span style={{ fontWeight: "600" }}>More Settings</span> ➡{" "}
                 <span style={{ fontWeight: "600" }}>Reporting Tags</span>.
               </div>
             </div>

@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Edit, MoreVertical, Plus, Info, Trash2 } from "lucide-react";
 import EditReminderModal from "./EditReminderModal";
 import PaymentExpectedInfoModal from "./PaymentExpectedInfoModal";

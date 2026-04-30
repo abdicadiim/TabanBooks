@@ -36,6 +36,7 @@ import {
   saveCreditNote,
   updateCreditNote,
   getCreditNoteById,
+  getItemsFromAPI,
   getSalespersons,
   saveSalesperson,
   getInvoiceById,
@@ -47,8 +48,8 @@ import {
   taxLabel
 } from "../../salesModel";
 import { getAllDocuments } from "../../../../utils/documentStorage";
-import { getCachedListResponse } from "../../../../services/swrListCache";
-import { customersAPI, salespersonsAPI, itemsAPI, taxesAPI, currenciesAPI, creditNotesAPI, reportingTagsAPI, locationsAPI, transactionNumberSeriesAPI, chartOfAccountsAPI } from "../../../../services/api";
+import { getCachedListResponse, readCachedListResponse, writeCachedListResponse } from "../../../../services/swrListCache";
+import { customersAPI, salespersonsAPI, taxesAPI, currenciesAPI, creditNotesAPI, reportingTagsAPI, locationsAPI, transactionNumberSeriesAPI, chartOfAccountsAPI } from "../../../../services/api";
 import { getToken } from "../../../../services/auth";
 import { getChartAccountsFromResponse, getAccountOptionLabel } from "../../../purchases/shared/accountOptions";
 
@@ -130,6 +131,9 @@ interface CreditNoteItem {
   id: number;
   itemId?: string;
   itemDetails: string;
+  sku?: string;
+  description?: string;
+  unit?: string;
   account?: string;
   quantity: number;
   rate: number;
@@ -181,6 +185,192 @@ const resolveItemAccount = (item: any): string => {
     return String(salesAccount?.name || salesAccount?.accountName || "");
   }
   return "";
+};
+const isActiveLookupRecord = (record: any) => {
+  if (!record) return false;
+  if (record?.isActive === false || record?.active === false) return false;
+  const status = String(record?.status || record?.state || "active").trim().toLowerCase();
+  return !["inactive", "archived", "disabled", "deleted"].includes(status);
+};
+const normalizeCreditNoteLookupText = (value: any) =>
+  String(value || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+const findMatchingCreditNoteCatalogItem = (sourceItem: any, catalogItems: any[] = []) => {
+  const sourceId = normalizeCreditNoteLookupText(
+    sourceItem?.itemId ||
+      sourceItem?.item ||
+      sourceItem?._id ||
+      sourceItem?.id ||
+      sourceItem?.sourceId ||
+      sourceItem?.productId
+  );
+  const sourceName = normalizeCreditNoteLookupText(
+    sourceItem?.itemDetails ||
+      sourceItem?.name ||
+      sourceItem?.description ||
+      sourceItem?.displayName ||
+      sourceItem?.label
+  );
+  const sourceSku = normalizeCreditNoteLookupText(sourceItem?.sku || sourceItem?.itemSku || sourceItem?.productSku);
+
+  return (Array.isArray(catalogItems) ? catalogItems : []).find((catalog: any) => {
+    const catalogId = normalizeCreditNoteLookupText(catalog?.itemId || catalog?.id || catalog?._id);
+    const catalogName = normalizeCreditNoteLookupText(catalog?.itemDetails || catalog?.name || catalog?.description || catalog?.displayName || catalog?.label);
+    const catalogSku = normalizeCreditNoteLookupText(catalog?.sku || catalog?.itemSku || catalog?.productSku);
+    return Boolean(
+      (sourceId && catalogId && sourceId === catalogId) ||
+      (sourceSku && catalogSku && sourceSku === catalogSku) ||
+      (sourceName && catalogName && (catalogName === sourceName || catalogName.includes(sourceName) || sourceName.includes(catalogName)))
+    );
+  }) || null;
+};
+const toFiniteNumber = (value: any, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+const pickFirstFiniteNumber = (...values: any[]) => {
+  for (const value of values) {
+    if (value === undefined || value === null || value === "") continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+};
+const normalizeCreditNoteLineItem = (item: any, index: number, taxOptions: any[], catalogItems: any[] = []): CreditNoteItem => {
+  const rawItem = item?.item;
+  const rawItemObject = rawItem && typeof rawItem === "object" ? rawItem : null;
+  const catalogMatch = findMatchingCreditNoteCatalogItem(item, catalogItems);
+  const quantity = pickFirstFiniteNumber(
+    item?.displayQuantity ??
+      item?.quantity ??
+      item?.qty ??
+      rawItemObject?.quantity ??
+      rawItemObject?.qty ??
+      catalogMatch?.quantity ??
+      1,
+  ) || 1;
+  const rate = pickFirstFiniteNumber(
+    item?.displayRate ??
+      item?.unitPrice ??
+      item?.rate ??
+      item?.price ??
+      item?.sellingPrice ??
+      item?.catalogRate ??
+      item?.baseRate ??
+      item?.costPrice ??
+      rawItemObject?.displayRate ??
+      rawItemObject?.unitPrice ??
+      rawItemObject?.rate ??
+      rawItemObject?.price ??
+      rawItemObject?.sellingPrice ??
+      rawItemObject?.unitPrice ??
+      catalogMatch?.rate ??
+      catalogMatch?.costPrice ??
+      catalogMatch?.sellingPrice ??
+      0,
+  ) || 0;
+  const rawAmount = pickFirstFiniteNumber(
+    item?.displayAmount,
+    item?.amount,
+    item?.total,
+    item?.lineTotal,
+    item?.line_total,
+    item?.subTotal,
+    item?.subtotal,
+    rawItemObject?.displayAmount,
+    rawItemObject?.amount,
+    rawItemObject?.total,
+    rawItemObject?.lineTotal,
+    catalogMatch?.amount,
+    catalogMatch?.total
+  );
+  const amount = rawAmount !== undefined ? rawAmount : quantity * rate;
+  const itemDetails = String(
+    item?.itemDetails ||
+      item?.name ||
+      item?.description ||
+      item?.displayName ||
+      item?.label ||
+      rawItemObject?.name ||
+      rawItemObject?.itemDetails ||
+      rawItemObject?.description ||
+      catalogMatch?.itemDetails ||
+      catalogMatch?.name ||
+      catalogMatch?.description ||
+      ""
+  ).trim();
+  const normalizedItemId = String(
+    item?.itemId ||
+      item?.item ||
+      rawItemObject?._id ||
+      rawItemObject?.id ||
+      rawItemObject?.sourceId ||
+      catalogMatch?.itemId ||
+      catalogMatch?.id ||
+      catalogMatch?._id ||
+      ""
+  ).trim();
+  const account = String(
+    item?.account ||
+      item?.accountName ||
+      resolveItemAccount(item) ||
+      (rawItemObject ? resolveItemAccount(rawItemObject) : "") ||
+      (catalogMatch ? resolveItemAccount(catalogMatch) : "") ||
+      ""
+  ).trim();
+
+  return {
+    id: Number(item?.id) || Date.now() + index,
+    itemId: normalizedItemId || undefined,
+    itemDetails,
+    sku: String(item?.sku || item?.itemSku || rawItemObject?.sku || catalogMatch?.sku || "").trim(),
+    description: String(item?.description || item?.itemDescription || rawItemObject?.description || catalogMatch?.description || "").trim(),
+    unit: String(item?.unit || item?.uom || rawItemObject?.unit || catalogMatch?.unit || "").trim(),
+    account,
+    quantity,
+    rate,
+    tax: resolveItemTaxId(item, taxOptions) || String(item?.tax || item?.taxId || item?.taxRateId || item?.salesTaxId || item?.tax_id || ""),
+    amount,
+    stockOnHand: toFiniteNumber(item?.stockOnHand ?? item?.stockQuantity ?? rawItemObject?.stockOnHand ?? rawItemObject?.quantityOnHand ?? catalogMatch?.stockOnHand ?? 0),
+    reportingTags: Array.isArray(item?.reportingTags)
+      ? item.reportingTags
+          .map((tag: any) => ({
+            tagId: String(tag?.tagId || tag?.id || tag?._id || tag?.key || ""),
+            value: String(tag?.value || ""),
+            name: String(tag?.name || tag?.label || "")
+          }))
+          .filter((tag: any) => tag.tagId || tag.value || tag.name)
+      : []
+  };
+};
+const normalizeCreditNoteItems = (items: any[], taxOptions: any[], catalogItems: any[] = []) =>
+  (Array.isArray(items) ? items : []).map((item: any, index: number) => normalizeCreditNoteLineItem(item, index, taxOptions, catalogItems));
+const buildSelectedItemIds = (items: CreditNoteItem[]) =>
+  items.reduce((acc: Record<string | number, string>, item) => {
+    if (item?.id !== undefined && item?.id !== null && item.itemId) {
+      acc[item.id] = String(item.itemId);
+    }
+    return acc;
+  }, {});
+const enrichCreditNoteItemFromCatalog = (item: any, catalogItems: any[] = []) => {
+  const catalogMatch = findMatchingCreditNoteCatalogItem(item, catalogItems);
+  if (!catalogMatch) return item;
+  const rate = toFiniteNumber(item?.rate ?? catalogMatch?.rate ?? catalogMatch?.costPrice ?? catalogMatch?.sellingPrice ?? 0);
+  const quantity = toFiniteNumber(item?.quantity ?? 1, 1) || 1;
+  return {
+    ...item,
+    itemId: String(item?.itemId || catalogMatch?.itemId || catalogMatch?.id || catalogMatch?._id || "").trim() || item?.itemId,
+    itemDetails: String(item?.itemDetails || catalogMatch?.itemDetails || catalogMatch?.name || "").trim(),
+    sku: String(item?.sku || catalogMatch?.sku || "").trim(),
+    description: String(item?.description || catalogMatch?.description || "").trim(),
+    unit: String(item?.unit || catalogMatch?.unit || "").trim(),
+    account: String(item?.account || resolveItemAccount(catalogMatch) || "").trim(),
+    rate,
+    amount: toFiniteNumber(item?.amount ?? quantity * rate, quantity * rate),
+    stockOnHand: toFiniteNumber(item?.stockOnHand ?? catalogMatch?.stockOnHand ?? 0),
+  };
 };
 const resolveItemTaxId = (item: any, taxOptions: any[]): string => {
   const rawArray = item?.taxs || item?.taxes || item?.tax_ids;
@@ -254,6 +444,12 @@ export default function NewCreditNote() {
   const { id } = useParams();
   const isEditMode = !!id;
   const clonedDataFromState = location.state?.clonedData || null;
+  const sourceInvoiceId = String(
+    new URLSearchParams(location.search).get("invoiceId") ||
+    (window.history.state && (window.history.state as any).invoiceId) ||
+    ""
+  ).trim();
+  const isCreateFromInvoice = Boolean(sourceInvoiceId && !isEditMode);
 
   const [formData, setFormData] = useState({
     customerName: "",
@@ -266,7 +462,7 @@ export default function NewCreditNote() {
     accountsReceivable: "Accounts Receivable",
     salesperson: "",
     subject: "",
-    items: [{ id: Date.now(), itemDetails: "", account: "", quantity: 1, rate: 0, tax: "", amount: 0, reportingTags: [] }] as CreditNoteItem[],
+    items: [{ id: Date.now(), itemDetails: "", sku: "", description: "", account: "", quantity: 1, rate: 0, tax: "", amount: 0, reportingTags: [] }] as CreditNoteItem[],
     subTotal: 0,
     discount: 0,
     discountType: "percent",
@@ -279,6 +475,7 @@ export default function NewCreditNote() {
     documents: [] as CreditNoteDocument[]
   });
   const hasAppliedCloneRef = useRef(false);
+  const invoicePrefillRef = useRef<any | null>(null);
   const [saveLoading, setSaveLoading] = useState<null | "draft" | "open">(null);
   const [enabledSettings, setEnabledSettings] = useState<any>(null);
   const discountMode = enabledSettings?.discountSettings?.discountType ?? "transaction";
@@ -310,6 +507,7 @@ export default function NewCreditNote() {
   const [taxOptions, setTaxOptions] = useState<Tax[]>([]);
   const [salespersons, setSalespersons] = useState<any[]>([]);
   const [availableItems, setAvailableItems] = useState<any[]>([]);
+  const [isItemsLoading, setIsItemsLoading] = useState(true);
   const [chartAccounts, setChartAccounts] = useState<any[]>([]);
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
@@ -383,6 +581,8 @@ export default function NewCreditNote() {
   const [accountSearches, setAccountSearches] = useState<Record<string | number, string>>({});
   const [itemSearches, setItemSearches] = useState<Record<string | number, string>>({});
   const [taxSearches, setTaxSearches] = useState<Record<string | number, string>>({});
+  const [isClientMounted, setIsClientMounted] = useState(false);
+  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
 
   const [isUploadDropdownOpen, setIsUploadDropdownOpen] = useState(false);
   const [isCloudPickerOpen, setIsCloudPickerOpen] = useState(false);
@@ -394,6 +594,12 @@ export default function NewCreditNote() {
   const [availableDocuments, setAvailableDocuments] = useState<any[]>([]);
   const [selectedDocuments, setSelectedDocuments] = useState<any[]>([]);
   const [selectedInbox, setSelectedInbox] = useState("files");
+  const isAnyModalOpen =
+    isBulkAddModalOpen ||
+    customerSearchModalOpen ||
+    isCreditNoteNumberModalOpen ||
+    isCloudPickerOpen ||
+    isDocumentsModalOpen;
 
   const customerDropdownRef = useRef<HTMLDivElement>(null);
   const salespersonDropdownRef = useRef<HTMLDivElement>(null);
@@ -413,6 +619,9 @@ export default function NewCreditNote() {
     hasAppliedCloneRef.current = true;
 
     const cloned = clonedDataFromState as any;
+    if (sourceInvoiceId) {
+      invoicePrefillRef.current = cloned;
+    }
     const toDisplayDate = (value: any, fallback: string) => {
       if (!value) return fallback;
       const d = new Date(value);
@@ -427,6 +636,9 @@ export default function NewCreditNote() {
         id: Date.now() + index,
         itemId: item.itemId || item.id || item._id || undefined,
         itemDetails: item.itemDetails || item.name || item.description || "",
+        sku: item.sku || item.itemSku || "",
+        description: item.description || "",
+        unit: item.unit || item.uom || "",
         quantity: Number(item.quantity ?? 1) || 1,
         rate: Number(item.rate ?? item.price ?? 0) || 0,
         tax: String(item.tax || item.taxId || ""),
@@ -457,6 +669,67 @@ export default function NewCreditNote() {
       documents: []
     }));
   }, [clonedDataFromState, isEditMode]);
+
+  useEffect(() => {
+    setIsClientMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.createElement("div");
+    root.setAttribute("data-credit-note-portals", "true");
+    document.body.appendChild(root);
+    setPortalRoot(root);
+    return () => {
+      if (root.parentNode) {
+        root.parentNode.removeChild(root);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!sourceInvoiceId || isEditMode) return;
+    const invoiceData = invoicePrefillRef.current;
+    const sourceItems = Array.isArray(invoiceData?.items) ? invoiceData.items : [];
+    if (!invoiceData || sourceItems.length === 0) return;
+
+    const hydratedItems = normalizeCreditNoteItems(sourceItems, taxOptions, availableItems)
+      .map((item: any) => enrichCreditNoteItemFromCatalog(item, availableItems));
+
+    if (hydratedItems.length === 0) return;
+
+    const hasMissingFields = hydratedItems.some((item: any) =>
+      !String(item.account || "").trim() ||
+      Number(item.rate || 0) === 0 ||
+      Number(item.amount || 0) === 0
+    );
+    if (!hasMissingFields) return;
+
+    setFormData((prev) => {
+      const referenceMatches = !prev.referenceNumber || prev.referenceNumber === String(invoiceData.invoiceNumber || prev.referenceNumber || "");
+      if (!referenceMatches) return prev;
+
+      const nextItems = hydratedItems.map((item: any, index: number) => ({
+        ...(prev.items[index] || {}),
+        ...item,
+      }));
+      const nextSubTotal = Number(
+        invoiceData.subtotal ??
+          invoiceData.subTotal ??
+          nextItems.reduce((sum: number, row: any) => sum + (Number(row.amount || 0) || 0), 0)
+      ) || 0;
+      const nextTotal = Number(invoiceData.total ?? invoiceData.amount ?? nextSubTotal) || 0;
+
+      return {
+        ...prev,
+        items: nextItems,
+        subTotal: nextSubTotal,
+        total: nextTotal
+      };
+    });
+
+    setSelectedItemIds(buildSelectedItemIds(hydratedItems));
+  }, [availableItems, taxOptions, isEditMode, sourceInvoiceId]);
 
   const handleCustomerSearch = () => {
     const searchTerm = customerSearchTerm.toLowerCase();
@@ -510,6 +783,42 @@ export default function NewCreditNote() {
         let loadedSalespersons: any[] = [];
         let loadedTaxes: any[] = [];
 
+        // Warm the item selector immediately so the first click has data ready.
+        void (async () => {
+          try {
+            const cachedItemsResponse = await readCachedListResponse<any>("/items");
+            const cachedRows = Array.isArray(cachedItemsResponse?.data)
+              ? cachedItemsResponse.data
+              : Array.isArray(cachedItemsResponse?.items)
+                ? cachedItemsResponse.items
+                : Array.isArray(cachedItemsResponse)
+                  ? cachedItemsResponse
+                  : [];
+
+            if (cachedRows.length > 0) {
+              setAvailableItems(cachedRows.filter(isActiveLookupRecord).map(normalizeCreditNoteItem));
+              setIsItemsLoading(false);
+            }
+
+            const liveItems = await getItemsFromAPI();
+            const normalizedLiveItems = (Array.isArray(liveItems) ? liveItems : [])
+              .filter(isActiveLookupRecord)
+              .map(normalizeCreditNoteItem);
+
+            if (normalizedLiveItems.length > 0) {
+              setAvailableItems(normalizedLiveItems);
+              setIsItemsLoading(false);
+              void writeCachedListResponse("/items", { data: normalizedLiveItems });
+            } else if (cachedRows.length === 0) {
+              setAvailableItems([]);
+              setIsItemsLoading(false);
+            }
+          } catch (error) {
+            console.error("Error loading items:", error);
+            setIsItemsLoading(false);
+          }
+        })();
+
         // Load customers from backend
         try {
           const customersResponse = await getCachedListResponse(
@@ -517,7 +826,9 @@ export default function NewCreditNote() {
             async () => buildCustomerCachePayload(await customersAPI.getAll({ page: 1, limit: 1000, search: "" })),
           );
           if (customersResponse && ((customersResponse as any).items || (customersResponse as any).data)) {
-            const normalizedCustomers = (((customersResponse as any).items || (customersResponse as any).data || []) as any[]).map(normalizeCustomer);
+            const normalizedCustomers = (((customersResponse as any).items || (customersResponse as any).data || []) as any[])
+              .filter(isActiveLookupRecord)
+              .map(normalizeCustomer);
             loadedCustomers = normalizedCustomers;
             setCustomers(normalizedCustomers);
           }
@@ -646,27 +957,6 @@ export default function NewCreditNote() {
           console.error("Error loading price lists:", error);
         }
 
-        // Load items from backend
-        try {
-          const itemsResponse = await itemsAPI.getAll();
-          if (itemsResponse && itemsResponse.success && itemsResponse.data) {
-            const transformedItems = itemsResponse.data.map((item: any) => ({
-              id: item._id || item.id,
-              name: item.name || "",
-              sku: item.sku || "",
-              rate: item.sellingPrice || item.costPrice || item.rate || 0,
-              stockOnHand: item.stockOnHand || item.quantityOnHand || 0,
-              unit: item.unit || item.unitOfMeasure || "pcs",
-              taxId: item.taxId || item.tax || item.salesTaxId || item.taxRateId || "",
-              taxName: item.taxName || item.tax_label || item.taxRate?.name || "",
-              account: resolveItemAccount(item)
-            }));
-            setAvailableItems(transformedItems);
-          }
-        } catch (error) {
-          console.error('Error loading items:', error);
-        }
-
         // Load base currency and next credit note number if not in edit mode
         if (!isEditMode) {
           try {
@@ -697,22 +987,18 @@ export default function NewCreditNote() {
 
         // If navigated from an Invoice (query param invoiceId), prefill credit note fields
         try {
-          const params = new URLSearchParams(window.location.search);
-          const invoiceId = params.get('invoiceId') || (window.history.state && window.history.state.invoiceId);
+              const invoiceId = sourceInvoiceId;
           if (invoiceId && !isEditMode) {
             const invoiceData = await getInvoiceById(invoiceId);
             if (invoiceData) {
-              // Map invoice items to credit note items
-              const mappedItems = (invoiceData.items || []).map((it: any) => ({
-                id: Date.now() + Math.random(),
-                itemId: it.item?._id || it.item || undefined,
-                itemDetails: it.name || it.itemDetails || it.description || "",
-                quantity: it.quantity || it.qty || 1,
-                rate: it.rate || it.unitPrice || it.price || 0,
-                tax: it.taxId || it.tax || "",
-                amount: it.total || it.amount || ((it.quantity || 0) * (it.rate || it.unitPrice || 0) || 0),
-                reportingTags: Array.isArray(it.reportingTags) ? it.reportingTags : []
-              }));
+              // Store the invoice so the later rehydration pass can use the same source rows.
+              invoicePrefillRef.current = invoiceData;
+
+              // Normalize the invoice items directly so we keep the invoice's own rate/amount.
+              const sourceItems = Array.isArray(invoiceData.items) ? invoiceData.items : [];
+              const normalizedItems = normalizeCreditNoteItems(sourceItems, taxOptions, availableItems).map((item) =>
+                enrichCreditNoteItemFromCatalog(item, availableItems)
+              );
 
               console.debug('[NewCreditNote] Prefilling from invoice', invoiceData);
               setFormData(prev => ({
@@ -720,8 +1006,8 @@ export default function NewCreditNote() {
                 customerName: invoiceData.customerName || (invoiceData.customer && (invoiceData.customer.displayName || invoiceData.customer.name)) || prev.customerName,
                 creditNoteDate: invoiceData.date ? formatDate(invoiceData.date) : prev.creditNoteDate,
                 referenceNumber: invoiceData.invoiceNumber || prev.referenceNumber,
-                items: mappedItems.length ? mappedItems : prev.items,
-                subTotal: invoiceData.subtotal || invoiceData.subTotal || mappedItems.reduce((s: any, it: any) => s + (parseFloat(it.amount) || 0), 0),
+                items: normalizedItems.length ? normalizedItems : prev.items,
+                subTotal: invoiceData.subtotal || invoiceData.subTotal || normalizedItems.reduce((s: any, it: any) => s + (parseFloat(it.amount) || 0), 0),
                 discount: invoiceData.discount || 0,
                 shippingCharges: invoiceData.shipping || invoiceData.shippingCharges || 0,
                 total: invoiceData.total || invoiceData.amount || 0,
@@ -729,6 +1015,9 @@ export default function NewCreditNote() {
                 customerNotes: invoiceData.customerNotes || prev.customerNotes,
                 termsAndConditions: (invoiceData as any).terms || invoiceData.termsAndConditions || prev.termsAndConditions
               }));
+              if (normalizedItems.length) {
+                setSelectedItemIds(buildSelectedItemIds(normalizedItems));
+              }
 
               // set selected customer if available — if not found, set a minimal selectedCustomer so the UI shows name
               try {
@@ -1235,6 +1524,37 @@ export default function NewCreditNote() {
     name: salesperson?.name || ""
   });
 
+  const normalizeCreditNoteItem = (item: any) => ({
+    id: item?._id || item?.id,
+    name: item?.name || "",
+    sku: item?.sku || "",
+    rate: Number(
+      item?.sellingPrice ??
+      item?.salePrice ??
+      item?.salesPrice ??
+      item?.selling_price ??
+      item?.rate ??
+      item?.price ??
+      item?.unitPrice ??
+      item?.costPrice ??
+      item?.openingStockRate ??
+      0
+    ) || 0,
+    stockOnHand: Number(
+      item?.stockQuantity ??
+      item?.stockOnHand ??
+      item?.quantityOnHand ??
+      item?.availableStock ??
+      item?.stock ??
+      item?.openingStock ??
+      0
+    ) || 0,
+    unit: item?.unit || item?.usageUnit || item?.unitOfMeasure || item?.stockUnit || "pcs",
+    taxId: item?.taxId || item?.tax || item?.salesTaxId || item?.taxRateId || "",
+    taxName: item?.taxName || item?.tax_label || item?.taxRate?.name || "",
+    account: resolveItemAccount(item)
+  });
+
   const buildCustomerCachePayload = (response: any) => {
     const rows = Array.isArray(response?.items)
       ? response.items
@@ -1264,7 +1584,9 @@ export default function NewCreditNote() {
       CUSTOMER_LIST_CACHE_ENDPOINT,
       async () => buildCustomerCachePayload(await customersAPI.getAll({ page: 1, limit: 1000, search: "" })),
     );
-    const normalizedCustomers = (((customersResponse as any)?.items || (customersResponse as any)?.data || []) as any[]).map(normalizeCustomer);
+    const normalizedCustomers = (((customersResponse as any)?.items || (customersResponse as any)?.data || []) as any[])
+      .filter(isActiveLookupRecord)
+      .map(normalizeCustomer);
     setCustomers(normalizedCustomers);
     return normalizedCustomers;
   };
@@ -1531,6 +1853,9 @@ export default function NewCreditNote() {
           ...item,
           itemId: pItem._id || pItem.id,
           itemDetails: pItem.name,
+          sku: pItem.sku || pItem.itemSku || "",
+          description: item.description || pItem.description || "",
+          unit: pItem.unit || pItem.unitOfMeasure || item.unit || "",
           rate: nextRate,
           account: nextAccount,
           tax: nextTaxId,
@@ -1612,7 +1937,7 @@ export default function NewCreditNote() {
       ...prev,
       items: [
         ...prev.items,
-        { id: Date.now(), itemDetails: "", account: "", quantity: 1, rate: 0, tax: "", amount: 0, reportingTags: [] }
+        { id: Date.now(), itemDetails: "", sku: "", description: "", account: "", quantity: 1, rate: 0, tax: "", amount: 0, reportingTags: [] }
       ]
     }));
   };
@@ -1674,8 +1999,9 @@ export default function NewCreditNote() {
 
   const getFilteredItems = (itemId: number) => {
     const searchTerm = itemSearches[itemId] || "";
-    if (!searchTerm) return availableItems;
-    return (availableItems as any[]).filter(item =>
+    const activeItems = (availableItems as any[]).filter(isActiveLookupRecord);
+    if (!searchTerm) return activeItems;
+    return activeItems.filter(item =>
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.sku.toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -1683,10 +2009,11 @@ export default function NewCreditNote() {
 
 
   const getBulkFilteredItems = () => {
+    const activeItems = (availableItems as any[]).filter(isActiveLookupRecord);
     if (!bulkAddSearch.trim()) {
-      return availableItems;
+      return activeItems;
     }
-    return (availableItems as any[]).filter(item =>
+    return activeItems.filter(item =>
       item.name.toLowerCase().includes(bulkAddSearch.toLowerCase()) ||
       item.sku.toLowerCase().includes(bulkAddSearch.toLowerCase())
     );
@@ -1723,6 +2050,9 @@ export default function NewCreditNote() {
           id: Date.now() + index,
           itemId: selectedItem._id || selectedItem.id,
           itemDetails: selectedItem.name,
+          sku: selectedItem.sku || selectedItem.itemSku || "",
+          description: selectedItem.description || "",
+          unit: selectedItem.unit || selectedItem.unitOfMeasure || "",
           quantity: quantity,
           rate: rate,
           tax: "",
@@ -1834,11 +2164,64 @@ export default function NewCreditNote() {
         }
       }
 
+      const sourceInvoice = (invoicePrefillRef.current || clonedDataFromState || null) as any;
+      const sourceInvoiceBalance = Number(
+        sourceInvoice?.balance ??
+          sourceInvoice?.balanceDue ??
+          (Number(sourceInvoice?.total ?? sourceInvoice?.amount ?? 0) - Number(sourceInvoice?.amountPaid ?? 0))
+      ) || 0;
+      const shouldLinkInvoice = Boolean(
+        isCreateFromInvoice &&
+        sourceInvoiceId &&
+        sourceInvoice &&
+        sourceInvoiceBalance > 0
+      );
+      const sourceCustomer = sourceInvoice?.customer || clonedDataFromState?.customer || null;
+      const resolvedCustomerId =
+        selectedCustomer?._id ||
+        selectedCustomer?.id ||
+        (formData as any).customer ||
+        sourceInvoice?.customerId ||
+        sourceCustomer?._id ||
+        sourceCustomer?.id ||
+        (typeof sourceCustomer === "string" ? sourceCustomer : "") ||
+        "";
+      const resolvedCustomerName =
+        formData.customerName ||
+        selectedCustomer?.displayName ||
+        selectedCustomer?.name ||
+        sourceInvoice?.customerName ||
+        sourceCustomer?.displayName ||
+        sourceCustomer?.name ||
+        sourceCustomer?.companyName ||
+        "";
+      const normalizedItems = formData.items
+        .map((item) => {
+          const quantity = parseFloat(item.quantity as any) || 0;
+          const rate = parseFloat(item.rate as any) || 0;
+          const taxOption = taxOptions.find(t => t.id === item.tax);
+          const taxRate = taxOption ? taxOption.rate : 0;
+          const taxAmount = (quantity * rate) * taxRate / 100;
+          return {
+            item: item.itemId || undefined,
+            name: item.itemDetails,
+            description: item.itemDetails,
+            account: item.account || "",
+            quantity,
+            unitPrice: rate,
+            taxRate,
+            taxAmount,
+            total: Number(item.amount ?? quantity * rate) || 0,
+            reportingTags: Array.isArray(item.reportingTags) ? item.reportingTags : []
+          };
+        })
+        .filter((item) => Number(item.quantity || 0) > 0 || Number(item.total || 0) > 0);
+
       // Prepare normalized data for the backend Model
       const data = {
         creditNoteNumber: effectiveCreditNoteNumber || formData.creditNoteNumber,
-        customer: selectedCustomer?._id || selectedCustomer?.id || (formData as any).customer,
-        customerName: formData.customerName || selectedCustomer?.displayName || selectedCustomer?.name || "",
+        customer: resolvedCustomerId || undefined,
+        customerName: resolvedCustomerName,
         date: formData.creditNoteDate ? new Date(formData.creditNoteDate.split('/').reverse().join('-')) : new Date(),
         accountsReceivable: formData.accountsReceivable || "",
         salesperson: formData.salesperson || "",
@@ -1849,28 +2232,7 @@ export default function NewCreditNote() {
         termsAndConditions: formData.termsAndConditions || "",
         terms: formData.termsAndConditions || "",
         reason: (formData as any).reason || "",
-        items: formData.items
-          .filter(item => item.itemId)
-          .map(item => {
-            const quantity = parseFloat(item.quantity as any) || 0;
-            const rate = parseFloat(item.rate as any) || 0;
-            const taxOption = taxOptions.find(t => t.id === item.tax);
-            const taxRate = taxOption ? taxOption.rate : 0;
-            const taxAmount = (quantity * rate) * taxRate / 100;
-
-            return {
-              item: item.itemId,
-              name: item.itemDetails,
-              description: item.itemDetails,
-              account: item.account || "",
-              quantity: quantity,
-              unitPrice: rate,
-              taxRate: taxRate,
-              taxAmount: taxAmount,
-              total: item.amount,
-              reportingTags: Array.isArray(item.reportingTags) ? item.reportingTags : []
-            };
-          }),
+        items: normalizedItems,
         subtotal: formData.subTotal || 0,
         tax: formData.items.reduce((sum, item) => {
           const taxOption = taxOptions.find(t => t.id === item.tax);
@@ -1880,6 +2242,9 @@ export default function NewCreditNote() {
         total: formData.total || 0,
         currency: formData.currency || "USD",
         status: status,
+        invoice: shouldLinkInvoice ? String(sourceInvoiceId) : undefined,
+        invoiceId: shouldLinkInvoice ? String(sourceInvoiceId) : undefined,
+        invoiceNumber: shouldLinkInvoice ? String(sourceInvoice?.invoiceNumber || formData.referenceNumber || "") : undefined,
         notes: formData.customerNotes || "",
         attachedFiles: formData.documents.map((doc) => ({
           id: String((doc as any).id || Date.now()),
@@ -1911,20 +2276,20 @@ export default function NewCreditNote() {
             throw error;
           }
 
-          const retryNumber = await fetchNextCreditNoteNumber({ reserve: true });
-          if (!retryNumber) {
-            throw error;
-          }
-
-          const retryPayload = {
-            ...data,
-            creditNoteNumber: retryNumber
-          };
-          setFormData(prev => ({ ...prev, creditNoteNumber: retryNumber }));
-          await saveCreditNote(retryPayload as any);
-        }
+      const retryNumber = await fetchNextCreditNoteNumber({ reserve: true });
+      if (!retryNumber) {
+        throw error;
       }
-      navigate("/sales/credit-notes");
+
+      const retryPayload = {
+        ...data,
+        creditNoteNumber: retryNumber
+      };
+      setFormData(prev => ({ ...prev, creditNoteNumber: retryNumber }));
+      await saveCreditNote(retryPayload as any);
+    }
+  }
+  navigate("/sales/credit-notes");
     } catch (error) {
       console.error("Error saving credit note:", error);
       toast("Failed to save credit note. Please try again.");
@@ -1962,6 +2327,7 @@ export default function NewCreditNote() {
     return Number.isFinite(numericValue) ? numericValue.toFixed(digits) : (0).toFixed(digits);
   };
   const filteredCustomers = customers.filter((customer: any) => {
+    if (!isActiveLookupRecord(customer)) return false;
     const term = customerSearch.toLowerCase().trim();
     if (!term) return true;
     return [
@@ -1988,23 +2354,23 @@ export default function NewCreditNote() {
   };
 
   return (
-    <div className="w-full h-full min-h-0 flex flex-col bg-gray-50 overflow-hidden">
-      {/* Header */}
-      <div className="border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
-        <div className="w-full px-6 py-4 flex justify-between items-center">
-          <h1 className="text-lg font-normal text-gray-900 m-0">New Credit Note</h1>
-          <button
-            onClick={handleCancel}
-            className="text-red-500 hover:text-red-600 transition-colors"
-          >
-            <X size={20} />
-          </button>
+    <div className={`w-full h-full min-h-0 flex flex-col bg-gray-50 overflow-hidden transition-all ${isAnyModalOpen ? "pointer-events-none opacity-60 blur-[1px]" : ""}`}>
+      <div className="flex-1 min-h-0 w-full overflow-y-auto bg-gray-50 custom-scrollbar">
+        {/* Header */}
+        <div className={`border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90 transition-all ${isAnyModalOpen ? "pointer-events-none opacity-60 blur-[1px]" : ""}`}>
+          <div className="w-full px-6 py-4 flex justify-between items-center">
+            <h1 className="text-lg font-normal text-gray-900 m-0">New Credit Note</h1>
+            <button
+              onClick={handleCancel}
+              className="text-red-500 hover:text-red-600 transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* Content */}
-      <div className="flex-1 min-h-0 w-full overflow-y-auto bg-gray-50 py-6 pb-28 custom-scrollbar">
-        <div className="bg-gray-50 overflow-visible">
+        {/* Content */}
+        <div className="bg-gray-50 overflow-visible py-6 pb-28">
           {/* Customer Row */}
           <div className="px-6 py-5 border-b border-gray-100 bg-gray-50">
               <div className="max-w-[980px]">
@@ -2518,21 +2884,20 @@ export default function NewCreditNote() {
                 </div>
               )}
 
-              <div className="border border-gray-200 rounded-md bg-white">
+              <div className="relative overflow-visible rounded-md border border-[#dbe1ee] bg-white">
                 <table className="w-full table-fixed text-sm">
                   <colgroup>
                     {isBulkUpdateMode ? <col className="w-8" /> : null}
                     <col className="w-8" />
-                    <col className="w-[31%]" />
+                  <col className="w-[29%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[10%]" />
+                    <col className="w-[15%]" />
                     <col className="w-[12%]" />
-                    <col className="w-[8%]" />
-                    <col className="w-[9%]" />
-                    <col className="w-[16%]" />
-                    <col className="w-[8%]" />
-                    <col className="w-[8%]" />
                   </colgroup>
                   <thead>
-                    <tr className="border-b border-gray-200 bg-[#f9fafb]">
+                    <tr className="border-b border-[#dbe1ee] bg-[#f9fafb]">
                     {isBulkUpdateMode && (
                       <th className="w-12 py-3 px-3">
                         <input
@@ -2551,26 +2916,25 @@ export default function NewCreditNote() {
                       </th>
                     )}
                     <th className="w-8"></th>
-                    <th className="text-left py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">ITEM DETAILS</th>
-                    <th className="text-left py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">ACCOUNT</th>
-                    <th className="text-left py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">QUANTITY</th>
-                    <th className="text-center py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">
+                    <th className="border-l border-[#dbe1ee] text-left py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">ITEM DETAILS</th>
+                    <th className="border-l border-[#dbe1ee] text-left py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">ACCOUNT</th>
+                    <th className="border-l border-[#dbe1ee] text-left py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">QUANTITY</th>
+                    <th className="border-l border-[#dbe1ee] text-center py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">
                       <div className="flex items-center justify-center gap-1">
                         RATE
                         <Grid3x3 size={14} className="hidden" />
                       </div>
                     </th>
-                    <th className="text-left py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">TAX</th>
-                    <th className="text-right py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">AMOUNT</th>
-                    <th className="w-12"></th>
+                    <th className="border-l border-[#dbe1ee] text-right py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">AMOUNT</th>
+                    <th className="border-l border-[#dbe1ee] w-12"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {formData.items.map((item) => (
                     <React.Fragment key={item.id}>
-                      <tr className="border-b border-gray-200 bg-white">
+                      <tr className="border-b border-[#dbe1ee] bg-white">
                         {isBulkUpdateMode && (
-                          <td className="py-3 px-3">
+                          <td className="border-l border-[#dbe1ee] py-3 px-3">
                             <input
                               type="checkbox"
                               checked={bulkSelectedItemIds.includes(item.id)}
@@ -2580,59 +2944,125 @@ export default function NewCreditNote() {
                             />
                           </td>
                         )}
-                        <td className="py-3 px-2 text-center">
+                        <td className="border-l border-[#dbe1ee] py-3 px-2 text-center">
                           <GripVertical size={16} className="text-gray-300" />
                         </td>
-                        <td className="py-3 px-3">
+                        <td className="border-l border-[#dbe1ee] py-3 px-3 align-top">
                           <div
-                            className="relative"
+                            className={`relative ${openItemDropdowns[item.id] ? "z-50" : ""}`}
                             ref={el => {
                               itemDropdownRefs.current[item.id] = el;
                             }}
                           >
-                            <div className="flex items-center gap-2">
-                              <div className="w-7 h-7 bg-[#f1f5f9] border border-gray-200 rounded flex items-center justify-center flex-shrink-0">
-                                <ImageIcon size={14} className="text-gray-400" />
+                            {item.itemId ? (
+                              <div className="rounded-md bg-white">
+                                <div className="flex items-start gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setOpenItemDropdowns(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-gray-200 bg-[#f1f5f9]"
+                                  >
+                                    <ImageIcon size={13} className="text-gray-400" />
+                                  </button>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <div className="truncate text-[13px] font-medium text-gray-900">
+                                          {item.itemDetails || "camera"}
+                                        </div>
+                                        {item.sku ? (
+                                          <div className="mt-0.5 truncate text-[10px] uppercase tracking-wide text-slate-400">
+                                            SKU: {item.sku}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                      <div className="flex items-center gap-1 text-slate-400">
+                                        <button
+                                          type="button"
+                                          onClick={() => setOpenItemDropdowns(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                                          className="rounded-full p-0.5 hover:bg-slate-100"
+                                        >
+                                          <MoreVertical size={13} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="rounded-full p-0.5 hover:bg-slate-100"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleRemoveItem(item.id);
+                                          }}
+                                        >
+                                          <X size={13} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <textarea
+                                  value={item.description || ""}
+                                  onChange={(e) => handleItemChange(item.id, "description", e.target.value)}
+                                  placeholder="Add a description to your item"
+                                  rows={2}
+                                  className="mt-2 w-full resize-none rounded-md border border-gray-100 bg-[#fbfbfc] px-3 py-1.5 text-sm leading-5 text-gray-700 placeholder:text-gray-400 focus:border-[#3f83f8] focus:outline-none"
+                                />
                               </div>
-                              <input
-                                type="text"
-                                placeholder="Type or click to select an item"
-                                value={item.itemDetails}
-                                readOnly
-                                onClick={() => setOpenItemDropdowns(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
-                                className="h-9 w-full px-3 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:outline-none cursor-pointer focus:border-[#156372]"
-                              />
-                            </div>
-                            {item.itemId && (
-                              <div className="mt-1 text-xs text-[#156372] font-semibold ml-8">
-                                Stock on Hand: {item.stockOnHand || 0}
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-gray-200 bg-[#f1f5f9]">
+                                  <ImageIcon size={14} className="text-gray-400" />
+                                </div>
+                                <input
+                                  type="text"
+                                  placeholder="Type or click to select an item"
+                                  value={item.itemDetails}
+                                  readOnly
+                                  onClick={() => setOpenItemDropdowns(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                                  className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-500 shadow-none focus:border-[#3f83f8] focus:outline-none cursor-pointer"
+                                />
                               </div>
                             )}
 
                             {openItemDropdowns[item.id] && (
-                              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-80 overflow-y-auto">
+                              <div className="absolute left-0 right-0 top-full z-[9999] mt-1 w-[700px] max-w-[calc(100vw-48px)] max-h-72 overflow-y-auto rounded-md border border-[#d6dbe8] bg-white shadow-2xl">
                                 {getFilteredItems(item.id).length > 0 ? (
-                                  getFilteredItems(item.id).map(productItem => (
-                                    <div
-                                      key={productItem.id}
-                                      className={`p-3 cursor-pointer hover:bg-gray-50 flex items-center gap-3 border-b border-gray-100 ${selectedItemIds[item.id] === productItem.id ? "bg-gray-50" : ""
-                                        }`}
-                                      onClick={() => handleItemSelect(item.id, productItem)}
-                                    >
-                                      <div className="w-8 h-8 rounded-full text-white flex items-center justify-center text-sm font-medium flex-shrink-0" style={{ backgroundColor: "#156372" }}>
-                                        {productItem.name.charAt(0).toUpperCase()}
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-medium text-gray-900 truncate">{productItem.name}</div>
-                                        <div className="text-xs text-gray-500 truncate">
-                                          SKU: {productItem.sku} • Rate: {formData.currency} {formatDecimal(productItem.rate)} • Stock: {productItem.stockOnHand}
+                                  getFilteredItems(item.id).map(productItem => {
+                                    const selected = selectedItemIds[item.id] === productItem.id;
+                                    return (
+                                      <div
+                                        key={productItem.id}
+                                        className={`cursor-pointer border-b border-gray-100 px-5 py-2.5 transition-colors ${selected ? "bg-[#4285f4] text-white" : "hover:bg-gray-50"}`}
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          handleItemSelect(item.id, productItem);
+                                        }}
+                                      >
+                                        <div className="flex items-start justify-between gap-4">
+                                          <div className="min-w-0 flex-1">
+                                            <div className={`truncate text-sm font-medium ${selected ? "text-white" : "text-gray-900"}`}>
+                                              {productItem.name}
+                                            </div>
+                                            <div className={`mt-1 truncate text-xs ${selected ? "text-white/90" : "text-gray-500"}`}>
+                                              SKU: {productItem.sku} Rate: {formData.currency} {formatDecimal(productItem.rate)}
+                                            </div>
+                                          </div>
+                                          <div className={`shrink-0 text-right text-xs leading-5 ${selected ? "text-white" : "text-gray-500"}`}>
+                                            <div>Stock on Hand</div>
+                                            <div className="font-medium">
+                                              {Number(productItem.stockOnHand || 0).toFixed(2)} {productItem.unit || "pcs"}
+                                            </div>
+                                          </div>
                                         </div>
                                       </div>
-                                    </div>
-                                  ))
+                                    );
+                                  })
                                 ) : (
                                   <div className="p-4 text-center text-sm text-gray-500">
-                                    {itemSearches[item.id] ? "No items found" : "No items available"}
+                                    {isItemsLoading
+                                      ? "Loading items..."
+                                      : itemSearches[item.id]
+                                        ? "No items found"
+                                        : "No items available"}
                                   </div>
                                 )}
                                 <button
@@ -2650,7 +3080,7 @@ export default function NewCreditNote() {
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-3">
+                        <td className="border-l border-[#dbe1ee] py-3 px-3">
                           <div
                             className="relative"
                             ref={el => {
@@ -2729,124 +3159,55 @@ export default function NewCreditNote() {
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-3">
-                          <input
-                            type="number"
-                            value={item.quantity}
-                            onChange={(e) => handleItemChange(item.id, "quantity", e.target.value)}
-                            className="h-9 w-full px-3 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] bg-white"
-                            min="0"
-                            step="0.01"
-                          />
-                        </td>
-                        <td className="py-3 px-3">
-                          <input
-                            type="number"
-                            value={item.rate}
-                            onChange={(e) => handleItemChange(item.id, "rate", e.target.value)}
-                            className="h-9 w-full px-3 border border-gray-300 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] bg-white"
-                            min="0"
-                            step="0.01"
-                          />
-                        </td>
-                        <td className="py-3 px-3">
-                          <div
-                            className="relative"
-                            ref={(el) => {
-                              taxDropdownRefs.current[item.id] = el;
-                            }}
-                          >
-                            {(() => {
-                              const selectedTax = taxOptions.find((tax) => String(tax.id) === String(item.tax));
-                              const displayLabel = selectedTax ? taxLabel(selectedTax) : "Select a Tax";
-                              const searchValue = taxSearches[item.id] || "";
-                              const filteredGroups = getFilteredTaxGroups(searchValue);
-                              const hasTaxes = filteredGroups.some((group) => group.options.length > 0);
-
-                              return (
-                                <>
-                                  <button
-                                    type="button"
-                                    className="h-9 w-full px-3 border border-gray-300 rounded-md text-sm bg-white text-left flex items-center justify-between focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
-                                    onClick={() =>
-                                      setOpenTaxDropdowns((prev) => ({
-                                        ...prev,
-                                        [item.id]: !prev[item.id],
-                                      }))
-                                    }
-                                  >
-                                    <span className={displayLabel === "Select a Tax" ? "text-gray-500" : "text-gray-900"}>
-                                      {displayLabel}
-                                    </span>
-                                    <ChevronDown
-                                      size={14}
-                                      className={`text-gray-400 transition-transform ${openTaxDropdowns[item.id] ? "rotate-180" : ""}`}
-                                    />
-                                  </button>
-
-                                  {openTaxDropdowns[item.id] && (
-                                    <div className="absolute left-0 top-full z-[9999] mt-1 w-72 rounded-xl border border-[#d6dbe8] bg-white p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
-                                      <div className="p-2">
-                                        <div className="flex items-center gap-2 rounded-lg border bg-slate-50/50 px-3 py-1.5 transition-all focus-within:bg-white" style={{ borderColor: "#156372" }}>
-                                          <Search size={14} className="text-slate-400" />
-                                          <input
-                                            value={searchValue}
-                                            onChange={(e) =>
-                                              setTaxSearches((prev) => ({ ...prev, [item.id]: e.target.value }))
-                                            }
-                                            placeholder="Search..."
-                                            className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
-                                          />
-                                        </div>
-                                      </div>
-                                      <div className="max-h-64 overflow-y-auto px-2 pb-2">
-                                        {!hasTaxes ? (
-                                          <div className="px-2 py-3 text-sm text-slate-500">No taxes found.</div>
-                                        ) : (
-                                          filteredGroups.map((group) => (
-                                            <div key={group.label} className="mb-2">
-                                              <div className="px-2 py-1 text-[11px] font-semibold uppercase text-slate-500">
-                                                {group.label}
-                                              </div>
-                                              <div className="space-y-1">
-                                                {group.options.map((tax) => {
-                                                  const taxId = String(tax.id);
-                                                  const selected = String(item.tax) === taxId;
-                                                  return (
-                                                    <button
-                                                      key={taxId}
-                                                      type="button"
-                                                      className={`w-full rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${selected ? "bg-slate-100 text-[#156372]" : "text-slate-700 hover:bg-slate-50"}`}
-                                                      onClick={() => {
-                                                        closeAllDropdownMenus();
-                                                        handleItemChange(item.id, "tax", taxId);
-                                                        setOpenTaxDropdowns((prev) => ({ ...prev, [item.id]: false }));
-                                                        setTaxSearches((prev) => ({ ...prev, [item.id]: "" }));
-                                                      }}
-                                                    >
-                                                      <div className="flex items-center justify-between gap-3">
-                                                        <span>{taxLabel(tax)}</span>
-                                                        {selected && <Check size={14} className="text-[#156372]" />}
-                                                      </div>
-                                                    </button>
-                                                  );
-                                                })}
-                                              </div>
-                                            </div>
-                                          ))
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-                                </>
-                              );
-                            })()}
+                        <td className="border-l border-[#dbe1ee] py-3 px-3 align-top">
+                          <div className="flex flex-col items-end gap-2">
+                            <input
+                              type="number"
+                              value={item.quantity}
+                              onChange={(e) => handleItemChange(item.id, "quantity", e.target.value)}
+                            className="h-9 w-full px-3 border border-gray-300 rounded-md text-sm text-right bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372]"
+                              min="0"
+                              step="0.01"
+                            />
+                            {item.itemId && (
+                              <div className="text-right text-xs leading-5">
+                              <div className="text-slate-600">
+                                {Number(item.quantity || 0).toFixed(2)}
+                              </div>
+                                <div>{item.unit || "cm"}</div>
+                                <div className="mt-1 inline-flex items-center gap-1 text-[#156372]">
+                                  <span className="text-sm">⌂</span>
+                                  <span>{warehouseLocation || "Head Office"}</span>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </td>
-                        <td className="py-3 px-3">
+                        <td className="border-l border-[#dbe1ee] py-3 px-3 align-top">
+                          <div className="flex flex-col items-end gap-2">
+                            <input
+                              type="number"
+                              value={item.rate}
+                              onChange={(e) => handleItemChange(item.id, "rate", e.target.value)}
+                              className="h-9 w-full px-3 border border-gray-300 rounded-md text-sm text-gray-700 text-right focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] bg-white"
+                              min="0"
+                              step="0.01"
+                            />
+                            {item.itemId && (
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-[#3f83f8] hover:underline"
+                                onClick={() => toast("Recent transactions coming soon")}
+                              >
+                                Recent Transactions
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="border-l border-[#dbe1ee] py-3 px-3">
                           <span className="text-sm font-semibold text-gray-900">{item.amount.toFixed(2)}</span>
                         </td>
-                        <td className="py-3 px-3">
+                        <td className="border-l border-[#dbe1ee] py-3 px-3">
                           <div className="flex items-center gap-2">
                             <div
                               className="relative"
@@ -2903,7 +3264,7 @@ export default function NewCreditNote() {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       const currentIndex = formData.items.findIndex(i => i.id === item.id);
-                                      const newItem = { id: Date.now(), itemDetails: "", account: "", quantity: 1, rate: 0, tax: "", amount: 0, reportingTags: [] };
+                                      const newItem = { id: Date.now(), itemDetails: "", sku: "", description: "", account: "", quantity: 1, rate: 0, tax: "", amount: 0, reportingTags: [] };
                                       setFormData(prev => {
                                         const newItems = [...prev.items];
                                         newItems.splice(currentIndex + 1, 0, newItem);
@@ -3167,91 +3528,6 @@ export default function NewCreditNote() {
                   <span className="font-semibold text-gray-600">Sub Total</span>
                   <span className="font-semibold text-gray-900">{formData.subTotal.toFixed(2)}</span>
                 </div>
-
-                {showTransactionDiscount && (
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Discount</span>
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center border border-gray-300 rounded bg-white overflow-hidden">
-                      <input
-                        type="number"
-                        className="w-16 px-2 py-1 text-sm text-right focus:outline-none"
-                        value={formData.discount}
-                        onChange={(e) => handleSummaryChange("discount", e.target.value)}
-                      />
-                      <button
-                        type="button"
-                        className="px-2 py-1 border-l border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50"
-                        onClick={() => handleSummaryChange("discountType", formData.discountType === "percent" ? "fixed" : "percent")}
-                      >
-                        {formData.discountType === "percent" ? "%" : "$"}
-                      </button>
-                    </div>
-                    <span className="min-w-[70px] text-right text-sm text-gray-900">
-                      {(formData.discountType === "percent"
-                        ? (formData.subTotal * parseFloat(formData.discount as any) / 100)
-                        : Number(formData.discount) || 0
-                      ).toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-                )}
-
-                {showShippingCharges && (
-                <div className="flex justify-between items-center">
-                  <div className="flex flex-col">
-                    <span className="text-sm text-gray-600 flex items-center gap-1">
-                      Shipping Charges <Info size={14} className="text-gray-400" />
-                    </span>
-                    <button
-                      type="button"
-                      className="text-[10px] text-[#156372] hover:text-[#0D4A52] hover:underline text-left"
-                      onClick={(e) => e.preventDefault()}
-                    >
-                      Configure Account
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      className="w-24 px-2 py-1 border border-gray-300 rounded text-sm text-right focus:outline-none focus:border-[#156372] bg-white"
-                      value={formData.shippingCharges}
-                      onChange={(e) => handleSummaryChange("shippingCharges", parseFloat(e.target.value) || 0)}
-                    />
-                    <span className="min-w-[70px] text-right text-sm text-gray-900">{(formData.shippingCharges || 0).toFixed(2)}</span>
-                  </div>
-                </div>
-                )}
-
-                {showAdjustment && (
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Adjustment</span>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      className="w-24 px-2 py-1 border border-gray-300 rounded text-sm text-right focus:outline-none focus:border-[#156372] bg-white"
-                      value={formData.adjustment}
-                      onChange={(e) => handleSummaryChange("adjustment", parseFloat(e.target.value) || 0)}
-                    />
-                    <span className="min-w-[70px] text-right text-sm text-gray-900">{(formData.adjustment || 0).toFixed(2)}</span>
-                  </div>
-                </div>
-                )}
-
-                {Object.keys(taxSummary).length > 0 && (
-                  <div className="pt-2 border-t border-gray-200 space-y-2">
-                    {Object.entries(taxSummary).map(([taxName, amount]) => (
-                      <div key={taxName} className="flex justify-between items-center text-sm">
-                        <span className="text-gray-600">{taxName}</span>
-                        <span className="text-gray-900">{amount.toFixed(2)}</span>
-                      </div>
-                    ))}
-                    <div className="flex justify-between items-center text-sm font-semibold">
-                      <span className="text-gray-700">Total Tax Amount</span>
-                      <span className="text-gray-900">{totalTaxAmount.toFixed(2)}</span>
-                    </div>
-                  </div>
-                )}
 
                 <div className="pt-4 border-t border-gray-200">
                   <div className="flex justify-between items-center">
@@ -3730,7 +4006,7 @@ export default function NewCreditNote() {
                         />
                       </div>
 
-                      <div className="flex-1 overflow-y-auto">
+                      <div className="min-h-0 flex-1 overflow-y-auto">
                         <div className="flex border-b border-gray-100 pb-2 mb-2 text-xs font-bold text-gray-400 uppercase tracking-wider px-2">
                           <div className="w-[60%]">File Name</div>
                           <div className="w-[20%] text-right">Size</div>
@@ -3955,94 +4231,103 @@ export default function NewCreditNote() {
       }
 
       {/* Add Items in Bulk Modal */}
-      {
-        isBulkAddModalOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={handleCancelBulkAdd}>
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between p-4 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-900">Add Items in Bulk</h2>
-                <button
-                  className="p-2 hover:bg-gray-100 rounded-md text-gray-600 hover:text-gray-900"
-                  onClick={handleCancelBulkAdd}
-                >
-                  <X size={20} />
-                </button>
-              </div>
+      {isBulkAddModalOpen && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm"
+          onClick={handleCancelBulkAdd}
+        >
+          <div
+            className="flex w-[min(1180px,96vw)] max-h-[88vh] flex-col overflow-hidden rounded-2xl bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-gradient-to-r from-[#0f5e6d] to-[#156372]">
+              <h2 className="text-[20px] font-medium text-white">Add Items in Bulk</h2>
+              <button
+                className="grid h-9 w-9 place-items-center rounded-full text-white/90 transition-colors hover:bg-white/15 hover:text-white"
+                onClick={handleCancelBulkAdd}
+              >
+                <X size={20} />
+              </button>
+            </div>
 
-              <div className="flex flex-1 overflow-hidden">
+            <div className="grid min-h-0 flex-1 grid-cols-[58%_42%] border-b border-slate-200">
                 {/* Left Pane - Item Search and List */}
-                <div className="w-1/2 border-r border-gray-200 flex flex-col">
-                  <div className="p-4 border-b border-gray-200">
+                <div className="flex min-h-0 flex-col border-r border-slate-200">
+                  <div className="border-b border-slate-200 p-4">
                     <div className="relative">
-                      <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                      <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <input
                         type="text"
                         placeholder="Type to search or scan the barcode of the item."
                         value={bulkAddSearch}
                         onChange={(e) => setBulkAddSearch(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
+                        className="h-11 w-full rounded-md border border-slate-300 bg-white pl-10 pr-4 text-sm text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/15"
                       />
                     </div>
                   </div>
-                  <div className="flex-1 overflow-y-auto">
+                  <div className="min-h-0 flex-1 overflow-y-auto">
                     {getBulkFilteredItems().map(item => {
                       const isSelected = bulkSelectedItems.find(selected => selected.id === item.id);
                       return (
-                        <div
+                        <button
                           key={item.id}
-                          className={`p-4 cursor-pointer hover:bg-gray-50 border-b border-gray-200 flex items-center justify-between ${isSelected ? "" : ""
-                            }`}
-                          style={isSelected ? { backgroundColor: "rgba(21, 99, 114, 0.1)" } : {}}
+                          type="button"
                           onClick={() => handleBulkItemToggle(item)}
+                          className={`flex w-full items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 text-left transition-colors ${isSelected ? "bg-[#e7f4ff]" : "bg-white hover:bg-slate-50"
+                            }`}
                         >
-                          <div className="flex-1">
-                            <div className="font-medium text-gray-900">{item.name}</div>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[14px] font-medium text-slate-800">{item.name}</div>
                             <div className="text-xs text-gray-500 mt-1">
                               SKU: {item.sku} Rate: {formData.currency}{formatDecimal(item.rate)}
                             </div>
                           </div>
-                          <div className="text-right">
-                            <div className="text-xs text-gray-500">
-                              Stock on Hand {item.stockOnHand.toFixed(2)} {item.unit}
-                            </div>
-                            {isSelected && (
-                              <div className="mt-2 w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: "#156372" }}>
-                                <Check size={16} className="text-white" />
+                          <div className="flex shrink-0 items-center gap-3 text-right">
+                            <div className="text-[12px] text-slate-500">
+                              <div>Stock on Hand</div>
+                              <div className="font-medium text-slate-700">
+                                {Number(item.stockOnHand || 0).toFixed(2)} {item.unit || ""}
                               </div>
-                            )}
+                            </div>
+                            <div
+                              className={`grid h-7 w-7 place-items-center rounded-full border ${isSelected ? "border-[#156372] bg-[#156372]" : "border-slate-300 bg-white"
+                                }`}
+                            >
+                              {isSelected ? <Check size={15} className="text-white" /> : <div className="h-2 w-2 rounded-full bg-slate-300" />}
+                            </div>
                           </div>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
                 </div>
 
                 {/* Right Pane - Selected Items */}
-                <div className="w-1/2 flex flex-col">
-                  <div className="p-4 border-b border-gray-200">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-sm font-semibold text-gray-700">Selected Items</span>
-                      <span className="px-2 py-0.5 bg-gray-200 text-gray-700 rounded-full text-xs font-medium">
+                <div className="flex min-h-0 flex-col">
+                  <div className="border-b border-slate-200 px-5 py-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[14px] font-medium text-slate-700">Selected Items</span>
+                      <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-slate-200 px-2 text-xs font-semibold text-slate-700">
                         {bulkSelectedItems.length}
                       </span>
                     </div>
-                    <div className="text-sm text-gray-600">
+                    <div className="mt-2 text-sm text-slate-600">
                       Total Quantity: {bulkSelectedItems.reduce((sum, item) => sum + (item.quantity || 1), 0)}
                     </div>
                   </div>
-                  <div className="flex-1 overflow-y-auto">
+                  <div className="min-h-0 flex-1 overflow-y-auto">
                     {bulkSelectedItems.length === 0 ? (
                       <div className="p-8 text-center text-gray-500 text-sm">
                         Click the item names from the left pane to select them.
                       </div>
                     ) : (
-                      <div className="p-4 space-y-2">
-                        {bulkSelectedItems.map(selectedItem => (
-                          <div key={selectedItem.id} className="p-3 bg-gray-50 rounded border border-gray-200 flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="font-medium text-gray-900">{selectedItem.name}</div>
-                              <div className="text-xs text-gray-500 mt-1">
-                                SKU: {selectedItem.sku} • {formData.currency}{formatDecimal(selectedItem.rate)}
+                      <div className="divide-y divide-slate-200">
+                        {bulkSelectedItems.map((selectedItem) => (
+                          <div key={selectedItem.id} className="flex items-center justify-between gap-4 px-5 py-4">
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-[14px] font-medium text-slate-800">{selectedItem.name}</div>
+                              <div className="mt-1 text-[12px] text-slate-500">
+                                SKU: {selectedItem.sku || "-"} Rate: {formData.currency}{formatDecimal(selectedItem.rate)}
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -4051,7 +4336,7 @@ export default function NewCreditNote() {
                                 min="1"
                                 value={selectedItem.quantity || 1}
                                 onChange={(e) => handleBulkItemQuantityChange(selectedItem.id, e.target.value)}
-                                className="w-16 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
+                                className="h-10 w-20 rounded-md border border-slate-300 px-3 text-sm text-slate-700 outline-none focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/15"
                                 onClick={(e) => e.stopPropagation()}
                               />
                               <button
@@ -4059,7 +4344,8 @@ export default function NewCreditNote() {
                                   e.stopPropagation();
                                   handleBulkItemToggle(selectedItem);
                                 }}
-                                className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+                                className="grid h-9 w-9 place-items-center rounded-full text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                                aria-label={`Remove ${selectedItem.name}`}
                               >
                                 <X size={16} />
                               </button>
@@ -4072,24 +4358,23 @@ export default function NewCreditNote() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200">
-                <button
-                  className="px-6 py-2 text-white rounded-md text-sm font-medium disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                  style={{ backgroundColor: "#156372" }}
-                  onMouseEnter={(e) => !(e.currentTarget as any).disabled && ((e.currentTarget as any).style.backgroundColor = "#0D4A52")}
-                  onMouseLeave={(e) => !(e.currentTarget as any).disabled && ((e.currentTarget as any).style.backgroundColor = "#156372")}
-                  onClick={handleAddBulkItems}
-                  disabled={bulkSelectedItems.length === 0}
-                >
-                  Add Items
-                </button>
-                <button
-                  className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50"
-                  onClick={handleCancelBulkAdd}
-                >
-                  Cancel
-                </button>
-              </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4">
+              <button
+                className="rounded-md bg-[#156372] px-6 py-2 text-sm font-medium text-white shadow-[0_4px_10px_rgba(21,99,114,0.2)] transition-colors disabled:cursor-not-allowed disabled:bg-slate-400"
+                onMouseEnter={(e) => !(e.currentTarget as HTMLButtonElement).disabled && ((e.currentTarget as HTMLButtonElement).style.backgroundColor = "#0D4A52")}
+                onMouseLeave={(e) => !(e.currentTarget as HTMLButtonElement).disabled && ((e.currentTarget as HTMLButtonElement).style.backgroundColor = "#156372")}
+                onClick={handleAddBulkItems}
+                disabled={bulkSelectedItems.length === 0}
+              >
+                Add Items
+              </button>
+              <button
+                className="rounded-md border border-slate-300 bg-white px-6 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                onClick={handleCancelBulkAdd}
+              >
+                Cancel
+              </button>
+            </div>
             </div>
           </div>
         )
@@ -4097,7 +4382,7 @@ export default function NewCreditNote() {
 
       {/* Advanced Customer Search Modal */}
       {
-        customerSearchModalOpen && typeof document !== 'undefined' && document.body && createPortal(
+        isClientMounted && customerSearchModalOpen && (
           <div
             className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
             onClick={() => setCustomerSearchModalOpen(false)}
@@ -4122,7 +4407,7 @@ export default function NewCreditNote() {
               </div>
 
               {/* Search Bar */}
-              <div className="p-4 border-b border-gray-200">
+              <div className="border-b border-slate-200 p-4">
                 <div className="flex gap-2">
                   <div className="relative">
                     <button
@@ -4243,13 +4528,11 @@ export default function NewCreditNote() {
                 </div>
               )}
             </div>
-          </div>,
-          document.body
-        )
-      }
+          </div>
+      )}
 
       {/* Quick New Customer Modal */}
-      {typeof document !== "undefined" && document.body && createPortal(
+      {isClientMounted && (
         <div
           className={`fixed inset-0 z-[10000] flex items-center justify-center transition-opacity duration-150 ${isNewCustomerQuickActionOpen ? "bg-black bg-opacity-50 opacity-100" : "bg-transparent opacity-0 pointer-events-none"}`}
           onClick={() => {
@@ -4315,12 +4598,11 @@ export default function NewCreditNote() {
               />
             </div>
           </div>
-        </div>,
-        document.body
+        </div>
       )}
 
       {/* Quick New Salesperson Modal */}
-      {typeof document !== "undefined" && document.body && createPortal(
+      {isClientMounted && (
         <div
           className={`fixed inset-0 z-[10000] flex items-center justify-center transition-opacity duration-150 ${isNewSalespersonQuickActionOpen ? "bg-black bg-opacity-50 opacity-100" : "bg-transparent opacity-0 pointer-events-none"}`}
           onClick={() => {
@@ -4386,8 +4668,7 @@ export default function NewCreditNote() {
               />
             </div>
           </div>
-        </div>,
-        document.body
+        </div>
       )}
 
       {isCreditNoteNumberModalOpen && (
@@ -4445,7 +4726,7 @@ export default function NewCreditNote() {
                         className="w-4 h-4 text-[#2f80ed] border-gray-300 focus:ring-[#2f80ed] cursor-pointer"
                       />
                     </div>
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-[13px] leading-none font-semibold text-gray-800">
                           Continue auto-generating credit note numbers
@@ -4504,7 +4785,7 @@ export default function NewCreditNote() {
                         className="w-4 h-4 text-[#2f80ed] border-gray-300 focus:ring-[#2f80ed] cursor-pointer"
                       />
                     </div>
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <span className="text-[13px] leading-none text-gray-700">
                         Enter credit note numbers manually
                       </span>
@@ -4736,43 +5017,72 @@ export default function NewCreditNote() {
       )}
 
       {/* Footer */}
-      <div className="fixed bottom-0 left-[260px] right-0 bg-white border-t border-gray-200 py-4 px-8 z-[100] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-        <div className="max-w-[980px] mx-auto flex items-center gap-3">
-          <button
-            onClick={() => handleSave("draft")}
-            disabled={saveLoading !== null}
-            className={`px-5 py-2 border border-gray-300 rounded text-sm text-gray-700 font-medium bg-white ${saveLoading ? "opacity-60 cursor-not-allowed" : "hover:bg-gray-50"}`}
-          >
-            {saveLoading === "draft" && <Loader2 className="inline-block mr-2 animate-spin" size={16} />}
-            {saveLoading === "draft" ? "Saving..." : "Save as Draft"}
-          </button>
-          <button
-            onClick={() => handleSave("open")}
-            disabled={saveLoading !== null}
-            className={`px-8 py-2 text-white rounded text-sm font-semibold shadow-md ${saveLoading ? "opacity-60 cursor-not-allowed" : ""}`}
-            style={{ backgroundColor: "#156372", boxShadow: "0 4px 6px -1px rgba(21, 99, 114, 0.2)" }}
-            onMouseEnter={(e) => {
-              if (saveLoading === null) (e.target as HTMLElement).style.backgroundColor = "#0D4A52";
-            }}
-            onMouseLeave={(e) => {
-              if (saveLoading === null) (e.target as HTMLElement).style.backgroundColor = "#156372";
-            }}
-          >
-            {saveLoading === "open" && <Loader2 className="inline-block mr-2 animate-spin" size={16} />}
-            {saveLoading === "open" ? "Saving..." : "Save as Open"}
-          </button>
-          <button
-            onClick={handleCancel}
-            disabled={saveLoading !== null}
-            className={`px-5 py-2 border border-gray-300 rounded text-sm text-gray-700 font-medium bg-white ${saveLoading ? "opacity-60 cursor-not-allowed" : "hover:bg-gray-50"}`}
-          >
-            Cancel
-          </button>
+      <div className={`fixed bottom-0 left-[260px] right-0 bg-white border-t border-gray-200 py-4 px-8 z-[100] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] transition-all ${isAnyModalOpen ? "pointer-events-none opacity-60 blur-[1px]" : ""}`}>
+        <div className="max-w-[980px] mx-0 flex items-center justify-start gap-3">
+          {isCreateFromInvoice ? (
+            <button
+              onClick={() => handleSave("open")}
+              disabled={saveLoading !== null}
+              className={`px-8 py-2 text-white rounded text-sm font-semibold shadow-md ${saveLoading ? "opacity-60 cursor-not-allowed" : ""}`}
+              style={{ backgroundColor: "#156372", boxShadow: "0 4px 6px -1px rgba(21, 99, 114, 0.2)" }}
+              onMouseEnter={(e) => {
+                if (saveLoading === null) (e.target as HTMLElement).style.backgroundColor = "#0D4A52";
+              }}
+              onMouseLeave={(e) => {
+                if (saveLoading === null) (e.target as HTMLElement).style.backgroundColor = "#156372";
+              }}
+            >
+              {saveLoading === "open" && <Loader2 className="inline-block mr-2 animate-spin" size={16} />}
+              {saveLoading === "open" ? "Saving..." : "Save"}
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => handleSave("draft")}
+                disabled={saveLoading !== null}
+                className={`px-5 py-2 border border-gray-300 rounded text-sm text-gray-700 font-medium bg-white ${saveLoading ? "opacity-60 cursor-not-allowed" : "hover:bg-gray-50"}`}
+              >
+                {saveLoading === "draft" && <Loader2 className="inline-block mr-2 animate-spin" size={16} />}
+                {saveLoading === "draft" ? "Saving..." : "Save as Draft"}
+              </button>
+              <button
+                onClick={() => handleSave("open")}
+                disabled={saveLoading !== null}
+                className={`px-8 py-2 text-white rounded text-sm font-semibold shadow-md ${saveLoading ? "opacity-60 cursor-not-allowed" : ""}`}
+                style={{ backgroundColor: "#156372", boxShadow: "0 4px 6px -1px rgba(21, 99, 114, 0.2)" }}
+                onMouseEnter={(e) => {
+                  if (saveLoading === null) (e.target as HTMLElement).style.backgroundColor = "#0D4A52";
+                }}
+                onMouseLeave={(e) => {
+                  if (saveLoading === null) (e.target as HTMLElement).style.backgroundColor = "#156372";
+                }}
+              >
+                {saveLoading === "open" && <Loader2 className="inline-block mr-2 animate-spin" size={16} />}
+                {saveLoading === "open" ? "Saving..." : "Save as Open"}
+              </button>
+              <button
+                onClick={handleCancel}
+                disabled={saveLoading !== null}
+                className={`px-5 py-2 border border-gray-300 rounded text-sm text-gray-700 font-medium bg-white ${saveLoading ? "opacity-60 cursor-not-allowed" : "hover:bg-gray-50"}`}
+              >
+                Cancel
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div >
   );
 }
+
+
+
+
+
+
+
+
+
 
 
 

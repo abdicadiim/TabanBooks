@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { useCurrency } from "../../hooks/useCurrency";
 import { HandCoins, ReceiptText, TrendingUp, Wallet } from "lucide-react";
 
@@ -146,7 +146,7 @@ export default function KpiRow(props: { data: any; loading: boolean }) {
       <ValueCard
         title="Net Profit Margin"
         value={`${operatingMargin.toFixed(1)}%`}
-        subtitle={`${operatingMargin >= 0 ? "▲" : "▼"} ${Math.abs(operatingMargin).toFixed(1)}%`}
+        subtitle={`${operatingMargin >= 0 ? "?" : "?"} ${Math.abs(operatingMargin).toFixed(1)}%`}
         positive={operatingMargin >= 0}
         icon={<TrendingUp size={16} />}
       />

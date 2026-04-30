@@ -462,7 +462,8 @@ export default function TimeTrackingProject() {
       selectedTaskForTimer,
       isBillable
     };
-    localStorage.setItem('timerState', JSON.stringify(timerState)); syncRemote(JSON.parse(localStorage.getItem('timerState') || 'null'));
+    localStorage.setItem('timerState', JSON.stringify(timerState));
+ syncRemote(JSON.parse(localStorage.getItem('timerState') || 'null'));
 
     setIsTimerRunning(true);
     setElapsedTime(pausedElapsed);
@@ -497,7 +498,8 @@ export default function TimeTrackingProject() {
       selectedTaskForTimer,
       isBillable
     };
-    localStorage.setItem('timerState', JSON.stringify(timerState)); syncRemote(JSON.parse(localStorage.getItem('timerState') || 'null'));
+    localStorage.setItem('timerState', JSON.stringify(timerState));
+ syncRemote(JSON.parse(localStorage.getItem('timerState') || 'null'));
     window.dispatchEvent(new CustomEvent('timerStateUpdated'));
     toast.success('The timer has been paused.');
   };
@@ -571,7 +573,8 @@ export default function TimeTrackingProject() {
     setIsBillable(true);
     setShowProjectFields(false);
     // Clear from localStorage
-    localStorage.removeItem('timerState'); syncRemote(null);
+    localStorage.removeItem('timerState');
+ syncRemote(null);
     window.dispatchEvent(new CustomEvent('timerStateUpdated'));
   };
 

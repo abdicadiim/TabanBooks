@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { recurringInvoicesAPI, quotesAPI, invoicesAPI, debitNotesAPI, retainerInvoicesAPI, customersAPI, taxesAPI, itemsAPI, salespersonsAPI, salesReceiptsAPI, paymentsReceivedAPI, creditNotesAPI, projectsAPI, settingsAPI, plansAPI, reportingTagsAPI } from "../../services/api";
+import { getPaymentMethodCode, getPaymentModeLabel } from "../../utils/paymentModes";
 
 
 const STORAGE_KEY = "taban_books_customers";
@@ -1489,7 +1490,8 @@ export const saveCreditNote = async (creditNoteData: Partial<CreditNote>): Promi
         (typeof (creditNoteData as any).customer === "object" && (creditNoteData as any).customer
           ? ((creditNoteData as any).customer.displayName || (creditNoteData as any).customer.name || (creditNoteData as any).customer.companyName || "")
           : ""),
-      invoiceId: String((creditNoteData as any).invoiceId || (creditNoteData as any).invoice || ""),
+      invoice: String((creditNoteData as any).invoice?._id || (creditNoteData as any).invoice?.id || (creditNoteData as any).invoiceId || (creditNoteData as any).invoice || ""),
+      invoiceId: String((creditNoteData as any).invoiceId || (creditNoteData as any).invoice?._id || (creditNoteData as any).invoice?.id || (creditNoteData as any).invoice || ""),
       invoiceNumber: String((creditNoteData as any).invoiceNumber || ""),
       date: toISO((creditNoteData as any).creditNoteDate || (creditNoteData as any).date) || new Date().toISOString(),
       subtotal: Number((creditNoteData as any).subtotal ?? (creditNoteData as any).subTotal ?? 0) || 0,
@@ -1562,7 +1564,8 @@ export const updateCreditNote = async (creditNoteId: string, creditNoteData: Par
         (typeof (creditNoteData as any).customer === "object" && (creditNoteData as any).customer
           ? ((creditNoteData as any).customer.displayName || (creditNoteData as any).customer.name || (creditNoteData as any).customer.companyName || "")
           : ""),
-      invoiceId: String((creditNoteData as any).invoiceId || (creditNoteData as any).invoice || ""),
+      invoice: String((creditNoteData as any).invoice?._id || (creditNoteData as any).invoice?.id || (creditNoteData as any).invoiceId || (creditNoteData as any).invoice || ""),
+      invoiceId: String((creditNoteData as any).invoiceId || (creditNoteData as any).invoice?._id || (creditNoteData as any).invoice?.id || (creditNoteData as any).invoice || ""),
       invoiceNumber: String((creditNoteData as any).invoiceNumber || ""),
       date: toISO((creditNoteData as any).creditNoteDate || (creditNoteData as any).date),
       subtotal: Number((creditNoteData as any).subtotal ?? (creditNoteData as any).subTotal ?? 0) || 0,
@@ -1706,6 +1709,16 @@ export interface SalesReceipt {
 // Sales Receipts Storage
 const SALES_RECEIPTS_STORAGE_KEY = "taban_books_sales_receipts";
 
+const extractSalesReceiptRows = (response: any): any[] => {
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.items)) return response.items;
+  if (Array.isArray(response?.data?.data)) return response.data.data;
+  if (Array.isArray(response?.data?.items)) return response.data.items;
+  if (Array.isArray(response?.payload?.data)) return response.payload.data;
+  if (Array.isArray(response?.result?.data)) return response.result.data;
+  return [];
+};
+
 export const getSalesReceipts = async (params: any = {}): Promise<SalesReceipt[]> => {
   const finalParams = { limit: 1000, ...params };
   const response = await getSalesReceiptsPaginated(finalParams);
@@ -1720,19 +1733,21 @@ export const getSalesReceiptsPaginated = async (params: any = {}): Promise<any> 
     }
     const response = await salesReceiptsAPI.getAll(finalParams);
     if (response && response.success && response.data) {
-      const data = response.data.map((item: any) => ({
+      const rows = extractSalesReceiptRows(response);
+      const data = rows.map((item: any) => ({
         ...item,
         id: item._id || item.id,
         customerName: item.customerName || item.customer?.displayName || item.customer?.companyName || item.customer?.name || (typeof item.customer === 'string' ? item.customer : "")
       }));
+      const pagination = response.pagination || response.data?.pagination || response.meta?.pagination || {
+        total: data.length,
+        page: Number(finalParams.page || 1),
+        limit: Number(finalParams.limit || data.length || 50),
+        pages: Math.max(1, Math.ceil(data.length / Math.max(1, Number(finalParams.limit || data.length || 50))))
+      };
       return {
         data,
-        pagination: response.pagination || {
-          total: data.length,
-          page: 1,
-          limit: data.length,
-          pages: 1
-        }
+        pagination
       };
     }
     return { data: [], pagination: { total: 0, page: 1, limit: 50, pages: 0 } };
@@ -1841,6 +1856,12 @@ export const saveSalesReceipt = async (receiptData: Partial<SalesReceipt>): Prom
       status: receiptData.status || "paid",
     };
 
+    apiData.paymentMethod = getPaymentMethodCode(
+      (receiptData as any).paymentMethod || (receiptData as any).paymentMode || "cash",
+      "cash"
+    );
+    apiData.paymentMode = getPaymentModeLabel(apiData.paymentMethod);
+
     if (apiData.receiptDate && apiData.date) delete apiData.receiptDate;
 
     const response = await salesReceiptsAPI.create(apiData);
@@ -1917,6 +1938,12 @@ export const updateSalesReceipt = async (receiptId: string, receiptData: Partial
       total: Number(receiptData.total ?? 0) || 0,
       status: receiptData.status || "paid",
     };
+
+    apiData.paymentMethod = getPaymentMethodCode(
+      (receiptData as any).paymentMethod || (receiptData as any).paymentMode || "cash",
+      "cash"
+    );
+    apiData.paymentMode = getPaymentModeLabel(apiData.paymentMethod);
 
     const response = await salesReceiptsAPI.update(receiptId, apiData);
     if (response && response.success && response.data) {

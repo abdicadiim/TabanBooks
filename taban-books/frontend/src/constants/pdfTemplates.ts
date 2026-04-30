@@ -7,5 +7,5 @@ export const COLOR_THEMES = [
   { id: "purple", name: "Royal Purple", accent: "#9333ea", headerBg: "#6b21a8" },
   { id: "indigo", name: "Classic Indigo", accent: "#4f46e5", headerBg: "#3730a3" },
   { id: "orange", name: "Sunrise Orange", accent: "#ea580c", headerBg: "#9a3412" },
-  { id: "slate", name: "Slate Professional", accent: "#475569", headerBg: "#1e293b" },
+  { id: "slate", name: "Slate Professional", accent: "#156372", headerBg: "#1e293b" },
 ];

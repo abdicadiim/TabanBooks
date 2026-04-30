@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Globe, AlertCircle, Phone, Mail, MessageCircle, X, Video, Headphones, Search, Calendar } from "lucide-react";
 
@@ -688,19 +688,19 @@ export default function CustomDomainPage() {
               <div className="mt-8 pt-6 border-t border-gray-200">
                 <div className="flex items-center gap-2 mb-4">
                   <Headphones size={20} className="text-gray-600" />
-                  <h4 className="text-sm font-semibold text-gray-900">Talk to us (Mon - Fri â€¢ Toll Free)</h4>
+                  <h4 className="text-sm font-semibold text-gray-900">Talk to us (Mon - Fri • Toll Free)</h4>
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-2xl">ðŸ‡ºðŸ‡¸</span>
+                    <span className="text-2xl">🇺🇸</span>
                     <span className="text-sm text-gray-700">+1 8443165544</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-2xl">ðŸ‡¬ðŸ‡§</span>
+                    <span className="text-2xl">🇬🇧</span>
                     <span className="text-sm text-gray-700">+44 8000856099</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-2xl">ðŸ‡¦ðŸ‡º</span>
+                    <span className="text-2xl">🇦🇺</span>
                     <span className="text-sm text-gray-700">+61 1800911076</span>
                   </div>
                 </div>

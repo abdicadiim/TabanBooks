@@ -21,6 +21,16 @@ export type SalesReceiptListQueryResult = {
 
 const DEFAULT_LIMIT = 50;
 
+const extractSalesReceiptRows = (response: any): any[] => {
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.items)) return response.items;
+  if (Array.isArray(response?.data?.data)) return response.data.data;
+  if (Array.isArray(response?.data?.items)) return response.data.items;
+  if (Array.isArray(response?.payload?.data)) return response.payload.data;
+  if (Array.isArray(response?.result?.data)) return response.result.data;
+  return [];
+};
+
 const normalizeParams = (params?: SalesReceiptQueryParams) => {
   return {
     page: Math.max(1, Number(params?.page || 1)),
@@ -43,7 +53,7 @@ const toListResult = (
   response: any,
   params: ReturnType<typeof normalizeParams>
 ): SalesReceiptListQueryResult => {
-  const rows = Array.isArray(response?.data) ? response.data : [];
+  const rows = extractSalesReceiptRows(response);
   const total = Number(response?.pagination?.total ?? rows.length) || 0;
   const page = Number(response?.pagination?.page ?? params.page) || params.page;
   const limit = Number(response?.pagination?.limit ?? params.limit) || params.limit;

@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import SettingsLayout from "../../../SettingsLayout";
 import WorkflowActionsListPage from "./list/WorkflowActionsListPage";
 

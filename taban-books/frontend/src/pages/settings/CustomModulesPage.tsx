@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { X, Info, ChevronDown, ChevronUp, Check, ArrowLeft } from "lucide-react";
 
 export default function CustomModulesPage() {

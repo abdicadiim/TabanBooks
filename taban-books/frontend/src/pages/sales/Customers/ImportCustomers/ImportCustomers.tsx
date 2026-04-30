@@ -46,7 +46,8 @@ export default function ImportCustomers() {
     "Name",
     "Payment Terms",
     "Receivables",
-    "Shipping Country",
+
+    "Shipping Country",
     "Status",
     "Website",
     "Work Phone"

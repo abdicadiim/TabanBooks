@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import HomeHeader from "./HomeHeader";
 import KpiRow from "./KpiRow";
 import CashFlowCard from "./CashFlowCard";
@@ -77,7 +77,7 @@ function WatchlistCard({ data = [], loading = false }: { data?: any[]; loading?:
                   </td>
                   <td className="px-3 py-2.5 text-right">
                     <span className={`text-[12px] font-semibold ${row.amount > 0 ? "text-[#156372]" : row.amount < 0 ? "text-[#ef5c5c]" : "text-[#94a3b8]"}`}>
-                      {row.amount > 0 ? "↗" : row.amount < 0 ? "↘" : "→"}
+                      {row.amount > 0 ? "?" : row.amount < 0 ? "?" : "?"}
                     </span>
                   </td>
                 </tr>
@@ -158,7 +158,7 @@ export default function HomeDashboard() {
           <WatchlistCard data={kpiData?.watchlist} loading={loading} />
 
           <div className="text-[10px] text-[#6d858b] px-1 pt-1 flex items-center justify-between">
-            <span>© {new Date().getFullYear()} Divine Emperor. All rights reserved.</span>
+            <span>� {new Date().getFullYear()} Divine Emperor. All rights reserved.</span>
             <span>Privacy Policy | Terms</span>
           </div>
         </div>

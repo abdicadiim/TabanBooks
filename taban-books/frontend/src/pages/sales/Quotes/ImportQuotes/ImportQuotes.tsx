@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, Download, ChevronDown, ChevronUp, HelpCircle, Search, Check, Lightbulb, LayoutGrid, HardDrive, Box, Square, Cloud, ChevronUp as ChevronUpIcon, Users, FileText, Folder, Building2, Edit, ChevronLeft, Info } from "lucide-react";
 import { getAllDocuments } from "../../../../utils/documentStorage";
@@ -1169,7 +1169,7 @@ export default function ImportQuotes() {
                   )}
                 </div>
                 {selectedFile && <p className="mt-4 text-sm font-medium text-[#156372]">Selected: {selectedFile.name}</p>}
-                <p className="mt-5 text-sm text-gray-500">Maximum File Size: 25 MB • File Format: CSV or TSV or XLS</p>
+                <p className="mt-5 text-sm text-gray-500">Maximum File Size: 25 MB � File Format: CSV or TSV or XLS</p>
                 <input ref={fileInputRef} type="file" accept=".csv,.tsv,.xls,.xlsx" onChange={handleFileSelect} style={{ display: "none" }} />
               </div>
 
@@ -1262,7 +1262,7 @@ export default function ImportQuotes() {
                   onClick={handleNext}
                   disabled={!selectedFile}
                 >
-                  Next ›
+                  Next �
                 </button>
                 <button className="px-7 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50" onClick={handleCancel}>
                   Cancel
@@ -2106,7 +2106,7 @@ export default function ImportQuotes() {
                           </div>
                         </div>
                         <div className="text-sm text-gray-600">
-                          {doc.size} â€¢ {doc.type?.toUpperCase() || "FILE"}
+                          {doc.size} • {doc.type?.toUpperCase() || "FILE"}
                           {doc.associatedTo && (
                             <div className="text-xs text-gray-500 mt-1">Associated: {doc.associatedTo}</div>
                           )}

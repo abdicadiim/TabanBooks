@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Box,
   ChevronDown,
@@ -156,7 +156,7 @@ export default function CloudPickerModal({ isOpen, onClose, onAttach }: CloudPic
                         <div>
                           <div className="text-sm font-semibold text-slate-900">{file.name}</div>
                           <div className="text-xs text-slate-500">
-                            Modified {file.modified} â€¢ {(file.size / 1024).toFixed(0)} KB
+                            Modified {file.modified} • {(file.size / 1024).toFixed(0)} KB
                           </div>
                         </div>
                       </div>

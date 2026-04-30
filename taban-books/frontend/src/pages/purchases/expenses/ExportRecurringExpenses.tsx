@@ -1,14 +1,19 @@
-// @ts-nocheck
 import React, { useState, useRef, useEffect } from "react";
 import { X, Eye, EyeOff, Info, ChevronDown, Search, Check, ChevronUp } from "lucide-react";
 
+interface ExportRecurringExpensesProps {
+  onClose: () => void;
+  exportType?: string;
+  data?: any[];
+}
+
 const Z = {
-  primary: "#156372", // Red
-  blue: "#2663eb",
+  primary: "#156372", // Teal
+  blue: "#156372",
   text: "#111827",
   textMuted: "#6b7280",
   line: "#e5e7eb",
-  bgLight: "#eff6ff",
+  bgLight: "#15637210",
 };
 
 const MODULE_CATEGORIES = [
@@ -59,11 +64,15 @@ const MODULE_CATEGORIES = [
   }
 ];
 
-export default function ExportBills({ onClose, exportType = "bills", defaultModule = "Bills", data = [] }) {
+export default function ExportRecurringExpenses({
+  onClose,
+  exportType = "recurring-expenses",
+  data = [],
+}: ExportRecurringExpensesProps) {
   const [module, setModule] = useState(
-    exportType === "current-view" ? `${defaultModule} (Current View)` : defaultModule
+    exportType === "current-view" ? "Recurring Expenses (Current View)" : "Recurring Expenses"
   );
-  const [exportDataType, setExportDataType] = useState("bills");
+  const [exportDataType, setExportDataType] = useState("recurring-expenses");
   const [dataRange, setDataRange] = useState("all");
   const [specificPeriod, setSpecificPeriod] = useState({ start: "", end: "" });
   const [decimalFormat, setDecimalFormat] = useState("1234567.89");
@@ -74,27 +83,10 @@ export default function ExportBills({ onClose, exportType = "bills", defaultModu
   const [isDecimalFormatOpen, setIsDecimalFormatOpen] = useState(false);
   const [isModuleOpen, setIsModuleOpen] = useState(false);
   const [moduleSearch, setModuleSearch] = useState("");
-  const decimalFormatRef = useRef(null);
-  const moduleRef = useRef(null);
+  const decimalFormatRef = useRef<HTMLDivElement | null>(null);
+  const moduleRef = useRef<HTMLDivElement | null>(null);
 
   const isCurrentView = exportType === "current-view";
-  const isRecurringBillsModule = (module || defaultModule || "").toLowerCase().includes("recurring bill");
-
-  const getText = (value) => (value === null || value === undefined ? "" : value);
-  const getNumber = (...values) => {
-    for (const value of values) {
-      if (value === null || value === undefined || value === "") continue;
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-    return 0;
-  };
-  const getVendorName = (bill) =>
-    bill.vendorName ||
-    bill.vendor_name ||
-    bill.vendor ||
-    (bill.vendor && (bill.vendor.name || bill.vendor.displayName)) ||
-    "";
 
   const decimalFormats = [
     "1234567.89",
@@ -112,11 +104,14 @@ export default function ExportBills({ onClose, exportType = "bills", defaultModu
   }, [isCurrentView, exportFileFormat]);
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (decimalFormatRef.current && !decimalFormatRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+
+      if (decimalFormatRef.current && !decimalFormatRef.current.contains(target)) {
         setIsDecimalFormatOpen(false);
       }
-      if (moduleRef.current && !moduleRef.current.contains(event.target)) {
+      if (moduleRef.current && !moduleRef.current.contains(target)) {
         setIsModuleOpen(false);
       }
     };
@@ -125,6 +120,79 @@ export default function ExportBills({ onClose, exportType = "bills", defaultModu
     }
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isDecimalFormatOpen, isModuleOpen]);
+
+  const normalizeValue = (value: any) => (value === undefined || value === null ? "" : value);
+
+  const getAmountValue = (item: any) => {
+    const amount = item?.amount ?? item?.total ?? item?.recurring_amount ?? 0;
+    return Number.isFinite(Number(amount)) ? Number(amount) : 0;
+  };
+
+  const buildExportRows = () => {
+    const exportData = Array.isArray(data) ? data.slice(0, 25000) : [];
+
+    if (isCurrentView) {
+      const headers = [
+        "Profile Name",
+        "Expense Account",
+        "Vendor Name",
+        "Frequency",
+        "Last Expense Date",
+        "Next Expense Date",
+        "Amount",
+        "Currency",
+        "Status",
+      ];
+
+      const rows = exportData.map((item: any) => [
+        normalizeValue(item?.profileName || item?.profile_name),
+        normalizeValue(item?.expenseAccount || item?.account_name),
+        normalizeValue(item?.vendor || item?.vendorName || item?.vendor_name),
+        normalizeValue(item?.repeatEvery || item?.frequency || item?.repeat_every),
+        normalizeValue(item?.startDate || item?.start_date),
+        normalizeValue(item?.nextExpenseDate || item?.next_expense_date),
+        getAmountValue(item),
+        normalizeValue(item?.currency || item?.currency_code),
+        normalizeValue(item?.status || "ACTIVE"),
+      ]);
+
+      return { headers, rows };
+    }
+
+    const headers = [
+      "Profile Name",
+      "Expense Account",
+      "Vendor Name",
+      "Frequency",
+      "Last Expense Date",
+      "Next Expense Date",
+      "Amount",
+      "Currency",
+      "Status",
+      "Created Time",
+      "Description",
+      "Customer Name",
+      "Project Name",
+    ];
+
+    const rows = exportData.map((item: any) => [
+      normalizeValue(item?.profileName || item?.profile_name),
+      normalizeValue(item?.expenseAccount || item?.account_name),
+      normalizeValue(item?.vendor || item?.vendorName || item?.vendor_name),
+      normalizeValue(item?.repeatEvery || item?.frequency || item?.repeat_every),
+      normalizeValue(item?.startDate || item?.start_date),
+      normalizeValue(item?.nextExpenseDate || item?.next_expense_date),
+      getAmountValue(item),
+      normalizeValue(item?.currency || item?.currency_code),
+      normalizeValue(item?.status || "ACTIVE"),
+      normalizeValue(item?.createdTime || item?.created_time),
+      normalizeValue(item?.description || item?.notes),
+      normalizeValue(item?.customerName || item?.customer_name),
+      normalizeValue(item?.projectName || item?.project_name),
+    ]);
+
+    return { headers, rows };
+  };
 
   const handleExport = () => {
     // Password Validation
@@ -136,115 +204,19 @@ export default function ExportBills({ onClose, exportType = "bills", defaultModu
       }
     }
 
-    let headers = [];
-    let rows = [];
-
-    if (isRecurringBillsModule) {
-      if (isCurrentView) {
-        headers = ["Profile Name", "Vendor Name", "Frequency", "Start Date", "Next Bill Date", "Status", "Amount", "Currency"];
-        rows = data.map((bill) => [
-          getText(bill.profileName || bill.profile_name),
-          getText(getVendorName(bill)),
-          getText(bill.frequency || bill.repeatEvery || bill.repeat_every),
-          getText(bill.startDate || bill.start_date || bill.date),
-          getText(bill.nextBillDate || bill.next_bill_date || bill.dueDate || bill.due_date),
-          getText(bill.status),
-          getNumber(bill.amount, bill.total),
-          getText(bill.currency || bill.currency_code),
-        ]);
-      } else {
-        headers = [
-          "Profile Name",
-          "Vendor Name",
-          "Frequency",
-          "Start Date",
-          "Next Bill Date",
-          "Status",
-          "Amount",
-          "Currency",
-          "Created Time",
-          "Notes",
-        ];
-        rows = data.map((bill) => [
-          getText(bill.profileName || bill.profile_name),
-          getText(getVendorName(bill)),
-          getText(bill.frequency || bill.repeatEvery || bill.repeat_every),
-          getText(bill.startDate || bill.start_date || bill.date),
-          getText(bill.nextBillDate || bill.next_bill_date || bill.dueDate || bill.due_date),
-          getText(bill.status),
-          getNumber(bill.amount, bill.total),
-          getText(bill.currency || bill.currency_code),
-          getText(bill.createdTime || bill.created_time),
-          getText(bill.notes || bill.description),
-        ]);
-      }
-    } else if (isCurrentView) {
-      headers = ["Date", "Bill#", "Reference Number", "Vendor Name", "Status", "Due Date", "Amount", "Balance Due"];
-      rows = data.map((bill) => [
-        getText(bill.date),
-        getText(bill.billNumber || bill.bill_number || bill.number),
-        getText(bill.referenceNumber || bill.reference_number || bill.reference),
-        getText(getVendorName(bill)),
-        getText(bill.status),
-        getText(bill.dueDate || bill.due_date),
-        getNumber(bill.total, bill.amount),
-        getNumber(bill.balance, bill.balance_due, bill.total, bill.amount),
-      ]);
-    } else {
-      headers = [
-        "Vendor Name", "Bill#", "Reference#", "Order#", "Date", "Due Date",
-        "Payment Terms", "Currency", "Item Name", "Item Description",
-        "Quantity", "Rate", "Amount", "Balance", "Status"
-      ];
-      rows = data.flatMap((bill) => {
-        if (bill.lineItems && bill.lineItems.length > 0) {
-          return bill.lineItems.map((item) => [
-            getText(getVendorName(bill)),
-            getText(bill.billNumber || bill.bill_number || bill.number),
-            getText(bill.referenceNumber || bill.reference_number || bill.reference),
-            getText(bill.orderNumber || bill.order_number || bill.purchaseOrderNumber || bill.purchase_order_number),
-            getText(bill.date),
-            getText(bill.dueDate || bill.due_date),
-            getText(bill.paymentTerms || bill.payment_terms),
-            getText(bill.currency || bill.currency_code),
-            getText(item.name || item.item_name || item.description),
-            getText(item.description),
-            getNumber(item.quantity),
-            getNumber(item.rate, item.price),
-            getNumber(bill.total, bill.amount),
-            getNumber(bill.balance, bill.balance_due, bill.total, bill.amount),
-            getText(bill.status),
-          ]);
-        } else {
-          return [[
-            getText(getVendorName(bill)),
-            getText(bill.billNumber || bill.bill_number || bill.number),
-            getText(bill.referenceNumber || bill.reference_number || bill.reference),
-            getText(bill.orderNumber || bill.order_number || bill.purchaseOrderNumber || bill.purchase_order_number),
-            getText(bill.date),
-            getText(bill.dueDate || bill.due_date),
-            getText(bill.paymentTerms || bill.payment_terms),
-            getText(bill.currency || bill.currency_code),
-            "",
-            "",
-            0,
-            0,
-            getNumber(bill.total, bill.amount),
-            getNumber(bill.balance, bill.balance_due, bill.total, bill.amount),
-            getText(bill.status),
-          ]];
-        }
-      });
-    }
-
+    const { headers, rows } = buildExportRows();
     let content = "";
     let mimeType = "";
 
     if (exportFileFormat === "csv") {
-      content = [headers, ...rows].map(row => row.map(cell => `"${(cell || "").toString().replace(/"/g, '""')}"`).join(",")).join("\n");
+      content = [headers, ...rows]
+        .map((row) => row.map((cell) => `\"${normalizeValue(cell).toString().replace(/"/g, '""')}\"`).join(","))
+        .join("\n");
       mimeType = "text/csv;charset=utf-8;";
     } else {
-      content = [headers, ...rows].map(row => row.join("\t")).join("\n");
+      content = [headers, ...rows]
+        .map((row) => row.map((cell) => normalizeValue(cell).toString()).join("\t"))
+        .join("\n");
       mimeType = "application/vnd.ms-excel;charset=utf-8;";
     }
 
@@ -252,7 +224,7 @@ export default function ExportBills({ onClose, exportType = "bills", defaultModu
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${module.toLowerCase().replace(/\s+/g, '_')}_export_${new Date().toISOString().split('T')[0]}.${exportFileFormat}`;
+    link.download = `${module.toLowerCase().replace(/\s+/g, "_")}_export_${new Date().toISOString().split('T')[0]}.${exportFileFormat}`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -292,7 +264,7 @@ export default function ExportBills({ onClose, exportType = "bills", defaultModu
           backgroundColor: "#f9fafb"
         }}>
           <h2 style={{ fontSize: "16px", fontWeight: "600", color: "#374151", margin: 0 }}>
-            {isCurrentView ? "Export Current View" : "Export Bills"}
+            {isCurrentView ? "Export Current View" : "Export Recurring Expenses"}
           </h2>
           <button
             onClick={onClose}
@@ -336,7 +308,7 @@ export default function ExportBills({ onClose, exportType = "bills", defaultModu
             </span>
           </div>
 
-          {/* Module - Only for Export Bills */}
+          {/* Module - Only for Export Recurring Expenses */}
           {!isCurrentView && (
             <div style={{ marginBottom: "20px" }}>
               <label style={{ display: "block", fontSize: "13px", fontWeight: "500", color: Z.primary, marginBottom: "8px" }}>
@@ -357,7 +329,7 @@ export default function ExportBills({ onClose, exportType = "bills", defaultModu
                     alignItems: "center",
                     justifyContent: "space-between",
                     color: "#374151",
-                    boxShadow: isModuleOpen ? "0 0 0 1px #2663eb" : "none"
+                    boxShadow: isModuleOpen ? "0 0 0 1px #156372" : "none"
                   }}
                 >
                   <span>{module}</span>
@@ -464,10 +436,10 @@ export default function ExportBills({ onClose, exportType = "bills", defaultModu
                                   color: module === m ? "white" : "#374151"
                                 }}
                                 onMouseEnter={(e) => {
-                                  if (module !== m) e.target.style.backgroundColor = Z.bgLight;
+                                  if (module !== m) e.currentTarget.style.backgroundColor = Z.bgLight;
                                 }}
                                 onMouseLeave={(e) => {
-                                  if (module !== m) e.target.style.backgroundColor = "transparent";
+                                  if (module !== m) e.currentTarget.style.backgroundColor = "transparent";
                                 }}
                               >
                                 <span>{m}</span>
@@ -489,34 +461,24 @@ export default function ExportBills({ onClose, exportType = "bills", defaultModu
             </div>
           )}
 
-          {/* Export Data Type - Only for Export Bills */}
+          {/* Export Data Type - Only for Export Recurring Expenses */}
           {!isCurrentView && (
             <div style={{ marginBottom: "20px", display: "flex", flexDirection: "column", gap: "12px" }}>
               <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
                 <input
                   type="radio"
                   name="exportDataType"
-                  checked={exportDataType === "bills"}
-                  onChange={() => setExportDataType("bills")}
+                  checked={exportDataType === "recurring-expenses"}
+                  onChange={() => setExportDataType("recurring-expenses")}
                   style={{ accentColor: Z.blue, width: "16px", height: "16px" }}
                 />
-                <span style={{ fontSize: "14px", color: "#374151" }}>Bills</span>
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
-                <input
-                  type="radio"
-                  name="exportDataType"
-                  checked={exportDataType === "line-items"}
-                  onChange={() => setExportDataType("line-items")}
-                  style={{ accentColor: Z.blue, width: "16px", height: "16px" }}
-                />
-                <span style={{ fontSize: "14px", color: "#374151" }}>Bills Line Items</span>
+                <span style={{ fontSize: "14px", color: "#374151" }}>Recurring Expenses</span>
               </label>
               <div style={{ borderBottom: `1px solid ${Z.line}`, margin: "10px 0" }}></div>
             </div>
           )}
 
-          {/* Data Range - Only for Export Bills */}
+          {/* Data Range - Only for Export Recurring Expenses */}
           {!isCurrentView && (
             <div style={{ marginBottom: "20px", display: "flex", flexDirection: "column", gap: "12px" }}>
               <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
@@ -527,7 +489,7 @@ export default function ExportBills({ onClose, exportType = "bills", defaultModu
                   onChange={() => setDataRange("all")}
                   style={{ accentColor: Z.blue, width: "16px", height: "16px" }}
                 />
-                <span style={{ fontSize: "14px", color: "#374151" }}>All Bills</span>
+                <span style={{ fontSize: "14px", color: "#374151" }}>All Recurring Expenses</span>
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
                 <input
@@ -614,8 +576,8 @@ export default function ExportBills({ onClose, exportType = "bills", defaultModu
                       key={format}
                       onClick={() => { setDecimalFormat(format); setIsDecimalFormatOpen(false); }}
                       style={{ padding: "8px 12px", cursor: "pointer", fontSize: "14px" }}
-                      onMouseEnter={(e) => e.target.style.backgroundColor = Z.bgLight}
-                      onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = Z.bgLight}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
                     >
                       {format}
                     </div>
@@ -769,9 +731,13 @@ export default function ExportBills({ onClose, exportType = "bills", defaultModu
           </button>
         </div>
       </div>
-    </div>
+    </div >
   );
 }
+
+
+
+
 
 
 

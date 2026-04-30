@@ -83,7 +83,7 @@ export function TransactionLockingSettingsModal({
               borderRadius: "999px",
               border: "1px solid #d1d5db",
               backgroundColor: "#ffffff",
-              color: "#475569",
+              color: "#156372",
               cursor: "pointer",
             }}
           >
@@ -127,7 +127,7 @@ export function TransactionLockingSettingsModal({
                       marginTop: "8px",
                       fontSize: "14px",
                       lineHeight: 1.7,
-                      color: "#475569",
+                      color: "#156372",
                     }}
                   >
                     {copy.description}
@@ -155,7 +155,7 @@ export function TransactionLockingSettingsModal({
               border: "1px solid #d1d5db",
               padding: "11px 16px",
               backgroundColor: "#ffffff",
-              color: "#475569",
+              color: "#156372",
               cursor: "pointer",
               fontSize: "14px",
               fontWeight: 600,

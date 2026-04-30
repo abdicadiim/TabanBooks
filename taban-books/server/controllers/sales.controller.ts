@@ -7763,6 +7763,236 @@ export const updateRetainerInvoice = async (req: AuthRequest, res: Response): Pr
   }
 };
 
+// Apply retainer invoice to invoices
+export const applyRetainerInvoiceToInvoices = async (req: AuthRequest, res: Response): Promise<void> => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    if (!req.user?.organizationId) {
+      await session.abortTransaction();
+      session.endSession();
+      res.status(401).json({ success: false, message: "Unauthorized" });
+      return;
+    }
+
+    const { id } = req.params;
+    const { allocations } = req.body || {};
+
+    if (!allocations || !Array.isArray(allocations) || allocations.length === 0) {
+      await session.abortTransaction();
+      session.endSession();
+      res.status(400).json({ success: false, message: "Allocations are required" });
+      return;
+    }
+
+    const retainerInvoice = await RetainerInvoice.findById(id).session(session);
+    if (!retainerInvoice) {
+      await session.abortTransaction();
+      session.endSession();
+      res.status(404).json({ success: false, message: "Retainer invoice not found" });
+      return;
+    }
+
+    if (retainerInvoice.organization?.toString() !== req.user.organizationId.toString()) {
+      await session.abortTransaction();
+      session.endSession();
+      res.status(403).json({ success: false, message: "Access denied" });
+      return;
+    }
+
+    const sourceStatus = String(retainerInvoice.status || "").toLowerCase().trim();
+    if (["draft", "expired"].includes(sourceStatus)) {
+      await session.abortTransaction();
+      session.endSession();
+      res.status(400).json({
+        success: false,
+        message: `Retainer invoice ${retainerInvoice.retainerInvoiceNumber || id} is ${retainerInvoice.status || "not eligible"} and cannot be applied.`
+      });
+      return;
+    }
+
+    const sourceBalance = Math.max(
+      0,
+      Number(
+        retainerInvoice.balance ??
+        retainerInvoice.balanceDue ??
+        retainerInvoice.amountRemaining ??
+        Math.max(0, Number(retainerInvoice.total || 0) - Number(retainerInvoice.amountUsed || retainerInvoice.amountPaid || 0))
+      ) || 0
+    );
+
+    if (sourceBalance <= 0) {
+      await session.abortTransaction();
+      session.endSession();
+      res.status(400).json({
+        success: false,
+        message: `Retainer invoice ${retainerInvoice.retainerInvoiceNumber || id} has no available balance to apply.`
+      });
+      return;
+    }
+
+    let remainingSourceBalance = sourceBalance;
+    let totalApplied = 0;
+    const retainerApplications: any[] = [];
+    const updatedInvoices: any[] = [];
+
+    for (const allocation of allocations) {
+      const invoiceId = String(allocation?.invoiceId || allocation?.id || "").trim();
+      const appliedAmount = Number(allocation?.amount || 0);
+      if (!invoiceId || !Number.isFinite(appliedAmount) || appliedAmount <= 0) continue;
+      if (appliedAmount > remainingSourceBalance) {
+        await session.abortTransaction();
+        session.endSession();
+        res.status(400).json({
+          success: false,
+          message: `Allocation exceeds available retainer balance for ${retainerInvoice.retainerInvoiceNumber || id}.`
+        });
+        return;
+      }
+
+      const invoice = await Invoice.findById(invoiceId).session(session);
+      if (!invoice) continue;
+
+      if (invoice.organization.toString() !== req.user.organizationId.toString()) continue;
+      if (invoice.customer.toString() !== retainerInvoice.customer.toString()) continue;
+
+      const invoiceStatus = String(invoice.status || "").toLowerCase().trim();
+      if (["void", "draft", "paid", "closed", "cancelled"].includes(invoiceStatus)) {
+        await session.abortTransaction();
+        session.endSession();
+        res.status(400).json({
+          success: false,
+          message: `Invoice ${invoice.invoiceNumber || invoiceId} is ${invoice.status || "not eligible"} and cannot be credited.`
+        });
+        return;
+      }
+
+      const fallbackComputedBalance =
+        Number(invoice.total || 0) -
+        Number((invoice as any).paidAmount || 0) -
+        Number((invoice as any).creditsApplied || 0) -
+        Number((invoice as any).retainerAppliedAmount || (invoice as any).retainersApplied || (invoice as any).retainerAmountApplied || (invoice as any).retainerAppliedTotal || 0);
+      const currentBalanceRaw =
+        invoice.balance !== undefined && invoice.balance !== null
+          ? invoice.balance
+          : fallbackComputedBalance;
+      const currentBalance = Math.max(0, Number(currentBalanceRaw || 0));
+
+      if (currentBalance <= 0) {
+        await session.abortTransaction();
+        session.endSession();
+        res.status(400).json({
+          success: false,
+          message: `Invoice ${invoice.invoiceNumber || invoiceId} has no outstanding balance to apply.`
+        });
+        return;
+      }
+
+      if (appliedAmount > currentBalance) {
+        await session.abortTransaction();
+        session.endSession();
+        res.status(400).json({
+          success: false,
+          message: `Allocation exceeds invoice balance for invoice ${invoice.invoiceNumber || invoiceId}. Balance: ${currentBalance}, Attempted: ${appliedAmount}`
+        });
+        return;
+      }
+
+      const nextBalance = Math.max(0, currentBalance - appliedAmount);
+      const currentRetainersApplied = Number(
+        (invoice as any).retainerAppliedAmount ??
+        (invoice as any).retainersApplied ??
+        (invoice as any).retainerAmountApplied ??
+        (invoice as any).retainerAppliedTotal ??
+        0
+      ) || 0;
+      const nextRetainersApplied = currentRetainersApplied + appliedAmount;
+
+      invoice.balance = nextBalance;
+      invoice.creditsApplied = Number((invoice as any).creditsApplied || 0) || 0;
+      (invoice as any).retainerAppliedAmount = nextRetainersApplied;
+      (invoice as any).retainersApplied = nextRetainersApplied;
+      (invoice as any).retainerAmountApplied = nextRetainersApplied;
+      (invoice as any).retainerAppliedTotal = nextRetainersApplied;
+      (invoice as any).retainerApplications = [
+        ...((Array.isArray((invoice as any).retainerApplications) ? (invoice as any).retainerApplications : []) as any[]),
+        {
+          retainerId: retainerInvoice._id,
+          retainerNumber: retainerInvoice.retainerInvoiceNumber,
+          amount: appliedAmount,
+          appliedAt: allocation?.date ? new Date(allocation.date) : new Date(),
+        }
+      ];
+      invoice.status = nextBalance <= 0 ? "paid" : "partially paid";
+      await invoice.save({ session });
+
+      remainingSourceBalance = Math.max(0, remainingSourceBalance - appliedAmount);
+      totalApplied += appliedAmount;
+      retainerApplications.push({
+        invoiceId,
+        invoiceNumber: invoice.invoiceNumber,
+        amount: appliedAmount,
+        appliedAt: allocation?.date ? new Date(allocation.date) : new Date(),
+      });
+      updatedInvoices.push(invoice);
+    }
+
+    if (totalApplied <= 0) {
+      await session.abortTransaction();
+      session.endSession();
+      res.status(400).json({ success: false, message: "No valid allocations were provided" });
+      return;
+    }
+
+    const nextAmountUsed = Math.max(0, Number(retainerInvoice.amountUsed || 0) + totalApplied);
+    const nextRemaining = Math.max(0, remainingSourceBalance);
+    retainerInvoice.amountUsed = nextAmountUsed;
+    retainerInvoice.amountRemaining = nextRemaining;
+    retainerInvoice.amountPaid = nextAmountUsed;
+    retainerInvoice.paidAmount = nextAmountUsed;
+    retainerInvoice.balance = nextRemaining;
+    retainerInvoice.balanceDue = nextRemaining;
+    retainerInvoice.status = nextRemaining <= 0 ? "fully_used" : "partially_used";
+    (retainerInvoice as any).retainerApplications = [
+      ...((Array.isArray((retainerInvoice as any).retainerApplications) ? (retainerInvoice as any).retainerApplications : []) as any[]),
+      ...retainerApplications
+    ];
+
+    await retainerInvoice.save({ session });
+    await session.commitTransaction();
+
+    const refreshedRetainer = await RetainerInvoice.findById(id)
+      .populate('customer', 'displayName name companyName email')
+      .populate('items.item', 'name sku');
+
+    res.json({
+      success: true,
+      message: 'Retainer invoice applied successfully',
+      data: {
+        retainerInvoice: refreshedRetainer,
+        invoices: updatedInvoices,
+        totalApplied
+      }
+    });
+  } catch (error: any) {
+    if (session.inTransaction()) {
+      try {
+        await session.abortTransaction();
+      } catch (abortError) {
+        console.error('[RETAINER INVOICES] Failed to abort apply transaction:', abortError);
+      }
+    }
+    console.error('[RETAINER INVOICES] Error applying retainer invoice:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error applying retainer invoice',
+      error: error.message
+    });
+  } finally {
+    session.endSession();
+  }
+};
+
 // Delete retainer invoice
 export const deleteRetainerInvoice = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

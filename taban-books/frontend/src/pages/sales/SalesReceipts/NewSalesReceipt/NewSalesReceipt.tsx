@@ -43,6 +43,7 @@ import PaymentModeDropdown from "../../../../components/PaymentModeDropdown";
 import { API_BASE_URL, getCurrentUser, getToken } from "../../../../services/auth";
 import NewTaxQuickModal from "../../../../components/tax/NewTaxQuickModal";
 import { fetchItemsList } from "../../Product-Calalog/items/itemQueries";
+import { getPaymentMethodCode, getPaymentModeLabel } from "../../../../utils/paymentModes";
 
 // Salespersons will be loaded from database
 
@@ -250,6 +251,14 @@ const getCreatedByValue = (value) => {
 };
 
 const getCurrentUserLabel = () => getCreatedByValue(getCurrentUser()) || "System";
+
+const isActiveLookupRecord = (row: any) => {
+  if (!row) return false;
+  if (row?.isActive === false || row?.active === false) return false;
+
+  const status = String(row?.status || row?.state || "active").trim().toLowerCase();
+  return !["inactive", "archived", "disabled", "deleted"].includes(status);
+};
 
 export default function NewSalesReceipt() {
   const navigate = useNavigate();
@@ -774,23 +783,27 @@ export default function NewSalesReceipt() {
       try {
         // Load customers
         const customersResponse = await getCustomersFromAPI();
-        const loadedCustomers = (customersResponse?.data || []).map((c: any) => ({
-          ...c,
-          id: c._id || c.id,
-          _id: c._id || c.id,
-          name: c.displayName || c.name || c.companyName || `${c.firstName || ''} ${c.lastName || ''}`.trim() || "Unknown"
-        }));
+        const loadedCustomers = (customersResponse?.data || [])
+          .map((c: any) => ({
+            ...c,
+            id: c._id || c.id,
+            _id: c._id || c.id,
+            name: c.displayName || c.name || c.companyName || `${c.firstName || ''} ${c.lastName || ''}`.trim() || "Unknown"
+          }))
+          .filter(isActiveLookupRecord);
         setCustomers(loadedCustomers);
 
         // Load salespersons
         const salespersonsResponse = await salespersonsAPI.getAll();
         if (salespersonsResponse && salespersonsResponse.data) {
-          setSalespersons(salespersonsResponse.data.map((s: any) => ({
-            ...s,
-            id: s._id || s.id,
-            _id: s._id || s.id,
-            name: s.name || ""
-          })));
+          setSalespersons(salespersonsResponse.data
+            .map((s: any) => ({
+              ...s,
+              id: s._id || s.id,
+              _id: s._id || s.id,
+              name: s.name || ""
+            }))
+            .filter(isActiveLookupRecord));
         }
 
         try {
@@ -895,7 +908,7 @@ export default function NewSalesReceipt() {
           catalogRows.push(
             ...itemRows
               .map((row: any, index: number) => normalizeCatalogEntry(row, "item", index))
-              .filter((row: any) => row && String(row.status || "active").toLowerCase() !== "inactive")
+              .filter((row: any) => row && isActiveLookupRecord(row))
           );
         } catch (error) {
           console.error("Error loading items for sales receipt:", error);
@@ -1014,6 +1027,57 @@ export default function NewSalesReceipt() {
     };
     loadData();
   }, [isEditMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const warmupDropdownData = async () => {
+      try {
+        const [customersResponse, itemsResponse] = await Promise.all([
+          getCustomersFromAPI().catch(() => null),
+          (async () => {
+            try {
+              const directItemsResponse = await itemsAPI.getAll({ limit: 1000, per_page: 1000, page: 1 });
+              const directRows = extractApiRows(directItemsResponse);
+              if (Array.isArray(directRows) && directRows.length > 0) return directRows;
+            } catch {}
+            return fetchItemsList().catch(() => []);
+          })(),
+        ]);
+
+        if (cancelled) return;
+
+        if (customersResponse?.data && customers.length === 0) {
+          const loadedCustomers = (customersResponse.data || []).map((c: any) => ({
+            ...c,
+            id: c._id || c.id,
+            _id: c._id || c.id,
+            name: c.displayName || c.name || c.companyName || `${c.firstName || ''} ${c.lastName || ''}`.trim() || "Unknown"
+          }));
+          setCustomers(loadedCustomers);
+        }
+
+        if (Array.isArray(itemsResponse) && itemsResponse.length > 0 && items.length === 0) {
+          const catalogRows = itemsResponse
+            .map((row: any, index: number) => normalizeCatalogEntry(row, "item", index))
+            .filter((row: any) => row && String(row.status || "active").toLowerCase() !== "inactive");
+          const uniqueCatalog = new Map<string, any>();
+          catalogRows.forEach((entry) => {
+            const key = `${String(entry?.sourceId || entry?.id || entry?.name || "")}`;
+            if (key && !key.endsWith(":")) uniqueCatalog.set(key, entry);
+          });
+          setItems(Array.from(uniqueCatalog.values()));
+        }
+      } catch (error) {
+        console.error("Error warming up receipt dropdown data:", error);
+      }
+    };
+
+    void warmupDropdownData();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (isDocumentsModalOpen) {
@@ -2193,9 +2257,7 @@ export default function NewSalesReceipt() {
   };
 
   const buildReceiptPayload = (statusValue = "paid") => {
-    const paymentMethod = String(formData.paymentMode || "Cash")
-      .toLowerCase()
-      .replace(/\s+/g, "_");
+    const paymentMethod = getPaymentMethodCode(formData.paymentMode || "Cash");
 
     const matchedCustomer = selectedCustomer || customers.find((customer) =>
       String(customer.name || "").trim().toLowerCase() === String(formData.customerName || "").trim().toLowerCase()
@@ -2273,6 +2335,7 @@ export default function NewSalesReceipt() {
       receiptDate: normalizedDate,
       status: statusValue,
       paymentMethod,
+      paymentMode: getPaymentModeLabel(paymentMethod),
       paymentReference: formData.referenceNumber,
       subtotal: Number(formData.subTotal || 0),
       tax: Number(totalTaxAmount || 0),
@@ -2634,21 +2697,21 @@ export default function NewSalesReceipt() {
   return (
 
     <div className="w-full h-screen overflow-hidden bg-gray-50 flex flex-col">
-      {/* Header */}
-      <div className="bg-white/95 border-b border-gray-200 px-6 py-4 flex items-center justify-between backdrop-blur supports-[backdrop-filter]:bg-white/90">
-        <div className="flex items-center gap-3">
-          <FileText size={20} className="text-gray-900" />
-          <h1 className="text-[17px] font-bold text-gray-900">{isEditMode ? "Edit Sales Receipt" : "New Sales Receipt"}</h1>
+      <div className="flex-1 overflow-y-auto bg-gray-50 pb-72 custom-scrollbar">
+        {/* Header */}
+        <div className="bg-white/95 border-b border-gray-200 px-6 py-4 flex items-center justify-between backdrop-blur supports-[backdrop-filter]:bg-white/90">
+          <div className="flex items-center gap-3">
+            <FileText size={20} className="text-gray-900" />
+            <h1 className="text-[17px] font-bold text-gray-900">{isEditMode ? "Edit Sales Receipt" : "New Sales Receipt"}</h1>
+          </div>
+          <button
+            className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
+            onClick={() => navigate("/sales/sales-receipts")}
+          >
+            <X size={20} />
+          </button>
         </div>
-        <button
-          className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
-          onClick={() => navigate("/sales/sales-receipts")}
-        >
-          <X size={20} />
-        </button>
-      </div>
 
-        <div className="flex-1 overflow-y-auto bg-gray-50 pb-72 custom-scrollbar">
         <div className="w-full px-5 py-4">
           <div className="w-full overflow-visible border border-gray-200 bg-white">
             <div className="border-b border-gray-200 bg-gray-50 px-5 py-5">
@@ -3308,7 +3371,7 @@ export default function NewSalesReceipt() {
                                   setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }));
                                 }}
                                 onFocus={() => setOpenItemDropdowns(prev => ({ ...prev, [item.id]: true }))}
-                                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372]"
+                                className="w-[420px] max-w-full px-3 py-2 border-2 border-[#0f6775] rounded-lg text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#156372] focus:border-[#156372] shadow-[0_8px_20px_rgba(15,23,42,0.06)]"
                               />
                             </div>
                           )}
@@ -3325,11 +3388,11 @@ export default function NewSalesReceipt() {
                                   }
                                   itemDropdownPortalRefs.current[item.id].current = el;
                                 }}
-                                className="fixed z-[9999] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl"
+                                className="fixed z-[9999] overflow-hidden rounded-[10px] border border-[#dbe2ea] bg-white shadow-[0_18px_36px_rgba(15,23,42,0.12)]"
                                 style={{
                                   top: dropdownPosition.top,
                                   left: dropdownPosition.left,
-                                  width: dropdownPosition.width,
+                                  width: Math.max(320, dropdownPosition.width + 70),
                                   maxHeight: dropdownPosition.maxHeight,
                                 }}
                               >
@@ -3339,35 +3402,47 @@ export default function NewSalesReceipt() {
                                       const isHighlighted =
                                         idx === 0 ||
                                         selectedItemIds[item.id] === (productItem.id || productItem._id);
+                                      const stockOnHand = Number(productItem.stockOnHand ?? productItem.stockQuantity ?? productItem.quantityOnHand ?? 0) || 0;
                                       return (
                                         <button
                                           type="button"
                                           key={`${productItem.id || productItem._id}-${idx}`}
-                                          className={`w-full border-b border-gray-100 p-3 text-left transition-colors ${isHighlighted ? "bg-gray-50 text-gray-900" : "text-gray-800 hover:bg-[#f8fafc]"
+                                          className={`w-full border-b border-[#dbe3ef] px-3 py-2.5 text-left transition-colors ${isHighlighted ? "bg-[#3b82f6] text-white" : "text-[#334155] hover:bg-[#f8fafc]"
                                             }`}
                                           onClick={() => {
                                             handleProductSelect(item.id, productItem);
                                             setOpenItemDropdowns(prev => ({ ...prev, [item.id]: false }));
                                           }}
                                         >
-                                          <div className="flex items-center gap-2 truncate text-[14px] font-semibold leading-5">
-                                            <span className="truncate">{productItem.name}</span>
-                                          </div>
-                                          <div className={`mt-0.5 truncate text-xs ${isHighlighted ? "text-gray-600" : "text-slate-500"}`}>
-                                            SKU: {productItem.sku || "-"} Rate: {formData.currency}{(productItem.rate || productItem.sellingPrice || 0).toFixed(2)}
+                                          <div className="flex items-start justify-between gap-4">
+                                            <div className="min-w-0 flex-1">
+                                              <div className="truncate text-[14px] font-semibold leading-5">
+                                                {productItem.name}
+                                              </div>
+                                              <div className={`mt-0.5 truncate text-xs ${isHighlighted ? "text-blue-100" : "text-[#64748b]"}`}>
+                                                SKU: {productItem.sku || "-"} | Rate: {formData.currency}{(productItem.rate || productItem.sellingPrice || 0).toFixed(2)}
+                                              </div>
+                                            </div>
+                                            <div className="flex flex-shrink-0 flex-col items-end text-right">
+                                              <div className={`text-[12px] font-medium ${isHighlighted ? "text-blue-100" : "text-[#64748b]"}`}>
+                                                Stock on Hand
+                                              </div>
+                                              <div className={`text-[13px] font-semibold ${isHighlighted ? "text-white" : "text-[#334155]"}`}>
+                                                {stockOnHand.toFixed(2)} {String(productItem.unit || "pcs")}
+                                              </div>
+                                            </div>
                                           </div>
                                         </button>
                                       );
                                     })
                                   ) : (
-                                    <div className="p-4 text-center text-sm text-gray-500">
+                                    <div className="px-3 py-4 text-sm text-[#64748b]">
                                       {itemSearches[item.id] ? "No items found" : "No items available"}
                                     </div>
                                   )}
                                 </div>
                                 <button
-                                  className="flex w-full cursor-pointer items-center gap-2 border-t border-gray-200 bg-white px-4 py-3 text-sm font-medium transition-colors hover:bg-[#f8fafc]"
-                                  style={{ color: "#2563eb" }}
+                                  className="flex w-full cursor-pointer items-center gap-2 border-t border-[#eef2f7] bg-white px-4 py-3 text-sm font-medium text-[#156372] transition-colors hover:bg-slate-50"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setOpenItemDropdowns(prev => ({ ...prev, [item.id]: false }));

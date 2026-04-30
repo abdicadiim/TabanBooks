@@ -1,13 +1,29 @@
-import React, { useState, useEffect } from "react";
-import { useNavigate, Link, useLocation } from "react-router-dom";
-import { ChevronRight, MoreHorizontal, CheckCircle2, Info } from "lucide-react";
-import { login, checkUser, sendLoginOTP, verifyLoginOTP } from "../services/auth";
+import React, { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Info,
+  Lock,
+  Mail,
+  ShieldCheck,
+} from "lucide-react";
+import { checkUser, login, sendLoginOTP, verifyLoginOTP } from "../services/auth";
 import FullScreenLoader from "../components/FullScreenLoader";
+
+const APP_NAME = "Taban Books";
+const RIGHT_PANEL_TITLE = "Taban Books";
+const PANEL_BG_CLASS = "bg-[#1f6675]";
+const PRIMARY_BUTTON_CLASS =
+  "bg-[#1f6675] shadow-2xl shadow-[#1f6675]/20 hover:-translate-y-0.5 hover:bg-[#185766]";
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [step, setStep] = useState(1); // 1: Email, 2: Password, 3: OTP
+  const [step, setStep] = useState<1 | 3>(1);
+  const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -18,39 +34,48 @@ export default function Login() {
   const [timer, setTimer] = useState(60);
   const [userStatus, setUserStatus] = useState({ hasPassword: true, isInvited: false });
 
-  // Handle incoming state from Accept Invitation
   useEffect(() => {
-    if (location.state?.email && location.state?.step) {
-      setFormData(prev => ({ ...prev, email: location.state.email }));
-      setStep(location.state.step);
-      if (location.state.step === 3) {
-        setUserStatus({ hasPassword: false, isInvited: true });
-        setTimer(60);
-      }
+    if (location.state?.email && location.state?.step === 3) {
+      setFormData((prev) => ({ ...prev, email: String(location.state.email || "") }));
+      setUserStatus({ hasPassword: false, isInvited: true });
+      setStep(3);
+      setTimer(60);
     }
   }, [location.state]);
 
   useEffect(() => {
-    let interval: any;
+    let interval: number | undefined;
+
     if (step === 3 && timer > 0) {
-      interval = setInterval(() => {
+      interval = window.setInterval(() => {
         setTimer((prev) => prev - 1);
       }, 1000);
     }
-    return () => clearInterval(interval);
+
+    return () => {
+      if (interval) window.clearInterval(interval);
+    };
   }, [step, timer]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-    setError("");
+    const { name, value } = e.target;
+    const nextValue = name === "otp" ? value.replace(/\D/g, "").slice(0, 6) : value;
+
+    setFormData((prev) => ({
+      ...prev,
+      [name]: nextValue,
+    }));
+
+    if (error) setError("");
   };
 
-  const handleNext = async (e: React.FormEvent) => {
+  const navigateAfterAuth = (organization?: { isVerified?: boolean }) => {
+    navigate(organization?.isVerified === true ? "/loading" : "/verify-identity");
+  };
+
+  const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.email) return;
+    if (loading) return;
 
     setLoading(true);
     setError("");
@@ -60,36 +85,22 @@ export default function Login() {
       setUserStatus(status);
 
       if (!status.hasPassword) {
-        // Send OTP and move to step 3
         await sendLoginOTP(formData.email);
         setStep(3);
         setTimer(60);
-      } else {
-        setStep(2);
+        setFormData((prev) => ({ ...prev, password: "", otp: "" }));
+        return;
       }
-    } catch (err: any) {
-      setError(err.message || "Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (loading) return;
-
-    setLoading(true);
-    setError("");
-
-    try {
       const authResponse = await login(formData.email, formData.password);
-      const isVerified = authResponse?.organization?.isVerified === true;
-
-      navigate(isVerified ? "/loading" : "/verify-identity");
+      navigateAfterAuth(authResponse?.organization);
     } catch (err: any) {
       let errorMessage = err.message || "Login failed. Please check your credentials.";
-      if (errorMessage.includes('Backend server is not running') || errorMessage.includes('Cannot connect')) {
-        errorMessage = "Cannot connect to backend server. Please ensure the server is running on port 5000.";
+      if (
+        errorMessage.includes("Backend server is not running") ||
+        errorMessage.includes("Cannot connect")
+      ) {
+        errorMessage = "Cannot connect to backend server. Please ensure the server is running.";
       }
       setError(errorMessage);
     } finally {
@@ -102,8 +113,10 @@ export default function Login() {
 
     setLoading(true);
     setError("");
+
     try {
-      await checkUser(formData.email);
+      const status = await checkUser(formData.email);
+      setUserStatus(status);
       await sendLoginOTP(formData.email);
       setStep(3);
       setTimer(60);
@@ -124,9 +137,7 @@ export default function Login() {
 
     try {
       const authResponse = await verifyLoginOTP(formData.email, formData.otp);
-      const isVerified = authResponse?.organization?.isVerified === true;
-
-      navigate(isVerified ? "/loading" : "/verify-identity");
+      navigateAfterAuth(authResponse?.organization);
     } catch (err: any) {
       setError(err.message || "Failed to verify OTP.");
     } finally {
@@ -135,255 +146,302 @@ export default function Login() {
   };
 
   const handleResendOTP = async () => {
-    if (timer > 0) return;
+    if (timer > 0 || loading) return;
+
     try {
       await sendLoginOTP(formData.email);
       setTimer(60);
-    } catch (err: any) {
+    } catch {
       setError("Failed to resend OTP.");
     }
   };
 
-  const maskEmail = (email: string) => {
-    if (!email) return "";
-    const [name, domain] = email.split("@");
-    if (name.length <= 2) return email;
-    const maskedName = name.substring(0, 2) + "*".repeat(name.length - 2);
-    const [domainName, domainExt] = domain.split(".");
-    const maskedDomain = domainName.substring(0, 1) + "*".repeat(domainName.length - 1);
-    return `${maskedName}@${maskedDomain}.${domainExt}`;
+  const resetToPasswordView = () => {
+    setStep(1);
+    setFormData((prev) => ({ ...prev, otp: "" }));
   };
 
+  const maskEmail = (email: string) => {
+    if (!email) return "";
+
+    const [name, domain] = email.split("@");
+    if (!name || !domain) return email;
+    if (name.length <= 2) return email;
+
+    const maskedName = name.slice(0, 2) + "*".repeat(name.length - 2);
+    const [domainName, domainExt] = domain.split(".");
+    const maskedDomain = domainName
+      ? domainName.slice(0, 1) + "*".repeat(Math.max(domainName.length - 1, 0))
+      : domain;
+
+    return `${maskedName}@${maskedDomain}.${domainExt || "com"}`;
+  };
+
+  const loaderSubtitle = step === 3 ? "Verifying your code..." : "Signing you in...";
+  const inputClassName =
+    "h-20 w-full rounded-[30px] border border-slate-200 bg-slate-100 px-6 text-base font-medium text-slate-700 outline-none transition-all placeholder:text-slate-400 focus:border-teal-300 focus:bg-white focus:ring-4 focus:ring-teal-700/10";
+  const leftLabelClass = "mb-3 block text-sm font-semibold text-slate-700";
+
   return (
-    <div className="min-h-screen bg-[#fcfcfc] flex flex-col font-sans relative overflow-auto">
-      {loading ? <FullScreenLoader subtitle="Signing you in..." /> : null}
-      {/* Background Pattern */}
-      <div className="absolute inset-0 z-0 opacity-[0.03] pointer-events-none"
-        style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
+    <div className="relative min-h-screen overflow-hidden bg-sky-50 px-4 py-6 font-sans sm:px-6 lg:px-10">
+      {loading ? <FullScreenLoader subtitle={loaderSubtitle} /> : null}
 
-      <div className="flex-1 flex items-center justify-center p-4 z-10 text-sans">
-        <div className="w-full max-w-[560px] bg-white rounded-[20px] shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden border border-gray-100 min-h-[500px]">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute left-10 top-10 h-40 w-40 rounded-full bg-white/90 blur-3xl" />
+        <div className="absolute bottom-10 right-10 h-56 w-56 rounded-full bg-sky-200/60 blur-3xl" />
+      </div>
 
-          {/* Left Column: Form Section */}
-          <div className="p-8 md:p-12 flex flex-col justify-between min-h-[500px]">
-            <div>
-              {/* Header with Logo and Smart Sign-in */}
-              <div className="flex justify-between items-start mb-10">
-                <div className="flex flex-col">
-                  <div className="flex gap-0.5 mb-4">
-                    <div className="w-4 h-4 rounded-[1px] bg-[#fb4e4e] transform -rotate-3 translate-x-1"></div>
-                    <div className="w-4 h-4 rounded-[1px] bg-[#00c652] transform rotate-3"></div>
-                    <div className="w-4 h-4 rounded-[1px] bg-[#1a73e8] transform -rotate-6 -translate-y-1"></div>
-                    <div className="w-4 h-4 rounded-[1px] bg-[#fbb000] rotate-12"></div>
-                  </div>
-                  <h1 className="text-[24px] font-bold text-[#1f2937] leading-tight">Sign in</h1>
-                  <p className="text-[14px] text-gray-500 mt-0.5">to access Taban Books</p>
-                </div>
+      <div className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl items-center justify-center">
+        <div className="animate-auth-card grid w-full overflow-hidden rounded-[3rem] bg-white shadow-2xl shadow-sky-200/80 lg:w-[1320px] lg:grid-cols-2">
+          <section className="animate-auth-form flex items-center px-8 py-8 sm:px-10 lg:px-14 xl:px-16">
+            <div className="w-full max-w-2xl">
+              <div className="mb-10">
+                <h1 className="text-4xl font-bold tracking-tight text-[#16213d] sm:text-5xl">Sign In</h1>
+                <p className="mt-4 text-base leading-7 text-slate-500">
+                  {step === 3
+                    ? `Enter the code we sent to ${maskEmail(formData.email)} to continue to your workspace.`
+                    : "Use your email and password to continue to your workspace."}
+                </p>
               </div>
 
-              {/* Form Content */}
-              {step === 3 && (
-                <div className="mb-6 flex items-center gap-2.5 bg-[#e6fcf5] text-[#087f5b] px-4 py-3 rounded-[4px] border border-[#c3fae8] text-[13.5px] font-medium transition-all animate-in fade-in slide-in-from-top-2">
-                  <CheckCircle2 size={16} className="text-[#099268] shrink-0" />
-                  <span>OTP sent to {maskEmail(formData.email)}</span>
-                  <button onClick={() => setStep(1)} className="ml-auto text-[#087f5b] hover:text-[#099268] transition-colors"><MoreHorizontal size={14} /></button>
+              {step === 3 ? (
+                <div className="mb-8 flex items-start gap-3 rounded-3xl border border-emerald-100 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">
+                  <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-600" />
+                  <div>
+                    <p className="font-semibold">OTP sent successfully.</p>
+                    <p className="mt-1 text-emerald-700/90">Check your inbox and enter the latest code below.</p>
+                  </div>
                 </div>
-              )}
+              ) : null}
 
-              {error && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded text-red-600 text-[13px] font-medium animate-shake">
+              {error ? (
+                <div className="mb-8 rounded-3xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-medium text-rose-700">
                   {error}
                 </div>
-              )}
+              ) : null}
 
               {step === 1 ? (
-                <form onSubmit={handleNext} className="space-y-6">
+                <form className="space-y-6" onSubmit={handleCredentialsSubmit}>
                   <div>
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleChange}
-                      required
-                      placeholder="Email address or mobile number"
-                      className="w-full px-4 py-3 bg-[#f8f9fa] border border-gray-200 rounded focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all text-[#374151] text-[15px] placeholder-gray-400"
-                    />
+                    <label className={leftLabelClass}>Email Address</label>
+                    <div className="relative">
+                      <Mail className="pointer-events-none absolute left-6 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="email"
+                        name="email"
+                        value={formData.email}
+                        onChange={handleChange}
+                        required
+                        autoComplete="email"
+                        placeholder="info@taban.so"
+                        className={`${inputClassName} pl-16`}
+                      />
+                    </div>
                   </div>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full bg-[#156372] hover:bg-[#0f4e5a] text-white py-3.5 rounded font-bold text-[15px] transition-all flex items-center justify-center gap-2 shadow-sm active:scale-[0.98] disabled:opacity-70"
-                  >
-                    {loading ? (
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    ) : (
-                      <span className="flex items-center gap-1.5">Next <ChevronRight size={16} /></span>
-                    )}
-                  </button>
-                </form>
-              ) : step === 2 ? (
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="flex items-center gap-2 text-sm text-gray-600 mb-2 bg-gray-50 p-2.5 rounded border border-gray-100">
-                    <span className="truncate flex-1 font-medium">{formData.email}</span>
-                    <button
-                      type="button"
-                      onClick={() => setStep(1)}
-                      className="text-blue-600 font-bold text-xs hover:underline"
-                    >
-                      Change
-                    </button>
-                  </div>
+
                   <div>
-                    <input
-                      type="password"
-                      name="password"
-                      value={formData.password}
-                      onChange={handleChange}
-                      required
-                      placeholder="Enter your password"
-                      autoFocus
-                      className="w-full px-4 py-3 bg-[#f8f9fa] border border-gray-100 rounded focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all text-[#374151] text-[15px] placeholder-gray-400"
-                    />
+                    <label className={leftLabelClass}>Password</label>
+                    <div className="relative">
+                      <Lock className="pointer-events-none absolute left-6 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        name="password"
+                        value={formData.password}
+                        onChange={handleChange}
+                        autoComplete="current-password"
+                        placeholder="Enter your password"
+                        className={`${inputClassName} pl-16 pr-16`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        className="absolute right-5 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-200/70 hover:text-slate-700"
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                      >
+                        {showPassword ? <EyeOff size={24} /> : <Eye size={24} />}
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-[13px]">
+
+                  <div className="flex flex-col gap-4 pt-1 text-base font-semibold text-blue-600 sm:flex-row sm:items-center sm:justify-between">
                     <button
                       type="button"
                       onClick={handleSignInWithOTP}
                       disabled={loading}
-                      className="text-blue-600 font-semibold hover:underline disabled:opacity-60"
+                      className="text-left transition-colors hover:text-blue-700 disabled:opacity-60"
                     >
                       Sign in using email OTP
                     </button>
-                    <button
-                      type="button"
-                      onClick={handleSignInWithOTP}
-                      disabled={loading}
-                      className="text-blue-600 font-semibold hover:underline disabled:opacity-60"
+                    <Link
+                      to={formData.email ? `/forgot-password?email=${encodeURIComponent(formData.email)}` : "/forgot-password"}
+                      className="text-left transition-colors hover:text-blue-700 sm:text-right"
                     >
                       Forgot Password?
-                    </button>
+                    </Link>
                   </div>
+
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full bg-[#1a83ff] hover:bg-[#0070f3] text-white py-3.5 rounded font-bold text-[15px] transition-all flex items-center justify-center gap-2 shadow-sm active:scale-[0.98] disabled:opacity-70"
+                    className={`mx-auto mt-4 flex w-full max-w-sm items-center justify-center gap-3 rounded-[26px] px-8 py-5 text-lg font-bold text-white transition-all disabled:transform-none disabled:opacity-60 ${PRIMARY_BUTTON_CLASS}`}
                   >
-                    {loading ? (
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    ) : (
-                      "Sign In"
-                    )}
+                    <span>{loading ? "Signing in..." : "Sign in"}</span>
+                    <ArrowRight size={24} />
                   </button>
                 </form>
-              ) : (
-                /* OTP Step (Step 3) */
-                <form onSubmit={handleVerifyOTP} className="space-y-6">
-                  <div className="flex items-center gap-2 text-sm text-gray-600 mb-2 bg-gray-50 p-2.5 rounded border border-gray-100">
-                    <span className="truncate flex-1 font-medium">{formData.email}</span>
-                    <button
-                      type="button"
-                      onClick={() => setStep(1)}
-                      className="text-blue-600 font-bold text-xs hover:underline transition-colors"
-                    >
-                      Change
-                    </button>
-                  </div>
+              ) : null}
 
-                  <div className="relative">
-                    <input
-                      type="text"
-                      name="otp"
-                      value={formData.otp}
-                      onChange={handleChange}
-                      required
-                      placeholder="Enter OTP"
-                      autoFocus
-                      maxLength={6}
-                      className="w-full px-4 py-3 bg-[#f8f9fa] border border-gray-100 rounded focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all text-[#374151] text-[16px] tracking-[0.2em] font-bold placeholder:tracking-normal placeholder:font-normal placeholder-gray-400"
-                    />
-                  </div>
-
-                  <div className="flex justify-end pr-1">
-                    <div className="w-full flex items-center justify-between">
-                      {userStatus.hasPassword ? (
-                        <button
-                          type="button"
-                          onClick={() => setStep(2)}
-                          className="text-[12px] text-blue-600 font-bold hover:underline"
-                        >
-                          Sign in using password
-                        </button>
-                      ) : (
-                        <span />
-                      )}
-                      {timer > 0 ? (
-                        <span className="text-[12px] text-gray-500 font-medium">Resend in {timer}s</span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={handleResendOTP}
-                          className="text-[12px] text-blue-600 font-bold hover:underline"
-                        >
-                          Resend OTP
-                        </button>
-                      )}
+              {step === 3 ? (
+                <form className="space-y-6" onSubmit={handleVerifyOTP}>
+                  <div>
+                    <label className={leftLabelClass}>Email Address</label>
+                    <div className="relative">
+                      <Mail className="pointer-events-none absolute left-6 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="email"
+                        name="email"
+                        value={formData.email}
+                        onChange={handleChange}
+                        required
+                        className={`${inputClassName} pl-16 pr-24`}
+                      />
+                      <button
+                        type="button"
+                        onClick={resetToPasswordView}
+                        className="absolute right-6 top-1/2 -translate-y-1/2 text-sm font-semibold text-blue-600 transition-colors hover:text-blue-700"
+                      >
+                        Change
+                      </button>
                     </div>
                   </div>
+
+                  <div>
+                    <label className={leftLabelClass}>One-Time Password</label>
+                    <div className="relative">
+                      <ShieldCheck className="pointer-events-none absolute left-6 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        name="otp"
+                        value={formData.otp}
+                        onChange={handleChange}
+                        required
+                        autoFocus
+                        inputMode="numeric"
+                        maxLength={6}
+                        placeholder="Enter 6-digit code"
+                        className={`${inputClassName} pl-16 pr-6 text-lg font-bold tracking-widest`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-4 pt-1 text-base font-semibold text-blue-600 sm:flex-row sm:items-center sm:justify-between">
+                    {userStatus.hasPassword ? (
+                      <button
+                        type="button"
+                        onClick={resetToPasswordView}
+                        className="text-left transition-colors hover:text-blue-700"
+                      >
+                        Use password instead
+                      </button>
+                    ) : (
+                      <span />
+                    )}
+
+                    {timer > 0 ? (
+                      <span className="text-base font-medium text-slate-500">Resend in {timer}s</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleResendOTP}
+                        className="text-left transition-colors hover:text-blue-700"
+                      >
+                        Resend code
+                      </button>
+                    )}
+                  </div>
+
+                  {!userStatus.hasPassword ? (
+                    <div className="flex items-start gap-3 rounded-3xl border border-sky-100 bg-sky-50 px-5 py-4 text-sm text-sky-800">
+                      <Info size={18} className="mt-0.5 shrink-0 text-sky-600" />
+                      <div>
+                        <p className="font-semibold">This account uses secure email verification.</p>
+                        <p className="mt-1 text-sky-700/90">Complete this step to access your workspace.</p>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <button
                     type="submit"
                     disabled={loading || formData.otp.length < 4}
-                    className="w-full bg-[#1a83ff] hover:bg-[#0070f3] text-white py-3.5 rounded font-bold text-[15px] transition-all flex items-center justify-center gap-2 shadow-sm active:scale-[0.98] disabled:opacity-50"
+                    className={`mx-auto mt-4 flex w-full max-w-sm items-center justify-center gap-3 rounded-[26px] px-8 py-5 text-lg font-bold text-white transition-all disabled:transform-none disabled:opacity-60 ${PRIMARY_BUTTON_CLASS}`}
                   >
-                    {loading ? (
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    ) : (
-                      "Verify"
-                    )}
+                    <span>{loading ? "Verifying..." : "Verify"}</span>
+                    <ArrowRight size={24} />
                   </button>
-
-                  {!userStatus.hasPassword && (
-                    <div className="bg-[#f0f7ff] border border-[#d0e6ff] rounded-[8px] p-4 flex gap-3.5 animate-in slide-in-from-bottom-2">
-                      <div className="bg-[#1a83ff]/10 p-1.5 rounded-full h-fit mt-0.5">
-                        <Info size={16} className="text-[#1a83ff]" />
-                      </div>
-                      <div className="text-[13px] leading-relaxed">
-                        <p className="text-[#3b4b6b] font-medium">You have not set a password for this account</p>
-                        <button type="button" className="text-[#1a83ff] font-bold hover:underline mt-0.5">Set password now.</button>
-                      </div>
-                    </div>
-                  )}
                 </form>
-              )}
-
+              ) : null}
             </div>
+          </section>
 
-            {/* Footer Link */}
-            <div className="mt-8 text-[13px] text-gray-500">
-              Don't have a Taban Books account?{" "}
-              <Link to="/signup" className="text-blue-600 font-bold hover:underline transition-colors">
-                Sign up now
+          <div className={`animate-auth-panel relative hidden min-h-full items-center justify-center overflow-hidden px-8 py-10 text-white lg:flex lg:rounded-l-[9rem] ${PANEL_BG_CLASS}`}>
+            <div className="relative z-10 flex w-full max-w-lg flex-col items-center text-center">
+              <div className="mb-10 inline-flex items-center gap-3 rounded-full border border-white/20 bg-white/10 px-8 py-4 text-xs font-bold uppercase tracking-[0.25em] text-white/90">
+                <ShieldCheck size={20} />
+                Secure Login
+              </div>
+
+              <h2 className="text-4xl font-bold leading-tight tracking-tight text-white sm:text-5xl">
+                {RIGHT_PANEL_TITLE}
+              </h2>
+
+              <p className="mt-8 max-w-md text-xl leading-[1.7] text-white/85">
+                Create your account to start using Full System with the same secure workspace and
+                tools.
+              </p>
+
+              <Link
+                to="/signup"
+                className="mt-14 inline-flex min-h-[76px] min-w-[320px] items-center justify-center rounded-full border border-white/30 px-10 text-lg font-bold text-white transition-colors hover:bg-white/10"
+              >
+                Create Account
               </Link>
             </div>
           </div>
-
         </div>
       </div>
 
-      {/* External Footer */}
-      <footer className="py-6 text-center text-gray-400 text-[12px] z-10">
-        © 2026, Taban Corporation Pvt. Ltd. All Rights Reserved.
-      </footer>
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @keyframes authCardReveal {
+              from { opacity: 0; transform: translateY(18px) scale(0.985); }
+              to { opacity: 1; transform: translateY(0) scale(1); }
+            }
 
-      <style dangerouslySetInnerHTML={{
-        __html: `
-        @keyframes shake {
-          0%, 100% { transform: translateX(0); }
-          25% { transform: translateX(-4px); }
-          75% { transform: translateX(4px); }
-        }
-        .animate-shake { animation: shake 0.2s ease-in-out 0s 2; }
-      `}} />
+            @keyframes authPanelReveal {
+              from { opacity: 0; transform: translateX(-26px); }
+              to { opacity: 1; transform: translateX(0); }
+            }
+
+            @keyframes authFormReveal {
+              from { opacity: 0; transform: translateX(26px); }
+              to { opacity: 1; transform: translateX(0); }
+            }
+
+            .animate-auth-card {
+              animation: authCardReveal 0.65s ease-out both;
+            }
+
+            .animate-auth-panel {
+              animation: authPanelReveal 0.8s ease-out both;
+            }
+
+            .animate-auth-form {
+              animation: authFormReveal 0.8s ease-out both;
+            }
+          `,
+        }}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { X, Search, ArrowUpDown, ChevronRight, Download, Upload, Settings, RefreshCw, Edit3, Eye, EyeOff, Info } from "lucide-react";
 import { projectsAPI, timeEntriesAPI } from "../../services/api";
@@ -1097,7 +1097,7 @@ function TimesheetTable() {
                   onClick={() => setBillingStatusExpanded(!billingStatusExpanded)}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '10px' }}>{billingStatusExpanded ? 'â–¼' : 'â–¶'}</span>
+                    <span style={{ fontSize: '10px' }}>{billingStatusExpanded ? '▼' : '▶'}</span>
                     <span>BILLING STATUS</span>
                   </div>
                   <span style={{
@@ -1240,7 +1240,7 @@ function TimesheetTable() {
                 borderRight: "1px solid #e5e7eb"
               }}
             >
-              â˜°
+              ☰
             </button>
             <button
               onClick={() => setViewMode('calendar')}
@@ -1256,7 +1256,7 @@ function TimesheetTable() {
                 color: "#374151"
               }}
             >
-              ðŸ“…
+              📅
             </button>
           </div>
 
@@ -1596,7 +1596,7 @@ function TimesheetTable() {
                 padding: 0
               }}
             >
-              â‹¯
+              ⋯
             </button>
 
             {/* More Menu Dropdown */}
@@ -1738,7 +1738,7 @@ function TimesheetTable() {
                             <span>{option}</span>
                             {isSelected && (
                                 <span style={{ fontSize: "12px", color: "#156372" }}>
-                                {sortDirection === "asc" ? "â†‘" : "â†“"}
+                                {sortDirection === "asc" ? "↑" : "↓"}
                               </span>
                             )}
                           </button>
@@ -2677,7 +2677,7 @@ function TimesheetTable() {
           >
             <span>Period: {selectedPeriod}</span>
             <span style={{ fontSize: '10px', color: '#6b7280' }}>
-              {showPeriodDropdown ? 'â–²' : 'â–¼'}
+              {showPeriodDropdown ? '▲' : '▼'}
             </span>
           </div>
 
@@ -2726,7 +2726,7 @@ function TimesheetTable() {
                     transform: 'translateY(-50%)',
                     color: '#9ca3af',
                     fontSize: '16px'
-                  }}>ðŸ”</span>
+                  }}>🔍</span>
                 </div>
               </div>
 
@@ -2766,7 +2766,7 @@ function TimesheetTable() {
                 >
                   <span style={{ color: selectedPeriod === 'All' ? '#3b82f6' : '#1f2937' }}>All</span>
                   {selectedPeriod === 'All' && (
-                    <span style={{ color: '#3b82f6', fontSize: '16px' }}>âœ“</span>
+                    <span style={{ color: '#3b82f6', fontSize: '16px' }}>✓</span>
                   )}
                 </div>
 
@@ -2816,7 +2816,7 @@ function TimesheetTable() {
                     >
                       <span style={{ color: selectedPeriod === period ? '#156372' : '#1f2937' }}>{period}</span>
                       {selectedPeriod === period && (
-                        <span style={{ color: '#156372', fontSize: '16px' }}>âœ“</span>
+                        <span style={{ color: '#156372', fontSize: '16px' }}>✓</span>
                       )}
                     </div>
                   );
@@ -2869,7 +2869,7 @@ function TimesheetTable() {
                     >
                       <span style={{ color: selectedPeriod === period ? '#156372' : '#1f2937' }}>{period}</span>
                       {selectedPeriod === period && (
-                        <span style={{ color: '#156372', fontSize: '16px' }}>âœ“</span>
+                        <span style={{ color: '#156372', fontSize: '16px' }}>✓</span>
                       )}
                     </div>
                   );
@@ -2894,7 +2894,7 @@ function TimesheetTable() {
             gap: '8px'
           }}
         >
-          <option value="">ðŸ‘¤ Select customer</option>
+          <option value="">👤 Select customer</option>
           {customers.map(customer => (
             <option key={customer.id} value={customer.name}>{customer.name}</option>
           ))}
@@ -2912,7 +2912,7 @@ function TimesheetTable() {
             backgroundColor: 'white'
           }}
         >
-          <option value="">ðŸ’¼ Select a project</option>
+          <option value="">💼 Select a project</option>
           {projects.map(project => (
             <option key={project.id} value={project.projectName}>{project.projectName}</option>
           ))}
@@ -2930,7 +2930,7 @@ function TimesheetTable() {
             backgroundColor: 'white'
           }}
         >
-          <option value="">ðŸ‘¥ Select user</option>
+          <option value="">👥 Select user</option>
           {users.map(user => (
             <option key={user.id} value={user.name}>{user.name}</option>
           ))}
@@ -2979,7 +2979,7 @@ function TimesheetTable() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
                   onClick={() => setIsFavorite(!isFavorite)}>
                   <span style={{ fontSize: '18px', color: isFavorite ? '#fbbf24' : '#9ca3af' }}>
-                    {isFavorite ? 'â˜…' : 'â˜†'}
+                    {isFavorite ? '★' : '☆'}
                   </span>
                   <span style={{ fontSize: '14px', color: '#6b7280' }}>Mark as Favorite</span>
                 </div>
@@ -3093,7 +3093,7 @@ function TimesheetTable() {
                       }}
                       onClick={() => setCriteria(criteria.filter(c => c.id !== criterion.id))}
                     >
-                      ðŸ—‘ï¸
+                      🗑️
                     </button>
                   )}
                 </div>
@@ -3178,7 +3178,7 @@ function TimesheetTable() {
                       top: '50%', 
                       transform: 'translateY(-50%)',
                       color: '#9ca3af'
-                    }}>ðŸ”</span>
+                    }}>🔍</span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {availableColumns
@@ -3201,7 +3201,7 @@ function TimesheetTable() {
                           onMouseOver={(e) => e.target.style.backgroundColor = '#f3f4f6'}
                           onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
                         >
-                          <span style={{ fontSize: '16px', color: '#9ca3af' }}>â‹®â‹®</span>
+                          <span style={{ fontSize: '16px', color: '#9ca3af' }}>⋮⋮</span>
                           {column}
                         </div>
                       ))}
@@ -3224,7 +3224,7 @@ function TimesheetTable() {
                     alignItems: 'center',
                     gap: '6px'
                   }}>
-                    <span style={{ color: '#10b981', fontSize: '16px' }}>âœ“</span>
+                    <span style={{ color: '#10b981', fontSize: '16px' }}>✓</span>
                     SELECTED COLUMNS
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -3247,7 +3247,7 @@ function TimesheetTable() {
                         onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '16px', color: '#9ca3af' }}>â‹®â‹®</span>
+                          <span style={{ fontSize: '16px', color: '#9ca3af' }}>⋮⋮</span>
                           {column}
                           {column === 'Project' && <span style={{ color: '#156372' }}>*</span>}
                         </div>
@@ -3266,7 +3266,7 @@ function TimesheetTable() {
                               setSelectedColumns(selectedColumns.filter(c => c !== column));
                             }}
                           >
-                            Ã—
+                            ×
                           </button>
                         )}
                       </div>
@@ -3327,7 +3327,7 @@ function TimesheetTable() {
                     onChange={(e) => setVisibility(e.target.value)}
                     style={{ width: '18px', height: '18px', cursor: 'pointer' }}
                   />
-                  <span style={{ marginRight: '6px' }}>ðŸ‘¤</span>
+                  <span style={{ marginRight: '6px' }}>👤</span>
                   Only Selected Users & Roles
                 </label>
                 <label style={{ 
@@ -3346,7 +3346,7 @@ function TimesheetTable() {
                     onChange={(e) => setVisibility(e.target.value)}
                     style={{ width: '18px', height: '18px', cursor: 'pointer' }}
                   />
-                  <span style={{ marginRight: '6px' }}>ðŸ¢</span>
+                  <span style={{ marginRight: '6px' }}>🏢</span>
                   Everyone
                 </label>
               </div>
@@ -3456,7 +3456,7 @@ function TimesheetTable() {
               cursor: 'pointer',
               boxShadow: '0 4px 6px rgba(16,185,129,0.3)'
             }}>
-              <span style={{ color: 'white', fontSize: '24px', marginLeft: '4px' }}>â–¶</span>
+              <span style={{ color: 'white', fontSize: '24px', marginLeft: '4px' }}>▶</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <div style={{ fontSize: '16px', fontWeight: '600', color: '#1f2937' }}>Taban Books</div>
@@ -3519,7 +3519,7 @@ function TimesheetTable() {
         onMouseOver={(e) => e.target.style.textDecoration = 'none'}
         onMouseOut={(e) => e.target.style.textDecoration = 'none'}
         >
-          <span style={{ fontSize: '18px' }}>ðŸŒ</span>
+          <span style={{ fontSize: '18px' }}>🌐</span>
           <span>Timer - Chrome Extension</span>
         </a>
       </div>
@@ -3559,7 +3559,7 @@ function TimesheetTable() {
                   padding: '8px'
                 }}
               >
-                â€¹
+                ‹
               </button>
               <h2 style={{
                 fontSize: '18px',
@@ -3584,7 +3584,7 @@ function TimesheetTable() {
                   padding: '8px'
                 }}
               >
-                â€º
+                ›
               </button>
       </div>
 
@@ -3792,7 +3792,7 @@ function TimesheetTable() {
                                   textDecoration: 'none'
                                 }}
                               >
-                                {day.entries.length} Timesheet{day.entries.length > 1 ? 's' : ''} â€º
+                                {day.entries.length} Timesheet{day.entries.length > 1 ? 's' : ''} ›
                               </div>
                             </div>
                           )}
@@ -3973,7 +3973,7 @@ function TimesheetTable() {
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         TASK
-                        <span style={{ fontSize: '10px' }}>â–²â–¼</span>
+                        <span style={{ fontSize: '10px' }}>▲▼</span>
                       </div>
                     </th>
                     <th style={{
@@ -4623,7 +4623,7 @@ function TimesheetTable() {
                   color: '#1f2937',
                   marginBottom: '12px'
                 }}>
-                  <span style={{ fontSize: '16px' }}>ðŸ“…</span>
+                  <span style={{ fontSize: '16px' }}>📅</span>
                   <span>{selectedEntry.date}</span>
                 </div>
                 <div style={{
@@ -4800,7 +4800,7 @@ function TimesheetTable() {
                             transform: 'translateY(-50%)',
                             pointerEvents: 'none',
                             color: '#6b7280'
-                          }}>â–¼</span>
+                          }}>▼</span>
                         </div>
                       </div>
 
@@ -4852,7 +4852,7 @@ function TimesheetTable() {
                             transform: 'translateY(-50%)',
                             pointerEvents: 'none',
                             color: '#6b7280'
-                          }}>â–¼</span>
+                          }}>▼</span>
                         </div>
                       </div>
 
@@ -4926,7 +4926,7 @@ function TimesheetTable() {
                             transform: 'translateY(-50%)',
                             pointerEvents: 'none',
                             color: '#6b7280'
-                          }}>â–¼</span>
+                          }}>▼</span>
                         </div>
                       </div>
 
@@ -5560,7 +5560,7 @@ function TimesheetTable() {
                   lineHeight: 1
                 }}
               >
-                Ã—
+                ×
               </button>
             </div>
 
@@ -5645,7 +5645,7 @@ function TimesheetTable() {
                     transform: 'translateY(-50%)',
                     pointerEvents: 'none',
                     color: '#6b7280'
-                  }}>â–¼</span>
+                  }}>▼</span>
                 </div>
               </div>
 
@@ -5694,7 +5694,7 @@ function TimesheetTable() {
                     transform: 'translateY(-50%)',
                     pointerEvents: 'none',
                     color: '#6b7280'
-                  }}>â–¼</span>
+                  }}>▼</span>
                 </div>
               </div>
 
@@ -5751,7 +5751,7 @@ function TimesheetTable() {
                 onMouseOver={(e) => e.target.style.textDecoration = 'none'}
                 onMouseOut={(e) => e.target.style.textDecoration = 'none'}
                 >
-                  <span>ðŸ•</span>
+                  <span>🕐</span>
                   <span>Set start and end time instead</span>
                 </a>
               </div>
@@ -5825,7 +5825,7 @@ function TimesheetTable() {
                     transform: 'translateY(-50%)',
                     pointerEvents: 'none',
                     color: '#6b7280'
-                  }}>â–¼</span>
+                  }}>▼</span>
                 </div>
               </div>
 
@@ -6054,7 +6054,7 @@ function TimesheetTable() {
                   justifyContent: 'center'
                 }}
               >
-                Ã—
+                ×
               </button>
             </div>
 
@@ -6471,7 +6471,7 @@ function TimesheetTable() {
                     fontWeight: '600',
                     marginBottom: '8px'
                   }}>
-                    {exportCurrentViewStep > step ? 'âœ“' : step}
+                    {exportCurrentViewStep > step ? '✓' : step}
                   </div>
                   <span style={{
                     fontSize: '12px',
@@ -6877,7 +6877,7 @@ function TimesheetTable() {
                     fontWeight: '600',
                     marginBottom: '8px'
                   }}>
-                    {exportProjectsStep > step ? 'âœ“' : step}
+                    {exportProjectsStep > step ? '✓' : step}
                   </div>
                   <span style={{
                     fontSize: '12px',

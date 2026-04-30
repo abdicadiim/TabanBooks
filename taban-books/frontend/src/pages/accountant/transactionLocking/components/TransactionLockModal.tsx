@@ -84,7 +84,7 @@ export function TransactionLockModal({
               borderRadius: "999px",
               border: "1px solid #d1d5db",
               backgroundColor: "#ffffff",
-              color: "#475569",
+              color: "#156372",
               cursor: "pointer",
             }}
           >
@@ -184,7 +184,7 @@ export function TransactionLockModal({
               border: "1px solid #d1d5db",
               padding: "11px 16px",
               backgroundColor: "#ffffff",
-              color: "#475569",
+              color: "#156372",
               cursor: "pointer",
               fontSize: "14px",
               fontWeight: 600,

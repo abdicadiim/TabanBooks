@@ -126,11 +126,18 @@ const normalizeReportingTagAppliesTo = (tag: any): string[] => {
 };
 const resolveItemAccount = (item: any): string => {
   const direct = item?.account || item?.accountName || item?.incomeAccount || item?.incomeAccountName;
-  if (direct) return String(direct);
+  if (direct) {
+    if (typeof direct === "string") return direct;
+    return String(direct?.name || direct?.accountName || direct?.title || direct?.displayName || direct?.label || direct?.code || "");
+  }
+  const accountObject = item?.accountObject || item?.accountData || item?.accountInfo;
+  if (accountObject && typeof accountObject === "object") {
+    return String(accountObject?.name || accountObject?.accountName || accountObject?.title || accountObject?.displayName || accountObject?.label || accountObject?.code || "");
+  }
   const salesAccount = item?.salesAccount;
   if (salesAccount) {
     if (typeof salesAccount === "string") return salesAccount;
-    return String(salesAccount?.name || salesAccount?.accountName || "");
+    return String(salesAccount?.name || salesAccount?.accountName || salesAccount?.title || salesAccount?.displayName || salesAccount?.label || salesAccount?.code || "");
   }
   return "";
 };
@@ -214,16 +221,16 @@ const toFiniteNumber = (value: any, fallback = 0) => {
 const normalizeCreditNoteItem = (item: any, index: number, taxOptions: any[]): CreditNoteItem => {
   const rawItem = item?.item;
   const rawItemObject = rawItem && typeof rawItem === "object" ? rawItem : null;
-  const quantity = toFiniteNumber(item?.quantity ?? item?.qty ?? rawItemObject?.quantity ?? 1, 1) || 1;
-  const rate = toFiniteNumber(
-    item?.rate ??
-      item?.unitPrice ??
-      item?.price ??
-      item?.sellingPrice ??
-      rawItemObject?.rate ??
-      rawItemObject?.price ??
-      0
-  );
+  const quantity = toFiniteNumber(
+    item?.displayQuantity ??
+      item?.quantity ??
+      item?.qty ??
+      rawItemObject?.quantity ??
+      rawItemObject?.qty ??
+      1,
+    1
+  ) || 1;
+  const rate = toFiniteNumber(resolveCreditNoteItemRate(item) || resolveCreditNoteItemRate(rawItemObject) || 0);
   const discount = toFiniteNumber(item?.discount ?? item?.discountAmount ?? item?.discount_value ?? item?.discountValue ?? 0);
   const discountType = String(item?.discountType ?? item?.discount_type ?? rawItemObject?.discountType ?? "percent").trim().toLowerCase() === "fixed"
     ? "fixed"
@@ -235,17 +242,27 @@ const normalizeCreditNoteItem = (item: any, index: number, taxOptions: any[]): C
   const discountAmount = discountType === "fixed" ? discount : (lineBase * discount / 100);
   const taxableAmount = Math.max(0, lineBase - discountAmount);
   const computedAmount = taxableAmount + (taxableAmount * taxRate / 100);
-  const rawAmount = item?.amount ?? item?.total ?? item?.lineTotal ?? item?.line_total ?? item?.subTotal ?? item?.subtotal;
+  const rawAmount =
+    item?.displayAmount ??
+    item?.amount ??
+    item?.total ??
+    item?.lineTotal ??
+    item?.line_total ??
+    item?.subTotal ??
+    item?.subtotal ??
+    item?.netAmount ??
+    item?.grossAmount;
   const itemDetails = String(
     item?.itemDetails ||
       item?.name ||
       item?.description ||
+      item?.displayName ||
       item?.label ||
       (rawItemObject && (rawItemObject?.name || rawItemObject?.itemDetails || rawItemObject?.description || rawItemObject?.label)) ||
       ""
   );
   const normalizedItemId = rawItemObject && typeof rawItemObject === "object"
-    ? String(rawItemObject?._id || rawItemObject?.id || item?.itemId || "")
+    ? String(rawItemObject?._id || rawItemObject?.id || rawItemObject?.sourceId || item?.itemId || "")
     : String(item?.itemId || rawItem || "");
 
   return {
@@ -317,7 +334,17 @@ const resolveCreditNoteSalesperson = (note: any) => {
   ).trim();
 };
 const resolveCreditNoteItemRate = (item: any) =>
-  Number(item?.costPrice ?? item?.rate ?? item?.sellingPrice ?? item?.price ?? 0);
+  Number(
+    item?.displayRate ??
+    item?.unitPrice ??
+    item?.rate ??
+    item?.price ??
+    item?.sellingPrice ??
+    item?.catalogRate ??
+    item?.baseRate ??
+    item?.costPrice ??
+    0
+  );
 
 export default function NewCreditNote() {
   const navigate = useNavigate();
@@ -327,6 +354,11 @@ export default function NewCreditNote() {
   const isEditMode = !!id;
   const clonedDataFromState = location.state?.clonedData || null;
   const creditNoteFromState = location.state?.creditNote || null;
+  const sourceInvoiceId = String(
+    new URLSearchParams(location.search).get("invoiceId") ||
+    (window.history.state && (window.history.state as any).invoiceId) ||
+    ""
+  ).trim();
 
   const [formData, setFormData] = useState({
     customerName: "",
@@ -474,6 +506,12 @@ export default function NewCreditNote() {
   const [availableDocuments, setAvailableDocuments] = useState<any[]>([]);
   const [selectedDocuments, setSelectedDocuments] = useState<any[]>([]);
   const [selectedInbox, setSelectedInbox] = useState("files");
+  const isAnyModalOpen =
+    isBulkAddModalOpen ||
+    customerSearchModalOpen ||
+    isCreditNoteNumberModalOpen ||
+    isCloudPickerOpen ||
+    isDocumentsModalOpen;
 
   useEffect(() => {
     if (!isBulkAddModalOpen || typeof document === "undefined") return;
@@ -797,16 +835,7 @@ export default function NewCreditNote() {
           if (invoiceId && !isEditMode) {
             if (invoiceData) {
               // Map invoice items to credit note items
-              const mappedItems = (invoiceData.items || []).map((it: any) => ({
-                id: Date.now() + Math.random(),
-                itemId: it.item?._id || it.item || undefined,
-                itemDetails: it.name || it.itemDetails || it.description || "",
-                quantity: it.quantity || it.qty || 1,
-                rate: it.rate || it.unitPrice || it.price || 0,
-                tax: it.taxId || it.tax || "",
-                amount: it.total || it.amount || ((it.quantity || 0) * (it.rate || it.unitPrice || 0) || 0),
-                reportingTags: Array.isArray(it.reportingTags) ? it.reportingTags : []
-              }));
+              const mappedItems = normalizeCreditNoteItems(Array.isArray(invoiceData.items) ? invoiceData.items : [], taxOptions);
 
               console.debug('[NewCreditNote] Prefilling from invoice', invoiceData);
               setFormData(prev => ({
@@ -1786,8 +1815,9 @@ export default function NewCreditNote() {
     return days;
   };
 
-  const handleSave = async (status = "open") => {
-    setSaveLoading(status === "draft" ? "draft" : "open");
+  const handleSave = async () => {
+    const status = "open";
+    setSaveLoading("open");
     try {
       let effectiveCreditNoteNumber = String(formData.creditNoteNumber || "").trim();
       if (!isEditMode) {
@@ -1852,6 +1882,9 @@ export default function NewCreditNote() {
         total: formData.total || 0,
         currency: formData.currency || "USD",
         status: status,
+        invoiceId: sourceInvoiceId || undefined,
+        associatedInvoiceId: sourceInvoiceId || undefined,
+        associatedInvoiceNumber: sourceInvoiceId ? String(formData.referenceNumber || "").trim() || undefined : undefined,
         subject: formData.subject || "",
         termsAndConditions: formData.termsAndConditions || "",
         terms: formData.termsAndConditions || "",
@@ -1861,6 +1894,9 @@ export default function NewCreditNote() {
       };
 
       const savingToastId = toast.loading(isEditMode ? "Updating credit note..." : "Creating credit note...");
+      const allocations = sourceInvoiceId
+        ? [{ invoiceId: sourceInvoiceId, amount: Number(data.total || 0) || 0 }]
+        : [];
       if (isEditMode) {
         const updatedCreditNote = await updateCreditNote(id!, data as any);
         queryClient.setQueryData(["credit-notes", "list"], (current: any) => {
@@ -1880,6 +1916,13 @@ export default function NewCreditNote() {
           autoClose: 2200,
           closeButton: true
         });
+        if (updatedCreditNote?.id && allocations.length > 0) {
+          try {
+            await creditNotesAPI.applyToInvoices(updatedCreditNote.id, allocations);
+          } catch (applyError) {
+            console.error("Failed to apply updated credit note to invoice:", applyError);
+          }
+        }
       } else {
         let createdCreditNote: any = null;
         let saveError: any = null;
@@ -1931,8 +1974,15 @@ export default function NewCreditNote() {
           autoClose: 2200,
           closeButton: true
         });
+        if (createdCreditNote?.id && allocations.length > 0) {
+          try {
+            await creditNotesAPI.applyToInvoices(createdCreditNote.id, allocations);
+          } catch (applyError) {
+            console.error("Failed to apply new credit note to invoice:", applyError);
+          }
+        }
       }
-      navigate("/sales/credit-notes");
+      navigate("/sales/credit-notes", { replace: true });
     } catch (error) {
       console.error("Error saving credit note:", error);
       toast.dismiss();
@@ -1997,9 +2047,9 @@ export default function NewCreditNote() {
   };
 
   return (
-    <div className="w-full h-full min-h-0 bg-white flex flex-col overflow-hidden">
+    <div className={`w-full h-full min-h-0 bg-white flex flex-col overflow-hidden transition-all ${isAnyModalOpen ? "pointer-events-none opacity-60 blur-[1px]" : ""}`}>
       {/* Header */}
-      <div className="border-b border-gray-200 bg-white">
+      <div className={`border-b border-gray-200 bg-white transition-all ${isAnyModalOpen ? "pointer-events-none opacity-60 blur-[1px]" : ""}`}>
         <div className="w-full px-6 py-4 flex justify-between items-center">
           <h1 className="text-lg font-normal text-gray-900 m-0">New Credit Note</h1>
           <button
@@ -2319,50 +2369,61 @@ export default function NewCreditNote() {
             {/* Item Table Section */}
             <div className="pt-10">
               <div className="mb-4 flex flex-wrap items-center gap-6 text-sm text-gray-600">
-                <div className="relative inline-block" ref={taxExclusiveDropdownRef}>
-                  <button
-                    type="button"
-                    className={`flex items-center gap-3 text-sm font-medium transition-colors ${taxExclusiveOptions.length > 1 ? "text-slate-700 hover:text-slate-900" : "text-slate-600 opacity-80"}`}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      if (taxExclusiveOptions.length > 1) {
-                        setIsTaxExclusiveDropdownOpen(prev => !prev);
-                      }
-                    }}
-                  >
-                    <span className="flex items-center gap-2">
-                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 text-[11px] text-slate-500">
-                        <svg viewBox="0 0 24 24" className="h-3 w-3 fill-none stroke-current stroke-[2]">
-                          <path d="M3 7h18M3 12h18M3 17h18" />
-                        </svg>
-                      </span>
-                      <span>{formData.taxExclusive}</span>
-                    </span>
-                    <ChevronDown size={14} className={`text-slate-400 transition-transform ${isTaxExclusiveDropdownOpen ? "rotate-180" : ""}`} />
-                  </button>
-                  {isTaxExclusiveDropdownOpen && taxExclusiveOptions.length > 1 && (
-                    <div className="absolute left-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-md border border-gray-200 bg-white shadow-lg">
-                      {taxExclusiveOptions.map((option) => {
-                        const isSelected = formData.taxExclusive === option;
-                        return (
-                          <button
-                            key={option}
-                            type="button"
-                            className={`flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors ${isSelected ? "bg-[rgba(21,99,114,0.1)] text-[#156372]" : "text-gray-700 hover:bg-gray-50"}`}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              setFormData(prev => ({ ...prev, taxExclusive: option }));
-                              setIsTaxExclusiveDropdownOpen(false);
-                            }}
-                          >
-                            <span>{option}</span>
-                            {isSelected && <Check size={14} />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                <label className="flex items-center gap-3" ref={warehouseDropdownRef}>
+                  <span className="text-gray-600">Warehouse Location</span>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="h-9 min-w-[180px] border-b-2 border-gray-200 bg-transparent text-left text-sm text-gray-700 focus:border-[#156372] focus:outline-none flex items-center justify-between"
+                      onClick={() => {
+                        if (isWarehouseDropdownOpen) {
+                          setIsWarehouseDropdownOpen(false);
+                        } else {
+                          closeAllDropdownMenus();
+                          setIsWarehouseDropdownOpen(true);
+                        }
+                      }}
+                    >
+                      <span>{warehouseLocation}</span>
+                      <ChevronDown size={14} className={`text-gray-400 transition-transform ${isWarehouseDropdownOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {isWarehouseDropdownOpen && (
+                      <div className="absolute left-0 top-full mt-2 w-[220px] rounded-md border border-gray-200 bg-white shadow-lg z-[200]">
+                        <div className="p-2 border-b border-gray-100">
+                          <div className="relative">
+                            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                              type="text"
+                              value={warehouseSearch}
+                              onChange={(e) => setWarehouseSearch(e.target.value)}
+                              placeholder="Search"
+                              className="h-8 w-full rounded-md border border-gray-200 pl-8 pr-2 text-xs outline-none focus:border-[#156372]"
+                            />
+                          </div>
+                        </div>
+                        <div className="max-h-[200px] overflow-y-auto">
+                          {(availableLocations.length > 0 ? availableLocations : ["Head Office"])
+                            .filter((loc) => loc.toLowerCase().includes(warehouseSearch.toLowerCase()))
+                            .map((loc) => (
+                              <button
+                                key={loc}
+                                type="button"
+                                className={`w-full px-3 py-2 text-left text-sm ${warehouseLocation === loc ? "bg-slate-100 text-gray-900" : "text-gray-700 hover:bg-gray-50"}`}
+                                onClick={() => {
+                                  closeAllDropdownMenus();
+                                  setWarehouseLocation(loc);
+                                  setWarehouseSearch("");
+                                  (document.activeElement as HTMLElement | null)?.blur?.();
+                                }}
+                              >
+                                {loc}
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </label>
               </div>
               {!isBulkUpdateMode && (
                 <div className="flex items-center justify-between mb-4 rounded-md border border-gray-200 bg-[#f5f6f8] px-4 py-3">
@@ -2471,9 +2532,7 @@ export default function NewCreditNote() {
                     <col className="w-[38%]" />
                     <col className="w-[12%]" />
                     <col className="w-[11%]" />
-                    <col className="w-[10%]" />
                     <col className="w-[16%]" />
-                    <col className="w-[10%]" />
                     <col className="w-[5%]" />
                   </colgroup>
                   <thead>
@@ -2504,8 +2563,6 @@ export default function NewCreditNote() {
                         <Grid3x3 size={14} className="hidden" />
                       </div>
                     </th>
-                    <th className="text-left py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">DISCOUNT</th>
-                    <th className="text-left py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">TAX</th>
                     <th className="text-right py-3 px-3 text-[12px] tracking-wide font-semibold text-gray-700">AMOUNT</th>
                     <th className="w-12"></th>
                   </tr>
@@ -2622,128 +2679,6 @@ export default function NewCreditNote() {
                             min="0"
                             step="0.01"
                           />
-                        </td>
-                        <td className="py-3 px-3">
-                          <div className="flex items-center gap-0">
-                            <input
-                              type="number"
-                              inputMode="decimal"
-                              onKeyDown={blockInvalidNumericKeys}
-                              value={item.discount ?? ""}
-                              onChange={(e) => handleItemChange(item.id, "discount", sanitizeNumericInput(e.target.value))}
-                              className="h-9 w-full min-w-0 rounded-l-md border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-none focus:outline-none focus:border-[#3f83f8]"
-                              placeholder="0"
-                              min="0"
-                              step="0.01"
-                            />
-                            <button
-                              type="button"
-                              className="h-9 border border-l-0 border-slate-200 rounded-r-md bg-white px-2 text-sm text-slate-700 shadow-none"
-                              onClick={() =>
-                                handleItemChange(
-                                  item.id,
-                                  "discountType",
-                                  item.discountType === "percent" ? "fixed" : "percent"
-                                )
-                              }
-                            >
-                              {item.discountType === "percent" ? "%" : "$"}
-                            </button>
-                          </div>
-                        </td>
-                        <td className="py-3 px-3">
-                          <div
-                            className="relative"
-                            ref={(el) => {
-                              taxDropdownRefs.current[item.id] = el;
-                            }}
-                          >
-                            {(() => {
-                              const selectedTax = taxOptions.find((tax) => String(tax.id) === String(item.tax));
-                              const displayLabel = selectedTax ? taxLabel(selectedTax) : "Select a Tax";
-                              const searchValue = taxSearches[item.id] || "";
-                              const filteredGroups = getFilteredTaxGroups(searchValue);
-                              const hasTaxes = filteredGroups.some((group) => group.options.length > 0);
-
-                              return (
-                                <>
-                                  <button
-                                    type="button"
-                                    className="h-9 w-full px-3 border border-slate-200 rounded-md text-sm bg-white text-left flex items-center justify-between focus:outline-none focus:border-[#3f83f8]"
-                                    onClick={() =>
-                                      setOpenTaxDropdowns((prev) => ({
-                                        ...prev,
-                                        [item.id]: !prev[item.id],
-                                      }))
-                                    }
-                                  >
-                                    <span className={displayLabel === "Select a Tax" ? "text-gray-500" : "text-gray-900"}>
-                                      {displayLabel}
-                                    </span>
-                                    <ChevronDown
-                                      size={14}
-                                      className={`text-gray-400 transition-transform ${openTaxDropdowns[item.id] ? "rotate-180" : ""}`}
-                                    />
-                                  </button>
-
-                                  {openTaxDropdowns[item.id] && (
-                                    <div className="absolute left-0 top-full z-[9999] mt-1 w-72 rounded-xl border border-[#d6dbe8] bg-white p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
-                                      <div className="p-2">
-                                        <div className="flex items-center gap-2 rounded-lg border bg-slate-50/50 px-3 py-1.5 transition-all focus-within:bg-white" style={{ borderColor: "#156372" }}>
-                                          <Search size={14} className="text-slate-400" />
-                                          <input
-                                            value={searchValue}
-                                            onChange={(e) =>
-                                              setTaxSearches((prev) => ({ ...prev, [item.id]: e.target.value }))
-                                            }
-                                            placeholder="Search..."
-                                            className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
-                                          />
-                                        </div>
-                                      </div>
-                                      <div className="max-h-64 overflow-y-auto px-2 pb-2">
-                                        {!hasTaxes ? (
-                                          <div className="px-2 py-3 text-sm text-slate-500">No taxes found.</div>
-                                        ) : (
-                                          filteredGroups.map((group) => (
-                                            <div key={group.label} className="mb-2">
-                                              <div className="px-2 py-1 text-[11px] font-semibold uppercase text-slate-500">
-                                                {group.label}
-                                              </div>
-                                              <div className="space-y-1">
-                                                {group.options.map((tax) => {
-                                                  const taxId = String(tax.id);
-                                                  const selected = String(item.tax) === taxId;
-                                                  return (
-                                                    <button
-                                                      key={taxId}
-                                                      type="button"
-                                                      className={`w-full rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${selected ? "bg-slate-100 text-[#156372]" : "text-slate-700 hover:bg-slate-50"}`}
-                                                      onClick={() => {
-                                                        closeAllDropdownMenus();
-                                                        handleItemChange(item.id, "tax", taxId);
-                                                        setOpenTaxDropdowns((prev) => ({ ...prev, [item.id]: false }));
-                                                        setTaxSearches((prev) => ({ ...prev, [item.id]: "" }));
-                                                      }}
-                                                    >
-                                                      <div className="flex items-center justify-between gap-3">
-                                                        <span>{taxLabel(tax)}</span>
-                                                        {selected && <Check size={14} className="text-[#156372]" />}
-                                                      </div>
-                                                    </button>
-                                                  );
-                                                })}
-                                              </div>
-                                            </div>
-                                          ))
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-                                </>
-                              );
-                            })()}
-                          </div>
                         </td>
                         <td className="py-3 px-3">
                           <span className="text-sm font-semibold text-gray-900">{item.amount.toFixed(2)}</span>
@@ -3091,127 +3026,9 @@ export default function NewCreditNote() {
                         {formData.discountType === "percent" ? "%" : "$"}
                       </button>
                     </div>
-                    <span className="min-w-[70px] text-right text-sm text-gray-900">
-                      {(formData.discountType === "percent"
-                        ? (formData.subTotal * parseFloat(formData.discount as any) / 100)
-                        : Number(formData.discount) || 0
-                      ).toFixed(2)}
-                    </span>
+                    <span className="min-w-[70px] text-right text-sm text-gray-900">{formatMoney(formData.subTotal)}</span>
                   </div>
                 </div>
-                )}
-
-                {showShippingCharges && (
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600 flex items-center gap-1">
-                      Shipping Charges <Info size={14} className="text-gray-400" />
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        onKeyDown={blockInvalidNumericKeys}
-                        className="w-24 rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-right text-slate-700 shadow-none focus:outline-none focus:border-[#3f83f8]"
-                        value={formData.shippingCharges || ""}
-                        placeholder="0"
-                        onChange={(e) => handleSummaryChange("shippingCharges", sanitizeNumericInput(e.target.value))}
-                      />
-                      <span className="min-w-[70px] text-right text-sm text-gray-900">
-                        {formatMoney(formData.shippingCharges)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {(Number(formData.shippingCharges) || 0) > 0 && (
-                    <div className="ml-4 flex items-center justify-between gap-3 border-l-2 border-slate-100 pl-4">
-                      <span className="text-sm text-gray-600">Shipping Charge Tax</span>
-                      <div className="flex items-center gap-2">
-                        <div className="relative" ref={shippingChargeTaxDropdownRef}>
-                          <button
-                            type="button"
-                            className="h-9 min-w-[140px] rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-none flex items-center justify-between focus:outline-none focus:border-[#3f83f8]"
-                            onClick={() => setIsShippingChargeTaxDropdownOpen(prev => !prev)}
-                          >
-                            <span className={shippingChargeTaxOption ? "text-slate-900" : "text-slate-500"}>
-                              {shippingChargeTaxOption ? taxLabel(shippingChargeTaxOption) : "Select a Tax"}
-                            </span>
-                            <ChevronDown size={14} className={`text-slate-400 transition-transform ${isShippingChargeTaxDropdownOpen ? "rotate-180" : ""}`} />
-                          </button>
-                          {isShippingChargeTaxDropdownOpen && (
-                            <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-lg border border-[#d6dbe8] bg-white p-1 shadow-xl">
-                              <div className="max-h-56 overflow-y-auto">
-                                <button
-                                  type="button"
-                                  className="w-full rounded-md px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                                  onClick={() => {
-                                    setFormData(prev => ({ ...prev, shippingChargeTax: "" }));
-                                    setIsShippingChargeTaxDropdownOpen(false);
-                                  }}
-                                >
-                                  Select a Tax
-                                </button>
-                                {taxOptions.map((tax) => {
-                                  const selected = String(formData.shippingChargeTax) === String(tax.id);
-                                  return (
-                                    <button
-                                      key={tax.id}
-                                      type="button"
-                                      className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${selected ? "bg-slate-100 text-[#156372]" : "text-slate-700 hover:bg-slate-50"}`}
-                                      onClick={() => {
-                                        setFormData(prev => ({ ...prev, shippingChargeTax: String(tax.id) }));
-                                        setIsShippingChargeTaxDropdownOpen(false);
-                                      }}
-                                    >
-                                      {taxLabel(tax)}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                        <span className="min-w-[70px] text-right text-sm text-gray-900">{formatMoney(shippingChargeTaxAmount)}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                )}
-
-                {showAdjustment && (
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600 flex items-center gap-1">
-                    Adjustment <Info size={14} className="text-gray-400" />
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      onKeyDown={blockInvalidNumericKeys}
-                      className="w-24 rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-right text-slate-700 shadow-none focus:outline-none focus:border-[#3f83f8]"
-                      value={formData.adjustment || ""}
-                      placeholder="0"
-                      onChange={(e) => handleSummaryChange("adjustment", sanitizeNumericInput(e.target.value))}
-                    />
-                    <span className="min-w-[70px] text-right text-sm text-gray-900">{formatMoney(formData.adjustment)}</span>
-                  </div>
-                </div>
-                )}
-
-                {Object.keys(taxSummary).length > 0 && (
-                  <div className="pt-2 border-t border-gray-200 space-y-2">
-                    {Object.entries(taxSummary).map(([taxName, amount]) => (
-                      <div key={taxName} className="flex justify-between items-center text-sm">
-                        <span className="text-gray-600">{taxName}</span>
-                        <span className="text-gray-900">{formatMoney(amount)}</span>
-                      </div>
-                    ))}
-                    <div className="flex justify-between items-center text-sm font-semibold">
-                      <span className="text-gray-700">Total Tax Amount</span>
-                      <span className="text-gray-900">{formatMoney(totalTaxAmount)}</span>
-                    </div>
-                  </div>
-                )}
 
                 <div className="pt-4 border-t border-gray-200">
                   <div className="flex justify-between items-center">
@@ -4694,37 +4511,22 @@ export default function NewCreditNote() {
       )}
 
       {/* Footer */}
-      <div className="fixed bottom-0 left-[260px] right-0 bg-white border-t border-gray-200 py-4 px-8 z-[100] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-        <div className="max-w-[980px] mx-auto flex items-center gap-3">
+      <div className={`fixed bottom-0 left-[260px] right-0 bg-white border-t border-gray-200 py-4 px-8 z-[100] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] transition-all ${isAnyModalOpen ? "pointer-events-none opacity-60 blur-[1px]" : ""}`}>
+        <div className="max-w-[980px] mx-0 flex items-center justify-start gap-3">
           <button
-            onClick={() => handleSave("draft")}
-            disabled={saveLoading !== null}
-            className={`px-5 py-2 border border-gray-300 rounded text-sm text-gray-700 font-medium bg-white ${saveLoading ? "opacity-60 cursor-not-allowed" : "hover:bg-gray-50"}`}
-          >
-            {saveLoading === "draft" && <Loader2 className="inline-block mr-2 animate-spin" size={16} />}
-            {saveLoading === "draft" ? "Saving..." : "Save as Draft"}
-          </button>
-          <button
-            onClick={() => handleSave("open")}
+            onClick={handleSave}
             disabled={saveLoading !== null}
             className={`px-8 py-2 text-white rounded text-sm font-semibold shadow-md ${saveLoading ? "opacity-60 cursor-not-allowed" : ""}`}
             style={{ backgroundColor: "#156372", boxShadow: "0 4px 6px -1px rgba(21, 99, 114, 0.2)" }}
             onMouseEnter={(e) => {
-              if (saveLoading === null) (e.target as HTMLElement).style.backgroundColor = "#0D4A52";
+              if (saveLoading === null) (e.currentTarget as HTMLElement).style.backgroundColor = "#0D4A52";
             }}
             onMouseLeave={(e) => {
-              if (saveLoading === null) (e.target as HTMLElement).style.backgroundColor = "#156372";
+              if (saveLoading === null) (e.currentTarget as HTMLElement).style.backgroundColor = "#156372";
             }}
           >
             {saveLoading === "open" && <Loader2 className="inline-block mr-2 animate-spin" size={16} />}
-            {saveLoading === "open" ? "Saving..." : "Save as Open"}
-          </button>
-          <button
-            onClick={handleCancel}
-            disabled={saveLoading !== null}
-            className={`px-5 py-2 border border-gray-300 rounded text-sm text-gray-700 font-medium bg-white ${saveLoading ? "opacity-60 cursor-not-allowed" : "hover:bg-gray-50"}`}
-          >
-            Cancel
+            {saveLoading === "open" ? "Saving..." : "Save"}
           </button>
         </div>
       </div>

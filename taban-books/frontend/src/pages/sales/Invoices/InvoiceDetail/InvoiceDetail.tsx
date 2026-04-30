@@ -13,8 +13,14 @@ import {
 } from "../../../../services/api";
 import { resolvePrimarySender } from "../../../../utils/emailSenderDisplay";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+<<<<<<< Updated upstream
 import { getInvoiceById, getInvoices, updateInvoice, getPayments, getTaxes, getCreditNotesByInvoiceId, deletePayment, Tax, Invoice, AttachedFile, saveInvoice } from "../../salesModel";
+=======
+import { getInvoiceById, getInvoices, getRetainerInvoices, updateInvoice, getPayments, getTaxes, getCreditNotesByInvoiceId, deletePayment, Tax, Invoice, AttachedFile, saveInvoice } from "../../salesModel";
+import { currenciesAPI, invoicesAPI, debitNotesAPI, creditNotesAPI, retainerInvoicesAPI, paymentsReceivedAPI, bankAccountsAPI, refundsAPI, chartOfAccountsAPI, journalEntriesAPI } from "../../../../services/api";
+>>>>>>> Stashed changes
 import InvoiceCommentsPanel from "./InvoiceCommentsPanel";
+import FinancialDocumentDisplay from "../../shared/financialDocument/FinancialDocumentDisplay";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import {
@@ -148,43 +154,23 @@ const findLinkedDebitNote = (rows: any[] = [], invoiceLike: any, invoiceId: stri
     }) || null
   );
 };
+const resolveLookupId = (value: any) =>
+  String(
+    value?._id ||
+      value?.id ||
+      value?.invoiceId ||
+      value?.associatedInvoiceId ||
+      value?.debitNoteId ||
+      value?.creditNoteId ||
+      value ||
+      ""
+  ).trim();
 
 const InvoiceDetailSkeleton = () => (
-  <div className="flex h-full min-h-[calc(100vh-120px)] bg-white">
-    <div className="w-[300px] border-r border-gray-200 bg-white flex flex-col">
-      <div className="h-14 px-4 border-b border-gray-200 flex items-center justify-between">
-        <div className="h-5 w-20 rounded bg-gray-100 animate-pulse" />
-        <div className="h-8 w-8 rounded-md bg-gray-100 animate-pulse" />
-      </div>
-      <div className="flex-1 overflow-hidden p-3 space-y-3">
-        {Array.from({ length: 8 }).map((_, index) => (
-          <div key={index} className="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
-            <div className="h-3 w-24 rounded bg-gray-100 animate-pulse" />
-            <div className="mt-3 h-4 w-32 rounded bg-gray-100 animate-pulse" />
-            <div className="mt-2 h-3 w-20 rounded bg-gray-100 animate-pulse" />
-          </div>
-        ))}
-      </div>
-    </div>
-
-    <div className="flex-1 bg-gray-50 p-4">
-      <div className="mx-auto max-w-[1280px] rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-        <div className="border-b border-gray-200 px-6 py-4">
-          <div className="h-4 w-32 rounded bg-gray-100 animate-pulse" />
-          <div className="mt-3 h-7 w-56 rounded bg-gray-100 animate-pulse" />
-        </div>
-        <div className="border-b border-gray-200 px-6 py-3 flex items-center gap-3">
-          <div className="h-8 w-16 rounded bg-gray-100 animate-pulse" />
-          <div className="h-8 w-16 rounded bg-gray-100 animate-pulse" />
-          <div className="h-8 w-16 rounded bg-gray-100 animate-pulse" />
-          <div className="h-8 w-20 rounded bg-gray-100 animate-pulse" />
-        </div>
-        <div className="p-6 space-y-4">
-          <div className="h-5 w-48 rounded bg-gray-100 animate-pulse" />
-          <div className="h-64 rounded-lg border border-gray-100 bg-gray-50 animate-pulse" />
-          <div className="h-40 rounded-lg border border-gray-100 bg-gray-50 animate-pulse" />
-        </div>
-      </div>
+  <div className="flex h-full min-h-[calc(100vh-120px)] items-center justify-center bg-[#f8fafc]">
+    <div className="flex items-center gap-3 rounded-full border border-gray-200 bg-white px-4 py-2 shadow-sm">
+      <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#156372] border-t-transparent" />
+      <span className="text-sm text-gray-600">Loading invoice...</span>
     </div>
   </div>
 );
@@ -333,6 +319,7 @@ export default function InvoiceDetail() {
   const [selectedPaymentForRefund, setSelectedPaymentForRefund] = useState<any>(null);
   const [isSavingRefund, setIsSavingRefund] = useState(false);
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+  const [journalEntryRecord, setJournalEntryRecord] = useState<any>(null);
   const [refundData, setRefundData] = useState({
     amount: "",
     refundedOn: "",
@@ -356,6 +343,7 @@ export default function InvoiceDetail() {
   const [isDragging, setIsDragging] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [showImageViewer, setShowImageViewer] = useState(false);
+  const [chartAccountsLookup, setChartAccountsLookup] = useState<Record<string, any>>({});
   const attachmentsFileInputRef = useRef<HTMLInputElement>(null);
   // Comments Sidebar States
   const [showCommentsSidebar, setShowCommentsSidebar] = useState(false);
@@ -494,21 +482,54 @@ export default function InvoiceDetail() {
     const raw = normalizeKey(inv?.status || "");
     const total = toNumSafe(inv?.total ?? inv?.amount, 0);
     const paid = toNumSafe(inv?.amountPaid ?? inv?.paidAmount, 0);
-    const computedBalance = inv?.balance !== undefined
-      ? toNumSafe(inv.balance, 0)
+    const creditsApplied = toNumSafe(inv?.creditsApplied, 0);
+    const retainersApplied = toNumSafe(
+      inv?.retainerAppliedAmount ?? inv?.retainersApplied ?? inv?.retainerAmountApplied ?? inv?.retainerAppliedTotal,
+      0
+    );
+    const explicitBalance = inv?.balance !== undefined
+      ? toNumSafe(inv.balance, NaN)
       : inv?.balanceDue !== undefined
-        ? toNumSafe(inv.balanceDue, 0)
-        : Math.max(0, total - paid);
-    const balance = Math.max(0, computedBalance);
+        ? toNumSafe(inv.balanceDue, NaN)
+        : NaN;
+    const computedBalance = Math.max(0, total - paid - creditsApplied - retainersApplied);
+    const balance = Number.isFinite(explicitBalance)
+      ? ((creditsApplied > 0 || retainersApplied > 0) ? Math.min(explicitBalance, computedBalance) : explicitBalance)
+      : computedBalance;
     const dueDate = inv?.dueDate ? new Date(inv.dueDate) : null;
-    const isOverdueByDate = !!(dueDate && !Number.isNaN(dueDate.getTime()) && dueDate.getTime() < Date.now() && balance > 0);
+    const hasValidDueDate = !!(dueDate && !Number.isNaN(dueDate.getTime()));
+    const diffDays = hasValidDueDate ? Math.ceil((dueDate!.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+    const isOverdueByDate = !!(hasValidDueDate && dueDate!.getTime() < Date.now() && balance > 0 && raw !== "paid" && raw !== "draft" && raw !== "void");
 
-    if (raw === "paid" || (total > 0 && balance <= 0)) return { text: "Paid", color: "bg-green-100 text-green-700" };
-    if (raw.includes("partial") || (total > 0 && balance > 0 && balance < total)) return { text: "Partially Paid", color: "bg-blue-100 text-blue-700" };
-    if (raw === "draft") return { text: "Draft", color: "bg-gray-100 text-gray-600" };
-    if (raw === "void") return { text: "Void", color: "bg-gray-200 text-gray-600" };
-    if (isOverdueByDate || raw === "overdue") return { text: "Overdue", color: "bg-red-100 text-red-600" };
-    return { text: "Unpaid", color: "bg-blue-100 text-blue-700" };
+    if (raw === "paid" || (total > 0 && balance <= 0)) return { text: "PAID", className: "text-green-600" };
+    if (raw === "draft") return { text: "DRAFT", className: "text-slate-400" };
+    if (raw === "void") return { text: "VOID", className: "text-slate-400" };
+    if (raw.includes("partial") || (total > 0 && balance > 0 && balance < total)) return { text: "PARTIALLY PAID", className: "text-green-600" };
+    if (isOverdueByDate || raw === "overdue") {
+      const overdueDays = hasValidDueDate
+        ? Math.max(1, Math.ceil((Date.now() - dueDate!.getTime()) / (1000 * 60 * 60 * 24)))
+        : 0;
+      return {
+        text: overdueDays > 0 ? `OVERDUE BY ${overdueDays} DAYS` : "OVERDUE",
+        className: "text-orange-500",
+      };
+    }
+    if (raw === "sent" || raw === "unpaid" || raw === "open") {
+      if (hasValidDueDate && diffDays !== null) {
+        if (diffDays < 0) {
+          return {
+            text: `OVERDUE BY ${Math.max(1, Math.abs(diffDays))} DAYS`,
+            className: "text-orange-500",
+          };
+        }
+        if (diffDays === 0) {
+          return { text: "DUE TODAY", className: "text-blue-500" };
+        }
+        return { text: `DUE IN ${diffDays} DAYS`, className: "text-blue-500" };
+      }
+      return { text: "UNPAID", className: "text-blue-500" };
+    }
+    return { text: raw ? raw.toUpperCase().replace(/_/g, " ") : "DRAFT", className: "text-slate-400" };
   };
 
   const getCustomerKey = (row: any) =>
@@ -531,7 +552,8 @@ export default function InvoiceDetail() {
       row?.retainerAvailableAmount ??
       row?.availableAmount ??
       row?.unusedAmount ??
-      row?.unusedBalance,
+      row?.unusedBalance ??
+      row?.amountRemaining,
       NaN
     );
     if (Number.isFinite(explicitAvailable) && explicitAvailable > 0) return explicitAvailable;
@@ -542,7 +564,7 @@ export default function InvoiceDetail() {
 
     const status = normalizeKey(row?.status || "");
     const drawStatus = normalizeKey(row?.retainerDrawStatus || row?.drawStatus || "");
-    if (status === "paid" || drawStatus === "ready_to_draw" || drawStatus === "partially_drawn") {
+    if (status === "paid" || status === "partially_used" || status === "fully_used" || drawStatus === "ready_to_draw" || drawStatus === "partially_drawn") {
       if (Number.isFinite(balanceAmount) && balanceAmount > 0) return balanceAmount;
       if (paidAmount > 0) return paidAmount;
       if (totalAmount > 0) return totalAmount;
@@ -791,6 +813,22 @@ export default function InvoiceDetail() {
     "Overdue"
   ];
 
+  const matchesRouteInvoice = (row: any, routeId: string) => {
+    const normalizedRouteId = String(routeId || "").trim();
+    if (!normalizedRouteId) return false;
+    const candidates = [
+      row?.id,
+      row?._id,
+      row?.invoiceNumber,
+      row?.number,
+      row?.creditNoteNumber,
+      row?.debitNoteNumber,
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    return candidates.includes(normalizedRouteId);
+  };
+
   useEffect(() => {
     if (organizationProfile) {
       if (organizationProfile.logo) {
@@ -816,14 +854,17 @@ export default function InvoiceDetail() {
     const init = async () => {
       const paymentsPromise = getPayments();
       const invoicesPromise = getInvoices();
+      const retainersPromise = getRetainerInvoices({ limit: 10000, sort: "createdAt", order: "desc" } as any).catch(() => []);
       const taxesPromise = getTaxes();
       const bankAccountsPromise = bankAccountsAPI.getAll().catch(() => []);
 
       // Fetch invoice data
       let currentInvoice = null;
+      let currentJournalEntry = null;
       if (id) {
-        if (preloadedInvoice && String(preloadedInvoice.id || preloadedInvoice._id || "") === String(id)) {
+        if (preloadedInvoice && matchesRouteInvoice(preloadedInvoice, id)) {
           currentInvoice = preloadedInvoice;
+          currentJournalEntry = (preloadedInvoice as any)?.journalEntry || null;
           setInvoice(currentInvoice);
           if (currentInvoice.comments) {
             setComments(currentInvoice.comments);
@@ -848,8 +889,15 @@ export default function InvoiceDetail() {
               status: String(dn.status || "sent"),
               debitNote: true,
               associatedInvoiceId: String(dn.invoiceId || ""),
-              associatedInvoiceNumber: String(dn.invoiceNumber || ""),
+              associatedInvoiceNumber: String(
+                dn.associatedInvoiceNumber ||
+                dn.sourceInvoiceNumber ||
+                dn.relatedInvoiceNumber ||
+                dn.linkedInvoiceNumber ||
+                ""
+              ),
             } as any;
+            currentJournalEntry = (dn as any)?.journalEntry || null;
             setInvoice(currentInvoice);
           } else {
             navigate("/sales/invoices");
@@ -857,7 +905,12 @@ export default function InvoiceDetail() {
           }
         } else {
           currentInvoice = await getInvoiceById(id);
+          if (!currentInvoice && preloadedInvoice && matchesRouteInvoice(preloadedInvoice, id)) {
+            currentInvoice = preloadedInvoice;
+          }
+
           if (currentInvoice) {
+            currentJournalEntry = (currentInvoice as any)?.journalEntry || null;
             setInvoice(currentInvoice);
             // Initialize comments and attachments from backend data
             if (currentInvoice.comments) {
@@ -873,7 +926,17 @@ export default function InvoiceDetail() {
         }
       }
 
-      if (!isDebitNoteView && currentInvoice) {
+      const currentIsDebitNoteDocument = Boolean(
+        currentInvoice &&
+          (
+            isDebitNoteView ||
+            (currentInvoice as any)?.debitNote ||
+            (currentInvoice as any)?.debitNoteNumber ||
+            (currentInvoice as any)?.debitNoteId
+          )
+      );
+
+      if (!currentIsDebitNoteDocument && currentInvoice) {
         const preloadedDebitNote = findLinkedDebitNote(
           Array.isArray(preloadedInvoices) ? preloadedInvoices : [],
           currentInvoice,
@@ -903,16 +966,33 @@ export default function InvoiceDetail() {
 
       const allInvoices = await invoicesPromise;
       setInvoices(stripRetainerInvoices(allInvoices as any[]));
+      const retainerRowsRaw = await retainersPromise;
+      const allRetainers = Array.isArray(retainerRowsRaw) ? retainerRowsRaw : [];
 
-      if (isDebitNoteView && currentInvoice) {
-        const linkedId = String((currentInvoice as any)?.associatedInvoiceId || (currentInvoice as any)?.invoiceId || "");
-        const linkedNumber = String((currentInvoice as any)?.associatedInvoiceNumber || "");
+      if (currentIsDebitNoteDocument && currentInvoice) {
+        const populatedAssociatedInvoice =
+          (currentInvoice as any)?.associatedInvoice ||
+          (currentInvoice as any)?.invoice ||
+          null;
+        const linkedId = resolveLookupId(
+          (currentInvoice as any)?.associatedInvoiceId ||
+          (currentInvoice as any)?.invoiceId ||
+          populatedAssociatedInvoice
+        );
+        const linkedNumber = String(
+          (currentInvoice as any)?.associatedInvoiceNumber ||
+          (currentInvoice as any)?.invoiceNumber ||
+          (currentInvoice as any)?.invoice?.invoiceNumber ||
+          (populatedAssociatedInvoice as any)?.invoiceNumber ||
+          (populatedAssociatedInvoice as any)?.number ||
+          ""
+        ).trim();
         const linked = (Array.isArray(allInvoices) ? allInvoices : []).find((row: any) => {
-          const rowId = String(row?.id || row?._id || "");
-          const rowNumber = String(row?.invoiceNumber || "");
+          const rowId = resolveLookupId(row);
+          const rowNumber = String(row?.invoiceNumber || row?.number || "").trim();
           return (linkedId && rowId === linkedId) || (!!linkedNumber && rowNumber === linkedNumber);
         });
-        setAssociatedInvoiceRow(linked || null);
+        setAssociatedInvoiceRow(linked || populatedAssociatedInvoice || null);
       } else {
         setAssociatedInvoiceRow(null);
       }
@@ -921,7 +1001,7 @@ export default function InvoiceDetail() {
       if (currentInvoice) {
         const currentCustomerId = getCustomerKey(currentInvoice);
         const currentCustomerName = getCustomerName(currentInvoice).toLowerCase();
-        const matchingRetainers = (allInvoices || []).filter((row: any) => {
+        const matchingRetainers = (allRetainers || []).filter((row: any) => {
           if (!isRetainerInvoice(row)) return false;
           const rowCustomerId = getCustomerKey(row);
           const rowCustomerName = getCustomerName(row).toLowerCase();
@@ -930,8 +1010,7 @@ export default function InvoiceDetail() {
             (!!currentCustomerName && rowCustomerName === currentCustomerName);
           if (!sameCustomer) return false;
           const status = normalizeKey(row?.status || "");
-          const drawStatus = normalizeKey(row?.retainerDrawStatus || row?.drawStatus || "");
-          return status === "paid" || drawStatus === "ready_to_draw" || drawStatus === "partially_drawn";
+          return status === "paid";
         });
         const totalAvailable = matchingRetainers.reduce((sum: number, row: any) => sum + getRetainerAvailableAmount(row), 0);
         setCustomerRetainerInvoices(matchingRetainers);
@@ -958,6 +1037,7 @@ export default function InvoiceDetail() {
         } catch {
           creditRows = [];
         }
+        creditRows = creditRows.filter((row: any) => normalizeKey(row?.status || "") === "open");
         const totalCredits = creditRows.reduce((sum: number, row: any) => {
           const status = normalizeKey(row?.status || "");
           if (status === "void" || status === "closed") return sum;
@@ -976,6 +1056,24 @@ export default function InvoiceDetail() {
       const allTaxes = await taxesPromise;
       setTaxOptions(allTaxes);
 
+      if (!currentJournalEntry && currentInvoice) {
+        const currentJournalEntryId = String(
+          (currentInvoice as any)?.journalEntryId?._id ||
+          (currentInvoice as any)?.journalEntryId?.id ||
+          (currentInvoice as any)?.journalEntryId ||
+          ""
+        ).trim();
+        if (currentJournalEntryId) {
+          try {
+            const journalRes: any = await journalEntriesAPI.getById(currentJournalEntryId);
+            currentJournalEntry = journalRes?.data || journalRes || null;
+          } catch (error) {
+            console.error("Failed to load invoice journal entry:", error);
+          }
+        }
+      }
+      setJournalEntryRecord(currentJournalEntry);
+
       const bankAccountsRes: any = await bankAccountsPromise;
       if (Array.isArray(bankAccountsRes)) {
         setBankAccounts(bankAccountsRes);
@@ -985,7 +1083,7 @@ export default function InvoiceDetail() {
         setBankAccounts([]);
       }
 
-      const creditTargetId = isDebitNoteView
+      const creditTargetId = currentIsDebitNoteDocument
         ? String((currentInvoice as any)?.associatedInvoiceId || (currentInvoice as any)?.invoiceId || "")
         : String(id || "");
       const creditNotes = creditTargetId ? await getCreditNotesByInvoiceId(creditTargetId) : [];
@@ -1058,7 +1156,7 @@ export default function InvoiceDetail() {
 
       // Fetch Debit Note linked to invoice (skip when already in debit-note page)
       try {
-        if (id && !isDebitNoteView && !debitNote) {
+        if (id && !currentIsDebitNoteDocument && !debitNote) {
           const linkedResponse = await debitNotesAPI.getByInvoice(id);
           if (linkedResponse && linkedResponse.success && linkedResponse.data && linkedResponse.data.length > 0) {
             setDebitNote(linkedResponse.data[0]);
@@ -1090,6 +1188,41 @@ export default function InvoiceDetail() {
     setPaymentInfoTab("payments");
     setAssociatedInvoiceRow(null);
   }, [id, isDebitNoteView]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadChartAccounts = async () => {
+      try {
+        const response: any = await chartOfAccountsAPI.getAccounts({ limit: 1000 });
+        const rows = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response?.items)
+            ? response.items
+            : Array.isArray(response)
+              ? response
+              : [];
+        const lookup: Record<string, any> = {};
+        rows.forEach((account: any) => {
+          const accountId = String(account?.id || account?._id || "").trim();
+          const accountName = String(account?.name || account?.accountName || account?.title || "").trim();
+          if (accountId) lookup[accountId.toLowerCase()] = account;
+          if (accountName) lookup[accountName.toLowerCase()] = account;
+        });
+        if (!cancelled) {
+          setChartAccountsLookup(lookup);
+        }
+      } catch {
+        if (!cancelled) setChartAccountsLookup({});
+      }
+    };
+
+    void loadChartAccounts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isRefundModalOpen || !selectedPaymentForRefund) return;
@@ -1413,54 +1546,70 @@ export default function InvoiceDetail() {
   };
 
 
-  const handleMarkAsSent = async () => {
-    if (invoice) {
-      try {
-        const resolveDebitNotePostSendStatus = (dueDateValue: any) => {
-          if (!dueDateValue) return "due";
-          const dueDate = new Date(dueDateValue);
-          if (Number.isNaN(dueDate.getTime())) return "due";
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          dueDate.setHours(0, 0, 0, 0);
-          return dueDate.getTime() < today.getTime() ? "overdue" : "due";
-        };
-        const resolvePostSendStatus = (dueDateValue: any) => {
-          if (!dueDateValue) return "unpaid";
-          const dueDate = new Date(dueDateValue);
-          if (Number.isNaN(dueDate.getTime())) return "unpaid";
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          dueDate.setHours(0, 0, 0, 0);
-          return dueDate.getTime() < today.getTime() ? "overdue" : "unpaid";
-        };
+  const handleMarkAsSent = () => {
+    if (!invoice || !id) return;
 
+    const currentInvoice = invoice;
+    const currentInvoices = [...invoices];
+
+    const resolveDebitNotePostSendStatus = (dueDateValue: any) => {
+      if (!dueDateValue) return "due";
+      const dueDate = new Date(dueDateValue);
+      if (Number.isNaN(dueDate.getTime())) return "due";
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      dueDate.setHours(0, 0, 0, 0);
+      return dueDate.getTime() < today.getTime() ? "overdue" : "due";
+    };
+    const resolveInvoiceFinalStatus = (dueDateValue: any) => {
+      if (!dueDateValue) return "unpaid";
+      const dueDate = new Date(dueDateValue);
+      if (Number.isNaN(dueDate.getTime())) return "unpaid";
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      dueDate.setHours(0, 0, 0, 0);
+      return dueDate.getTime() < today.getTime() ? "overdue" : "unpaid";
+    };
+
+    const optimisticStatus = isDebitNoteView
+      ? resolveDebitNotePostSendStatus(currentInvoice.dueDate)
+      : "sent";
+    const optimisticInvoice = { ...currentInvoice, status: optimisticStatus } as any;
+
+    setInvoice(optimisticInvoice);
+    setInvoices((prev) => prev.map((inv) => (String(inv.id) === String(id) ? optimisticInvoice : inv)));
+    toast(isDebitNoteView ? "Debit note marked as sent." : "Invoice marked as sent.");
+
+    void (async () => {
+      try {
         if (isDebitNoteView) {
-          const nextStatus = resolveDebitNotePostSendStatus(invoice.dueDate);
-          const updatedDebitNote = await debitNotesAPI.update(id!, { ...invoice, status: nextStatus } as any);
-          const nextInvoice = (updatedDebitNote as any)?.data || updatedDebitNote;
-          if (nextInvoice) {
-            setInvoice(nextInvoice);
-            const updatedInvoices = invoices.map(inv => inv.id === id ? nextInvoice : inv);
-            setInvoices(updatedInvoices);
-            toast("Debit note updated successfully.");
-          }
-        } else {
-          const nextStatus = resolvePostSendStatus(invoice.dueDate);
-          const updatedInvoice = await updateInvoice(id!, { ...invoice, status: nextStatus } as any);
-          if (updatedInvoice) {
-            setInvoice(updatedInvoice);
-            // Update in list
-            const updatedInvoices = invoices.map(inv => inv.id === id ? updatedInvoice : inv);
-            setInvoices(updatedInvoices);
-            toast("Invoice updated successfully.");
-          }
+          const updatedDebitNote = await debitNotesAPI.update(id, { ...currentInvoice, status: optimisticStatus } as any);
+          const nextInvoice = (updatedDebitNote as any)?.data || updatedDebitNote || optimisticInvoice;
+          setInvoice(nextInvoice);
+          setInvoices((prev) => prev.map((inv) => (String(inv.id) === String(id) ? nextInvoice : inv)));
+          return;
+        }
+
+        const sentInvoice = await updateInvoice(id, { ...currentInvoice, status: "sent" } as any);
+        const finalStatus = resolveInvoiceFinalStatus(currentInvoice.dueDate);
+        const sentSnapshot = (sentInvoice || optimisticInvoice) as any;
+
+        if (finalStatus === "overdue") {
+          const overdueInvoice = await updateInvoice(id, { ...sentSnapshot, status: "overdue" } as any);
+          const nextInvoice = (overdueInvoice as any) || { ...sentSnapshot, status: "overdue" };
+          setInvoice(nextInvoice);
+          setInvoices((prev) => prev.map((inv) => (String(inv.id) === String(id) ? nextInvoice : inv)));
+        } else if (sentInvoice) {
+          setInvoice(sentInvoice);
+          setInvoices((prev) => prev.map((inv) => (String(inv.id) === String(id) ? sentInvoice : inv)));
         }
       } catch (error: any) {
         console.error("Error marking invoice as sent:", error);
+        setInvoice(currentInvoice);
+        setInvoices(currentInvoices);
         toast("Failed to mark invoice as sent: " + error.message);
       }
-    }
+    })();
   };
 
   const handleSendInvoice = () => {
@@ -1889,7 +2038,24 @@ export default function InvoiceDetail() {
   };
 
   const handleOpenApplyRetainer = () => {
-    void handleOpenApplyCredits("retainer");
+    if (!invoice) return;
+
+    const rows = Array.isArray(customerRetainerInvoices) ? customerRetainerInvoices : [];
+    if (!rows.length) {
+      toast("No retainers available for this customer.");
+      return;
+    }
+
+    const initialValues = rows.reduce((acc: Record<string, number>, row: any) => {
+      const rowId = String(row?._id || row?.id || "").trim();
+      if (!rowId) return acc;
+      acc[rowId] = 0;
+      return acc;
+    }, {});
+
+    setRetainerApplyValues(initialValues);
+    setIsApplyAdjustmentsModalOpen(false);
+    setIsApplyRetainerOpen(true);
   };
 
   const handleOpenApplyCredits = async (sourceFilter: "all" | "credit" | "retainer" = "all") => {
@@ -1982,9 +2148,14 @@ export default function InvoiceDetail() {
           raw: row,
         };
       })
-      .filter((row: any) => row.id && row.availableAmount > 0);
+      .filter((row: any) => row.id && row.availableAmount > 0 && normalizeKey(row.raw?.status || "") === "open");
 
-    const retainerRows = (Array.isArray(retainerRowsRaw) ? retainerRowsRaw : [])
+    const retainerSourceRows =
+      sourceFilter === "retainer" && Array.isArray(customerRetainerInvoices) && customerRetainerInvoices.length
+        ? customerRetainerInvoices
+        : (Array.isArray(retainerRowsRaw) ? retainerRowsRaw : []);
+
+    const retainerRows = retainerSourceRows
       .map((row: any) => {
         const availableExplicit = toNumSafe(row?.retainerAvailableAmount ?? row?.availableAmount ?? row?.unusedAmount ?? row?.unusedBalance, 0);
         const fallback = Math.max(0, toNumSafe(row?.balance ?? row?.balanceDue ?? row?.amountPaid ?? row?.paidAmount ?? row?.total ?? row?.amount, 0));
@@ -2001,7 +2172,7 @@ export default function InvoiceDetail() {
           raw: row,
         };
       })
-      .filter((row: any) => row.id && row.availableAmount > 0);
+      .filter((row: any) => row.id && row.availableAmount > 0 && normalizeKey(row.raw?.status || "") === "paid");
 
     const combinedRows =
       sourceFilter === "credit"
@@ -2394,7 +2565,7 @@ export default function InvoiceDetail() {
 
     const rowsToApply = customerRetainerInvoices
       .map((row: any) => {
-        const rowId = String(row?.id || row?._id || "");
+        const rowId = String(row?._id || row?.id || "");
         const applied = Number(retainerApplyValues[rowId] || 0);
         const available = getRetainerAvailableAmount(row);
         return { row, rowId, applied, available };
@@ -2419,21 +2590,24 @@ export default function InvoiceDetail() {
       for (const entry of rowsToApply) {
         const nextAvailable = Math.max(0, Number(entry.available) - Number(entry.applied));
         const nextDrawStatus = nextAvailable <= 0 ? "drawn" : "partially_drawn";
-        await updateInvoice(entry.rowId, {
-          balance: nextAvailable,
-          balanceDue: nextAvailable,
-          availableAmount: nextAvailable,
-          unusedAmount: nextAvailable,
-          retainerAvailableAmount: nextAvailable,
-          retainerDrawStatus: nextDrawStatus,
-          drawStatus: nextDrawStatus,
-          status: String(entry.row?.status || "paid"),
-        } as any);
+        await retainerInvoicesAPI.applyToInvoices(entry.rowId, [
+          {
+            invoiceId: String((invoice as any)?.id || (invoice as any)?._id || id || ""),
+            amount: Number(entry.applied),
+            date: new Date().toISOString().split("T")[0],
+          },
+        ]);
       }
 
       // 2) Update current invoice / debit note
       const nextBalance = Math.max(0, invoiceBalance - totalApplied);
-      const nextStatus = nextBalance <= 0 ? "paid" : ((invoice as any)?.status || "sent");
+      const currentStatusKey = normalizeKey((invoice as any)?.status || "sent");
+      const nextStatus =
+        nextBalance <= 0
+          ? "paid"
+          : totalApplied > 0
+            ? "partially paid"
+            : ((invoice as any)?.status || (currentStatusKey === "draft" ? "draft" : "sent"));
       const existingApplications = Array.isArray((invoice as any)?.retainerApplications)
         ? [...(invoice as any)?.retainerApplications]
         : [];
@@ -2444,11 +2618,16 @@ export default function InvoiceDetail() {
         appliedAt: new Date().toISOString(),
       }));
       const patchPayload: any = {
+        creditsApplied: toNumSafe((invoice as any)?.creditsApplied, 0),
+        retainerAppliedAmount: totalApplied,
+        retainersApplied: totalApplied,
+        retainerAmountApplied: totalApplied,
+        retainerAppliedTotal: totalApplied,
+        totalRetainersApplied: toNumSafe((invoice as any)?.totalRetainersApplied, 0) + totalApplied,
         balance: nextBalance,
         balanceDue: nextBalance,
         status: nextStatus,
         retainerApplications: [...existingApplications, ...newApplications],
-        totalRetainersApplied: toNumSafe((invoice as any)?.totalRetainersApplied, 0) + totalApplied,
       };
 
       if (isDebitNoteView) {
@@ -2461,19 +2640,22 @@ export default function InvoiceDetail() {
       setCustomerRetainerAvailable((prev) => Math.max(0, prev - totalApplied));
       setCustomerRetainerInvoices((prev) =>
         prev.map((row: any) => {
-          const rowId = String(row?.id || row?._id || "");
+          const rowId = String(row?._id || row?.id || "");
           const appliedRow = rowsToApply.find((entry) => entry.rowId === rowId);
           if (!appliedRow) return row;
           const available = getRetainerAvailableAmount(row);
           const nextAvailable = Math.max(0, available - appliedRow.applied);
           return {
             ...row,
+            amountUsed: Number(row?.amountUsed || 0) + appliedRow.applied,
+            amountRemaining: nextAvailable,
             balance: nextAvailable,
             balanceDue: nextAvailable,
             availableAmount: nextAvailable,
             unusedAmount: nextAvailable,
             retainerAvailableAmount: nextAvailable,
             retainerDrawStatus: nextAvailable <= 0 ? "drawn" : "partially_drawn",
+            status: nextAvailable <= 0 ? "fully_used" : "partially_used",
           };
         })
       );
@@ -2532,29 +2714,23 @@ export default function InvoiceDetail() {
 
       for (const row of rowsToApply) {
         if (row.sourceType === "credit") {
-          const nextBalance = roundMoney(Math.max(0, toNumSafe(row.availableAmount, 0) - toNumSafe(row.applied, 0)));
-          const existingAllocations = Array.isArray(row.raw?.allocations) ? [...row.raw.allocations] : [];
-          await creditNotesAPI.update(String(row.id), {
-            balance: nextBalance,
-            creditsUsed: roundMoney(toNumSafe(row.raw?.creditsUsed, 0) + toNumSafe(row.applied, 0)),
-            status: nextBalance <= 0 ? "closed" : (row.raw?.status || "open"),
-            allocations: [
-              ...existingAllocations,
-              {
-                invoiceId,
-                amount: row.applied,
-                date: useApplyDate ? applyOnDate : new Date().toISOString().split("T")[0],
-              },
-            ],
-            allocationUpdatedAt: new Date().toISOString(),
-          });
+          const allocationDate = useApplyDate ? applyOnDate : new Date().toISOString().split("T")[0];
+          await creditNotesAPI.applyToInvoices(String(row.id), [
+            {
+              invoiceId,
+              amount: row.applied,
+              date: allocationDate,
+            },
+          ]);
           creditTotal += toNumSafe(row.applied, 0);
         } else {
-          const nextAvailable = roundMoney(Math.max(0, toNumSafe(row.availableAmount, 0) - toNumSafe(row.applied, 0)));
-          await updateInvoice(String(row.id), {
-            retainerAvailableAmount: nextAvailable,
-            retainerDrawStatus: nextAvailable <= 0 ? "drawn" : "partially_drawn",
-          } as any);
+          await retainerInvoicesAPI.applyToInvoices(String(row.id), [
+            {
+              invoiceId,
+              amount: row.applied,
+              date: useApplyDate ? applyOnDate : new Date().toISOString().split("T")[0],
+            },
+          ]);
           retainerTotal += toNumSafe(row.applied, 0);
           retainerApplications.push({
             retainerId: String(row.id),
@@ -3092,6 +3268,43 @@ export default function InvoiceDetail() {
     }
   };
 
+  const handleSelectSidebarInvoice = (row: any) => {
+    const rowId = String(row?.id || row?._id || "").trim();
+    const rowKey = String(
+      row?.id ||
+      row?._id ||
+      row?.invoiceNumber ||
+      row?.number ||
+      ""
+    ).trim();
+    const nextId = rowId || rowKey;
+    if (!nextId) return;
+
+    const normalizedRow = {
+      ...row,
+      id: rowId || rowKey,
+      invoiceNumber: row?.invoiceNumber || rowKey || rowId,
+    };
+
+    setInvoice(normalizedRow as any);
+    setSelectedItems(new Set());
+    setIsMoreMenuOpen(false);
+    setIsAllInvoicesDropdownOpen(false);
+    setIsSendDropdownOpen(false);
+    setIsRemindersDropdownOpen(false);
+    setIsPdfDropdownOpen(false);
+    setIsCustomizeDropdownOpen(false);
+    setShowSidebarMoreDropdown(false);
+
+    navigate(`/sales/invoices/${nextId}`, {
+      state: {
+        preloadedInvoice: normalizedRow,
+        preloadedInvoices: invoices,
+      },
+      replace: true,
+    });
+  };
+
   const filteredStatusOptions = statusFilters.filter(filter =>
     filter.toLowerCase().includes(filterSearch.toLowerCase())
   );
@@ -3103,8 +3316,198 @@ export default function InvoiceDetail() {
   const displayItems = normalizeInvoiceItems(invoice);
   const hasProjectItems = displayItems.some((item) => Boolean(item.projectName || item.projectId || item.project));
   const itemsTableTitle = hasProjectItems ? "Project Details" : "Item Table";
+<<<<<<< Updated upstream
+=======
+  const invoiceStatusKey = String(invoice?.status || "").toLowerCase().replace(/[\s-]+/g, "_").trim();
+  const isDebitNoteDocument =
+    isDebitNoteView ||
+    Boolean((invoice as any)?.debitNote || (invoice as any)?.debitNoteNumber || (invoice as any)?.debitNoteId);
+  const canRecordPayment = !["paid", "void"].includes(invoiceStatusKey);
+>>>>>>> Stashed changes
   const showWhatsNext = !isDebitNoteView && canRecordPayment;
   const creditAppliedAmount = Number(invoiceTotalsMeta.creditsApplied) || 0;
+  const baseCurrencyBadge = String(baseCurrency || "KES").trim() || "KES";
+  const journalSourceDocument = invoice;
+  const journalLocation = String(
+    (journalSourceDocument as any)?.location ||
+      (journalSourceDocument as any)?.selectedLocation ||
+      (invoice as any)?.location ||
+      (invoice as any)?.selectedLocation ||
+      "Head Office"
+  ).trim() || "Head Office";
+  const journalDocumentTitle = isDebitNoteDocument ? "Debit Note" : "Invoice";
+  const journalEntrySource =
+    journalEntryRecord ||
+    (journalSourceDocument as any)?.journalEntry ||
+    null;
+  const journalEntryRows = Array.isArray(journalEntrySource?.lines)
+    ? journalEntrySource.lines
+    : Array.isArray(journalEntrySource?.entries)
+      ? journalEntrySource.entries
+      : Array.isArray(journalEntrySource?.rows)
+        ? journalEntrySource.rows
+        : Array.isArray(journalEntrySource?.items)
+          ? journalEntrySource.items
+          : [];
+  const journalSourceItems = normalizeInvoiceItems(journalSourceDocument || invoice);
+  const estimatedCOGS = journalSourceItems.reduce((sum, item) => {
+    const qty = toNumber(item.displayQuantity ?? item.quantity ?? item.qty ?? 0);
+    const sourceItem = (item as any)?.item && typeof (item as any).item === "object" ? (item as any).item : null;
+    const sourceProduct = (item as any)?.product && typeof (item as any).product === "object" ? (item as any).product : null;
+    const costPerUnit =
+      toNumber((item as any)?.costPrice) ||
+      toNumber((item as any)?.unitCost) ||
+      toNumber((item as any)?.purchasePrice) ||
+      toNumber((item as any)?.inventoryCost) ||
+      toNumber((item as any)?.averageCost) ||
+      toNumber((item as any)?.avgCost) ||
+      toNumber((item as any)?.cost) ||
+      toNumber((item as any)?.catalogCost) ||
+      toNumber((item as any)?.costPerUnit) ||
+      toNumber(sourceItem?.costPrice) ||
+      toNumber(sourceItem?.unitCost) ||
+      toNumber(sourceItem?.purchasePrice) ||
+      toNumber(sourceItem?.inventoryCost) ||
+      toNumber(sourceItem?.averageCost) ||
+      toNumber(sourceItem?.avgCost) ||
+      toNumber(sourceItem?.cost) ||
+      toNumber(sourceItem?.catalogCost) ||
+      toNumber(sourceItem?.costPerUnit) ||
+      toNumber(sourceProduct?.costPrice) ||
+      toNumber(sourceProduct?.unitCost) ||
+      toNumber(sourceProduct?.purchasePrice) ||
+      toNumber(sourceProduct?.inventoryCost) ||
+      toNumber(sourceProduct?.averageCost) ||
+      toNumber(sourceProduct?.avgCost) ||
+      toNumber(sourceProduct?.cost) ||
+      toNumber(sourceProduct?.catalogCost) ||
+      toNumber(sourceProduct?.costPerUnit);
+    const directLineCost =
+      toNumber((item as any)?.costAmount) ||
+      toNumber((item as any)?.cogs) ||
+      toNumber((item as any)?.cogsAmount) ||
+      toNumber((item as any)?.totalCost) ||
+      toNumber((item as any)?.inventoryValue) ||
+      toNumber(sourceItem?.costAmount) ||
+      toNumber(sourceItem?.cogs) ||
+      toNumber(sourceItem?.cogsAmount) ||
+      toNumber(sourceItem?.totalCost) ||
+      toNumber(sourceItem?.inventoryValue) ||
+      toNumber(sourceProduct?.costAmount) ||
+      toNumber(sourceProduct?.cogs) ||
+      toNumber(sourceProduct?.cogsAmount) ||
+      toNumber(sourceProduct?.totalCost) ||
+      toNumber(sourceProduct?.inventoryValue);
+    const lineCost = costPerUnit > 0 ? qty * costPerUnit : directLineCost;
+    return sum + (lineCost > 0 ? lineCost : 0);
+    }, 0);
+  const journalAccountNames = {
+    receivable: String((journalSourceDocument as any)?.accountsReceivable || (invoice as any)?.accountsReceivable || "Accounts Receivable").trim() || "Accounts Receivable",
+    sales: "Sales",
+    tax: "Sales Tax Payable",
+    cogs: "Cost of Goods Sold",
+    inventory: "Inventory Asset",
+  };
+  const resolveChartAccount = (nameOrId: string) => chartAccountsLookup[String(nameOrId || "").trim().toLowerCase()] || null;
+  const journalRows = (() => {
+    const allowedAccounts = new Set([
+      journalAccountNames.receivable.toLowerCase(),
+      journalAccountNames.sales.toLowerCase(),
+      ...(isDebitNoteDocument ? [] : [journalAccountNames.cogs.toLowerCase(), journalAccountNames.inventory.toLowerCase()]),
+    ]);
+    const normalizeSourceRow = (row: any, index: number) => {
+      const account = String(
+        row?.account ||
+        row?.accountName ||
+        row?.name ||
+        row?.title ||
+        row?.ledger ||
+        row?.journalAccount ||
+        `Account ${index + 1}`
+      ).trim();
+      const location = String(row?.location || row?.locationName || journalLocation).trim() || journalLocation;
+      let debit = toNumber(row?.debit ?? row?.debitAmount ?? row?.drAmount ?? row?.debit_value);
+      let credit = toNumber(row?.credit ?? row?.creditAmount ?? row?.crAmount ?? row?.credit_value);
+      const amount = toNumber(row?.amount ?? row?.value ?? row?.lineTotal ?? row?.total ?? row?.balance);
+      const side = String(row?.side || row?.direction || row?.entryType || row?.type || "").toLowerCase();
+      if (debit <= 0 && credit <= 0 && amount > 0) {
+        if (side.includes("credit") || side === "cr" || side === "c") {
+          credit = amount;
+        } else {
+          debit = amount;
+        }
+      }
+      if (!account || (debit <= 0 && credit <= 0)) return null;
+      return {
+        account,
+        location,
+        debit: debit > 0 ? debit : 0,
+        credit: credit > 0 ? credit : 0,
+        accountRecord: resolveChartAccount(account),
+      };
+    };
+
+    const mappedJournalRows = journalEntryRows
+      .map((row: any, index: number) => normalizeSourceRow(row, index))
+      .filter((row: any) => Boolean(row));
+
+    if (isDebitNoteDocument && mappedJournalRows.length > 0) {
+      return mappedJournalRows;
+    }
+
+    const rows: Array<{ account: string; location: string; debit: number; credit: number; accountRecord: any }> = [];
+    const pushRow = (account: string, debit = 0, credit = 0) => {
+      const normalizedDebit = debit > 0 ? debit : 0;
+      const normalizedCredit = credit > 0 ? credit : 0;
+      if (!account || (normalizedDebit <= 0 && normalizedCredit <= 0)) return;
+      rows.push({
+        account,
+        location: journalLocation,
+        debit: normalizedDebit,
+        credit: normalizedCredit,
+        accountRecord: resolveChartAccount(account),
+      });
+    };
+
+    const journalTotalsMeta = getInvoiceTotalsMeta(journalSourceDocument || invoice);
+    const total = Math.max(0, toNumber(journalTotalsMeta.total));
+    const subtotal = Math.max(0, toNumber(journalTotalsMeta.subTotal));
+    const journalTaxAmount = Math.max(0, toNumber(journalTotalsMeta.taxAmount));
+
+    pushRow(journalAccountNames.receivable, total, 0);
+    pushRow(journalAccountNames.sales, 0, subtotal);
+
+    if (journalTaxAmount > 0) {
+      pushRow(journalAccountNames.tax, 0, journalTaxAmount);
+    }
+
+    if (!isDebitNoteDocument && estimatedCOGS > 0) {
+      pushRow(journalAccountNames.cogs, estimatedCOGS, 0);
+      pushRow(journalAccountNames.inventory, 0, estimatedCOGS);
+    }
+
+    return rows;
+  })();
+  const journalTotals = journalRows.reduce(
+    (acc: { debit: number; credit: number }, row: { debit?: number | string; credit?: number | string }) => ({
+      debit: acc.debit + toNumber(row.debit),
+      credit: acc.credit + toNumber(row.credit),
+    }),
+    { debit: 0, credit: 0 }
+  );
+  const isDraftInvoice = invoiceStatusKey === "draft";
+  const selectedDebitNoteInvoiceNumber = String(
+    (associatedInvoiceRow as any)?.invoiceNumber ||
+    (invoice as any)?.associatedInvoiceNumber ||
+    ""
+  ).trim();
+  const selectedDebitNoteInvoiceId = String(
+    (associatedInvoiceRow as any)?.id ||
+    (associatedInvoiceRow as any)?._id ||
+    (invoice as any)?.associatedInvoiceId ||
+    (invoice as any)?.invoiceId ||
+    ""
+  ).trim();
   const retainerAppliedAmount = (() => {
     const direct =
       toNumber((invoice as any)?.retainerAppliedAmount) ||
@@ -3238,7 +3641,7 @@ export default function InvoiceDetail() {
     creditsAppliedRows.length > 0 ||
     creditsAppliedCount > 0 ||
     creditAppliedAmount > 0 ||
-    (isDebitNoteView && ((invoice as any)?.associatedInvoiceId || (invoice as any)?.invoiceId));
+    (isDebitNoteDocument && ((invoice as any)?.associatedInvoiceId || (invoice as any)?.invoiceId));
 
   return (
     <>
@@ -3426,6 +3829,10 @@ export default function InvoiceDetail() {
                 inv?.id ||
                 inv?._id ||
                 inv?.invoiceNumber ||
+<<<<<<< Updated upstream
+=======
+                (inv as any)?.number ||
+>>>>>>> Stashed changes
                 `invoice-${index}`
               ).trim() || `invoice-${index}`;
               const rowId = String(inv?.id || inv?._id || "").trim();
@@ -3434,7 +3841,7 @@ export default function InvoiceDetail() {
               return (
                 <div
                   key={`${rowKey}-${index}`}
-                  onClick={() => navigate(`/sales/invoices/${rowId || rowKey}`)}
+                  onClick={() => handleSelectSidebarInvoice(inv)}
                   className={`flex items-center gap-3 p-3 cursor-pointer border-b border-gray-100 hover:bg-gray-50 ${isActive ? "bg-blue-50 border-l-4 border-l-blue-600" : ""}`}
                 >
                   <Square size={14} className="text-gray-400 cursor-pointer" />
@@ -3449,7 +3856,7 @@ export default function InvoiceDetail() {
                     {(() => {
                       const statusDisplay = getSidebarStatusDisplay(inv);
                       return (
-                        <div className={`text-xs font-medium px-2 py-0.5 rounded-full inline-block ${statusDisplay.color}`}>
+                        <div className={`text-xs font-medium inline-block ${statusDisplay.className}`}>
                           {statusDisplay.text}
                         </div>
                       );
@@ -3504,14 +3911,39 @@ export default function InvoiceDetail() {
             </div>
 
             <div className="flex items-center gap-1 px-6 py-2 text-[13px] text-gray-700 border-b border-gray-200">
-              <button
-                onClick={() => {
-                  const editId = String((invoice as any)?.id || (invoice as any)?._id || id || "").trim();
-                  if (!editId) return;
-                  navigate(`/sales/debit-notes/${editId}/edit`, { state: { debitNote: invoice } });
-                }}
-                className="inline-flex items-center gap-1.5 px-2 py-1 rounded hover:bg-gray-100 cursor-pointer"
-              >
+                <button
+                  onClick={() => {
+                    if (isDebitNoteDocument) {
+                      const editId = String(
+                        (debitNote as any)?.id ||
+                        (debitNote as any)?._id ||
+                        (debitNote as any)?.debitNoteId ||
+                        (invoice as any)?.debitNoteId ||
+                        (invoice as any)?.associatedDebitNoteId ||
+                        ""
+                      ).trim();
+                      if (!editId) return;
+                      navigate(`/sales/debit-notes/${editId}/edit`, {
+                        state: {
+                          debitNote: debitNote || invoice,
+                          clonedData: debitNote || invoice,
+                        },
+                      });
+                      return;
+                    }
+                    const editId = String(invoice?.id || invoice?._id || "").trim();
+                    if (!editId) return;
+                    navigate(`/sales/invoices/${editId}/edit`, {
+                      state: {
+                        preloadedInvoice: { ...invoice, id: editId },
+                        preloadedInvoices: invoices,
+                        invoice,
+                        clonedData: invoice,
+                      },
+                    });
+                  }}
+                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded hover:bg-gray-100 cursor-pointer"
+                >
                 <Edit size={13} />
                 Edit
               </button>
@@ -3723,7 +4155,7 @@ export default function InvoiceDetail() {
                     <span className="text-[12px] font-medium text-gray-800">Credits Applied</span>
                     <span className="text-[12px] text-[#2563eb]">{creditsAppliedCount}</span>
                   </button>
-                  {isDebitNoteView && ((invoice as any)?.associatedInvoiceId || (invoice as any)?.invoiceId) && (
+                  {isDebitNoteDocument && ((invoice as any)?.associatedInvoiceId || (invoice as any)?.invoiceId) && (
                     <>
                       <div className="h-4 w-px bg-gray-300" />
                       <button
@@ -3750,7 +4182,7 @@ export default function InvoiceDetail() {
               </div>
               {isPaymentsSectionOpen && (
                 <div className="border-t border-gray-200 overflow-x-auto relative z-[20]">
-                  {paymentInfoTab === "associated" && isDebitNoteView ? (
+                  {paymentInfoTab === "associated" && isDebitNoteDocument ? (
                     <div>
                       <div className="px-4 py-2 text-[14px] text-gray-900">Invoice</div>
                       <table className="w-full text-left">
@@ -3905,7 +4337,7 @@ export default function InvoiceDetail() {
             </div>
           )}
 
-          {isDebitNoteView && (customerCreditsAvailable > 0 || customerRetainerAvailable > 0 || associatedInvoiceRow || (invoice as any)?.associatedInvoiceId || (invoice as any)?.invoiceId) && (
+          {isDebitNoteDocument && (customerCreditsAvailable > 0 || customerRetainerAvailable > 0 || associatedInvoiceRow || (invoice as any)?.associatedInvoiceId || (invoice as any)?.invoiceId) && (
             <div className="mx-6 mt-4 rounded border border-gray-200 bg-white">
               <div className="px-5 py-4 space-y-3 text-[14px] text-gray-900">
                 {customerCreditsAvailable > 0 && (
@@ -3953,34 +4385,6 @@ export default function InvoiceDetail() {
                     </span>
                   </div>
                 )}
-                {customerRetainerInvoices.length > 0 && (
-                  <div className="flex items-start gap-2">
-                    <Repeat size={15} className="mt-0.5 text-gray-700" />
-                    <div className="flex-1">
-                      <div className="text-[13px] text-gray-700">Retainer Invoices:</div>
-                      <div className="mt-1 flex flex-wrap gap-2">
-                        {customerRetainerInvoices.slice(0, 4).map((row: any) => {
-                          const rowId = String(row?.id || row?._id || "").trim();
-                          const rowNumber = String(row?.invoiceNumber || row?.retainerInvoiceNumber || rowId || "Retainer").trim();
-                          const rowAmount = toNumSafe(getRetainerAvailableAmount(row), 0);
-                          return (
-                            <button
-                              key={rowId || rowNumber}
-                              type="button"
-                              className="inline-flex items-center gap-1 rounded-full border border-[#dbe4ff] bg-[#f8fbff] px-3 py-1 text-[12px] text-[#2563eb] hover:bg-[#edf4ff]"
-                              onClick={() => {
-                                if (rowId) navigate(`/sales/retainer-invoices/${rowId}`);
-                              }}
-                            >
-                              <span>{rowNumber}</span>
-                              <span className="text-[#6b7280]">({formatAmountWithCurrency(rowAmount)})</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -4004,34 +4408,6 @@ export default function InvoiceDetail() {
                       Retainer Available: <span className="font-semibold">{formatAmountWithCurrency(customerRetainerAvailable)}</span>{" "}
                       <button type="button" className="text-[#3b82f6] hover:underline" onClick={handleOpenApplyRetainer}>Apply Now</button>
                     </span>
-                  </div>
-                )}
-                {customerRetainerInvoices.length > 0 && (
-                  <div className="flex items-start gap-2">
-                    <Repeat size={15} className="mt-0.5 text-gray-700" />
-                    <div className="flex-1">
-                      <div className="text-[13px] text-gray-700">Retainer Invoices:</div>
-                      <div className="mt-1 flex flex-wrap gap-2">
-                        {customerRetainerInvoices.slice(0, 4).map((row: any) => {
-                          const rowId = String(row?.id || row?._id || "").trim();
-                          const rowNumber = String(row?.invoiceNumber || row?.retainerInvoiceNumber || rowId || "Retainer").trim();
-                          const rowAmount = toNumSafe(getRetainerAvailableAmount(row), 0);
-                          return (
-                            <button
-                              key={rowId || rowNumber}
-                              type="button"
-                              className="inline-flex items-center gap-1 rounded-full border border-[#dbe4ff] bg-[#f8fbff] px-3 py-1 text-[12px] text-[#2563eb] hover:bg-[#edf4ff]"
-                              onClick={() => {
-                                if (rowId) navigate(`/sales/retainer-invoices/${rowId}`);
-                              }}
-                            >
-                              <span>{rowNumber}</span>
-                              <span className="text-[#6b7280]">({formatAmountWithCurrency(rowAmount)})</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
                   </div>
                 )}
               </div>
@@ -4086,6 +4462,7 @@ export default function InvoiceDetail() {
           )}
 
           {/* Invoice Document */}
+<<<<<<< Updated upstream
           <div className="p-3 bg-gray-50 flex-1 overflow-auto">
             <div ref={invoiceDocumentRef} className="print-content">
               <TransactionPDFDocument
@@ -4111,8 +4488,312 @@ export default function InvoiceDetail() {
               />
             </div>
           </div>
+=======
+          <div className="p-3 bg-white">
+            <div
+              className="w-full max-w-[920px] mx-auto bg-white border border-[#d1d5db] shadow-sm overflow-hidden relative print-content"
+              data-print-content
+              style={{ width: "210mm", minHeight: "297mm", padding: "20mm" }}
+            >
+              {/* Status Ribbon */}
+              {(() => {
+                const ribbonStatus = normalizeKey(invoice.status || "");
+                const ribbonLabel =
+                  ribbonStatus === "partially_paid" ? "PARTIALLY PAID" :
+                  ribbonStatus === "paid" ? "PAID" :
+                  ribbonStatus === "sent" || ribbonStatus === "unpaid" ? "UNPAID" :
+                  ribbonStatus === "draft" ? "DRAFT" :
+                  ribbonStatus === "overdue" ? "OVERDUE" :
+                  "";
+                if (!ribbonLabel) return null;
+                const ribbonColor =
+                  ribbonStatus === "paid" ? "bg-green-500" :
+                  ribbonStatus === "partially_paid" ? "bg-blue-500" :
+                  ribbonStatus === "draft" ? "bg-yellow-500" :
+                  ribbonStatus === "overdue" ? "bg-red-500" :
+                  "bg-blue-500";
+                return (
+                <div className="absolute top-0 left-0 w-36 h-36 overflow-hidden">
+                  <div className={`absolute top-6 -left-8 w-48 h-9 transform -rotate-45 origin-center flex items-center justify-center shadow-sm ${ribbonColor}`}>
+                    <span className="text-white font-bold text-[13px] uppercase tracking-wider">
+                      {ribbonLabel}
+                    </span>
+                  </div>
+                </div>
+                );
+              })()}
 
-              {isDebitNoteView && (associatedInvoiceRow || (invoice as any)?.associatedInvoiceId || (invoice as any)?.invoiceId) && (
+
+              {/* Document Header */}
+              <div className="flex justify-between items-start mb-12 mt-8">
+                {/* Left Column: Logo & Company Info */}
+                <div className="flex flex-col items-start gap-4">
+                  {/* Logo */}
+                  <div className="relative w-24 h-24">
+                    {logoPreview ? (
+                      <img
+                        src={logoPreview}
+                        alt="Organization Logo"
+                        className="w-full h-full object-contain object-left"
+                      />
+                    ) : (
+                      <svg width="96" height="96" viewBox="0 0 80 80" className="w-full h-full">
+                        {/* Sun with rays */}
+                        <circle cx="40" cy="15" r="12" fill="#f97316" />
+                        <circle cx="40" cy="15" r="8" fill="#fb923c" />
+                        {/* Sun rays */}
+                        {[...Array(8)].map((_, i) => {
+                          const angle = (i * 45) * (Math.PI / 180);
+                          const x1 = 40 + Math.cos(angle) * 12;
+                          const y1 = 15 + Math.sin(angle) * 12;
+                          const x2 = 40 + Math.cos(angle) * 18;
+                          const y2 = 15 + Math.sin(angle) * 18;
+                          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#f97316" strokeWidth="2" />;
+                        })}
+                        {/* Book - green covers */}
+                        <rect x="28" y="28" width="24" height="16" rx="2" fill="#16a34a" />
+                        <rect x="30" y="30" width="20" height="12" rx="1" fill="#15803d" />
+                        {/* Book pages - blue */}
+                        <rect x="30" y="30" width="18" height="12" rx="1" fill="#3b82f6" />
+                        <rect x="32" y="32" width="16" height="8" rx="1" fill="#2563eb" />
+                        {/* Pen - blue vertical */}
+                        <rect x="38" y="48" width="4" height="20" rx="2" fill="#1e3a8a" />
+                      </svg>
+                    )}
+                  </div>
+
+                  {/* Company Name & Address */}
+                  <div>
+                    <div className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-1">
+                      {DEFAULT_INVOICE_BRAND_NAME_UPPER}
+                    </div>
+                    <div className="text-xs text-gray-600 leading-relaxed max-w-[250px]">
+                      <p>{organizationProfile?.address?.street1 || 'taleex'}</p>
+                      <p>{organizationProfile?.address?.street2 || 'taleex'}</p>
+                      <p>
+                        {organizationProfile?.address?.city ?
+                          `${organizationProfile.address.city}${organizationProfile.address.zipCode ? ' ' + organizationProfile.address.zipCode : ''}` :
+                          'mogadishu Nairobi 22223'
+                        }
+                      </p>
+                      <p>{organizationProfile?.address?.country || 'Somalia'}</p>
+                      <p className="mt-1">{ownerEmail?.email || organizationProfile?.email || ""}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Invoice Details & Balance */}
+                <div className="text-right">
+                  <div className="flex items-center justify-end gap-3 mb-2">
+                    <div className="text-4xl font-normal text-gray-800">INVOICE</div>
+                  </div>
+                  <div className="text-sm font-medium text-gray-600 mb-8"># {invoice.invoiceNumber || invoice.id}</div>
+
+                  <div className="flex flex-col items-end">
+                    <div className="text-xs text-gray-600 mb-1">Balance Due</div>
+                    <div className="text-xl font-bold text-gray-900">
+                      {formatCurrency(invoiceTotalsMeta.balance, invoice.currency)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bill To & Details Section */}
+              <div className="flex justify-between items-start mb-12">
+                {/* Bill To */}
+                <div className="mt-4">
+                  <div className="text-xs text-gray-500 mb-2">Bill To</div>
+                  <div className="text-sm font-bold text-blue-600 mb-1 uppercase">
+                    {invoice.customerName || (typeof invoice.customer === 'object' ? (invoice.customer?.displayName || invoice.customer?.companyName || invoice.customer?.name) : invoice.customer) || "CUSTOMER"}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    {invoice.customerAddress?.street1 && <div>{invoice.customerAddress.street1}</div>}
+                    {invoice.customerAddress?.city && invoice.customerAddress?.state && (
+                      <div>{invoice.customerAddress.city}, {invoice.customerAddress.state}</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Info Grid */}
+                <div className="text-right">
+                  <div className="grid grid-cols-[auto_auto] gap-x-12 gap-y-2 text-sm">
+                    <div className="text-gray-600 text-right">Invoice Date :</div>
+                    <div className="text-gray-900 font-medium text-right">{formatDateShort(invoice.invoiceDate || invoice.date)}</div>
+
+                    <div className="text-gray-600 text-right">Terms :</div>
+                    <div className="text-gray-900 font-medium text-right">Due on Receipt</div>
+
+                    <div className="text-gray-600 text-right">Due Date :</div>
+                    <div className="text-gray-900 font-medium text-right">{formatDateShort(invoice.dueDate)}</div>
+
+                    <div className="text-gray-600 text-right">P.O.# :</div>
+                    <div className="text-gray-900 font-medium text-right">{invoice.orderNumber || invoice.poNumber || "22"}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Items Table - Dark Header */}
+              <div className="mb-8">
+                <div className="text-sm font-semibold text-gray-700 mb-2">{itemsTableTitle}</div>
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-[#333333] text-white">
+                      <th className="py-2 px-3 text-sm font-medium text-center w-12 border-r border-gray-600">#</th>
+                      <th className="py-2 px-4 text-sm font-medium text-left">Item & Description</th>
+                      <th className="py-2 px-3 text-sm font-medium text-center w-20">Qty</th>
+                      <th className="py-2 px-3 text-sm font-medium text-right w-24">Rate</th>
+                      <th className="py-2 px-4 text-sm font-medium text-right w-28">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayItems.length > 0 ? (
+                      displayItems.map((item, index) => (
+                        <tr key={item.id || index} className="border-b border-gray-200">
+                          <td className="py-4 px-3 text-sm text-gray-700 text-center align-top">{index + 1}</td>
+                          <td className="py-4 px-4 text-sm text-gray-900 align-top">
+                            <div className="font-medium">{item.displayName || "Item"}</div>
+                            {item.displayDescription && item.displayDescription !== item.displayName && (
+                              <div className="text-xs text-gray-500 mt-1">{item.displayDescription}</div>
+                            )}
+                          </td>
+                          <td className="py-4 px-3 text-sm text-gray-700 text-center align-top">
+                            <div>{Number(item.displayQuantity || 0).toFixed(2)}</div>
+                            <div className="text-xs text-gray-500">{item.displayUnit || 'pcs'}</div>
+                          </td>
+                          <td className="py-4 px-3 text-sm text-gray-700 text-right align-top">{Number(item.displayRate || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td className="py-4 px-4 text-sm text-gray-900 text-right font-medium align-top">{Number(item.displayAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-gray-500">No items</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Summary Section */}
+              <div className="flex justify-end mb-12">
+                <div className="w-80">
+                  <div className="flex justify-between py-2 text-sm border-b border-gray-200">
+                    <div className="text-gray-600">Sub Total</div>
+                    <div className="text-gray-900 font-medium">{invoiceTotalsMeta.subTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  </div>
+                  <div className="text-xs text-gray-500 -mt-1 mb-1">({invoiceTotalsMeta.taxExclusive})</div>
+
+                  {invoiceTotalsMeta.discountAmount > 0 && (
+                    <>
+                      <div className="flex justify-between py-2 text-sm border-b border-gray-100">
+                        <div className="text-gray-600">{invoiceTotalsMeta.discountLabel}</div>
+                        <div className="text-gray-900 font-medium">
+                          (-) {invoiceTotalsMeta.discountAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500 -mt-1 mb-1">
+                        (Applied on {invoiceTotalsMeta.discountBase.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                      </div>
+                    </>
+                  )}
+
+                  {invoiceTotalsMeta.taxAmount > 0 && (
+                    <div className="flex justify-between py-2 text-sm border-b border-gray-100">
+                      <div className="text-gray-600">{invoiceTotalsMeta.taxLabel}</div>
+                      <div className="text-gray-900 font-medium">
+                        {invoiceTotalsMeta.taxAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                  )}
+
+                  {invoiceTotalsMeta.shippingCharges !== 0 && (
+                    <div className="flex justify-between py-2 text-sm border-b border-gray-100">
+                      <div className="text-gray-600">Shipping charge</div>
+                      <div className="text-gray-900 font-medium">
+                        {invoiceTotalsMeta.shippingCharges.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                  )}
+
+                  {invoiceTotalsMeta.adjustment !== 0 && (
+                    <div className="flex justify-between py-2 text-sm border-b border-gray-100">
+                      <div className="text-gray-600">Adjustment</div>
+                      <div className="text-gray-900 font-medium">
+                        {invoiceTotalsMeta.adjustment.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                  )}
+
+                  {invoiceTotalsMeta.roundOff !== 0 && (
+                    <div className="flex justify-between py-2 text-sm border-b border-gray-100">
+                      <div className="text-gray-600">Round Off</div>
+                      <div className="text-gray-900 font-medium">
+                        {invoiceTotalsMeta.roundOff.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between py-2 text-sm font-bold border-b border-gray-200">
+                    <div className="text-gray-900">Total</div>
+                    <div className="text-gray-900">{formatCurrency(invoiceTotalsMeta.total, invoice.currency)}</div>
+                  </div>
+
+                  {invoiceTotalsMeta.paidAmount > 0 && (
+                    <div className="flex justify-between py-2 text-sm text-gray-600">
+                      <div>Payment Made</div>
+                      <div className="font-medium">
+                        (-) {invoiceTotalsMeta.paidAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                  )}
+
+                  {invoiceTotalsMeta.creditsApplied > 0 && (
+                    <div className="flex justify-between py-2 text-sm text-red-500">
+                      <div>Credits Applied</div>
+                      <div className="font-medium">
+                        (-) {invoiceTotalsMeta.creditsApplied.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between py-2 px-3 bg-gray-100 font-bold text-sm mt-2 border border-gray-200 rounded">
+                    <div className="text-gray-900 uppercase">Balance Due</div>
+                    <div className="text-gray-900">
+                      {formatCurrency(invoiceTotalsMeta.balance, invoice.currency)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Notes Section */}
+              <div className="mt-auto">
+                <div className="text-sm text-gray-900 mb-4">Notes</div>
+                <div className="text-sm text-gray-500 mb-8">
+                  {invoice.customerNotes || "Thank you for the payment. You just made our day."}
+                </div>
+              </div>
+
+              {/* PDF Template Footer */}
+              <div className="mt-8 pt-4 border-t border-gray-100">
+                <div className="text-xs text-gray-400">
+                  PDF Template: 'Standard Template' <button className="text-blue-600 hover:text-blue-700 underline ml-1">Change</button>
+                </div>
+              </div>
+>>>>>>> Stashed changes
+
+              <div className="mt-8 border-b border-gray-200">
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={handleViewJournal}
+                    className="relative pb-2 text-[16px] font-medium text-gray-900"
+                  >
+                    Journal
+                    <span className="absolute left-0 bottom-[-1px] h-0.5 w-full rounded-full bg-[#2563eb]" />
+                  </button>
+                </div>
+              </div>
+
+              {isDebitNoteDocument && (associatedInvoiceRow || (invoice as any)?.associatedInvoiceId || (invoice as any)?.invoiceId) && (
                 <div className="mt-8">
                   <div className="text-[18px] font-medium text-gray-900 mb-3">Invoice</div>
                   <table className="w-full text-left border-collapse">
@@ -4136,7 +4817,6 @@ export default function InvoiceDetail() {
                         <td className="py-3 text-[13px] text-[#2563eb]">
                           {(associatedInvoiceRow as any)?.invoiceNumber ||
                             (invoice as any)?.associatedInvoiceNumber ||
-                            (invoice as any)?.invoiceNumber ||
                             "-"}
                         </td>
                         <td className="py-3 text-[13px] text-gray-900 text-right">
@@ -4159,71 +4839,80 @@ export default function InvoiceDetail() {
                 </div>
               )}
 
-              {isDebitNoteView && (
-                <div className="mt-8" data-journal-section>
-                  <div className="text-[18px] font-medium text-gray-900 mb-3">Journal</div>
-                  <div className="text-[12px] text-gray-500 mb-2">
-                    Amount is displayed in your base currency{" "}
-                    <span className="inline-flex items-center rounded bg-lime-700 px-1.5 py-0.5 text-[11px] font-semibold text-white">
-                      {baseCurrency}
-                    </span>
-                  </div>
-                  <div className="text-[16px] font-semibold text-gray-900 mb-2">Debit Note</div>
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr className="border-b border-gray-200 bg-[#f8fafc] text-[13px] text-[#64748b]">
-                        <th className="py-2 px-2 font-medium text-left">Account</th>
-                        <th className="py-2 px-2 font-medium text-left">Location</th>
-                        <th className="py-2 px-2 font-medium text-right">Debit</th>
-                        <th className="py-2 px-2 font-medium text-right">Credit</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="border-b border-gray-100">
-                        <td className="py-2 px-2 text-[13px] text-gray-900">Accounts Receivable</td>
-                        <td className="py-2 px-2 text-[13px] text-gray-900">{String((invoice as any)?.location || "Head Office")}</td>
-                        <td className="py-2 px-2 text-[13px] text-gray-900 text-right">
-                          {formatCurrency(invoiceTotalsMeta.total, baseCurrency)}
-                        </td>
-                        <td className="py-2 px-2 text-[13px] text-gray-900 text-right">0.00</td>
-                      </tr>
-                      <tr className="border-b border-gray-100">
-                        <td className="py-2 px-2 text-[13px] text-gray-900">Sales</td>
-                        <td className="py-2 px-2 text-[13px] text-gray-900">{String((invoice as any)?.location || "Head Office")}</td>
-                        <td className="py-2 px-2 text-[13px] text-gray-900 text-right">0.00</td>
-                        <td className="py-2 px-2 text-[13px] text-gray-900 text-right">
-                          {formatCurrency(invoiceTotalsMeta.total, baseCurrency)}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td className="py-2 px-2 text-[13px] font-semibold text-gray-900"></td>
-                        <td className="py-2 px-2 text-[13px] font-semibold text-gray-900"></td>
-                        <td className="py-2 px-2 text-[13px] font-semibold text-gray-900 text-right">
-                          {formatCurrency(invoiceTotalsMeta.total, baseCurrency)}
-                        </td>
-                        <td className="py-2 px-2 text-[13px] font-semibold text-gray-900 text-right">
-                          {formatCurrency(invoiceTotalsMeta.total, baseCurrency)}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {!isDebitNoteView && (
-                <div className="mt-4 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={handleViewJournal}
-                    className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
-                  >
-                    <BookOpen size={14} />
-                    View Journal
-                  </button>
-                </div>
-              )}
             </div>
           </div>
+<<<<<<< Updated upstream
+=======
+          {(isDraftInvoice || journalRows.length > 0) && (
+            <div className="px-3 pt-4 pb-4" data-journal-section>
+              <div className="w-full max-w-[920px] mx-auto">
+                {isDraftInvoice ? (
+                  <div className="rounded border border-gray-200 bg-white px-5 py-4 text-[13px] text-gray-600">
+                    Journal entries will not be available for Invoices in the Draft state.
+                  </div>
+                ) : isDebitNoteDocument ? (
+                  <FinancialDocumentDisplay
+                    document={invoice}
+                    baseCurrency={baseCurrencyBadge}
+                    journalEntry={journalEntryRecord}
+                    associatedInvoice={associatedInvoiceRow}
+                  />
+                ) : (
+                  <div className="rounded border border-[#d8dee9] bg-white shadow-sm overflow-hidden">
+                    <div className="px-5 py-4 border-b border-[#e7ebf3] flex items-center justify-between">
+                      <div className="text-[18px] font-semibold text-slate-900">Journal</div>
+                    </div>
+                    <div className="px-5 py-4">
+                      <div className="text-[12px] text-slate-500 mb-3">
+                        Amount is displayed in your base currency{" "}
+                        <span className="inline-flex items-center rounded bg-lime-700 px-1.5 py-0.5 text-[11px] font-semibold text-white">
+                          {baseCurrencyBadge}
+                        </span>
+                      </div>
+                      <div className="text-[16px] font-semibold text-slate-900 mb-3">Invoice</div>
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr className="border-b border-[#e7ebf3] bg-[#f8fafc] text-[13px] text-[#64748b]">
+                            <th className="px-2 py-2 text-left font-medium">ACCOUNT</th>
+                            <th className="px-2 py-2 text-left font-medium">LOCATION</th>
+                            <th className="px-2 py-2 text-right font-medium">DEBIT</th>
+                            <th className="px-2 py-2 text-right font-medium">CREDIT</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {journalRows.map((row: any, index: number) => (
+                            <tr key={`${row.account}-${index}`} className="border-b border-[#edf1f7] last:border-b-0">
+                              <td className="px-2 py-2 text-[13px] text-blue-600">{row.account}</td>
+                              <td className="px-2 py-2 text-[13px] text-slate-900">{row.location}</td>
+                              <td className="px-2 py-2 text-[13px] text-slate-900 text-right">
+                                {formatCurrency(row.debit || 0, invoice.currency)}
+                              </td>
+                              <td className="px-2 py-2 text-[13px] text-slate-900 text-right">
+                                {formatCurrency(row.credit || 0, invoice.currency)}
+                              </td>
+                            </tr>
+                          ))}
+                          <tr className="border-t border-[#dfe6f0] font-semibold">
+                            <td className="px-2 py-2 text-[13px]" />
+                            <td className="px-2 py-2 text-[13px]" />
+                            <td className="px-2 py-2 text-[13px] text-right text-slate-900">
+                              {formatCurrency(journalTotals.debit, invoice.currency)}
+                            </td>
+                            <td className="px-2 py-2 text-[13px] text-right text-slate-900">
+                              {formatCurrency(journalTotals.credit, invoice.currency)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          </div>
+
+>>>>>>> Stashed changes
         </div>
 
       {showDeletePaymentModal && selectedPaymentForDelete && (
@@ -4889,7 +5578,7 @@ export default function InvoiceDetail() {
         )}
 
         {isApplyAdjustmentsModalOpen && invoice && (
-          <div className="fixed inset-0 z-[130] bg-black/40 flex items-start justify-center pt-8 px-4">
+          <div className="fixed inset-0 z-[3000] bg-black/40 flex items-start justify-center pt-8 px-4">
             <div className="w-full max-w-[900px] bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden">
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
                 <h3 className="text-[16px] font-semibold text-gray-900">
@@ -4991,7 +5680,8 @@ export default function InvoiceDetail() {
                   type="button"
                   disabled={isApplyingAdjustments}
                   onClick={() => void handleApplyAdjustments()}
-                  className="px-4 py-2 rounded text-white text-[14px] font-medium bg-[#3b82f6] hover:bg-[#2563eb] disabled:opacity-60"
+                  className="px-4 py-2 rounded text-white text-[14px] font-medium disabled:opacity-60"
+                  style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
                 >
                   {isApplyingAdjustments ? "Applying..." : "Apply Credits"}
                 </button>
@@ -5009,107 +5699,143 @@ export default function InvoiceDetail() {
         )}
 
         {isApplyRetainerOpen && invoice && (
-          <div className="absolute inset-0 z-30 bg-white flex flex-col">
-            <div className="px-5 py-3 border-b border-gray-200">
-              <button
-                type="button"
-                className="text-[#2563eb] text-sm mb-1"
-                onClick={() => setIsApplyRetainerOpen(false)}
-              >
-                &#8592;
-              </button>
-              <div className="text-[36px] leading-none font-semibold text-[#111827] mb-1">
-                Apply Retainers ({String((invoice as any)?.invoiceNumber || "")})
+          <div
+            className="fixed inset-0 z-[3000] overflow-y-auto"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isApplyingRetainer) {
+                setIsApplyRetainerOpen(false);
+              }
+            }}
+          >
+            <div className="flex min-h-full items-start justify-center px-4 pt-8 pb-6 text-center sm:px-6 lg:px-8">
+              <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+                <div className="absolute inset-0 bg-gray-500 opacity-75" />
               </div>
-              <div className="text-[26px] text-[#475569]">
-                Retainer Available: {formatAmountWithCurrency(customerRetainerAvailable)}
-              </div>
-            </div>
 
-            <div className="flex-1 overflow-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-[#f8fafc] text-[#64748b] text-[14px]">
-                    <th className="text-left px-4 py-3">DATE</th>
-                    <th className="text-left px-4 py-3">PAYMENT#</th>
-                    <th className="text-left px-4 py-3">LOCATION</th>
-                    <th className="text-left px-4 py-3">AVAILABLE RETAINER</th>
-                    <th className="text-left px-4 py-3">RETAINERS APPLIED</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {customerRetainerInvoices.map((row: any) => {
-                    const rowId = String(row?.id || row?._id || "");
-                    const available = getRetainerAvailableAmount(row);
-                    const applied = toNumSafe(retainerApplyValues[rowId], 0);
-                    return (
-                      <tr key={rowId} className="border-b border-gray-100">
-                        <td className="px-4 py-3 text-[36px] text-[#111827]">
-                          {formatDate(row?.date || row?.invoiceDate || row?.createdAt || "")}
-                        </td>
-                        <td className="px-4 py-3 text-[36px] text-[#111827]">
-                          {String(row?.invoiceNumber || "-")}
-                        </td>
-                        <td className="px-4 py-3 text-[36px] text-[#111827]">
-                          {String(row?.location || row?.selectedLocation || "Head Office")}
-                        </td>
-                        <td className="px-4 py-3 text-[36px] text-[#111827] font-medium">
-                          {formatAmountWithCurrency(available)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <input
-                            type="number"
-                            min={0}
-                            max={available}
-                            step="0.01"
-                            value={applied || ""}
-                            onChange={(e) => {
-                              const next = Math.max(0, toNumSafe(e.target.value, 0));
-                              const clamped = Math.min(next, available);
-                              setRetainerApplyValues((prev) => ({ ...prev, [rowId]: clamped }));
-                            }}
-                            className="w-[220px] h-[44px] border border-[#93c5fd] rounded px-3 text-[32px] text-[#0f172a] outline-none"
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="border-t border-gray-200 px-6 py-4 bg-white">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-[20px] text-[#64748b]">
-                  Note: If there is any tax applied to the retainer invoice, the tax will be reversed.
-                </div>
-                <div className="text-right">
-                  <div className="text-[36px] text-[#111827]">
-                    {formatAmountWithCurrency(getCurrentDocumentBalance())} - {formatAmountWithCurrency(getTotalRetainerApplied())} = {formatAmountWithCurrency(Math.max(0, getCurrentDocumentBalance() - getTotalRetainerApplied()))}
-                  </div>
-                  <div className="text-[20px] text-[#64748b]">
-                    Invoice Amount - Total Retainers Applied = Invoice Balance
+              <div className="relative z-10 w-full max-w-5xl rounded-lg bg-white text-left overflow-hidden shadow-xl transform transition-all">
+                <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4 border-b border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[17px] leading-6 font-medium text-gray-900">
+                      Use Retainer for {String((invoice as any)?.invoiceNumber || "")}
+                    </h3>
+                    <button
+                      type="button"
+                      className="bg-white rounded-md text-gray-400 hover:text-gray-500 focus:outline-none"
+                      onClick={() => {
+                        if (!isApplyingRetainer) setIsApplyRetainerOpen(false);
+                      }}
+                    >
+                      <X className="h-6 w-6" />
+                    </button>
                   </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  disabled={isApplyingRetainer}
-                  onClick={handleApplyRetainersSubmit}
-                  className="px-5 py-2 rounded text-white text-[22px] font-medium disabled:opacity-60"
-                  style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                >
-                  {isApplyingRetainer ? "Applying..." : "Apply Retainers"}
-                </button>
-                <button
-                  type="button"
-                  disabled={isApplyingRetainer}
-                  onClick={() => setIsApplyRetainerOpen(false)}
-                  className="px-5 py-2 rounded border border-gray-300 text-[22px] text-[#334155] bg-white disabled:opacity-60"
-                >
-                  Cancel
-                </button>
+
+                <div className="px-6 py-4 bg-gray-50/50">
+                  <div className="flex items-center justify-end mb-4">
+                    <div className="text-sm text-gray-700">
+                      Invoice Balance: <span className="font-semibold">{formatAmountWithCurrency(getCurrentDocumentBalance())}</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-white border border-gray-200 rounded-sm overflow-hidden shadow-sm">
+                    <table className="min-w-full table-fixed divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="w-[18%] px-4 py-3 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider">Retainer Invoice#</th>
+                          <th className="w-[12%] px-4 py-3 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                          <th className="w-[14%] px-4 py-3 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                          <th className="w-[16%] px-4 py-3 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider">Project/Quote</th>
+                          <th className="w-[12%] px-4 py-3 text-right text-[10px] font-medium text-gray-500 uppercase tracking-wider">Retainer Amount</th>
+                          <th className="w-[12%] px-4 py-3 text-right text-[10px] font-medium text-gray-500 uppercase tracking-wider">Available Retainer</th>
+                          <th className="w-[18%] px-4 py-3 text-right text-[10px] font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {customerRetainerInvoices.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-6 py-10 text-center text-gray-500 text-[12px]">
+                              No retainers available for this customer.
+                            </td>
+                          </tr>
+                        ) : (
+                          customerRetainerInvoices.map((row: any) => {
+                            const rowId = String(row?._id || row?.id || "").trim();
+                            const available = getRetainerAvailableAmount(row);
+                            const applied = toNumSafe(retainerApplyValues[rowId], 0);
+                            const retainerAmount = toNumSafe(row?.total ?? row?.amount, 0);
+                            const projectOrQuote = String(
+                              row?.projectName ||
+                              row?.project?.name ||
+                              row?.quoteNumber ||
+                              row?.quote?.quoteNumber ||
+                              row?.referenceNumber ||
+                              "-"
+                            );
+
+                            return (
+                              <tr key={rowId} className="border-b border-gray-100">
+                                <td className="px-4 py-3 text-sm text-gray-700 font-medium">{String(row?.invoiceNumber || row?.retainerNumber || "-")}</td>
+                                <td className="px-4 py-3 text-sm text-gray-500">{formatDate(row?.date || row?.invoiceDate || row?.createdAt || "")}</td>
+                                <td className="px-4 py-3 text-sm text-gray-700">{String(row?.location || row?.selectedLocation || "Head Office")}</td>
+                                <td className="px-4 py-3 text-sm text-gray-700">{projectOrQuote}</td>
+                                <td className="px-4 py-3 text-sm text-gray-700 text-right">{formatAmountWithCurrency(retainerAmount)}</td>
+                                <td className="px-4 py-3 text-sm text-gray-700 text-right font-medium">{formatAmountWithCurrency(available)}</td>
+                                <td className="px-4 py-3">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={available}
+                                    step="0.01"
+                                    value={applied || ""}
+                                    onChange={(e) => {
+                                      const next = Math.max(0, toNumSafe(e.target.value, 0));
+                                      const clamped = Math.min(next, available);
+                                      setRetainerApplyValues((prev) => ({ ...prev, [rowId]: clamped }));
+                                    }}
+                                    className="w-full h-[38px] border border-[#93c5fd] rounded px-3 text-sm text-[#0f172a] outline-none text-right"
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="mt-4 flex justify-end">
+                    <div className="w-[360px] bg-[#f8fafc] border border-gray-200 rounded p-3 text-sm space-y-2">
+                      <div className="flex justify-between text-gray-700">
+                        <span>Retainer Amount used:</span>
+                        <span className="font-semibold">{formatAmountWithCurrency(getTotalRetainerApplied())}</span>
+                      </div>
+                      <div className="flex justify-between text-gray-700">
+                        <span>Invoice Balance Due:</span>
+                        <span className="font-semibold">{formatAmountWithCurrency(Math.max(0, getCurrentDocumentBalance() - getTotalRetainerApplied()))}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex items-center gap-3">
+                    <button
+                      type="button"
+                      disabled={isApplyingRetainer}
+                      onClick={handleApplyRetainersSubmit}
+                      className="px-4 py-2 rounded text-white text-sm font-medium disabled:opacity-60"
+                      style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+                    >
+                      {isApplyingRetainer ? "Applying..." : "Apply Retainers"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isApplyingRetainer}
+                      onClick={() => setIsApplyRetainerOpen(false)}
+                      className="px-4 py-2 rounded border border-gray-300 text-sm text-[#334155] bg-white disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

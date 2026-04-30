@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, HelpCircle, Download as DownloadIcon, ChevronRight, Search, Lightbulb, ChevronDown } from "lucide-react";
 
@@ -482,7 +482,7 @@ export default function ImportProjectTasks() {
                 fontSize: "14px",
                 fontWeight: "600"
               }}>
-                {currentStep > 1 ? "âœ“" : "1"}
+                {currentStep > 1 ? "✓" : "1"}
               </div>
               <span style={{
                 fontSize: "14px",

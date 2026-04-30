@@ -329,7 +329,7 @@ export default function TopBar() {
                                 </div>
                               </div>
                               {idx === 0 && (
-                                <div className="w-5 h-5 rounded-full text-white flex items-center justify-center" style={{ background: isLightAppearance ? "#475569" : "linear-gradient(90deg, #0f5f6c 0%, #156372 100%)" }}>
+                                <div className="w-5 h-5 rounded-full text-white flex items-center justify-center" style={{ background: isLightAppearance ? "#156372" : "linear-gradient(90deg, #0f5f6c 0%, #156372 100%)" }}>
                                   <Check size={12} className="text-white" />
                                 </div>
                               )}

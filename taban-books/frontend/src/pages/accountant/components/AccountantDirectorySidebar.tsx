@@ -87,7 +87,7 @@ export function AccountantDirectorySidebar({
             style={{
               border: "1px solid #d1d5db",
               backgroundColor: "#ffffff",
-              color: "#475569",
+              color: "#156372",
               cursor: "pointer",
               padding: "6px",
               display: "flex",
@@ -152,7 +152,7 @@ export function AccountantDirectorySidebar({
                 style={{
                   border: "none",
                   backgroundColor: "transparent",
-                  color: "#475569",
+                  color: "#156372",
                   cursor: "pointer",
                   display: "inline-flex",
                   alignItems: "center",
@@ -198,7 +198,7 @@ export function AccountantDirectorySidebar({
                       display: "grid",
                       gap: "6px",
                       fontSize: "13px",
-                      color: "#475569",
+                      color: "#156372",
                     }}
                   >
                     <div>{selectedAccountant.country}</div>
@@ -212,7 +212,7 @@ export function AccountantDirectorySidebar({
                 <h4 style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#111827" }}>
                   Description
                 </h4>
-                <p style={{ margin: "8px 0 0", fontSize: "13px", lineHeight: 1.7, color: "#475569" }}>
+                <p style={{ margin: "8px 0 0", fontSize: "13px", lineHeight: 1.7, color: "#156372" }}>
                   {selectedAccountant.description}
                 </p>
               </div>
@@ -221,7 +221,7 @@ export function AccountantDirectorySidebar({
                 <h4 style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#111827" }}>
                   Services
                 </h4>
-                <p style={{ margin: "8px 0 0", fontSize: "13px", lineHeight: 1.7, color: "#475569" }}>
+                <p style={{ margin: "8px 0 0", fontSize: "13px", lineHeight: 1.7, color: "#156372" }}>
                   {selectedAccountant.services.join(", ")}
                 </p>
               </div>
@@ -286,7 +286,7 @@ export function AccountantDirectorySidebar({
                     <div style={{ marginTop: "4px", fontSize: "13px", color: "#64748b" }}>
                       {accountant.company}
                     </div>
-                    <div style={{ marginTop: "10px", fontSize: "12px", lineHeight: 1.7, color: "#475569" }}>
+                    <div style={{ marginTop: "10px", fontSize: "12px", lineHeight: 1.7, color: "#156372" }}>
                       {accountant.services.join(", ")}
                     </div>
                   </div>
@@ -302,7 +302,7 @@ export function AccountantDirectorySidebar({
               border: "1px solid #e5e7eb",
               backgroundColor: "#f8fafc",
               fontSize: "13px",
-              color: "#475569",
+              color: "#156372",
             }}
           >
             Want to be listed as an accountant?{" "}

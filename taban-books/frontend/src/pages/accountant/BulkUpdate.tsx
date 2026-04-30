@@ -119,7 +119,7 @@ function SearchableSelect({
   return (
     <div ref={wrapRef} style={{ position: "relative" }}>
       {label ? (
-        <label style={{ display: "block", fontSize: 12, color: required ? "#ef4444" : "#475569", marginBottom: 6 }}>
+        <label style={{ display: "block", fontSize: 12, color: required ? "#ef4444" : "#156372", marginBottom: 6 }}>
           {label}{required ? "*" : ""}
         </label>
       ) : null}
@@ -141,7 +141,7 @@ function SearchableSelect({
         }}
       >
         <span>{selected?.label || placeholder}</span>
-        <span style={{ float: "right", color: "#64748b" }}>▾</span>
+        <span style={{ float: "right", color: "#64748b" }}>?</span>
       </button>
 
       {open && (
@@ -634,10 +634,16 @@ export default function BulkUpdate() {
             <div style={{ padding: "18px 24px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <h3 style={{ margin: 0, fontSize: 18, fontWeight: 500, color: "#111827" }}>Filter Transactions</h3>
               <button onClick={() => setShowFilterModal(false)} style={{ border: "none", background: "none", color: "#64748b", cursor: "pointer", fontSize: 24 }}>×</button>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1200, padding: 16 }}>
+          <div style={{ width: "100%", maxWidth: 1040, background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 25px 50px rgba(15, 23, 42, 0.2)", overflow: "hidden" }}>
+            <div style={{ padding: "20px 24px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h3 style={{ margin: 0, fontSize: 28, fontWeight: 500, color: "#111827" }}>Filter Transactions</h3>
+              <button onClick={() => setShowFilterModal(false)} style={{ width: 36, height: 36, borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer", fontSize: 20 }}>�</button>
             </div>
             
             <div style={{ padding: 24 }}>
               <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: 13 }}>
+              <p style={{ margin: "0 0 18px", color: "#156372", fontSize: 16 }}>
                 Select an account and enter your ranges to filter your transaction
               </p>
               
@@ -684,7 +690,7 @@ export default function BulkUpdate() {
                 />
 
                 <div></div>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: "#475569" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: "#156372" }}>
                   <input
                     type="checkbox"
                     checked={filters.includeInactiveAccounts}

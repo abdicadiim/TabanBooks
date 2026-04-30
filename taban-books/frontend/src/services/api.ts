@@ -47,6 +47,19 @@ const PURCHASE_ENDPOINT_PATTERNS = [
   '/vendors',
 ];
 
+const buildQueryString = (params: Record<string, any> = {}): string => {
+  const searchParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    const normalized = Array.isArray(value) ? value.join(",") : String(value);
+    if (normalized.trim() === "") return;
+    searchParams.append(key, normalized);
+  });
+
+  return searchParams.toString();
+};
+
 const CURRENCY_CODE_REGEX = /^[A-Z]{3}$/;
 
 const normalizeCurrencyCode = (value?: string | null): string => {
@@ -619,6 +632,7 @@ export const retainerInvoicesAPI = {
   update: (id: any, data: any) => apiRequest(`/retainer-invoices/${id}`, { method: 'PUT', body: data }),
   delete: (id: any) => apiRequest(`/retainer-invoices/${id}`, { method: 'DELETE' }),
   sendEmail: (id: any, data: any) => apiRequest(`/retainer-invoices/${id}/email`, { method: 'POST', body: data }),
+  applyToInvoices: (id: any, allocations: any[]) => apiRequest(`/retainer-invoices/${id}/apply-to-invoices`, { method: 'POST', body: { allocations } }),
 };
 
 // ============================================================================
@@ -645,7 +659,7 @@ export const debitNotesAPI = {
 
 export const salesReceiptsAPI = {
   getAll: (params: any = {}) => {
-    const queryString = new URLSearchParams(params).toString();
+    const queryString = buildQueryString(params);
     return apiRequest(`/sales-receipts${queryString ? `?${queryString}` : ''}`);
   },
   getById: (id: any) => apiRequest(`/sales-receipts/${id}`),

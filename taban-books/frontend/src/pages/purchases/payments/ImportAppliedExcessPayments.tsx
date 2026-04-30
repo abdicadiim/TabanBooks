@@ -1,4 +1,4 @@
-﻿import React, {
+import React, {
     useState,
     useRef,
     useEffect,
@@ -343,7 +343,7 @@ export default function ImportAppliedExcessPayments() {
                         color: "#6b7280",
                         marginTop: "8px",
                     }}>
-                        Maximum File Size: 25 MB â€¢ File Format: CSV or TSV or XLS
+                        Maximum File Size: 25 MB • File Format: CSV or TSV or XLS
                     </p>
                 </div>
 

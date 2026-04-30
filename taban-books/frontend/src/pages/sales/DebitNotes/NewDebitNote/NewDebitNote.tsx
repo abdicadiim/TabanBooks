@@ -443,7 +443,8 @@ export default function NewDebitNote() {
   const resolvedBaseCurrencySymbol = baseCurrency?.symbol || "";
   const isEditMode = Boolean(debitNoteId);
   const invoiceId = new URLSearchParams(location.search).get("invoiceId") || "";
-  const clonedDataFromState = location.state?.clonedData || null;
+  const debitNoteFromState = location.state?.debitNote || null;
+  const clonedDataFromState = location.state?.clonedData || debitNoteFromState || null;
 
   const [formData, setFormData] = useState<DebitNoteFormData>({
     customerName: "",
@@ -1435,41 +1436,100 @@ export default function NewDebitNote() {
       setIsLoadingDebitNote(true);
       try {
         let note: any = null;
-        try {
+        if (debitNoteFromState) {
+          note = debitNoteFromState;
+        }
+
+        if (!note && debitNoteId) {
           const response = await debitNotesAPI.getById(debitNoteId);
           note = (response as any)?.data || response;
-        } catch (error: any) {
-          const status = error?.status || error?.response?.status;
-          const message = String(error?.message || error?.response?.data?.message || "").toLowerCase();
-          const shouldTryInvoiceFallback = status === 404 || message.includes("not found");
-          if (shouldTryInvoiceFallback) {
-            const invoiceFallbackId = String(invoiceId || debitNoteId || "").trim();
-            if (invoiceFallbackId) {
-              try {
-                const linkedResponse = await debitNotesAPI.getByInvoice(invoiceFallbackId);
-                const linkedRows = Array.isArray((linkedResponse as any)?.data)
-                  ? (linkedResponse as any).data
-                  : Array.isArray(linkedResponse)
-                    ? linkedResponse
-                    : [];
-                note = linkedRows[0] || null;
-              } catch {
-                note = null;
+        }
+
+        if (!note) {
+          try {
+            const routeInvoiceId = String(invoiceId || debitNoteId || "").trim();
+            if (routeInvoiceId) {
+              const invoiceResponse = await invoicesAPI.getById(routeInvoiceId);
+              const invoiceRecord = (invoiceResponse as any)?.data || invoiceResponse || null;
+              if (invoiceRecord) {
+                note = {
+                  ...invoiceRecord,
+                  associatedInvoiceId: String(invoiceRecord?.id || invoiceRecord?._id || routeInvoiceId),
+                  associatedInvoiceNumber: String(invoiceRecord?.invoiceNumber || invoiceRecord?.number || "").trim(),
+                };
               }
             }
-          }
-          if (!note) {
-            throw error;
+          } catch (error: any) {
+            const status = error?.status || error?.response?.status;
+            const message = String(error?.message || error?.response?.data?.message || "").toLowerCase();
+            const shouldTryInvoiceFallback = status === 404 || message.includes("not found");
+            if (shouldTryInvoiceFallback) {
+              const invoiceFallbackId = String(invoiceId || debitNoteId || "").trim();
+              if (invoiceFallbackId) {
+                try {
+                  const linkedResponse = await debitNotesAPI.getByInvoice(invoiceFallbackId);
+                  const linkedRows = Array.isArray((linkedResponse as any)?.data)
+                    ? (linkedResponse as any).data
+                    : Array.isArray(linkedResponse)
+                      ? linkedResponse
+                      : [];
+                  note = linkedRows[0] || null;
+                } catch {
+                  try {
+                    const invoiceResponse = await invoicesAPI.getById(invoiceFallbackId);
+                    const invoiceRecord = (invoiceResponse as any)?.data || invoiceResponse || null;
+                    if (invoiceRecord) {
+                      note = {
+                        ...invoiceRecord,
+                        associatedInvoiceId: String(invoiceRecord?.id || invoiceRecord?._id || invoiceFallbackId),
+                        associatedInvoiceNumber: String(invoiceRecord?.invoiceNumber || invoiceRecord?.number || "").trim(),
+                      };
+                    }
+                  } catch {
+                    note = null;
+                  }
+                }
+              }
+            }
+            if (!note && debitNoteFromState) {
+              note = debitNoteFromState;
+            }
+            if (!note) {
+              throw error;
+            }
           }
         }
 
         if (!note) {
-          toast.error("Debit note not found.");
-          navigate("/sales/invoices");
-          return;
+          const fallbackInvoiceId = String(invoiceId || debitNoteId || "").trim();
+          if (fallbackInvoiceId) {
+            try {
+              const invoiceResponse = await invoicesAPI.getById(fallbackInvoiceId);
+              const invoiceRecord = (invoiceResponse as any)?.data || invoiceResponse || null;
+              if (invoiceRecord) {
+                note = {
+                  ...invoiceRecord,
+                  associatedInvoiceId: String(invoiceRecord?.id || invoiceRecord?._id || fallbackInvoiceId),
+                  associatedInvoiceNumber: String(invoiceRecord?.invoiceNumber || invoiceRecord?.number || "").trim(),
+                };
+              }
+            } catch {
+              note = null;
+            }
+          }
         }
 
-        setLoadedDebitNote(note);
+        if (!note) {
+          if (debitNoteFromState) {
+            note = debitNoteFromState;
+          } else {
+            throw new Error("Debit note not found");
+          }
+        }
+
+        if (note) {
+          setLoadedDebitNote(note);
+        }
 
         const customerId = String(
           note?.customerId ||

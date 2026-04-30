@@ -106,7 +106,7 @@ export function ManualJournalsListBulkActions({
             borderRadius: "10px",
             padding: "10px 14px",
             backgroundColor: "#ffffff",
-            color: "#475569",
+            color: "#156372",
             cursor: "pointer",
             fontSize: "14px",
             fontWeight: 600,

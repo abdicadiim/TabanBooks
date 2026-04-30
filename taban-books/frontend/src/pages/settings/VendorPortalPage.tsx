@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { Edit, Copy, Check, ExternalLink } from "lucide-react";
 
 export default function VendorPortalPage() {

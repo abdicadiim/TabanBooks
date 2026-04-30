@@ -1,4 +1,4 @@
-﻿export interface AccountantDirectoryEntry {
+export interface AccountantDirectoryEntry {
   id: number;
   name: string;
   company: string;

@@ -45,6 +45,7 @@ const FieldCustomization: React.FC<any> = () => null;
 
 const salesReceiptViews = [
   "All",
+  "Draft",
   "Paid",
   "Void"
 ];
@@ -52,6 +53,7 @@ const salesReceiptViews = [
 const viewStatusMap = {
   All: "All",
   Paid: "paid",
+  Draft: "draft",
   Void: "void"
 };
 
@@ -81,10 +83,17 @@ const isSortDescendingOption = (option: string) =>
 
 const normalizeSalesReceiptStatus = (value: any) => {
   const status = String(value || "").trim().toLowerCase();
-  return status === "void" ? "void" : "paid";
+  if (status === "draft") return "draft";
+  if (status === "void") return "void";
+  return "paid";
 };
 
-const getSalesReceiptStatusLabel = (value: any) => (normalizeSalesReceiptStatus(value) === "void" ? "VOID" : "PAID");
+const getSalesReceiptStatusLabel = (value: any) => {
+  const status = normalizeSalesReceiptStatus(value);
+  if (status === "draft") return "DRAFT";
+  if (status === "void") return "VOID";
+  return "PAID";
+};
 const isSalesReceiptEmailSent = (receipt: any) => {
   const rawStatus = String(receipt?.status || receipt?.emailStatus || "").trim().toLowerCase();
   return Boolean(
@@ -613,7 +622,8 @@ export default function SalesReceipts() {
     let filtered = Array.isArray(allReceipts) ? allReceipts : [];
 
     // Check if it's a custom view
-    const customView = views.find(v => v.name === status);
+    const normalizedStatus = String(status || "").trim();
+    const customView = ["All", "Paid", "Draft", "Void"].includes(normalizedStatus) ? null : views.find(v => v.name === status);
     if (customView && customView.criteria) {
       filtered = filtered.filter(receipt => {
         return customView.criteria.every(criterion => {
@@ -973,7 +983,7 @@ export default function SalesReceipts() {
     }
 
     if (advancedSearchData.filterType && advancedSearchData.filterType !== "All") {
-      filtered = filtered.filter(r => (r.status || "completed").toLowerCase() === advancedSearchData.filterType.toLowerCase());
+      filtered = filtered.filter(r => normalizeSalesReceiptStatus(r.status) === normalizeSalesReceiptStatus(advancedSearchData.filterType));
     }
 
     setFilteredSalesReceipts(filtered);
@@ -1980,7 +1990,9 @@ export default function SalesReceipts() {
                         {isColumnVisible("status") && <td className="p-4">
                         <span className={`text-xs font-semibold ${normalizeSalesReceiptStatus(receipt.status) === "void"
                           ? "text-rose-700"
-                          : "text-emerald-700"
+                          : normalizeSalesReceiptStatus(receipt.status) === "draft"
+                            ? "text-amber-700"
+                            : "text-emerald-700"
                           }`}>
                             {getSalesReceiptStatusLabel(receipt.status)}
                           </span>

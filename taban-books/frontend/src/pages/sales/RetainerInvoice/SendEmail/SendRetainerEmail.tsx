@@ -349,7 +349,7 @@ Amount : ${currency}${amount.toFixed(2)}
                 />
                 <span>Attach Retainer Invoice PDF</span>
               </label>
-              <div className="inline-flex items-center gap-1 rounded border border-dashed border-[#d1d5db] px-3 py-1 text-[12px] text-[#475569] min-w-[240px] justify-center">
+              <div className="inline-flex items-center gap-1 rounded border border-dashed border-[#d1d5db] px-3 py-1 text-[12px] text-[#156372] min-w-[240px] justify-center">
                 <Paperclip size={12} className="text-red-500" />
                 <span>{String(invoice?.invoiceNumber || "RET-")}</span>
               </div>

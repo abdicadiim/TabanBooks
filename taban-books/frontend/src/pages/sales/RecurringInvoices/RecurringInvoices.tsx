@@ -1497,7 +1497,7 @@ export default function RecurringInvoices() {
 
         {!hasLoadedOnce ? (
           <div className="h-full bg-white">
-                <div className="h-full overflow-auto scrollbar-hide bg-[#f6f7fb]">
+                <div className="h-full overflow-auto scrollbar-hide bg-white">
               <table className="w-full min-w-full border-collapse text-sm bg-white">
                 <thead className="bg-[#f6f7fb] border-b border-[#e6e9f2] sticky top-0 z-20">
                   <tr className="text-[10px] font-semibold text-[#7b8494] uppercase tracking-wider">
@@ -1546,7 +1546,7 @@ export default function RecurringInvoices() {
           </div>
         ) : (
           <div className="h-full bg-white">
-            <div className="h-full overflow-auto scrollbar-hide bg-[#f6f7fb]">
+            <div className="h-full overflow-auto scrollbar-hide bg-white">
               <table className="w-full min-w-full border-collapse text-sm bg-white">
                 <thead className="bg-[#f6f7fb] border-b border-[#e6e9f2] sticky top-0 z-20">
                   <tr className="text-[10px] font-semibold text-[#7b8494] uppercase tracking-wider">

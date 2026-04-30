@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { GripVertical, Plus, X } from "lucide-react";
 
 import { MANUAL_JOURNAL_TEMPLATE_FIELD_OPTIONS } from "./config";
@@ -159,7 +159,7 @@ export function ManualJournalTemplateModal({
                   border: "1px dashed #94a3b8",
                   padding: "10px 14px",
                   backgroundColor: "#ffffff",
-                  color: "#475569",
+                  color: "#156372",
                   cursor: "pointer",
                   fontSize: "14px",
                   fontWeight: 600,
@@ -230,7 +230,7 @@ const closeButtonStyle: React.CSSProperties = {
   borderRadius: "999px",
   border: "1px solid #d1d5db",
   backgroundColor: "#ffffff",
-  color: "#475569",
+  color: "#156372",
   cursor: "pointer",
 };
 
@@ -268,7 +268,7 @@ const secondaryButtonStyle: React.CSSProperties = {
   border: "1px solid #d1d5db",
   padding: "11px 16px",
   backgroundColor: "#ffffff",
-  color: "#475569",
+  color: "#156372",
   cursor: "pointer",
   fontSize: "14px",
   fontWeight: 600,

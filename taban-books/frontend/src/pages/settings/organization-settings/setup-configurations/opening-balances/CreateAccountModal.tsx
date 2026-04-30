@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { X, Search, ChevronUp, ChevronDown, Info } from "lucide-react";
 import { chartOfAccountsAPI } from "../../../../../services/api";
@@ -198,9 +198,9 @@ export default function CreateAccountModal({ accountType, onClose, onSave }: Cre
   };
 
   const accountTypeInfo: Record<string, string> = {
-    "Expense": "Reflects expenses incurred for running normal business operations, such as:\nâ€¢ Advertisements and Marketing\nâ€¢ Business Travel Expenses\nâ€¢ License Fees\nâ€¢ Utility Expenses",
-    "Asset": "Resources owned by the business that have economic value, such as:\nâ€¢ Cash\nâ€¢ Inventory\nâ€¢ Equipment\nâ€¢ Property",
-    "Liability": "Obligations or debts owed by the business, such as:\nâ€¢ Accounts Payable\nâ€¢ Loans\nâ€¢ Taxes Payable",
+    "Expense": "Reflects expenses incurred for running normal business operations, such as:\n• Advertisements and Marketing\n• Business Travel Expenses\n• License Fees\n• Utility Expenses",
+    "Asset": "Resources owned by the business that have economic value, such as:\n• Cash\n• Inventory\n• Equipment\n• Property",
+    "Liability": "Obligations or debts owed by the business, such as:\n• Accounts Payable\n• Loans\n• Taxes Payable",
     "Equity": "Owners or stakeholders interest on the assets of the business after deducting all the liabilities",
     "Income": "Income or Revenue earned from normal business activities like sale of goods and services to customers",
     "Bank": "Bank accounts and cash accounts used for business transactions"

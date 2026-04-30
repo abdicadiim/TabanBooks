@@ -1,4 +1,7 @@
+<<<<<<< Updated upstream
 
+=======
+>>>>>>> Stashed changes
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -960,7 +963,7 @@ export default function RecordExpense() {
           expenseAccount: expenseData.account_name || expenseData.account_id,
           paidThrough: expenseData.paid_through_account_name || expenseData.paid_through_account_id
         });
-        // Do not block expense creation â€” log and return so system remains consistent
+        // Do not block expense creation — log and return so system remains consistent
         return;
       }
 
@@ -1903,7 +1906,7 @@ export default function RecordExpense() {
             <button
               className={`px-5 py-3 text-sm font-medium rounded-t-md border border-b-0 transition-colors ${activeTab === "expense"
                 ? "bg-white text-[#334155] border-[#d1d5db] border-t-[3px] border-t-[#156372]"
-                : "bg-[#f1f5f9] text-[#475569] border-[#d1d5db]"
+                : "bg-[#f1f5f9] text-[#156372] border-[#d1d5db]"
                 }`}
               onClick={() => setActiveTab("expense")}
             >
@@ -4066,7 +4069,7 @@ export default function RecordExpense() {
                       <Info size={14} color="#9ca3af" />
                     </label>
                     <div style={{ position: "relative" }}>
-                      <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}>âœ‰</span>
+                      <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}>✉</span>
                       <input
                         type="email"
                         style={{
@@ -4090,7 +4093,7 @@ export default function RecordExpense() {
                     </label>
                     <div style={{ display: "flex", gap: "8px" }}>
                       <div style={{ position: "relative", flex: 1 }}>
-                        <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}>ðŸ“ž</span>
+                        <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}>📞</span>
                         <input
                           type="text"
                           placeholder="Work Phone"
@@ -4106,7 +4109,7 @@ export default function RecordExpense() {
                         />
                       </div>
                       <div style={{ position: "relative", flex: 1 }}>
-                        <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}>ðŸ“±</span>
+                        <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}>📱</span>
                         <input
                           type="text"
                           placeholder="Mobile"
@@ -4325,7 +4328,7 @@ export default function RecordExpense() {
                               Website URL
                             </label>
                             <div style={{ position: "relative" }}>
-                              <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}>ðŸŒ</span>
+                              <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}>🌐</span>
                               <input
                                 type="text"
                                 placeholder="ex: www.zyiker.com"
@@ -4386,7 +4389,7 @@ export default function RecordExpense() {
                               X
                             </label>
                             <div style={{ position: "relative" }}>
-                              <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", fontSize: "16px" }}>ð•</span>
+                              <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", fontSize: "16px" }}>𝕏</span>
                               <input
                                 type="text"
                                 placeholder="https://x.com/"
@@ -4688,7 +4691,7 @@ export default function RecordExpense() {
                       <Info size={14} color="#9ca3af" />
                     </label>
                     <div style={{ position: "relative" }}>
-                      <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}>âœ‰</span>
+                      <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}>✉</span>
                       <input
                         type="email"
                         style={{
@@ -4712,7 +4715,7 @@ export default function RecordExpense() {
                     </label>
                     <div style={{ display: "flex", gap: "8px" }}>
                       <div style={{ position: "relative", flex: 1 }}>
-                        <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}>ðŸ“ž</span>
+                        <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}>📞</span>
                         <input
                           type="text"
                           placeholder="Work Phone"
@@ -4728,7 +4731,7 @@ export default function RecordExpense() {
                         />
                       </div>
                       <div style={{ position: "relative", flex: 1 }}>
-                        <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}>ðŸ“±</span>
+                        <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}>📱</span>
                         <input
                           type="text"
                           placeholder="Mobile"
@@ -4947,7 +4950,7 @@ export default function RecordExpense() {
                               Website URL
                             </label>
                             <div style={{ position: "relative" }}>
-                              <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}>ðŸŒ</span>
+                              <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }}>🌐</span>
                               <input
                                 type="text"
                                 placeholder="ex: www.zylker.com"
@@ -5008,7 +5011,7 @@ export default function RecordExpense() {
                               X
                             </label>
                             <div style={{ position: "relative" }}>
-                              <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", fontSize: "16px" }}>ð•</span>
+                              <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", fontSize: "16px" }}>𝕏</span>
                               <input
                                 type="text"
                                 placeholder="https://x.com/"

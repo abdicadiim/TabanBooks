@@ -767,7 +767,7 @@ const ItemsList = ({
                         style={sortSubMenuOpen ? { backgroundColor: '#334155' } : {}}
                       >
                         <div className="flex items-center gap-3">
-                          <ArrowUpDown size={16} className={sortSubMenuOpen ? 'text-white' : ''} style={!sortSubMenuOpen ? { color: '#475569' } : {}} />
+                          <ArrowUpDown size={16} className={sortSubMenuOpen ? 'text-white' : ''} style={!sortSubMenuOpen ? { color: '#156372' } : {}} />
                           <span className="font-medium">Sort by</span>
                         </div>
                         <ChevronRight size={14} className={sortSubMenuOpen ? 'text-white' : 'text-slate-400'} />
@@ -812,7 +812,7 @@ const ItemsList = ({
                         style={exportSubMenuOpen ? { backgroundColor: '#334155' } : {}}
                       >
                         <div className="flex items-center gap-3">
-                          <Download size={16} className={exportSubMenuOpen ? 'text-white' : ''} style={!exportSubMenuOpen ? { color: '#475569' } : {}} />
+                          <Download size={16} className={exportSubMenuOpen ? 'text-white' : ''} style={!exportSubMenuOpen ? { color: '#156372' } : {}} />
                           <span className="font-medium">Export</span>
                         </div>
                         <ChevronRight size={14} className={exportSubMenuOpen ? 'text-white' : 'text-slate-400'} />
@@ -968,7 +968,7 @@ const ItemsList = ({
                           checked={isSelected}
                           onChange={() => toggleSelectOne(id)}
                           onClick={(e) => e.stopPropagation()}
-                          style={{ accentColor: '#475569' }}
+                          style={{ accentColor: '#156372' }}
                           className="cursor-pointer h-4 w-4 rounded border-gray-300 transition-all focus:ring-0"
                         />
                       </div>

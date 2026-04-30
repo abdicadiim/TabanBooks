@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { Edit, Copy, Check, ExternalLink, X, Monitor } from "lucide-react";
 import { createPortal } from "react-dom";
 

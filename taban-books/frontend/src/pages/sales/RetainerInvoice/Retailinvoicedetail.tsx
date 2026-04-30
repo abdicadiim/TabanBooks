@@ -1279,7 +1279,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
             body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #334155; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .invoice-page { width: 100%; min-height: 273mm; border: 1px solid #d6d9e3; max-width: 910px; margin: 0 auto; padding: 32px 32px 40px; }
             .top-row { display: flex; justify-content: space-between; align-items: flex-start; margin: 20px 0 32px; }
-            .org-meta { padding-top: 32px; padding-left: 56px; line-height: 1.35; font-size: 13px; color: #475569; }
+            .org-meta { padding-top: 32px; padding-left: 56px; line-height: 1.35; font-size: 13px; color: #156372; }
             .org-meta .org-name { font-size: 14px; font-weight: 600; color: #334155; }
             .doc-meta { text-align: right; color: #0f172a; }
             .doc-meta h1 { margin: 0; font-size: 20px; letter-spacing: 0.03em; font-weight: 500; line-height: 1.1; white-space: nowrap; }
@@ -1288,7 +1288,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
             .balance-label { margin-top: 16px; font-size: 14px; }
             .balance-amount { margin-top: 2px; font-size: 20px; font-weight: 600; line-height: 1.1; }
             .bill-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; }
-            .bill-row .label { font-size: 13px; color: #475569; margin-bottom: 2px; }
+            .bill-row .label { font-size: 13px; color: #156372; margin-bottom: 2px; }
             .bill-row .value { font-size: 13px; font-weight: 600; color: #2f66b3; line-height: 1.1; }
             .invoice-date { font-size: 13px; color: #334155; padding-top: 16px; }
             .line-table-wrap { border: 1px solid #d6d9e3; margin-top: 8px; }
@@ -2065,7 +2065,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col min-w-0 h-full min-h-0 bg-[#f3f4f8]">
+      <div className="flex-1 flex flex-col min-w-0 h-full min-h-0 bg-white">
         <div className="sticky top-0 z-20 bg-white">
           <div className="flex items-center justify-between px-4 h-[74px] border-b border-gray-200 bg-white">
             <div className="min-w-0">
@@ -2176,19 +2176,19 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
             </div>
           </div>
 
-          <div className="h-8 border-b border-[#d6d9e3] bg-[#f7f8fc] px-4 flex items-center gap-2 text-[12px] text-[#475569]">
+          <div className="h-8 border-b border-[#d6d9e3] bg-[#f7f8fc] px-4 flex items-center gap-2 text-[12px] text-[#156372]">
           {!isVoidStatus && (
             <>
               <button
                 onClick={() => navigate(`/sales/retainer-invoices/${id}/edit`)}
-                className="inline-flex items-center gap-1 text-[#475569] hover:text-[#0f172a]"
+                className="inline-flex items-center gap-1 text-[#156372] hover:text-[#0f172a]"
               >
                 <Edit size={14} /> Edit
               </button>
               <div className="h-5 w-px bg-[#d9dde7]" />
               <button
                 onClick={() => navigate(`/sales/retainer-invoices/${id}/send-email`)}
-                className="inline-flex items-center gap-1 text-[#475569] hover:text-[#0f172a]"
+                className="inline-flex items-center gap-1 text-[#156372] hover:text-[#0f172a]"
               >
                 <Mail size={14} /> Send Email
               </button>
@@ -2200,7 +2200,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
               <button
                 type="button"
                 onClick={handleOpenApplyCurrentRetainerModal}
-                className="inline-flex items-center gap-1 text-[#475569] hover:text-[#0f172a]"
+                className="inline-flex items-center gap-1 text-[#156372] hover:text-[#0f172a]"
               >
                 <Banknote size={14} /> Apply to Invoices
               </button>
@@ -2211,7 +2211,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
             onClick={() => {
               void downloadCurrentInvoicePdf();
             }}
-            className="inline-flex items-center gap-1 text-[#475569] border border-[#cfd5e2] bg-white rounded px-2 py-0.5"
+            className="inline-flex items-center gap-1 text-[#156372] border border-[#cfd5e2] bg-white rounded px-2 py-0.5"
           >
             <FileText size={14} /> {isVoidStatus ? "PDF/Print" : "PDF"} {isVoidStatus && <ChevronDown size={12} />}
           </button>
@@ -2222,7 +2222,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
                 onClick={() => {
                   void handleConvertToDraft();
                 }}
-                className="inline-flex items-center gap-1 text-[#475569] hover:text-[#0f172a]"
+                className="inline-flex items-center gap-1 text-[#156372] hover:text-[#0f172a]"
               >
                 <RotateCcw size={14} /> Convert to Draft
               </button>
@@ -2233,7 +2233,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
               <div className="relative" ref={paymentMenuRef}>
                 <button
                   onClick={() => setIsRecordPaymentMenuOpen((prev) => !prev)}
-                  className="inline-flex items-center gap-1 text-[#475569] border border-[#cfd5e2] bg-white rounded px-1.5 py-0.5"
+                  className="inline-flex items-center gap-1 text-[#156372] border border-[#cfd5e2] bg-white rounded px-1.5 py-0.5"
                 >
                   <Banknote size={14} /> Record Payment <ChevronDown size={12} />
                 </button>
@@ -2258,7 +2258,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
             <button
               type="button"
               onClick={() => setIsDetailActionsMenuOpen((prev) => !prev)}
-              className="inline-flex items-center gap-1 text-[#475569] hover:text-[#0f172a]"
+              className="inline-flex items-center gap-1 text-[#156372] hover:text-[#0f172a]"
             >
               <MoreHorizontal size={14} />
             </button>
@@ -2317,7 +2317,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
         </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2 md:p-3 bg-gray-50 min-h-0">
+        <div className="flex-1 overflow-y-auto p-2 md:p-3 bg-white min-h-0">
           {loading ? (
             <div className="text-slate-500">Loading...</div>
           ) : !invoice ? (
@@ -2513,7 +2513,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
                             normalizedAssociatedTags.map((tag: any, index: number) => (
                               <span
                                 key={`${tag.text}-${index}`}
-                                className="inline-flex items-center rounded-md border border-[#cbd5e1] bg-[#f8fafc] px-2 py-0.5 text-[13px] text-[#475569]"
+                                className="inline-flex items-center rounded-md border border-[#cbd5e1] bg-[#f8fafc] px-2 py-0.5 text-[13px] text-[#156372]"
                               >
                                 {tag.text}
                               </span>
@@ -2676,7 +2676,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
                   Retainer Invoice status will be changed to 'Sent' once payment is recorded
                 </p>
               </div>
-              <label className="mt-3 inline-flex items-center gap-2 text-[15px] text-[#475569]">
+              <label className="mt-3 inline-flex items-center gap-2 text-[15px] text-[#156372]">
                 <input
                   type="checkbox"
                   checked={dontShowDraftRecordPaymentAgain}
@@ -2759,7 +2759,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
                         <span>{emailData.to}</span>
                         <button
                           type="button"
-                          className="text-[#94a3b8] hover:text-[#475569]"
+                          className="text-[#94a3b8] hover:text-[#156372]"
                           onClick={() => setEmailData((prev) => ({ ...prev, to: "" }))}
                         >
                           <X size={12} />
@@ -2857,7 +2857,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
                   />
                   <span>Attach Retainer Invoice PDF</span>
                 </label>
-                <div className="inline-flex items-center gap-1 rounded border border-dashed border-[#d1d5db] px-3 py-1 text-[12px] text-[#475569]">
+                <div className="inline-flex items-center gap-1 rounded border border-dashed border-[#d1d5db] px-3 py-1 text-[12px] text-[#156372]">
                   <FileText size={13} className="text-red-500" />
                   <span>{String((invoice as any)?.invoiceNumber || "RET-")}</span>
                 </div>

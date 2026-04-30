@@ -8,7 +8,6 @@ export default function LoadingPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isNewUser = location.state?.isNewUser || false;
-  const MINIMUM_LOADING_MS = 2500;
   const [title, setTitle] = useState(isNewUser ? "Welcome to Taban!" : "Welcome back!");
   const [subtitle, setSubtitle] = useState(
     isNewUser ? "Setting up your workspace..." : "Preparing your dashboard...",
@@ -60,10 +59,12 @@ export default function LoadingPage() {
     void dashboardService.primeHomeHydration();
 
     const runHydration = async () => {
+      const minimumDelay = hasWarmState ? 900 : 1400;
+
       try {
         const bootstrapPromise = Promise.race([
           getSessionBootstrap("loading:hydration"),
-          new Promise<null>((resolve) => window.setTimeout(() => resolve(null), MINIMUM_LOADING_MS)),
+          new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 2500)),
         ]);
 
         setSubtitle(
@@ -74,7 +75,7 @@ export default function LoadingPage() {
 
         await Promise.allSettled([
           bootstrapPromise,
-          new Promise<void>((resolve) => window.setTimeout(resolve, MINIMUM_LOADING_MS)),
+          new Promise<void>((resolve) => window.setTimeout(resolve, minimumDelay)),
         ]);
       } finally {
         if (cancelled) return;

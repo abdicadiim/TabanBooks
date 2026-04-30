@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useMemo } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
@@ -2892,9 +2892,9 @@ export default function VendorDetail() {
     return (
       <div className="w-full bg-white border border-gray-200 rounded-lg shadow-sm p-4">
         <div className="flex items-center justify-between mb-3">
-          <button className="px-2 py-1 text-gray-600 hover:bg-gray-100 rounded cursor-pointer" onClick={onPrevMonth}>Â«</button>
+          <button className="px-2 py-1 text-gray-600 hover:bg-gray-100 rounded cursor-pointer" onClick={onPrevMonth}>«</button>
           <span className="text-sm font-semibold text-gray-900">{months[month]} {year}</span>
-          <button className="px-2 py-1 text-gray-600 hover:bg-gray-100 rounded cursor-pointer" onClick={onNextMonth}>Â»</button>
+          <button className="px-2 py-1 text-gray-600 hover:bg-gray-100 rounded cursor-pointer" onClick={onNextMonth}>»</button>
         </div>
         <div className="grid grid-cols-7 gap-1 mb-2">
           {daysOfWeek.map(day => (

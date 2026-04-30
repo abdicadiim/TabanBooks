@@ -1,4 +1,4 @@
-﻿import type { ManualJournalCustomView } from "../manualJournalTypes";
+import type { ManualJournalCustomView } from "../manualJournalTypes";
 
 export type ManualJournalBuiltInView = "All" | "Draft" | "Published";
 export type ManualJournalExportType =

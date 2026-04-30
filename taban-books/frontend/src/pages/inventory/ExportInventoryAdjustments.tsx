@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { X, Info as InfoIcon, Loader2, Eye, EyeOff, HelpCircle, Search, Plus, ChevronUp, Calendar } from "lucide-react";
 import { inventoryAdjustmentsAPI } from "../../services/api";
 import toast from "react-hot-toast";
@@ -590,9 +590,9 @@ export default function ExportInventoryAdjustmentsModal({ isOpen, onClose }: Exp
                       {dateFromPickerOpen && (
                         <div className="absolute top-full left-0 mt-2 bg-white border border-[#d1d5db] rounded-lg shadow-xl z-[1200] w-[280px] p-4 animate-in fade-in zoom-in-95 duration-200">
                           <div className="flex items-center justify-between mb-4">
-                            <button onClick={(e) => { e.stopPropagation(); navigateDateFromMonth("prev"); }} className="p-1 hover:bg-gray-100 rounded text-gray-600">Â«</button>
+                            <button onClick={(e) => { e.stopPropagation(); navigateDateFromMonth("prev"); }} className="p-1 hover:bg-gray-100 rounded text-gray-600">«</button>
                             <span className="text-[14px] font-semibold text-gray-900">{dateFromCalendar.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
-                            <button onClick={(e) => { e.stopPropagation(); navigateDateFromMonth("next"); }} className="p-1 hover:bg-gray-100 rounded text-gray-600">Â»</button>
+                            <button onClick={(e) => { e.stopPropagation(); navigateDateFromMonth("next"); }} className="p-1 hover:bg-gray-100 rounded text-gray-600">»</button>
                           </div>
                           <div className="grid grid-cols-7 gap-1 mb-2">
                             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
@@ -640,9 +640,9 @@ export default function ExportInventoryAdjustmentsModal({ isOpen, onClose }: Exp
                       {dateToPickerOpen && (
                         <div className="absolute top-full left-0 mt-2 bg-white border border-[#d1d5db] rounded-lg shadow-xl z-[1200] w-[280px] p-4 animate-in fade-in zoom-in-95 duration-200">
                           <div className="flex items-center justify-between mb-4">
-                            <button onClick={(e) => { e.stopPropagation(); navigateDateToMonth("prev"); }} className="p-1 hover:bg-gray-100 rounded text-gray-600">Â«</button>
+                            <button onClick={(e) => { e.stopPropagation(); navigateDateToMonth("prev"); }} className="p-1 hover:bg-gray-100 rounded text-gray-600">«</button>
                             <span className="text-[14px] font-semibold text-gray-900">{dateToCalendar.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
-                            <button onClick={(e) => { e.stopPropagation(); navigateDateToMonth("next"); }} className="p-1 hover:bg-gray-100 rounded text-gray-600">Â»</button>
+                            <button onClick={(e) => { e.stopPropagation(); navigateDateToMonth("next"); }} className="p-1 hover:bg-gray-100 rounded text-gray-600">»</button>
                           </div>
                           <div className="grid grid-cols-7 gap-1 mb-2">
                             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
@@ -722,9 +722,9 @@ export default function ExportInventoryAdjustmentsModal({ isOpen, onClose }: Exp
                         {dateFromPickerOpen && (
                           <div className="absolute top-full left-0 mt-2 bg-white border border-[#d1d5db] rounded-lg shadow-xl z-[1200] w-[280px] p-4 animate-in fade-in zoom-in-95 duration-200">
                             <div className="flex items-center justify-between mb-4">
-                              <button onClick={(e) => { e.stopPropagation(); navigateDateFromMonth("prev"); }} className="p-1 hover:bg-gray-100 rounded text-gray-600">Â«</button>
+                              <button onClick={(e) => { e.stopPropagation(); navigateDateFromMonth("prev"); }} className="p-1 hover:bg-gray-100 rounded text-gray-600">«</button>
                               <span className="text-[14px] font-semibold text-gray-900">{dateFromCalendar.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
-                              <button onClick={(e) => { e.stopPropagation(); navigateDateFromMonth("next"); }} className="p-1 hover:bg-gray-100 rounded text-gray-600">Â»</button>
+                              <button onClick={(e) => { e.stopPropagation(); navigateDateFromMonth("next"); }} className="p-1 hover:bg-gray-100 rounded text-gray-600">»</button>
                             </div>
                             <div className="grid grid-cols-7 gap-1 mb-2">
                               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
@@ -772,9 +772,9 @@ export default function ExportInventoryAdjustmentsModal({ isOpen, onClose }: Exp
                         {dateToPickerOpen && (
                           <div className="absolute top-full left-0 mt-2 bg-white border border-[#d1d5db] rounded-lg shadow-xl z-[1200] w-[280px] p-4 animate-in fade-in zoom-in-95 duration-200">
                             <div className="flex items-center justify-between mb-4">
-                              <button onClick={(e) => { e.stopPropagation(); navigateDateToMonth("prev"); }} className="p-1 hover:bg-gray-100 rounded text-gray-600">Â«</button>
+                              <button onClick={(e) => { e.stopPropagation(); navigateDateToMonth("prev"); }} className="p-1 hover:bg-gray-100 rounded text-gray-600">«</button>
                               <span className="text-[14px] font-semibold text-gray-900">{dateToCalendar.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
-                              <button onClick={(e) => { e.stopPropagation(); navigateDateToMonth("next"); }} className="p-1 hover:bg-gray-100 rounded text-gray-600">Â»</button>
+                              <button onClick={(e) => { e.stopPropagation(); navigateDateToMonth("next"); }} className="p-1 hover:bg-gray-100 rounded text-gray-600">»</button>
                             </div>
                             <div className="grid grid-cols-7 gap-1 mb-2">
                               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (

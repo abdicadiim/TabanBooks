@@ -1,4 +1,4 @@
-ï»¿import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, Download, ChevronRight, Upload, Lightbulb, Info, Check, AlertTriangle } from "lucide-react";
 import * as XLSX from "xlsx";
@@ -524,7 +524,7 @@ export default function ImportExchangeRates() {
                 onChange={handleFileSelect}
                 className="hidden"
               />
-              <p className="text-xs text-gray-500 mt-4">Maximum File Size: 25 MB â€¢ File Format: CSV, TSV, XLS, XLSX</p>
+              <p className="text-xs text-gray-500 mt-4">Maximum File Size: 25 MB • File Format: CSV, TSV, XLS, XLSX</p>
               {selectedFile && <p className="text-sm text-emerald-700 mt-2">Selected: {selectedFile.name}</p>}
             </div>
 
@@ -556,8 +556,8 @@ export default function ImportExchangeRates() {
               <div className="flex items-start gap-3">
                 <Lightbulb size={20} className="text-yellow-600 mt-0.5 flex-shrink-0" />
                 <div className="space-y-2 text-sm text-gray-700">
-                  <p>â€¢ Use one row per currency. Currency Code, Currency Name, and Symbol are required.</p>
-                  <p>â€¢ You can also include exchange rates and the effective date in the same file.</p>
+                  <p>• Use one row per currency. Currency Code, Currency Name, and Symbol are required.</p>
+                  <p>• You can also include exchange rates and the effective date in the same file.</p>
                 </div>
               </div>
             </div>

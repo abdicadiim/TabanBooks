@@ -232,6 +232,157 @@ export function ManualJournalsListHeader({
         }}
       >
         <div style={{ position: "relative" }}>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "space-between",
+            gap: "20px",
+          }}
+        >
+          <div style={{ maxWidth: "760px" }}>
+            <h1 style={{ margin: 0, fontSize: "30px", fontWeight: 700, color: "#111827" }}>
+              Manual Journals
+            </h1>
+            <p
+              style={{
+                margin: "12px 0 0",
+                fontSize: "15px",
+                lineHeight: 1.8,
+                color: "#156372",
+              }}
+            >
+              Review, search, publish, and export journal entries from one place.
+              The page now uses simpler controls so the core accounting workflows are
+              easier to maintain and faster to understand.
+            </p>
+          </div>
+
+          <div
+            style={{
+              minWidth: "220px",
+              backgroundColor: "#ffffff",
+              border: "1px solid #e5e7eb",
+              borderRadius: "18px",
+              padding: "16px 18px",
+            }}
+          >
+            <div style={{ fontSize: "12px", fontWeight: 700, color: "#64748b" }}>
+              CURRENT RESULT SET
+            </div>
+            <div style={{ marginTop: "10px", fontSize: "30px", fontWeight: 700, color: "#111827" }}>
+              {totalCount}
+            </div>
+            <div style={{ marginTop: "6px", fontSize: "14px", color: "#156372" }}>
+              journals in the current view
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gap: "14px",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          }}
+        >
+          <label style={{ display: "grid", gap: "8px" }}>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "#64748b" }}>
+              VIEW
+            </span>
+            <select
+              value={activeViewKey}
+              onChange={(event) => onChangeView(event.target.value)}
+              style={{
+                borderRadius: "12px",
+                border: "1px solid #cbd5e1",
+                padding: "11px 12px",
+                fontSize: "14px",
+                backgroundColor: "#ffffff",
+                color: "#111827",
+              }}
+            >
+              {viewOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: "grid", gap: "8px" }}>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "#64748b" }}>
+              PERIOD
+            </span>
+            <select
+              value={selectedPeriod}
+              onChange={(event) => onChangePeriod(event.target.value)}
+              style={{
+                borderRadius: "12px",
+                border: "1px solid #cbd5e1",
+                padding: "11px 12px",
+                fontSize: "14px",
+                backgroundColor: "#ffffff",
+                color: "#111827",
+              }}
+            >
+              {periodOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: "grid", gap: "8px" }}>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "#64748b" }}>
+              SORT BY
+            </span>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <select
+                value={sortBy}
+                onChange={(event) => onChangeSort(event.target.value)}
+                style={{
+                  flex: 1,
+                  borderRadius: "12px",
+                  border: "1px solid #cbd5e1",
+                  padding: "11px 12px",
+                  fontSize: "14px",
+                  backgroundColor: "#ffffff",
+                  color: "#111827",
+                }}
+              >
+                {sortOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={onToggleSortOrder}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  borderRadius: "12px",
+                  border: "1px solid #cbd5e1",
+                  padding: "11px 14px",
+                  backgroundColor: "#ffffff",
+                  color: "#334155",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                }}
+              >
+                <ArrowUpDown size={16} />
+                {sortOrder === "asc" ? "Asc" : "Desc"}
+              </button>
+            </div>
+          </label>
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
           <button
             type="button"
             onClick={() => {
@@ -506,6 +657,171 @@ export function ManualJournalsListHeader({
           </div>
         </div>
       </div>
+
+        <div
+          style={{
+            display: "grid",
+            gap: "12px",
+            gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+          }}
+        >
+          <button
+            type="button"
+            onClick={onNewJournal}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              borderRadius: "14px",
+              border: "none",
+              padding: "12px 16px",
+              backgroundColor: "#156372",
+              color: "#ffffff",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: 700,
+            }}
+          >
+            <Plus size={16} />
+            New Journal
+          </button>
+
+          <button
+            type="button"
+            onClick={onNewFromTemplate}
+            style={{
+              borderRadius: "14px",
+              border: "1px solid #cbd5e1",
+              padding: "12px 16px",
+              backgroundColor: "#ffffff",
+              color: "#334155",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: 700,
+            }}
+          >
+            New From Template
+          </button>
+
+          <button
+            type="button"
+            onClick={onNewTemplate}
+            style={{
+              borderRadius: "14px",
+              border: "1px solid #cbd5e1",
+              padding: "12px 16px",
+              backgroundColor: "#ffffff",
+              color: "#334155",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: 700,
+            }}
+          >
+            New Template
+          </button>
+
+          <select
+            defaultValue=""
+            onChange={(event) => {
+              if (event.target.value) {
+                onImport(event.target.value);
+                event.target.value = "";
+              }
+            }}
+            style={{
+              borderRadius: "14px",
+              border: "1px solid #cbd5e1",
+              padding: "12px 16px",
+              backgroundColor: "#ffffff",
+              color: "#334155",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: 600,
+            }}
+          >
+            <option value="">Import...</option>
+            {importActions.map((action) => (
+              <option key={action.route} value={action.route}>
+                {action.label}
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            onClick={() => onOpenExport("journals")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              borderRadius: "14px",
+              border: "1px solid #cbd5e1",
+              padding: "12px 16px",
+              backgroundColor: "#ffffff",
+              color: "#334155",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: 700,
+            }}
+          >
+            <Download size={16} />
+            Export Journals
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onOpenExport("customerCredits")}
+            style={{
+              borderRadius: "14px",
+              border: "1px solid #cbd5e1",
+              padding: "12px 16px",
+              backgroundColor: "#ffffff",
+              color: "#334155",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: 700,
+            }}
+          >
+            Export Customer Credits
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onOpenExport("vendorCredits")}
+            style={{
+              borderRadius: "14px",
+              border: "1px solid #cbd5e1",
+              padding: "12px 16px",
+              backgroundColor: "#ffffff",
+              color: "#334155",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: 700,
+            }}
+          >
+            Export Vendor Credits
+          </button>
+
+          <button
+            type="button"
+            onClick={onNewCustomView}
+            style={{
+              borderRadius: "14px",
+              border: "1px dashed #94a3b8",
+              padding: "12px 16px",
+              backgroundColor: "#ffffff",
+              color: "#156372",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: 700,
+            }}
+          >
+            New Custom View
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

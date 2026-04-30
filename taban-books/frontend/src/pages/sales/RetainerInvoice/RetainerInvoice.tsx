@@ -1188,7 +1188,7 @@ export default function RetainerInvoice() {
             }
             .invoice-page:not(:last-child) { page-break-after: always; margin-bottom: 10mm; }
             .top-row { display: flex; justify-content: space-between; align-items: flex-start; margin: 20px 0 32px; }
-            .org-meta { padding-top: 32px; padding-left: 56px; line-height: 1.35; font-size: 13px; color: #475569; }
+            .org-meta { padding-top: 32px; padding-left: 56px; line-height: 1.35; font-size: 13px; color: #156372; }
             .org-meta .org-name { font-size: 14px; font-weight: 600; color: #334155; }
             .doc-meta { text-align: right; color: #0f172a; }
             .doc-meta h1 { margin: 0; font-size: 20px; letter-spacing: 0.03em; font-weight: 500; line-height: 1.1; white-space: nowrap; }
@@ -1197,7 +1197,7 @@ export default function RetainerInvoice() {
             .balance-label { margin-top: 16px; font-size: 14px; }
             .balance-amount { margin-top: 2px; font-size: 20px; font-weight: 600; line-height: 1.1; }
             .bill-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; }
-            .bill-row .label { font-size: 13px; color: #475569; margin-bottom: 2px; }
+            .bill-row .label { font-size: 13px; color: #156372; margin-bottom: 2px; }
             .bill-row .value { font-size: 13px; font-weight: 600; color: #2f66b3; line-height: 1.1; }
             .invoice-date { font-size: 13px; color: #334155; padding-top: 16px; }
             .line-table-wrap { border: 1px solid #d6d9e3; margin-top: 8px; }

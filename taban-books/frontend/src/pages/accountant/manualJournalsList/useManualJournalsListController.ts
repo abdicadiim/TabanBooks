@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { deleteJournal, saveJournal } from "../accountantModel";
 import { exportToCSV, exportToExcel } from "../exportUtils";

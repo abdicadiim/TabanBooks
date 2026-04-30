@@ -149,7 +149,7 @@ export function ChartOfAccountsFindAccountantsSidebar({
                 style={{
                   border: "none",
                   backgroundColor: "transparent",
-                  color: "#475569",
+                  color: "#156372",
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
@@ -193,7 +193,7 @@ export function ChartOfAccountsFindAccountantsSidebar({
                       display: "grid",
                       gap: "6px",
                       fontSize: "13px",
-                      color: "#475569",
+                      color: "#156372",
                     }}
                   >
                     <div>{selectedAccountant.country}</div>
@@ -207,7 +207,7 @@ export function ChartOfAccountsFindAccountantsSidebar({
                 <h4 style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#0f172a" }}>
                   Description
                 </h4>
-                <p style={{ margin: "8px 0 0", fontSize: "13px", lineHeight: 1.7, color: "#475569" }}>
+                <p style={{ margin: "8px 0 0", fontSize: "13px", lineHeight: 1.7, color: "#156372" }}>
                   {selectedAccountant.description}
                 </p>
               </div>
@@ -216,7 +216,7 @@ export function ChartOfAccountsFindAccountantsSidebar({
                 <h4 style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#0f172a" }}>
                   Services
                 </h4>
-                <p style={{ margin: "8px 0 0", fontSize: "13px", lineHeight: 1.7, color: "#475569" }}>
+                <p style={{ margin: "8px 0 0", fontSize: "13px", lineHeight: 1.7, color: "#156372" }}>
                   {selectedAccountant.services.join(", ")}
                 </p>
               </div>
@@ -281,7 +281,7 @@ export function ChartOfAccountsFindAccountantsSidebar({
                     <div style={{ marginTop: "4px", fontSize: "13px", color: "#64748b" }}>
                       {accountant.company}
                     </div>
-                    <div style={{ marginTop: "10px", fontSize: "12px", lineHeight: 1.7, color: "#475569" }}>
+                    <div style={{ marginTop: "10px", fontSize: "12px", lineHeight: 1.7, color: "#156372" }}>
                       {accountant.services.join(", ")}
                     </div>
                   </div>
@@ -297,7 +297,7 @@ export function ChartOfAccountsFindAccountantsSidebar({
               border: "1px solid #e5e7eb",
               backgroundColor: "#f8fafc",
               fontSize: "13px",
-              color: "#475569",
+              color: "#156372",
             }}
           >
             Want to be listed as an accountant?{" "}

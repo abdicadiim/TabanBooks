@@ -222,6 +222,7 @@ router.get("/retainer-invoices", salesController.getAllRetainerInvoices);
 router.get("/retainer-invoices/:id", salesController.getRetainerInvoiceById);
 router.post("/retainer-invoices", salesController.createRetainerInvoice);
 router.post("/retainer-invoices/:id/email", salesController.sendRetainerInvoiceEmail);
+router.post("/retainer-invoices/:id/apply-to-invoices", salesController.applyRetainerInvoiceToInvoices);
 router.put("/retainer-invoices/:id", salesController.updateRetainerInvoice);
 router.patch("/retainer-invoices/:id", salesController.updateRetainerInvoice);
 router.delete("/retainer-invoices/:id", salesController.deleteRetainerInvoice);

@@ -317,11 +317,21 @@ export default function CreditNoteDetail() {
         }
 
         if (chartAccRes && chartAccRes.success && Array.isArray(chartAccRes.data)) {
-          const relevantCoa = chartAccRes.data.filter((acc: any) =>
-            acc.name.toLowerCase().includes('cash') ||
-            acc.name.toLowerCase().includes('petty') ||
-            acc.name.toLowerCase().includes('undeposited')
-          );
+          const relevantCoa = chartAccRes.data.filter((acc: any) => {
+            const accountName = String(
+              acc?.name ||
+              acc?.accountName ||
+              acc?.title ||
+              acc?.label ||
+              ""
+            ).toLowerCase();
+
+            return (
+              accountName.includes('cash') ||
+              accountName.includes('petty') ||
+              accountName.includes('undeposited')
+            );
+          });
           combinedAccounts = [...combinedAccounts, ...relevantCoa];
         }
 
@@ -664,7 +674,13 @@ Best regards`,
         ? (creditNoteJournal as any).entries
         : [];
 
-    const lineItems = Array.isArray((creditNote as any)?.items) ? (creditNote as any).items : [];
+    const lineItems = Array.isArray((creditNote as any)?.items)
+      ? (creditNote as any).items
+      : Array.isArray((creditNote as any)?.lineItems)
+        ? (creditNote as any).lineItems
+        : Array.isArray((creditNote as any)?.invoiceItems)
+          ? (creditNote as any).invoiceItems
+          : [];
     const location = String((creditNote as any)?.warehouseLocation || "Head Office").trim();
 
     const derivedRows = (() => {
@@ -765,6 +781,7 @@ Best regards`,
   }, [creditNoteJournalRows]);
 
   const hasAppliedDocuments = creditAppliedInvoicesRows.length > 0;
+  const hasJournalRows = creditNoteJournalRows.length > 0;
 
   const handleSaveAllocations = async (allocations: any[]) => {
     try {
@@ -1509,7 +1526,7 @@ const handleClone = () => {
     className="p-3 cursor-pointer text-sm text-gray-700 transition-colors"
     onMouseEnter={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "rgba(21, 99, 114, 0.1)"}
     onMouseLeave={(e: React.MouseEvent) => (e.target as HTMLElement).style.backgroundColor = "transparent"}
-    onClick={() => { setIsMoreMenuOpen(false); navigate(`/sales/credit-notes/${id}/journal`); }}
+    onClick={() => { setIsMoreMenuOpen(false); navigate("/sales/credit-notes/journal"); }}
   >View Journal</div>
   <div
     className="p-3 cursor-pointer text-sm transition-colors"
@@ -1558,40 +1575,34 @@ const handleClone = () => {
 <div className="flex-1 overflow-y-auto p-3 bg-gray-50">
   {creditNote ? (
     <>
-      <div className="w-full max-w-[1280px] mx-auto mb-3 border border-gray-200 rounded-md bg-white overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setIsCreditAppliedInvoicesOpen((prev) => !prev)}
-          className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50"
-        >
-          <div className="text-sm font-semibold text-gray-800">
-            Credit Applied Invoices <span className="text-[#3b82f6] ml-1">{creditAppliedInvoicesRows.length}</span>
-          </div>
-          <ChevronDown
-            size={16}
-            className={`text-gray-500 transition-transform ${isCreditAppliedInvoicesOpen ? "rotate-180" : ""}`}
-          />
-        </button>
-        {isCreditAppliedInvoicesOpen && (
-          <div className="border-t border-gray-200">
-            <table className="w-full">
-              <thead className="bg-[#f6f7fb]">
-                <tr className="text-xs font-semibold text-[#697386]">
-                  <th className="text-left px-5 py-3">Date</th>
-                  <th className="text-left px-5 py-3">Invoice Number</th>
-                  <th className="text-left px-5 py-3">Amount Credited</th>
-                  <th className="text-right px-5 py-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {creditAppliedInvoicesRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-5 py-6 text-sm text-gray-500 text-center">
-                      No invoices have credits applied from this credit note.
-                    </td>
+      {hasAppliedDocuments && (
+        <div className="w-full max-w-[1280px] mx-auto mb-3 border border-gray-200 rounded-md bg-white overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setIsCreditAppliedInvoicesOpen((prev) => !prev)}
+            className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50"
+          >
+            <div className="text-sm font-semibold text-gray-800">
+              Credit Applied Invoices <span className="text-[#3b82f6] ml-1">{creditAppliedInvoicesRows.length}</span>
+            </div>
+            <ChevronDown
+              size={16}
+              className={`text-gray-500 transition-transform ${isCreditAppliedInvoicesOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+          {isCreditAppliedInvoicesOpen && (
+            <div className="border-t border-gray-200">
+              <table className="w-full">
+                <thead className="bg-[#f6f7fb]">
+                  <tr className="text-xs font-semibold text-[#697386]">
+                    <th className="text-left px-5 py-3">Date</th>
+                    <th className="text-left px-5 py-3">Invoice Number</th>
+                    <th className="text-left px-5 py-3">Amount Credited</th>
+                    <th className="text-right px-5 py-3" />
                   </tr>
-                ) : (
-                  creditAppliedInvoicesRows.map((row: any) => (
+                </thead>
+                <tbody>
+                  {creditAppliedInvoicesRows.map((row: any) => (
                     <tr key={row.rowKey} className="border-t border-gray-100 text-sm">
                       <td className="px-5 py-3 text-gray-800">{formatDate(row.date)}</td>
                       <td className="px-5 py-3">
@@ -1617,13 +1628,13 @@ const handleClone = () => {
                         </button>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
       <div className="w-full max-w-[920px] mx-auto relative">
         <TransactionPDFDocument
           data={{
@@ -1651,7 +1662,7 @@ const handleClone = () => {
           }}
         />
       </div>
-      {hasAppliedDocuments && (
+      {hasJournalRows && (
         <div className="w-full max-w-[1280px] mx-auto mt-4 mb-4 border border-gray-200 rounded-md bg-white overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-200">
             <div className="text-sm font-semibold text-gray-800">Journal</div>

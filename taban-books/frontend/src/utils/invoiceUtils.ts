@@ -5,7 +5,21 @@ export const getInvoiceStatusDisplay = (inv: any) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const balance = inv.balanceDue !== undefined ? inv.balanceDue : (inv.balance !== undefined ? inv.balance : ((inv.total || 0) - (inv.paidAmount || inv.amountPaid || 0)));
+    const creditsApplied = Number(inv.creditsApplied || 0);
+    const retainersApplied = Number(
+        inv.retainerAppliedAmount ||
+        inv.retainersApplied ||
+        inv.retainerAmountApplied ||
+        inv.retainerAppliedTotal ||
+        0
+    );
+    const explicitBalance = inv.balanceDue !== undefined
+        ? Number(inv.balanceDue)
+        : (inv.balance !== undefined ? Number(inv.balance) : NaN);
+    const computedBalance = Math.max(0, (inv.total || 0) - (inv.paidAmount || inv.amountPaid || 0) - creditsApplied - retainersApplied);
+    const balance = Number.isFinite(explicitBalance)
+        ? ((creditsApplied > 0 || retainersApplied > 0) ? Math.min(explicitBalance, computedBalance) : explicitBalance)
+        : computedBalance;
     const total = inv.total || 0;
     const due = inv.dueDate ? new Date(inv.dueDate) : null;
     if (due) due.setHours(0, 0, 0, 0);
@@ -15,7 +29,11 @@ export const getInvoiceStatusDisplay = (inv: any) => {
         return { text: "PAID", color: "text-green-800 bg-green-100" };
     }
 
-    // Check for overdue first if it's not draft/void and has balance
+    if (balance < total && balance > 0 && status !== 'draft' && status !== 'void') {
+        return { text: "PARTIALLY PAID", color: "text-green-800 bg-green-100" };
+    }
+
+    // Check for overdue after partial payment so credit-applied invoices stay visible as partially paid
     if (due && balance > 0 && status !== 'draft' && status !== 'void') {
         const diffTime = due.getTime() - today.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -24,11 +42,6 @@ export const getInvoiceStatusDisplay = (inv: any) => {
             const overdueDays = Math.abs(diffDays);
             return { text: `OVERDUE BY ${overdueDays} DAY${overdueDays !== 1 ? 'S' : ''}`, color: "text-orange-700 bg-orange-100" };
         }
-    }
-
-    // If not overdue, but partially paid
-    if (balance < total && balance > 0 && status !== 'draft' && status !== 'void') {
-        return { text: "PARTIALLY PAID", color: "text-teal-800 bg-teal-100" };
     }
 
     // Rest of status-based checks

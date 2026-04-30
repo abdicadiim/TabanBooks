@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Play, MoreVertical, ChevronDown, X, Eye, EyeOff, Plus, Check, Search, Minus, ArrowLeft, Info, User as UserIcon, Pencil, Star, AlertTriangle } from "lucide-react";
 import { usersAPI, rolesAPI, locationsAPI } from "../../../../../services/api";

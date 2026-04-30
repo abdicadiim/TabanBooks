@@ -279,7 +279,6 @@ export default function NewCustomer() {
   const displayNameDropdownRef = useRef<HTMLDivElement>(null);
   const [isCustomerLanguageDropdownOpen, setIsCustomerLanguageDropdownOpen] = useState(false);
   const customerLanguageDropdownRef = useRef<HTMLDivElement>(null);
-  const [isHelpSidebarOpen, setIsHelpSidebarOpen] = useState(false);
   const [existingCustomerData, setExistingCustomerData] = useState<any | null>(null);
   const editCustomerQuery = useCustomerDetailQuery(id, {
     enabled: isEditMode && Boolean(id),
@@ -2504,80 +2503,6 @@ export default function NewCustomer() {
                       </div>
                     )}
 
-                    {/* Price List */}
-                    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
-                      <label className="text-[13px] font-medium text-gray-700">Price List</label>
-                      <div className="w-full max-w-md relative" ref={priceListDropdownRef}>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const wasOpen = isPriceListDropdownOpen;
-                            closeAllDropdowns();
-                            setIsPriceListDropdownOpen(!wasOpen);
-                          }}
-                          className="w-full px-3 py-1.5 border border-gray-300 rounded text-[13px] text-gray-700 bg-white flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-[#156372] focus:border-[#156372] transition-colors"
-                        >
-                          <span className={formData.priceListId ? "text-gray-900" : "text-gray-400"}>
-                            {formData.priceListId ? (priceLists.find(p => p.id === formData.priceListId)?.name || "Select a Price List") : "Select a Price List"}
-                          </span>
-                          <ChevronDown size={14} className={`text-gray-400 transition-transform ${isPriceListDropdownOpen ? "rotate-180" : ""}`} />
-                        </button>
-
-                        {isPriceListDropdownOpen && (
-                          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-80 overflow-hidden flex flex-col">
-                            <div className="flex items-center gap-2 p-3 bg-white border-b border-gray-100">
-                              <Search size={18} className="text-gray-400 flex-shrink-0" />
-                              <input
-                                type="text"
-                                placeholder="Search"
-                                value={priceListSearch}
-                                onChange={(e) => setPriceListSearch(e.target.value)}
-                                className="flex-1 border-none outline-none text-[13px] text-gray-700 bg-transparent placeholder-gray-400"
-                                autoFocus
-                              />
-                            </div>
-                            <div className="max-h-60 overflow-y-auto custom-scrollbar">
-                              <div
-                                onClick={() => {
-                                  setFormData(prev => ({ ...prev, priceListId: "" }));
-                                  setIsPriceListDropdownOpen(false);
-                                }}
-                                className={`px-4 py-2.5 text-[13px] cursor-pointer flex items-center hover:bg-gray-50 transition-colors ${!formData.priceListId ? "bg-blue-50 text-blue-600 font-medium" : "text-gray-700"}`}
-                              >
-                                None
-                              </div>
-                              {priceLists
-                                .filter(p => p.name.toLowerCase().includes(priceListSearch.toLowerCase()))
-                                .map((p) => (
-                                  <div
-                                    key={p.id}
-                                    onClick={() => {
-                                      setFormData(prev => ({ ...prev, priceListId: p.id }));
-                                      setIsPriceListDropdownOpen(false);
-                                    }}
-                                    className={`px-4 py-2.5 text-[13px] cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors ${formData.priceListId === p.id ? "bg-blue-50 text-blue-600 font-medium" : "text-gray-700"}`}
-                                  >
-                                    <div className="flex flex-col">
-                                      <span>{p.name}</span>
-                                      <span className="text-[11px] text-gray-400">{p.pricingScheme} {p.currency !== "-" ? `(${p.currency})` : ""}</span>
-                                    </div>
-                                    {formData.priceListId === p.id && (
-                                      <Check size={16} className="text-blue-500" />
-                                    )}
-                                  </div>
-                                ))}
-                              {priceLists.filter(p => p.name.toLowerCase().includes(priceListSearch.toLowerCase())).length === 0 && (
-                                <div className="px-4 py-3 text-sm text-gray-500 text-center italic">
-                                  No price lists found
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
                     {/* Payment Terms */}
                     <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
                       <label className="text-[13px] font-medium text-gray-700">Payment Terms</label>
@@ -2765,12 +2690,6 @@ export default function NewCustomer() {
                       </div>
                     )}
 
-                    {/* Footer Info */}
-                    <div className="mt-12 pt-8 border-t border-gray-100">
-                      <p className="text-sm text-gray-500 leading-relaxed max-w-2xl">
-                        <span className="font-medium text-gray-700">Customer Owner:</span> Assign a user as the customer owner to provide access only to the data of this customer. <button type="button" onClick={() => setIsHelpSidebarOpen(true)} className="text-blue-600 hover:underline font-medium ml-1">Learn More</button>
-                      </p>
-                    </div>
                   </div>
                 )}
 
@@ -3668,52 +3587,6 @@ export default function NewCustomer() {
           </div>
         </div>
 
-        {/* Help Sidebar */}
-        <div className={`fixed top-0 right-0 h-screen w-[320px] bg-white border-l border-gray-200 shadow-2xl z-[1000] transition-transform duration-300 transform ${isHelpSidebarOpen ? 'translate-x-0' : 'translate-x-full'} flex flex-col`}>
-          {/* Sidebar Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white">
-            <h2 className="text-sm font-semibold text-gray-800 m-0">Help</h2>
-            <button
-              onClick={() => setIsHelpSidebarOpen(false)}
-              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all"
-              title="Close this instant helper"
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          {/* Sidebar Content */}
-          <div className="flex-1 overflow-y-auto p-6">
-            <h3 className="text-[14px] font-bold text-gray-900 mb-6 mt-2">
-              To assign a user as the customer owner:
-            </h3>
-
-            <ul className="space-y-6 list-none p-0">
-              <li className="flex gap-3 items-start">
-                <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-600 flex-shrink-0" />
-                <p className="text-[12px] leading-relaxed text-gray-700 m-0">
-                  Go to <span className="font-bold">Users & Roles</span> under Preferences.
-                </p>
-              </li>
-              <li className="flex gap-3 items-start">
-                <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-600 flex-shrink-0" />
-                <p className="text-[12px] leading-relaxed text-gray-700 m-0">
-                  Invite users with the predefined role <span className="font-bold">Staff - Assigned Customers Only</span>.
-                </p>
-              </li>
-              <li className="flex gap-3 items-start">
-                <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-600 flex-shrink-0" />
-                <p className="text-[12px] leading-relaxed text-gray-700 m-0">
-                  Select the user with that role as a <span className="font-bold">Customer Owner</span> when you create or edit a customer.
-                </p>
-              </li>
-            </ul>
-
-            <p className="mt-8 text-[12px] italic text-gray-500 leading-relaxed border-t border-gray-50 pt-6">
-              Now, this user will only be able to view the data related to this customer.
-            </p>
-          </div>
-        </div>
       </div>
 
       {/* Documents Modal */}

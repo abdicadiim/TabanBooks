@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useLocation } from "react-router-dom";
 import { getCustomViews, getCustomers } from "../salesModel";
@@ -2010,7 +2010,7 @@ export default function useCustomersPageController() {
               <div style="text-align: right;">
                 <h2 style="margin: 0; font-size: 32px; font-weight: 900; color: #2d3748; text-transform: uppercase; line-height: 1;">Statement</h2>
                 <div style="margin-top: 10px; font-size: 14px; font-weight: 600; color: #718096; background: #f7fafc; padding: 6px 12px; border-radius: 6px; display: inline-block;">
-                  ${dateStr} – ${dateStr}
+                  ${dateStr} � ${dateStr}
                 </div>
               </div>
             </div>

@@ -1,4 +1,4 @@
-﻿import type { ChartOfAccountsCustomView } from "../chartOfAccountsTypes";
+import type { ChartOfAccountsCustomView } from "../chartOfAccountsTypes";
 
 export interface ChartOfAccountsFieldMapping {
   id: number;
