@@ -166,14 +166,14 @@ export function AdjustmentItemsSection() {
                                         <div
                                           key={getItemKey(itemOption, optionIndex)}
                                           className={`px-4 py-3 cursor-pointer flex items-center justify-between ${optionIndex < rowItems.length - 1 ? "border-b border-gray-100" : ""} group transition-colors`}
-                                          onMouseEnter={(event) => (event.currentTarget.style.backgroundColor = "#3b82f6")}
+                                          onMouseEnter={(event) => (event.currentTarget.style.backgroundColor = "#156372")}
                                           onMouseLeave={(event) => {
-                                            event.currentTarget.style.backgroundColor = isSelected ? "#3b82f6" : "transparent";
+                                            event.currentTarget.style.backgroundColor = isSelected ? "#156372" : "transparent";
                                           }}
                                           onClick={() => {
                                             void itemsTable.selectItem(index, itemOption);
                                           }}
-                                          style={{ backgroundColor: isSelected ? "#3b82f6" : "transparent" }}
+                                          style={{ backgroundColor: isSelected ? "#156372" : "transparent" }}
                                         >
                                           <div className="flex-1">
                                             <div className={`item-name text-sm font-semibold mb-0.5 ${isSelected ? "text-white" : "text-gray-900"}`}>

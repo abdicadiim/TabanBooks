@@ -545,43 +545,50 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
   };
 
   const handleItemSelect = async (index: number, item: Item) => {
-    let latestItem = item;
-    const itemId = item._id || item.id;
+    const applySelectedItem = (nextItem: Item) => {
+      setItemRows((previousRows) => {
+        const nextRows = [...previousRows];
+        const stockOnHand = getItemStockQuantity(nextItem);
+        const currentValue = getItemInventoryValue(nextItem);
 
-    if (itemId) {
-      try {
-        const response = await itemsAPI.getById(itemId);
-        latestItem = response?.data || response;
-      } catch (error) {
-        console.error("Error fetching latest item data:", error);
-      }
-    }
+        nextRows[index] = {
+          ...nextRows[index],
+          itemDetails: typeof nextItem.name === "string" ? nextItem.name : String(nextItem),
+          selectedItem: nextItem,
+          description: nextItem.salesDescription || nextItem.purchaseDescription || "",
+          stockQuantity: stockOnHand.toFixed(2),
+          costPrice: getItemUnitCost(nextItem).toFixed(2),
+          quantityAvailable: formData.mode === "value" ? currentValue.toFixed(2) : stockOnHand.toFixed(2),
+          newQuantityOnHand: formData.mode === "value" ? currentValue.toFixed(2) : stockOnHand.toFixed(2),
+          quantityAdjusted: "",
+        };
 
-    setItemRows((previousRows) => {
-      const nextRows = [...previousRows];
-      const stockOnHand = getItemStockQuantity(latestItem);
-      const currentValue = getItemInventoryValue(latestItem);
+        return nextRows;
+      });
+    };
 
-      nextRows[index] = {
-        ...nextRows[index],
-        itemDetails: typeof latestItem.name === "string" ? latestItem.name : String(latestItem),
-        selectedItem: latestItem,
-        description: latestItem.salesDescription || latestItem.purchaseDescription || "",
-        stockQuantity: stockOnHand.toFixed(2),
-        costPrice: getItemUnitCost(latestItem).toFixed(2),
-        quantityAvailable: formData.mode === "value" ? currentValue.toFixed(2) : stockOnHand.toFixed(2),
-        newQuantityOnHand: formData.mode === "value" ? currentValue.toFixed(2) : stockOnHand.toFixed(2),
-        quantityAdjusted: "",
-      };
-
-      return nextRows;
-    });
-
+    applySelectedItem(item);
     setItemDropdownOpen((previous) => ({ ...previous, [index]: false }));
     setItemSearch((previous) => ({ ...previous, [index]: "" }));
 
     if (errors.items) {
       setErrors((previous) => ({ ...previous, items: false }));
+    }
+
+    const itemId = item._id || item.id;
+    if (!itemId) {
+      return;
+    }
+
+    try {
+      const response = await itemsAPI.getById(itemId);
+      const latestItem = response?.data || response;
+
+      if (latestItem) {
+        applySelectedItem(latestItem);
+      }
+    } catch (error) {
+      console.error("Error fetching latest item data:", error);
     }
   };
 
