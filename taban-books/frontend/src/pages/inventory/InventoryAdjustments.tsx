@@ -48,7 +48,7 @@ export default function InventoryAdjustments({
             type="button"
             onClick={() => onCreateNew?.()}
             className="mt-8 rounded-md px-8 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-            style={{ background: "linear-gradient(90deg, #3b82f6 0%, #4f86ff 100%)" }}
+            style={{ backgroundColor: "#156372" }}
           >
             CREATE ADJUSTMENT
           </button>

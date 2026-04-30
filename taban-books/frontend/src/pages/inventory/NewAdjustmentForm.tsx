@@ -991,37 +991,36 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
 
   return (
     <NewAdjustmentFormProvider value={contextValue}>
-      <div className="bg-[#f6f7fb] min-h-screen">
-        <div className="max-w-full m-0 p-3 md:p-6 overflow-x-hidden bg-[#f6f7fb]">
-          <div className="flex items-start justify-between mb-8">
-            <h1 className="text-[28px] font-bold text-black m-0">
+      <div className="min-h-screen bg-[#f4f7fb]">
+        <div className="overflow-x-hidden bg-[#f4f7fb] px-4 py-5 md:px-7 md:py-6">
+          <div className="rounded-none border border-[#e6ebf2] bg-white/70 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
+            <div className="flex items-start justify-between border-b border-[#e6ebf2] px-6 py-6 md:px-8">
+              <h1 className="m-0 text-[28px] font-bold leading-none text-[#111827]">
               {isEditMode ? "Edit Adjustment" : "New Adjustment"}
-            </h1>
-            <button
-              type="button"
-              onClick={() => navigate("/inventory")}
-              aria-label="Close"
-              title="Back to list"
-              className="ml-3 p-3 rounded-md bg-transparent hover:bg-gray-100 border-none text-gray-600"
+              </h1>
+              <button
+                type="button"
+                onClick={() => navigate("/inventory")}
+                aria-label="Close"
+                title="Back to list"
+                className="ml-3 rounded-md border-none bg-transparent p-2 text-gray-500 hover:bg-gray-100"
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(event) => {
+                void handleSubmit(event);
+              }}
+              className="px-6 py-6 md:px-8 md:py-7"
             >
-              <X size={20} />
-            </button>
+              <AdjustmentFormFields />
+              <AdjustmentItemsSection />
+              <AdjustmentFormActions />
+              <AdjustmentModals />
+            </form>
           </div>
-
-          <div className="-mx-3 md:-mx-6 py-2">
-            <hr className="border-t border-transparent" />
-          </div>
-
-          <form
-            onSubmit={(event) => {
-              void handleSubmit(event);
-            }}
-          >
-            <AdjustmentFormFields />
-            <AdjustmentItemsSection />
-            <AdjustmentFormActions />
-            <AdjustmentModals />
-          </form>
         </div>
       </div>
     </NewAdjustmentFormProvider>
