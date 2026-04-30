@@ -2585,39 +2585,41 @@ export default function NewRecurringBill() {
                       : recurringBillsAPI.create(recurringBill);
 
                     savePromise
-                       .then(async (response) => {
+                       .then((response) => {
                         if (response && (response.code === 0 || response.success)) {
                           const recurringBillId = response.recurring_bill?._id || response.data?._id;
-
-                          // Update Item Stock on Hand
-                          try {
-                            const stockUpdatePromises = items.map(item => {
-                              if (item.itemId) {
-                                const currentStock = item.stock_on_hand || 0;
-                                const addedQty = parseFloat(item.quantity) || 0;
-                                const newStock = currentStock + addedQty;
-                                return itemsAPI.update(item.itemId, { stockQuantity: newStock });
-                              }
-                              return Promise.resolve();
-                            });
-                            await Promise.all(stockUpdatePromises);
-                          } catch (stockError) {
-                            console.error("Error updating stock on hand:", stockError);
-                            // We don't block the main flow if stock update fails, but log it
-                          }
-
-                          // Automatically generate the first bill
-                          if (!isEdit && recurringBillId) {
-                            try {
-                              await recurringBillsAPI.generateBill(recurringBillId);
-                            } catch (genError) {
-                              console.error("Error generating initial bill:", genError);
-                            }
-                          }
 
                           toast.success(isEdit ? "The recurring bill has been updated." : "The recurring bill has been created.", { position: "top-center" });
                           setIsLoading(false);
                           navigate("/purchases/recurring-bills");
+
+                          // Run follow-up work in the background so the user is not blocked on this page.
+                          void (async () => {
+                            // Update Item Stock on Hand without holding up the save flow.
+                            try {
+                              const stockUpdatePromises = items.map(item => {
+                                if (item.itemId) {
+                                  const currentStock = item.stock_on_hand || 0;
+                                  const addedQty = parseFloat(item.quantity) || 0;
+                                  const newStock = currentStock + addedQty;
+                                  return itemsAPI.update(item.itemId, { stockQuantity: newStock });
+                                }
+                                return Promise.resolve();
+                              });
+                              await Promise.all(stockUpdatePromises);
+                            } catch (stockError) {
+                              console.error("Error updating stock on hand:", stockError);
+                            }
+
+                            // Generate the first bill after the UI has already moved on.
+                            if (!isEdit && recurringBillId) {
+                              try {
+                                await recurringBillsAPI.generateBill(recurringBillId);
+                              } catch (genError) {
+                                console.error("Error generating initial bill:", genError);
+                              }
+                            }
+                          })();
                         } else {
                           throw new Error(response?.message || "Operation failed");
                         }
