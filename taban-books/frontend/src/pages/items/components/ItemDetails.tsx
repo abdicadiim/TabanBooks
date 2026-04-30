@@ -19,8 +19,9 @@ import {
     ArrowUpDown
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { apiRequest, itemsAPI, tagAssignmentsAPI, invoicesAPI, billsAPI, inventoryAdjustmentsAPI, reportsAPI, locationsAPI } from "../../../services/api";
+import { apiRequest, itemsAPI, tagAssignmentsAPI, invoicesAPI, billsAPI, inventoryAdjustmentsAPI, reportsAPI, locationsAPI, accountsAPI } from "../../../services/api";
 import { Item, Z, fmtMoney } from "../itemsModel";
+import type { Account } from "../../../hooks/useAccountSelect";
 import LockItemModal from "./modals/LockItemModal";
 import OpeningStockModal from "./modals/OpeningStockModal";
 import AdjustStock from "./modals/AdjustStock";
@@ -115,6 +116,8 @@ export default function ItemDetails({
     const [showStatusDropdown, setShowStatusDropdown] = useState(false);
     const [reorderNotificationEnabled, setReorderNotificationEnabled] = useState(false);
     const [isActionLoading, setIsActionLoading] = useState(false);
+    const [adjustStockAccounts, setAdjustStockAccounts] = useState<Account[]>([]);
+    const isInventoryTracked = item.trackInventory === true;
 
     const summaryStockOnHand =
         toFiniteNumber(inventorySummary?.stockOnHand) ??
@@ -277,6 +280,36 @@ export default function ItemDetails({
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, []);
+
+    useEffect(() => {
+        if (!isInventoryTracked || adjustStockAccounts.length > 0) return;
+
+        const loadAdjustStockAccounts = async () => {
+            try {
+                const response = await accountsAPI.getAll({ limit: 1000 });
+                const data = Array.isArray(response?.data) ? response.data : [];
+                const filtered = data
+                    .filter((acc: any) => acc?.isActive !== false)
+                    .map((acc: any) => ({
+                        id: acc._id || acc.id,
+                        name: acc.accountName || acc.name,
+                        accountCode: acc.accountCode,
+                        accountType: acc.accountType,
+                        description: acc.description,
+                        isActive: acc.isActive,
+                    }))
+                    .filter((acc: Account) =>
+                        ["expense", "cost_of_goods_sold", "other_expense"].includes(acc.accountType)
+                    );
+
+                setAdjustStockAccounts(filtered);
+            } catch (error) {
+                console.warn("Failed to preload adjust stock accounts", error);
+            }
+        };
+
+        void loadAdjustStockAccounts();
+    }, [isInventoryTracked, adjustStockAccounts.length]);
 
     // Click Outside
     useEffect(() => {
@@ -585,6 +618,17 @@ export default function ItemDetails({
                         </button>
                     )}
 
+                    {isInventoryTracked && (
+                        <button
+                            onClick={() => setShowAdjustStock(true)}
+                            className="px-4 py-2 rounded-md text-sm font-medium text-white transition-colors hover:brightness-110"
+                            style={{ backgroundColor: "#156372" }}
+                            title="Adjust Stock"
+                        >
+                            Adjust Stock
+                        </button>
+                    )}
+
                     {(canCreate || canEdit || canDelete) && (
                         <div className="relative" ref={moreDropdownRef}>
                             <button
@@ -603,7 +647,7 @@ export default function ItemDetails({
                                                 handleClone();
                                                 setMoreDropdownOpen(false);
                                             }}
-                                            className="block w-full px-4 py-3 text-sm text-center text-white bg-[#156372] cursor-pointer hover:brightness-110 transition-all font-semibold shadow-sm"
+                                            className="block w-full px-4 py-3 text-sm text-left text-gray-700 bg-transparent border-none cursor-pointer hover:bg-gray-50 transition-colors font-semibold"
                                         >
                                             Clone
                                         </button>
@@ -612,7 +656,7 @@ export default function ItemDetails({
                                                 e.stopPropagation();
                                                 void handleToggleActive();
                                             }}
-                                            className="block w-full px-4 py-3 text-sm text-center text-gray-700 bg-transparent border-none cursor-pointer hover:bg-gray-50 transition-colors font-medium border-t border-gray-100"
+                                            className="block w-full px-4 py-3 text-sm text-left text-gray-700 bg-transparent border-none cursor-pointer hover:bg-gray-50 transition-colors font-medium border-t border-gray-100"
                                         >
                                             {(item.active === false || item.isActive === false || item.status === "Inactive") ? "Mark as Active" : "Mark as Inactive"}
                                         </button>
@@ -622,7 +666,7 @@ export default function ItemDetails({
                                                 onDelete(item.id || item._id || "");
                                                 setMoreDropdownOpen(false);
                                             }}
-                                            className="block w-full px-4 py-3 text-sm text-center text-gray-700 bg-transparent border-none cursor-pointer hover:bg-gray-50 transition-colors font-medium border-t border-gray-100"
+                                            className="block w-full px-4 py-3 text-sm text-left text-gray-700 bg-transparent border-none cursor-pointer hover:bg-gray-50 transition-colors font-medium border-t border-gray-100"
                                         >
                                             Delete
                                         </button>
@@ -653,9 +697,23 @@ export default function ItemDetails({
 
             {/* Main Content Area */}
             <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
+                {showAdjustStock && isInventoryTracked ? (
+                    <AdjustStock
+                        item={item}
+                        initialAccounts={adjustStockAccounts}
+                        initialLocations={locations}
+                        initialStockOnHand={resolvedStockOnHand}
+                        onBack={() => setShowAdjustStock(false)}
+                        onUpdate={async (data) => {
+                            await onUpdate({ ...item, ...data });
+                            setShowAdjustStock(false);
+                        }}
+                    />
+                ) : (
+                <>
                 {activeTab === "overview" && (
                     <div className="max-w-6xl mx-auto">
-                        {!item.trackInventory ? (
+                        {!isInventoryTracked ? (
                             // Simplified Layout for Non-tracked Items
                             <>
                                 <div className="flex flex-col md:flex-row gap-8 md:gap-12 mb-8">
@@ -1102,15 +1160,19 @@ export default function ItemDetails({
                                     </div>
                                 </div>
                             )}
-                            <div className="relative">
-                                <div className="absolute -left-[41px] top-1 bg-slate-200 rounded-full w-4 h-4 border-4 border-white"></div>
-                                <div className="flex flex-col">
-                                    <span className="text-sm font-bold text-slate-900 mb-1">Inventory Tracking Enabled</span>
-                                    <span className="text-xs text-slate-500">Tracking started with opening stock: {item.openingStock || 0}</span>
+                            {isInventoryTracked && (
+                                <div className="relative">
+                                    <div className="absolute -left-[41px] top-1 bg-slate-200 rounded-full w-4 h-4 border-4 border-white"></div>
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-bold text-slate-900 mb-1">Inventory Tracking Enabled</span>
+                                        <span className="text-xs text-slate-500">Tracking started with opening stock: {item.openingStock || 0}</span>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
                     </div>
+                )}
+                </>
                 )}
             </div>
 

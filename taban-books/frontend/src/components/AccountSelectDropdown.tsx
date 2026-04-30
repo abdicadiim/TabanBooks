@@ -9,6 +9,8 @@ interface AccountSelectDropdownProps {
   placeholder?: string;
   className?: string;
   allowedTypes?: string[];
+  preload?: boolean;
+  initialAccounts?: Account[];
 }
 
 export const AccountSelectDropdown: React.FC<AccountSelectDropdownProps> = ({
@@ -17,6 +19,8 @@ export const AccountSelectDropdown: React.FC<AccountSelectDropdownProps> = ({
   placeholder = "Select an account",
   className = "",
   allowedTypes,
+  preload = false,
+  initialAccounts = [],
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -37,6 +41,8 @@ export const AccountSelectDropdown: React.FC<AccountSelectDropdownProps> = ({
     },
     initialValue: value,
     allowedTypes,
+    preload,
+    initialAccounts,
   });
 
   useEffect(() => {
