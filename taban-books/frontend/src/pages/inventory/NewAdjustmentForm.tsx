@@ -19,7 +19,6 @@ import type {
 } from "./new-adjustment-form/types";
 import {
   DEFAULT_ADJUSTMENT_ACCOUNT,
-  DEFAULT_REASONS,
   clearSelectedItemFromRow,
   createEmptyItemRow,
   createRowFromItem,
@@ -65,6 +64,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
   const [bulkAddModalOpen, setBulkAddModalOpen] = useState(false);
   const [bulkSearch, setBulkSearch] = useState("");
   const [bulkSelectedItems, setBulkSelectedItems] = useState<Item[]>([]);
+  const [bulkSelectedQuantities, setBulkSelectedQuantities] = useState<Record<string, number>>({});
   const [bulkUpdateModalOpen, setBulkUpdateModalOpen] = useState(false);
   const [bulkActionsDropdownOpen, setBulkActionsDropdownOpen] = useState(false);
   const [bulkUpdateField, setBulkUpdateField] = useState("");
@@ -85,7 +85,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
   const [newReasonName, setNewReasonName] = useState("");
   const [deleteReasonModal, setDeleteReasonModal] = useState<DeleteReasonModalState>({ open: false, reason: "" });
   const reasonDropdownRef = useRef<HTMLDivElement>(null);
-  const [reasons, setReasons] = useState<string[]>([...DEFAULT_REASONS]);
+  const [reasons, setReasons] = useState<string[]>([]);
   const [customReasons, setCustomReasons] = useState<CustomReason[]>([]);
 
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -254,7 +254,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
         }
 
         setCustomReasons(response);
-        setReasons([...DEFAULT_REASONS, ...response.map((reason: CustomReason) => reason.name)]);
+        setReasons(response.map((reason: CustomReason) => reason.name));
       } catch (error) {
         console.error("Failed to fetch adjustment reasons:", error);
       }
@@ -431,7 +431,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
       const updatedCustomReasons = [...customReasons, savedReason];
 
       setCustomReasons(updatedCustomReasons);
-      setReasons([...DEFAULT_REASONS, ...updatedCustomReasons.map((reason) => reason.name)]);
+      setReasons(updatedCustomReasons.map((reason) => reason.name));
       updateField("reason", trimmedReason);
       setNewReasonName("");
       setAddReasonModalOpen(false);
@@ -452,7 +452,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
         await inventoryAdjustmentsAPI.deleteReason(customReason._id);
         const updatedCustomReasons = customReasons.filter((reason) => reason._id !== customReason._id);
         setCustomReasons(updatedCustomReasons);
-        setReasons([...DEFAULT_REASONS, ...updatedCustomReasons.map((reason) => reason.name)]);
+        setReasons(updatedCustomReasons.map((reason) => reason.name));
       } else {
         setReasons((previous) => previous.filter((reason) => reason !== reasonToDelete));
       }
@@ -650,34 +650,83 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
   const openBulkAdd = () => {
     setBulkAddModalOpen(true);
     setBulkSelectedItems([]);
+    setBulkSelectedQuantities({});
     setBulkSearch("");
   };
 
   const cancelBulkAdd = () => {
     setBulkAddModalOpen(false);
     setBulkSelectedItems([]);
+    setBulkSelectedQuantities({});
     setBulkSearch("");
   };
 
   const toggleBulkSelectedItem = (item: Item) => {
     const nextId = getItemIdentity(item);
 
-    setBulkSelectedItems((previous) =>
-      previous.some((selectedItem) => getItemIdentity(selectedItem) === nextId)
+    setBulkSelectedItems((previous) => {
+      const alreadySelected = previous.some((selectedItem) => getItemIdentity(selectedItem) === nextId);
+
+      setBulkSelectedQuantities((prevQuantities) => {
+        if (alreadySelected) {
+          const nextQuantities = { ...prevQuantities };
+          delete nextQuantities[nextId];
+          return nextQuantities;
+        }
+
+        return {
+          ...prevQuantities,
+          [nextId]: prevQuantities[nextId] || 1,
+        };
+      });
+
+      return alreadySelected
         ? previous.filter((selectedItem) => getItemIdentity(selectedItem) !== nextId)
-        : [...previous, item],
-    );
+        : [...previous, item];
+    });
+  };
+
+  const setBulkSelectedQuantity = (itemId: string, quantity: number) => {
+    setBulkSelectedQuantities((previous) => ({
+      ...previous,
+      [itemId]: Math.max(1, Number.isFinite(quantity) ? quantity : 1),
+    }));
   };
 
   const removeBulkSelectedItem = (itemId: string | number | undefined) => {
+    const normalizedId = String(itemId || "");
     setBulkSelectedItems((previous) =>
-      previous.filter((item) => getItemIdentity(item) !== String(itemId || "")),
+      previous.filter((item) => getItemIdentity(item) !== normalizedId),
     );
+    setBulkSelectedQuantities((previous) => {
+      const nextQuantities = { ...previous };
+      delete nextQuantities[normalizedId];
+      return nextQuantities;
+    });
   };
 
   const addBulkSelectedItems = () => {
-    setItemRows((previous) => [...previous, ...bulkSelectedItems.map((item) => createRowFromItem(item, formData.mode === "value"))]);
+    setItemRows((previous) => [
+      ...previous,
+      ...bulkSelectedItems.map((item) => {
+        const nextRow = createRowFromItem(item, formData.mode === "value");
+        const quantity = bulkSelectedQuantities[getItemIdentity(item)] || 1;
+
+        if (formData.mode === "value") {
+          const currentValue = toNumber(nextRow.quantityAvailable);
+          nextRow.quantityAdjusted = quantity.toFixed(2);
+          nextRow.newQuantityOnHand = (currentValue + quantity).toFixed(2);
+        } else {
+          const available = toNumber(nextRow.quantityAvailable);
+          nextRow.quantityAdjusted = quantity.toString();
+          nextRow.newQuantityOnHand = (available + quantity).toFixed(2);
+        }
+
+        return nextRow;
+      }),
+    ]);
     setBulkSelectedItems([]);
+    setBulkSelectedQuantities({});
     setBulkAddModalOpen(false);
     setBulkSearch("");
   };
@@ -904,7 +953,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
       filtered: filteredReasons,
       dropdownRef: reasonDropdownRef,
       values: reasons,
-      defaults: DEFAULT_REASONS,
+      defaults: [],
       manageModalOpen: manageReasonsModalOpen,
       addModalOpen: addReasonModalOpen,
       newReasonName,
@@ -948,6 +997,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
       bulkAddModalOpen,
       bulkSearch,
       bulkSelectedItems,
+      bulkSelectedQuantities,
       bulkUpdateModalOpen,
       bulkUpdateField,
       bulkUpdateValue,
@@ -970,6 +1020,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
       cancelBulkAdd,
       setBulkSearch,
       toggleBulkSelectedItem,
+      setBulkSelectedQuantity,
       removeBulkSelectedItem,
       addBulkSelectedItems,
       openBulkUpdate,

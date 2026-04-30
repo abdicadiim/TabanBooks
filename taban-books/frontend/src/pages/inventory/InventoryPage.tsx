@@ -77,8 +77,19 @@ declare global {
 /* ------------------------------------------------------------------ */
 function InventoryPageContent() {
   const navigate = useNavigate();
-  const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const INVENTORY_ADJUSTMENTS_CACHE_KEY = "inventory_adjustments_cache_v1";
+  const [adjustments, setAdjustments] = useState<Adjustment[]>(() => {
+    try {
+      const cached = sessionStorage.getItem(INVENTORY_ADJUSTMENTS_CACHE_KEY);
+      if (!cached) return [];
+      const parsed = JSON.parse(cached);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.warn("Failed to read cached inventory adjustments", error);
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState<boolean>(false);
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<DeleteConfirmModalState>({ open: false, count: 0, itemIds: [] });
   const [periodMenuPos, setPeriodMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
@@ -133,7 +144,9 @@ function InventoryPageContent() {
   };
 
   const fetchAdjustments = async (showToast = false) => {
-    setLoading(true);
+    if (adjustments.length === 0) {
+      setLoading(true);
+    }
     try {
       // Add timestamp to prevent caching
       const response = await inventoryAdjustmentsAPI.getAll();
@@ -177,6 +190,7 @@ function InventoryPageContent() {
 
       // Update adjustments state
       setAdjustments(formattedData);
+      sessionStorage.setItem(INVENTORY_ADJUSTMENTS_CACHE_KEY, JSON.stringify(formattedData));
 
       if (showToast) {
         toast.success(`List refreshed successfully - ${formattedData.length} adjustment(s) loaded`);
@@ -201,6 +215,7 @@ function InventoryPageContent() {
 
       // Set empty array on error to prevent UI issues
       setAdjustments([]);
+      sessionStorage.removeItem(INVENTORY_ADJUSTMENTS_CACHE_KEY);
     } finally {
       setLoading(false);
     }

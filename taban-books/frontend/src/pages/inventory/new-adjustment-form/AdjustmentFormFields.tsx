@@ -5,9 +5,9 @@ export function AdjustmentFormFields() {
   const { formData, errors, dates, accounts, locations, reasons, updateField } = useNewAdjustmentFormContext();
 
   return (
-    <div className="mb-8">
-      <div className="flex flex-col sm:flex-row sm:items-center mb-5 gap-3 sm:gap-6">
-        <label className="text-sm font-medium text-gray-700 sm:min-w-[180px]">
+    <div className="mb-10 max-w-[980px]">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-8">
+        <label className="text-sm font-medium text-gray-700 sm:min-w-[195px]">
           <span className="text-red-500 font-medium">Mode of adjustment*</span>
         </label>
         <div className={`flex flex-wrap gap-4 sm:gap-6 p-1 rounded-md transition-all ${errors.mode ? "ring-1 ring-red-500/20 bg-red-50/10" : ""}`}>
@@ -36,18 +36,18 @@ export function AdjustmentFormFields() {
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center mb-5 gap-3 sm:gap-6">
-        <label className="text-sm font-medium text-gray-700 sm:min-w-[180px]">Reference Number</label>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-8">
+        <label className="text-sm font-medium text-gray-700 sm:min-w-[195px]">Reference Number</label>
         <input
           type="text"
           value={formData.reference}
           onChange={(event) => updateField("reference", event.target.value)}
-          className="w-full sm:w-[300px] px-3 py-2 border border-gray-300 rounded-md text-sm outline-none box-border focus:border-[#156372] focus:ring-2 focus:ring-[rgba(21,99,114,0.2)]"
+          className="w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm outline-none box-border focus:border-[#156372] focus:ring-2 focus:ring-[rgba(21,99,114,0.2)] sm:w-[300px]"
         />
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center mb-5 gap-3 sm:gap-6">
-        <label className="text-sm font-medium text-gray-700 sm:min-w-[180px]">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-8">
+        <label className="text-sm font-medium text-gray-700 sm:min-w-[195px]">
           <span className="text-red-500 font-medium">Date*</span>
         </label>
         <div className="relative" ref={dates.ref}>
@@ -56,7 +56,7 @@ export function AdjustmentFormFields() {
             value={formData.date}
             readOnly
             onClick={dates.toggle}
-            className={`w-full sm:w-[300px] px-3 py-2 pr-8 border rounded-md text-sm outline-none bg-white cursor-pointer box-border focus:border-[#156372] focus:ring-2 focus:ring-[rgba(21,99,114,0.2)] transition-all ${errors.date ? "border-red-500 ring-red-500/20 ring-1" : "border-gray-300"}`}
+            className={`w-full rounded-md border px-3 py-2.5 pr-8 text-sm outline-none bg-white cursor-pointer box-border focus:border-[#156372] focus:ring-2 focus:ring-[rgba(21,99,114,0.2)] transition-all sm:w-[300px] ${errors.date ? "border-red-500 ring-red-500/20 ring-1" : "border-gray-300"}`}
             required
           />
           <Calendar size={16} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
@@ -141,8 +141,8 @@ export function AdjustmentFormFields() {
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center mb-5 gap-3 sm:gap-6">
-        <label className="text-sm font-medium text-gray-700 sm:min-w-[180px]">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-8">
+        <label className="text-sm font-medium text-gray-700 sm:min-w-[195px]">
           <span className="text-red-500 font-medium">Account*</span>
         </label>
         <div className="relative inline-block" ref={accounts.ref}>
@@ -152,7 +152,7 @@ export function AdjustmentFormFields() {
             readOnly
             onClick={accounts.toggle}
             placeholder="Select an account"
-            className={`w-full sm:w-[300px] px-3 py-2 pr-8 rounded-md text-sm outline-none bg-white cursor-pointer box-border border transition-all ${errors.account ? "border-red-500 ring-red-500/20 ring-1" : accounts.open ? "border-[#156372]" : "border-gray-300"}`}
+            className={`w-full rounded-md px-3 py-2.5 pr-8 text-sm outline-none bg-white cursor-pointer box-border border transition-all sm:w-[300px] ${errors.account ? "border-red-500 ring-red-500/20 ring-1" : accounts.open ? "border-[#156372]" : "border-gray-300"}`}
             required
           />
           {accounts.open ? (
@@ -209,8 +209,8 @@ export function AdjustmentFormFields() {
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center mb-5 gap-3 sm:gap-6">
-        <label className="text-sm font-medium text-gray-700 sm:min-w-[180px]">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-8">
+        <label className="text-sm font-medium text-gray-700 sm:min-w-[195px]">
           <span className="text-red-500 font-medium">Reason*</span>
         </label>
         <div className="relative inline-block" ref={reasons.dropdownRef}>
@@ -220,7 +220,7 @@ export function AdjustmentFormFields() {
             readOnly
             onClick={reasons.toggleDropdown}
             placeholder="Select a reason"
-            className={`w-full sm:w-[300px] px-3 py-2 pr-8 border rounded-md text-sm outline-none bg-white cursor-pointer box-border focus:border-[#156372] focus:ring-2 focus:ring-[rgba(21,99,114,0.2)] transition-all ${errors.reason ? "border-red-500 ring-red-500/20 ring-1" : "border-gray-300"}`}
+            className={`w-full rounded-md border px-3 py-2.5 pr-8 text-sm outline-none bg-white cursor-pointer box-border focus:border-[#156372] focus:ring-2 focus:ring-[rgba(21,99,114,0.2)] transition-all sm:w-[300px] ${errors.reason ? "border-red-500 ring-red-500/20 ring-1" : "border-gray-300"}`}
             required
           />
           {reasons.open ? (
@@ -278,8 +278,8 @@ export function AdjustmentFormFields() {
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-start mb-5 gap-3 sm:gap-6">
-        <label className="text-sm font-medium text-gray-700 sm:min-w-[180px] pt-2">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-8">
+        <label className="text-sm font-medium text-gray-700 sm:min-w-[195px] pt-2">
           <span className="text-red-500 font-medium">Location*</span>
         </label>
         <div className="relative inline-block" ref={locations.ref}>
@@ -289,7 +289,7 @@ export function AdjustmentFormFields() {
             readOnly
             onClick={locations.toggle}
             placeholder="Select a location"
-            className={`w-full sm:w-[300px] px-3 py-2 pr-8 border rounded-md text-sm outline-none bg-white cursor-pointer box-border focus:border-[#156372] focus:ring-2 focus:ring-[rgba(21,99,114,0.2)] transition-all ${errors.location ? "border-red-500 ring-red-500/20 ring-1" : "border-gray-300"}`}
+            className={`w-full rounded-md border px-3 py-2.5 pr-8 text-sm outline-none bg-white cursor-pointer box-border focus:border-[#156372] focus:ring-2 focus:ring-[rgba(21,99,114,0.2)] transition-all sm:w-[300px] ${errors.location ? "border-red-500 ring-red-500/20 ring-1" : "border-gray-300"}`}
             required
           />
           {locations.open ? (
@@ -338,14 +338,14 @@ export function AdjustmentFormFields() {
         </div>
       </div>
 
-      <div className="flex items-start mb-5 gap-6">
-        <label className="text-sm font-medium text-gray-700 sm:min-w-[180px] pt-2">Description</label>
+      <div className="mb-2 flex items-start gap-8">
+        <label className="text-sm font-medium text-gray-700 sm:min-w-[195px] pt-2">Description</label>
         <textarea
           value={formData.description}
           onChange={(event) => updateField("description", event.target.value)}
           placeholder="Max. 500 characters"
           maxLength={500}
-          className="w-full sm:w-[300px] px-3 py-2 border border-gray-300 rounded-md text-sm outline-none resize-y min-h-20 font-inherit box-border focus:border-[#156372] focus:ring-2 focus:ring-[rgba(21,99,114,0.2)]"
+          className="min-h-20 w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm outline-none resize-y font-inherit box-border focus:border-[#156372] focus:ring-2 focus:ring-[rgba(21,99,114,0.2)] sm:w-[300px]"
         />
       </div>
     </div>

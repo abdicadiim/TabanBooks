@@ -84,6 +84,7 @@ export interface NewAdjustmentFormContextValue {
     bulkAddModalOpen: boolean;
     bulkSearch: string;
     bulkSelectedItems: Item[];
+    bulkSelectedQuantities: Record<string, number>;
     bulkUpdateModalOpen: boolean;
     bulkUpdateField: string;
     bulkUpdateValue: string;
@@ -106,6 +107,7 @@ export interface NewAdjustmentFormContextValue {
     cancelBulkAdd: () => void;
     setBulkSearch: (value: string) => void;
     toggleBulkSelectedItem: (item: Item) => void;
+    setBulkSelectedQuantity: (itemId: string, quantity: number) => void;
     removeBulkSelectedItem: (itemId: string | number | undefined) => void;
     addBulkSelectedItems: () => void;
     openBulkUpdate: () => void;

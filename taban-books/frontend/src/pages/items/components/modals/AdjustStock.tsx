@@ -17,15 +17,6 @@ interface AdjustStockProps {
 }
 
 const uid = () => Math.random().toString(36).slice(2, 11);
-const DEFAULT_REASONS = [
-    "Stock on fire",
-    "Stolen goods",
-    "Damaged goods",
-    "Stock Written off",
-    "Stocktaking results",
-    "Inventory Revaluation",
-];
-
 const inputClassName =
     "h-11 w-full rounded-md border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-400 focus:border-[#156372] focus:ring-2 focus:ring-[rgba(21,99,114,0.15)]";
 
@@ -60,7 +51,7 @@ export default function AdjustStock({
     const [locationSearch, setLocationSearch] = useState("");
     const [reasonDropdownOpen, setReasonDropdownOpen] = useState(false);
     const [reasonSearch, setReasonSearch] = useState("");
-    const [reasonOptions, setReasonOptions] = useState<string[]>(DEFAULT_REASONS);
+    const [reasonOptions, setReasonOptions] = useState<string[]>([]);
     const [manageReasonsOpen, setManageReasonsOpen] = useState(false);
     const [newReasonName, setNewReasonName] = useState("");
     const [isSaving, setIsSaving] = useState(false);
@@ -146,8 +137,7 @@ export default function AdjustStock({
             try {
                 const response = await inventoryAdjustmentsAPI.getReasons();
                 const customReasons = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
-                const merged = [...DEFAULT_REASONS, ...customReasons.map((reason: any) => reason.name).filter(Boolean)];
-                setReasonOptions(Array.from(new Set(merged)));
+                setReasonOptions(customReasons.map((reason: any) => reason.name).filter(Boolean));
             } catch (error) {
                 console.warn("Failed to fetch adjustment reasons", error);
             }

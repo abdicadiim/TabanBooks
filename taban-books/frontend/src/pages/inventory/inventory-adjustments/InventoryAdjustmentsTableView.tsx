@@ -2,7 +2,6 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { ArrowUpDown, FileText, Search } from "lucide-react";
 
 import { ACCENT_COLOR } from "./constants";
-import { TableRowSkeleton } from "./TableRowSkeleton";
 import type {
   InventoryAdjustmentColumn,
   InventoryAdjustmentRow,
@@ -114,10 +113,7 @@ export function InventoryAdjustmentsTableView({
         </thead>
 
         <tbody className="divide-y divide-[#eef2f7]">
-          {isLoading ? (
-            <TableRowSkeleton columns={visibleColumns} />
-          ) : (
-            rows.map((row) => {
+          {rows.map((row) => {
               const isSelected = selectedItems.includes(row.id);
 
               return (
@@ -210,8 +206,7 @@ export function InventoryAdjustmentsTableView({
                   <td className="sticky right-0 w-12 border-l border-gray-50 bg-white px-4 py-5" />
                 </tr>
               );
-            })
-          )}
+            })}
         </tbody>
       </table>
     </div>
