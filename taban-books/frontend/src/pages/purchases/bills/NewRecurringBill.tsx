@@ -828,8 +828,20 @@ export default function NewRecurringBill() {
         }
       }
 
+      const editVendorId = editBill.vendor?._id || editBill.vendor?.id || editBill.vendor || editBill.vendorId || editBill.vendor_id || "";
+      const editVendorName = editBill.vendorName || editBill.vendor_name || editBill.vendor?.displayName || editBill.vendor?.name || "";
+      const matchingVendor =
+        vendors.find((vendor: any) =>
+          String(vendor._id || vendor.id || "") === String(editVendorId || "")
+        ) ||
+        vendors.find((vendor: any) => {
+          const vendorLabel = String(vendor.displayName || vendor.name || vendor.companyName || "").trim().toLowerCase();
+          return vendorLabel && vendorLabel === String(editVendorName || "").trim().toLowerCase();
+        }) ||
+        "";
+
       setFormData({
-        vendorName: editBill.vendorName || editBill.vendor_name || "",
+        vendorName: matchingVendor || editVendorName || "",
         profileName: editBill.profileName || editBill.profile_name || "",
         repeatEvery: repeatEvery,
         customRepeatValue: customRepeatValue,
@@ -866,7 +878,7 @@ export default function NewRecurringBill() {
 
       setWarehouseLocation(editBill.warehouseLocationName || editBill.locationName || "Head Office");
     }
-  }, [isEdit, editBill]);
+  }, [isEdit, editBill, vendors]);
 
   // Handle cloned recurring bill data from detail page
   useEffect(() => {

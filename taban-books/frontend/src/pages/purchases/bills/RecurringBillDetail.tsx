@@ -285,6 +285,31 @@ export default function RecurringBillDetail() {
 
     const matchedBill = findMatchingGeneratedBill(response.data, candidateBill);
     if (!matchedBill) {
+      const recurringBillId = String((recurringBill as any)?._id || (recurringBill as any)?.id || id || "");
+      if (recurringBillId && isValidMongoId(recurringBillId)) {
+        try {
+          const generatedResponse = await recurringBillsAPI.generateBill(recurringBillId);
+          const generatedBill = generatedResponse?.data;
+          if (generatedBill?._id || generatedBill?.id) {
+            return {
+              ...generatedBill,
+              id: generatedBill._id || generatedBill.id,
+              vendorName: generatedBill.vendorName || generatedBill.vendor?.displayName || generatedBill.vendor?.name || candidateBill?.vendorName || "",
+              vendorId: toEntityId(generatedBill.vendor || generatedBill.vendorId || generatedBill.vendor_id),
+              billNumber: generatedBill.billNumber || candidateBill?.profileName || "",
+              total: generatedBill.total || 0,
+              balance: generatedBill.balance,
+              balanceDue: generatedBill.balance !== undefined ? generatedBill.balance : generatedBill.balanceDue,
+              paidAmount: generatedBill.paidAmount || 0,
+              currency: generatedBill.currency || resolvedBaseCurrency,
+              date: generatedBill.date || "",
+              status: generatedBill.status || "open",
+            };
+          }
+        } catch (error) {
+          console.error("Error generating bill for payment redirect:", error);
+        }
+      }
       return null;
     }
 
@@ -303,6 +328,22 @@ export default function RecurringBillDetail() {
       status: matchedBill.status || candidateBill?.status || "open",
     };
   };
+
+  const nextBillPreviewSource = realChildBills[0] || recurringBill;
+  const nextBillPreviewItems = Array.isArray((nextBillPreviewSource as any)?.items)
+    ? (nextBillPreviewSource as any).items
+    : [];
+  const nextBillPreviewTotal = Number(
+    (nextBillPreviewSource as any)?.total ??
+    (nextBillPreviewSource as any)?.amount ??
+    0
+  ) || 0;
+  const nextBillPreviewDiscount = Number((nextBillPreviewSource as any)?.discount || 0) || 0;
+  const nextBillPreviewDate = (nextBillPreviewSource as any)?.date || (nextBillPreviewSource as any)?.billDate || "";
+  const nextBillPreviewPaymentTerms =
+    (nextBillPreviewSource as any)?.paymentTerms ||
+    (recurringBill as any)?.paymentTerms ||
+    "Due on Receipt";
 
   useEffect(() => {
     if (!moreMenuOpen) return;
@@ -1336,10 +1377,10 @@ export default function RecurringBillDetail() {
                         BILL DATE
                       </div>
                       <div style={{ fontSize: "14px", color: "#6b7280" }}>
-                        PAYMENT TERMS: <span style={{ color: "#111827", fontWeight: "500" }}>{recurringBill.paymentTerms || "Net 30"}</span>
+                        PAYMENT TERMS: <span style={{ color: "#111827", fontWeight: "500" }}>{nextBillPreviewPaymentTerms}</span>
                       </div>
                       <div style={{ fontSize: "14px", color: "#6b7280", marginTop: "8px" }}>
-                        TOTAL: <span style={{ color: "#111827", fontWeight: "700", fontSize: "16px" }}>{resolvedBaseCurrencySymbol}0.00</span>
+                        TOTAL: <span style={{ color: "#111827", fontWeight: "700", fontSize: "16px" }}>{resolvedBaseCurrencySymbol}{nextBillPreviewTotal.toFixed(2)}</span>
                       </div>
                     </div>
                   </div>
@@ -1356,7 +1397,7 @@ export default function RecurringBillDetail() {
                         }
                       }}
                     >
-                      {recurringBill.vendorName || "RVSD"}
+                      {(nextBillPreviewSource as any)?.vendorName || recurringBill.vendorName || "RVSD"}
                     </div>
                   </div>
                 </div>
@@ -1415,13 +1456,22 @@ export default function RecurringBillDetail() {
                       </tr>
                     </thead>
                     <tbody>
-                      {recurringBill.items && recurringBill.items.length > 0 ? (
-                        recurringBill.items.map((item, index) => (
+                      {nextBillPreviewItems.length > 0 ? (
+                        nextBillPreviewItems.map((item, index) => {
+                          const itemName =
+                            item.itemDetails ||
+                            item.name ||
+                            item.description ||
+                            item.item?.name ||
+                            "";
+                          const itemRate = Number(item.rate ?? item.unitPrice ?? 0) || 0;
+                          const itemAmount = Number(item.amount ?? item.total ?? (Number(item.quantity || 0) * itemRate)) || 0;
+                          return (
                           <tr key={index} style={{
                             borderBottom: "1px solid #e5e7eb",
                           }}>
                             <td style={{ padding: "12px 16px", fontSize: "14px", color: "#111827" }}>
-                              {item.itemDetails || ""}
+                              {itemName}
                             </td>
                             <td style={{ padding: "12px 16px", fontSize: "14px", color: "#111827" }}>
                               {item.account || "Prepaid Expenses"}
@@ -1430,13 +1480,13 @@ export default function RecurringBillDetail() {
                               {item.quantity || "1"}
                             </td>
                             <td style={{ padding: "12px 16px", fontSize: "14px", color: "#111827" }}>
-                              {item.rate || "0"}
+                              {itemRate}
                             </td>
                             <td style={{ padding: "12px 16px", fontSize: "14px", color: "#111827" }}>
-                              {((parseFloat(item.quantity || 0) * parseFloat(item.rate || 0)).toFixed(2))}
+                              {resolvedBaseCurrencySymbol}{itemAmount.toFixed(2)}
                             </td>
                           </tr>
-                        ))
+                        )})
                       ) : (
                         <tr style={{ borderBottom: "1px solid #e5e7eb" }}>
                           <td style={{ padding: "12px 16px", fontSize: "14px", color: "#111827" }}></td>
@@ -1469,7 +1519,7 @@ export default function RecurringBillDetail() {
                       color: "#111827",
                     }}>
                       <span>Sub Total</span>
-                      <span>{resolvedBaseCurrencySymbol}0.00</span>
+                      <span>{resolvedBaseCurrencySymbol}{nextBillPreviewTotal.toFixed(2)}</span>
                     </div>
                     <div style={{
                       display: "flex",
@@ -1478,7 +1528,7 @@ export default function RecurringBillDetail() {
                       color: "#111827",
                     }}>
                       <span>Discount</span>
-                      <span>(-){resolvedBaseCurrencySymbol}0.00</span>
+                      <span>(-){resolvedBaseCurrencySymbol}{nextBillPreviewDiscount.toFixed(2)}</span>
                     </div>
                     <div style={{
                       display: "flex",
@@ -1491,7 +1541,7 @@ export default function RecurringBillDetail() {
                       borderTop: "1px solid #e5e7eb",
                     }}>
                       <span>Total</span>
-                      <span>{resolvedBaseCurrencySymbol}0.00</span>
+                      <span>{resolvedBaseCurrencySymbol}{nextBillPreviewTotal.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
