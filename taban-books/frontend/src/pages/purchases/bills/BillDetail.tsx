@@ -155,6 +155,9 @@ const readCachedPaidThroughAccounts = () => {
   }
 };
 
+const isValidMongoId = (value: any) =>
+  typeof value === "string" && /^[a-fA-F0-9]{24}$/.test(value);
+
 const getDefaultPaidThroughAccount = (accounts: any[] = [], paymentMode = "Cash") => {
   if (!Array.isArray(accounts) || accounts.length === 0) return null;
 
@@ -194,6 +197,7 @@ export default function BillDetail() {
       (entry: any) => String(entry.id || entry._id) === String(id)
     ) ||
     null;
+  const hasValidBillId = isValidMongoId(id);
   const [bill, setBill] = useState<Bill | null>(() => matchedInitialBill);
   const [isBillLoading, setIsBillLoading] = useState(() => !matchedInitialBill);
   const [bills, setBills] = useState<Bill[]>(() => initialBills as Bill[]);
@@ -233,6 +237,7 @@ export default function BillDetail() {
   const printPreviewFrameRef = useRef<HTMLIFrameElement>(null);
   const isGeneratingPrintPreviewRef = useRef(false);
   const printPreviewUrlRef = useRef("");
+  const hasAutoOpenedRecordPaymentRef = useRef(false);
 
   // Payment Recording State
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
@@ -379,7 +384,7 @@ export default function BillDetail() {
 
   const loadPayments = async () => {
     try {
-      if (id) {
+      if (id && isValidMongoId(id)) {
         const response = await paymentsMadeAPI.getByBill(id);
         if (response && response.success && response.data) {
           setPayments(
@@ -406,6 +411,16 @@ export default function BillDetail() {
     try {
       if (!id || id === 'undefined' || id === 'null') {
         setBill(null);
+        return;
+      }
+
+      if (!isValidMongoId(id)) {
+        if (matchedInitialBill) {
+          setBill(matchedInitialBill);
+        } else {
+          setBill(null);
+        }
+        setPurchaseOrders([]);
         return;
       }
 
@@ -554,6 +569,12 @@ export default function BillDetail() {
       }
 
       if (id && id !== 'undefined' && id !== 'null') {
+        if (!isValidMongoId(id)) {
+          setBill((currentBill) => currentBill || matchedInitialBill);
+          setPurchaseOrders([]);
+          return;
+        }
+
         try {
           const billRes = await billsAPI.getById(id);
           if (billRes && billRes.success && billRes.data) {
@@ -634,7 +655,7 @@ export default function BillDetail() {
       window.removeEventListener("storage", handleBillsUpdate);
       window.removeEventListener("focus", handleBillsUpdate);
     };
-  }, [id]);
+  }, [id, matchedInitialBill, resolvedBaseCurrency]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1306,32 +1327,6 @@ export default function BillDetail() {
   // Get currency
   const currency = resolvedBaseCurrencySymbol;
 
-  if (isBillLoading) {
-    return (
-      <div style={{ padding: "48px", textAlign: "center" }}>
-        <p>Loading bill...</p>
-      </div>
-    );
-  }
-
-  if (!bill) {
-    return (
-      <div style={{ padding: "48px", textAlign: "center" }}>
-        <p>Bill not found</p>
-        <button onClick={() => navigate("/purchases/bills")}>
-          Back to Bills
-        </button>
-      </div>
-    );
-  }
-
-  const billStatusText = getBillStatusDisplay(bill).text;
-  const billBalanceDue = toFiniteNumber(bill.balanceDue ?? bill.total, 0);
-  const isBillPaid = billStatusText === "PAID" || billBalanceDue <= 0;
-  const isBillUnpaid = !isBillPaid;
-  const enteredPaymentAmount = toFiniteNumber(paymentFormData.paymentAmount, 0);
-  const hasExcessPaymentAmount = enteredPaymentAmount > billBalanceDue && billBalanceDue >= 0;
-
   const openRecordPaymentForm = () => {
     if (!bill) return;
 
@@ -1356,6 +1351,41 @@ export default function BillDetail() {
     setShowPaymentAmountWarning(false);
     setIsRecordingPayment(true);
   };
+
+  useEffect(() => {
+    if (!location.state?.openRecordPayment) return;
+    if (!bill) return;
+    if (hasAutoOpenedRecordPaymentRef.current) return;
+
+    hasAutoOpenedRecordPaymentRef.current = true;
+    openRecordPaymentForm();
+  }, [bill, location.state]);
+
+  if (isBillLoading) {
+    return (
+      <div style={{ padding: "48px", textAlign: "center" }}>
+        <p>Loading bill...</p>
+      </div>
+    );
+  }
+
+  if (!bill) {
+    return (
+      <div style={{ padding: "48px", textAlign: "center" }}>
+        <p>{id && !hasValidBillId ? "This bill link is not a real saved bill yet." : "Bill not found"}</p>
+        <button onClick={() => navigate("/purchases/bills")}>
+          Back to Bills
+        </button>
+      </div>
+    );
+  }
+
+  const billStatusText = getBillStatusDisplay(bill).text;
+  const billBalanceDue = toFiniteNumber(bill.balanceDue ?? bill.total, 0);
+  const isBillPaid = billStatusText === "PAID" || billBalanceDue <= 0;
+  const isBillUnpaid = !isBillPaid;
+  const enteredPaymentAmount = toFiniteNumber(paymentFormData.paymentAmount, 0);
+  const hasExcessPaymentAmount = enteredPaymentAmount > billBalanceDue && billBalanceDue >= 0;
 
   const handlePaymentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;

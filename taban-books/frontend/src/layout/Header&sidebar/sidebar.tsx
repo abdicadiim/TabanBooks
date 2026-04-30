@@ -657,6 +657,11 @@ export default function Sidebar() {
                 <NavLink
                   key={child.to}
                   to={child.to}
+                  onClick={() => {
+                    if (child.to === "/inventory") {
+                      window.dispatchEvent(new Event("inventoryAdjustmentsShowList"));
+                    }
+                  }}
                   onMouseEnter={() => prefetchSalesSection(child.to)}
                   onFocus={() => prefetchSalesSection(child.to)}
                   className={[
@@ -703,6 +708,11 @@ export default function Sidebar() {
               <NavLink
                 key={child.to}
                 to={child.to}
+                onClick={() => {
+                  if (child.to === "/inventory") {
+                    window.dispatchEvent(new Event("inventoryAdjustmentsShowList"));
+                  }
+                }}
                 onMouseEnter={() => prefetchSalesSection(child.to)}
                 onFocus={() => prefetchSalesSection(child.to)}
                 className={[

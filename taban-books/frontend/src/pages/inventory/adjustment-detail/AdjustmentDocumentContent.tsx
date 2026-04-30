@@ -121,17 +121,17 @@ export function AdjustmentDocumentContent({
   onOpenPdfTemplate,
 }: AdjustmentDocumentContentProps) {
   return (
-    <div className={`flex-1 min-h-0 overflow-y-auto ${showPdfView ? "bg-gray-50 p-4 md:p-10" : "bg-white p-6"}`}>
+    <div className={`flex-1 min-h-0 overflow-y-auto ${showPdfView ? "bg-[#f4f7fb] p-5 md:p-6" : "bg-white p-5"}`}>
       <div
         data-print-content
-        className={`bg-white relative mx-auto shadow-lg transition-all duration-300 ${showPdfView ? "mb-10" : "p-2 max-w-4xl"}`}
+        className={`relative mx-auto bg-white shadow-sm transition-all duration-300 ${showPdfView ? "mb-6" : "max-w-4xl p-2"}`}
         style={
           showPdfView
             ? {
                 width: "210mm",
                 minHeight: "297mm",
                 padding: "40px",
-                boxShadow: "0 10px 30px rgba(0,0,0,0.1)",
+                boxShadow: "0 2px 10px rgba(15,23,42,0.08)",
               }
             : undefined
         }

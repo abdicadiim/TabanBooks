@@ -18,16 +18,16 @@ export function AdjustmentItemsSection() {
     }`;
 
   return (
-    <div className="mb-8">
-      <div className="overflow-visible rounded-md border border-gray-200 bg-white">
-        <div className="px-4 py-3 flex items-center justify-between border-b border-gray-200 bg-gray-50">
-          <h3 className="text-[22px] md:text-base font-semibold text-gray-900">Item Table</h3>
+    <div className="mb-8 mt-8 border-t border-[#e5e7eb] pt-6">
+      <div className="mr-auto w-full max-w-[1040px] overflow-visible rounded-md border border-[#e5e7eb] bg-white">
+        <div className="flex items-center justify-between border-b border-[#e5e7eb] bg-white px-4 py-4">
+          <h3 className="text-[14px] font-semibold text-gray-900">Item Table</h3>
           <div className="relative" ref={itemsTable.bulkActionsRef}>
             <button
               type="button"
               onClick={itemsTable.toggleBulkActions}
               disabled={!hasLocation}
-              className={`px-2 py-1.5 text-sm rounded-md flex items-center gap-1.5 transition-opacity border border-[#c9d4ea] bg-white text-[#2563eb] ${hasLocation ? "cursor-pointer" : "cursor-not-allowed opacity-40"}`}
+              className={`flex items-center gap-1.5 rounded-md border border-[#d7e0f2] bg-white px-2.5 py-1.5 text-sm text-[#2563eb] transition-opacity ${hasLocation ? "cursor-pointer" : "cursor-not-allowed opacity-40"}`}
             >
               <Check size={14} />
               Bulk Actions
@@ -58,39 +58,45 @@ export function AdjustmentItemsSection() {
 
         <div className={`transition-all ${errors.items ? "p-1 border border-red-500/50 rounded-lg bg-red-50/10" : ""}`}>
           <div className={`${hasLocation ? "" : "opacity-20 pointer-events-none select-none"}`}>
-            <table className="w-full border-collapse">
-                <thead className="bg-gray-50">
+            <table className="w-full border-collapse overflow-visible table-fixed">
+                <colgroup>
+                  <col className="w-[46%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-0" />
+                </colgroup>
+                <thead className="bg-[#fbfcfe]">
                   <tr>
-                    <th className="p-3 text-left text-xs font-semibold text-gray-700 uppercase border-b border-gray-200 w-[350px]">
+                    <th className="border-b border-[#e5e7eb] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#667085]">
                       Item Details
                     </th>
                     {isValueMode ? (
                       <>
-                        <th className="p-3 text-right text-xs font-semibold text-gray-700 uppercase border-b border-gray-200 whitespace-nowrap">
+                        <th className="whitespace-nowrap border-b border-[#e5e7eb] px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-[#667085]">
                           Current Value
                         </th>
-                        <th className="p-3 text-right text-xs font-semibold text-gray-700 uppercase border-b border-gray-200 whitespace-nowrap">
+                        <th className="whitespace-nowrap border-b border-[#e5e7eb] px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-[#667085]">
                           Changed Value
                         </th>
-                        <th className="p-3 text-right text-xs font-semibold text-gray-700 uppercase border-b border-gray-200 whitespace-nowrap">
+                        <th className="whitespace-nowrap border-b border-[#e5e7eb] px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-[#667085]">
                           Adjusted Value
                         </th>
                       </>
                     ) : (
                       <>
-                        <th className="p-3 text-right text-xs font-semibold text-gray-700 uppercase border-b border-gray-200 whitespace-nowrap">
+                        <th className="whitespace-nowrap border-b border-[#e5e7eb] px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-[#667085]">
                           Quantity Available
                         </th>
-                        <th className="p-3 text-right text-xs font-semibold text-gray-700 uppercase border-b border-gray-200 whitespace-nowrap">
+                        <th className="whitespace-nowrap border-b border-[#e5e7eb] px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-[#667085]">
                           New Quantity On Hand
                         </th>
-                        <th className="p-3 text-right text-xs font-semibold text-gray-700 uppercase border-b border-gray-200 whitespace-nowrap">
+                        <th className="whitespace-nowrap border-b border-[#e5e7eb] px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-[#667085]">
                           Quantity Adjusted
                         </th>
                       </>
                     )}
-                    <th className="p-3 text-center text-xs font-semibold text-gray-700 uppercase border-b border-gray-200 w-[80px]">
-                      Actions
+                    <th className="w-0 border-b border-[#e5e7eb] p-0 text-center text-xs font-semibold uppercase tracking-wide text-transparent">
                     </th>
                   </tr>
                 </thead>
@@ -99,17 +105,17 @@ export function AdjustmentItemsSection() {
                     const rowItems = itemsTable.filteredItems(index);
                     return (
                       <Fragment key={item.id}>
-                        <tr className="group align-top">
-                          <td className="p-3 border-b border-gray-200">
+                        <tr className="group h-[56px] align-middle">
+                          <td className="border-b border-[#edf1f6] px-0 py-1 align-middle">
                             <div
                               className={`relative ${itemsTable.itemDropdownOpen[index] ? "z-[10]" : ""}`}
                               ref={(element) => {
                                 itemsTable.itemRefs.current[index] = element;
                               }}
                             >
-                              <div className="flex items-start gap-2">
-                                <GripVertical size={16} className="text-gray-400 cursor-grab mt-1 shrink-0" />
-                                <div className="w-8 h-8 bg-gray-100 border border-gray-200 rounded flex items-center justify-center text-gray-400 shrink-0">
+                              <div className="flex items-center gap-2 px-3">
+                                <GripVertical size={16} className="ml-1 text-gray-400 cursor-grab shrink-0" />
+                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-100 text-gray-400">
                                   <ImageIcon size={16} />
                                 </div>
                                 <div className="flex-1 min-w-0">
@@ -132,16 +138,14 @@ export function AdjustmentItemsSection() {
                                       </button>
                                     </div>
                                   ) : (
-                                    <div className="pt-2">
-                                      <input
-                                        type="text"
-                                        placeholder="Type or click to select an item."
-                                        value={item.itemDetails}
-                                        onChange={(event) => itemsTable.handleItemSearchChange(index, event.target.value)}
-                                        onFocus={() => itemsTable.openItemDropdown(index)}
-                                        className={`w-full px-3 py-2 rounded-md text-sm outline-none border bg-white ${itemsTable.itemDropdownOpen[index] ? "border-[#156372] ring-1 ring-[#156372]" : "border-gray-300"}`}
-                                      />
-                                    </div>
+                                    <input
+                                      type="text"
+                                      placeholder="Type or click to select an item."
+                                      value={item.itemDetails}
+                                      onChange={(event) => itemsTable.handleItemSearchChange(index, event.target.value)}
+                                      onFocus={() => itemsTable.openItemDropdown(index)}
+                                      className={`h-9 w-full rounded-md border bg-white px-3 text-sm outline-none ${itemsTable.itemDropdownOpen[index] ? "border-[#156372] ring-1 ring-[#156372]" : "border-gray-300"}`}
+                                    />
                                   )}
                                 </div>
                               </div>
@@ -162,14 +166,14 @@ export function AdjustmentItemsSection() {
                                         <div
                                           key={getItemKey(itemOption, optionIndex)}
                                           className={`px-4 py-3 cursor-pointer flex items-center justify-between ${optionIndex < rowItems.length - 1 ? "border-b border-gray-100" : ""} group transition-colors`}
-                                          onMouseEnter={(event) => (event.currentTarget.style.backgroundColor = "#3b82f6")}
+                                          onMouseEnter={(event) => (event.currentTarget.style.backgroundColor = "#156372")}
                                           onMouseLeave={(event) => {
-                                            event.currentTarget.style.backgroundColor = isSelected ? "#3b82f6" : "transparent";
+                                            event.currentTarget.style.backgroundColor = isSelected ? "#156372" : "transparent";
                                           }}
                                           onClick={() => {
                                             void itemsTable.selectItem(index, itemOption);
                                           }}
-                                          style={{ backgroundColor: isSelected ? "#3b82f6" : "transparent" }}
+                                          style={{ backgroundColor: isSelected ? "#156372" : "transparent" }}
                                         >
                                           <div className="flex-1">
                                             <div className={`item-name text-sm font-semibold mb-0.5 ${isSelected ? "text-white" : "text-gray-900"}`}>
@@ -201,37 +205,37 @@ export function AdjustmentItemsSection() {
                             </div>
                           </td>
 
-                          <td className="p-3 border-b border-gray-200">
-                            <div className="text-right">
-                              <div className="text-sm font-semibold text-gray-900 tabular-nums leading-none">{item.quantityAvailable || "0.00"}</div>
-                              {!isValueMode && <div className="text-xs text-gray-500">{item.selectedItem?.unit || "pcs"}</div>}
+                          <td className="border-b border-[#edf1f6] px-2 py-1 align-middle">
+                            <div className="flex min-h-[44px] flex-col items-end justify-center leading-tight">
+                              <div className="text-sm font-semibold text-gray-900 tabular-nums">{item.quantityAvailable || "0.00"}</div>
+                              {!isValueMode && <div className="mt-0.5 text-xs text-gray-500">{item.selectedItem?.unit || "pcs"}</div>}
                             </div>
                           </td>
 
                           {isValueMode ? (
                             <>
-                              <td className="p-3 border-b border-gray-200">
+                              <td className="border-b border-[#edf1f6] pl-2 pr-1 py-1 align-middle">
                                 <input
                                   type="text"
                                   value={item.newQuantityOnHand}
                                   onChange={(event) => itemsTable.handleRowFieldChange(index, "newQuantityOnHand", event.target.value)}
                                   placeholder="New total value"
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm outline-none text-right focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
+                                  className="h-9 w-full rounded-md border border-gray-300 px-3 text-right text-sm outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
                                 />
                               </td>
-                              <td className="p-3 border-b border-gray-200">
+                              <td className="border-b border-[#edf1f6] pl-1 pr-2 py-1 align-middle">
                                 <input
                                   type="text"
                                   placeholder="Difference e.g. +10, -10"
                                   value={item.quantityAdjusted}
                                   onChange={(event) => itemsTable.handleRowFieldChange(index, "quantityAdjusted", event.target.value)}
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm outline-none text-right focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
+                                  className="h-9 w-full rounded-md border border-gray-300 px-3 text-right text-sm outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
                                 />
                               </td>
                             </>
                           ) : (
                             <>
-                              <td className="p-3 border-b border-gray-200">
+                              <td className="border-b border-[#edf1f6] pl-2 pr-1 py-1 align-middle">
                                 <input
                                   type="text"
                                   value={item.newQuantityOnHand}
@@ -239,7 +243,7 @@ export function AdjustmentItemsSection() {
                                   className={quantityFieldClass(String(item.newQuantityOnHand))}
                                 />
                               </td>
-                              <td className="p-3 border-b border-gray-200">
+                              <td className="border-b border-[#edf1f6] pl-1 pr-2 py-1 align-middle">
                                 <input
                                   type="text"
                                   placeholder="Eg. +10, -10"
@@ -251,8 +255,8 @@ export function AdjustmentItemsSection() {
                             </>
                           )}
 
-                          <td className="p-3 border-b border-gray-200">
-                            <div className="flex items-center justify-center gap-1">
+                          <td className="relative overflow-visible border-b border-[#edf1f6] border-l-0 bg-transparent p-0 align-middle">
+                            <div className="absolute left-4 top-1/2 flex -translate-y-1/2 items-center gap-1">
                               <div
                                 className="relative"
                                 ref={(element) => {
@@ -265,7 +269,7 @@ export function AdjustmentItemsSection() {
                                     event.stopPropagation();
                                     itemsTable.toggleRowMenu(index);
                                   }}
-                                  className="bg-transparent border-none cursor-pointer text-gray-400 p-1.5 flex items-center rounded-full hover:bg-gray-100 hover:text-gray-600"
+                                  className="flex items-center rounded-full border-none bg-transparent p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 cursor-pointer"
                                 >
                                   <MoreVertical size={16} />
                                 </button>
@@ -306,7 +310,7 @@ export function AdjustmentItemsSection() {
                               <button
                                 type="button"
                                 onClick={() => itemsTable.removeRow(index)}
-                                className="bg-transparent border-none cursor-pointer p-1.5 flex items-center rounded-full text-red-400 hover:text-red-500 hover:bg-red-50"
+                                className="flex items-center rounded-full border-none bg-transparent p-1 text-red-400 hover:bg-red-50 hover:text-red-500 cursor-pointer"
                               >
                                 <X size={16} />
                               </button>
@@ -314,9 +318,9 @@ export function AdjustmentItemsSection() {
                           </td>
                         </tr>
 
-                        <tr className="border-b border-gray-200">
-                          <td colSpan={isValueMode ? 5 : 6} className="px-4 py-2">
-                            <div className="flex flex-wrap items-center gap-4 text-sm">
+                        <tr className="h-[34px] border-b border-[#edf1f6]">
+                          <td colSpan={isValueMode ? 5 : 6} className="bg-[#fbfcfe] px-4 py-0 align-middle">
+                            <div className="flex h-[34px] flex-wrap items-center gap-4 text-sm leading-none">
                               <div className="flex items-center gap-2 text-slate-600">
                                 <span className="inline-flex items-center justify-center w-4 h-4 rounded-sm border border-slate-300 text-xs">?</span>
                                 <span className="text-[13px]">Select a project</span>
@@ -328,23 +332,35 @@ export function AdjustmentItemsSection() {
                                 <ChevronDown size={14} className="text-slate-400" />
                               </div>
                             </div>
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              <button type="button" className="inline-flex items-center gap-2 rounded-md bg-[#eef2ff] px-3 py-2 text-sm text-slate-700">
+                          </td>
+                        </tr>
+                        <tr className="border-b border-[#edf1f6]">
+                          <td colSpan={isValueMode ? 5 : 6} className="bg-[#fbfcfe] px-4 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={itemsTable.addNewRow}
+                                className="inline-flex items-center gap-2 rounded-md border border-[#e4e8f0] bg-[#f7f9fc] px-3 py-2 text-sm text-slate-700"
+                              >
                                 <Check size={14} className="text-[#4f86ff]" />
                                 Add New Row
                               </button>
-                              <button type="button" className="inline-flex items-center gap-2 rounded-md bg-[#eef2ff] px-3 py-2 text-sm text-slate-700">
+                              <button
+                                type="button"
+                                onClick={itemsTable.openBulkAdd}
+                                className="inline-flex items-center gap-2 rounded-md border border-[#e4e8f0] bg-[#f7f9fc] px-3 py-2 text-sm text-slate-700"
+                              >
                                 <Check size={14} className="text-[#4f86ff]" />
                                 Add Items in Bulk
                               </button>
                             </div>
                           </td>
                         </tr>
-                        <tr className="border-b border-gray-200">
-                          <td colSpan={isValueMode ? 5 : 6} className="px-4 py-4">
+                        <tr className="border-b border-[#edf1f6]">
+                          <td colSpan={isValueMode ? 5 : 6} className="px-4 py-6">
                             <div className="space-y-2">
                               <div className="text-[13px] text-slate-700">Attach File(s) to inventory adjustment</div>
-                              <div className="inline-flex items-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-3 py-2 text-sm text-slate-600">
+                              <div className="inline-flex items-center gap-2 rounded-md border border-[#d7ddea] bg-white px-3 py-2 text-sm text-slate-600">
                                 <span>Upload File</span>
                                 <ChevronDown size={14} className="text-slate-400" />
                               </div>

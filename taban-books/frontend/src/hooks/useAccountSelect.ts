@@ -16,15 +16,23 @@ interface UseAccountSelectProps {
     initialValue?: string;
     type?: string; // Optional filter by single account type (legacy/backend support)
     allowedTypes?: string[]; // Optional filter by multiple account types (frontend filtering)
+    preload?: boolean;
+    initialAccounts?: Account[];
 }
 
-export const useAccountSelect = ({ onSelect, initialValue = '', type, allowedTypes }: UseAccountSelectProps = {}) => {
+export const useAccountSelect = ({ onSelect, initialValue = '', type, allowedTypes, preload = false, initialAccounts = [] }: UseAccountSelectProps = {}) => {
     const [searchTerm, setSearchTerm] = useState(initialValue);
     const [isOpen, setIsOpen] = useState(false);
-    const [accounts, setAccounts] = useState<Account[]>([]);
+    const [accounts, setAccounts] = useState<Account[]>(initialAccounts);
     const [loading, setLoading] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+    useEffect(() => {
+        if (initialAccounts.length > 0) {
+            setAccounts(initialAccounts);
+        }
+    }, [initialAccounts]);
 
     const fetchAccounts = useCallback(async (query: string = '') => {
         setLoading(true);
@@ -67,6 +75,12 @@ export const useAccountSelect = ({ onSelect, initialValue = '', type, allowedTyp
             fetchAccounts();
         }
     }, [isOpen, fetchAccounts, accounts.length]);
+
+    useEffect(() => {
+        if (preload && accounts.length === 0 && !loading) {
+            fetchAccounts();
+        }
+    }, [preload, accounts.length, loading, fetchAccounts]);
 
     // Handle search input change with debounce
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {

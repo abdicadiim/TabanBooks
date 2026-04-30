@@ -59,6 +59,8 @@ export interface IBill extends Document {
   vendorCreditsApplied?: number;
   balance?: number;
   isRecurring?: boolean;
+  recurringBillId?: mongoose.Types.ObjectId;
+  recurringProfileName?: string;
   fromPurchaseOrder?: boolean;
   purchaseOrderId?: mongoose.Types.ObjectId;
   journalEntryCreated?: boolean;
@@ -212,6 +214,14 @@ const billSchema = new Schema<IBill>(
     isRecurring: {
       type: Boolean,
       default: false,
+    },
+    recurringBillId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "RecurringBill",
+    },
+    recurringProfileName: {
+      type: String,
+      default: "",
     },
     fromPurchaseOrder: {
       type: Boolean,

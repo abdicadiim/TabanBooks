@@ -17,6 +17,24 @@ import { recurringBillsAPI, billsAPI } from "../../../services/api";
 import toast from "react-hot-toast";
 import { useCurrency } from "../../../hooks/useCurrency";
 
+const isValidMongoId = (value: any) =>
+  typeof value === "string" && /^[a-fA-F0-9]{24}$/.test(value);
+
+const normalizeText = (value: any) => String(value || "").trim().toLowerCase();
+
+const toEntityId = (value: any): string => {
+  if (!value) return "";
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (typeof value === "object") return String(value._id || value.id || "");
+  return "";
+};
+
+const toComparableDate = (value: any) => {
+  const parsed = new Date(value || "");
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toISOString().slice(0, 10);
+};
+
 export default function RecurringBillDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -108,23 +126,67 @@ export default function RecurringBillDetail() {
       if (!recurringBill) return;
       setIsFetchingBills(true);
       try {
-        // Fetch all bills and filter by vendor and a pattern in bill number
-        // In a real app, there would be a specific field like recurringBillId
         const response = await billsAPI.getAll({ limit: 1000 });
         if (response && response.success && response.data) {
+          const recurringVendorId = toEntityId((recurringBill as any).vendor || (recurringBill as any).vendorId || (recurringBill as any).vendor_id);
+          const recurringVendorName = normalizeText((recurringBill as any).vendorName);
+          const recurringProfileName = String((recurringBill as any).profileName || "").trim();
+          const recurringAmount = Number((recurringBill as any).amount || (recurringBill as any).total || 0);
+
           const filtered = response.data.filter((b: any) => {
-            // Check if it belongs to this vendor and follows the profile name pattern
-            const isSameVendor = b.vendorName === recurringBill.vendorName || (b.vendor && b.vendor.displayName === recurringBill.vendorName);
-            const matchesProfile = b.billNumber && b.billNumber.startsWith(recurringBill.profileName);
-            return isSameVendor && matchesProfile;
+            const billVendorId = toEntityId(b.vendor || b.vendorId || b.vendor_id);
+            const billVendorName = normalizeText(b.vendorName || b.vendor?.displayName || b.vendor?.name);
+            const billNumber = String(b.billNumber || "").trim();
+            const orderNumber = String(b.orderNumber || "").trim();
+            const referenceNumber = String(b.referenceNumber || "").trim();
+            const recurringSourceId = toEntityId(b.recurringBillId);
+            const recurringSourceProfile = String(b.recurringProfileName || "").trim();
+            const billAmount = Number(b.total || 0);
+            const isRecurringBillRecord = Boolean(b.isRecurring);
+
+            const matchesVendor =
+              (recurringVendorId && billVendorId && recurringVendorId === billVendorId) ||
+              (recurringVendorName && billVendorName && recurringVendorName === billVendorName);
+
+            const matchesRecurringSource =
+              (id && recurringSourceId && String(recurringSourceId) === String(id)) ||
+              (recurringProfileName && recurringSourceProfile === recurringProfileName);
+
+            const matchesProfile =
+              (recurringProfileName && billNumber.startsWith(recurringProfileName)) ||
+              (recurringProfileName && orderNumber.startsWith(recurringProfileName)) ||
+              (recurringProfileName && referenceNumber.startsWith(recurringProfileName));
+
+            const matchesAmount =
+              recurringAmount > 0 &&
+              billAmount > 0 &&
+              Math.abs(recurringAmount - billAmount) < 0.01;
+
+            return matchesVendor && (matchesRecurringSource || matchesProfile || (isRecurringBillRecord && matchesAmount));
           });
-          setRealChildBills(filtered.map((b: any) => ({
+
+          const sortedBills = filtered
+            .slice()
+            .sort((a: any, b: any) => {
+              const aTime = new Date(a.date || a.createdAt || 0).getTime();
+              const bTime = new Date(b.date || b.createdAt || 0).getTime();
+              return bTime - aTime;
+            });
+
+          setRealChildBills(sortedBills.map((b: any) => ({
             ...b,
             id: b._id || b.id,
             vendorName: b.vendorName || (b.vendor && b.vendor.displayName) || "",
-            profileName: b.billNumber,
+            vendorId: toEntityId(b.vendor || b.vendorId || b.vendor_id),
+            profileName: b.billNumber || b.orderNumber || (recurringBill as any).profileName || "",
+            billNumber: b.billNumber || "",
             date: b.date ? new Date(b.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : "",
             amount: `${resolvedBaseCurrencySymbol}${parseFloat(b.total || 0).toFixed(2)}`,
+            total: b.total || 0,
+            balance: b.balance,
+            balanceDue: b.balance !== undefined ? b.balance : b.balanceDue,
+            paidAmount: b.paidAmount || 0,
+            currency: b.currency || resolvedBaseCurrency,
             status: (b.status || "OPEN").toUpperCase()
           })));
         }
@@ -135,7 +197,153 @@ export default function RecurringBillDetail() {
       }
     };
     fetchRealBills();
-  }, [recurringBill, id]);
+  }, [recurringBill, id, resolvedBaseCurrency, resolvedBaseCurrencySymbol]);
+
+  const findMatchingGeneratedBill = (rows: any[] = [], fallbackBill?: any) => {
+    const recurringVendorId = toEntityId((recurringBill as any)?.vendor || (recurringBill as any)?.vendorId || (recurringBill as any)?.vendor_id);
+    const recurringVendorName = normalizeText((recurringBill as any)?.vendorName);
+    const recurringProfileName = String((recurringBill as any)?.profileName || "").trim();
+    const recurringAmount = Number((recurringBill as any)?.amount || (recurringBill as any)?.total || 0);
+    const fallbackDate = toComparableDate(fallbackBill?.rawDate || fallbackBill?.date || (recurringBill as any)?.lastBillDate || (recurringBill as any)?.startOn);
+
+    const strongMatch = rows.find((b: any) => {
+      const billId = b?._id || b?.id;
+      if (!billId || !isValidMongoId(String(billId))) return false;
+
+      const billVendorId = toEntityId(b.vendor || b.vendorId || b.vendor_id);
+      const billVendorName = normalizeText(b.vendorName || b.vendor?.displayName || b.vendor?.name);
+      const billNumber = String(b.billNumber || "").trim();
+      const orderNumber = String(b.orderNumber || "").trim();
+      const referenceNumber = String(b.referenceNumber || "").trim();
+      const recurringSourceId = toEntityId(b.recurringBillId);
+      const recurringSourceProfile = String(b.recurringProfileName || "").trim();
+      const billAmount = Number(b.total || 0);
+      const billDate = toComparableDate(b.date || b.createdAt);
+      const matchesVendor =
+        (recurringVendorId && billVendorId && recurringVendorId === billVendorId) ||
+        (recurringVendorName && billVendorName && recurringVendorName === billVendorName);
+      const matchesRecurringSource =
+        (id && recurringSourceId && String(recurringSourceId) === String(id)) ||
+        (recurringProfileName && recurringSourceProfile === recurringProfileName);
+      const matchesProfile =
+        (recurringProfileName && billNumber.startsWith(recurringProfileName)) ||
+        (recurringProfileName && orderNumber.startsWith(recurringProfileName)) ||
+        (recurringProfileName && referenceNumber.startsWith(recurringProfileName));
+      const matchesAmount =
+        recurringAmount > 0 &&
+        billAmount > 0 &&
+        Math.abs(recurringAmount - billAmount) < 0.01;
+      const matchesDate = fallbackDate ? billDate === fallbackDate : true;
+
+      return matchesVendor && ((matchesRecurringSource && matchesDate) || (matchesProfile && matchesDate) || ((b.isRecurring || matchesProfile) && matchesAmount && matchesDate));
+    });
+
+    if (strongMatch) {
+      return strongMatch;
+    }
+
+    const looseRecurringMatch = rows
+      .filter((b: any) => {
+        const billId = b?._id || b?.id;
+        if (!billId || !isValidMongoId(String(billId))) return false;
+
+        const billVendorId = toEntityId(b.vendor || b.vendorId || b.vendor_id);
+        const billVendorName = normalizeText(b.vendorName || b.vendor?.displayName || b.vendor?.name);
+        const recurringSourceId = toEntityId(b.recurringBillId);
+        const billAmount = Number(b.total || 0);
+
+        const matchesVendor =
+          (recurringVendorId && billVendorId && recurringVendorId === billVendorId) ||
+          (recurringVendorName && billVendorName && recurringVendorName === billVendorName);
+        const matchesRecurringSource = id && recurringSourceId && String(recurringSourceId) === String(id);
+        const matchesAmount =
+          recurringAmount > 0 &&
+          billAmount > 0 &&
+          Math.abs(recurringAmount - billAmount) < 0.01;
+
+        return matchesVendor && (matchesRecurringSource || (Boolean(b.isRecurring) && matchesAmount));
+      })
+      .sort((a: any, b: any) => {
+        const aTime = new Date(a.date || a.createdAt || 0).getTime();
+        const bTime = new Date(b.date || b.createdAt || 0).getTime();
+        return bTime - aTime;
+      });
+
+    return looseRecurringMatch[0] || null;
+  };
+
+  const resolveBillForPayment = async (candidateBill: any) => {
+    const existingId = candidateBill?.id || candidateBill?._id;
+    if (existingId && isValidMongoId(String(existingId))) {
+      return candidateBill;
+    }
+
+    const response = await billsAPI.getAll({ limit: 1000 });
+    if (!(response && response.success && Array.isArray(response.data))) {
+      return null;
+    }
+
+    const matchedBill = findMatchingGeneratedBill(response.data, candidateBill);
+    if (!matchedBill) {
+      const recurringBillId = String((recurringBill as any)?._id || (recurringBill as any)?.id || id || "");
+      if (recurringBillId && isValidMongoId(recurringBillId)) {
+        try {
+          const generatedResponse = await recurringBillsAPI.generateBill(recurringBillId);
+          const generatedBill = generatedResponse?.data;
+          if (generatedBill?._id || generatedBill?.id) {
+            return {
+              ...generatedBill,
+              id: generatedBill._id || generatedBill.id,
+              vendorName: generatedBill.vendorName || generatedBill.vendor?.displayName || generatedBill.vendor?.name || candidateBill?.vendorName || "",
+              vendorId: toEntityId(generatedBill.vendor || generatedBill.vendorId || generatedBill.vendor_id),
+              billNumber: generatedBill.billNumber || candidateBill?.profileName || "",
+              total: generatedBill.total || 0,
+              balance: generatedBill.balance,
+              balanceDue: generatedBill.balance !== undefined ? generatedBill.balance : generatedBill.balanceDue,
+              paidAmount: generatedBill.paidAmount || 0,
+              currency: generatedBill.currency || resolvedBaseCurrency,
+              date: generatedBill.date || "",
+              status: generatedBill.status || "open",
+            };
+          }
+        } catch (error) {
+          console.error("Error generating bill for payment redirect:", error);
+        }
+      }
+      return null;
+    }
+
+    return {
+      ...matchedBill,
+      id: matchedBill._id || matchedBill.id,
+      vendorName: matchedBill.vendorName || matchedBill.vendor?.displayName || matchedBill.vendor?.name || candidateBill?.vendorName || "",
+      vendorId: toEntityId(matchedBill.vendor || matchedBill.vendorId || matchedBill.vendor_id),
+      billNumber: matchedBill.billNumber || candidateBill?.profileName || "",
+      total: matchedBill.total || 0,
+      balance: matchedBill.balance,
+      balanceDue: matchedBill.balance !== undefined ? matchedBill.balance : matchedBill.balanceDue,
+      paidAmount: matchedBill.paidAmount || 0,
+      currency: matchedBill.currency || resolvedBaseCurrency,
+      date: matchedBill.date || candidateBill?.rawDate || "",
+      status: matchedBill.status || candidateBill?.status || "open",
+    };
+  };
+
+  const nextBillPreviewSource = realChildBills[0] || recurringBill;
+  const nextBillPreviewItems = Array.isArray((nextBillPreviewSource as any)?.items)
+    ? (nextBillPreviewSource as any).items
+    : [];
+  const nextBillPreviewTotal = Number(
+    (nextBillPreviewSource as any)?.total ??
+    (nextBillPreviewSource as any)?.amount ??
+    0
+  ) || 0;
+  const nextBillPreviewDiscount = Number((nextBillPreviewSource as any)?.discount || 0) || 0;
+  const nextBillPreviewDate = (nextBillPreviewSource as any)?.date || (nextBillPreviewSource as any)?.billDate || "";
+  const nextBillPreviewPaymentTerms =
+    (nextBillPreviewSource as any)?.paymentTerms ||
+    (recurringBill as any)?.paymentTerms ||
+    "Due on Receipt";
 
   useEffect(() => {
     if (!moreMenuOpen) return;
@@ -160,13 +368,22 @@ export default function RecurringBillDetail() {
     };
   }, [moreMenuOpen]);
 
-  const handleEdit = () => {
-    navigate("/purchases/recurring-bills/new", {
-      state: {
-        editBill: recurringBill,
-        isEdit: true,
-      },
-    });
+  const handleEdit = async () => {
+    try {
+      const sourceId = String((recurringBill as any)?._id || (recurringBill as any)?.id || id || "");
+      const detailResponse = sourceId ? await recurringBillsAPI.getById(sourceId) : null;
+      const sourceBill = detailResponse?.recurring_bill || detailResponse?.data || recurringBill;
+
+      navigate("/purchases/recurring-bills/new", {
+        state: {
+          editBill: sourceBill,
+          isEdit: true,
+        },
+      });
+    } catch (error) {
+      console.error("Error loading recurring bill for edit:", error);
+      toast.error("Unable to load the full recurring bill for editing.");
+    }
   };
 
   const handleCreateBill = () => {
@@ -202,13 +419,6 @@ export default function RecurringBillDetail() {
         toast.error("Failed to delete recurring bill");
       }
     }
-  };
-
-  const toEntityId = (value: any): string => {
-    if (!value) return "";
-    if (typeof value === "string" || typeof value === "number") return String(value);
-    if (typeof value === "object") return String(value._id || value.id || "");
-    return "";
   };
 
   const toFiniteNumber = (value: any, fallback = 0) => {
@@ -773,6 +983,7 @@ export default function RecurringBillDetail() {
       date: dateStr,
       amount: `${resolvedBaseCurrencySymbol}${parseFloat(recurringBill.amount || 0).toFixed(2)}`,
       status: "OVERDUE",
+      isPlaceholder: true,
     });
 
     return childBills.length > 0 ? childBills : [{
@@ -786,6 +997,7 @@ export default function RecurringBillDetail() {
       }),
       amount: `${resolvedBaseCurrencySymbol}${parseFloat(recurringBill.amount || 0).toFixed(2)}`,
       status: recurringBill.status || "STOPPED",
+      isPlaceholder: true,
     }];
   };
 
@@ -1094,18 +1306,26 @@ export default function RecurringBillDetail() {
                         <div style={{ fontSize: "14px", fontWeight: "500", color: "#111827" }}>{bill.amount}</div>
                         <div style={{ fontSize: "11px", color: "#3b82f6", textTransform: "uppercase", letterSpacing: "1px" }}>{bill.status === "OVERDUE" ? "OPEN" : bill.status}</div>
                          <button 
-                          onClick={() => {
-                            // Navigate to the standalone Record Payment page (Image 1)
-                            navigate("/purchases/payments-made/new", {
-                              state: {
-                                fromBill: true,
-                                bill: bill, // Passing the full bill object for RecordPayment.tsx
-                                billId: bill.id,
-                                billNumber: bill.profileName,
-                                vendorName: bill.vendorName,
-                                amount: bill.amount.replace(/[^0-9.]/g, '')
+                          onClick={async () => {
+                            try {
+                              const resolvedBill = await resolveBillForPayment(bill);
+                              const targetBillId = resolvedBill?.id || resolvedBill?._id;
+                              if (!targetBillId || !isValidMongoId(String(targetBillId))) {
+                                toast.error("This recurring bill has not created a real bill yet. Create the bill first, then record payment.");
+                                return;
                               }
-                            });
+
+                              navigate(`/purchases/payments-made/new`, {
+                                state: {
+                                  fromBill: true,
+                                  bill: resolvedBill,
+                                  returnToRecurringBillId: id,
+                                }
+                              });
+                            } catch (error) {
+                              console.error("Error resolving bill for payment:", error);
+                              toast.error("Unable to open the payment form for this recurring bill.");
+                            }
                           }}
                           style={{ 
                             padding: "6px 16px", 
@@ -1157,10 +1377,10 @@ export default function RecurringBillDetail() {
                         BILL DATE
                       </div>
                       <div style={{ fontSize: "14px", color: "#6b7280" }}>
-                        PAYMENT TERMS: <span style={{ color: "#111827", fontWeight: "500" }}>{recurringBill.paymentTerms || "Net 30"}</span>
+                        PAYMENT TERMS: <span style={{ color: "#111827", fontWeight: "500" }}>{nextBillPreviewPaymentTerms}</span>
                       </div>
                       <div style={{ fontSize: "14px", color: "#6b7280", marginTop: "8px" }}>
-                        TOTAL: <span style={{ color: "#111827", fontWeight: "700", fontSize: "16px" }}>{resolvedBaseCurrencySymbol}0.00</span>
+                        TOTAL: <span style={{ color: "#111827", fontWeight: "700", fontSize: "16px" }}>{resolvedBaseCurrencySymbol}{nextBillPreviewTotal.toFixed(2)}</span>
                       </div>
                     </div>
                   </div>
@@ -1177,7 +1397,7 @@ export default function RecurringBillDetail() {
                         }
                       }}
                     >
-                      {recurringBill.vendorName || "RVSD"}
+                      {(nextBillPreviewSource as any)?.vendorName || recurringBill.vendorName || "RVSD"}
                     </div>
                   </div>
                 </div>
@@ -1236,13 +1456,22 @@ export default function RecurringBillDetail() {
                       </tr>
                     </thead>
                     <tbody>
-                      {recurringBill.items && recurringBill.items.length > 0 ? (
-                        recurringBill.items.map((item, index) => (
+                      {nextBillPreviewItems.length > 0 ? (
+                        nextBillPreviewItems.map((item, index) => {
+                          const itemName =
+                            item.itemDetails ||
+                            item.name ||
+                            item.description ||
+                            item.item?.name ||
+                            "";
+                          const itemRate = Number(item.rate ?? item.unitPrice ?? 0) || 0;
+                          const itemAmount = Number(item.amount ?? item.total ?? (Number(item.quantity || 0) * itemRate)) || 0;
+                          return (
                           <tr key={index} style={{
                             borderBottom: "1px solid #e5e7eb",
                           }}>
                             <td style={{ padding: "12px 16px", fontSize: "14px", color: "#111827" }}>
-                              {item.itemDetails || ""}
+                              {itemName}
                             </td>
                             <td style={{ padding: "12px 16px", fontSize: "14px", color: "#111827" }}>
                               {item.account || "Prepaid Expenses"}
@@ -1251,13 +1480,13 @@ export default function RecurringBillDetail() {
                               {item.quantity || "1"}
                             </td>
                             <td style={{ padding: "12px 16px", fontSize: "14px", color: "#111827" }}>
-                              {item.rate || "0"}
+                              {itemRate}
                             </td>
                             <td style={{ padding: "12px 16px", fontSize: "14px", color: "#111827" }}>
-                              {((parseFloat(item.quantity || 0) * parseFloat(item.rate || 0)).toFixed(2))}
+                              {resolvedBaseCurrencySymbol}{itemAmount.toFixed(2)}
                             </td>
                           </tr>
-                        ))
+                        )})
                       ) : (
                         <tr style={{ borderBottom: "1px solid #e5e7eb" }}>
                           <td style={{ padding: "12px 16px", fontSize: "14px", color: "#111827" }}></td>
@@ -1290,7 +1519,7 @@ export default function RecurringBillDetail() {
                       color: "#111827",
                     }}>
                       <span>Sub Total</span>
-                      <span>{resolvedBaseCurrencySymbol}0.00</span>
+                      <span>{resolvedBaseCurrencySymbol}{nextBillPreviewTotal.toFixed(2)}</span>
                     </div>
                     <div style={{
                       display: "flex",
@@ -1299,7 +1528,7 @@ export default function RecurringBillDetail() {
                       color: "#111827",
                     }}>
                       <span>Discount</span>
-                      <span>(-){resolvedBaseCurrencySymbol}0.00</span>
+                      <span>(-){resolvedBaseCurrencySymbol}{nextBillPreviewDiscount.toFixed(2)}</span>
                     </div>
                     <div style={{
                       display: "flex",
@@ -1312,7 +1541,7 @@ export default function RecurringBillDetail() {
                       borderTop: "1px solid #e5e7eb",
                     }}>
                       <span>Total</span>
-                      <span>{resolvedBaseCurrencySymbol}0.00</span>
+                      <span>{resolvedBaseCurrencySymbol}{nextBillPreviewTotal.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>

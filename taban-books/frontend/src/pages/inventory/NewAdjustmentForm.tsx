@@ -19,7 +19,6 @@ import type {
 } from "./new-adjustment-form/types";
 import {
   DEFAULT_ADJUSTMENT_ACCOUNT,
-  DEFAULT_REASONS,
   clearSelectedItemFromRow,
   createEmptyItemRow,
   createRowFromItem,
@@ -65,6 +64,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
   const [bulkAddModalOpen, setBulkAddModalOpen] = useState(false);
   const [bulkSearch, setBulkSearch] = useState("");
   const [bulkSelectedItems, setBulkSelectedItems] = useState<Item[]>([]);
+  const [bulkSelectedQuantities, setBulkSelectedQuantities] = useState<Record<string, number>>({});
   const [bulkUpdateModalOpen, setBulkUpdateModalOpen] = useState(false);
   const [bulkActionsDropdownOpen, setBulkActionsDropdownOpen] = useState(false);
   const [bulkUpdateField, setBulkUpdateField] = useState("");
@@ -85,7 +85,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
   const [newReasonName, setNewReasonName] = useState("");
   const [deleteReasonModal, setDeleteReasonModal] = useState<DeleteReasonModalState>({ open: false, reason: "" });
   const reasonDropdownRef = useRef<HTMLDivElement>(null);
-  const [reasons, setReasons] = useState<string[]>([...DEFAULT_REASONS]);
+  const [reasons, setReasons] = useState<string[]>([]);
   const [customReasons, setCustomReasons] = useState<CustomReason[]>([]);
 
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -254,7 +254,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
         }
 
         setCustomReasons(response);
-        setReasons([...DEFAULT_REASONS, ...response.map((reason: CustomReason) => reason.name)]);
+        setReasons(response.map((reason: CustomReason) => reason.name));
       } catch (error) {
         console.error("Failed to fetch adjustment reasons:", error);
       }
@@ -431,7 +431,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
       const updatedCustomReasons = [...customReasons, savedReason];
 
       setCustomReasons(updatedCustomReasons);
-      setReasons([...DEFAULT_REASONS, ...updatedCustomReasons.map((reason) => reason.name)]);
+      setReasons(updatedCustomReasons.map((reason) => reason.name));
       updateField("reason", trimmedReason);
       setNewReasonName("");
       setAddReasonModalOpen(false);
@@ -452,7 +452,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
         await inventoryAdjustmentsAPI.deleteReason(customReason._id);
         const updatedCustomReasons = customReasons.filter((reason) => reason._id !== customReason._id);
         setCustomReasons(updatedCustomReasons);
-        setReasons([...DEFAULT_REASONS, ...updatedCustomReasons.map((reason) => reason.name)]);
+        setReasons(updatedCustomReasons.map((reason) => reason.name));
       } else {
         setReasons((previous) => previous.filter((reason) => reason !== reasonToDelete));
       }
@@ -545,43 +545,50 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
   };
 
   const handleItemSelect = async (index: number, item: Item) => {
-    let latestItem = item;
-    const itemId = item._id || item.id;
+    const applySelectedItem = (nextItem: Item) => {
+      setItemRows((previousRows) => {
+        const nextRows = [...previousRows];
+        const stockOnHand = getItemStockQuantity(nextItem);
+        const currentValue = getItemInventoryValue(nextItem);
 
-    if (itemId) {
-      try {
-        const response = await itemsAPI.getById(itemId);
-        latestItem = response?.data || response;
-      } catch (error) {
-        console.error("Error fetching latest item data:", error);
-      }
-    }
+        nextRows[index] = {
+          ...nextRows[index],
+          itemDetails: typeof nextItem.name === "string" ? nextItem.name : String(nextItem),
+          selectedItem: nextItem,
+          description: nextItem.salesDescription || nextItem.purchaseDescription || "",
+          stockQuantity: stockOnHand.toFixed(2),
+          costPrice: getItemUnitCost(nextItem).toFixed(2),
+          quantityAvailable: formData.mode === "value" ? currentValue.toFixed(2) : stockOnHand.toFixed(2),
+          newQuantityOnHand: formData.mode === "value" ? currentValue.toFixed(2) : stockOnHand.toFixed(2),
+          quantityAdjusted: "",
+        };
 
-    setItemRows((previousRows) => {
-      const nextRows = [...previousRows];
-      const stockOnHand = getItemStockQuantity(latestItem);
-      const currentValue = getItemInventoryValue(latestItem);
+        return nextRows;
+      });
+    };
 
-      nextRows[index] = {
-        ...nextRows[index],
-        itemDetails: typeof latestItem.name === "string" ? latestItem.name : String(latestItem),
-        selectedItem: latestItem,
-        description: latestItem.salesDescription || latestItem.purchaseDescription || "",
-        stockQuantity: stockOnHand.toFixed(2),
-        costPrice: getItemUnitCost(latestItem).toFixed(2),
-        quantityAvailable: formData.mode === "value" ? currentValue.toFixed(2) : stockOnHand.toFixed(2),
-        newQuantityOnHand: formData.mode === "value" ? currentValue.toFixed(2) : stockOnHand.toFixed(2),
-        quantityAdjusted: "",
-      };
-
-      return nextRows;
-    });
-
+    applySelectedItem(item);
     setItemDropdownOpen((previous) => ({ ...previous, [index]: false }));
     setItemSearch((previous) => ({ ...previous, [index]: "" }));
 
     if (errors.items) {
       setErrors((previous) => ({ ...previous, items: false }));
+    }
+
+    const itemId = item._id || item.id;
+    if (!itemId) {
+      return;
+    }
+
+    try {
+      const response = await itemsAPI.getById(itemId);
+      const latestItem = response?.data || response;
+
+      if (latestItem) {
+        applySelectedItem(latestItem);
+      }
+    } catch (error) {
+      console.error("Error fetching latest item data:", error);
     }
   };
 
@@ -650,34 +657,83 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
   const openBulkAdd = () => {
     setBulkAddModalOpen(true);
     setBulkSelectedItems([]);
+    setBulkSelectedQuantities({});
     setBulkSearch("");
   };
 
   const cancelBulkAdd = () => {
     setBulkAddModalOpen(false);
     setBulkSelectedItems([]);
+    setBulkSelectedQuantities({});
     setBulkSearch("");
   };
 
   const toggleBulkSelectedItem = (item: Item) => {
     const nextId = getItemIdentity(item);
 
-    setBulkSelectedItems((previous) =>
-      previous.some((selectedItem) => getItemIdentity(selectedItem) === nextId)
+    setBulkSelectedItems((previous) => {
+      const alreadySelected = previous.some((selectedItem) => getItemIdentity(selectedItem) === nextId);
+
+      setBulkSelectedQuantities((prevQuantities) => {
+        if (alreadySelected) {
+          const nextQuantities = { ...prevQuantities };
+          delete nextQuantities[nextId];
+          return nextQuantities;
+        }
+
+        return {
+          ...prevQuantities,
+          [nextId]: prevQuantities[nextId] || 1,
+        };
+      });
+
+      return alreadySelected
         ? previous.filter((selectedItem) => getItemIdentity(selectedItem) !== nextId)
-        : [...previous, item],
-    );
+        : [...previous, item];
+    });
+  };
+
+  const setBulkSelectedQuantity = (itemId: string, quantity: number) => {
+    setBulkSelectedQuantities((previous) => ({
+      ...previous,
+      [itemId]: Math.max(1, Number.isFinite(quantity) ? quantity : 1),
+    }));
   };
 
   const removeBulkSelectedItem = (itemId: string | number | undefined) => {
+    const normalizedId = String(itemId || "");
     setBulkSelectedItems((previous) =>
-      previous.filter((item) => getItemIdentity(item) !== String(itemId || "")),
+      previous.filter((item) => getItemIdentity(item) !== normalizedId),
     );
+    setBulkSelectedQuantities((previous) => {
+      const nextQuantities = { ...previous };
+      delete nextQuantities[normalizedId];
+      return nextQuantities;
+    });
   };
 
   const addBulkSelectedItems = () => {
-    setItemRows((previous) => [...previous, ...bulkSelectedItems.map((item) => createRowFromItem(item, formData.mode === "value"))]);
+    setItemRows((previous) => [
+      ...previous,
+      ...bulkSelectedItems.map((item) => {
+        const nextRow = createRowFromItem(item, formData.mode === "value");
+        const quantity = bulkSelectedQuantities[getItemIdentity(item)] || 1;
+
+        if (formData.mode === "value") {
+          const currentValue = toNumber(nextRow.quantityAvailable);
+          nextRow.quantityAdjusted = quantity.toFixed(2);
+          nextRow.newQuantityOnHand = (currentValue + quantity).toFixed(2);
+        } else {
+          const available = toNumber(nextRow.quantityAvailable);
+          nextRow.quantityAdjusted = quantity.toString();
+          nextRow.newQuantityOnHand = (available + quantity).toFixed(2);
+        }
+
+        return nextRow;
+      }),
+    ]);
     setBulkSelectedItems([]);
+    setBulkSelectedQuantities({});
     setBulkAddModalOpen(false);
     setBulkSearch("");
   };
@@ -904,7 +960,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
       filtered: filteredReasons,
       dropdownRef: reasonDropdownRef,
       values: reasons,
-      defaults: DEFAULT_REASONS,
+      defaults: [],
       manageModalOpen: manageReasonsModalOpen,
       addModalOpen: addReasonModalOpen,
       newReasonName,
@@ -948,6 +1004,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
       bulkAddModalOpen,
       bulkSearch,
       bulkSelectedItems,
+      bulkSelectedQuantities,
       bulkUpdateModalOpen,
       bulkUpdateField,
       bulkUpdateValue,
@@ -970,6 +1027,7 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
       cancelBulkAdd,
       setBulkSearch,
       toggleBulkSelectedItem,
+      setBulkSelectedQuantity,
       removeBulkSelectedItem,
       addBulkSelectedItems,
       openBulkUpdate,
@@ -991,37 +1049,36 @@ export default function NewAdjustmentForm({ items: propItems = [] }: { items?: I
 
   return (
     <NewAdjustmentFormProvider value={contextValue}>
-      <div className="bg-[#f6f7fb] min-h-screen">
-        <div className="max-w-full m-0 p-3 md:p-6 overflow-x-hidden bg-[#f6f7fb]">
-          <div className="flex items-start justify-between mb-8">
-            <h1 className="text-[28px] font-bold text-black m-0">
+      <div className="min-h-screen bg-[#f4f7fb]">
+        <div className="overflow-x-hidden bg-[#f4f7fb] px-4 py-5 md:px-7 md:py-6">
+          <div className="rounded-none border border-[#e6ebf2] bg-white/70 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
+            <div className="flex items-start justify-between border-b border-[#e6ebf2] px-6 py-6 md:px-8">
+              <h1 className="m-0 text-[28px] font-bold leading-none text-[#111827]">
               {isEditMode ? "Edit Adjustment" : "New Adjustment"}
-            </h1>
-            <button
-              type="button"
-              onClick={() => navigate("/inventory")}
-              aria-label="Close"
-              title="Back to list"
-              className="ml-3 p-3 rounded-md bg-transparent hover:bg-gray-100 border-none text-gray-600"
+              </h1>
+              <button
+                type="button"
+                onClick={() => navigate("/inventory")}
+                aria-label="Close"
+                title="Back to list"
+                className="ml-3 rounded-md border-none bg-transparent p-2 text-gray-500 hover:bg-gray-100"
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(event) => {
+                void handleSubmit(event);
+              }}
+              className="px-6 py-6 md:px-8 md:py-7"
             >
-              <X size={20} />
-            </button>
+              <AdjustmentFormFields />
+              <AdjustmentItemsSection />
+              <AdjustmentFormActions />
+              <AdjustmentModals />
+            </form>
           </div>
-
-          <div className="-mx-3 md:-mx-6 py-2">
-            <hr className="border-t border-transparent" />
-          </div>
-
-          <form
-            onSubmit={(event) => {
-              void handleSubmit(event);
-            }}
-          >
-            <AdjustmentFormFields />
-            <AdjustmentItemsSection />
-            <AdjustmentFormActions />
-            <AdjustmentModals />
-          </form>
         </div>
       </div>
     </NewAdjustmentFormProvider>

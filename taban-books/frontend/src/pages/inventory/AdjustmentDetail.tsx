@@ -264,6 +264,8 @@ export default function AdjustmentDetail({
     try {
       await inventoryAdjustmentsAPI.update(currentAdjustmentId, { status: "ADJUSTED" });
       await refreshAdjustmentDetails();
+      window.dispatchEvent(new Event("inventoryAdjustmentsUpdated"));
+      window.dispatchEvent(new Event("itemsUpdated"));
       await runCallback(onRefresh);
       toast.success("Adjustment converted successfully");
     } catch (error: any) {
@@ -540,9 +542,9 @@ export default function AdjustmentDetail({
   const canConvert = activeAdjustment.status === "DRAFT";
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-white overflow-hidden">
-      <div className="px-3 md:px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 flex-shrink-0">
-        <h2 className="text-lg font-bold text-black m-0">Adjustment Details</h2>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white">
+      <div className="flex shrink-0 flex-col justify-between gap-3 border-b border-gray-200 bg-white px-4 py-4 md:flex-row md:items-center md:px-5">
+        <h2 className="m-0 text-[17px] font-semibold text-gray-900">Adjustment Details</h2>
         <div className="flex flex-wrap gap-2 items-center">
           <button
             onClick={() => setAttachmentsModalOpen(true)}
@@ -573,7 +575,7 @@ export default function AdjustmentDetail({
         </div>
       </div>
 
-      <div className="px-3 md:px-6 py-3 border-b border-gray-200 flex flex-wrap items-center gap-0 overflow-x-auto">
+      <div className="flex shrink-0 flex-wrap items-center gap-0 overflow-x-auto border-b border-gray-200 bg-white px-4 py-3 md:px-5">
         <button
           onClick={() => void runCallback(onEdit)}
           className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 border-r-0 rounded-none rounded-tl-md rounded-bl-md cursor-pointer flex items-center gap-1.5 hover:bg-gray-50 hover:border-gray-400"
@@ -692,7 +694,7 @@ export default function AdjustmentDetail({
         </div>
       </div>
 
-      <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-end">
+      <div className="flex items-center justify-end border-b border-gray-200 bg-white px-5 py-3">
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => setShowPdfView((visible) => !visible)}>
           <span className="text-sm italic text-black">Show PDF View</span>
           <div

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import InventoryAdjustments from "./InventoryAdjustments";
 import AdjustmentDetail from "./AdjustmentDetail";
@@ -76,8 +77,19 @@ declare global {
 /* ------------------------------------------------------------------ */
 function InventoryPageContent() {
   const navigate = useNavigate();
-  const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const INVENTORY_ADJUSTMENTS_CACHE_KEY = "inventory_adjustments_cache_v1";
+  const [adjustments, setAdjustments] = useState<Adjustment[]>(() => {
+    try {
+      const cached = sessionStorage.getItem(INVENTORY_ADJUSTMENTS_CACHE_KEY);
+      if (!cached) return [];
+      const parsed = JSON.parse(cached);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.warn("Failed to read cached inventory adjustments", error);
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState<boolean>(false);
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<DeleteConfirmModalState>({ open: false, count: 0, itemIds: [] });
   const [periodMenuPos, setPeriodMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
@@ -132,7 +144,9 @@ function InventoryPageContent() {
   };
 
   const fetchAdjustments = async (showToast = false) => {
-    setLoading(true);
+    if (adjustments.length === 0) {
+      setLoading(true);
+    }
     try {
       // Add timestamp to prevent caching
       const response = await inventoryAdjustmentsAPI.getAll();
@@ -176,6 +190,7 @@ function InventoryPageContent() {
 
       // Update adjustments state
       setAdjustments(formattedData);
+      sessionStorage.setItem(INVENTORY_ADJUSTMENTS_CACHE_KEY, JSON.stringify(formattedData));
 
       if (showToast) {
         toast.success(`List refreshed successfully - ${formattedData.length} adjustment(s) loaded`);
@@ -200,6 +215,7 @@ function InventoryPageContent() {
 
       // Set empty array on error to prevent UI issues
       setAdjustments([]);
+      sessionStorage.removeItem(INVENTORY_ADJUSTMENTS_CACHE_KEY);
     } finally {
       setLoading(false);
     }
@@ -221,7 +237,20 @@ function InventoryPageContent() {
       }, 800);
     };
 
+    const handleAdjustmentUpdate = () => {
+      setTimeout(() => {
+        fetchAdjustments(false);
+      }, 400);
+    };
+
+    const handleShowList = () => {
+      setSelectedAdjustment(null);
+      setSelectedItems([]);
+    };
+
     window.addEventListener('inventoryAdjustmentsImported', handleImport);
+    window.addEventListener('inventoryAdjustmentsUpdated', handleAdjustmentUpdate);
+    window.addEventListener('inventoryAdjustmentsShowList', handleShowList);
 
     // Also check if we're coming from an import (check sessionStorage)
     const checkImportFlag = sessionStorage.getItem('inventoryImportCompleted');
@@ -252,6 +281,8 @@ function InventoryPageContent() {
       // @ts-ignore
       delete (window as any).setInventorySearchCriteria;
       window.removeEventListener('inventoryAdjustmentsImported', handleImport);
+      window.removeEventListener('inventoryAdjustmentsUpdated', handleAdjustmentUpdate);
+      window.removeEventListener('inventoryAdjustmentsShowList', handleShowList);
     };
   }, []);
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
@@ -273,9 +304,11 @@ function InventoryPageContent() {
   const periodDropdownRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const sidebarMoreMenuRef = useRef<HTMLDivElement>(null);
+  const sidebarMoreMenuPopupRef = useRef<HTMLDivElement>(null);
   const sortMenuRef = useRef<HTMLDivElement>(null);
   const importMenuRef = useRef<HTMLDivElement>(null);
   const [sidebarMoreMenuOpen, setSidebarMoreMenuOpen] = useState(false);
+  const [sidebarMoreMenuPosition, setSidebarMoreMenuPosition] = useState<{ top: number; left: number } | null>(null);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -289,13 +322,15 @@ function InventoryPageContent() {
 
       // Check if click is outside the more menu container (including submenus)
       const isClickInMoreMenu = moreMenuRef.current?.contains(event.target as Node);
+      const isClickInSidebarMoreMenu = sidebarMoreMenuPopupRef.current?.contains(event.target as Node);
       const isClickInSortMenu = sortMenuRef.current?.contains(event.target as Node);
       const isClickInImportMenu = importMenuRef.current?.contains(event.target as Node);
 
-      if (!isClickInMoreMenu && !isClickInSortMenu && !isClickInImportMenu) {
+      if (!isClickInMoreMenu && !isClickInSidebarMoreMenu && !isClickInSortMenu && !isClickInImportMenu) {
         setMoreMenuOpen(false);
         setSortMenuOpen(false);
         setImportMenuOpen(false);
+        setSidebarMoreMenuOpen(false);
       }
     };
     const handleResize = () => setIsSmallScreen(window.innerWidth < 640);
@@ -314,6 +349,29 @@ function InventoryPageContent() {
       };
     }
   }, [typeDropdownOpen, periodDropdownOpen, moreMenuOpen, sortMenuOpen, importMenuOpen, sidebarMoreMenuOpen]);
+
+  useEffect(() => {
+    if (!sidebarMoreMenuOpen) return;
+
+    const updateSidebarMenuPosition = () => {
+      const trigger = sidebarMoreMenuRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      setSidebarMoreMenuPosition({
+        top: rect.bottom + 8,
+        left: rect.right - 220,
+      });
+    };
+
+    updateSidebarMenuPosition();
+    window.addEventListener("resize", updateSidebarMenuPosition);
+    window.addEventListener("scroll", updateSidebarMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateSidebarMenuPosition);
+      window.removeEventListener("scroll", updateSidebarMenuPosition, true);
+    };
+  }, [sidebarMoreMenuOpen]);
 
   // Handle escape key to clear selection
   useEffect(() => {
@@ -611,11 +669,11 @@ function InventoryPageContent() {
   // Show split view only when adjustment is selected
   if (selectedAdjustment) {
     return (
-      <div className="flex flex-col md:flex-row min-h-[calc(100vh-40px)] p-3 md:p-6 gap-3 md:gap-6 overflow-visible bg-[#f6f7fb]">
+      <div className="flex min-h-[calc(100vh-40px)] flex-col overflow-hidden bg-[#f4f7fb] md:flex-row md:gap-0">
         {/* Left Panel - List */}
-        <div className="w-full md:w-[400px] md:border-r border-gray-200 flex flex-col overflow-visible md:shrink-0 bg-transparent">
+        <div className="flex w-full shrink-0 flex-col overflow-hidden border-r border-gray-200 bg-white md:w-[360px]">
           {/* Header */}
-          <div className="p-4 border-b border-gray-200 min-h-[65px] flex items-center">
+          <div className="flex min-h-[72px] items-center border-b border-gray-200 bg-white px-4 py-3">
             {selectedItems.length > 0 ? (
               <div className="flex items-center justify-between w-full">
                 <div className="flex items-center gap-2">
@@ -661,7 +719,7 @@ function InventoryPageContent() {
             ) : (
               <div className="flex items-center justify-between w-full">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-base font-semibold text-gray-900 m-0">
+                  <h2 className="m-0 text-[17px] font-semibold text-gray-900">
                     Inventory Adjustments
                   </h2>
                 </div>
@@ -678,15 +736,35 @@ function InventoryPageContent() {
                   </button>
                   <div className="relative" ref={sidebarMoreMenuRef}>
                     <button
-                      onClick={() => setSidebarMoreMenuOpen(!sidebarMoreMenuOpen)}
+                      onClick={() => {
+                        if (sidebarMoreMenuOpen) {
+                          setSidebarMoreMenuOpen(false);
+                          return;
+                        }
+
+                        const trigger = sidebarMoreMenuRef.current;
+                        if (trigger) {
+                          const rect = trigger.getBoundingClientRect();
+                          setSidebarMoreMenuPosition({
+                            top: rect.bottom + 8,
+                            left: rect.right - 220,
+                          });
+                        }
+                        setSidebarMoreMenuOpen(true);
+                      }}
                       className="p-1.5 text-sm font-medium text-gray-500 bg-gray-100 border-none rounded-md cursor-pointer flex items-center justify-center hover:bg-gray-200"
                     >
                       <MoreVertical size={16} />
                     </button>
-                    {sidebarMoreMenuOpen && (
+                    {sidebarMoreMenuOpen && sidebarMoreMenuPosition && createPortal(
                       <div
+                        ref={sidebarMoreMenuPopupRef}
                         onClick={(e) => e.stopPropagation()}
-                        className="absolute top-[calc(100%+8px)] right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-[1000] min-w-[220px] py-1 overflow-visible"
+                        className="fixed z-[1200] min-w-[220px] overflow-visible rounded-xl border border-gray-200 bg-white py-1 shadow-[0_10px_30px_rgba(15,23,42,0.14)]"
+                        style={{
+                          top: sidebarMoreMenuPosition.top,
+                          left: sidebarMoreMenuPosition.left,
+                        }}
                       >
                         {/* Sort Submenu */}
                         <div className="relative">
@@ -696,18 +774,18 @@ function InventoryPageContent() {
                               setSortMenuOpen(!sortMenuOpen);
                               setImportMenuOpen(false);
                             }}
-                            className={`px-3 py-2 text-sm font-medium cursor-pointer flex items-center justify-between group transition-colors ${sortMenuOpen ? "bg-[#156372] text-white" : "text-gray-800 hover:bg-gray-300 hover:text-gray-900"}`}
+                            className="group flex cursor-pointer items-center justify-between px-4 py-3 text-sm font-medium text-gray-800 transition-colors hover:bg-[#f8fafc]"
                           >
                             <div className="flex items-center gap-2">
-                              <ArrowUpDown size={14} className={sortMenuOpen ? "text-white" : "text-gray-500 group-hover:text-white"} />
+                              <ArrowUpDown size={14} className="text-[#667085] group-hover:text-[#156372]" />
                               <span>Sort by</span>
                             </div>
-                            <ChevronRight size={14} className={sortMenuOpen ? "text-white" : "text-gray-400 group-hover:text-white"} />
+                            <ChevronRight size={14} className="text-[#98a2b3] group-hover:text-[#156372]" />
                           </div>
 
                           {sortMenuOpen && (
                             <div
-                              className="absolute top-0 right-full mr-2 bg-white border border-gray-200 rounded-lg shadow-lg z-[1001] min-w-[180px] overflow-hidden"
+                              className="absolute top-0 left-full z-[1201] ml-2 min-w-[180px] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.14)]"
                             >
                               {["Date", "Reason", "Created Time", "Last Modified Time"].map((option) => {
                                 const isSelected = sortBy === option;
@@ -725,7 +803,7 @@ function InventoryPageContent() {
                                       setSortMenuOpen(false);
                                       setSidebarMoreMenuOpen(false);
                                     }}
-                                    className={`px-3 py-2 text-[13px] cursor-pointer flex items-center justify-between border-b border-gray-50 last:border-0 transition-colors ${isSelected ? "bg-[#156372] text-white" : "text-gray-700 hover:bg-gray-300 hover:text-gray-900"}`}
+                                    className={`flex cursor-pointer items-center justify-between border-b border-gray-100 px-4 py-3 text-[13px] transition-colors last:border-0 ${isSelected ? "bg-[#f8fafc] text-[#156372]" : "text-gray-700 hover:bg-[#f8fafc] hover:text-[#156372]"}`}
                                   >
                                     <span>{option}</span>
                                     {isSelected && (sortOrder === "asc" ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
@@ -744,17 +822,17 @@ function InventoryPageContent() {
                               setImportMenuOpen(!importMenuOpen);
                               setSortMenuOpen(false);
                             }}
-                            className={`px-3 py-2 text-sm font-medium cursor-pointer flex items-center justify-between group transition-colors ${importMenuOpen ? "bg-[#156372] text-white" : "text-gray-800 hover:bg-gray-300 hover:text-gray-900"}`}
+                            className="group flex cursor-pointer items-center justify-between border-t border-gray-100 px-4 py-3 text-sm font-medium text-gray-800 transition-colors hover:bg-[#f8fafc]"
                           >
                             <div className="flex items-center gap-2">
-                              <Download size={14} className={importMenuOpen ? "text-white" : "text-gray-500 group-hover:text-white"} />
+                              <Download size={14} className="text-[#667085] group-hover:text-[#156372]" />
                               <span>Import</span>
                             </div>
-                            <ChevronRight size={14} className={importMenuOpen ? "text-white" : "text-gray-400 group-hover:text-white"} />
+                            <ChevronRight size={14} className="text-[#98a2b3] group-hover:text-[#156372]" />
                           </div>
                           {importMenuOpen && (
                             <div
-                              className="absolute top-0 right-full mr-2 bg-white border border-gray-200 rounded-lg shadow-lg z-[1001] min-w-[200px] overflow-hidden"
+                              className="absolute top-0 left-full z-[1201] ml-2 min-w-[200px] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.14)]"
                             >
                               {["Import Quantity Adjustments", "Import Value Adjustments"].map((option, index) => (
                                 <div
@@ -765,7 +843,7 @@ function InventoryPageContent() {
                                     setSidebarMoreMenuOpen(false);
                                     navigate(option.includes('Quantity') ? "/inventory/import/quantity" : "/inventory/import/value");
                                   }}
-                                  className={`px-4 py-2.5 text-[13px] text-gray-700 cursor-pointer transition-colors hover:bg-gray-300 hover:text-gray-900 border-b border-gray-50 last:border-0`}
+                                  className="cursor-pointer border-b border-gray-100 px-4 py-3 text-[13px] text-gray-700 transition-colors last:border-0 hover:bg-[#f8fafc] hover:text-[#156372]"
                                 >
                                   {option}
                                 </div>
@@ -780,9 +858,9 @@ function InventoryPageContent() {
                             setSidebarMoreMenuOpen(false);
                             setIsExportModalOpen(true);
                           }}
-                          className="px-3 py-2 text-sm font-medium cursor-pointer flex items-center gap-2 border-t border-gray-100 text-gray-800 hover:bg-gray-300 hover:text-gray-900 group transition-colors"
+                          className="group flex cursor-pointer items-center gap-2 border-t border-gray-100 px-4 py-3 text-sm font-medium text-gray-800 transition-colors hover:bg-[#f8fafc] hover:text-[#156372]"
                         >
-                          <Upload size={14} className="text-gray-500 group-hover:text-white" />
+                          <Upload size={14} className="text-[#667085] group-hover:text-[#156372]" />
                           <span>Export Adjustments</span>
                         </div>
 
@@ -793,12 +871,13 @@ function InventoryPageContent() {
                             setSidebarMoreMenuOpen(false);
                             await fetchAdjustments(true);
                           }}
-                          className="px-3 py-2 text-sm font-medium cursor-pointer flex items-center gap-2 border-t border-gray-100 text-gray-800 hover:bg-gray-300 hover:text-gray-900 group transition-colors"
+                          className="group flex cursor-pointer items-center gap-2 border-t border-gray-100 px-4 py-3 text-sm font-medium text-gray-800 transition-colors hover:bg-[#f8fafc] hover:text-[#156372]"
                         >
-                          <RefreshCw size={14} className="text-gray-500 group-hover:text-white" />
+                          <RefreshCw size={14} className="text-[#667085] group-hover:text-[#156372]" />
                           <span>Refresh List</span>
                         </div>
-                      </div>
+                      </div>,
+                      document.body
                     )}
                   </div>
                 </div>
@@ -807,7 +886,7 @@ function InventoryPageContent() {
           </div>
 
           {/* Filters */}
-          <div className="px-3 md:px-4 py-3 border-b border-gray-200 flex flex-wrap gap-2 items-center">
+          <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-white px-4 py-3">
             {/* ... (Keep Dropdowns) ... */}
             < div className="relative inline-block" ref={typeDropdownRef} >
               <button
@@ -961,7 +1040,7 @@ function InventoryPageContent() {
           </div >
 
           {/* List */}
-          < div className="flex-1 overflow-y-auto" >
+          < div className="flex-1 overflow-y-auto bg-white" >
             {
               sortedAdjustments.map((adj) => {
                 const isSelected = selectedItems.includes(adj.id);
@@ -971,7 +1050,7 @@ function InventoryPageContent() {
                   <div
                     key={adj.id}
                     onClick={() => setSelectedAdjustment(adj)}
-                    className={`p-3 px-4 border-b border-gray-100 cursor-pointer transition-colors ${isActive ? "bg-[#156372]/5" : "bg-white hover:bg-gray-50"}`}
+                    className={`cursor-pointer border-b border-gray-100 px-4 py-4 transition-colors ${isActive ? "bg-[#eef4f8]" : "bg-white hover:bg-gray-50"}`}
                   >
                     <div className="flex items-start gap-4">
                       <div className="pt-1">
@@ -1012,7 +1091,7 @@ function InventoryPageContent() {
         </div >
 
         {/* Right Panel - Detail */}
-        < div className="flex-1 overflow-visible min-h-0 flex flex-col bg-transparent relative z-0" >
+        < div className="relative z-0 flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f4f7fb]" >
           <AdjustmentDetail
             adjustment={selectedAdjustment}
             onClose={() => setSelectedAdjustment(null)}
@@ -1057,30 +1136,32 @@ function InventoryPageContent() {
   };
 
   return (
-    <div className="w-full min-h-screen overflow-x-hidden bg-transparent">
-      <div className="sticky top-0 z-40 -mx-0 bg-white/95 backdrop-blur-sm border-b border-gray-200 px-3 md:px-6 pt-3 md:pt-6 pb-4">
+    <div className="flex min-h-[calc(100vh-88px)] w-full flex-col bg-transparent">
+      <div className="fixed left-[262px] right-[16px] top-[62px] z-40 shrink-0 rounded-t-[18px] border-b border-gray-200 bg-white/95 px-8 pb-3 pt-4 backdrop-blur-sm">
       {/* Selection Bar - Above Header */}
       {selectedItems.length > 0 && (
-        <div className="rounded-lg border border-gray-200 p-2 pl-3 mb-5 flex items-center justify-between shadow-sm h-[52px] bg-transparent">
+        <div className="mb-4 flex items-center justify-between rounded-xl border border-[#e5e7eb] bg-white px-4 py-3 shadow-sm">
           <div className="flex items-center gap-3">
             <button
               onClick={handleDeleteSelected}
-              className="px-4 py-1.5 text-sm font-medium text-slate-700 bg-white border border-gray-300 rounded hover:bg-gray-50 flex items-center gap-2 transition-all shadow-sm"
+              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-all hover:bg-gray-50"
             >
               Delete
             </button>
-            <div className="h-5 w-px bg-gray-300 mx-1"></div>
-            <div className="flex items-center gap-2 text-sm text-slate-700 bg-slate-100 px-3 py-1 rounded-md">
-              <span className="font-bold text-slate-900">{selectedItems.length}</span>
-              <span className="font-medium text-slate-600">Selected</span>
+            <div className="mx-1 h-6 w-px bg-gray-200" />
+            <div className="flex items-center gap-3 text-sm text-slate-700">
+              <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-[#eef4ff] px-2 font-semibold text-[#2563eb]">
+                {selectedItems.length}
+              </span>
+              <span className="font-medium text-slate-700">Selected</span>
             </div>
           </div>
 
           <button
             onClick={() => setSelectedItems([])}
-            className="flex items-center gap-1.5 text-slate-500 hover:text-slate-700 font-medium text-sm px-3 py-1.5 rounded hover:bg-slate-50 transition-colors mr-1"
+            className="mr-1 flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
           >
-            <span className="text-xs font-semibold tracking-wide">Esc</span>
+            <span className="text-sm font-medium">Esc</span>
             <X size={18} className="text-red-500" />
           </button>
         </div>
@@ -1088,16 +1169,16 @@ function InventoryPageContent() {
 
       {/* Header */}
       {selectedItems.length === 0 && (
-      <div className="flex flex-row flex-wrap justify-between items-center gap-3 mb-5 pb-4 bg-transparent">
-          <h1 className="flex-1 min-w-0 text-xl sm:text-2xl md:text-[28px] font-bold text-black m-0">
+      <div className="sticky top-0 z-20 -mx-6 mb-3 flex flex-row flex-wrap items-center justify-between gap-4 border-b border-[#e5e7eb] bg-white px-6 py-3 shadow-[0_1px_0_rgba(15,23,42,0.04)]">
+          <h1 className="m-0 flex-1 min-w-0 text-[22px] font-bold tracking-[-0.02em] text-[#111827] sm:text-[24px]">
             Inventory Adjustments
           </h1>
-          <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
+          <div className="flex flex-wrap items-center gap-3 pt-1">
             {/* Removed: FIFO Cost Lot Tracking Report link */}
             <button
               onClick={() => navigate("/inventory/new")}
-              className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white border-none rounded-md cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
-              style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+              className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md border-none px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity"
+              style={{ backgroundColor: "#156372" }}
               onMouseEnter={(e) => e.currentTarget.style.opacity = "0.9"}
               onMouseLeave={(e) => e.currentTarget.style.opacity = "1"}
             >
@@ -1118,23 +1199,23 @@ function InventoryPageContent() {
                   }
                 }}
                 style={{
-                  padding: "8px",
+                  padding: "10px",
                   fontSize: "14px",
                   fontWeight: "500",
                   color: "#6b7280",
-                  backgroundColor: "#f3f4f6",
-                  border: "none",
-                  borderRadius: "6px",
+                  backgroundColor: "#f8fafc",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "8px",
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center"
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#e5e7eb";
+                  e.currentTarget.style.backgroundColor = "#f3f4f6";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "#f3f4f6";
+                  e.currentTarget.style.backgroundColor = "#f8fafc";
                 }}
               >
                 <MoreVertical size={16} />
@@ -1409,26 +1490,26 @@ function InventoryPageContent() {
       )}
 
       {/* Filters */}
-      <div className="relative z-20 flex flex-wrap gap-3 mb-5 items-center bg-transparent py-1">
+      <div className="relative z-20 mb-1 flex flex-wrap items-center gap-3 bg-transparent py-0">
         <div className="relative z-20 flex items-center gap-2">
-          <label className="text-[13px] text-gray-500 font-medium">
+          <label className="text-[13px] font-medium text-[#6b7280]">
             Filter By :
           </label>
           <div className="relative inline-block align-top" ref={typeDropdownRef}>
             <button
               onClick={() => setTypeDropdownOpen(!typeDropdownOpen)}
               style={{
-                padding: "5px 12px",
+                padding: "7px 14px",
                 fontSize: "13px",
                 border: "1px solid #d1d5db",
-                borderRadius: "6px",
+                borderRadius: "8px",
                 backgroundColor: "#ffffff",
                 color: "#1f2937",
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 gap: "8px",
-                minWidth: "100px",
+                minWidth: "102px",
                 justifyContent: "space-between"
               }}
               onMouseEnter={(e) => {
@@ -1575,37 +1656,6 @@ function InventoryPageContent() {
                     }}
                   />
                 </div>
-                {/* Divider */}
-                <div style={{
-                  height: "1px",
-                  backgroundColor: "#e5e7eb",
-                  margin: "4px 0"
-                }} />
-                {/* New Custom View option */}
-                <div
-                  onClick={() => {
-                    setTypeDropdownOpen(false);
-                    navigate("/inventory/new-custom-view");
-                  }}
-                  style={{
-                    padding: "8px 12px",
-                    cursor: "pointer",
-                    fontSize: "13px",
-                    color: "#1f2937",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px"
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "#f9fafb";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "transparent";
-                  }}
-                >
-                  <Plus size={14} style={{ color: "#2563eb" }} />
-                  <span>New Custom View</span>
-                </div>
               </div>
             )}
           </div>
@@ -1614,10 +1664,10 @@ function InventoryPageContent() {
           <div className="relative inline-block align-top z-30" ref={periodDropdownRef}>
             <button
               onClick={() => setPeriodDropdownOpen(!periodDropdownOpen)}
-              className="px-3 py-[5px] text-[13px] border border-gray-300 rounded-md bg-white text-gray-900 cursor-pointer flex items-center gap-2 min-w-[100px] justify-between hover:border-gray-400"
-            >
-              <span>Period: {selectedPeriod}</span>
-              {periodDropdownOpen ? (
+                className="flex min-w-[138px] cursor-pointer items-center justify-between gap-2 rounded-[8px] border border-gray-300 bg-white px-[14px] py-[7px] text-[13px] text-gray-900 hover:border-gray-400"
+              >
+                <span>Period: {selectedPeriod}</span>
+                {periodDropdownOpen ? (
                 <ChevronUp size={14} className="text-gray-500" />
               ) : (
                 <ChevronDown size={14} className="text-gray-500" />
@@ -1673,31 +1723,35 @@ function InventoryPageContent() {
       </div>
       </div>
 
+      <div className="shrink-0 pb-[164px]" />
+
       {/* Content */}
-      <InventoryAdjustments
-        rows={sortedAdjustments}
-        onRowClick={(adjustment) => {
-          if (selectedItems.length === 0) {
-            setSelectedAdjustment(adjustment);
-          }
-        }}
-        onCreateNew={() => navigate("/inventory/new")}
-        selectedItems={selectedItems}
-        onSelectAll={handleSelectAll}
-        onSelectItem={handleSelectItem}
-        onSort={(field) => {
-          if (sortBy === field) {
-            setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-          } else {
-            setSortBy(field);
-            setSortOrder("asc");
-          }
-        }}
-        sortBy={sortBy}
-        sortOrder={sortOrder}
-        isLoading={loading}
-        currentTypeFilter={selectedType}
-      />
+      <div className="-mt-px min-h-0 flex-1 rounded-[2px] border border-gray-100 bg-white">
+        <InventoryAdjustments
+          rows={sortedAdjustments}
+          onRowClick={(adjustment) => {
+            if (selectedItems.length === 0) {
+              setSelectedAdjustment(adjustment);
+            }
+          }}
+          onCreateNew={() => navigate("/inventory/new")}
+          selectedItems={selectedItems}
+          onSelectAll={handleSelectAll}
+          onSelectItem={handleSelectItem}
+          onSort={(field) => {
+            if (sortBy === field) {
+              setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+            } else {
+              setSortBy(field);
+              setSortOrder("asc");
+            }
+          }}
+          sortBy={sortBy}
+          sortOrder={sortOrder}
+          isLoading={loading}
+          currentTypeFilter={selectedType}
+        />
+      </div>
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmModal.open && (

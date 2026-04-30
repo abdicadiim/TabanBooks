@@ -740,7 +740,8 @@ const ItemsList = ({
               {canCreate && (
                 <button
                   onClick={onNew}
-                  className="cursor-pointer transition-all bg-slate-700 text-white px-3 sm:px-4 py-1.5 rounded-lg border-slate-800 border-b-[4px] hover:brightness-110 hover:-translate-y-[1px] hover:border-b-[6px] active:border-b-[2px] active:brightness-90 active:translate-y-[2px] flex items-center gap-1 text-sm font-semibold"
+                  className="cursor-pointer transition-all text-white px-3 sm:px-4 py-1.5 rounded-lg border-b-[4px] hover:brightness-110 hover:-translate-y-[1px] hover:border-b-[6px] active:border-b-[2px] active:brightness-90 active:translate-y-[2px] flex items-center gap-1 text-sm font-semibold"
+                  style={{ backgroundColor: "#156372", borderColor: "#0d4a52" }}
                 >
                   <Plus size={16} strokeWidth={3} /> <span className="hidden sm:inline">New</span>
                 </button>

@@ -19,8 +19,9 @@ import {
     ArrowUpDown
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { apiRequest, itemsAPI, tagAssignmentsAPI, invoicesAPI, billsAPI, inventoryAdjustmentsAPI, reportsAPI, locationsAPI } from "../../../services/api";
+import { apiRequest, itemsAPI, tagAssignmentsAPI, invoicesAPI, billsAPI, inventoryAdjustmentsAPI, reportsAPI, locationsAPI, accountsAPI } from "../../../services/api";
 import { Item, Z, fmtMoney } from "../itemsModel";
+import type { Account } from "../../../hooks/useAccountSelect";
 import LockItemModal from "./modals/LockItemModal";
 import OpeningStockModal from "./modals/OpeningStockModal";
 import AdjustStock from "./modals/AdjustStock";
@@ -77,6 +78,74 @@ const toFiniteNumber = (value: any): number | null => {
     return Number.isFinite(parsed) ? parsed : null;
 };
 
+const normalizeLocationKey = (value: any): string =>
+    String(value || "").trim().toLowerCase();
+
+const buildLocationStockMap = (item: any, locations: any[], totalStock: number): Record<string, number> => {
+    const stockMap: Record<string, number> = {};
+
+    const assignStock = (name: any, value: any) => {
+        const key = normalizeLocationKey(name);
+        const parsed = toFiniteNumber(value);
+        if (!key || parsed === null) return;
+        stockMap[key] = parsed;
+    };
+
+    [
+        item?.locationStocks,
+        item?.stockByLocation,
+        item?.inventoryByLocation,
+        item?.locationQuantities,
+        item?.quantityByLocation,
+    ].forEach((source: any) => {
+        if (!source) return;
+
+        if (Array.isArray(source)) {
+            source.forEach((entry: any) => {
+                assignStock(
+                    entry?.name || entry?.locationName || entry?.location || entry?.label,
+                    entry?.stockOnHand ?? entry?.stockQuantity ?? entry?.quantityOnHand ?? entry?.quantity ?? entry?.availableQty,
+                );
+            });
+            return;
+        }
+
+        if (typeof source === "object") {
+            Object.entries(source).forEach(([name, value]) => {
+                if (value && typeof value === "object") {
+                    assignStock(
+                        (value as any)?.name || (value as any)?.locationName || name,
+                        (value as any)?.stockOnHand ?? (value as any)?.stockQuantity ?? (value as any)?.quantityOnHand ?? (value as any)?.quantity ?? (value as any)?.availableQty,
+                    );
+                } else {
+                    assignStock(name, value);
+                }
+            });
+        }
+    });
+
+    const defaultLocationName =
+        locations.find((loc: any) => loc?.isDefault)?.name ||
+        locations.find((loc: any) => normalizeLocationKey(loc?.name || loc?.locationName) === "head office")?.name ||
+        item?.locationName ||
+        item?.warehouseLocation ||
+        "Head Office";
+
+    const defaultLocationKey = normalizeLocationKey(defaultLocationName);
+    if (defaultLocationKey && !Object.prototype.hasOwnProperty.call(stockMap, defaultLocationKey)) {
+        stockMap[defaultLocationKey] = totalStock;
+    }
+
+    (locations || []).forEach((loc: any) => {
+        const key = normalizeLocationKey(loc?.name || loc?.locationName);
+        if (key && !Object.prototype.hasOwnProperty.call(stockMap, key)) {
+            stockMap[key] = 0;
+        }
+    });
+
+    return stockMap;
+};
+
 export default function ItemDetails({
     item,
     onBack,
@@ -115,6 +184,8 @@ export default function ItemDetails({
     const [showStatusDropdown, setShowStatusDropdown] = useState(false);
     const [reorderNotificationEnabled, setReorderNotificationEnabled] = useState(false);
     const [isActionLoading, setIsActionLoading] = useState(false);
+    const [adjustStockAccounts, setAdjustStockAccounts] = useState<Account[]>([]);
+    const isInventoryTracked = item.trackInventory === true;
 
     const summaryStockOnHand =
         toFiniteNumber(inventorySummary?.stockOnHand) ??
@@ -132,6 +203,7 @@ export default function ItemDetails({
 
     const committedStock = toFiniteNumber(inventorySummary?.committedStock) ?? 0;
     const availableForSale = resolvedStockOnHand - committedStock;
+    const adjustStockLocationStocks = buildLocationStockMap(item, locations, resolvedStockOnHand);
 
     const transactionTypeOptions = [
         "Quotes",
@@ -277,6 +349,36 @@ export default function ItemDetails({
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, []);
+
+    useEffect(() => {
+        if (!isInventoryTracked || adjustStockAccounts.length > 0) return;
+
+        const loadAdjustStockAccounts = async () => {
+            try {
+                const response = await accountsAPI.getAll({ limit: 1000 });
+                const data = Array.isArray(response?.data) ? response.data : [];
+                const filtered = data
+                    .filter((acc: any) => acc?.isActive !== false)
+                    .map((acc: any) => ({
+                        id: acc._id || acc.id,
+                        name: acc.accountName || acc.name,
+                        accountCode: acc.accountCode,
+                        accountType: acc.accountType,
+                        description: acc.description,
+                        isActive: acc.isActive,
+                    }))
+                    .filter((acc: Account) =>
+                        ["expense", "cost_of_goods_sold", "other_expense"].includes(acc.accountType)
+                    );
+
+                setAdjustStockAccounts(filtered);
+            } catch (error) {
+                console.warn("Failed to preload adjust stock accounts", error);
+            }
+        };
+
+        void loadAdjustStockAccounts();
+    }, [isInventoryTracked, adjustStockAccounts.length]);
 
     // Click Outside
     useEffect(() => {
@@ -564,6 +666,7 @@ export default function ItemDetails({
     return (
         <div className="flex flex-col h-full bg-white relative">
             {/* Top Navigation / Header */}
+            {!showAdjustStock && (
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                     <h1 className="text-2xl font-bold text-slate-800 truncate">{item.name}</h1>
@@ -585,6 +688,17 @@ export default function ItemDetails({
                         </button>
                     )}
 
+                    {isInventoryTracked && (
+                        <button
+                            onClick={() => setShowAdjustStock(true)}
+                            className="px-4 py-2 rounded-md text-sm font-medium text-white transition-colors hover:brightness-110"
+                            style={{ backgroundColor: "#156372" }}
+                            title="Adjust Stock"
+                        >
+                            Adjust Stock
+                        </button>
+                    )}
+
                     {(canCreate || canEdit || canDelete) && (
                         <div className="relative" ref={moreDropdownRef}>
                             <button
@@ -603,7 +717,7 @@ export default function ItemDetails({
                                                 handleClone();
                                                 setMoreDropdownOpen(false);
                                             }}
-                                            className="block w-full px-4 py-3 text-sm text-center text-white bg-[#156372] cursor-pointer hover:brightness-110 transition-all font-semibold shadow-sm"
+                                            className="block w-full px-4 py-3 text-sm text-left text-gray-700 bg-transparent border-none cursor-pointer hover:bg-gray-50 transition-colors font-semibold"
                                         >
                                             Clone
                                         </button>
@@ -612,7 +726,7 @@ export default function ItemDetails({
                                                 e.stopPropagation();
                                                 void handleToggleActive();
                                             }}
-                                            className="block w-full px-4 py-3 text-sm text-center text-gray-700 bg-transparent border-none cursor-pointer hover:bg-gray-50 transition-colors font-medium border-t border-gray-100"
+                                            className="block w-full px-4 py-3 text-sm text-left text-gray-700 bg-transparent border-none cursor-pointer hover:bg-gray-50 transition-colors font-medium border-t border-gray-100"
                                         >
                                             {(item.active === false || item.isActive === false || item.status === "Inactive") ? "Mark as Active" : "Mark as Inactive"}
                                         </button>
@@ -622,7 +736,7 @@ export default function ItemDetails({
                                                 onDelete(item.id || item._id || "");
                                                 setMoreDropdownOpen(false);
                                             }}
-                                            className="block w-full px-4 py-3 text-sm text-center text-gray-700 bg-transparent border-none cursor-pointer hover:bg-gray-50 transition-colors font-medium border-t border-gray-100"
+                                            className="block w-full px-4 py-3 text-sm text-left text-gray-700 bg-transparent border-none cursor-pointer hover:bg-gray-50 transition-colors font-medium border-t border-gray-100"
                                         >
                                             Delete
                                         </button>
@@ -637,8 +751,10 @@ export default function ItemDetails({
                     </button>
                 </div>
             </div>
+            )}
 
             {/* Tabs Bar - Scrollable on mobile */}
+            {!showAdjustStock && (
             <div className="flex items-center gap-4 sm:gap-8 px-6 border-b border-gray-100 overflow-x-auto no-scrollbar">
                 {["Overview", "Locations", "Transactions", "History"].map(tab => (
                     <button
@@ -650,12 +766,47 @@ export default function ItemDetails({
                     </button>
                 ))}
             </div>
+            )}
 
             {/* Main Content Area */}
             <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
+                {showAdjustStock && isInventoryTracked ? (
+                    <AdjustStock
+                        item={item}
+                        initialAccounts={adjustStockAccounts}
+                        initialLocations={locations}
+                        initialStockOnHand={resolvedStockOnHand}
+                        initialLocationStocks={adjustStockLocationStocks}
+                        onBack={() => setShowAdjustStock(false)}
+                        onUpdate={async (data) => {
+                            const optimisticItem = { ...item, ...data };
+
+                            setItems((prev) =>
+                                prev.map((existing) => {
+                                    const existingId = String(existing.id || existing._id || "").trim();
+                                    return existingId === itemId ? { ...existing, ...optimisticItem } : existing;
+                                })
+                            );
+
+                            setInventorySummary((prev: any) =>
+                                prev
+                                    ? {
+                                        ...prev,
+                                        stockOnHand: toFiniteNumber(data?.stockOnHand) ?? prev.stockOnHand,
+                                    }
+                                    : prev
+                            );
+
+                            void refreshItemCoreData();
+                            void refreshInventorySummary();
+                            setShowAdjustStock(false);
+                        }}
+                    />
+                ) : (
+                <>
                 {activeTab === "overview" && (
                     <div className="max-w-6xl mx-auto">
-                        {!item.trackInventory ? (
+                        {!isInventoryTracked ? (
                             // Simplified Layout for Non-tracked Items
                             <>
                                 <div className="flex flex-col md:flex-row gap-8 md:gap-12 mb-8">
@@ -1102,15 +1253,19 @@ export default function ItemDetails({
                                     </div>
                                 </div>
                             )}
-                            <div className="relative">
-                                <div className="absolute -left-[41px] top-1 bg-slate-200 rounded-full w-4 h-4 border-4 border-white"></div>
-                                <div className="flex flex-col">
-                                    <span className="text-sm font-bold text-slate-900 mb-1">Inventory Tracking Enabled</span>
-                                    <span className="text-xs text-slate-500">Tracking started with opening stock: {item.openingStock || 0}</span>
+                            {isInventoryTracked && (
+                                <div className="relative">
+                                    <div className="absolute -left-[41px] top-1 bg-slate-200 rounded-full w-4 h-4 border-4 border-white"></div>
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-bold text-slate-900 mb-1">Inventory Tracking Enabled</span>
+                                        <span className="text-xs text-slate-500">Tracking started with opening stock: {item.openingStock || 0}</span>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
                     </div>
+                )}
+                </>
                 )}
             </div>
 
