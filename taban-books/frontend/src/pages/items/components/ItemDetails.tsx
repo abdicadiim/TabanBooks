@@ -779,7 +779,26 @@ export default function ItemDetails({
                         initialLocationStocks={adjustStockLocationStocks}
                         onBack={() => setShowAdjustStock(false)}
                         onUpdate={async (data) => {
-                            await onUpdate({ ...item, ...data });
+                            const optimisticItem = { ...item, ...data };
+
+                            setItems((prev) =>
+                                prev.map((existing) => {
+                                    const existingId = String(existing.id || existing._id || "").trim();
+                                    return existingId === itemId ? { ...existing, ...optimisticItem } : existing;
+                                })
+                            );
+
+                            setInventorySummary((prev: any) =>
+                                prev
+                                    ? {
+                                        ...prev,
+                                        stockOnHand: toFiniteNumber(data?.stockOnHand) ?? prev.stockOnHand,
+                                    }
+                                    : prev
+                            );
+
+                            void refreshItemCoreData();
+                            void refreshInventorySummary();
                             setShowAdjustStock(false);
                         }}
                     />

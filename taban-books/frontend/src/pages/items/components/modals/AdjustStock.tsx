@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Calendar, Check, ChevronDown, Search, Settings, X } from "lucide-react";
+import toast from "react-hot-toast";
 import { Item } from "../../itemsModel";
 import { AccountSelectDropdown } from "../../../../components/AccountSelectDropdown";
 import type { Account } from "../../../../hooks/useAccountSelect";
@@ -62,6 +63,8 @@ export default function AdjustStock({
     const [reasonOptions, setReasonOptions] = useState<string[]>(DEFAULT_REASONS);
     const [manageReasonsOpen, setManageReasonsOpen] = useState(false);
     const [newReasonName, setNewReasonName] = useState("");
+    const [isSaving, setIsSaving] = useState(false);
+    const [validationMessage, setValidationMessage] = useState("");
 
     const [form, setForm] = useState({
         adjustmentType: "quantity",
@@ -185,12 +188,18 @@ export default function AdjustStock({
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
+        if (validationMessage) {
+            setValidationMessage("");
+        }
         setForm((prev) => ({ ...prev, [name]: value }));
     };
 
     const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
         setForm((prev) => {
+            if (validationMessage) {
+                setValidationMessage("");
+            }
             if (value.trim() === "") {
                 return {
                     ...prev,
@@ -215,6 +224,9 @@ export default function AdjustStock({
     const handleAdjustedChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
         setForm((prev) => {
+            if (validationMessage) {
+                setValidationMessage("");
+            }
             if (value.trim() === "") {
                 return {
                     ...prev,
@@ -237,6 +249,9 @@ export default function AdjustStock({
     };
 
     const handleAdjustmentTypeChange = (value: "quantity" | "value") => {
+        if (validationMessage) {
+            setValidationMessage("");
+        }
         setForm((prev) => ({
             ...prev,
             adjustmentType: value,
@@ -245,31 +260,98 @@ export default function AdjustStock({
         }));
     };
 
-    const handleSave = (status = "draft") => {
-        if (!form.date || !form.account || !form.quantityAdjusted || !form.reason) {
-            alert("Please fill in all required fields");
+    const handleSave = async (status = "DRAFT") => {
+        if (!form.reason) {
+            setValidationMessage("Please specify a reason for the adjustment");
             return;
         }
 
-        const adjustmentValue = parseFloat(form.quantityAdjusted.replace(/[+]/g, "")) || 0;
+        if (!form.date || !form.account || !form.quantityAdjusted) {
+            setValidationMessage("Please fill in all required fields");
+            return;
+        }
 
-        const newTransaction = {
-            id: uid(),
-            date: form.date,
-            type: "adjustment",
-            qty: adjustmentValue,
-            price: parseFloat(form.costPrice) || 0,
-            total: adjustmentValue * (parseFloat(form.costPrice) || 0),
-            status: status === "draft" ? "Draft" : "Adjusted",
-            reference: form.referenceNumber,
+        const itemId = String(item._id || item.id || "").trim();
+        if (!itemId) {
+            toast.error("Item id is missing");
+            return;
+        }
+
+        const adjustmentValue = parseFloat(String(form.quantityAdjusted || "").replace(/[+]/g, "")) || 0;
+        const resolvedNewQuantity =
+            form.newQuantity.trim() === ""
+                ? form.adjustmentType === "value"
+                    ? 0
+                    : selectedLocationStock + adjustmentValue
+                : parseFloat(form.newQuantity) || 0;
+        const adjustmentNumber = form.referenceNumber.trim() || `ADJ-${Date.now()}`;
+
+        const payload = {
+            adjustmentNumber,
+            referenceNumber: form.referenceNumber.trim() || adjustmentNumber,
+            reference: form.referenceNumber.trim() || adjustmentNumber,
+            date: new Date(`${form.date}T00:00:00`),
+            type: form.adjustmentType === "value" ? "Value" : "Quantity",
+            status,
+            reason: form.reason,
+            description: form.description || "",
+            notes: form.description || "",
+            account: form.account,
+            location: form.location,
+            locationName: form.location,
+            items: [
+                {
+                    item: itemId,
+                    itemName: item.name || "",
+                    itemSku: item.sku || "",
+                    quantityOnHand: form.adjustmentType === "value" ? selectedLocationValue : selectedLocationStock,
+                    quantityAdjusted: adjustmentValue,
+                    newQuantity: resolvedNewQuantity,
+                    cost: parseFloat(form.costPrice) || 0,
+                    reason: form.reason,
+                },
+            ],
         };
 
-        onUpdate({
-            stockOnHand: parseFloat(form.newQuantity) || 0,
-            transactions: [...(item.transactions || []), newTransaction],
-        });
+        try {
+            setIsSaving(true);
+            await inventoryAdjustmentsAPI.create(payload);
 
-        onBack();
+            if (status === "ADJUSTED") {
+                const newTransaction = {
+                    id: uid(),
+                    date: form.date,
+                    type: "adjustment",
+                    qty: adjustmentValue,
+                    price: parseFloat(form.costPrice) || 0,
+                    total: adjustmentValue * (parseFloat(form.costPrice) || 0),
+                    status: "Adjusted",
+                    reference: form.referenceNumber || adjustmentNumber,
+                };
+
+                void onUpdate({
+                    stockOnHand: resolvedNewQuantity,
+                    stockQuantity: resolvedNewQuantity,
+                    transactions: [...(item.transactions || []), newTransaction],
+                });
+            }
+
+            toast.success(
+                status === "ADJUSTED"
+                    ? "Inventory Adjustment has been added"
+                    : "Inventory adjustment draft saved",
+            );
+
+            onBack();
+
+            window.dispatchEvent(new Event("inventoryAdjustmentsUpdated"));
+            window.dispatchEvent(new Event("itemsUpdated"));
+        } catch (error: any) {
+            console.error("Failed to save inventory adjustment", error);
+            toast.error(error?.data?.message || error?.message || "Failed to save inventory adjustment");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -289,6 +371,22 @@ export default function AdjustStock({
 
             <div className="flex-1 overflow-y-auto px-6 py-6">
                 <div className="max-w-[780px] space-y-7">
+                    {validationMessage && (
+                        <div className="flex items-center justify-between rounded-md border border-[#3b82f6] bg-[#fdecec] px-4 py-4 text-sm text-slate-700">
+                            <div className="flex items-center gap-3">
+                                <span className="text-base leading-none text-slate-900">•</span>
+                                <span>{validationMessage}</span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setValidationMessage("")}
+                                className="shrink-0 text-red-500"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                    )}
+
                     <div>
                         <div className="space-y-3">
                             <label className="flex items-center gap-2 text-[14px] text-slate-600">
@@ -523,6 +621,7 @@ export default function AdjustStock({
                                                         key={reason}
                                                         type="button"
                                                         onClick={() => {
+                                                            setValidationMessage("");
                                                             setForm((prev) => ({ ...prev, reason }));
                                                             setReasonDropdownOpen(false);
                                                             setReasonSearch("");
@@ -541,6 +640,7 @@ export default function AdjustStock({
                                         <button
                                             type="button"
                                             onClick={() => {
+                                                setValidationMessage("");
                                                 setManageReasonsOpen(true);
                                                 setReasonDropdownOpen(false);
                                             }}
@@ -571,14 +671,16 @@ export default function AdjustStock({
                     <div className="flex items-center gap-3 border-t border-slate-200 pt-5">
                         <button
                             type="button"
-                            onClick={() => handleSave("draft")}
+                            onClick={() => void handleSave("DRAFT")}
+                            disabled={isSaving}
                             className="rounded-md bg-[#156372] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#0d4a52]"
                         >
-                            Save as Draft
+                            {isSaving ? "Saving..." : "Save as Draft"}
                         </button>
                         <button
                             type="button"
-                            onClick={() => handleSave("adjusted")}
+                            onClick={() => void handleSave("ADJUSTED")}
+                            disabled={isSaving}
                             className="rounded-md border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
                         >
                             Convert to Adjusted

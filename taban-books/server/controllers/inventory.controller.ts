@@ -60,6 +60,85 @@ const getValueDelta = (items: any[]): number => {
   return (items || []).reduce((sum: number, item: any) => sum + toNumber(item?.quantityAdjusted), 0);
 };
 
+const createInventoryAdjustmentJournalEntry = async (
+  adjustment: any,
+  organizationId: string,
+  userId: string,
+  totalValue: number,
+): Promise<void> => {
+  if (!(totalValue > 0)) {
+    return;
+  }
+
+  const [inventoryAssetAccount, costOfGoodsSoldAccount] = await Promise.all([
+    ChartOfAccount.findOne({
+      organization: organizationId,
+      $or: [{ accountName: 'Inventory Asset' }, { accountType: 'stock' }]
+    }),
+    ChartOfAccount.findOne({
+      organization: organizationId,
+      $or: [
+        { accountName: adjustment.account || 'Cost of Goods Sold' },
+        { accountType: 'cost_of_goods_sold' }
+      ]
+    }),
+  ]);
+
+  const debitAccount = inventoryAssetAccount?._id?.toString() || 'Inventory Asset';
+  const creditAccount = costOfGoodsSoldAccount?._id?.toString() || adjustment.account || 'Cost of Goods Sold';
+  const journalNumber = `JE-${adjustment.adjustmentNumber || adjustment.referenceNumber || Date.now()}`;
+  const valueDelta = getValueDelta(adjustment.items as any[]);
+  const absValueDelta = Math.abs(valueDelta);
+
+  const lines = adjustment.type === 'Value'
+    ? [
+      {
+        account: debitAccount,
+        accountName: inventoryAssetAccount?.accountName || 'Inventory Asset',
+        description: 'Inventory Value Adjustment',
+        debit: valueDelta >= 0 ? absValueDelta : 0,
+        credit: valueDelta < 0 ? absValueDelta : 0
+      },
+      {
+        account: creditAccount,
+        accountName: costOfGoodsSoldAccount?.accountName || adjustment.account || 'Cost of Goods Sold',
+        description: `Inventory Adjustment - ${adjustment.reason}`,
+        debit: valueDelta < 0 ? absValueDelta : 0,
+        credit: valueDelta >= 0 ? absValueDelta : 0
+      }
+    ]
+    : [
+      {
+        account: debitAccount,
+        accountName: inventoryAssetAccount?.accountName || 'Inventory Asset',
+        description: 'Inventory Adjustment - Stock',
+        debit: adjustment.type === 'Quantity' && adjustment.reason !== 'Found' ? 0 : totalValue,
+        credit: adjustment.type === 'Quantity' && adjustment.reason !== 'Found' ? totalValue : 0
+      },
+      {
+        account: creditAccount,
+        accountName: costOfGoodsSoldAccount?.accountName || adjustment.account || 'Cost of Goods Sold',
+        description: `Inventory Adjustment - ${adjustment.reason}`,
+        debit: adjustment.type === 'Quantity' && adjustment.reason !== 'Found' ? totalValue : 0,
+        credit: adjustment.type === 'Quantity' && adjustment.reason !== 'Found' ? 0 : totalValue
+      }
+    ];
+
+  await JournalEntry.create({
+    organization: organizationId,
+    entryNumber: journalNumber,
+    date: adjustment.date || new Date(),
+    reference: adjustment.adjustmentNumber || adjustment.referenceNumber,
+    description: `Inventory Adjustment - ${adjustment.adjustmentNumber || adjustment.referenceNumber}`,
+    status: 'posted',
+    postedBy: userId,
+    postedAt: new Date(),
+    sourceId: adjustment._id,
+    sourceType: 'inventory_adjustment',
+    lines
+  });
+};
+
 const applyValueRevaluation = async (items: any[], organizationId: string, reverse = false): Promise<void> => {
   for (const adjItem of items || []) {
     if (!adjItem?.item) continue;
@@ -517,43 +596,35 @@ export const createInventoryAdjustment = async (req: AuthRequest, res: Response)
       console.log('[Inventory] Processing stock updates for', adjustment.items.length, 'items');
       let totalValue = 0;
       if (adjustment.type === "Quantity") {
-        const settings = await getItemsSettings(req.user.organizationId);
+        const bulkOperations: any[] = [];
 
-        for (let i = 0; i < adjustment.items.length; i++) {
-          const adjItem = adjustment.items[i];
-          if (adjItem.item && adjItem.quantityAdjusted !== 0) {
-            const itemDoc = await Item.findById(adjItem.item);
-            if (!itemDoc) {
-              console.warn(`[Inventory] Item not found for adjustment item: ${adjItem.item}`);
-              continue;
-            }
-
-            const currentStock = itemDoc.stockQuantity || 0;
-            const newStock = formatQuantity(currentStock + adjItem.quantityAdjusted, settings.decimalPlaces);
-
-            adjustment.items[i].quantityOnHand = currentStock;
-            adjustment.items[i].newQuantity = newStock;
-
-            await Item.findOneAndUpdate(
-              { _id: adjItem.item, ...getOrgFilter(req.user.organizationId) },
-              { stockQuantity: newStock },
-              { new: true }
-            );
-
-            if (newStock !== undefined && newStock !== null) {
-              checkAndNotifyReorderPoint(
-                req.user.organizationId,
-                adjItem.item.toString(),
-                newStock
-              ).catch(err => console.error(`[INVENTORY] Error checking reorder point:`, err));
-            }
-
-            const cost = (adjItem as any).cost || (adjItem as any).costPrice || itemDoc.costPrice || 0;
-            totalValue += Math.abs(adjItem.quantityAdjusted * cost);
+        for (const adjItem of adjustment.items) {
+          if (!adjItem.item || adjItem.quantityAdjusted === 0) {
+            continue;
           }
+
+          const newStock = toNumber(adjItem.newQuantity);
+
+          bulkOperations.push({
+            updateOne: {
+              filter: { _id: adjItem.item, ...getOrgFilter(req.user.organizationId) },
+              update: { stockQuantity: newStock },
+            }
+          });
+
+          checkAndNotifyReorderPoint(
+            req.user.organizationId,
+            adjItem.item.toString(),
+            newStock
+          ).catch(err => console.error(`[INVENTORY] Error checking reorder point:`, err));
+
+          const cost = (adjItem as any).cost || (adjItem as any).costPrice || 0;
+          totalValue += Math.abs(toNumber(adjItem.quantityAdjusted) * toNumber(cost));
         }
 
-        await adjustment.save();
+        if (bulkOperations.length > 0) {
+          await Item.bulkWrite(bulkOperations, { ordered: false });
+        }
       } else {
         // Value adjustment: revalue inventory by updating item costPrice only.
         await applyValueRevaluation(adjustment.items as any[], req.user.organizationId, false);
@@ -561,79 +632,17 @@ export const createInventoryAdjustment = async (req: AuthRequest, res: Response)
       }
 
       if (totalValue > 0) {
-        console.log('[Inventory] Creating Journal Entry with value:', totalValue);
-        try {
-          const inventoryAssetAccount = await ChartOfAccount.findOne({
-            organization: req.user.organizationId,
-            $or: [{ accountName: 'Inventory Asset' }, { accountType: 'stock' }]
-          });
-
-          const costOfGoodsSoldAccount = await ChartOfAccount.findOne({
-            organization: req.user.organizationId,
-            $or: [
-              { accountName: adjustment.account || 'Cost of Goods Sold' },
-              { accountType: 'cost_of_goods_sold' }
-            ]
-          });
-
-          const debitAccount = inventoryAssetAccount?._id?.toString() || 'Inventory Asset';
-          const creditAccount = costOfGoodsSoldAccount?._id?.toString() || adjustment.account || 'Cost of Goods Sold';
-
-          const journalNumber = `JE-${adjustment.adjustmentNumber || adjustment.referenceNumber || Date.now()}`;
-          const valueDelta = getValueDelta(adjustment.items as any[]);
-          const absValueDelta = Math.abs(valueDelta);
-
-          const lines = adjustment.type === 'Value'
-            ? [
-              {
-                account: debitAccount,
-                accountName: inventoryAssetAccount?.accountName || 'Inventory Asset',
-                description: 'Inventory Value Adjustment',
-                debit: valueDelta >= 0 ? absValueDelta : 0,
-                credit: valueDelta < 0 ? absValueDelta : 0
-              },
-              {
-                account: creditAccount,
-                accountName: costOfGoodsSoldAccount?.accountName || adjustment.account || 'Cost of Goods Sold',
-                description: `Inventory Adjustment - ${adjustment.reason}`,
-                debit: valueDelta < 0 ? absValueDelta : 0,
-                credit: valueDelta >= 0 ? absValueDelta : 0
-              }
-            ]
-            : [
-              {
-                account: debitAccount,
-                accountName: inventoryAssetAccount?.accountName || 'Inventory Asset',
-                description: 'Inventory Adjustment - Stock',
-                debit: adjustment.type === 'Quantity' && adjustment.reason !== 'Found' ? 0 : totalValue,
-                credit: adjustment.type === 'Quantity' && adjustment.reason !== 'Found' ? totalValue : 0
-              },
-              {
-                account: creditAccount,
-                accountName: costOfGoodsSoldAccount?.accountName || adjustment.account || 'Cost of Goods Sold',
-                description: `Inventory Adjustment - ${adjustment.reason}`,
-                debit: adjustment.type === 'Quantity' && adjustment.reason !== 'Found' ? totalValue : 0,
-                credit: adjustment.type === 'Quantity' && adjustment.reason !== 'Found' ? 0 : totalValue
-              }
-            ];
-
-          await JournalEntry.create({
-            organization: req.user.organizationId,
-            entryNumber: journalNumber,
-            date: adjustment.date || new Date(),
-            reference: adjustment.adjustmentNumber || adjustment.referenceNumber,
-            description: `Inventory Adjustment - ${adjustment.adjustmentNumber || adjustment.referenceNumber}`,
-            status: 'posted',
-            postedBy: req.user.userId,
-            postedAt: new Date(),
-            sourceId: adjustment._id,
-            sourceType: 'inventory_adjustment',
-            lines
-          });
-          console.log('[Inventory] Journal Entry created successfully.');
-        } catch (jeError: any) {
-          console.error('[Inventory] Failed to create Journal Entry:', jeError);
-        }
+        console.log('[Inventory] Queueing Journal Entry creation with value:', totalValue);
+        setImmediate(() => {
+          void createInventoryAdjustmentJournalEntry(
+            adjustment,
+            req.user!.organizationId,
+            req.user!.userId,
+            totalValue,
+          )
+            .then(() => console.log('[Inventory] Journal Entry created successfully.'))
+            .catch((jeError: any) => console.error('[Inventory] Failed to create Journal Entry:', jeError));
+        });
       }
     }
 

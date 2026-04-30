@@ -264,6 +264,8 @@ export default function AdjustmentDetail({
     try {
       await inventoryAdjustmentsAPI.update(currentAdjustmentId, { status: "ADJUSTED" });
       await refreshAdjustmentDetails();
+      window.dispatchEvent(new Event("inventoryAdjustmentsUpdated"));
+      window.dispatchEvent(new Event("itemsUpdated"));
       await runCallback(onRefresh);
       toast.success("Adjustment converted successfully");
     } catch (error: any) {

@@ -53,9 +53,9 @@ export function InventoryAdjustmentsTableView({
   return (
     <div className="min-h-0 overflow-x-auto bg-white">
       <table className="w-full border-collapse text-left">
-        <thead className="sticky top-0 z-10 border-b border-gray-200 bg-[#f3f4f6]">
-          <tr className="text-[11px] font-semibold uppercase tracking-wide text-[#667085]">
-            <th className="w-16 min-w-[64px] px-4 py-3">
+        <thead className="sticky top-0 z-10 border-b border-[#e5e7eb] bg-[#f8fafc]">
+          <tr className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[#667085]">
+            <th className="w-16 min-w-[64px] px-4 py-4">
               <div className="relative flex items-center gap-3">
                 <div className="min-w-[8px]" />
                 <input
@@ -72,13 +72,13 @@ export function InventoryAdjustmentsTableView({
             {visibleColumns.map((column) => (
               <th
                 key={column.key}
-                className="group/header relative cursor-pointer select-none px-4 py-3"
+                className="group/header relative cursor-pointer select-none px-4 py-4"
                 style={{ width: column.width }}
                 onClick={() => onSort?.(mapColumnSortField(column.key))}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1">
-                    <span className="truncate font-bold text-slate-900">
+                    <span className="truncate font-semibold text-[#1f2937]">
                       {column.label}
                     </span>
                     {isSortedColumn(sortBy, column.key) && (
@@ -98,11 +98,11 @@ export function InventoryAdjustmentsTableView({
               </th>
             ))}
 
-            <th className="sticky right-0 w-12 border-l border-gray-100 bg-[#f3f4f6] px-4 py-3">
+            <th className="sticky right-0 w-12 border-l border-gray-100 bg-[#f8fafc] px-4 py-4">
               <div className="flex items-center justify-center gap-2">
                 <Search
                   size={14}
-                  className="cursor-pointer text-gray-300 transition-colors hover:opacity-80"
+                  className="cursor-pointer text-gray-300 transition-colors hover:text-[#156372]"
                   onClick={(event) => {
                     event.stopPropagation();
                     onOpenSearch();
@@ -113,7 +113,7 @@ export function InventoryAdjustmentsTableView({
           </tr>
         </thead>
 
-        <tbody className="divide-y divide-gray-100">
+        <tbody className="divide-y divide-[#eef2f7]">
           {isLoading ? (
             <TableRowSkeleton columns={visibleColumns} />
           ) : (
@@ -123,7 +123,7 @@ export function InventoryAdjustmentsTableView({
               return (
                 <tr
                   key={row.id}
-                  className="group cursor-pointer transition-all hover:bg-slate-50/60"
+                  className="group cursor-pointer transition-all hover:bg-slate-50/70"
                   style={
                     isSelected
                       ? { backgroundColor: "rgba(21, 99, 114, 0.1)" }
@@ -135,7 +135,7 @@ export function InventoryAdjustmentsTableView({
                     }
                   }}
                 >
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-5">
                     <div className="flex items-center gap-3">
                       <div className="invisible min-w-[8px] group-hover:visible" />
                       <input
@@ -155,15 +155,15 @@ export function InventoryAdjustmentsTableView({
                   {visibleColumns.map((column) => (
                     <td
                       key={column.key}
-                      className="truncate px-4 py-3 text-[13px]"
+                      className="truncate px-4 py-5 text-[13px]"
                       style={{ maxWidth: column.width }}
                     >
                       {column.key === "date" ? (
-                        <span className="text-[13px] text-[#111827]">
+                        <span className="text-[13px] font-medium text-[#374151]">
                           {formatInventoryAdjustmentDate(row.date, row.rawDate)}
                         </span>
                       ) : column.key === "status" ? (
-                        <span className="font-medium uppercase text-[#2563eb]">
+                        <span className="text-[13px] font-semibold uppercase tracking-[0.01em] text-[#2563eb]">
                           {row.status || "DRAFT"}
                         </span>
                       ) : column.key === "description" ? (
@@ -177,37 +177,37 @@ export function InventoryAdjustmentsTableView({
                             <FileText size={15} />
                           </button>
                         ) : (
-                          <span className="text-gray-400">-</span>
+                            <span className="text-[#9ca3af]">-</span>
                         )
                       ) : column.key === "referenceNumber" ? (
-                        <span className="font-medium text-[#156372]">
+                        <span className="font-semibold text-[#156372]">
                           {row.adjustmentNumber || row.referenceNumber}
                         </span>
                       ) : column.key === "createdTime" ? (
-                        <span className="whitespace-pre-line text-gray-900">
+                        <span className="whitespace-pre-line leading-6 text-[#374151]">
                           {formatInventoryAdjustmentDateTime(
                             row.createdTime,
                             row.rawCreatedAt,
                           )}
                         </span>
                       ) : column.key === "lastModifiedTime" ? (
-                        <span className="whitespace-pre-line text-gray-900">
+                        <span className="whitespace-pre-line leading-6 text-[#374151]">
                           {formatInventoryAdjustmentDateTime(
                             row.lastModifiedTime,
                             row.rawUpdatedAt,
                           )}
                         </span>
                       ) : column.key === "type" ? (
-                        <span className="text-gray-900">{row.type}</span>
+                        <span className="text-[#374151]">{row.type}</span>
                       ) : (
-                        <span className="text-[13px] text-gray-900">
+                        <span className="text-[13px] leading-6 text-[#374151]">
                           {row[column.key] || ""}
                         </span>
                       )}
                     </td>
                   ))}
 
-                  <td className="sticky right-0 w-12 border-l border-gray-50 bg-white px-4 py-3" />
+                  <td className="sticky right-0 w-12 border-l border-gray-50 bg-white px-4 py-5" />
                 </tr>
               );
             })

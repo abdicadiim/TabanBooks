@@ -221,7 +221,20 @@ function InventoryPageContent() {
       }, 800);
     };
 
+    const handleAdjustmentUpdate = () => {
+      setTimeout(() => {
+        fetchAdjustments(false);
+      }, 400);
+    };
+
+    const handleShowList = () => {
+      setSelectedAdjustment(null);
+      setSelectedItems([]);
+    };
+
     window.addEventListener('inventoryAdjustmentsImported', handleImport);
+    window.addEventListener('inventoryAdjustmentsUpdated', handleAdjustmentUpdate);
+    window.addEventListener('inventoryAdjustmentsShowList', handleShowList);
 
     // Also check if we're coming from an import (check sessionStorage)
     const checkImportFlag = sessionStorage.getItem('inventoryImportCompleted');
@@ -252,6 +265,8 @@ function InventoryPageContent() {
       // @ts-ignore
       delete (window as any).setInventorySearchCriteria;
       window.removeEventListener('inventoryAdjustmentsImported', handleImport);
+      window.removeEventListener('inventoryAdjustmentsUpdated', handleAdjustmentUpdate);
+      window.removeEventListener('inventoryAdjustmentsShowList', handleShowList);
     };
   }, []);
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
@@ -1088,16 +1103,16 @@ function InventoryPageContent() {
 
       {/* Header */}
       {selectedItems.length === 0 && (
-      <div className="flex flex-row flex-wrap justify-between items-center gap-3 mb-5 pb-4 bg-transparent">
-          <h1 className="flex-1 min-w-0 text-xl sm:text-2xl md:text-[28px] font-bold text-black m-0">
+      <div className="sticky top-0 z-20 -mx-6 mb-8 flex flex-row flex-wrap items-start justify-between gap-4 border-b border-[#e5e7eb] bg-white px-6 py-6 shadow-[0_1px_0_rgba(15,23,42,0.04)]">
+          <h1 className="m-0 flex-1 min-w-0 pt-1 text-[28px] font-bold tracking-[-0.02em] text-[#111827] sm:text-[32px]">
             Inventory Adjustments
           </h1>
-          <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
+          <div className="flex flex-wrap items-center gap-3">
             {/* Removed: FIFO Cost Lot Tracking Report link */}
             <button
               onClick={() => navigate("/inventory/new")}
-              className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white border-none rounded-md cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
-              style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
+              className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md border-none px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity"
+              style={{ backgroundColor: "#156372" }}
               onMouseEnter={(e) => e.currentTarget.style.opacity = "0.9"}
               onMouseLeave={(e) => e.currentTarget.style.opacity = "1"}
             >
@@ -1118,23 +1133,23 @@ function InventoryPageContent() {
                   }
                 }}
                 style={{
-                  padding: "8px",
+                  padding: "10px",
                   fontSize: "14px",
                   fontWeight: "500",
                   color: "#6b7280",
-                  backgroundColor: "#f3f4f6",
-                  border: "none",
-                  borderRadius: "6px",
+                  backgroundColor: "#f8fafc",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "8px",
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center"
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#e5e7eb";
+                  e.currentTarget.style.backgroundColor = "#f3f4f6";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "#f3f4f6";
+                  e.currentTarget.style.backgroundColor = "#f8fafc";
                 }}
               >
                 <MoreVertical size={16} />
@@ -1409,26 +1424,26 @@ function InventoryPageContent() {
       )}
 
       {/* Filters */}
-      <div className="relative z-20 flex flex-wrap gap-3 mb-5 items-center bg-transparent py-1">
+      <div className="relative z-20 mb-10 flex flex-wrap items-center gap-3 bg-transparent py-1">
         <div className="relative z-20 flex items-center gap-2">
-          <label className="text-[13px] text-gray-500 font-medium">
+          <label className="text-[13px] font-medium text-[#6b7280]">
             Filter By :
           </label>
           <div className="relative inline-block align-top" ref={typeDropdownRef}>
             <button
               onClick={() => setTypeDropdownOpen(!typeDropdownOpen)}
               style={{
-                padding: "5px 12px",
+                padding: "7px 14px",
                 fontSize: "13px",
                 border: "1px solid #d1d5db",
-                borderRadius: "6px",
+                borderRadius: "8px",
                 backgroundColor: "#ffffff",
                 color: "#1f2937",
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 gap: "8px",
-                minWidth: "100px",
+                minWidth: "102px",
                 justifyContent: "space-between"
               }}
               onMouseEnter={(e) => {
@@ -1614,10 +1629,10 @@ function InventoryPageContent() {
           <div className="relative inline-block align-top z-30" ref={periodDropdownRef}>
             <button
               onClick={() => setPeriodDropdownOpen(!periodDropdownOpen)}
-              className="px-3 py-[5px] text-[13px] border border-gray-300 rounded-md bg-white text-gray-900 cursor-pointer flex items-center gap-2 min-w-[100px] justify-between hover:border-gray-400"
-            >
-              <span>Period: {selectedPeriod}</span>
-              {periodDropdownOpen ? (
+                className="flex min-w-[138px] cursor-pointer items-center justify-between gap-2 rounded-[8px] border border-gray-300 bg-white px-[14px] py-[7px] text-[13px] text-gray-900 hover:border-gray-400"
+              >
+                <span>Period: {selectedPeriod}</span>
+                {periodDropdownOpen ? (
                 <ChevronUp size={14} className="text-gray-500" />
               ) : (
                 <ChevronDown size={14} className="text-gray-500" />
@@ -1674,30 +1689,32 @@ function InventoryPageContent() {
       </div>
 
       {/* Content */}
-      <InventoryAdjustments
-        rows={sortedAdjustments}
-        onRowClick={(adjustment) => {
-          if (selectedItems.length === 0) {
-            setSelectedAdjustment(adjustment);
-          }
-        }}
-        onCreateNew={() => navigate("/inventory/new")}
-        selectedItems={selectedItems}
-        onSelectAll={handleSelectAll}
-        onSelectItem={handleSelectItem}
-        onSort={(field) => {
-          if (sortBy === field) {
-            setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-          } else {
-            setSortBy(field);
-            setSortOrder("asc");
-          }
-        }}
-        sortBy={sortBy}
-        sortOrder={sortOrder}
-        isLoading={loading}
-        currentTypeFilter={selectedType}
-      />
+      <div className="overflow-hidden rounded-[2px] border border-gray-100 bg-white">
+        <InventoryAdjustments
+          rows={sortedAdjustments}
+          onRowClick={(adjustment) => {
+            if (selectedItems.length === 0) {
+              setSelectedAdjustment(adjustment);
+            }
+          }}
+          onCreateNew={() => navigate("/inventory/new")}
+          selectedItems={selectedItems}
+          onSelectAll={handleSelectAll}
+          onSelectItem={handleSelectItem}
+          onSort={(field) => {
+            if (sortBy === field) {
+              setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+            } else {
+              setSortBy(field);
+              setSortOrder("asc");
+            }
+          }}
+          sortBy={sortBy}
+          sortOrder={sortOrder}
+          isLoading={loading}
+          currentTypeFilter={selectedType}
+        />
+      </div>
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmModal.open && (
