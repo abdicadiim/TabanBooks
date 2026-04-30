@@ -29,6 +29,12 @@ const toEntityId = (value: any): string => {
   return "";
 };
 
+const toComparableDate = (value: any) => {
+  const parsed = new Date(value || "");
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toISOString().slice(0, 10);
+};
+
 export default function RecurringBillDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -133,12 +139,18 @@ export default function RecurringBillDetail() {
             const billNumber = String(b.billNumber || "").trim();
             const orderNumber = String(b.orderNumber || "").trim();
             const referenceNumber = String(b.referenceNumber || "").trim();
+            const recurringSourceId = toEntityId(b.recurringBillId);
+            const recurringSourceProfile = String(b.recurringProfileName || "").trim();
             const billAmount = Number(b.total || 0);
             const isRecurringBillRecord = Boolean(b.isRecurring);
 
             const matchesVendor =
               (recurringVendorId && billVendorId && recurringVendorId === billVendorId) ||
               (recurringVendorName && billVendorName && recurringVendorName === billVendorName);
+
+            const matchesRecurringSource =
+              (id && recurringSourceId && String(recurringSourceId) === String(id)) ||
+              (recurringProfileName && recurringSourceProfile === recurringProfileName);
 
             const matchesProfile =
               (recurringProfileName && billNumber.startsWith(recurringProfileName)) ||
@@ -150,7 +162,7 @@ export default function RecurringBillDetail() {
               billAmount > 0 &&
               Math.abs(recurringAmount - billAmount) < 0.01;
 
-            return matchesVendor && (matchesProfile || (isRecurringBillRecord && matchesAmount));
+            return matchesVendor && (matchesRecurringSource || matchesProfile || (isRecurringBillRecord && matchesAmount));
           });
 
           const sortedBills = filtered
@@ -187,6 +199,111 @@ export default function RecurringBillDetail() {
     fetchRealBills();
   }, [recurringBill, id, resolvedBaseCurrency, resolvedBaseCurrencySymbol]);
 
+  const findMatchingGeneratedBill = (rows: any[] = [], fallbackBill?: any) => {
+    const recurringVendorId = toEntityId((recurringBill as any)?.vendor || (recurringBill as any)?.vendorId || (recurringBill as any)?.vendor_id);
+    const recurringVendorName = normalizeText((recurringBill as any)?.vendorName);
+    const recurringProfileName = String((recurringBill as any)?.profileName || "").trim();
+    const recurringAmount = Number((recurringBill as any)?.amount || (recurringBill as any)?.total || 0);
+    const fallbackDate = toComparableDate(fallbackBill?.rawDate || fallbackBill?.date || (recurringBill as any)?.lastBillDate || (recurringBill as any)?.startOn);
+
+    const strongMatch = rows.find((b: any) => {
+      const billId = b?._id || b?.id;
+      if (!billId || !isValidMongoId(String(billId))) return false;
+
+      const billVendorId = toEntityId(b.vendor || b.vendorId || b.vendor_id);
+      const billVendorName = normalizeText(b.vendorName || b.vendor?.displayName || b.vendor?.name);
+      const billNumber = String(b.billNumber || "").trim();
+      const orderNumber = String(b.orderNumber || "").trim();
+      const referenceNumber = String(b.referenceNumber || "").trim();
+      const recurringSourceId = toEntityId(b.recurringBillId);
+      const recurringSourceProfile = String(b.recurringProfileName || "").trim();
+      const billAmount = Number(b.total || 0);
+      const billDate = toComparableDate(b.date || b.createdAt);
+      const matchesVendor =
+        (recurringVendorId && billVendorId && recurringVendorId === billVendorId) ||
+        (recurringVendorName && billVendorName && recurringVendorName === billVendorName);
+      const matchesRecurringSource =
+        (id && recurringSourceId && String(recurringSourceId) === String(id)) ||
+        (recurringProfileName && recurringSourceProfile === recurringProfileName);
+      const matchesProfile =
+        (recurringProfileName && billNumber.startsWith(recurringProfileName)) ||
+        (recurringProfileName && orderNumber.startsWith(recurringProfileName)) ||
+        (recurringProfileName && referenceNumber.startsWith(recurringProfileName));
+      const matchesAmount =
+        recurringAmount > 0 &&
+        billAmount > 0 &&
+        Math.abs(recurringAmount - billAmount) < 0.01;
+      const matchesDate = fallbackDate ? billDate === fallbackDate : true;
+
+      return matchesVendor && ((matchesRecurringSource && matchesDate) || (matchesProfile && matchesDate) || ((b.isRecurring || matchesProfile) && matchesAmount && matchesDate));
+    });
+
+    if (strongMatch) {
+      return strongMatch;
+    }
+
+    const looseRecurringMatch = rows
+      .filter((b: any) => {
+        const billId = b?._id || b?.id;
+        if (!billId || !isValidMongoId(String(billId))) return false;
+
+        const billVendorId = toEntityId(b.vendor || b.vendorId || b.vendor_id);
+        const billVendorName = normalizeText(b.vendorName || b.vendor?.displayName || b.vendor?.name);
+        const recurringSourceId = toEntityId(b.recurringBillId);
+        const billAmount = Number(b.total || 0);
+
+        const matchesVendor =
+          (recurringVendorId && billVendorId && recurringVendorId === billVendorId) ||
+          (recurringVendorName && billVendorName && recurringVendorName === billVendorName);
+        const matchesRecurringSource = id && recurringSourceId && String(recurringSourceId) === String(id);
+        const matchesAmount =
+          recurringAmount > 0 &&
+          billAmount > 0 &&
+          Math.abs(recurringAmount - billAmount) < 0.01;
+
+        return matchesVendor && (matchesRecurringSource || (Boolean(b.isRecurring) && matchesAmount));
+      })
+      .sort((a: any, b: any) => {
+        const aTime = new Date(a.date || a.createdAt || 0).getTime();
+        const bTime = new Date(b.date || b.createdAt || 0).getTime();
+        return bTime - aTime;
+      });
+
+    return looseRecurringMatch[0] || null;
+  };
+
+  const resolveBillForPayment = async (candidateBill: any) => {
+    const existingId = candidateBill?.id || candidateBill?._id;
+    if (existingId && isValidMongoId(String(existingId))) {
+      return candidateBill;
+    }
+
+    const response = await billsAPI.getAll({ limit: 1000 });
+    if (!(response && response.success && Array.isArray(response.data))) {
+      return null;
+    }
+
+    const matchedBill = findMatchingGeneratedBill(response.data, candidateBill);
+    if (!matchedBill) {
+      return null;
+    }
+
+    return {
+      ...matchedBill,
+      id: matchedBill._id || matchedBill.id,
+      vendorName: matchedBill.vendorName || matchedBill.vendor?.displayName || matchedBill.vendor?.name || candidateBill?.vendorName || "",
+      vendorId: toEntityId(matchedBill.vendor || matchedBill.vendorId || matchedBill.vendor_id),
+      billNumber: matchedBill.billNumber || candidateBill?.profileName || "",
+      total: matchedBill.total || 0,
+      balance: matchedBill.balance,
+      balanceDue: matchedBill.balance !== undefined ? matchedBill.balance : matchedBill.balanceDue,
+      paidAmount: matchedBill.paidAmount || 0,
+      currency: matchedBill.currency || resolvedBaseCurrency,
+      date: matchedBill.date || candidateBill?.rawDate || "",
+      status: matchedBill.status || candidateBill?.status || "open",
+    };
+  };
+
   useEffect(() => {
     if (!moreMenuOpen) return;
 
@@ -210,13 +327,22 @@ export default function RecurringBillDetail() {
     };
   }, [moreMenuOpen]);
 
-  const handleEdit = () => {
-    navigate("/purchases/recurring-bills/new", {
-      state: {
-        editBill: recurringBill,
-        isEdit: true,
-      },
-    });
+  const handleEdit = async () => {
+    try {
+      const sourceId = String((recurringBill as any)?._id || (recurringBill as any)?.id || id || "");
+      const detailResponse = sourceId ? await recurringBillsAPI.getById(sourceId) : null;
+      const sourceBill = detailResponse?.recurring_bill || detailResponse?.data || recurringBill;
+
+      navigate("/purchases/recurring-bills/new", {
+        state: {
+          editBill: sourceBill,
+          isEdit: true,
+        },
+      });
+    } catch (error) {
+      console.error("Error loading recurring bill for edit:", error);
+      toast.error("Unable to load the full recurring bill for editing.");
+    }
   };
 
   const handleCreateBill = () => {
@@ -1139,20 +1265,26 @@ export default function RecurringBillDetail() {
                         <div style={{ fontSize: "14px", fontWeight: "500", color: "#111827" }}>{bill.amount}</div>
                         <div style={{ fontSize: "11px", color: "#3b82f6", textTransform: "uppercase", letterSpacing: "1px" }}>{bill.status === "OVERDUE" ? "OPEN" : bill.status}</div>
                          <button 
-                          onClick={() => {
-                            const targetBillId = bill.id || bill._id;
-                            if (!targetBillId || !isValidMongoId(String(targetBillId))) {
-                              toast.error("This recurring bill has not created a real bill yet. Create the bill first, then record payment.");
-                              return;
-                            }
-
-                            navigate(`/purchases/payments-made/new`, {
-                              state: {
-                                fromBill: true,
-                                bill,
-                                returnToRecurringBillId: id,
+                          onClick={async () => {
+                            try {
+                              const resolvedBill = await resolveBillForPayment(bill);
+                              const targetBillId = resolvedBill?.id || resolvedBill?._id;
+                              if (!targetBillId || !isValidMongoId(String(targetBillId))) {
+                                toast.error("This recurring bill has not created a real bill yet. Create the bill first, then record payment.");
+                                return;
                               }
-                            });
+
+                              navigate(`/purchases/payments-made/new`, {
+                                state: {
+                                  fromBill: true,
+                                  bill: resolvedBill,
+                                  returnToRecurringBillId: id,
+                                }
+                              });
+                            } catch (error) {
+                              console.error("Error resolving bill for payment:", error);
+                              toast.error("Unable to open the payment form for this recurring bill.");
+                            }
                           }}
                           style={{ 
                             padding: "6px 16px", 

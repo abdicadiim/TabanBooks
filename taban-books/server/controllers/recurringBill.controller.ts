@@ -408,7 +408,9 @@ export const generateBillFromRecurring = async (req: AuthRequest, res: Response)
         const billData = {
             organization: req.user.organizationId,
             billNumber: `BILL-${Date.now()}`,
+            referenceNumber: recurringBill.profile_name || "",
             vendor: recurringBill.vendor,
+            vendorName: recurringBill.vendor_name || "",
             date: new Date(),
             dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // Default 30 days
             items: recurringBill.items,
@@ -420,7 +422,9 @@ export const generateBillFromRecurring = async (req: AuthRequest, res: Response)
             accountsPayable: recurringBill.accounts_payable,
             notes: recurringBill.notes,
             status: 'open',
-            isRecurring: true
+            isRecurring: true,
+            recurringBillId: recurringBill._id,
+            recurringProfileName: recurringBill.profile_name || "",
         };
 
         const newBill = new Bill(billData);

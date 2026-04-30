@@ -802,16 +802,12 @@ export default function NewRecurringBill() {
     if (isEdit && editBill) {
       const formatDateForInput = (dateString) => {
         if (!dateString) return "";
-        // Convert "09 Dec 2025" format to "2025-12-09"
-        if (dateString.includes(" ")) {
-          const date = new Date(dateString);
-          return date.toISOString().split("T")[0];
-        }
-        return dateString;
+        const date = new Date(dateString);
+        if (Number.isNaN(date.getTime())) return dateString;
+        return date.toISOString().split("T")[0];
       };
 
-      // Check if frequency is a custom format (e.g., "5 days", "3 weeks")
-      const frequency = editBill.frequency || "Week";
+      const frequency = editBill.repeat_every || editBill.repeatEvery || editBill.frequency || "Week";
       let repeatEvery = frequency;
       let customRepeatValue = editBill.customRepeatValue || "";
       let customRepeatUnit = editBill.customRepeatUnit || "days";
@@ -833,34 +829,42 @@ export default function NewRecurringBill() {
       }
 
       setFormData({
-        vendorName: editBill.vendorName || "",
-        profileName: editBill.profileName || "",
+        vendorName: editBill.vendorName || editBill.vendor_name || "",
+        profileName: editBill.profileName || editBill.profile_name || "",
         repeatEvery: repeatEvery,
         customRepeatValue: customRepeatValue,
         customRepeatUnit: customRepeatUnit,
-        startOn: formatDateForInput(editBill.startOn) || new Date().toISOString().split("T")[0],
-        endsOn: editBill.endsOn ? formatDateForInput(editBill.endsOn) : "",
-        neverExpires: editBill.neverExpires !== false,
+        startOn: formatDateForInput(editBill.startOn || editBill.start_date) || new Date().toISOString().split("T")[0],
+        endsOn: (editBill.endsOn || editBill.end_date) ? formatDateForInput(editBill.endsOn || editBill.end_date) : "",
+        neverExpires: editBill.neverExpires ?? editBill.never_expire ?? true,
         paymentTerms: editBill.paymentTerms || "Due on Receipt",
         taxLevel: editBill.taxLevel || "At Transaction Level",
         discount: editBill.discount || 0,
         adjustment: editBill.adjustment || 0,
         notes: editBill.notes || "",
         currency: resolvedBaseCurrency,
+        accountsPayable: editBill.accountsPayable || editBill.accounts_payable || "",
       });
 
       if (editBill.items && editBill.items.length > 0) {
         setItems(editBill.items.map((item, index) => ({
-          id: item.id || Date.now() + index,
-          itemDetails: item.itemDetails || "",
-          account: item.account || "",
+          id: item.id || item.itemId || item.item || Date.now() + index,
+          itemId: item.itemId || item.item?._id || item.item?.id || item.item || "",
+          itemDetails: item.itemDetails || item.name || item.description || "",
+          account: item.account || editBill.accountsPayable || editBill.accounts_payable || "",
           quantity: item.quantity?.toString() || "1.00",
-          rate: item.rate?.toString() || "0.00",
-          tax: item.tax || "",
+          rate: (item.rate ?? item.unitPrice ?? 0).toString(),
+          tax: item.tax || item.taxRate || "",
           customerDetails: item.customerDetails || "",
-          amount: item.amount?.toString() || (parseFloat(item.quantity || 0) * parseFloat(item.rate || 0)).toFixed(2),
+          amount: (item.amount ?? item.total ?? (parseFloat(item.quantity || 0) * parseFloat(item.rate || item.unitPrice || 0))).toString(),
+          description: item.description || "",
+          sku: item.sku || item.item?.sku || "",
+          unit: item.unit || item.item?.unit || "",
+          stock_on_hand: parseFloat(item.stock_on_hand || item.stockQuantity || item.item?.stockQuantity || "0"),
         })));
       }
+
+      setWarehouseLocation(editBill.warehouseLocationName || editBill.locationName || "Head Office");
     }
   }, [isEdit, editBill]);
 
@@ -2585,42 +2589,39 @@ export default function NewRecurringBill() {
                       : recurringBillsAPI.create(recurringBill);
 
                     savePromise
-                       .then((response) => {
+                       .then(async (response) => {
                         if (response && (response.code === 0 || response.success)) {
                           const recurringBillId = response.recurring_bill?._id || response.data?._id;
+                          // Update Item Stock on Hand before leaving the page.
+                          try {
+                            const stockUpdatePromises = items.map(item => {
+                              if (item.itemId) {
+                                const currentStock = item.stock_on_hand || 0;
+                                const addedQty = parseFloat(item.quantity) || 0;
+                                const newStock = currentStock + addedQty;
+                                return itemsAPI.update(item.itemId, { stockQuantity: newStock });
+                              }
+                              return Promise.resolve();
+                            });
+                            await Promise.all(stockUpdatePromises);
+                          } catch (stockError) {
+                            console.error("Error updating stock on hand:", stockError);
+                          }
+
+                          // Generate the first bill before navigating so Record Payment can always find it.
+                          if (!isEdit && recurringBillId) {
+                            try {
+                              await recurringBillsAPI.generateBill(recurringBillId);
+                            } catch (genError) {
+                              console.error("Error generating initial bill:", genError);
+                            }
+                          }
 
                           toast.success(isEdit ? "The recurring bill has been updated." : "The recurring bill has been created.", { position: "top-center" });
                           window.dispatchEvent(new Event("recurringBillsUpdated"));
+                          window.dispatchEvent(new Event("billsUpdated"));
                           setIsLoading(false);
                           navigate("/purchases/recurring-bills");
-
-                          // Run follow-up work in the background so the user is not blocked on this page.
-                          void (async () => {
-                            // Update Item Stock on Hand without holding up the save flow.
-                            try {
-                              const stockUpdatePromises = items.map(item => {
-                                if (item.itemId) {
-                                  const currentStock = item.stock_on_hand || 0;
-                                  const addedQty = parseFloat(item.quantity) || 0;
-                                  const newStock = currentStock + addedQty;
-                                  return itemsAPI.update(item.itemId, { stockQuantity: newStock });
-                                }
-                                return Promise.resolve();
-                              });
-                              await Promise.all(stockUpdatePromises);
-                            } catch (stockError) {
-                              console.error("Error updating stock on hand:", stockError);
-                            }
-
-                            // Generate the first bill after the UI has already moved on.
-                            if (!isEdit && recurringBillId) {
-                              try {
-                                await recurringBillsAPI.generateBill(recurringBillId);
-                              } catch (genError) {
-                                console.error("Error generating initial bill:", genError);
-                              }
-                            }
-                          })();
                         } else {
                           throw new Error(response?.message || "Operation failed");
                         }
